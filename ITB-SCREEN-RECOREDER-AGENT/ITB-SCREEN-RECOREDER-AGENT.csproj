@@ -10,8 +10,14 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="NAudio.Core" Version="2.3.0" />
+		<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
 		<PackageReference Include="Vortice.Direct3D11" Version="3.6.2" />
 		<PackageReference Include="Vortice.DXGI" Version="3.6.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

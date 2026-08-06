@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37516.0 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITB-SCREEN-RECOREDER-AGENT", "ITB-SCREEN-RECOREDER-AGENT\ITB-SCREEN-RECOREDER-AGENT.csproj", "{284E7863-FADE-4BA9-BABE-00D516B93837}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITB-SCREEN-RECORDER.Core", "ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj", "{441F18A3-6412-4A88-880F-374768D70EB0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITB-SCREEN-RECORDER.Server", "ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj", "{0ABD305F-8C36-47D7-AC4D-3B4A30B79538}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{284E7863-FADE-4BA9-BABE-00D516B93837}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{284E7863-FADE-4BA9-BABE-00D516B93837}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{284E7863-FADE-4BA9-BABE-00D516B93837}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{284E7863-FADE-4BA9-BABE-00D516B93837}.Release|Any CPU.Build.0 = Release|Any CPU
+		{441F18A3-6412-4A88-880F-374768D70EB0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{441F18A3-6412-4A88-880F-374768D70EB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{441F18A3-6412-4A88-880F-374768D70EB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{441F18A3-6412-4A88-880F-374768D70EB0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0ABD305F-8C36-47D7-AC4D-3B4A30B79538}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0ABD305F-8C36-47D7-AC4D-3B4A30B79538}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0ABD305F-8C36-47D7-AC4D-3B4A30B79538}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0ABD305F-8C36-47D7-AC4D-3B4A30B79538}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D3D04413-A3EA-409E-9CB9-A7D8CE909380}
+	EndGlobalSection
+EndGlobal
