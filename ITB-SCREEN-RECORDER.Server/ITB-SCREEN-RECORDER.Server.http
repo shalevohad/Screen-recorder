@@ -1,0 +1,6 @@
+@ITB_SCREEN_RECORDER.Server_HostAddress = http://localhost:5090
+
+GET {{ITB_SCREEN_RECORDER.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
