@@ -1,9 +1,10 @@
 ﻿using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
-using ITBRecorderAgent.Core;
+using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
 
 namespace ITBRecorderAgent.Providers.Audio
 {
@@ -44,19 +45,23 @@ namespace ITBRecorderAgent.Providers.Audio
 
                 _capture.DataAvailable += (s, e) =>
                 {
-                    Buffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+                    try
+                    {
+                        Buffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+                    }
+                    catch (Exception) { }
                 };
 
-                _capture.StartRecording();
                 _isSilenceMode = false;
                 IsRealDeviceActive = true;
+                _capture.StartRecording();
+
+                Logger.Info($"Successfully hooked {(isLoopback ? "System Loopback" : "Microphone")} audio hardware channel.");
                 return true;
             }
             catch (Exception ex)
             {
-                IsRealDeviceActive = false;
-                Logger.Warn($"Failed to start real audio stream ({device.FriendlyName}): {ex.Message}. Falling back to Silence Mode.");
-                StopRealCapture();
+                Logger.Error($"Failed to initialize real audio endpoint ({ex.Message}). Bypassing to silence buffer injection.");
                 return StartSilenceGenerator();
             }
         }
@@ -64,6 +69,7 @@ namespace ITBRecorderAgent.Providers.Audio
         private bool StartSilenceGenerator()
         {
             _isSilenceMode = true;
+            IsRealDeviceActive = false;
             var format = WaveFormat.CreateIeeeFloatWaveFormat(SilenceSampleRate, SilenceChannels);
 
             Buffer = new BufferedWaveProvider(format)
@@ -82,7 +88,11 @@ namespace ITBRecorderAgent.Providers.Audio
 
                 while (!token.IsCancellationRequested)
                 {
-                    Buffer?.AddSamples(silenceChunk, 0, bytesPer20ms);
+                    try
+                    {
+                        Buffer?.AddSamples(silenceChunk, 0, bytesPer20ms);
+                    }
+                    catch { }
                     await Task.Delay(20, token).ConfigureAwait(false);
                 }
             }, token);
@@ -112,6 +122,9 @@ namespace ITBRecorderAgent.Providers.Audio
             IsRealDeviceActive = false;
         }
 
-        public void Dispose() => Stop();
+        public void Dispose()
+        {
+            Stop();
+        }
     }
 }

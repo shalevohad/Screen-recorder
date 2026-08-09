@@ -20,14 +20,5 @@
     <Folder Include="wwwroot\js\" />
     <Folder Include="wwwroot\css\" />
   </ItemGroup>
-  
-  <ItemGroup>
-    <None Update="MediaMTX\mediamtx.exe">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="MediaMTX\mediamtx.yml">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
 
 </Project>

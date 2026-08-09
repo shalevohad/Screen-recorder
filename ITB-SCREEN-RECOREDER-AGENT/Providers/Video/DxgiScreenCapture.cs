@@ -3,6 +3,7 @@ using System;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
+using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
 
 namespace ITBRecorderAgent.Providers.Video
 {
@@ -74,7 +75,7 @@ namespace ITBRecorderAgent.Providers.Video
             int bufferSize = Width * Height * 4;
             _reusableFrameBuffer = new byte[bufferSize];
 
-            Console.WriteLine($"[INFO] DXGI Capture Initialized via Vortice: {Width}x{Height}");
+            Logger.Info($"[VIDEO] DXGI Capture Initialized via Vortice: {Width}x{Height}");
 
             // שחרור זיכרון זמני
             output?.Dispose();
@@ -100,7 +101,7 @@ namespace ITBRecorderAgent.Providers.Video
                     // ציון נתיב מפורש לפתרון בעיית הדו-משמעות של ResultCode
                     if (result.Code == Vortice.DXGI.ResultCode.AccessLost.Code)
                     {
-                        Console.WriteLine("[WARNING] DXGI Access Lost. Re-initializing engine...");
+                        Logger.Warn("[WARNING] DXGI Access Lost. Re-initializing engine...");
                         Initialize();
                     }
                     return false;
@@ -140,7 +141,7 @@ namespace ITBRecorderAgent.Providers.Video
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WARNING] Capture error: {ex.Message}");
+                Logger.Warn($"[WARNING] Capture error: {ex.Message}");
                 return false;
             }
         }

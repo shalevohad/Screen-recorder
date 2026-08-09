@@ -8,43 +8,79 @@ namespace ITBRecorderAgent
     internal class Program
     {
         private static Mutex? _singleInstanceMutex;
+        private static readonly CancellationTokenSource _cts = new CancellationTokenSource();
 
-        static async Task Main(string[] args)
+        private static async Task Main(string[] args)
         {
-            const string mutexName = @"Global\ITBRecorderAgent_SingleInstance_Mutex";
-            _singleInstanceMutex = new Mutex(true, mutexName, out bool createdNew);
-
-            if (!createdNew)
-            {
-                Console.WriteLine("[WARNING] Active duplicate instance detected. Exiting.");
-                return;
-            }
-
-            // טעינת ההגדרות מ-appsettings.json
-            AppConfig config = ConfigLoader.Load();
-
-            // אתחול הנתיב בלוגר (אם השדה ריק ב-JSON - ייפול אוטומטית ל-Temp)
-            Logger.Initialize(config.LogFilePath);
-
-            Logger.Info("Starting ITBRecorderAgent (.NET 8 Edge Agent)...");
-
-            using var engine = new AgentEngine(config);
-            using var cts = new CancellationTokenSource();
-
-            Console.CancelKeyPress += (s, e) =>
-            {
-                e.Cancel = true;
-                Logger.Info("Shutdown signal received. Stopping agent...");
-                cts.Cancel();
-            };
+            // שם אבסולוטי וגלובלי ל-Mutex במערכת ההפעלה
+            string mutexName = @"Global\ITB_SCREEN_RECORDER_AGENT_SINGLETON";
+            bool hasHandle = false;
 
             try
             {
-                await engine.StartAsync(cts.Token);
+                _singleInstanceMutex = new Mutex(true, mutexName, out bool createdNew);
+
+                if (!createdNew)
+                {
+                    Logger.Warn("Another instance of ITB.Agent is already running. Exiting cleanly.");
+                    return;
+                }
+
+                hasHandle = true;
+
+                // רישום מאזין לאירועי סגירה (Ctrl+C / Process Termination)
+                Console.CancelKeyPress += (sender, eventArgs) =>
+                {
+                    Logger.Info("Shutdown signal received. Stopping agent...");
+                    eventArgs.Cancel = true; // מניעת קריסה מיידית ואפשרות לסגירה מסודרת
+                    _cts.Cancel();
+                };
+
+                AppDomain.CurrentDomain.ProcessExit += (sender, eventArgs) =>
+                {
+                    if (!_cts.IsCancellationRequested)
+                    {
+                        _cts.Cancel();
+                    }
+                };
+
+                // טעינת תצורה והרצת ה-Engine
+                AppConfig config = ConfigLoader.Load();
+                using (var engine = new AgentEngine(config))
+                {
+                    await engine.StartAsync(_cts.Token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // סגירה נקייה ומבוקרת עקב ביטול ה-CancellationToken
+                Logger.Info("Agent loop cancelled gracefully.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Unhandled exception in Agent execution: {ex.Message}");
             }
             finally
             {
-                _singleInstanceMutex.ReleaseMutex();
+                // שחרור בטוח של ה-Mutex
+                if (_singleInstanceMutex != null)
+                {
+                    if (hasHandle)
+                    {
+                        try
+                        {
+                            _singleInstanceMutex.ReleaseMutex();
+                        }
+                        catch (ApplicationException)
+                        {
+                            // התעלמות מאי-התאמת Thread בעת סגירת התהליך ב-OS
+                        }
+                    }
+                    _singleInstanceMutex.Dispose();
+                    _singleInstanceMutex = null;
+                }
+
+                Logger.Info("Agent exited cleanly.");
             }
         }
     }

@@ -15,7 +15,6 @@ namespace ITBRecorderAgent.Core
                 {
                     string fullPath = Path.GetFullPath(customPath);
 
-                    // אם הוגדרה תיקייה בלבד (ללא שם קובץ)
                     if (Directory.Exists(fullPath) || customPath.EndsWith("\\") || customPath.EndsWith("/"))
                     {
                         _logFilePath = Path.Combine(fullPath, "ITB-Agent-Log.txt");
@@ -25,7 +24,6 @@ namespace ITBRecorderAgent.Core
                         _logFilePath = fullPath;
                     }
 
-                    // יצירת תיקיית היעד במידה ואינה קיימת
                     string? directory = Path.GetDirectoryName(_logFilePath);
                     if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                     {
@@ -41,7 +39,6 @@ namespace ITBRecorderAgent.Core
                 }
             }
 
-            // ברירת מחדל במידה והשדה ריק או לא תקין
             _logFilePath = GetDefaultTempPath();
             Console.WriteLine($"[INFO] Log file path defaulted to temp: {_logFilePath}");
         }

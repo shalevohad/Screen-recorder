@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Pipes;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ITBRecorderAgent.Core;
@@ -12,19 +14,18 @@ namespace ITBRecorderAgent.Engine
     {
         private Process? _ffmpegProcess;
         private Stream? _videoStdinStream;
-        private NamedPipeServerStream? _audioPipe;
+        private TcpListener? _tcpListener;
+        private Socket? _audioSocket;
         private readonly AppConfig _config;
-        private readonly string _rtmpTarget;
 
         public bool IsRunning => _ffmpegProcess != null && !_ffmpegProcess.HasExited;
 
-        public FfmpegProcessManager(AppConfig config, string rtmpTarget)
+        public FfmpegProcessManager(AppConfig config)
         {
             _config = config;
-            _rtmpTarget = rtmpTarget;
         }
 
-        public async Task<bool> StartAsync(int width, int height, int audioSampleRate, int audioChannels, string audioFmt, CancellationToken cancellationToken)
+        public async Task<bool> StartAsync(string targetDestination, DateTime calibratedUtcTime, int width, int height, int audioSampleRate, int audioChannels, string audioFmt, CancellationToken cancellationToken)
         {
             string ffmpegExecutable = Path.IsPathRooted(_config.FFmpegPath)
                 ? _config.FFmpegPath
@@ -36,49 +37,89 @@ namespace ITBRecorderAgent.Engine
                 return false;
             }
 
-            string audioPipeName = $"ITBAudio_{Guid.NewGuid():N}";
-            _audioPipe = new NamedPipeServerStream(audioPipeName, PipeDirection.Out, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+            _tcpListener = new TcpListener(IPAddress.Loopback, 0);
+            _tcpListener.Start();
+            int localPort = ((IPEndPoint)_tcpListener.LocalEndpoint).Port;
 
-            // שימו לב: ללא מרכאות סביב _rtmpTarget כדי למנוע את שגיאה -138
-            string arguments =
-                $"-y " +
-                $"-f rawvideo -pix_fmt bgra -s {width}x{height} -r {_config.TargetFps} -i pipe:0 " +
-                $"-f {audioFmt} -ar {audioSampleRate} -ac {audioChannels} -i \\\\.\\pipe\\{audioPipeName} " +
-                $"-c:v h264_nvenc -preset p4 -tune ull -b:v {_config.VideoBitrate} " +
-                $"-c:a aac -b:a 128k " +
-                $"-f flv {_rtmpTarget}";
+            string utcTimestampIso = calibratedUtcTime.ToString("o");
+            var ffmpegArgs = new StringBuilder();
 
-            var psi = new ProcessStartInfo
+            ffmpegArgs.Append($"-f rawvideo -pix_fmt bgra -s {width}x{height} -r {_config.TargetFps} -i pipe:0 ");
+            ffmpegArgs.Append($"-f {audioFmt} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{localPort} ");
+            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset veryfast -b:v {_config.VideoBitrate} ");
+
+            if (audioChannels > 0)
             {
-                FileName = ffmpegExecutable,
-                Arguments = arguments,
-                UseShellExecute = false,
-                RedirectStandardInput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
+                ffmpegArgs.Append("-c:a aac -b:a 128k ");
+            }
 
-            _ffmpegProcess = new Process { StartInfo = psi };
-            _ffmpegProcess.ErrorDataReceived += (s, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data)) Logger.Info($"[FFmpeg] {e.Data}");
-            };
+            ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
+            ffmpegArgs.Append($"-y -f flv \"{targetDestination}\"");
 
             try
             {
+                _ffmpegProcess = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = ffmpegExecutable,
+                        Arguments = ffmpegArgs.ToString(),
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardInput = true,
+                        RedirectStandardError = true
+                    }
+                };
+
+                _ffmpegProcess.ErrorDataReceived += (sender, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data) && e.Data.Contains("Error", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Logger.Error($"[FFMPEG NATIVE ERROR] {e.Data}");
+                    }
+                };
+
                 _ffmpegProcess.Start();
-                _videoStdinStream = _ffmpegProcess.StandardInput.BaseStream;
                 _ffmpegProcess.BeginErrorReadLine();
+                _videoStdinStream = _ffmpegProcess.StandardInput.BaseStream;
 
-                Logger.Info("Waiting for FFmpeg to connect to the audio IPC pipe...");
-                await _audioPipe.WaitForConnectionAsync(cancellationToken);
-
-                Logger.Info($"FFmpeg Muxer started (Video: {_config.VideoBitrate} @ {_config.TargetFps}fps | Audio: AAC 128k).");
+                // 💡 שינוי: אנחנו לא מחכים כאן ל-Handshake! אנחנו נותנים ל-AgentEngine להזרים פריים ראשון,
+                // ורק אז נשלים את קבלת החיבור כדי למנוע את ה-Deadlock.
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to start FFmpeg process or connect IPC: {ex.Message}");
+                Logger.Error($"Failed to start FFmpeg process over TCP: {ex.Message}");
+                return false;
+            }
+        }
+
+        // 💡 מתודה חדשה להשלמת החיבור לאחר פריים ראשון
+        public async Task<bool> CompleteAudioHandshakeAsync(CancellationToken cancellationToken)
+        {
+            if (_tcpListener == null) return false;
+            try
+            {
+                var acceptTask = _tcpListener.AcceptSocketAsync(cancellationToken).AsTask();
+                var timeoutTask = Task.Delay(3000, cancellationToken);
+
+                var completedTask = await Task.WhenAny(acceptTask, timeoutTask).ConfigureAwait(false);
+                if (completedTask == timeoutTask)
+                {
+                    Logger.Warn("[AUDIO] TCP Loopback handshake timeout inside CompleteAudioHandshakeAsync.");
+                    return false;
+                }
+
+                _audioSocket = await acceptTask.ConfigureAwait(false);
+                _audioSocket.NoDelay = true;
+                _audioSocket.SendBufferSize = 65536;
+
+                Logger.Info($"[ENGINE] FFmpeg Audio channel connected cleanly over TCP Loopback.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to accept audio socket connection: {ex.Message}");
                 return false;
             }
         }
@@ -97,10 +138,14 @@ namespace ITBRecorderAgent.Engine
 
         public void WriteAudioData(byte[] audioData)
         {
-            if (_audioPipe != null && _audioPipe.IsConnected)
+            // 💡 כתיבה חלקה ויציבה אל תוך ה-Socket
+            if (_audioSocket != null && _audioSocket.Connected)
             {
-                try { _audioPipe.Write(audioData, 0, audioData.Length); }
-                catch (IOException) { }
+                try
+                {
+                    _audioSocket.Send(audioData, 0, audioData.Length, SocketFlags.None);
+                }
+                catch (SocketException) { }
             }
         }
 
@@ -108,10 +153,14 @@ namespace ITBRecorderAgent.Engine
         {
             try
             {
-                _audioPipe?.Dispose();
+                _audioSocket?.Close();
+                _audioSocket?.Dispose();
+                _tcpListener?.Stop();
                 _videoStdinStream?.Close();
+
                 if (_ffmpegProcess != null && !_ffmpegProcess.HasExited)
                 {
+                    _ffmpegProcess.CancelErrorRead();
                     _ffmpegProcess.WaitForExit(1000);
                     if (!_ffmpegProcess.HasExited) _ffmpegProcess.Kill();
                 }

@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
-using ITBRecorderAgent.Core;
+using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
 
 namespace ITBRecorderAgent.Providers.Audio
 {
@@ -40,92 +40,74 @@ namespace ITBRecorderAgent.Providers.Audio
 
                 _deviceNotifier.DeviceChanged += OnAudioDeviceChanged;
                 _deviceEnumerator.RegisterEndpointNotificationCallback(_deviceNotifier);
+
+                Logger.Info("WASAPI Audio Component and Session Watchers mapped.");
             }
             catch (Exception ex)
             {
-                Logger.Warn($"CoreAudioApi not available: {ex.Message}. Agent will run in pure Silence Mode.");
+                Logger.Error($"CRITICAL: Failed to attach system audio enumerator session: {ex.Message}");
             }
-
-            StartCaptureStreams();
-            StartMixingLoop();
-
-            Logger.Info($"WASAPI Dual Mixer initialized ({SampleRate}Hz Stereo Float).");
         }
 
         private void StartCaptureStreams()
         {
             lock (_lockObj)
             {
+                if (_isDisposed) return;
+
                 StopCaptureStreamsOnly();
 
                 _loopbackStream = new AudioCaptureStream();
-                MMDevice? renderDevice = null;
-                try { renderDevice = _deviceEnumerator?.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); } catch { }
-
-                if (_loopbackStream.Start(renderDevice, isLoopback: true) && renderDevice != null)
-                {
-                    Logger.Info($"Loopback captured: {renderDevice.FriendlyName}");
-                }
-
                 _micStream = new AudioCaptureStream();
-                MMDevice? captureDevice = null;
-                try { captureDevice = _deviceEnumerator?.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia); } catch { }
 
-                if (_micStream.Start(captureDevice, isLoopback: false) && captureDevice != null)
+                MMDevice? defaultRender = null;
+                MMDevice? defaultCapture = null;
+
+                if (_deviceEnumerator != null)
                 {
-                    Logger.Info($"Microphone captured: {captureDevice.FriendlyName}");
+                    try { defaultRender = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); } catch { }
+                    try { defaultCapture = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia); } catch { }
                 }
 
-                BuildMixerGraph();
+                _loopbackStream.Start(defaultRender, isLoopback: true);
+                _micStream.Start(defaultCapture, isLoopback: false);
+
+                var loopbackSampleProvider = new WaveToSampleProvider(_loopbackStream.Buffer);
+                var micSampleProvider = new WaveToSampleProvider(_micStream.Buffer);
+
+                _mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, Channels));
+                _mixer.AddMixerInput(loopbackSampleProvider);
+                _mixer.AddMixerInput(micSampleProvider);
+
+                StartRenderLoop();
             }
         }
 
-        private void BuildMixerGraph()
+        private void StartRenderLoop()
         {
-            var sampleProviders = new System.Collections.Generic.List<ISampleProvider>();
-
-            if (_loopbackStream?.Buffer != null)
-                sampleProviders.Add(NormalizeToTargetFormat(_loopbackStream.Buffer));
-
-            if (_micStream?.Buffer != null)
-                sampleProviders.Add(NormalizeToTargetFormat(_micStream.Buffer));
-
-            _mixer = sampleProviders.Count > 0 ? new MixingSampleProvider(sampleProviders) : null;
-        }
-
-        private ISampleProvider NormalizeToTargetFormat(BufferedWaveProvider buffer)
-        {
-            ISampleProvider provider = buffer.ToSampleProvider();
-            if (provider.WaveFormat.SampleRate != SampleRate)
-                provider = new WdlResamplingSampleProvider(provider, SampleRate);
-            if (provider.WaveFormat.Channels == 1 && Channels == 2)
-                provider = provider.ToStereo();
-            return provider;
-        }
-
-        private void StartMixingLoop()
-        {
+            _renderCts?.Cancel();
+            _renderCts?.Dispose();
             _renderCts = new CancellationTokenSource();
+
             var token = _renderCts.Token;
 
             Task.Run(async () =>
             {
-                int samplesPerBuffer = (SampleRate * Channels * 20) / 1000;
-                float[] sampleBuffer = new float[samplesPerBuffer];
-                byte[] byteBuffer = new byte[samplesPerBuffer * sizeof(float)];
+                int bufferSize = SampleRate * Channels * 4 * 20 / 1000; // 20ms chunks
+                float[] sampleBuffer = new float[bufferSize / 4];
+                byte[] byteBuffer = new byte[bufferSize];
+
+                Logger.Info("[AUDIO] Shared-Memory Audio Mixing Engine Pipeline started.");
 
                 while (!token.IsCancellationRequested)
                 {
-                    lock (_lockObj)
+                    if (_mixer != null)
                     {
-                        if (_mixer != null)
+                        int samplesRead = _mixer.Read(sampleBuffer, 0, sampleBuffer.Length);
+                        if (samplesRead > 0)
                         {
-                            int readSamples = _mixer.Read(sampleBuffer, 0, samplesPerBuffer);
-                            if (readSamples > 0)
-                            {
-                                Buffer.BlockCopy(sampleBuffer, 0, byteBuffer, 0, readSamples * sizeof(float));
-                                AudioDataAvailable?.Invoke(this, byteBuffer);
-                            }
+                            System.Buffer.BlockCopy(sampleBuffer, 0, byteBuffer, 0, samplesRead * 4);
+                            AudioDataAvailable?.Invoke(this, byteBuffer);
                         }
                     }
                     await Task.Delay(20, token).ConfigureAwait(false);

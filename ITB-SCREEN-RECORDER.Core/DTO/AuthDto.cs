@@ -1,18 +1,19 @@
-﻿namespace ITB_SCREEN_RECORDER.Core.DTOs
+﻿using System;
+
+namespace ITB_SCREEN_RECORDER.Core.DTO
 {
-    public class LoginRequest
+    public class LoginRequestDto
     {
         public string Username { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
-        public string Domain { get; set; } = string.Empty;
+        public string MachineName { get; set; } = string.Empty;
     }
 
-    public class LoginResponse
+    public class AuthResponseDto
     {
-        public bool Success { get; set; }
+        public bool IsSuccess { get; set; }
         public string Token { get; set; } = string.Empty;
-        public string Username { get; set; } = string.Empty;
-        public bool IsAdmin { get; set; }
         public string ErrorMessage { get; set; } = string.Empty;
+        public DateTime Expiration { get; set; }
     }
 }
