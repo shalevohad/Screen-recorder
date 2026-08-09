@@ -22,14 +22,10 @@ public class MediaMtxSupervisorWorker : BackgroundService
     {
         _logger.LogInformation("MediaMTX Supervisor Service starting...");
 
-        // 1. חישוב נתיב מוחלט לתיקיית ה-MediaMTX
         string baseDir = AppContext.BaseDirectory;
-
-        // אופציה א': הקבצים יושבים בתיקיית משנה MediaMTX
         string mtxFolder = Path.Combine(baseDir, "MediaMTX");
         string mtxExePath = Path.Combine(mtxFolder, "mediamtx.exe");
 
-        // אופציה ב' (Fallback): הקבצים יושבים ישירות בתיקיית השורש לצד ה-C# Server
         if (!File.Exists(mtxExePath))
         {
             mtxFolder = baseDir;
@@ -42,7 +38,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
             {
                 if (_mtxProcess == null || _mtxProcess.HasExited)
                 {
-                    // וידוא שהקובץ הבינארי אכן קיים לפני ניסיון ההרצה
                     if (!File.Exists(mtxExePath))
                     {
                         _logger.LogError("[CRITICAL] mediamtx.exe was not found at path: {Path}. Waiting 10 seconds...", mtxExePath);
@@ -55,7 +50,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     var startInfo = new ProcessStartInfo
                     {
                         FileName = mtxExePath,
-                        // הגדרת WorkingDirectory קריטית כדי ש-MediaMTX ימצא את mediamtx.yml שצמוד אליו!
                         WorkingDirectory = mtxFolder,
                         CreateNoWindow = true,
                         UseShellExecute = false,
@@ -65,7 +59,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
                     _mtxProcess = new Process { StartInfo = startInfo };
 
-                    // הזרמת לוגים מ-MediaMTX ל-Logger המרכזי של C#
                     _mtxProcess.OutputDataReceived += (s, e) => { if (e.Data != null) _logger.LogInformation("[MediaMTX] {Log}", e.Data); };
                     _mtxProcess.ErrorDataReceived += (s, e) => { if (e.Data != null) _logger.LogWarning("[MediaMTX Err] {Log}", e.Data); };
 
@@ -74,19 +67,48 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     _mtxProcess.BeginErrorReadLine();
                 }
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // עצירה תקינה לבקשת השרת
+                break;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to start or monitor MediaMTX process.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+    }
+
+    // 💡 פתרון מובטח: StopAsync רץ בצורה בטוחה וישירה בעת סגירת השרת
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Server shutting down. Terminating MediaMTX process...");
+
+        try
+        {
+            if (_mtxProcess != null && !_mtxProcess.HasExited)
+            {
+                // הורדת התהליך וכל עץ הבנים שלו באגרסיביות כדי שלא ישארו יתומים ברקע
+                _mtxProcess.Kill(entireProcessTree: true);
+                _mtxProcess.WaitForExit(3000);
+                _logger.LogInformation("MediaMTX process terminated successfully.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred while terminating MediaMTX process.");
         }
 
-        // סגירה מסודרת בעת הורדת השרת
-        if (_mtxProcess != null && !_mtxProcess.HasExited)
-        {
-            _logger.LogInformation("Terminating MediaMTX process...");
-            _mtxProcess.Kill(true);
-        }
+        // קריאה למתודת הבסיס לסיום שאר תהליכי ה-BackgroundService
+        await base.StopAsync(cancellationToken);
     }
 }
