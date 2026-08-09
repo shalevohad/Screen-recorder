@@ -19,3 +19,8 @@ yarn-error.log*
 *.key
 Certs/
 mediamtx.exe
+/ITB-SCREEN-RECORDER.Server/publish
+/Publish
+/ITB-SCREEN-RECOREDER-AGENT/publish-agent
+/ITB-SCREEN-RECOREDER-AGENT/Properties/PublishProfiles
+/ITB-SCREEN-RECORDER.Server/Properties/PublishProfiles

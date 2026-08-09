@@ -44,9 +44,13 @@ namespace ITBRecorderAgent.Engine
             string utcTimestampIso = calibratedUtcTime.ToString("o");
             var ffmpegArgs = new StringBuilder();
 
+            string presetValue = _config.VideoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase)
+                ? "p4"         // NVIDIA NVENC Hardware Preset (p1=Fastest, p4=Default/Balanced, p7=High Quality)
+                : "veryfast";  // Software x264 Preset
+
             ffmpegArgs.Append($"-f rawvideo -pix_fmt bgra -s {width}x{height} -r {_config.TargetFps} -i pipe:0 ");
             ffmpegArgs.Append($"-f {audioFmt} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{localPort} ");
-            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset veryfast -b:v {_config.VideoBitrate} ");
+            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset {presetValue} -b:v {_config.VideoBitrate} ");
 
             if (audioChannels > 0)
             {

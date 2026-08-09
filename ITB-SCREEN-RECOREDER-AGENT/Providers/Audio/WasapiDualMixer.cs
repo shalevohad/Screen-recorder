@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
-using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
+using ITBRecorderAgent.Core;
 
 namespace ITBRecorderAgent.Providers.Audio
 {
@@ -72,8 +72,9 @@ namespace ITBRecorderAgent.Providers.Audio
                 _loopbackStream.Start(defaultRender, isLoopback: true);
                 _micStream.Start(defaultCapture, isLoopback: false);
 
-                var loopbackSampleProvider = new WaveToSampleProvider(_loopbackStream.Buffer);
-                var micSampleProvider = new WaveToSampleProvider(_micStream.Buffer);
+                // 💡 נרמול אקטיבי של ערוצי השמע לפורמט היעד (48kHz Stereo Float) למניעת Mismatch
+                var loopbackSampleProvider = EnsureTargetFormat(_loopbackStream.Buffer);
+                var micSampleProvider = EnsureTargetFormat(_micStream.Buffer);
 
                 _mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, Channels));
                 _mixer.AddMixerInput(loopbackSampleProvider);
@@ -81,6 +82,35 @@ namespace ITBRecorderAgent.Providers.Audio
 
                 StartRenderLoop();
             }
+        }
+
+        /// <summary>
+        /// מנרמל וממיר כל קלט שמע (IWaveProvider) לפורמט אחיד של 48kHz ו-2 ערוצים (Stereo IEEE Float)
+        /// </summary>
+        private ISampleProvider EnsureTargetFormat(IWaveProvider waveProvider)
+        {
+            ISampleProvider sampleProvider = waveProvider.ToSampleProvider();
+
+            // 1. נרמול ערוצים (Mono -> Stereo או Downmix מ-Surround ל-Stereo)
+            if (sampleProvider.WaveFormat.Channels == 1 && Channels == 2)
+            {
+                sampleProvider = new MonoToStereoSampleProvider(sampleProvider);
+            }
+            else if (sampleProvider.WaveFormat.Channels > 2)
+            {
+                var multiplexer = new MultiplexingSampleProvider(new[] { sampleProvider }, 2);
+                multiplexer.ConnectInputToOutput(0, 0); // Left
+                multiplexer.ConnectInputToOutput(1, 1); // Right
+                sampleProvider = multiplexer;
+            }
+
+            // 2. נרמול תדר דגימה (למשל 44.1kHz / 96kHz -> 48kHz)
+            if (sampleProvider.WaveFormat.SampleRate != SampleRate)
+            {
+                sampleProvider = new WdlResamplingSampleProvider(sampleProvider, SampleRate);
+            }
+
+            return sampleProvider;
         }
 
         private void StartRenderLoop()

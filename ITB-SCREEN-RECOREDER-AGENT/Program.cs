@@ -18,8 +18,11 @@ namespace ITBRecorderAgent
 
             try
             {
-                _singleInstanceMutex = new Mutex(true, mutexName, out bool createdNew);
+                // טעינת תצורה והרצת ה-Engine
+                AppConfig config = ConfigLoader.Load();
+                Logger.Initialize(config);
 
+                _singleInstanceMutex = new Mutex(true, mutexName, out bool createdNew);
                 if (!createdNew)
                 {
                     Logger.Warn("Another instance of ITB.Agent is already running. Exiting cleanly.");
@@ -44,8 +47,6 @@ namespace ITBRecorderAgent
                     }
                 };
 
-                // טעינת תצורה והרצת ה-Engine
-                AppConfig config = ConfigLoader.Load();
                 using (var engine = new AgentEngine(config))
                 {
                     await engine.StartAsync(_cts.Token).ConfigureAwait(false);
