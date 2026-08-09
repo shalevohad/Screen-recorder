@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <Folder Include="MediaMTX\" />
-    <Folder Include="wwwroot\js\" />
     <Folder Include="wwwroot\css\" />
   </ItemGroup>
   

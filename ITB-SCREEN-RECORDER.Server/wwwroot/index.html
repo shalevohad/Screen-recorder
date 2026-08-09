@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ITB-SCREEN-RECORDER - POC Dashboard</title>
 
-    <script src="/js/react.production.min.js"></script>
-    <script src="/js/react-dom.production.min.js"></script>
-    <script src="/js/babel.min.js"></script>
-    <link href="/css/video-js.min.css" rel="stylesheet">
-    <script src="/js/video.min.js"></script>
+    <link href="/css/video-js.min.css" rel="stylesheet" />
+    <link href="/css/tailwind.min.css" rel="stylesheet" />
 
     <style>
         body {
@@ -81,107 +78,11 @@
 
     <div id="root"></div>
 
-    <script type="text/babel">
+    <script src="/js/react.production.min.js"></script>
+    <script src="/js/react-dom.production.min.js"></script>
+    <script src="/js/babel.min.js"></script>
+    <script src="/js/video.min.js"></script>
 
-        // רכיב הנגן שעוטף את Video.js המקומי
-        function VideoPlayer({ src }) {
-            const videoRef = React.useRef(null);
-            const playerRef = React.useRef(null);
-
-            React.useEffect(() => {
-                if (videoRef.current) {
-                    playerRef.current = videojs(videoRef.current, {
-                        autoplay: true,
-                        controls: true,
-                        responsive: true,
-                        fluid: true,
-                        sources: [{ src: src, type: 'application/x-mpegURL' }]
-                    });
-                }
-
-                return () => {
-                    if (playerRef.current) {
-                        playerRef.current.dispose();
-                    }
-                };
-            }, [src]);
-
-            return (
-                <div data-vjs-player>
-                    <video ref={videoRef} className="video-js vjs-big-play-centered" />
-                </div>
-            );
-        }
-
-        // האפליקציה המרכזית
-        function App() {
-            const [agents, setAgents] = React.useState([]);
-
-            const fetchAgents = async () => {
-                try {
-                    // פנייה ל-Endpoint הקיים ב-AgentController שלך
-                    const response = await fetch('/api/v1/agent/stations');
-                    if (response.ok) {
-                        const data = await response.json();
-                        setAgents(data);
-                    }
-                } catch (err) {
-                    console.error("Error connecting to middleware API:", err);
-                }
-            };
-
-            React.useEffect(() => {
-                fetchAgents();
-                const interval = setInterval(fetchAgents, 3000); // פולינג כל 3 שניות
-                return () => clearInterval(interval);
-            }, []);
-
-            return (
-                <div>
-                    <header>
-                        <h1 style={{ margin: 0, color: '#00d2ff' }}>ITB-SCREEN-RECORDER // מרכז בקרה</h1>
-                        <p style={{ margin: '5px 0 0 0', color: '#aaa' }}>תחנות מדווחות בזמן אמת</p>
-                    </header>
-
-                    <div className="grid">
-                        {agents.length === 0 ? (
-                            <div style={{ color: '#666' }}>ממתין לקבלת טלמטריה מתחנות הקצה...</div>
-                        ) : (
-                            agents.map(agent => {
-                                // חישוב האם התחנה אונליין לפי חותמת הזמן האחרונה (15 שניות חסד)
-                                const isOnline = (new Date() - new Date(agent.timestamp)) < 15000;
-                                const streamUrl = `http://${window.location.hostname}:8888/live/${agent.hostname}/index.m3u8`;
-
-                                return (
-                                    <div className="card" key={agent.hostname}>
-                                        <div className="card-header">
-                                            <div>
-                                                <strong>{agent.hostname}</strong>
-                                                <div style={{ fontSize: '11px', color: '#aaa' }}>{agent.ipAddress}</div>
-                                            </div>
-                                            <div className="status" style={{ color: isOnline ? '#4caf50' : '#f44336' }}>
-                                                <span className="dot" style={{ backgroundColor: isOnline ? '#4caf50' : '#f44336' }} />
-                                                {isOnline ? 'מחובר' : 'מנותק'}
-                                            </div>
-                                        </div>
-                                        <div className="video-container">
-                                            {isOnline && agent.shouldStream ? (
-                                                <VideoPlayer src={streamUrl} />
-                                            ) : (
-                                                <div className="no-signal">📺 אין שידור וידאו פעיל מהתחנה</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+    <script type="text/babel" src="/js/app.jsx"></script>
 </body>
 </html>
