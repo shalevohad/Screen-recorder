@@ -123,11 +123,13 @@ namespace ITBRecorderAgent.Core
                     dynamicStreamingState = _shouldStreamActive;
                 }
 
-                // ניהול מעבר למצב אופליין או חזרה למצב אונליין בהתאם לסטטוס התקשורת
-                if (!_telemetry.IsOnline && !_isInOfflineMode)
+                // 💡 בדיקת מדיניות הפעלה: הקלטה באופליין תופעל רק אם הוגדר AutoStart מראש או שהייתה הקלטה פעילה מהשרת
+                bool shouldBeActive = dynamicStreamingState || (_config.AutoStartRecordingOnLaunch && !_telemetry.IsOnline);
+
+                if (!_telemetry.IsOnline && !_isInOfflineMode && shouldBeActive)
                 {
                     _isInOfflineMode = true;
-                    Logger.Warn("Command Channel Disconnected. Forcing Safe Local Offline Buffer Recording...");
+                    Logger.Warn("Command Channel Disconnected while active. Forcing Safe Local Offline Buffer Recording...");
                     TeardownMediaPipelines();
                 }
                 else if (_telemetry.IsOnline && _isInOfflineMode)
@@ -137,6 +139,7 @@ namespace ITBRecorderAgent.Core
                     TeardownMediaPipelines();
                 }
 
+                // אם השרת לא אישר הקלטה ואין הגדרת AutoStart - ה-Agent נשאר במצב Idle חסכוני במשאבים
                 if (!dynamicStreamingState && !_isInOfflineMode)
                 {
                     await Task.Delay(1000, cancellationToken).ConfigureAwait(false);

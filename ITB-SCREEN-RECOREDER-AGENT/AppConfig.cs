@@ -9,11 +9,12 @@
         public int TargetFps { get; set; } = 30;
         public string VideoBitrate { get; set; } = "5M";
         public string VideoEncoder { get; set; } = "h264_nvenc";
-
-        // 💡 הגדרת נתיב השמירה המקומי לאגירת אופליין
         public string LocalBufferPath { get; set; } = @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer";
 
+        // 💡 שליטה בהתנהגות העלייה: false = המתנה לפקודת שרת | true = הקלטה מיידית
+        public bool AutoStartRecordingOnLaunch { get; set; } = false;
+
         public bool EnableFileLogging { get; set; } = true;
-        public string LogFilePath { get; set; } = string.Empty;
+        public string LogFilePath { get; set; } = @"C:\ProgramData\ITB-SCREEN-RECORDER\Logs\Agent.log";
     }
 }
