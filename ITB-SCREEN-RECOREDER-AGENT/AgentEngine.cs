@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using ITBRecorderAgent.Engine;
 using ITBRecorderAgent.Providers.Audio;
 using ITBRecorderAgent.Providers.Video;
-using ITB_SCREEN_RECORDER.Core.Models;
+using ITB_SCREEN_RECORDER.Core.Models; // שימוש במודל המשותף
 
 namespace ITBRecorderAgent.Core
 {
@@ -109,8 +109,9 @@ namespace ITBRecorderAgent.Core
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
+            // 💡 הפעלת הטלמטריה במשימת רקע עצמאית לחלוטין
             _telemetry = new TelemetryReporter(_config.DashboardApiUrl);
-            _ = _telemetry.StartReportingAsync(GetCurrentTelemetryReport, HandleServerCommand, cancellationToken);
+            _ = Task.Run(() => _telemetry.StartReportingAsync(GetCurrentTelemetryReport, HandleServerCommand, cancellationToken), cancellationToken);
 
             Logger.Info("Agent Engine State Machine Ready. Waiting for Server activation command...");
             int targetFrameTimeMs = 1000 / _config.TargetFps;
@@ -123,7 +124,7 @@ namespace ITBRecorderAgent.Core
                     dynamicStreamingState = _shouldStreamActive;
                 }
 
-                // 💡 בדיקת מדיניות הפעלה: הקלטה באופליין תופעל רק אם הוגדר AutoStart מראש או שהייתה הקלטה פעילה מהשרת
+                // בדיקת מדיניות הפעלה
                 bool shouldBeActive = dynamicStreamingState || (_config.AutoStartRecordingOnLaunch && !_telemetry.IsOnline);
 
                 if (!_telemetry.IsOnline && !_isInOfflineMode && shouldBeActive)
@@ -139,7 +140,7 @@ namespace ITBRecorderAgent.Core
                     TeardownMediaPipelines();
                 }
 
-                // אם השרת לא אישר הקלטה ואין הגדרת AutoStart - ה-Agent נשאר במצב Idle חסכוני במשאבים
+                // מצב Idle - ממתינים לפקודה מהשרת
                 if (!dynamicStreamingState && !_isInOfflineMode)
                 {
                     await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
@@ -162,7 +163,7 @@ namespace ITBRecorderAgent.Core
                     }
                 }
 
-                // --- [שלב 2: הזנקת תהליך FFmpeg והתרת ה-Deadlock] ---
+                // --- [שלב 2: הזנקת תהליך FFmpeg] ---
                 if (_ffmpegManager == null || !_ffmpegManager.IsRunning)
                 {
                     DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
@@ -192,11 +193,11 @@ namespace ITBRecorderAgent.Core
                         continue;
                     }
 
-                    // הזרקת פריים וידאו ראשוני משחררת את FFmpeg מלהיתקע ב-pipe:0
+                    // הזרקת פריים וידאו ראשוני
                     byte[] initialFrame = new byte[_screenCapture.Width * _screenCapture.Height * 4];
                     _ffmpegManager.WriteVideoFrame(initialFrame);
 
-                    // השלמת ה-Handshake של ערוץ השמע דרך ה-TCP Loopback המקומי
+                    // השלמת ה-Handshake
                     bool audioConnected = await _ffmpegManager.CompleteAudioHandshakeAsync(cancellationToken).ConfigureAwait(false);
                     if (!audioConnected)
                     {
@@ -226,12 +227,11 @@ namespace ITBRecorderAgent.Core
                     }
                 }
 
-                // --- [שלב 4: לכידת פריים, הזרקת סמן העכבר ושליחה ל-FFmpeg] ---
+                // --- [שלב 4: לכידת פריים] ---
                 long swStart = Stopwatch.GetTimestamp();
 
                 if (_screenCapture.TryCaptureFrame(out byte[]? frameData) && frameData is not null)
                 {
-                    // הזרקת סמן העכבר המדויק לתוך מערך הפיקסלים הגולמי של הפריים
                     MouseCursorOverlay.DrawMouseToFrame(frameData, _screenCapture.Width, _screenCapture.Height);
 
                     if (!_ffmpegManager.WriteVideoFrame(frameData))
@@ -251,41 +251,64 @@ namespace ITBRecorderAgent.Core
             }
         }
 
+        // ========================================================
+        // מתודות עזר וטלמטריה
+        // ========================================================
+
         private AgentTelemetryReport GetCurrentTelemetryReport()
         {
-            float cpuVal = 0;
-            float gpuVal = 0;
-
-            // 1. דגימת CPU
-            try { cpuVal = _cpuCounter?.NextValue() ?? 0; } catch { }
-
-            // 2. דגימת GPU ישירות מתוך הדרייבר של NVIDIA בזמן אמת
-            if (_isNvmlInitialized && _nvmlDeviceHandle != IntPtr.Zero)
-            {
-                try
-                {
-                    int res = nvmlDeviceGetUtilizationRates(_nvmlDeviceHandle, out NvmlUtilization utilization);
-                    if (res == 0)
-                    {
-                        gpuVal = utilization.Gpu;
-                    }
-                }
-                catch { }
-            }
+            AgentStatus currentStatus = AgentStatus.Standby;
+            if (_isInOfflineMode) currentStatus = AgentStatus.Error;
+            else if (_shouldStreamActive) currentStatus = AgentStatus.Streaming;
 
             return new AgentTelemetryReport
             {
                 Hostname = Environment.MachineName,
-                IpAddress = "127.0.0.1",
-                IsProcessRunning = IsFfmpegActive,
-                IsScreenCapturing = IsCaptureInitialized,
-                HasActiveSpeakers = HasSpeakers,
-                HasActiveMicrophone = HasMicrophone,
-                Status = IsFfmpegActive ? AgentStatus.Streaming : AgentStatus.Standby,
+                IpAddress = GetLocalIpAddress(),
+                Status = currentStatus,
                 ClientTimestamp = DateTime.UtcNow,
-                CpuUsagePercentage = (float)Math.Round(cpuVal, 2),
-                GpuUsagePercentage = (float)Math.Round(gpuVal, 2)
+                Timestamp = DateTime.UtcNow,
+
+                IsProcessRunning = true, // ה-Agent חי ונושם
+                IsScreenCapturing = _ffmpegManager?.IsRunning ?? false,
+
+                HasActiveSpeakers = _audioCapture?.HasActiveLoopback ?? false,
+                HasActiveMicrophone = _audioCapture?.HasActiveMicrophone ?? false,
+
+                CpuUsagePercentage = GetCpuUsageSafe(),
+                GpuUsagePercentage = GetGpuUsageSafe(),
+
+                IsStreaming = _shouldStreamActive
             };
+        }
+
+        private float GetCpuUsageSafe()
+        {
+            try { return _cpuCounter?.NextValue() ?? 0f; }
+            catch { return 0f; }
+        }
+
+        private float GetGpuUsageSafe()
+        {
+            if (!_isNvmlInitialized || _nvmlDeviceHandle == IntPtr.Zero) return 0f;
+            try
+            {
+                int res = nvmlDeviceGetUtilizationRates(_nvmlDeviceHandle, out NvmlUtilization utilization);
+                return res == 0 ? utilization.Gpu : 0f;
+            }
+            catch { return 0f; }
+        }
+
+        private string GetLocalIpAddress()
+        {
+            try
+            {
+                using var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Dgram, 0);
+                socket.Connect("8.8.8.8", 65530);
+                var endPoint = socket.LocalEndPoint as System.Net.IPEndPoint;
+                return endPoint?.Address.ToString() ?? "127.0.0.1";
+            }
+            catch { return "127.0.0.1"; }
         }
 
         private void HandleServerCommand(AgentHeartbeatResponse response)
@@ -339,12 +362,9 @@ namespace ITBRecorderAgent.Core
 
         public void Dispose()
         {
-            _telemetry?.Dispose();
             TeardownMediaPipelines();
-
             _cpuCounter?.Dispose();
 
-            // סגירה נקייה של ספריית NVIDIA NVML
             if (_isNvmlInitialized)
             {
                 try { nvmlShutdown(); } catch { }

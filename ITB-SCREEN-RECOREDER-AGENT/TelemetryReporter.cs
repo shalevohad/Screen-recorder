@@ -1,77 +1,89 @@
 ﻿using System;
 using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using ITB_SCREEN_RECORDER.Core.Models; // הפניה ל-Core המשותף
+using ITB_SCREEN_RECORDER.Core.Models; // שימוש במודל המשותף מה-Core
 
-namespace ITBRecorderAgent.Core
+namespace ITBRecorderAgent
 {
-    public class TelemetryReporter : IDisposable
+    public class TelemetryReporter
     {
         private readonly HttpClient _httpClient;
         private readonly string _dashboardApiUrl;
-
+        private readonly int _reportIntervalSeconds;
         public bool IsOnline { get; private set; }
 
-        public TelemetryReporter(string dashboardApiUrl)
+        public TelemetryReporter(string dashboardApiUrl, int reportIntervalSeconds = 3)
         {
             _dashboardApiUrl = dashboardApiUrl;
-            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            IsOnline = false;
+            _reportIntervalSeconds = reportIntervalSeconds;
+            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         }
 
-        public async Task StartReportingAsync(Func<AgentTelemetryReport> getReport, Action<AgentHeartbeatResponse> onCommandReceived, CancellationToken cancellationToken)
+        public async Task StartReportingAsync(
+            Func<AgentTelemetryReport> reportFactory,
+            Action<AgentHeartbeatResponse> commandHandler, // מחווט ישירות ל-HandleServerCommand
+            CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(_dashboardApiUrl))
+            Logger.Info($"[TELEMETRY] Heartbeat loop started -> {_dashboardApiUrl}");
+
+            // הגדרות JSON תואמות ל-Core (אינטרפרטציה גמישה ל-Case והמרת Enums ל-String אם צריך)
+            var jsonOptions = new JsonSerializerOptions
             {
-                IsOnline = true;
-                return;
-            }
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                Converters = { new JsonStringEnumConverter() },
+                PropertyNameCaseInsensitive = true
+            };
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                bool wasOnline = IsOnline;
-
                 try
                 {
-                    AgentTelemetryReport report = getReport();
+                    // 1. גזירת הפריים העדכני של ה-Telemetry
+                    AgentTelemetryReport report = reportFactory();
+                    string jsonPayload = JsonSerializer.Serialize(report, jsonOptions);
+                    using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-                    // שימוש ב-PostAsJsonAsync המובנה והמהיר של .NET 8
-                    var response = await _httpClient.PostAsJsonAsync(_dashboardApiUrl, report, cancellationToken).ConfigureAwait(false);
+                    // 2. שיגור ה-POST לשרת
+                    HttpResponseMessage response = await _httpClient.PostAsync(_dashboardApiUrl, content, cancellationToken).ConfigureAwait(false);
 
                     if (response.IsSuccessStatusCode)
                     {
-                        IsOnline = true;
-                        var commandResponse = await response.Content.ReadFromJsonAsync<AgentHeartbeatResponse>(cancellationToken).ConfigureAwait(false);
-
-                        if (commandResponse != null)
+                        if (!IsOnline)
                         {
-                            onCommandReceived(commandResponse);
+                            IsOnline = true;
+                            Logger.Info("[TELEMETRY] Successfully connected to C2 Server!");
+                        }
+
+                        string responseJson = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+                        // 3. פענוח תשובת השרת והזרמתה ישירות למתודה שלך
+                        var serverResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson, jsonOptions);
+                        if (serverResponse != null)
+                        {
+                            commandHandler(serverResponse); // 💡 קריאה ל-HandleServerCommand
                         }
                     }
                     else
                     {
                         IsOnline = false;
+                        Logger.Warn($"[TELEMETRY] Server rejected heartbeat. Status: {response.StatusCode}");
                     }
                 }
-                catch (TaskCanceledException) { break; }
-                catch
+                catch (Exception ex)
                 {
-                    IsOnline = false;
+                    if (IsOnline)
+                    {
+                        IsOnline = false;
+                        Logger.Error($"[TELEMETRY ERROR] Lost connection to Server: {ex.Message}");
+                    }
                 }
 
-                if (IsOnline != wasOnline)
-                {
-                    if (IsOnline) Logger.Info("[TELEMETRY] Middleware connection established. Control Engine synchronized.");
-                    else Logger.Warn("[TELEMETRY] Middleware unreachable. Switching status to Standalone.");
-                }
-
-                await Task.Delay(5000, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(_reportIntervalSeconds), cancellationToken).ConfigureAwait(false);
             }
         }
-
-        public void Dispose() => _httpClient?.Dispose();
     }
 }
