@@ -25,22 +25,31 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         {
             var agents = _telemetryState.GetAllAgents();
 
-            // שליפת הנתונים ישירות מתוך קובץ ה-קונפיג הדינמי
             var host = Request.Host.Value.Split(':')[0];
             var hlsPort = _config.MediaMtx.HlsPort;
 
             var result = agents.Select(agent =>
             {
-                bool isStreaming = false;
-                bool isOnline = true;
+                // חישוב דינמי למצב מקוון: אם חלפו יותר מ-15 שניות ללא פעימת חיים, התחנה מנותקת
+                bool isOnline = (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15;
+
+                // שימוש בנתון האמיתי שהגיע מה-Agent (ולא בערך קשיח)
+                bool isStreaming = agent.IsStreaming;
 
                 return new
                 {
                     agent.Hostname,
                     agent.IpAddress,
-                    IsStreaming = isStreaming,
                     IsOnline = isOnline,
-                    Status = isStreaming ? "Streaming" : "Standby",
+                    IsStreaming = isStreaming,
+                    Status = isOnline ? (isStreaming ? "Streaming" : "Standby") : "Offline",
+
+                    // חשיפת המדדים המעודכנים ל-Dashboard
+                    CpuUsage = agent.CpuUsagePercentage,
+                    GpuUsage = agent.GpuUsagePercentage,
+                    HasAudio = agent.HasActiveMicrophone || agent.HasActiveSpeakers,
+                    LastSeenUtc = agent.Timestamp,
+
                     HlsUrl = $"http://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });
