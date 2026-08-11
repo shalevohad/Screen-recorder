@@ -44,19 +44,38 @@ namespace ITBRecorderAgent.Engine
             string utcTimestampIso = calibratedUtcTime.ToString("o");
             var ffmpegArgs = new StringBuilder();
 
-            string presetValue = _config.VideoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase)
-                ? "p4"         // NVIDIA NVENC Hardware Preset (p1=Fastest, p4=Default/Balanced, p7=High Quality)
-                : "veryfast";  // Software x264 Preset
+            string presetValue;
+            string hardwareFlags = "";
 
+            if (_config.VideoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
+            {
+                presetValue = "p1";
+                hardwareFlags = "-tune zerolatency -forced-idr 1";
+            }
+            else
+            {
+                presetValue = "ultrafast";
+                hardwareFlags = "-tune zerolatency";
+            }
+
+            int gopSize = _config.TargetFps;
+
+            // 1. קלט וידאו
             ffmpegArgs.Append($"-f rawvideo -pix_fmt bgra -s {width}x{height} -r {_config.TargetFps} -i pipe:0 ");
-            ffmpegArgs.Append($"-f {audioFmt} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{localPort} ");
-            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset {presetValue} -b:v {_config.VideoBitrate} ");
 
+            // 2. קלט אודיו
+            ffmpegArgs.Append($"-f {audioFmt} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{localPort} ");
+
+            // 3. תיקון: שימוש ב-fps_mode cfr במקום vsync cfr לביצוע תאימות מלאה
+            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset {presetValue} {hardwareFlags} -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} ");
+
+            // 4. קידוד אודיו
             if (audioChannels > 0)
             {
                 ffmpegArgs.Append("-c:a aac -b:a 128k ");
             }
 
+            // 5. יעד
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
             ffmpegArgs.Append($"-y -f flv \"{targetDestination}\"");
 
@@ -87,8 +106,6 @@ namespace ITBRecorderAgent.Engine
                 _ffmpegProcess.BeginErrorReadLine();
                 _videoStdinStream = _ffmpegProcess.StandardInput.BaseStream;
 
-                // 💡 שינוי: אנחנו לא מחכים כאן ל-Handshake! אנחנו נותנים ל-AgentEngine להזרים פריים ראשון,
-                // ורק אז נשלים את קבלת החיבור כדי למנוע את ה-Deadlock.
                 return true;
             }
             catch (Exception ex)
@@ -98,7 +115,6 @@ namespace ITBRecorderAgent.Engine
             }
         }
 
-        // 💡 מתודה חדשה להשלמת החיבור לאחר פריים ראשון
         public async Task<bool> CompleteAudioHandshakeAsync(CancellationToken cancellationToken)
         {
             if (_tcpListener == null) return false;
@@ -142,7 +158,6 @@ namespace ITBRecorderAgent.Engine
 
         public void WriteAudioData(byte[] audioData)
         {
-            // 💡 כתיבה חלקה ויציבה אל תוך ה-Socket
             if (_audioSocket != null && _audioSocket.Connected)
             {
                 try

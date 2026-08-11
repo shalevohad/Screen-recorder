@@ -4,6 +4,8 @@ function StationThumbnail({ hostname, hlsUrl, isOnline, isStreaming }) {
     const playerRef = React.useRef(null);
 
     React.useEffect(() => {
+        let retryTimeout; // טיימר לניסיונות חיבור מחדש
+
         if (isOnline && isStreaming && hlsUrl) {
             if (!playerRef.current && videoRef.current) {
                 // אתחול ראשוני של הנגן
@@ -14,8 +16,25 @@ function StationThumbnail({ hostname, hlsUrl, isOnline, isStreaming }) {
                     fluid: true,
                     liveui: true,
                     sources: [{ src: hlsUrl, type: 'application/x-mpegURL' }]
-                }, () => {
-                    playerRef.current.play().catch(() => { });
+                }, function () {
+                    const player = this;
+
+                    player.play().catch(() => { });
+
+                    // 💡 מנגנון התאוששות אוטומטית ללא צורך ב-F5
+                    player.on('error', function () {
+                        console.warn(`[Video.js] Stream error for ${hostname}. Retrying in 3 seconds...`);
+
+                        if (retryTimeout) clearTimeout(retryTimeout);
+
+                        retryTimeout = setTimeout(() => {
+                            if (playerRef.current) {
+                                // טעינה מחדש של המקור וניסיון הפעלה
+                                playerRef.current.src({ src: hlsUrl, type: 'application/x-mpegURL' });
+                                playerRef.current.play().catch(() => { });
+                            }
+                        }, 3000);
+                    });
                 });
             } else if (playerRef.current) {
                 // עדכון כתובת ה-Stream במידה והשתנתה
@@ -24,13 +43,15 @@ function StationThumbnail({ hostname, hlsUrl, isOnline, isStreaming }) {
             }
         }
 
+        // ניקוי המשאבים כשהקומפוננטה יורדת או כשהשידור מופסק
         return () => {
+            if (retryTimeout) clearTimeout(retryTimeout);
             if (playerRef.current) {
                 playerRef.current.dispose();
                 playerRef.current = null;
             }
         };
-    }, [hlsUrl, isOnline, isStreaming]);
+    }, [hlsUrl, isOnline, isStreaming, hostname]); // הוספנו את hostname כדי למנוע אזהרות React
 
     return (
         <div className="relative w-full aspect-video bg-gray-950 rounded-lg overflow-hidden border border-gray-800 shadow-inner">
@@ -74,7 +95,7 @@ function App() {
 
     React.useEffect(() => {
         fetchStations();
-        const interval = setInterval(fetchStations, 3000); // רענון נתונים אוטומטי
+        const interval = setInterval(fetchStations, 3000); // רענון נתונים אוטומטי של מצב העמדות
         return () => clearInterval(interval);
     }, []);
 
