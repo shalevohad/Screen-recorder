@@ -50,7 +50,7 @@ namespace ITBRecorderAgent.Core
         private bool _isNvmlInitialized = false;
 
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
-        private bool _shouldStreamActive = false;
+        private bool _shouldStreamActive;
         private bool _isInOfflineMode = false;
         private readonly object _stateLock = new object();
 
@@ -61,10 +61,23 @@ namespace ITBRecorderAgent.Core
 
         public AgentEngine(AppConfig config)
         {
-            _config = config;
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+
+            // בניית נתיב ה-RTMP בטוח
             string rawMachineName = Environment.MachineName;
             string safeMachineName = Uri.EscapeDataString(rawMachineName.Replace(" ", "_"));
             _rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
+
+            // קביעת מצב הפעלה ראשוני
+            _shouldStreamActive = _config.AutoStartRecordingOnLaunch;
+            if (_shouldStreamActive)
+            {
+                Logger.Info("AutoStartRecordingOnLaunch is TRUE. Media pipelines will initialize automatically on start.");
+            }
+            else
+            {
+                Logger.Info("AutoStartRecordingOnLaunch is FALSE. Waiting for central server commands.");
+            }
 
             // 1. אתחול מוניטור CPU
             try
@@ -78,7 +91,7 @@ namespace ITBRecorderAgent.Core
                 Logger.Warn($"[DIAGNOSTICS] CPU counter failed to initialize: {ex.Message}");
             }
 
-            // 2. חיווט ישיר ומבצעי מול NVIDIA NVML API
+            // 2. אתחול NVML
             try
             {
                 int initResult = nvmlInit_v2();
@@ -103,51 +116,57 @@ namespace ITBRecorderAgent.Core
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[DIAGNOSTICS] NVIDIA NVML Native API mapping bypassed (Driver missing/Non-Nvidia hardware): {ex.Message}");
+                Logger.Warn($"[DIAGNOSTICS] NVIDIA NVML Native API mapping bypassed: {ex.Message}");
             }
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            // 💡 הפעלת הטלמטריה במשימת רקע עצמאית לחלוטין
+            // הפעלת שירות הטלמטריה
             _telemetry = new TelemetryReporter(_config.DashboardApiUrl);
             _ = Task.Run(() => _telemetry.StartReportingAsync(GetCurrentTelemetryReport, HandleServerCommand, cancellationToken), cancellationToken);
 
-            Logger.Info("Agent Engine State Machine Ready. Waiting for Server activation command...");
+            Logger.Info("Agent Engine State Machine Ready.");
             int targetFrameTimeMs = 1000 / _config.TargetFps;
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                bool dynamicStreamingState;
+                bool currentStreamState;
                 lock (_stateLock)
                 {
-                    dynamicStreamingState = _shouldStreamActive;
+                    currentStreamState = _shouldStreamActive;
                 }
 
-                // בדיקת מדיניות הפעלה
-                bool shouldBeActive = dynamicStreamingState || (_config.AutoStartRecordingOnLaunch && !_telemetry.IsOnline);
+                // ניהול מצב אופליין - מעבר לחוצץ מקומי במידה והרשת נופלת ויש דרישה לשידור
+                bool requiresActivePipeline = currentStreamState || (_config.AutoStartRecordingOnLaunch && !_telemetry.IsOnline);
 
-                if (!_telemetry.IsOnline && !_isInOfflineMode && shouldBeActive)
+                if (!_telemetry.IsOnline && !_isInOfflineMode && requiresActivePipeline)
                 {
                     _isInOfflineMode = true;
                     Logger.Warn("Command Channel Disconnected while active. Forcing Safe Local Offline Buffer Recording...");
-                    TeardownMediaPipelines();
+                    TeardownMediaPipelines(); // שחרור הצינורות הישנים (שמכוונים ל-RTMP)
+                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false); // זמן התאוששות
                 }
                 else if (_telemetry.IsOnline && _isInOfflineMode)
                 {
                     _isInOfflineMode = false;
                     Logger.Info("Command Channel Restored. Closing offline buffer.");
-                    TeardownMediaPipelines();
+                    TeardownMediaPipelines(); // שחרור צינורות ההקלטה המקומית
+                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                 }
 
-                // מצב Idle - ממתינים לפקודה מהשרת
-                if (!dynamicStreamingState && !_isInOfflineMode)
+                // מצב המתנה: אין דרישה לשידור (גם לא אופליין), אז פשוט ממתינים לפקודה הבאה
+                if (!requiresActivePipeline)
                 {
                     await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
-                // --- [שלב 1: אתחול מנוע לכידת המסך (DXGI)] ---
+                // ==========================================
+                // בניית הצינורות מחדש (אם נדרש)
+                // ==========================================
+
+                // 1. אתחול DXGI ללכידת מסך
                 if (_screenCapture == null)
                 {
                     try
@@ -163,7 +182,7 @@ namespace ITBRecorderAgent.Core
                     }
                 }
 
-                // --- [שלב 2: הזנקת תהליך FFmpeg] ---
+                // 2. אתחול FFmpeg
                 if (_ffmpegManager == null || !_ffmpegManager.IsRunning)
                 {
                     DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
@@ -193,11 +212,11 @@ namespace ITBRecorderAgent.Core
                         continue;
                     }
 
-                    // הזרקת פריים וידאו ראשוני
+                    // הזרקת פריים ראשון לאתחול צינור הווידאו
                     byte[] initialFrame = new byte[_screenCapture.Width * _screenCapture.Height * 4];
                     _ffmpegManager.WriteVideoFrame(initialFrame);
 
-                    // השלמת ה-Handshake
+                    // המתנה לקליטת אודיו
                     bool audioConnected = await _ffmpegManager.CompleteAudioHandshakeAsync(cancellationToken).ConfigureAwait(false);
                     if (!audioConnected)
                     {
@@ -208,7 +227,7 @@ namespace ITBRecorderAgent.Core
                     }
                 }
 
-                // --- [שלב 3: הפעלת מיקסר האודיו (WASAPI)] ---
+                // 3. אתחול WASAPI לאודיו
                 if (_audioCapture == null)
                 {
                     try
@@ -227,7 +246,9 @@ namespace ITBRecorderAgent.Core
                     }
                 }
 
-                // --- [שלב 4: לכידת פריים] ---
+                // ==========================================
+                // לכידת פריימים רציפה ושליחה
+                // ==========================================
                 long swStart = Stopwatch.GetTimestamp();
 
                 if (_screenCapture.TryCaptureFrame(out byte[]? frameData) && frameData is not null)
@@ -236,8 +257,9 @@ namespace ITBRecorderAgent.Core
 
                     if (!_ffmpegManager.WriteVideoFrame(frameData))
                     {
-                        Logger.Error("Media pipe broken. Resetting pipeline for next command cycle.");
+                        Logger.Error("Media pipe broken during frame write. Resetting pipeline.");
                         TeardownMediaPipelines();
+                        continue; // מדלג ללולאה הבאה כדי לפרק ולהרכיב מחדש
                     }
                 }
 
@@ -252,14 +274,21 @@ namespace ITBRecorderAgent.Core
         }
 
         // ========================================================
-        // מתודות עזר וטלמטריה
+        // מתודות עזר, טלמטריה וסנכרון
         // ========================================================
 
         private AgentTelemetryReport GetCurrentTelemetryReport()
         {
             AgentStatus currentStatus = AgentStatus.Standby;
+
+            bool currentStreamState;
+            lock (_stateLock)
+            {
+                currentStreamState = _shouldStreamActive;
+            }
+
             if (_isInOfflineMode) currentStatus = AgentStatus.Error;
-            else if (_shouldStreamActive) currentStatus = AgentStatus.Streaming;
+            else if (currentStreamState) currentStatus = AgentStatus.Streaming;
 
             return new AgentTelemetryReport
             {
@@ -269,16 +298,16 @@ namespace ITBRecorderAgent.Core
                 ClientTimestamp = DateTime.UtcNow,
                 Timestamp = DateTime.UtcNow,
 
-                IsProcessRunning = true, // ה-Agent חי ונושם
-                IsScreenCapturing = _ffmpegManager?.IsRunning ?? false,
+                IsProcessRunning = true,
+                IsScreenCapturing = IsFfmpegActive,
 
-                HasActiveSpeakers = _audioCapture?.HasActiveLoopback ?? false,
-                HasActiveMicrophone = _audioCapture?.HasActiveMicrophone ?? false,
+                HasActiveSpeakers = HasSpeakers,
+                HasActiveMicrophone = HasMicrophone,
 
                 CpuUsagePercentage = GetCpuUsageSafe(),
                 GpuUsagePercentage = GetGpuUsageSafe(),
 
-                IsStreaming = _shouldStreamActive
+                IsStreaming = currentStreamState
             };
         }
 
@@ -313,15 +342,20 @@ namespace ITBRecorderAgent.Core
 
         private void HandleServerCommand(AgentHeartbeatResponse response)
         {
+            if (response == null) return;
+
             lock (_stateLock)
             {
                 _serverUtcOffset = response.ServerTime - DateTime.UtcNow;
 
+                // השרת הוא הסמכות הבלעדית! 
+                // אם השרת שינה את המצב הרצוי (למשל מנהל מערכת כיבה את השידור בדשבורד)
                 if (response.ShouldStream != _shouldStreamActive)
                 {
                     _shouldStreamActive = response.ShouldStream;
-                    Logger.Info($"[C2 COMMAND] Streaming desired state shifted to: {_shouldStreamActive}");
+                    Logger.Info($"[C2 COMMAND] Server enforced new streaming state: {_shouldStreamActive}");
 
+                    // אם השרת הורה להפסיק שידור -> מפרקים את צינורות המדיה באופן מידי ובטוח
                     if (!_shouldStreamActive)
                     {
                         Task.Run(() => TeardownMediaPipelines());
@@ -342,7 +376,9 @@ namespace ITBRecorderAgent.Core
 
         private void TeardownMediaPipelines()
         {
-            lock (_stateLock)
+            // שים לב: הוצאנו את ה-lock (_stateLock) מכאן לחלוטין כדי למנוע Deadlocks.
+            // אובייקטי ה-Capture שלנו מנהלים Thread-Safety עצמאית לפי התכנון.
+            try
             {
                 if (_audioCapture != null)
                 {
@@ -351,13 +387,24 @@ namespace ITBRecorderAgent.Core
                     _audioCapture = null;
                 }
 
-                _ffmpegManager?.Dispose();
-                _ffmpegManager = null;
+                if (_ffmpegManager != null)
+                {
+                    _ffmpegManager.Dispose();
+                    _ffmpegManager = null;
+                }
 
-                _screenCapture?.Dispose();
-                _screenCapture = null;
+                if (_screenCapture != null)
+                {
+                    _screenCapture.Dispose();
+                    _screenCapture = null;
+                }
+
+                Logger.Info("Media pipelines dismantled cleanly.");
             }
-            Logger.Info("Media pipelines dismantled cleanly.");
+            catch (Exception ex)
+            {
+                Logger.Error($"Error during TeardownMediaPipelines: {ex.Message}");
+            }
         }
 
         public void Dispose()

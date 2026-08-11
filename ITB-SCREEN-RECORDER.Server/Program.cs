@@ -31,7 +31,15 @@ namespace ITB_SCREEN_RECORDER.Server
                 .ValidateOnStart(); // קריסה יזומה בעלייה אם חסר פורט או נתיב בקובץ ה-JSON
 
             // 2. רישום שירותי ליבה ב-DI Container
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    // 1. מאפשר לשרת לקבל מספרים (כמו 1) ולתרגם אותם ל-Enum של C# בצורה חלקה
+                    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                    // 2. מבטל רגישות לאותיות גדולות/קטנות בשמות השדות (חסינות מפני camelCase)
+                    options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+                });
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
