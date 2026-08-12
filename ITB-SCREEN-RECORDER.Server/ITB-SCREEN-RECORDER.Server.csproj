@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="ClientApp\public\css\tailwind.min.css" />
+    <Content Include="ClientApp\public\css\video-js.min.css" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
@@ -33,4 +38,8 @@
     <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <Target Name="CompileFrontend" BeforeTargets="Build" Condition="Exists('ClientApp\package.json')">
+	<Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Launching static Vite build from ClientApp..." />
+	<Exec Command="npm run build -s &amp; exit 0" WorkingDirectory="ClientApp" />
+  </Target>
 </Project>
