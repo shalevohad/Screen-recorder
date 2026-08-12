@@ -46,8 +46,16 @@ namespace ITB_SCREEN_RECORDER.Server
             // שירות ניהול ה-State של הטרמינלים ב-RAM
             builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
 
+            // תשתית HTTP + שירותי ניהול אחסון והקלטה (NetApp/local fallback, MediaMTX Control API)
+            builder.Services.AddHttpClient();
+            builder.Services.AddSingleton<StoragePathResolver>();
+            builder.Services.AddSingleton<MediaMtxApiClient>();
+
             // שירות רקע (Background Worker) המנהל ומנטר את תהליך ה-MediaMTX הבינארי
             builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
+
+            // שירות רקע האחראי על חיתוך הקלטות מדויק לפי שעון קיר (Wall-Clock) בהתאם ל-ChunkIntervalMinutes
+            builder.Services.AddHostedService<RecordingChunkScheduler>();
 
             var app = builder.Build();
 

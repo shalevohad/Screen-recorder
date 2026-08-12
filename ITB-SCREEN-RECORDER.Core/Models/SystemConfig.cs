@@ -45,6 +45,9 @@ namespace ITB_SCREEN_RECORDER.Core.Models
         [Required(ErrorMessage = "NetAppUncPath is required in appsettings.json")]
         public string NetAppUncPath { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "LocalFallbackPath is required in appsettings.json")]
+        public string LocalFallbackPath { get; set; } = string.Empty;
+
         [Range(1, 60)]
         public int ChunkIntervalMinutes { get; set; }
 

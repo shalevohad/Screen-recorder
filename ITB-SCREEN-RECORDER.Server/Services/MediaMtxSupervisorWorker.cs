@@ -6,17 +6,31 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 public class MediaMtxSupervisorWorker : BackgroundService
 {
+    private const string RecordFormat = "fmp4";
+
     private readonly ILogger<MediaMtxSupervisorWorker> _logger;
+    private readonly IOptionsMonitor<SystemConfig> _configMonitor;
+    private readonly StoragePathResolver _storageResolver;
+    private readonly MediaMtxApiClient _apiClient;
     private Process? _mtxProcess;
 
-    public MediaMtxSupervisorWorker(ILogger<MediaMtxSupervisorWorker> logger)
+    public MediaMtxSupervisorWorker(
+        ILogger<MediaMtxSupervisorWorker> logger,
+        IOptionsMonitor<SystemConfig> configMonitor,
+        StoragePathResolver storageResolver,
+        MediaMtxApiClient apiClient)
     {
         _logger = logger;
+        _configMonitor = configMonitor;
+        _storageResolver = storageResolver;
+        _apiClient = apiClient;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -86,6 +100,9 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     _mtxProcess.BeginErrorReadLine();
 
                     _logger.LogInformation("MediaMTX started successfully with PID: {Pid}", _mtxProcess.Id);
+
+                    // הזרקת הגדרות ההקלטה (נתיב אחסון, פורמט, משך צ'אנק, שמירה) דרך ה-API בזמן ריצה
+                    _ = Task.Run(() => ApplyRecordingConfigAsync(stoppingToken), stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -106,6 +123,44 @@ public class MediaMtxSupervisorWorker : BackgroundService
             {
                 break;
             }
+        }
+    }
+
+    /// <summary>
+    /// ממתין לעליית ה-API של MediaMTX ולאחר מכן דוחף אליו את הגדרות ההקלטה (Storage) דרך
+    /// ה-Control API בזמן ריצה, כך שקובץ mediamtx.yml הסטטי נשאר ללא שינוי כ-fallback בטוח.
+    /// </summary>
+    private async Task ApplyRecordingConfigAsync(CancellationToken stoppingToken)
+    {
+        SystemConfig config = _configMonitor.CurrentValue;
+        int apiPort = config.MediaMtx.ApiPort;
+
+        bool ready = await _apiClient.WaitUntilReadyAsync(apiPort, TimeSpan.FromSeconds(15), stoppingToken).ConfigureAwait(false);
+        if (!ready)
+        {
+            _logger.LogError("[CRITICAL] MediaMTX API did not become ready in time. Recording settings were not applied.");
+            return;
+        }
+
+        string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
+        string recordPath = $"{root.TrimEnd('\\', '/')}/%path/%Y-%m-%d_%H-%M-%S-%f";
+
+        bool applied = await _apiClient.PatchPathDefaultsAsync(
+            apiPort,
+            recordPath,
+            RecordFormat,
+            $"{config.Storage.ChunkIntervalMinutes}m",
+            $"{config.Storage.RetentionDays}d",
+            stoppingToken).ConfigureAwait(false);
+
+        if (applied)
+        {
+            _logger.LogInformation("[STORAGE] Recording enabled. Root: '{Root}', Chunk interval: {Interval}m, Retention: {Retention}d.",
+                root, config.Storage.ChunkIntervalMinutes, config.Storage.RetentionDays);
+        }
+        else
+        {
+            _logger.LogError("[CRITICAL] Failed to apply recording configuration to MediaMTX.");
         }
     }
 
