@@ -47,10 +47,13 @@ namespace ITBRecorderAgent.Engine
             string presetValue;
             string hardwareFlags = "";
 
+            // ----------------------------------------------------------------
+            // FIXED: NVENC Configuration Block
+            // ----------------------------------------------------------------
             if (_config.VideoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                presetValue = "p1";
-                hardwareFlags = "-tune zerolatency -forced-idr 1";
+                presetValue = "p2"; // p2 is the standard optimal preset for NVENC Low Latency
+                hardwareFlags = "-tune ull -forced-idr 1"; // FIXED: Changed 'zerolatency' to 'ull'
             }
             else
             {
@@ -60,14 +63,15 @@ namespace ITBRecorderAgent.Engine
 
             int gopSize = _config.TargetFps;
 
-            // 1. קלט וידאו
+            // 1. קלט וידאו (Raw BGRA directly from Windows capture)
             ffmpegArgs.Append($"-f rawvideo -pix_fmt bgra -s {width}x{height} -r {_config.TargetFps} -i pipe:0 ");
 
-            // 2. קלט אודיו
+            // 2. קלט אודיו (TCP stream)
             ffmpegArgs.Append($"-f {audioFmt} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{localPort} ");
 
-            // 3. תיקון: שימוש ב-fps_mode cfr במקום vsync cfr לביצוע תאימות מלאה
-            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset {presetValue} {hardwareFlags} -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} ");
+            // 3. קידוד וידאו
+            // FIXED: Added '-pix_fmt yuv420p' to force the GPU to accept the color space
+            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} ");
 
             // 4. קידוד אודיו
             if (audioChannels > 0)
@@ -75,7 +79,7 @@ namespace ITBRecorderAgent.Engine
                 ffmpegArgs.Append("-c:a aac -b:a 128k ");
             }
 
-            // 5. יעד
+            // 5. יעד (Destination and Metadata)
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
             ffmpegArgs.Append($"-y -f flv \"{targetDestination}\"");
 
