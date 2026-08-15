@@ -1,166 +1,148 @@
-﻿using SharpGen.Runtime;
-using System;
+﻿using System;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
-using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
+using ITBRecorderAgent;
 
 namespace ITBRecorderAgent.Providers.Video
 {
-    public class DxgiScreenCapture : IDisposable
+    [SupportedOSPlatform("windows")]
+    public class DxgiScreenCapture : IScreenCaptureProvider
     {
-        private ID3D11Device? _device;
-        private ID3D11DeviceContext? _context;
-        private IDXGIOutputDuplication? _duplication;
-        private ID3D11Texture2D? _screenTexture;
-        private byte[]? _reusableFrameBuffer;
-
         public int Width { get; private set; }
         public int Height { get; private set; }
+        public bool IsInitialized { get; private set; }
+
+        private ID3D11Device? _device;
+        private ID3D11DeviceContext? _context;
+        private IDXGIOutputDuplication? _deskDupl;
+        private ID3D11Texture2D? _stagingTexture;
 
         public void Initialize()
         {
-            CleanupResources();
-
-            using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-            if (factory == null) throw new InvalidOperationException("Failed to create DXGIFactory1.");
-
-            // ב-Vortice משתמשים ב-EnumAdapters1
-            factory.EnumAdapters1(0, out IDXGIAdapter1? adapter);
-            if (adapter == null) throw new InvalidOperationException("Failed to get DXGI Adapter.");
-
-            DeviceCreationFlags creationFlags = DeviceCreationFlags.BgraSupport;
-
-            D3D11.D3D11CreateDevice(
-                adapter,
-                DriverType.Unknown,
-                creationFlags,
-                new[] { FeatureLevel.Level_11_0 },
-                out ID3D11Device? device,
-                out ID3D11DeviceContext? context
-            );
-
-            _device = device ?? throw new InvalidOperationException("Failed to create D3D11 Device.");
-            _context = context ?? throw new InvalidOperationException("Failed to create D3D11 Context.");
-
-            // ב-Vortice משתמשים ב-EnumOutputs
-            adapter.EnumOutputs(0, out IDXGIOutput? output);
-            if (output == null) throw new InvalidOperationException("Failed to get DXGI Output.");
-
-            using var output1 = output.QueryInterface<IDXGIOutput1>();
-
-            var bounds = output.Description.DesktopCoordinates;
-            Width = bounds.Right - bounds.Left;
-            Height = bounds.Bottom - bounds.Top;
-
-            _duplication = output1.DuplicateOutput(_device);
-
-            // התאמת הגדרות הטקסטורה לדרישות המחמירות של Vortice
-            var textureDesc = new Texture2DDescription
+            try
             {
-                Width = (uint)Width,
-                Height = (uint)Height,
-                MipLevels = 1,
-                ArraySize = 1,
-                Format = Format.B8G8R8A8_UNorm,
-                SampleDescription = new SampleDescription(1, 0),
-                Usage = ResourceUsage.Staging,
-                BindFlags = BindFlags.None,
-                CPUAccessFlags = CpuAccessFlags.Read,
-                MiscFlags = ResourceOptionFlags.None
-            };
+                D3D11.D3D11CreateDevice(
+                    null,
+                    DriverType.Hardware,
+                    DeviceCreationFlags.BgraSupport,
+                    new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
+                    out _device,
+                    out _context);
 
-            _screenTexture = _device.CreateTexture2D(textureDesc);
+                using var dxgiDevice = _device!.QueryInterface<IDXGIDevice>();
+                using var adapter = dxgiDevice.GetAdapter();
 
-            int bufferSize = Width * Height * 4;
-            _reusableFrameBuffer = new byte[bufferSize];
+                // 💡 תיקון: ב-Vortice משתמשים ב-EnumOutputs במקום GetOutput
+                adapter.EnumOutputs(0, out IDXGIOutput output);
+                using var output1 = output.QueryInterface<IDXGIOutput1>();
 
-            Logger.Info($"[VIDEO] DXGI Capture Initialized via Vortice: {Width}x{Height}");
+                var desc = output.Description;
+                Width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
+                Height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
 
-            // שחרור זיכרון זמני
-            output?.Dispose();
-            adapter?.Dispose();
+                _deskDupl = output1.DuplicateOutput(_device);
+
+                var textureDesc = new Texture2DDescription
+                {
+                    Width = (uint)Width,     // 💡 תיקון המרה ל-uint
+                    Height = (uint)Height,   // 💡 תיקון המרה ל-uint
+                    MipLevels = 1,
+                    ArraySize = 1,
+                    Format = Vortice.DXGI.Format.B8G8R8A8_UNorm,
+                    SampleDescription = new SampleDescription(1, 0),
+                    Usage = ResourceUsage.Staging,
+                    BindFlags = BindFlags.None,
+                    CPUAccessFlags = CpuAccessFlags.Read, // 💡 שינוי ל-CPUAccessFlags
+                    MiscFlags = ResourceOptionFlags.None  // 💡 שינוי ל-MiscFlags
+                };
+
+                _stagingTexture = _device.CreateTexture2D(textureDesc);
+                IsInitialized = true;
+                Logger.Info($"[VIDEO] DXGI Desktop Duplication initialized: {Width}x{Height}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[VIDEO] DXGI initialization failed: {ex.Message}");
+                Dispose();
+                throw;
+            }
         }
 
-        public bool TryCaptureFrame(out byte[]? frameBuffer)
+        public bool TryCaptureFrame(out byte[]? frameData)
         {
-            frameBuffer = null;
-
-            if (_duplication == null || _device == null || _context == null || _screenTexture == null || _reusableFrameBuffer == null)
-            {
+            frameData = null;
+            if (!IsInitialized || _deskDupl == null || _stagingTexture == null || _context == null)
                 return false;
-            }
 
             try
             {
-                // ב-Vortice אובייקט המידע נקרא OutduplFrameInfo
-                Result result = _duplication.AcquireNextFrame(500, out OutduplFrameInfo frameInfo, out IDXGIResource? screenResource);
+                var result = _deskDupl.AcquireNextFrame(40, out _, out var desktopResource);
 
-                if (result.Failure || screenResource == null)
+                if (result.Failure)
                 {
-                    // ציון נתיב מפורש לפתרון בעיית הדו-משמעות של ResultCode
+                    // 💡 תיקון התנגשות ה-ResultCode
                     if (result.Code == Vortice.DXGI.ResultCode.AccessLost.Code)
                     {
-                        Logger.Warn("[WARNING] DXGI Access Lost. Re-initializing engine...");
-                        Initialize();
+                        Logger.Warn("[VIDEO] DXGI Access Lost. Reinitializing...");
+                        Reinitialize();
                     }
                     return false;
                 }
 
-                using (var texture2D = screenResource.QueryInterface<ID3D11Texture2D>())
+                using (desktopResource)
+                using (var desktopTexture = desktopResource.QueryInterface<ID3D11Texture2D>())
                 {
-                    _context.CopyResource(_screenTexture, texture2D);
+                    _context.CopyResource(_stagingTexture, desktopTexture);
                 }
 
-                screenResource.Dispose();
-                _duplication.ReleaseFrame();
+                _deskDupl.ReleaseFrame();
 
-                MappedSubresource mappedResource = _context.Map(_screenTexture, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
-
-                unsafe
+                var mapped = _context.Map(_stagingTexture, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
+                try
                 {
-                    byte* sourcePtr = (byte*)mappedResource.DataPointer;
-                    fixed (byte* destPtr = _reusableFrameBuffer)
+                    frameData = new byte[Width * Height * 4];
+                    int rowPitch = Width * 4;
+
+                    for (int y = 0; y < Height; y++)
                     {
-                        int rowSize = Width * 4;
-                        for (int y = 0; y < Height; y++)
-                        {
-                            Buffer.MemoryCopy(
-                                sourcePtr + (y * mappedResource.RowPitch),
-                                destPtr + (y * rowSize),
-                                rowSize,
-                                rowSize
-                            );
-                        }
+                        // 💡 קיבוע המרה ל-int בשורת ה-IntPtr.Add למניעת שגיאת ה-long
+                        IntPtr srcRow = IntPtr.Add(mapped.DataPointer, (int)(y * mapped.RowPitch));
+                        Marshal.Copy(srcRow, frameData, y * rowPitch, rowPitch);
                     }
-                }
 
-                _context.Unmap(_screenTexture, 0);
-                frameBuffer = _reusableFrameBuffer;
-                return true;
+                    return true;
+                }
+                finally
+                {
+                    _context.Unmap(_stagingTexture, 0);
+                }
             }
-            catch (Exception ex)
+            catch
             {
-                Logger.Warn($"[WARNING] Capture error: {ex.Message}");
                 return false;
             }
         }
 
-        private void CleanupResources()
+        private void Reinitialize()
         {
-            _duplication?.Dispose();
-            _duplication = null;
-            _screenTexture?.Dispose();
-            _screenTexture = null;
-            _context?.Dispose();
-            _context = null;
-            _device?.Dispose();
-            _device = null;
+            Dispose();
+            Initialize();
         }
 
         public void Dispose()
         {
-            CleanupResources();
+            IsInitialized = false;
+            _stagingTexture?.Dispose();
+            _stagingTexture = null;
+            _deskDupl?.Dispose();
+            _deskDupl = null;
+            _context?.Dispose();
+            _context = null;
+            _device?.Dispose();
+            _device = null;
         }
     }
 }

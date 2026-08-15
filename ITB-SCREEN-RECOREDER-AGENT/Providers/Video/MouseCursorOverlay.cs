@@ -1,20 +1,23 @@
 ﻿using System;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using Vortice.DCommon;
+using System.Runtime.Versioning;
 
 namespace ITBRecorderAgent.Providers.Video
 {
+    [SupportedOSPlatform("windows")]
     public static class MouseCursorOverlay
     {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int x; public int y; }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct CURSORINFO
         {
             public int cbSize;
             public int flags;
             public IntPtr hCursor;
-            public Point ptScreenPos;
+            public POINT ptScreenPos;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -27,6 +30,9 @@ namespace ITBRecorderAgent.Providers.Video
             public IntPtr hbmColor;
         }
 
+        private const int CURSOR_SHOWING = 0x00000001;
+        private const int DI_NORMAL = 0x0003;
+
         [DllImport("user32.dll")]
         private static extern bool GetCursorInfo(out CURSORINFO pci);
 
@@ -34,49 +40,52 @@ namespace ITBRecorderAgent.Providers.Video
         private static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO piconinfo);
 
         [DllImport("user32.dll")]
-        private static extern bool DrawIcon(IntPtr hDC, int x, int y, IntPtr hIcon);
+        private static extern bool DrawIconEx(IntPtr hdc, int xLeft, int yTop, IntPtr hIcon, int cxWidth, int cyHeight, int istepIfAniCur, IntPtr hbrFlickerFreeDraw, int diFlags);
 
         [DllImport("gdi32.dll")]
         private static extern bool DeleteObject(IntPtr hObject);
 
-        private const int CURSOR_SHOWING = 0x00000001;
-
-        /// <summary>
-        /// שותל את סמן העכבר במדויק על גבי מערך הפיקסלים (BGRA) בצורה שלא מעמיסה על הזיכרון
-        /// </summary>
         public static void DrawMouseToFrame(byte[] frameBuffer, int width, int height)
         {
-            CURSORINFO pci = new CURSORINFO { cbSize = Marshal.SizeOf(typeof(CURSORINFO)) };
+            var pci = new CURSORINFO { cbSize = Marshal.SizeOf(typeof(CURSORINFO)) };
+            if (!GetCursorInfo(out pci) || pci.flags != CURSOR_SHOWING)
+                return;
 
-            if (GetCursorInfo(out pci) && pci.flags == CURSOR_SHOWING)
+            if (!GetIconInfo(pci.hCursor, out var iconInfo))
+                return;
+
+            try
             {
-                if (GetIconInfo(pci.hCursor, out ICONINFO iconInfo))
-                {
-                    // חישוב המיקום המדויק על המסך תוך קיזוז הנקודה החמה (Hotspot) של האייקון
-                    int targetX = pci.ptScreenPos.X - iconInfo.xHotspot;
-                    int targetY = pci.ptScreenPos.Y - iconInfo.yHotspot;
+                int cursorX = pci.ptScreenPos.x - iconInfo.xHotspot;
+                int cursorY = pci.ptScreenPos.y - iconInfo.yHotspot;
 
-                    // נעילת מערך הבתים בזיכרון הבלתי-מנוהל (Unmanaged) כדי לצייר עליו ישירות ללא העתקות
-                    GCHandle handle = GCHandle.Alloc(frameBuffer, GCHandleType.Pinned);
+                if (cursorX < 0 || cursorY < 0 || cursorX >= width || cursorY >= height)
+                    return;
+
+                var handle = GCHandle.Alloc(frameBuffer, GCHandleType.Pinned);
+                try
+                {
+                    using var bmp = new Bitmap(width, height, width * 4, System.Drawing.Imaging.PixelFormat.Format32bppPArgb, handle.AddrOfPinnedObject());
+                    using var g = Graphics.FromImage(bmp);
+                    IntPtr hdc = g.GetHdc();
                     try
                     {
-                        using (Bitmap bmp = new Bitmap(width, height, width * 4, System.Drawing.Imaging.PixelFormat.Format32bppArgb, handle.AddrOfPinnedObject()))
-                        using (Graphics g = Graphics.FromImage(bmp))
-                        {
-                            IntPtr hdc = g.GetHdc();
-                            DrawIcon(hdc, targetX, targetY, pci.hCursor);
-                            g.ReleaseHdc(hdc);
-                        }
+                        DrawIconEx(hdc, cursorX, cursorY, pci.hCursor, 0, 0, 0, IntPtr.Zero, DI_NORMAL);
                     }
                     finally
                     {
-                        handle.Free(); // שחרור נעילה
-
-                        // ניקוי משאבי GDI כדי למנוע דליפות זיכרון קריטיות (Memory Leaks)
-                        if (iconInfo.hbmColor != IntPtr.Zero) DeleteObject(iconInfo.hbmColor);
-                        if (iconInfo.hbmMask != IntPtr.Zero) DeleteObject(iconInfo.hbmMask);
+                        g.ReleaseHdc(hdc);
                     }
                 }
+                finally
+                {
+                    handle.Free();
+                }
+            }
+            finally
+            {
+                if (iconInfo.hbmMask != IntPtr.Zero) DeleteObject(iconInfo.hbmMask);
+                if (iconInfo.hbmColor != IntPtr.Zero) DeleteObject(iconInfo.hbmColor);
             }
         }
     }

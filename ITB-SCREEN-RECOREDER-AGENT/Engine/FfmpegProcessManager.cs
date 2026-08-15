@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
+using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using ITBRecorderAgent.Core;
@@ -12,180 +11,271 @@ namespace ITBRecorderAgent.Engine
 {
     public class FfmpegProcessManager : IDisposable
     {
-        private Process? _ffmpegProcess;
-        private Stream? _videoStdinStream;
-        private TcpListener? _tcpListener;
-        private Socket? _audioSocket;
+        [DllImport("libc", EntryPoint = "mkfifo", SetLastError = true)]
+        private static extern int MkFifoLinux(string path, uint mode);
+
         private readonly AppConfig _config;
+        private Process? _ffmpegProcess;
+        private Stream? _videoStream;
+        private Stream? _audioStream;
+        private NamedPipeServerStream? _windowsAudioPipe;
+        private string? _linuxFifoPath;
+
+        private readonly string _audioPipeId;
+        private readonly object _writeLock = new object();
+        private bool _isDisposed = false;
 
         public bool IsRunning => _ffmpegProcess != null && !_ffmpegProcess.HasExited;
 
         public FfmpegProcessManager(AppConfig config)
         {
-            _config = config;
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+            _audioPipeId = $"ITB_Audio_{Guid.NewGuid():N}";
         }
 
-        public async Task<bool> StartAsync(string targetDestination, DateTime calibratedUtcTime, int width, int height, int audioSampleRate, int audioChannels, string audioFmt, CancellationToken cancellationToken)
+        public async Task<bool> StartAsync(
+            string destinationUrl,
+            DateTime calibratedStartTime,
+            int videoWidth,
+            int videoHeight,
+            int audioSampleRate,
+            int audioChannels,
+            string audioFormat,
+            CancellationToken cancellationToken)
         {
-            string ffmpegExecutable = Path.IsPathRooted(_config.FFmpegPath)
-                ? _config.FFmpegPath
-                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _config.FFmpegPath);
-
-            if (!File.Exists(ffmpegExecutable))
-            {
-                Logger.Error($"[FATAL] FFmpeg executable not found at: {ffmpegExecutable}");
-                return false;
-            }
-
-            _tcpListener = new TcpListener(IPAddress.Loopback, 0);
-            _tcpListener.Start();
-            int localPort = ((IPEndPoint)_tcpListener.LocalEndpoint).Port;
-
-            string utcTimestampIso = calibratedUtcTime.ToString("o");
-            var ffmpegArgs = new StringBuilder();
-
-            string presetValue;
-            string hardwareFlags = "";
-
-            if (_config.VideoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
-            {
-                presetValue = "p1";
-                hardwareFlags = "-tune zerolatency -forced-idr 1";
-            }
-            else
-            {
-                presetValue = "ultrafast";
-                hardwareFlags = "-tune zerolatency";
-            }
-
-            int gopSize = _config.TargetFps;
-
-            // 1. קלט וידאו
-            ffmpegArgs.Append($"-f rawvideo -pix_fmt bgra -s {width}x{height} -r {_config.TargetFps} -i pipe:0 ");
-
-            // 2. קלט אודיו
-            ffmpegArgs.Append($"-f {audioFmt} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{localPort} ");
-
-            // 3. תיקון: שימוש ב-fps_mode cfr במקום vsync cfr לביצוע תאימות מלאה
-            ffmpegArgs.Append($"-c:v {_config.VideoEncoder} -preset {presetValue} {hardwareFlags} -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} ");
-
-            // 4. קידוד אודיו
-            if (audioChannels > 0)
-            {
-                ffmpegArgs.Append("-c:a aac -b:a 128k ");
-            }
-
-            // 5. יעד
-            ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
-            ffmpegArgs.Append($"-y -f flv \"{targetDestination}\"");
-
             try
             {
-                _ffmpegProcess = new Process
+                string activeEncoder = await HardwareProbe.ResolveEncoderAsync(_config.FFmpegPath, _config.VideoEncoder);
+                string audioInputArg = SetupAudioIpcPipe();
+                string fontPath = ResolvePlatformFontPath();
+
+                string arguments = BuildFfmpegArguments(
+                    destinationUrl,
+                    calibratedStartTime,
+                    videoWidth,
+                    videoHeight,
+                    audioSampleRate,
+                    audioChannels,
+                    audioFormat,
+                    activeEncoder,
+                    audioInputArg,
+                    fontPath);
+
+                Logger.Info($"[FFMPEG] Starting FFmpeg process...");
+
+                var startInfo = new ProcessStartInfo
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = ffmpegExecutable,
-                        Arguments = ffmpegArgs.ToString(),
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardInput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = _config.FFmpegPath,
+                    Arguments = arguments,
+                    RedirectStandardInput = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = false,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
+
+                _ffmpegProcess = new Process { StartInfo = startInfo };
 
                 _ffmpegProcess.ErrorDataReceived += (sender, e) =>
                 {
-                    if (!string.IsNullOrEmpty(e.Data) && e.Data.Contains("Error", StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrWhiteSpace(e.Data))
                     {
-                        Logger.Error($"[FFMPEG NATIVE ERROR] {e.Data}");
+                        if (e.Data.Contains("Error", StringComparison.OrdinalIgnoreCase) ||
+                            e.Data.Contains("fatal", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Logger.Error($"[FFMPEG STDERR] {e.Data}");
+                        }
                     }
                 };
 
-                _ffmpegProcess.Start();
+                bool started = _ffmpegProcess.Start();
+                if (!started)
+                {
+                    Logger.Error("[FFMPEG] Failed to start process.");
+                    return false;
+                }
+
                 _ffmpegProcess.BeginErrorReadLine();
-                _videoStdinStream = _ffmpegProcess.StandardInput.BaseStream;
+                _videoStream = _ffmpegProcess.StandardInput.BaseStream;
 
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to start FFmpeg process over TCP: {ex.Message}");
+                Logger.Error($"[FFMPEG] Launch failed: {ex.Message}");
+                Dispose();
                 return false;
+            }
+        }
+
+        private string SetupAudioIpcPipe()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                _windowsAudioPipe = new NamedPipeServerStream(
+                    _audioPipeId,
+                    PipeDirection.Out,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous);
+
+                return $"-f f32le -ar 48000 -ac 2 -i \"\\\\.\\pipe\\{_audioPipeId}\"";
+            }
+            else
+            {
+                _linuxFifoPath = Path.Combine(Path.GetTempPath(), $"{_audioPipeId}.fifo");
+
+                if (File.Exists(_linuxFifoPath)) File.Delete(_linuxFifoPath);
+
+                MkFifoLinux(_linuxFifoPath, 438); // 0666 permissions
+                return $"-f f32le -ar 48000 -ac 2 -i \"{_linuxFifoPath}\"";
             }
         }
 
         public async Task<bool> CompleteAudioHandshakeAsync(CancellationToken cancellationToken)
         {
-            if (_tcpListener == null) return false;
             try
             {
-                var acceptTask = _tcpListener.AcceptSocketAsync(cancellationToken).AsTask();
-                var timeoutTask = Task.Delay(3000, cancellationToken);
-
-                var completedTask = await Task.WhenAny(acceptTask, timeoutTask).ConfigureAwait(false);
-                if (completedTask == timeoutTask)
+                if (OperatingSystem.IsWindows() && _windowsAudioPipe != null)
                 {
-                    Logger.Warn("[AUDIO] TCP Loopback handshake timeout inside CompleteAudioHandshakeAsync.");
-                    return false;
+                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                    await _windowsAudioPipe.WaitForConnectionAsync(linkedCts.Token).ConfigureAwait(false);
+                    _audioStream = _windowsAudioPipe;
+                    return true;
+                }
+                else if (OperatingSystem.IsLinux() && _linuxFifoPath != null)
+                {
+                    _audioStream = new FileStream(_linuxFifoPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+                    return true;
                 }
 
-                _audioSocket = await acceptTask.ConfigureAwait(false);
-                _audioSocket.NoDelay = true;
-                _audioSocket.SendBufferSize = 65536;
-
-                Logger.Info($"[ENGINE] FFmpeg Audio channel connected cleanly over TCP Loopback.");
-                return true;
+                return false;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to accept audio socket connection: {ex.Message}");
+                Logger.Error($"[FFMPEG] Audio handshake failed: {ex.Message}");
                 return false;
             }
         }
 
-        public bool WriteVideoFrame(byte[] frameData)
+        private string ResolvePlatformFontPath()
         {
-            if (_videoStdinStream == null || _ffmpegProcess == null || _ffmpegProcess.HasExited) return false;
-            try
+            if (OperatingSystem.IsWindows())
             {
-                _videoStdinStream.Write(frameData, 0, frameData.Length);
-                _videoStdinStream.Flush();
-                return true;
+                return "C\\\\:/Windows/Fonts/arial.ttf";
             }
-            catch (IOException) { return false; }
+
+            string[] linuxFontPaths =
+            {
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "/usr/share/fonts/TTF/DejaVuSans.ttf"
+            };
+
+            foreach (var path in linuxFontPaths)
+            {
+                if (File.Exists(path)) return path;
+            }
+
+            return "DejaVuSans.ttf";
         }
 
-        public void WriteAudioData(byte[] audioData)
+        private string BuildFfmpegArguments(
+            string destinationUrl,
+            DateTime calibratedStartTime,
+            int videoWidth,
+            int videoHeight,
+            int audioSampleRate,
+            int audioChannels,
+            string audioFormat,
+            string videoEncoder,
+            string audioInputArg,
+            string fontPath)
         {
-            if (_audioSocket != null && _audioSocket.Connected)
+            string videoInput = $"-f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i -";
+            int gopSize = _config.TargetFps * 2;
+
+            string encoderArgs = videoEncoder.Equals("h264_nvenc", StringComparison.OrdinalIgnoreCase)
+                ? $"-c:v h264_nvenc -preset p4 -tune ll -rc cbr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 10M -g {gopSize} -pix_fmt yuv420p"
+                : $"-c:v libx264 -preset ultrafast -tune zerolatency -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 10M -g {gopSize} -pix_fmt yuv420p";
+
+            string audioEncoderArgs = "-c:a aac -b:a 128k -ar 48000 -af aresample=async=1000";
+
+            long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
+            string filterArg = $"-vf \"drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}\\:%Y-%m-%d %H\\\\:%M\\\\:%S}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\"";
+
+            return $"{videoInput} {audioInputArg} {filterArg} {encoderArgs} {audioEncoderArgs} -f flv \"{destinationUrl}\"";
+        }
+
+        public bool WriteVideoFrame(byte[] frameData)
+        {
+            if (_isDisposed || _videoStream == null || !IsRunning) return false;
+
+            try
             {
-                try
+                lock (_writeLock)
                 {
-                    _audioSocket.Send(audioData, 0, audioData.Length, SocketFlags.None);
+                    _videoStream.Write(frameData, 0, frameData.Length);
                 }
-                catch (SocketException) { }
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public bool WriteAudioData(byte[] audioData)
+        {
+            if (_isDisposed || _audioStream == null || !IsRunning) return false;
+
+            try
+            {
+                _audioStream.Write(audioData, 0, audioData.Length);
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
+
             try
             {
-                _audioSocket?.Close();
-                _audioSocket?.Dispose();
-                _tcpListener?.Stop();
-                _videoStdinStream?.Close();
+                _videoStream?.Flush();
+                _videoStream?.Dispose();
+                _videoStream = null;
+
+                _audioStream?.Flush();
+                _audioStream?.Dispose();
+                _audioStream = null;
+
+                _windowsAudioPipe?.Dispose();
+                _windowsAudioPipe = null;
+
+                if (!string.IsNullOrEmpty(_linuxFifoPath) && File.Exists(_linuxFifoPath))
+                {
+                    try { File.Delete(_linuxFifoPath); } catch { }
+                }
 
                 if (_ffmpegProcess != null && !_ffmpegProcess.HasExited)
                 {
-                    _ffmpegProcess.CancelErrorRead();
-                    _ffmpegProcess.WaitForExit(1000);
-                    if (!_ffmpegProcess.HasExited) _ffmpegProcess.Kill();
+                    _ffmpegProcess.Kill();
+                    _ffmpegProcess.WaitForExit(2000);
                 }
+
                 _ffmpegProcess?.Dispose();
+                _ffmpegProcess = null;
             }
-            catch (Exception ex) { Logger.Error($"FFmpeg shutdown error: {ex.Message}"); }
+            catch { }
         }
     }
 }
