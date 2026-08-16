@@ -341,12 +341,14 @@ hlsAlwaysRemux: true
 # * mpegts - uses MPEG-TS segments, for maximum compatibility.
 # * fmp4 - uses fragmented MP4 segments, more efficient.
 # * lowLatency - uses Low-Latency HLS.
+# Use Low-Latency HLS variant.
+# Note: MediaMTX requires a minimum number of segments for Low-Latency mode.
+# Keep at least 7 segments to avoid muxer crashes while still using small segment durations.
 hlsVariant: lowLatency
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
-# Their number doesn't influence latency.
-# Reduced from 7 to 3 for lower latency
-hlsSegmentCount: 3
+# MediaMTX requires at least 7 segments for Low-Latency HLS.
+hlsSegmentCount: 7
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
@@ -360,7 +362,9 @@ hlsSegmentDuration: 500ms
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
 # Reduced from 200ms to 50ms for lower latency
-hlsPartDuration: 50ms
+# Part duration for Low-Latency HLS. Increased to 100ms for more stability
+# (trade-off: slightly higher latency, improved muxer robustness).
+hlsPartDuration: 100ms
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
 hlsSegmentMaxSize: 50M

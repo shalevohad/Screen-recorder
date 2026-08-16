@@ -31,7 +31,7 @@
     background-color: #030f1c;
     color: #6b7280;
     font-size: 0.75rem;
-    font-family: 'Courier New', monospace;
+    font-family: 'Segoe UI', 'Arial', 'Noto Sans Hebrew', 'Heebo', 'Alef', sans-serif;
     user-select: none;
 }
 
@@ -44,7 +44,7 @@
     border-radius: 0.25rem;
     font-size: 0.625rem;
     color: white;
-    font-family: 'Courier New', monospace;
+    font-family: 'Segoe UI', 'Arial', 'Noto Sans Hebrew', 'Heebo', 'Alef', sans-serif;
     border: 1px solid #1f2937;
 }
 
@@ -80,7 +80,7 @@
 .station-thumbnail-fullscreen-label {
     color: white;
     font-size: 0.875rem;
-    font-family: 'Courier New', monospace;
+    font-family: 'Segoe UI', 'Arial', 'Noto Sans Hebrew', 'Heebo', 'Alef', sans-serif;
 }
 
 /* Video.js Player Customization */
