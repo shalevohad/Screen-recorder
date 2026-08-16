@@ -1,134 +1,225 @@
-/* StationThumbnail Component Styles */
-
-.station-thumbnail-container {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    background-color: #030f1c;
-    border-radius: 0.5rem;
+﻿/* NetSupport-Style Station Card */
+.station-card {
+    background-color: #0d1117; /* כחול-אפור עמוק */
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
-    border: 1px solid #1f2937;
-    cursor: pointer;
-    transition: all 0.3s duration;
-}
-
-.station-thumbnail-container:hover {
-    border-color: #059669;
-    box-shadow: 0 20px 25px -5px rgba(5, 150, 105, 0.2);
-}
-
-.station-thumbnail-video {
-    width: 100%;
+    transition: all 0.2s ease-in-out;
+    user-select: none;
     height: 100%;
 }
 
-.station-thumbnail-offline {
+    .station-card:hover:not(.offline) {
+        border-color: #58a6ff; /* כחול טכנולוגי בהיבר */
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        transform: translateY(-2px);
+    }
+
+    .station-card.offline {
+        opacity: 0.6;
+        filter: grayscale(0.8);
+    }
+
+/* Header */
+.station-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0.75rem 1rem;
+    background-color: #161b22;
+    border-bottom: 1px solid #30363d;
+}
+
+.status-pill {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    border: 1px solid transparent;
+}
+
+    .status-pill.online {
+        color: #3fb950;
+        border-color: rgba(63, 185, 80, 0.4);
+        background-color: rgba(63, 185, 80, 0.1);
+    }
+
+    .status-pill.offline {
+        color: #f85149;
+        border-color: rgba(248, 81, 73, 0.4);
+        background-color: rgba(248, 81, 73, 0.1);
+    }
+
+.station-identity {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+}
+
+.station-hostname {
+    color: #e6edf3;
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+}
+
+.station-ip {
+    color: #8b949e;
+    font-size: 0.7rem;
+    font-family: monospace;
+}
+
+/* Screen Area (Thumbnail) */
+.station-screen-area {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background-color: #010409;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+    .station-thumbnail-video,
+    .station-screen-area .video-js {
+        width: 100%;
+        height: 100%;
+    }
+
+        /* העלמת בקרות נגן בתוך התמונה המוקטנת */
+        .station-screen-area .video-js .vjs-control-bar,
+        .station-screen-area .video-js .vjs-loading-spinner,
+        .station-screen-area .video-js .vjs-big-play-button {
+            display: none !important;
+        }
+
+/* אפקט Hover להגדלה */
+.play-overlay-hint {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    background-color: #030f1c;
-    color: #6b7280;
-    font-size: 0.75rem;
-    font-family: 'Segoe UI', 'Arial', 'Noto Sans Hebrew', 'Heebo', 'Alef', sans-serif;
-    user-select: none;
-}
-
-.station-thumbnail-hostname {
-    position: absolute;
-    bottom: 0.5rem;
-    left: 0.5rem;
-    padding: 0.125rem 0.5rem;
-    background-color: rgba(0, 0, 0, 0.7);
-    border-radius: 0.25rem;
-    font-size: 0.625rem;
     color: white;
-    font-family: 'Segoe UI', 'Arial', 'Noto Sans Hebrew', 'Heebo', 'Alef', sans-serif;
-    border: 1px solid #1f2937;
-}
-
-.station-thumbnail-fullscreen-hint {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     opacity: 0;
-    transition: opacity 0.2s duration;
-    background-color: rgba(0, 0, 0, 0.4);
-    border-radius: 0.5rem;
+    transition: opacity 0.2s ease;
 }
 
-.station-thumbnail-container:hover .station-thumbnail-fullscreen-hint {
+.station-screen-area:hover .play-overlay-hint {
     opacity: 1;
 }
 
-.station-thumbnail-fullscreen-content {
+.play-overlay-hint svg {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 0.5rem;
+}
+
+.play-overlay-hint span {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.screen-offline-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #484f58;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+/* Telemetry Footer */
+.station-telemetry {
+    padding: 0.75rem 1rem;
+    background-color: #161b22;
+    border-top: 1px solid #30363d;
     display: flex;
     flex-direction: column;
+    gap: 0.75rem;
+}
+
+.telemetry-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.telemetry-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #8b949e;
+    font-family: monospace;
+}
+
+.telemetry-bar-bg {
+    width: 100%;
+    height: 6px;
+    background-color: #010409;
+    border-radius: 4px;
+    border: 1px solid #30363d;
+    overflow: hidden;
+}
+
+.telemetry-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s ease-out, background-color 0.5s ease-out;
+}
+
+/* NetSupport-Style Station Card additions */
+
+.header-left-actions {
+    display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.station-thumbnail-fullscreen-icon {
-    width: 3rem;
-    height: 3rem;
-    color: white;
+.mic-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    color: #10b981;
+    background-color: rgba(16, 185, 129, 0.1);
+    border-radius: 50%;
 }
 
-.station-thumbnail-fullscreen-label {
-    color: white;
-    font-size: 0.875rem;
-    font-family: 'Segoe UI', 'Arial', 'Noto Sans Hebrew', 'Heebo', 'Alef', sans-serif;
-}
-
-/* Video.js Player Customization */
-.station-thumbnail-container .video-js {
-    width: 100%;
-    height: 100%;
-}
-
-.station-thumbnail-container .video-js .vjs-control-bar {
-    display: none;
-}
-
-.station-thumbnail-container .video-js .vjs-loading-spinner {
-    display: none !important;
-}
-
-.station-thumbnail-container .video-js .vjs-big-play-button {
-    display: none;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .station-thumbnail-container {
-        aspect-ratio: 4 / 3;
+    .mic-indicator svg {
+        width: 12px;
+        height: 12px;
     }
 
-    .station-thumbnail-fullscreen-icon {
-        width: 2.5rem;
-        height: 2.5rem;
-    }
-
-    .station-thumbnail-fullscreen-label {
-        font-size: 0.75rem;
-    }
+.stop-stream-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background-color: rgba(248, 81, 73, 0.1);
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-@media (max-width: 480px) {
-    .station-thumbnail-hostname {
-        font-size: 0.5rem;
-        padding: 0.0625rem 0.25rem;
+    .stop-stream-btn:hover {
+        background-color: #f85149;
+        color: #ffffff;
     }
 
-    .station-thumbnail-fullscreen-icon {
-        width: 2rem;
-        height: 2rem;
+    .stop-stream-btn svg {
+        width: 12px;
+        height: 12px;
     }
-
-    .station-thumbnail-fullscreen-label {
-        font-size: 0.625rem;
-    }
-}
