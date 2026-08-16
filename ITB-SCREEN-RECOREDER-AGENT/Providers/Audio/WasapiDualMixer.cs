@@ -1,144 +1,201 @@
 ﻿using System;
-using System.Runtime.Versioning;
+using System.Threading;
+using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
-using ITBRecorderAgent;
+using NAudio.Wave.SampleProviders;
+using ITBRecorderAgent.Core;
 
 namespace ITBRecorderAgent.Providers.Audio
 {
-    [SupportedOSPlatform("windows")]
+    // 💡 התיקון: הצהרת מימוש רשמית של IAudioCaptureProvider כדי לפתור את שגיאת ה-Factory
     public class WasapiDualMixer : IAudioCaptureProvider
     {
-        public event EventHandler<byte[]>? AudioDataAvailable;
-
-        public bool HasActiveLoopback => _loopbackCapture != null && _loopbackCapture.CaptureState == CaptureState.Capturing;
-        public bool HasActiveMicrophone => _micCapture != null && _micCapture.CaptureState == CaptureState.Capturing;
-        public bool IsRunning { get; private set; }
-
-        private WasapiLoopbackCapture? _loopbackCapture;
-        private WasapiCapture? _micCapture;
-        private AudioDeviceNotifier? _notifier;
         private MMDeviceEnumerator? _deviceEnumerator;
+        private AudioDeviceNotifier? _deviceNotifier;
 
-        private readonly object _lock = new object();
+        private AudioCaptureStream? _loopbackStream;
+        private AudioCaptureStream? _micStream;
+        private MixingSampleProvider? _mixer;
+
+        private CancellationTokenSource? _renderCts;
+        private readonly object _lockObj = new();
+        private bool _isDisposed;
+
+        public int SampleRate => 48000;
+        public int Channels => 2;
+        public string FFmpegFormat => "f32le";
+
+        public bool HasActiveLoopback => _loopbackStream?.IsRealDeviceActive ?? false;
+        public bool HasActiveMicrophone => _micStream?.IsRealDeviceActive ?? false;
+        public bool IsRunning { get; private set; } // 💡 נדרש על ידי ה-Interface
+
+        public event EventHandler<byte[]>? AudioDataAvailable;
 
         public void Initialize()
         {
             try
             {
                 _deviceEnumerator = new MMDeviceEnumerator();
-                _notifier = new AudioDeviceNotifier();
-                _deviceEnumerator.RegisterEndpointNotificationCallback(_notifier);
+                _deviceNotifier = new AudioDeviceNotifier();
 
-                // 💡 תיקון השגיאה: שימוש בשם האירוע והחתימה הנכונים
-                _notifier.DeviceChanged += OnAudioDeviceChanged;
+                _deviceNotifier.DeviceChanged += OnAudioDeviceChanged;
+                _deviceEnumerator.RegisterEndpointNotificationCallback(_deviceNotifier);
 
-                SetupCaptures();
+                Logger.Info("WASAPI Audio Component and Session Watchers mapped.");
             }
             catch (Exception ex)
             {
-                Logger.Error($"[AUDIO] WASAPI Initialization error: {ex.Message}");
+                Logger.Error($"CRITICAL: Failed to attach system audio enumerator session: {ex.Message}");
             }
         }
 
-        private void SetupCaptures()
+        private void StartCaptureStreams()
         {
-            lock (_lock)
+            lock (_lockObj)
             {
-                try
+                if (_isDisposed) return;
+
+                StopCaptureStreamsOnly();
+
+                _loopbackStream = new AudioCaptureStream();
+                _micStream = new AudioCaptureStream();
+
+                MMDevice? defaultRender = null;
+                MMDevice? defaultCapture = null;
+
+                if (_deviceEnumerator != null)
                 {
-                    _loopbackCapture = new WasapiLoopbackCapture();
-                    _loopbackCapture.DataAvailable += (s, e) =>
+                    try { defaultRender = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); } catch { }
+                    try { defaultCapture = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia); } catch { }
+                }
+
+                _loopbackStream.Start(defaultRender, isLoopback: true);
+                _micStream.Start(defaultCapture, isLoopback: false);
+
+                var loopbackSampleProvider = EnsureTargetFormat(_loopbackStream.Buffer);
+                var micSampleProvider = EnsureTargetFormat(_micStream.Buffer);
+
+                _mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, Channels));
+                _mixer.AddMixerInput(loopbackSampleProvider);
+                _mixer.AddMixerInput(micSampleProvider);
+
+                StartRenderLoop();
+                IsRunning = true; // עדכון הסטטוס
+            }
+        }
+
+        private ISampleProvider EnsureTargetFormat(IWaveProvider waveProvider)
+        {
+            ISampleProvider sampleProvider = waveProvider.ToSampleProvider();
+
+            if (sampleProvider.WaveFormat.Channels == 1 && Channels == 2)
+            {
+                sampleProvider = new MonoToStereoSampleProvider(sampleProvider);
+            }
+            else if (sampleProvider.WaveFormat.Channels > 2)
+            {
+                var multiplexer = new MultiplexingSampleProvider(new[] { sampleProvider }, 2);
+                multiplexer.ConnectInputToOutput(0, 0);
+                multiplexer.ConnectInputToOutput(1, 1);
+                sampleProvider = multiplexer;
+            }
+
+            if (sampleProvider.WaveFormat.SampleRate != SampleRate)
+            {
+                sampleProvider = new WdlResamplingSampleProvider(sampleProvider, SampleRate);
+            }
+
+            return sampleProvider;
+        }
+
+        private void StartRenderLoop()
+        {
+            _renderCts?.Cancel();
+            _renderCts?.Dispose();
+            _renderCts = new CancellationTokenSource();
+
+            var token = _renderCts.Token;
+
+            Task.Run(async () =>
+            {
+                int bufferSize = SampleRate * Channels * 4 * 20 / 1000; // 20ms chunks
+                float[] sampleBuffer = new float[bufferSize / 4];
+                byte[] byteBuffer = new byte[bufferSize];
+
+                Logger.Info("[AUDIO] Shared-Memory Audio Mixing Engine Pipeline started (Anti-Starvation Active).");
+
+                while (!token.IsCancellationRequested)
+                {
+                    if (_mixer != null)
                     {
-                        if (e.BytesRecorded > 0)
+                        int samplesRead = 0;
+                        try
                         {
-                            byte[] data = e.Buffer.AsSpan(0, e.BytesRecorded).ToArray();
-                            AudioDataAvailable?.Invoke(this, data);
+                            samplesRead = _mixer.Read(sampleBuffer, 0, sampleBuffer.Length);
                         }
-                    };
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warn($"[AUDIO] Playback device not found: {ex.Message}");
-                    _loopbackCapture = null;
-                }
+                        catch { }
 
-                try
-                {
-                    var micDevice = _deviceEnumerator?.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
-                    if (micDevice != null)
-                    {
-                        _micCapture = new WasapiCapture(micDevice);
-                        _micCapture.DataAvailable += (s, e) =>
+                        // מנגנון ה-Anti-Starvation: הזרקת באפר אפסים (שקט) במקרה ש-Windows לא מחזירה פריימים
+                        if (samplesRead < sampleBuffer.Length)
                         {
-                            if (e.BytesRecorded > 0 && _loopbackCapture == null)
-                            {
-                                byte[] data = e.Buffer.AsSpan(0, e.BytesRecorded).ToArray();
-                                AudioDataAvailable?.Invoke(this, data);
-                            }
-                        };
+                            Array.Clear(sampleBuffer, samplesRead, sampleBuffer.Length - samplesRead);
+                            samplesRead = sampleBuffer.Length;
+                        }
+
+                        if (samplesRead > 0)
+                        {
+                            System.Buffer.BlockCopy(sampleBuffer, 0, byteBuffer, 0, samplesRead * 4);
+                            AudioDataAvailable?.Invoke(this, byteBuffer);
+                        }
                     }
+                    await Task.Delay(20, token).ConfigureAwait(false);
                 }
-                catch (Exception ex)
-                {
-                    Logger.Warn($"[AUDIO] Microphone not found: {ex.Message}");
-                    _micCapture = null;
-                }
-            }
+            }, token);
         }
 
-        public void Start()
-        {
-            lock (_lock)
-            {
-                if (IsRunning) return;
-                _loopbackCapture?.StartRecording();
-                _micCapture?.StartRecording();
-                IsRunning = true;
-                Logger.Info("[AUDIO] WASAPI capture started.");
-            }
-        }
-
-        public void Stop()
-        {
-            lock (_lock)
-            {
-                if (!IsRunning) return;
-                _loopbackCapture?.StopRecording();
-                _micCapture?.StopRecording();
-                IsRunning = false;
-                Logger.Info("[AUDIO] WASAPI capture stopped.");
-            }
-        }
-
-        // 💡 שינוי מ-EventHandler ל-Action תואם ל-AudioDeviceNotifier
         private void OnAudioDeviceChanged()
         {
-            Logger.Warn("[AUDIO] Audio endpoint change detected. Reinitializing WASAPI...");
-            lock (_lock)
+            if (_isDisposed) return;
+            Logger.Warn("Audio device change detected. Re-aligning streams...");
+            Task.Run(() =>
             {
-                bool wasRunning = IsRunning;
-                Stop();
-                _loopbackCapture?.Dispose();
-                _micCapture?.Dispose();
-                SetupCaptures();
-                if (wasRunning) Start();
-            }
+                Thread.Sleep(1000);
+                StartCaptureStreams();
+            });
         }
+
+        private void StopCaptureStreamsOnly()
+        {
+            _loopbackStream?.Dispose();
+            _loopbackStream = null;
+            _micStream?.Dispose();
+            _micStream = null;
+            _mixer = null;
+            IsRunning = false;
+        }
+
+        public void Stop() => StopCaptureStreamsOnly();
+        public void Start() => StartCaptureStreams();
 
         public void Dispose()
         {
-            Stop();
-            _loopbackCapture?.Dispose();
-            _micCapture?.Dispose();
-
-            if (_deviceEnumerator != null && _notifier != null)
+            lock (_lockObj)
             {
-                try { _deviceEnumerator.UnregisterEndpointNotificationCallback(_notifier); } catch { }
-            }
+                if (_isDisposed) return;
+                _isDisposed = true;
 
-            _deviceEnumerator?.Dispose();
-            _deviceEnumerator = null;
+                _renderCts?.Cancel();
+                _renderCts?.Dispose();
+
+                if (_deviceEnumerator != null && _deviceNotifier != null)
+                {
+                    try { _deviceEnumerator.UnregisterEndpointNotificationCallback(_deviceNotifier); } catch { }
+                }
+
+                StopCaptureStreamsOnly();
+                _deviceEnumerator?.Dispose();
+            }
         }
     }
 }
