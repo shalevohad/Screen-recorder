@@ -1,0 +1,134 @@
+/* StationThumbnail Component Styles */
+
+.station-thumbnail-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background-color: #030f1c;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    border: 1px solid #1f2937;
+    cursor: pointer;
+    transition: all 0.3s duration;
+}
+
+.station-thumbnail-container:hover {
+    border-color: #059669;
+    box-shadow: 0 20px 25px -5px rgba(5, 150, 105, 0.2);
+}
+
+.station-thumbnail-video {
+    width: 100%;
+    height: 100%;
+}
+
+.station-thumbnail-offline {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background-color: #030f1c;
+    color: #6b7280;
+    font-size: 0.75rem;
+    font-family: 'Courier New', monospace;
+    user-select: none;
+}
+
+.station-thumbnail-hostname {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    padding: 0.125rem 0.5rem;
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 0.25rem;
+    font-size: 0.625rem;
+    color: white;
+    font-family: 'Courier New', monospace;
+    border: 1px solid #1f2937;
+}
+
+.station-thumbnail-fullscreen-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s duration;
+    background-color: rgba(0, 0, 0, 0.4);
+    border-radius: 0.5rem;
+}
+
+.station-thumbnail-container:hover .station-thumbnail-fullscreen-hint {
+    opacity: 1;
+}
+
+.station-thumbnail-fullscreen-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.station-thumbnail-fullscreen-icon {
+    width: 3rem;
+    height: 3rem;
+    color: white;
+}
+
+.station-thumbnail-fullscreen-label {
+    color: white;
+    font-size: 0.875rem;
+    font-family: 'Courier New', monospace;
+}
+
+/* Video.js Player Customization */
+.station-thumbnail-container .video-js {
+    width: 100%;
+    height: 100%;
+}
+
+.station-thumbnail-container .video-js .vjs-control-bar {
+    display: none;
+}
+
+.station-thumbnail-container .video-js .vjs-loading-spinner {
+    display: none !important;
+}
+
+.station-thumbnail-container .video-js .vjs-big-play-button {
+    display: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .station-thumbnail-container {
+        aspect-ratio: 4 / 3;
+    }
+
+    .station-thumbnail-fullscreen-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+    }
+
+    .station-thumbnail-fullscreen-label {
+        font-size: 0.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .station-thumbnail-hostname {
+        font-size: 0.5rem;
+        padding: 0.0625rem 0.25rem;
+    }
+
+    .station-thumbnail-fullscreen-icon {
+        width: 2rem;
+        height: 2rem;
+    }
+
+    .station-thumbnail-fullscreen-label {
+        font-size: 0.625rem;
+    }
+}

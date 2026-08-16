@@ -1,6 +1,6 @@
 import React from 'react';
 import StationThumbnail from './components/StationThumbnail';
-import './App.scss'; // כאן תוכל לכתוב קוד SCSS מלא ומקונן!
+import './styles/App.scss';
 
 export default function App() {
     const [stations, setStations] = React.useState([]);
