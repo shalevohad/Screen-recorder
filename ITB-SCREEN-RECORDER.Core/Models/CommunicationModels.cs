@@ -59,5 +59,8 @@ namespace ITB_SCREEN_RECORDER.Core.Models
 
         [JsonPropertyName("serverTime")]
         public DateTime ServerTime { get; set; } = DateTime.UtcNow;
+
+        [JsonPropertyName("serverUtcTime")]
+        public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
     }
 }

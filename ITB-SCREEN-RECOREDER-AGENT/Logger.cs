@@ -11,9 +11,6 @@ namespace ITBRecorderAgent
         private static string? _logFilePath;
         private static bool _enableFileLogging = true;
 
-        /// <summary>
-        /// אתחול הגדרות הלוגר מתוך התצורה
-        /// </summary>
         public static void Initialize(AppConfig config)
         {
             lock (_lock)
@@ -24,16 +21,8 @@ namespace ITBRecorderAgent
 
                 string targetPath = config.LogFilePath;
 
-                if (string.IsNullOrWhiteSpace(targetPath))
-                {
-                    // ברירת מחדל במידה והשדה ב-JSON ריק
-                    string defaultDir = @"C:\ProgramData\ITB-SCREEN-RECORDER\Logs";
-                    targetPath = Path.Combine(defaultDir, "Agent.log");
-                }
-
                 try
                 {
-                    // 💡 יצירת התיקייה בדיסק במידה ואינה קיימת
                     string? directory = Path.GetDirectoryName(targetPath);
                     if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                     {
@@ -41,11 +30,10 @@ namespace ITBRecorderAgent
                     }
 
                     _logFilePath = targetPath;
-                    Console.WriteLine($"[INFO] Log file path initialized: {_logFilePath}");
+                    Console.WriteLine($"[INFO] Log file path: {_logFilePath}");
                 }
                 catch (Exception ex)
                 {
-                    // Fallback ל-Temp רק במקרה של שגיאת הרשאות קריטית
                     _logFilePath = Path.Combine(Path.GetTempPath(), "ITB-Agent-Log.txt");
                     Console.WriteLine($"[WARN] Failed to initialize log path ({ex.Message}). Defaulting to temp: {_logFilePath}");
                 }
@@ -59,37 +47,21 @@ namespace ITBRecorderAgent
         private static void Log(string level, string message)
         {
             string formattedMessage = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] [{level}] {message}";
-
-            // הדפסה לקונסול
             Console.WriteLine(formattedMessage);
 
             if (!_enableFileLogging) return;
 
             lock (_lock)
             {
-                if (string.IsNullOrEmpty(_logFilePath))
-                {
-                    _logFilePath = @"C:\ProgramData\ITB-SCREEN-RECORDER\Logs\Agent.log";
-                    string? dir = Path.GetDirectoryName(_logFilePath);
-                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                    {
-                        Directory.CreateDirectory(dir);
-                    }
-                }
+                if (string.IsNullOrEmpty(_logFilePath)) return;
 
                 try
                 {
-                    // 💡 פתיחת הקובץ ב-FileShare.ReadWrite מאפשרת לקרוא את הלוג תוך כדי ריצת ה-Agent
-                    using (var fs = new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
-                    using (var writer = new StreamWriter(fs, Encoding.UTF8))
-                    {
-                        writer.WriteLine(formattedMessage);
-                    }
+                    using var fs = new FileStream(_logFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                    using var writer = new StreamWriter(fs, Encoding.UTF8);
+                    writer.WriteLine(formattedMessage);
                 }
-                catch
-                {
-                    // התעלמות מכשל כתיבה רגעי למניעת קריסה של התהליך
-                }
+                catch { }
             }
         }
     }
