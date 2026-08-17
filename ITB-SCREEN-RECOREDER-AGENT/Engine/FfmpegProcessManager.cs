@@ -20,7 +20,6 @@ namespace ITBRecorderAgent.Engine
         private readonly object _writeLock = new object();
         private bool _isDisposed = false;
 
-        // 💡 מניעת זריקת InvalidOperationException במידה והתהליך לא משויך
         public bool IsRunning
         {
             get
@@ -53,6 +52,17 @@ namespace ITBRecorderAgent.Engine
         {
             try
             {
+                // הבטחת קיום תיקיית יעד במידה ומדובר בנתיב מקומי (Offline Buffer)
+                if (destinationUrl.Contains(":\\") || destinationUrl.StartsWith("/"))
+                {
+                    string? dir = Path.GetDirectoryName(destinationUrl);
+                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                        Logger.Info($"[ENGINE] Created local buffer directory: {dir}");
+                    }
+                }
+
                 Logger.Info($"[FFMPEG] Resolved FFmpeg path: {_config.FFmpegPath}");
 
                 string activeEncoder = await HardwareProbe.ResolveEncoderAsync(_config.FFmpegPath, _config.VideoEncoder);
@@ -86,12 +96,6 @@ namespace ITBRecorderAgent.Engine
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-
-                // 💡 תיקון עבור Fontconfig: כפיית שימוש בתיקיית הפונטים של Windows
-                if (OperatingSystem.IsWindows())
-                {
-                    startInfo.EnvironmentVariables["FONTCONFIG_FILE"] = @"C:\Windows\Fonts";
-                }
 
                 _ffmpegProcess = new Process { StartInfo = startInfo };
 
@@ -159,9 +163,22 @@ namespace ITBRecorderAgent.Engine
         {
             if (OperatingSystem.IsWindows())
             {
-                // 💡 התיקון: מכיוון שמשתנה הסביבה FONTCONFIG_FILE כבר מוגדר, 
-                // אפשר פשוט לבקש את שם הפונט ללא שום נתיב או Escape characters ששוברים את ה-Parser.
-                return "arial.ttf";
+                string localFont = "arial.ttf";
+
+                // גישה מחוץ לקופסה: העתקת הפונט לתיקיית הריצה עוקפת לחלוטין את כל בעיות ה-Parsing וה-Fontconfig של FFmpeg
+                if (!File.Exists(localFont))
+                {
+                    try
+                    {
+                        File.Copy(@"C:\Windows\Fonts\arial.ttf", localFont, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"[ENGINE] Could not copy local font, execution will continue without it: {ex.Message}");
+                    }
+                }
+
+                return localFont; // החזרת שם קובץ נקי ללא אותיות כונן או לוכסנים
             }
 
             string[] linuxFontPaths =
@@ -211,13 +228,13 @@ namespace ITBRecorderAgent.Engine
             int gopSize = _config.TargetFps;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            // 1. וידאו קלט
+            // 1. קלט וידאו (מותאם לפורמט בזיכרון של רכיב ה-DXGI)
             ffmpegArgs.Append($"-thread_queue_size 1024 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
 
-            // 2. אודיו קלט ב-TCP
+            // 2. קלט אודיו ב-TCP
             ffmpegArgs.Append($"-thread_queue_size 1024 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
-            // פילטר טקסט חותמת זמן
+            // פילטר טקסט לחותמת זמן (ללא ציטוטים מיותרים שמרסקים את ה-Parser)
             long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
             string filterArg = $"-vf \"drawtext=fontfile={fontPath}:text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\" ";
             ffmpegArgs.Append(filterArg);
@@ -231,7 +248,7 @@ namespace ITBRecorderAgent.Engine
                 ffmpegArgs.Append("-c:a aac -b:a 128k ");
             }
 
-            // 5. אריזת FLV מהירה
+            // 5. אריזת FLV מהירה לשמירה מקומית או שידור
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
             ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
 
