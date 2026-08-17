@@ -57,9 +57,13 @@ export default function VideoPlayer({ hlsUrl, hostname }) {
                 html5: {
                     vhs: {
                         overrideNative: true,
-                        backBufferLength: 30,
-                        maxBufferLength: 15,
-                        liveSyncDuration: 10,
+                        backBufferLength: 10,
+                        // Must stay comfortably inside MediaMTX's live HLS window
+                        // (hlsSegmentCount * hlsSegmentDuration in mediamtx.yml, currently
+                        // 10s) or VHS requests segments that have already rolled off the
+                        // window and been deleted -> persistent 404s -> player stuck loading.
+                        maxBufferLength: 6,
+                        liveSyncDuration: 4,
                         enableLowInitialPlaylist: false,
                         smoothQualityChange: true
                     }

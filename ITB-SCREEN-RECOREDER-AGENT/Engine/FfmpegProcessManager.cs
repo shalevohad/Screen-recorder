@@ -194,6 +194,12 @@ namespace ITBRecorderAgent.Engine
                 presetValue = "p2";
                 hardwareFlags = "-tune ll -forced-idr 1";
             }
+            else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
+            {
+                presetValue = "veryfast";
+                // low_power: fixed-function low-latency encode path on Intel Quick Sync.
+                hardwareFlags = "-low_power 1";
+            }
             else
             {
                 presetValue = "ultrafast";
@@ -204,10 +210,15 @@ namespace ITBRecorderAgent.Engine
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
             // 1. וידאו קלט
-            ffmpegArgs.Append($"-thread_queue_size 1024 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
+            // use_wallclock_as_timestamps: stamp each frame by real arrival time instead of a
+            // nominal frame-count clock. Without this, capture jitter (DXGI overhead, GC pauses,
+            // frame padding) makes the encoded stream's timestamps silently drift from wall-clock
+            // time, which trips MediaMTX's recorder drift-detection and force-resets the segment
+            // every ~15-30s regardless of Storage.ChunkIntervalMinutes (see RULES.md rule 1).
+            ffmpegArgs.Append($"-thread_queue_size 1024 -use_wallclock_as_timestamps 1 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
 
             // 2. אודיו קלט ב-TCP
-            ffmpegArgs.Append($"-thread_queue_size 1024 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+            ffmpegArgs.Append($"-thread_queue_size 1024 -use_wallclock_as_timestamps 1 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
             // פילטר טקסט חותמת זמן
             long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
@@ -215,7 +226,14 @@ namespace ITBRecorderAgent.Engine
             ffmpegArgs.Append(filterArg);
 
             // 3. קידוד וידאו - החזרת אילוץ yuv420p לתאימות דפדפנים
-            ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 10M ");
+            // profile:v baseline is forced explicitly across all three encoders (libx264,
+            // h264_nvenc, h264_qsv all accept it) so the actual bitstream profile is
+            // deterministic. Without it, the encoded profile is left implicit/encoder-decided
+            // and can end up not matching what MediaMTX declares in the HLS manifest's CODECS
+            // attribute (observed: manifest declared High Profile "avc1.640028" while the
+            // actual libx264 output was Constrained Baseline) - browsers' strict MSE codec
+            // validation rejects that mismatch with MEDIA_ERR_DECODE.
+            ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -profile:v baseline -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 10M ");
 
             // 4. קידוד אודיו
             if (audioChannels > 0)
