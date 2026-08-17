@@ -22,6 +22,7 @@ public class RecordingChunkScheduler : BackgroundService
     private readonly IOptionsMonitor<SystemConfig> _configMonitor;
     private readonly StoragePathResolver _storageResolver;
     private readonly MediaMtxApiClient _apiClient;
+    private readonly EventLogger _eventLogger;
     private readonly ILogger<RecordingChunkScheduler> _logger;
 
     private string? _lastAppliedRoot;
@@ -30,11 +31,13 @@ public class RecordingChunkScheduler : BackgroundService
         IOptionsMonitor<SystemConfig> configMonitor,
         StoragePathResolver storageResolver,
         MediaMtxApiClient apiClient,
+        EventLogger eventLogger,
         ILogger<RecordingChunkScheduler> logger)
     {
         _configMonitor = configMonitor;
         _storageResolver = storageResolver;
         _apiClient = apiClient;
+        _eventLogger = eventLogger;
         _logger = logger;
     }
 
@@ -99,7 +102,8 @@ public class RecordingChunkScheduler : BackgroundService
         var activePaths = await _apiClient.GetActivePathNamesAsync(config.MediaMtx.ApiPort, stoppingToken).ConfigureAwait(false);
         foreach (string path in activePaths)
         {
-            await _apiClient.RotatePathRecordingAsync(config.MediaMtx.ApiPort, path, stoppingToken).ConfigureAwait(false);
+            bool rotated = await _apiClient.RotatePathRecordingAsync(config.MediaMtx.ApiPort, path, stoppingToken).ConfigureAwait(false);
+            await _eventLogger.LogChunkCutAsync(config.Storage.ChunkEventLogPath, path, root, rotated, stoppingToken).ConfigureAwait(false);
         }
 
         if (activePaths.Count > 0)

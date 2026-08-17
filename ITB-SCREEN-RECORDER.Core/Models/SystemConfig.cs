@@ -53,6 +53,9 @@ namespace ITB_SCREEN_RECORDER.Core.Models
 
         [Range(1, 365)]
         public int RetentionDays { get; set; }
+
+        [Required(ErrorMessage = "ChunkEventLogPath is required in appsettings.json")]
+        public string ChunkEventLogPath { get; set; } = string.Empty;
     }
 
     public class SecuritySettings

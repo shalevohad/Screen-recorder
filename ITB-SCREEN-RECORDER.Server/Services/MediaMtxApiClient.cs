@@ -97,7 +97,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             }
         }
 
-        public async Task RotatePathRecordingAsync(int apiPort, string pathName, CancellationToken cancellationToken)
+        public async Task<bool> RotatePathRecordingAsync(int apiPort, string pathName, CancellationToken cancellationToken)
         {
             string encodedName = Uri.EscapeDataString(pathName);
 
@@ -110,8 +110,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             // Toggling record off then on forces MediaMTX to close the in-progress
             // segment and immediately open a new one, i.e. an exact-boundary cut.
-            await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = false }, cancellationToken).ConfigureAwait(false);
-            await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = true }, cancellationToken).ConfigureAwait(false);
+            bool offOk = await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = false }, cancellationToken).ConfigureAwait(false);
+            bool onOk = await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = true }, cancellationToken).ConfigureAwait(false);
+            return offOk && onOk;
         }
 
         private async Task EnsurePathEntryExistsAsync(int apiPort, string encodedName, CancellationToken cancellationToken)

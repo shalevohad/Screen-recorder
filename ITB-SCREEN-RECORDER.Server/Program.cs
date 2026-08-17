@@ -50,6 +50,7 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<StoragePathResolver>();
             builder.Services.AddSingleton<MediaMtxApiClient>();
+            builder.Services.AddSingleton<EventLogger>();
 
             // שירות רקע (Background Worker) המנהל ומנטר את תהליך ה-MediaMTX הבינארי
             builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
