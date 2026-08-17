@@ -34,12 +34,14 @@ export default function StationThumbnail({
         return '#ef4444';
     };
 
+    // Must stay comfortably inside MediaMTX's live HLS window (hlsSegmentCount *
+    // hlsSegmentDuration in mediamtx.yml, currently 10s) or VHS requests segments that
+    // have already rolled off the window and been deleted -> persistent 404s -> stuck loading.
     const hlsConfig = {
-        bufferSize: 30,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        targetDuration: 8,
-        liveEdgeFudgeDuration: 2
+        backBufferLength: 10,
+        maxBufferLength: 6,
+        liveSyncDuration: 4,
+        enableLowInitialPlaylist: false
     };
 
     React.useEffect(() => {
@@ -69,7 +71,7 @@ export default function StationThumbnail({
                 fluid: true,
                 responsive: true,
                 liveui: true,
-                html5: { hls: hlsConfig },
+                html5: { vhs: hlsConfig },
                 liveTracker: { trackingThreshold: 3, liveTolerance: 5 }
             }, function () {
                 this.on('error', () => {
