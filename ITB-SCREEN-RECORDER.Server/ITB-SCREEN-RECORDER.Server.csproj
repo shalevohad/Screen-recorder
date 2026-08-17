@@ -39,8 +39,8 @@
   </ItemGroup>
 
     <Target Name="CompileFrontend" BeforeTargets="Build" Condition="Exists('ClientApp\package.json')">
-    <Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Launching static Vite build from ClientApp (if npm available)..." />
-    <!-- Only attempt to run npm build when npm is available on PATH. This prevents build failures on machines without Node/NPM. -->
-  <Exec Command="where npm &gt;nul 2&gt;1 &amp;&amp; npm run build -s || echo Skipping client build (npm not found)" WorkingDirectory="ClientApp" ContinueOnError="true" />
+	    <Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies and building ClientApp..." />
+	    <Exec Command="npm install" WorkingDirectory="ClientApp" Condition="!Exists('ClientApp\node_modules')" />
+	    <Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
     </Target>
 </Project>
