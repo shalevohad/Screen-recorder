@@ -20,7 +20,7 @@ namespace ITBRecorderAgent.Engine
         private readonly object _writeLock = new object();
         private bool _isDisposed = false;
 
-        // 💡 תיקון קריטי: מניעת זריקת InvalidOperationException במידה והתהליך לא משויך
+        // 💡 מניעת זריקת InvalidOperationException במידה והתהליך לא משויך
         public bool IsRunning
         {
             get
@@ -86,6 +86,12 @@ namespace ITBRecorderAgent.Engine
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+
+                // 💡 תיקון עבור Fontconfig: כפיית שימוש בתיקיית הפונטים של Windows
+                if (OperatingSystem.IsWindows())
+                {
+                    startInfo.EnvironmentVariables["FONTCONFIG_FILE"] = @"C:\Windows\Fonts";
+                }
 
                 _ffmpegProcess = new Process { StartInfo = startInfo };
 
@@ -153,7 +159,9 @@ namespace ITBRecorderAgent.Engine
         {
             if (OperatingSystem.IsWindows())
             {
-                return "/Windows/Fonts/arial.ttf";
+                // 💡 התיקון: מכיוון שמשתנה הסביבה FONTCONFIG_FILE כבר מוגדר, 
+                // אפשר פשוט לבקש את שם הפונט ללא שום נתיב או Escape characters ששוברים את ה-Parser.
+                return "arial.ttf";
             }
 
             string[] linuxFontPaths =
@@ -214,7 +222,7 @@ namespace ITBRecorderAgent.Engine
             string filterArg = $"-vf \"drawtext=fontfile={fontPath}:text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\" ";
             ffmpegArgs.Append(filterArg);
 
-            // 3. קידוד וידאו - החזרת אילוץ yuv420p לתאימות דפדפנים
+            // 3. קידוד וידאו
             ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 10M ");
 
             // 4. קידוד אודיו
