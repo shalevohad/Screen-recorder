@@ -8,7 +8,8 @@ using ITBRecorderAgent.Core;
 
 namespace ITBRecorderAgent.Providers.Audio
 {
-    public class WasapiDualMixer : IDisposable
+    // 💡 התיקון: הצהרת מימוש רשמית של IAudioCaptureProvider כדי לפתור את שגיאת ה-Factory
+    public class WasapiDualMixer : IAudioCaptureProvider
     {
         private MMDeviceEnumerator? _deviceEnumerator;
         private AudioDeviceNotifier? _deviceNotifier;
@@ -25,9 +26,9 @@ namespace ITBRecorderAgent.Providers.Audio
         public int Channels => 2;
         public string FFmpegFormat => "f32le";
 
-        // חשיפת סטטוס חומרה אמיתי למנוע הטלמטריה
         public bool HasActiveLoopback => _loopbackStream?.IsRealDeviceActive ?? false;
         public bool HasActiveMicrophone => _micStream?.IsRealDeviceActive ?? false;
+        public bool IsRunning { get; private set; } // 💡 נדרש על ידי ה-Interface
 
         public event EventHandler<byte[]>? AudioDataAvailable;
 
@@ -72,7 +73,6 @@ namespace ITBRecorderAgent.Providers.Audio
                 _loopbackStream.Start(defaultRender, isLoopback: true);
                 _micStream.Start(defaultCapture, isLoopback: false);
 
-                // 💡 נרמול אקטיבי של ערוצי השמע לפורמט היעד (48kHz Stereo Float) למניעת Mismatch
                 var loopbackSampleProvider = EnsureTargetFormat(_loopbackStream.Buffer);
                 var micSampleProvider = EnsureTargetFormat(_micStream.Buffer);
 
@@ -81,17 +81,14 @@ namespace ITBRecorderAgent.Providers.Audio
                 _mixer.AddMixerInput(micSampleProvider);
 
                 StartRenderLoop();
+                IsRunning = true; // עדכון הסטטוס
             }
         }
 
-        /// <summary>
-        /// מנרמל וממיר כל קלט שמע (IWaveProvider) לפורמט אחיד של 48kHz ו-2 ערוצים (Stereo IEEE Float)
-        /// </summary>
         private ISampleProvider EnsureTargetFormat(IWaveProvider waveProvider)
         {
             ISampleProvider sampleProvider = waveProvider.ToSampleProvider();
 
-            // 1. נרמול ערוצים (Mono -> Stereo או Downmix מ-Surround ל-Stereo)
             if (sampleProvider.WaveFormat.Channels == 1 && Channels == 2)
             {
                 sampleProvider = new MonoToStereoSampleProvider(sampleProvider);
@@ -99,12 +96,11 @@ namespace ITBRecorderAgent.Providers.Audio
             else if (sampleProvider.WaveFormat.Channels > 2)
             {
                 var multiplexer = new MultiplexingSampleProvider(new[] { sampleProvider }, 2);
-                multiplexer.ConnectInputToOutput(0, 0); // Left
-                multiplexer.ConnectInputToOutput(1, 1); // Right
+                multiplexer.ConnectInputToOutput(0, 0);
+                multiplexer.ConnectInputToOutput(1, 1);
                 sampleProvider = multiplexer;
             }
 
-            // 2. נרמול תדר דגימה (למשל 44.1kHz / 96kHz -> 48kHz)
             if (sampleProvider.WaveFormat.SampleRate != SampleRate)
             {
                 sampleProvider = new WdlResamplingSampleProvider(sampleProvider, SampleRate);
@@ -127,13 +123,26 @@ namespace ITBRecorderAgent.Providers.Audio
                 float[] sampleBuffer = new float[bufferSize / 4];
                 byte[] byteBuffer = new byte[bufferSize];
 
-                Logger.Info("[AUDIO] Shared-Memory Audio Mixing Engine Pipeline started.");
+                Logger.Info("[AUDIO] Shared-Memory Audio Mixing Engine Pipeline started (Anti-Starvation Active).");
 
                 while (!token.IsCancellationRequested)
                 {
                     if (_mixer != null)
                     {
-                        int samplesRead = _mixer.Read(sampleBuffer, 0, sampleBuffer.Length);
+                        int samplesRead = 0;
+                        try
+                        {
+                            samplesRead = _mixer.Read(sampleBuffer, 0, sampleBuffer.Length);
+                        }
+                        catch { }
+
+                        // מנגנון ה-Anti-Starvation: הזרקת באפר אפסים (שקט) במקרה ש-Windows לא מחזירה פריימים
+                        if (samplesRead < sampleBuffer.Length)
+                        {
+                            Array.Clear(sampleBuffer, samplesRead, sampleBuffer.Length - samplesRead);
+                            samplesRead = sampleBuffer.Length;
+                        }
+
                         if (samplesRead > 0)
                         {
                             System.Buffer.BlockCopy(sampleBuffer, 0, byteBuffer, 0, samplesRead * 4);
@@ -163,6 +172,7 @@ namespace ITBRecorderAgent.Providers.Audio
             _micStream?.Dispose();
             _micStream = null;
             _mixer = null;
+            IsRunning = false;
         }
 
         public void Stop() => StopCaptureStreamsOnly();

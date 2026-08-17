@@ -7,14 +7,14 @@ using System.Threading.Tasks;
 using ITBRecorderAgent.Engine;
 using ITBRecorderAgent.Providers.Audio;
 using ITBRecorderAgent.Providers.Video;
-using ITB_SCREEN_RECORDER.Core.Models; // שימוש במודל המשותף
+using ITB_SCREEN_RECORDER.Core.Models;
 
 namespace ITBRecorderAgent.Core
 {
     public class AgentEngine : IDisposable
     {
         // ========================================================
-        // NVIDIA NVML API (P/Invoke) Direct Interop
+        // NVIDIA NVML API (P/Invoke) Direct Interop (Windows Only Guarded)
         // ========================================================
         private const string NvmlDll = "nvml.dll";
 
@@ -30,8 +30,8 @@ namespace ITBRecorderAgent.Core
         [StructLayout(LayoutKind.Sequential)]
         private struct NvmlUtilization
         {
-            public uint Gpu;    // אחוזי עומס על הליבה הגרפית
-            public uint Memory; // אחוזי עומס על בקר הזיכרון
+            public uint Gpu;
+            public uint Memory;
         }
 
         [DllImport(NvmlDll, CallingConvention = CallingConvention.Cdecl)]
@@ -41,10 +41,11 @@ namespace ITBRecorderAgent.Core
         private readonly AppConfig _config;
         private readonly string _rtmpTarget;
         private FfmpegProcessManager? _ffmpegManager;
-        private DxgiScreenCapture? _screenCapture;
-        private WasapiDualMixer? _audioCapture;
-        private TelemetryReporter? _telemetry;
 
+        private IScreenCaptureProvider? _screenCapture;
+        private IAudioCaptureProvider? _audioCapture;
+
+        private TelemetryReporter? _telemetry;
         private PerformanceCounter? _cpuCounter;
         private IntPtr _nvmlDeviceHandle = IntPtr.Zero;
         private bool _isNvmlInitialized = false;
@@ -53,6 +54,7 @@ namespace ITBRecorderAgent.Core
         private bool _shouldStreamActive;
         private bool _isInOfflineMode = false;
         private readonly object _stateLock = new object();
+        private byte[]? _lastVideoFrame; // חוצץ זיכרון פריים למניעת הרעבה (Frame Padding)
 
         public bool IsFfmpegActive => _ffmpegManager != null && _ffmpegManager.IsRunning;
         public bool IsCaptureInitialized => _screenCapture != null;
@@ -63,70 +65,39 @@ namespace ITBRecorderAgent.Core
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
 
-            // בניית נתיב ה-RTMP בטוח
             string rawMachineName = Environment.MachineName;
             string safeMachineName = Uri.EscapeDataString(rawMachineName.Replace(" ", "_"));
             _rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
 
-            // קביעת מצב הפעלה ראשוני
             _shouldStreamActive = _config.AutoStartRecordingOnLaunch;
-            if (_shouldStreamActive)
-            {
-                Logger.Info("AutoStartRecordingOnLaunch is TRUE. Media pipelines will initialize automatically on start.");
-            }
-            else
-            {
-                Logger.Info("AutoStartRecordingOnLaunch is FALSE. Waiting for central server commands.");
-            }
 
-            // 1. אתחול מוניטור CPU
-            try
+            if (OperatingSystem.IsWindows())
             {
-                _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-                _cpuCounter.NextValue();
-                Logger.Info("[DIAGNOSTICS] CPU Performance counter initialized successfully.");
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"[DIAGNOSTICS] CPU counter failed to initialize: {ex.Message}");
-            }
-
-            // 2. אתחול NVML
-            try
-            {
-                int initResult = nvmlInit_v2();
-                if (initResult == 0) // 0 == NVML_SUCCESS
+                try
                 {
-                    _isNvmlInitialized = true;
-                    // תפיסת כרטיס המסך הראשון במערכת (Index 0)
-                    int handleResult = nvmlDeviceGetHandleByIndex_v2(0, out _nvmlDeviceHandle);
-                    if (handleResult == 0)
+                    _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+                    _cpuCounter.NextValue();
+                }
+                catch { }
+
+                try
+                {
+                    if (nvmlInit_v2() == 0)
                     {
-                        Logger.Info("[DIAGNOSTICS] NVIDIA NVML Connected. Direct GPU hardware monitoring active.");
-                    }
-                    else
-                    {
-                        Logger.Warn($"[DIAGNOSTICS] NVML initialized but failed to get device handle. Code: {handleResult}");
+                        _isNvmlInitialized = true;
+                        nvmlDeviceGetHandleByIndex_v2(0, out _nvmlDeviceHandle);
                     }
                 }
-                else
-                {
-                    Logger.Warn($"[DIAGNOSTICS] NVIDIA NVML library found but failed to initialize. Code: {initResult}");
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"[DIAGNOSTICS] NVIDIA NVML Native API mapping bypassed: {ex.Message}");
+                catch { }
             }
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            // הפעלת שירות הטלמטריה
             _telemetry = new TelemetryReporter(_config.DashboardApiUrl);
             _ = Task.Run(() => _telemetry.StartReportingAsync(GetCurrentTelemetryReport, HandleServerCommand, cancellationToken), cancellationToken);
 
-            Logger.Info("Agent Engine State Machine Ready.");
+            Logger.Info("Agent Engine State Machine Ready (Cross-Platform TCP).");
             int targetFrameTimeMs = 1000 / _config.TargetFps;
 
             while (!cancellationToken.IsCancellationRequested)
@@ -137,108 +108,60 @@ namespace ITBRecorderAgent.Core
                     currentStreamState = _shouldStreamActive;
                 }
 
-                // ניהול מצב אופליין - מעבר לחוצץ מקומי במידה והרשת נופלת ויש דרישה לשידור
                 bool requiresActivePipeline = currentStreamState || (_config.AutoStartRecordingOnLaunch && !_telemetry.IsOnline);
 
                 if (!_telemetry.IsOnline && !_isInOfflineMode && requiresActivePipeline)
                 {
                     _isInOfflineMode = true;
-                    Logger.Warn("Command Channel Disconnected while active. Forcing Safe Local Offline Buffer Recording...");
-                    TeardownMediaPipelines(); // שחרור הצינורות הישנים (שמכוונים ל-RTMP)
-                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false); // זמן התאוששות
+                    Logger.Warn("Command Channel Disconnected. Forcing Local Offline Buffer...");
+                    TeardownMediaPipelines();
+                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                 }
                 else if (_telemetry.IsOnline && _isInOfflineMode)
                 {
                     _isInOfflineMode = false;
                     Logger.Info("Command Channel Restored. Closing offline buffer.");
-                    TeardownMediaPipelines(); // שחרור צינורות ההקלטה המקומית
+                    TeardownMediaPipelines();
                     await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                 }
 
-                // מצב המתנה: אין דרישה לשידור (גם לא אופליין), אז פשוט ממתינים לפקודה הבאה
                 if (!requiresActivePipeline)
                 {
                     await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
-                // ==========================================
-                // בניית הצינורות מחדש (אם נדרש)
-                // ==========================================
-
-                // 1. אתחול DXGI ללכידת מסך
+                // 1. אתחול מודול לכידת מסך
                 if (_screenCapture == null)
                 {
                     try
                     {
-                        _screenCapture = new DxgiScreenCapture();
+                        _screenCapture = ScreenCaptureFactory.Create();
                         _screenCapture.Initialize();
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error($"Failed to initialize DXGI Screen Capture: {ex.Message}");
+                        Logger.Error($"Failed to initialize Screen Capture: {ex.Message}");
                         await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
                         continue;
                     }
                 }
 
-                // 2. אתחול FFmpeg
-                if (_ffmpegManager == null || !_ffmpegManager.IsRunning)
-                {
-                    DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
-                    string destination = _isInOfflineMode ? GetLocalBufferPath(calibratedTime) : _rtmpTarget;
-
-                    _ffmpegManager = new FfmpegProcessManager(_config);
-
-                    int sampleRate = 48000;
-                    int channels = 2;
-                    string fmt = "f32le";
-
-                    bool started = await _ffmpegManager.StartAsync(
-                        destination,
-                        calibratedTime,
-                        _screenCapture.Width,
-                        _screenCapture.Height,
-                        sampleRate,
-                        channels,
-                        fmt,
-                        cancellationToken).ConfigureAwait(false);
-
-                    if (!started)
-                    {
-                        Logger.Error("Failed to launch FFmpeg process.");
-                        TeardownMediaPipelines();
-                        await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
-                        continue;
-                    }
-
-                    // הזרקת פריים ראשון לאתחול צינור הווידאו
-                    byte[] initialFrame = new byte[_screenCapture.Width * _screenCapture.Height * 4];
-                    _ffmpegManager.WriteVideoFrame(initialFrame);
-
-                    // המתנה לקליטת אודיו
-                    bool audioConnected = await _ffmpegManager.CompleteAudioHandshakeAsync(cancellationToken).ConfigureAwait(false);
-                    if (!audioConnected)
-                    {
-                        Logger.Error("FFmpeg audio handshake failed. Resetting pipeline...");
-                        TeardownMediaPipelines();
-                        await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
-                        continue;
-                    }
-                }
-
-                // 3. אתחול WASAPI לאודיו
+                // 2. [שינוי סדר קריטי] אתחול והפעלת ה-Audio Provider *לפני* הזרקת ה-FFmpeg
                 if (_audioCapture == null)
                 {
                     try
                     {
-                        _audioCapture = new WasapiDualMixer();
+                        _audioCapture = AudioCaptureFactory.Create();
                         _audioCapture.Initialize();
                         _audioCapture.AudioDataAvailable += (s, data) =>
                         {
                             _ffmpegManager?.WriteAudioData(data);
                         };
                         _audioCapture.Start();
+
+                        // השהייה קלה לייצוב זרם הסאונד הגולמי בזיכרון
+                        await Task.Delay(100, cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -246,20 +169,77 @@ namespace ITBRecorderAgent.Core
                     }
                 }
 
+                // 3. אתחול מנהל ה-FFmpeg וביצוע לחיצת יד של ה-TCP
+                if (_ffmpegManager == null || !_ffmpegManager.IsRunning)
+                {
+                    DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
+                    string destination = _isInOfflineMode ? GetLocalBufferPath(calibratedTime) : _rtmpTarget;
+
+                    _ffmpegManager = new FfmpegProcessManager(_config);
+                    _lastVideoFrame = null;
+
+                    bool started = await _ffmpegManager.StartAsync(
+                        destination,
+                        calibratedTime,
+                        _screenCapture.Width,
+                        _screenCapture.Height,
+                        48000,
+                        2,
+                        "f32le",
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (!started)
+                    {
+                        TeardownMediaPipelines();
+                        await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    // הזרקת פריים ראשוני לפתיחת ה-Pipeline של וידאו Stdin
+                    byte[] initialFrame = new byte[_screenCapture.Width * _screenCapture.Height * 4];
+                    _ffmpegManager.WriteVideoFrame(initialFrame);
+
+                    // השלמת חיבור ה-TCP - עכשיו יעבור מיד עקב קיום סאונד מוכן
+                    bool audioConnected = await _ffmpegManager.CompleteAudioHandshakeAsync(cancellationToken).ConfigureAwait(false);
+                    if (!audioConnected)
+                    {
+                        TeardownMediaPipelines();
+                        await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+                }
+
                 // ==========================================
-                // לכידת פריימים רציפה ושליחה
+                // לכידת מסך רציפה (Frame Padding Active)
                 // ==========================================
                 long swStart = Stopwatch.GetTimestamp();
+                byte[]? currentFrame = null;
 
                 if (_screenCapture.TryCaptureFrame(out byte[]? frameData) && frameData is not null)
                 {
-                    MouseCursorOverlay.DrawMouseToFrame(frameData, _screenCapture.Width, _screenCapture.Height);
+                    _lastVideoFrame = frameData;
+                    currentFrame = frameData;
+                }
+                else if (_lastVideoFrame != null)
+                {
+                    currentFrame = _lastVideoFrame;
+                }
 
-                    if (!_ffmpegManager.WriteVideoFrame(frameData))
+                if (currentFrame != null)
+                {
+                    byte[] frameToWrite = new byte[currentFrame.Length];
+                    Buffer.BlockCopy(currentFrame, 0, frameToWrite, 0, currentFrame.Length);
+
+                    if (OperatingSystem.IsWindows())
+                    {
+                        MouseCursorOverlay.DrawMouseToFrame(frameToWrite, _screenCapture.Width, _screenCapture.Height);
+                    }
+
+                    if (!_ffmpegManager.WriteVideoFrame(frameToWrite))
                     {
                         Logger.Error("Media pipe broken during frame write. Resetting pipeline.");
                         TeardownMediaPipelines();
-                        continue; // מדלג ללולאה הבאה כדי לפרק ולהרכיב מחדש
+                        continue;
                     }
                 }
 
@@ -272,10 +252,6 @@ namespace ITBRecorderAgent.Core
                 }
             }
         }
-
-        // ========================================================
-        // מתודות עזר, טלמטריה וסנכרון
-        // ========================================================
 
         private AgentTelemetryReport GetCurrentTelemetryReport()
         {
@@ -313,13 +289,14 @@ namespace ITBRecorderAgent.Core
 
         private float GetCpuUsageSafe()
         {
+            if (!OperatingSystem.IsWindows()) return 0f;
             try { return _cpuCounter?.NextValue() ?? 0f; }
             catch { return 0f; }
         }
 
         private float GetGpuUsageSafe()
         {
-            if (!_isNvmlInitialized || _nvmlDeviceHandle == IntPtr.Zero) return 0f;
+            if (!OperatingSystem.IsWindows() || !_isNvmlInitialized || _nvmlDeviceHandle == IntPtr.Zero) return 0f;
             try
             {
                 int res = nvmlDeviceGetUtilizationRates(_nvmlDeviceHandle, out NvmlUtilization utilization);
@@ -348,14 +325,11 @@ namespace ITBRecorderAgent.Core
             {
                 _serverUtcOffset = response.ServerTime - DateTime.UtcNow;
 
-                // השרת הוא הסמכות הבלעדית! 
-                // אם השרת שינה את המצב הרצוי (למשל מנהל מערכת כיבה את השידור בדשבורד)
                 if (response.ShouldStream != _shouldStreamActive)
                 {
                     _shouldStreamActive = response.ShouldStream;
                     Logger.Info($"[C2 COMMAND] Server enforced new streaming state: {_shouldStreamActive}");
 
-                    // אם השרת הורה להפסיק שידור -> מפרקים את צינורות המדיה באופן מידי ובטוח
                     if (!_shouldStreamActive)
                     {
                         Task.Run(() => TeardownMediaPipelines());
@@ -367,7 +341,7 @@ namespace ITBRecorderAgent.Core
         private string GetLocalBufferPath(DateTime time)
         {
             string bufferDir = string.IsNullOrWhiteSpace(_config.LocalBufferPath)
-                ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
+                ? (OperatingSystem.IsWindows() ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer" : "/tmp/itb_buffer/")
                 : _config.LocalBufferPath;
 
             Directory.CreateDirectory(bufferDir);
@@ -376,8 +350,6 @@ namespace ITBRecorderAgent.Core
 
         private void TeardownMediaPipelines()
         {
-            // שים לב: הוצאנו את ה-lock (_stateLock) מכאן לחלוטין כדי למנוע Deadlocks.
-            // אובייקטי ה-Capture שלנו מנהלים Thread-Safety עצמאית לפי התכנון.
             try
             {
                 if (_audioCapture != null)
@@ -399,6 +371,7 @@ namespace ITBRecorderAgent.Core
                     _screenCapture = null;
                 }
 
+                _lastVideoFrame = null;
                 Logger.Info("Media pipelines dismantled cleanly.");
             }
             catch (Exception ex)
@@ -410,11 +383,14 @@ namespace ITBRecorderAgent.Core
         public void Dispose()
         {
             TeardownMediaPipelines();
-            _cpuCounter?.Dispose();
 
-            if (_isNvmlInitialized)
+            if (OperatingSystem.IsWindows())
             {
-                try { nvmlShutdown(); } catch { }
+                _cpuCounter?.Dispose();
+                if (_isNvmlInitialized)
+                {
+                    try { nvmlShutdown(); } catch { }
+                }
             }
 
             Logger.Info("Agent Core resources disposed cleanly.");

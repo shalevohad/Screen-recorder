@@ -28,9 +28,18 @@ namespace ITBRecorderAgent.Core
                     ReadCommentHandling = JsonCommentHandling.Skip
                 };
 
-                var config = JsonSerializer.Deserialize<AppConfig>(jsonContent, options);
+                var config = JsonSerializer.Deserialize<AppConfig>(jsonContent, options) ?? new AppConfig();
+
+                // If FFmpegPath was loaded from config, ensure it's resolved properly
+                // This will trigger the resolution logic in the FFmpegPath property getter
+                if (!string.IsNullOrEmpty(config.FFmpegPath))
+                {
+                    // Accessing FFmpegPath property will call ResolveFFmpegPath() if needed
+                    _ = config.FFmpegPath;
+                }
+
                 Logger.Info("Configuration loaded successfully from appsettings.json.");
-                return config ?? new AppConfig();
+                return config;
             }
             catch (Exception ex)
             {
