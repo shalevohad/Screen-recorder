@@ -219,6 +219,12 @@ namespace ITBRecorderAgent.Engine
                 presetValue = "p2";
                 hardwareFlags = "-tune ll -forced-idr 1";
             }
+            else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
+            {
+                presetValue = "veryfast";
+                // low_power: fixed-function low-latency encode path on Intel Quick Sync.
+                hardwareFlags = "-low_power 1";
+            }
             else
             {
                 presetValue = "ultrafast";

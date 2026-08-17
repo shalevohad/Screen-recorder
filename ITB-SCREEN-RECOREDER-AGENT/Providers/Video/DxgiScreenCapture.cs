@@ -20,6 +20,12 @@ namespace ITBRecorderAgent.Providers.Video
         private IDXGIOutputDuplication? _deskDupl;
         private ID3D11Texture2D? _stagingTexture;
 
+        // Throttles reinitialize attempts once IsInitialized has gone false (e.g. screen
+        // lock/UAC secure desktop/RDP disconnect) so TryCaptureFrame keeps retrying instead
+        // of giving up permanently after a single failed reinit attempt.
+        private DateTime _lastReinitAttemptUtc = DateTime.MinValue;
+        private static readonly TimeSpan ReinitRetryInterval = TimeSpan.FromSeconds(2);
+
         public void Initialize()
         {
             try
@@ -74,8 +80,28 @@ namespace ITBRecorderAgent.Providers.Video
         public bool TryCaptureFrame(out byte[]? frameData)
         {
             frameData = null;
+
             if (!IsInitialized || _deskDupl == null || _stagingTexture == null || _context == null)
-                return false;
+            {
+                // Keep retrying periodically instead of staying permanently dead after one
+                // failed reinit - the desktop becomes accessible again once the screen
+                // unlocks, the UAC secure desktop closes, or the RDP session reconnects.
+                if (DateTime.UtcNow - _lastReinitAttemptUtc >= ReinitRetryInterval)
+                {
+                    _lastReinitAttemptUtc = DateTime.UtcNow;
+                    try
+                    {
+                        Initialize();
+                    }
+                    catch
+                    {
+                        // Still inaccessible; Initialize() already logged and disposed. Try again next interval.
+                    }
+                }
+
+                if (!IsInitialized || _deskDupl == null || _stagingTexture == null || _context == null)
+                    return false;
+            }
 
             try
             {
@@ -128,6 +154,7 @@ namespace ITBRecorderAgent.Providers.Video
 
         private void Reinitialize()
         {
+            _lastReinitAttemptUtc = DateTime.UtcNow;
             Dispose();
             Initialize();
         }
