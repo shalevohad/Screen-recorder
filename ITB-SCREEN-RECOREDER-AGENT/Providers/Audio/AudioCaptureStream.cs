@@ -1,4 +1,6 @@
-﻿using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
+﻿#if WINDOWS
+
+using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System;
@@ -130,3 +132,5 @@ namespace ITBRecorderAgent.Providers.Audio
         }
     }
 }
+
+#endif

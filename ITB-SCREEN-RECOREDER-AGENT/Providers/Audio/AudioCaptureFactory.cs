@@ -6,10 +6,12 @@ namespace ITBRecorderAgent.Providers.Audio
     {
         public static IAudioCaptureProvider Create()
         {
+            #if WINDOWS
             if (OperatingSystem.IsWindows())
             {
                 return new WasapiDualMixer();
             }
+            #endif
 
             if (OperatingSystem.IsLinux())
             {

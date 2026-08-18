@@ -1,4 +1,7 @@
-﻿using System;
+﻿// 💡 חומת הקומפילציה: הלינוקס יתעלם לחלוטין מהקובץ הזה
+#if WINDOWS
+
+using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -90,3 +93,5 @@ namespace ITBRecorderAgent.Providers.Video
         }
     }
 }
+
+#endif // סגירת בלוק ה-Windows

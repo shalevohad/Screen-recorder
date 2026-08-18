@@ -1,4 +1,7 @@
-﻿using System;
+﻿// 💡 השורה הזו בתחילת הקובץ אומרת ללינוקס: "תתעלם מכל מה שיש פה!"
+#if WINDOWS
+
+using System;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
@@ -201,3 +204,5 @@ namespace ITBRecorderAgent.Providers.Audio
         }
     }
 }
+
+#endif // סגירת הבלוק בסוף הקובץ

@@ -1,4 +1,6 @@
-﻿using System;
+﻿// 💡 השורה הזו בתחילת הקובץ אומרת ללינוקס: "תתעלם מכל מה שיש פה!"
+#if WINDOWS
+using System;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Vortice.Direct3D;
@@ -173,3 +175,5 @@ namespace ITBRecorderAgent.Providers.Video
         }
     }
 }
+
+#endif // סגירת הבלוק בסוף הקובץ

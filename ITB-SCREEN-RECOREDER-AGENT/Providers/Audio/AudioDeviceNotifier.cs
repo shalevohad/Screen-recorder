@@ -1,4 +1,6 @@
-﻿using NAudio.CoreAudioApi;
+﻿#if WINDOWS
+
+using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using System;
 using System.Runtime.Versioning;
@@ -28,3 +30,5 @@ namespace ITBRecorderAgent.Providers.Audio
         public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
     }
 }
+
+#endif

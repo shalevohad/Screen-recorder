@@ -6,10 +6,12 @@ namespace ITBRecorderAgent.Providers.Video
     {
         public static IScreenCaptureProvider Create()
         {
+            #if WINDOWS
             if (OperatingSystem.IsWindows())
             {
                 return new DxgiScreenCapture();
             }
+            #endif
 
             if (OperatingSystem.IsLinux())
             {
