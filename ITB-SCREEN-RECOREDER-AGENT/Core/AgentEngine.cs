@@ -230,10 +230,12 @@ namespace ITBRecorderAgent.Core
                     byte[] frameToWrite = new byte[currentFrame.Length];
                     Buffer.BlockCopy(currentFrame, 0, frameToWrite, 0, currentFrame.Length);
 
+                    #if WINDOWS
                     if (OperatingSystem.IsWindows())
                     {
                         MouseCursorOverlay.DrawMouseToFrame(frameToWrite, _screenCapture.Width, _screenCapture.Height);
                     }
+                    #endif
 
                     if (!_ffmpegManager.WriteVideoFrame(frameToWrite))
                     {
