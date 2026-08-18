@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import StationThumbnail from './components/StationThumbnail';
 import './styles/App.scss';
 
