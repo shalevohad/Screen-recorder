@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 using NAudio.CoreAudioApi;
@@ -8,7 +9,8 @@ using ITBRecorderAgent.Core;
 
 namespace ITBRecorderAgent.Providers.Audio
 {
-    // 💡 התיקון: הצהרת מימוש רשמית של IAudioCaptureProvider כדי לפתור את שגיאת ה-Factory
+    // 💡 ההצהרה הארכיטקטונית המודרנית שמחליפה את ה-#if 
+    [SupportedOSPlatform("windows")]
     public class WasapiDualMixer : IAudioCaptureProvider
     {
         private MMDeviceEnumerator? _deviceEnumerator;
@@ -28,7 +30,7 @@ namespace ITBRecorderAgent.Providers.Audio
 
         public bool HasActiveLoopback => _loopbackStream?.IsRealDeviceActive ?? false;
         public bool HasActiveMicrophone => _micStream?.IsRealDeviceActive ?? false;
-        public bool IsRunning { get; private set; } // 💡 נדרש על ידי ה-Interface
+        public bool IsRunning { get; private set; }
 
         public event EventHandler<byte[]>? AudioDataAvailable;
 
@@ -81,7 +83,7 @@ namespace ITBRecorderAgent.Providers.Audio
                 _mixer.AddMixerInput(micSampleProvider);
 
                 StartRenderLoop();
-                IsRunning = true; // עדכון הסטטוס
+                IsRunning = true;
             }
         }
 

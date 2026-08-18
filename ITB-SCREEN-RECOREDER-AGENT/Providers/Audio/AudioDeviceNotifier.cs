@@ -1,9 +1,11 @@
-﻿using System;
-using NAudio.CoreAudioApi;
+﻿using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
+using System;
+using System.Runtime.Versioning;
 
 namespace ITBRecorderAgent.Providers.Audio
 {
+    [SupportedOSPlatform("windows")]
     public class AudioDeviceNotifier : IMMNotificationClient
     {
         public event Action? DeviceChanged;

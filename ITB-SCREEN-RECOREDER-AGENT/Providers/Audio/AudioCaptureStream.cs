@@ -1,13 +1,15 @@
-﻿using System;
+﻿using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
+using NAudio.CoreAudioApi;
+using NAudio.Wave;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using NAudio.CoreAudioApi;
-using NAudio.Wave;
-using ITBRecorderAgent.Core; // גישה ללוגר המרכזי
+using System.Runtime.Versioning;
 
 namespace ITBRecorderAgent.Providers.Audio
 {
+    [SupportedOSPlatform("windows")]
     public class AudioCaptureStream : IDisposable
     {
         private WasapiCapture? _capture;
