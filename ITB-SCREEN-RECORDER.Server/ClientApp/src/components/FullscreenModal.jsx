@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 import VideoPlayer from './VideoPlayer';
 import '../styles/FullscreenModal.css';
 
@@ -26,11 +26,10 @@ export default function FullscreenModal({ hostname, hlsUrl, onClose }) {
             className="stream-modal-backdrop"
             onClick={handleBackdropClick}
             style={{
-                // כפייה ישירה ועקיפת כל קבצי ה-CSS
-                backgroundColor: 'rgba(255, 255, 255, 0.15)', // רקע לבן חלבי
-                backdropFilter: 'blur(15px)',                 // טשטוש עוצמתי
-                WebkitBackdropFilter: 'blur(15px)',           // תאימות מורחבת
-                transform: 'translateZ(0)'                    // 🚀 מכריח את ה-GPU לרנדר את הטשטוש!
+                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                backdropFilter: 'blur(15px)',
+                WebkitBackdropFilter: 'blur(15px)',
+                transform: 'translateZ(0)'
             }}
         >
             <div ref={modalBoxRef} className="stream-modal-box">

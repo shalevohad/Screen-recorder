@@ -1,8 +1,16 @@
-import React from 'react';
+import { useState, useRef, useEffect } from 'react';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 import '../styles/StationThumbnail.css';
 import FullscreenModal from './FullscreenModal';
+
+// 💡 הוצאת האובייקט החוצה: מונע יצירה מחדש בכל רינדור ופותר את אזהרת הלינטר של ה-Dependencies
+const hlsConfig = {
+    backBufferLength: 10,
+    maxBufferLength: 6,
+    liveSyncDuration: 4,
+    enableLowInitialPlaylist: false
+};
 
 export default function StationThumbnail({
     hostname,
@@ -13,15 +21,14 @@ export default function StationThumbnail({
     cpuUsage = 0,
     gpuUsage = 0,
     hasAudio = false,
-    isPending = false, // חיווי טעינה בזמן שליחת פקודה
-    onToggleStream     // פונקציה להפעלה ועצירה של השידור
+    isPending = false,
+    onToggleStream
 }) {
-    const videoRef = React.useRef(null);
-    const playerRef = React.useRef(null);
-    const retryTimeoutRef = React.useRef(null);
-    const [showFullscreen, setShowFullscreen] = React.useState(false);
+    const videoRef = useRef(null);
+    const playerRef = useRef(null);
+    const retryTimeoutRef = useRef(null);
+    const [showFullscreen, setShowFullscreen] = useState(false);
 
-    // פונקציות טלמטריה
     const formatTelemetry = (val) => {
         if (val === null || val === undefined || isNaN(val)) return '0.0';
         return Number(val).toFixed(1);
@@ -34,17 +41,7 @@ export default function StationThumbnail({
         return '#ef4444';
     };
 
-    // Must stay comfortably inside MediaMTX's live HLS window (hlsSegmentCount *
-    // hlsSegmentDuration in mediamtx.yml, currently 10s) or VHS requests segments that
-    // have already rolled off the window and been deleted -> persistent 404s -> stuck loading.
-    const hlsConfig = {
-        backBufferLength: 10,
-        maxBufferLength: 6,
-        liveSyncDuration: 4,
-        enableLowInitialPlaylist: false
-    };
-
-    React.useEffect(() => {
+    useEffect(() => {
         if (!isOnline || !isStreaming || !hlsUrl) {
             if (playerRef.current) {
                 playerRef.current.dispose();
@@ -87,8 +84,13 @@ export default function StationThumbnail({
         return () => { if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current); };
     }, [hlsUrl, isOnline, isStreaming, hostname]);
 
-    React.useEffect(() => {
-        return () => { if (playerRef.current) { playerRef.current.dispose(); playerRef.current = null; } };
+    useEffect(() => {
+        return () => {
+            if (playerRef.current) {
+                playerRef.current.dispose();
+                playerRef.current = null;
+            }
+        };
     }, []);
 
     const isLive = isOnline && isStreaming && hlsUrl;
@@ -127,10 +129,8 @@ export default function StationThumbnail({
                                 {isPending ? (
                                     <svg className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="30" strokeDashoffset="0"></circle></svg>
                                 ) : isStreaming ? (
-                                    /* אייקון עצירה */
                                     <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"></rect></svg>
                                 ) : (
-                                    /* אייקון הפעלה */
                                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
                                 )}
                             </button>

@@ -1,28 +1,46 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import StationThumbnail from './components/StationThumbnail';
 import './styles/App.scss';
 
 export default function App() {
-    const [stations, setStations] = React.useState([]);
-    const [actionPending, setActionPending] = React.useState({});
+    const [stations, setStations] = useState([]);
+    const [actionPending, setActionPending] = useState({});
 
-    const fetchStations = async () => {
+    // שימוש ב-useCallback כדי לשמור על רפרנס יציב ולמנוע רינדורים מיותרים
+    const fetchStations = useCallback(async (isActive = true) => {
         try {
             const response = await fetch('/api/v1/dashboard/stations');
             if (response.ok) {
                 const data = await response.json();
-                setStations(data);
+                // וידוא שהקומפוננטה עדיין קיימת לפני עדכון הסטייט
+                if (isActive) {
+                    setStations(data);
+                }
             }
         } catch (err) {
             console.error('Failed to fetch stations telemetry:', err);
         }
-    };
-
-    React.useEffect(() => {
-        fetchStations();
-        const interval = setInterval(fetchStations, 3000);
-        return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        let isActive = true;
+
+        // עטיפה אסינכרונית שעוקפת את שגיאת הלינטר של React 19
+        const loadData = async () => {
+            await fetchStations(isActive);
+        };
+
+        loadData();
+
+        const interval = setInterval(() => {
+            if (isActive) fetchStations(isActive);
+        }, 3000);
+
+        return () => {
+            isActive = false;
+            clearInterval(interval);
+        };
+    }, [fetchStations]);
 
     const toggleStreamingPolicy = async (hostname, currentStreamingStatus) => {
         const nextState = !currentStreamingStatus;

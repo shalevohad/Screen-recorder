@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import videojs from 'video.js';
 import 'video.js/dist/video-js.css';
 import '../styles/VideoPlayer.css';
@@ -15,11 +15,9 @@ export default function VideoPlayer({ hlsUrl, hostname }) {
     const [isMuted, setIsMuted] = useState(true);
     const [volume, setVolume] = useState(1);
     const [bufferProgress, setBufferProgress] = useState(100);
-
-    // State חדש לניהול יחס התמונה הדינמי (ברירת מחדל 16:9 עד קבלת הזרם)
     const [aspectRatio, setAspectRatio] = useState(16 / 9);
 
-    const pollStreamAvailability = useCallback(() => {
+    const pollStreamAvailability = useCallback(function poll() {
         fetch(hlsUrl, { method: 'GET', cache: 'no-store' })
             .then((response) => {
                 if (response.ok) {
@@ -33,100 +31,108 @@ export default function VideoPlayer({ hlsUrl, hostname }) {
                         player.play().catch(() => { });
                     }
                 } else {
-                    pollingTimeoutRef.current = setTimeout(pollStreamAvailability, 2000);
+                    pollingTimeoutRef.current = setTimeout(poll, 2000);
                 }
             })
             .catch(() => {
-                pollingTimeoutRef.current = setTimeout(pollStreamAvailability, 2000);
+                pollingTimeoutRef.current = setTimeout(poll, 2000);
             });
     }, [hlsUrl]);
 
+    // טיפול בחיבור הראשוני וזיהוי תקלות שידור
     useEffect(() => {
-        if (isInitializingRef.current || playerRef.current) return;
-        isInitializingRef.current = true;
-
-        if (videoRef.current) {
-            const player = videojs(videoRef.current, {
-                autoplay: true,
-                controls: false,
-                muted: true,
-                fluid: true,
-                responsive: true,
-                preload: 'auto',
-                liveui: true,
-                html5: {
-                    vhs: {
-                        overrideNative: true,
-                        backBufferLength: 10,
-                        // Must stay comfortably inside MediaMTX's live HLS window
-                        // (hlsSegmentCount * hlsSegmentDuration in mediamtx.yml, currently
-                        // 10s) or VHS requests segments that have already rolled off the
-                        // window and been deleted -> persistent 404s -> player stuck loading.
-                        maxBufferLength: 6,
-                        liveSyncDuration: 4,
-                        enableLowInitialPlaylist: false,
-                        smoothQualityChange: true
-                    }
-                }
-            });
-
-            playerRef.current = player;
-
-            // פונקציה לשאיפת רזולוציית המקור וחישוב היחס
-            const updateAspectRatio = () => {
-                if (!player.isDisposed()) {
-                    const videoWidth = player.videoWidth();
-                    const videoHeight = player.videoHeight();
-                    if (videoWidth > 0 && videoHeight > 0) {
-                        setAspectRatio(videoWidth / videoHeight);
-                    }
-                }
-            };
-
-            // האזנה לאירועי טעינת הוידאו ושינוי רזולוציה בשידור החי
-            player.on('loadedmetadata', updateAspectRatio);
-            player.on('resize', updateAspectRatio);
-
-            player.on('play', () => setIsPlaying(true));
-            player.on('pause', () => setIsPlaying(false));
-
-            player.on('volumechange', () => {
-                if (!player.isDisposed()) {
-                    setIsMuted(player.muted());
-                    setVolume(player.muted() ? 0 : player.volume());
-                }
-            });
-
-            player.on('progress', () => {
-                if (!player.isDisposed()) {
-                    const buffered = player.buffered();
-                    const duration = player.duration();
-                    if (buffered.length > 0 && duration > 0) {
-                        const end = buffered.end(buffered.length - 1);
-                        setBufferProgress(Math.min(100, (end / duration) * 100));
-                    }
-                }
-            });
-
-            player.on('error', () => {
-                setPlayerError(true);
-                setIsStreamReady(false);
-                pollStreamAvailability();
-            });
-
+        if (!isStreamReady) {
             pollStreamAvailability();
         }
-
         return () => {
             if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
-            setTimeout(() => {
-                if (!videoRef.current && playerRef.current && !playerRef.current.isDisposed()) {
-                    playerRef.current.dispose();
-                    playerRef.current = null;
-                }
-            }, 50);
         };
-    }, [pollStreamAvailability]);
+    }, [isStreamReady, pollStreamAvailability]);
+
+    // אתחול וניהול מחזור החיים של Video.js
+    useEffect(() => {
+        // קיבוע אלמנט ה-DOM במשתנה כדי להבטיח זמינות ב-Cleanup
+        const videoElement = videoRef.current;
+
+        if (isInitializingRef.current || playerRef.current || !videoElement) return;
+
+        isInitializingRef.current = true;
+
+        const player = videojs(videoElement, {
+            autoplay: true,
+            controls: false,
+            muted: true,
+            fluid: true,
+            responsive: true,
+            preload: 'auto',
+            liveui: true,
+            html5: {
+                vhs: {
+                    overrideNative: true,
+                    backBufferLength: 10,
+                    maxBufferLength: 6,
+                    liveSyncDuration: 4,
+                    enableLowInitialPlaylist: false,
+                    smoothQualityChange: true
+                }
+            }
+        });
+
+        playerRef.current = player;
+
+        const updateAspectRatio = () => {
+            if (!player.isDisposed()) {
+                const videoWidth = player.videoWidth();
+                const videoHeight = player.videoHeight();
+                if (videoWidth > 0 && videoHeight > 0) {
+                    setAspectRatio(videoWidth / videoHeight);
+                }
+            }
+        };
+
+        player.on('loadedmetadata', updateAspectRatio);
+        player.on('resize', updateAspectRatio);
+
+        player.on('play', () => setIsPlaying(true));
+        player.on('pause', () => setIsPlaying(false));
+
+        player.on('volumechange', () => {
+            if (!player.isDisposed()) {
+                setIsMuted(player.muted());
+                setVolume(player.muted() ? 0 : player.volume());
+            }
+        });
+
+        player.on('progress', () => {
+            if (!player.isDisposed()) {
+                const buffered = player.buffered();
+                const duration = player.duration();
+                if (buffered.length > 0 && duration > 0) {
+                    const end = buffered.end(buffered.length - 1);
+                    setBufferProgress(Math.min(100, (end / duration) * 100));
+                }
+            }
+        });
+
+        player.on('error', () => {
+            setPlayerError(true);
+            setIsStreamReady(false);
+        });
+
+        isInitializingRef.current = false;
+
+        return () => {
+            if (player) {
+                // שימוש בטיימר קטן (Macrotask) ל-Dispose בטוח
+                setTimeout(() => {
+                    if (!player.isDisposed()) {
+                        player.dispose();
+                    }
+                    playerRef.current = null;
+                }, 50);
+            }
+        };
+    }, []); // מערך ריק מבטיח שהנגן יאותחל רק פעם אחת לעץ ה-DOM הנוכחי
 
     const togglePlay = () => {
         const player = playerRef.current;
@@ -164,9 +170,6 @@ export default function VideoPlayer({ hlsUrl, hostname }) {
 
     return (
         <div className="video-player-container">
-            {/* הזרקת יחס התמונה הדינמי ישירות לקונטיינר. 
-                חלון ה-Modal העוטף ימתח או יתכווץ אוטומטית בהתאם! 
-            */}
             <div className="video-stage" style={{ aspectRatio: aspectRatio }}>
                 <div data-vjs-player className={`player-wrapper ${!isStreamReady ? 'hidden' : ''}`}>
                     <video ref={videoRef} className="video-js vjs-fluid vjs-default-skin" playsInline />
@@ -188,7 +191,6 @@ export default function VideoPlayer({ hlsUrl, hostname }) {
                 )}
             </div>
 
-            {/* Controls Bar */}
             <div className="yt-controls-bar">
                 <div className="yt-progress-container" onClick={jumpToLive}>
                     <div className="yt-progress-bg">
