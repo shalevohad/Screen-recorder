@@ -1,0 +1,46 @@
+name: Dependency Security Architecture Scan
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  schedule:
+    # הרצה אוטומטית בכל יום ראשון ב-00:00 בלילה (שעון UTC)
+    - cron: '0 0 * * 0'
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # --- סריקת חולשות עבור ה-Backend (.NET) ---
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore NuGet packages
+      run: dotnet restore
+
+    - name: Scan .NET packages for known vulnerabilities
+      run: dotnet list package --vulnerable
+
+    # --- סריקת חולשות עבור ה-Frontend (NPM) ---
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+
+    - name: Install dependencies
+      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
+      run: npm ci --include=optional
+
+    - name: Scan NPM packages for known vulnerabilities (Audit)
+      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
+      run: npm audit --audit-level=high

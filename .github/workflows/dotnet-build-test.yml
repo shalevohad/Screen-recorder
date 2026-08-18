@@ -1,0 +1,34 @@
+name: .NET Core Cross-Platform CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build-dotnet:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET SDK (8.0.x)
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore NuGet dependencies
+      run: dotnet restore
+
+    - name: Build Solution (Release Configuration)
+      run: dotnet build --no-restore --configuration Release
+
+    - name: Run .NET Automated Tests
+      run: dotnet test --no-build --configuration Release --verbosity normal
