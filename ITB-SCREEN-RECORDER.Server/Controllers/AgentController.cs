@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Linq;
-using ITB_SCREEN_RECORDER.Core.Models;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {

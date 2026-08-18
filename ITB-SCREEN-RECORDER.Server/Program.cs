@@ -3,8 +3,8 @@ using System.Threading;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ITB_SCREEN_RECORDER.Core.Models;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Server
 {
