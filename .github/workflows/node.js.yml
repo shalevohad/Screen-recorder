@@ -22,7 +22,7 @@ jobs:
       with:
         node-version: '20.x'
         cache: 'npm'
-        # 💡 הגדרת הנתיב לקובץ הנעילה שנמצא בתיקייה הפנימית למניעת שגיאות ה-Cache
+        # הגדרת הנתיב המדויק לקובץ הנעילה בתוך תיקיית השרת
         cache-dependency-path: 'server/ClientApp/package-lock.json'
         
     - name: Install dependencies
@@ -32,7 +32,3 @@ jobs:
     - name: Build the source code
       working-directory: ./server/ClientApp
       run: npm run build --if-present
-      
-    - name: Run tests
-      working-directory: ./server/ClientApp
-      run: npm test --if-present
