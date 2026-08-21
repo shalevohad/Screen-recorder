@@ -1,0 +1,36 @@
+﻿<Project Sdk="WixToolset.Sdk/5.0.0">
+	<PropertyGroup>
+		<OutputType>Package</OutputType>
+		<Platform>x64</Platform>
+		<Platforms>x64</Platforms>
+		<OutputName>ITB-ScreenRecorder-Agent-Setup</OutputName>
+
+		<StagingDir Condition="'$(StagingDir)' == ''">..\Publish\Staging\windows</StagingDir>
+		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">..\Publish\Agent\windows</FinalOutputDir>
+
+		<DefineConstants>PublishDir=$(StagingDir)</DefineConstants>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="WixToolset.Util.wixext" Version="5.0.0" />
+		<PackageReference Include="WixToolset.UI.wixext" Version="5.0.0" />
+	</ItemGroup>
+
+	<Target Name="PublishDependenciesBeforeBuild" BeforeTargets="BeforeBuild">
+		<Message Importance="high" Text="=== [1/3] Publishing Components to Staging ($(StagingDir)) ===" />
+
+		<Exec Command="dotnet publish &quot;..\ITB-SCREEN-RECORDER.AgentService\ITB-SCREEN-RECORDER.AgentService.csproj&quot; -c $(Configuration) -r win-x64 --no-self-contained -o &quot;$(StagingDir)&quot;" />
+
+		<Exec Command="dotnet publish &quot;..\ITB-SCREEN-RECORDER.AgentWorker\ITB-SCREEN-RECORDER.AgentWorker.csproj&quot; -c $(Configuration) -r win-x64 --no-self-contained -o &quot;$(StagingDir)&quot;" />
+	</Target>
+
+	<Target Name="FinalizeDistributionPackage" AfterTargets="Build">
+		<Message Importance="high" Text="=== [2/3] Moving MSI to Distribution Folder ($(FinalOutputDir)) ===" />
+
+		<MakeDir Directories="$(FinalOutputDir)" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FinalOutputDir)" SkipUnchangedFiles="false" />
+
+		<Message Importance="high" Text="=== [3/3] Cleaning up temporary Staging files ===" />
+		<RemoveDir Directories="$(StagingDir)" />
+	</Target>
+</Project>

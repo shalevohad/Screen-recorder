@@ -1,0 +1,66 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+	<Package Name="ITB Screen Recorder Agent"
+			 Manufacturer="ITB"
+			 Version="1.0.0.0"
+			 UpgradeCode="4F8E6E73-3B82-4E83-942C-B41E1C55B39A"
+			 Scope="perMachine"
+			 Compressed="yes">
+
+		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed." />
+		<MediaTemplate EmbedCab="yes" />
+
+		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+		<Property Id="DASHBOARD_URL" Value="http://128.200.3.10:5090" />
+		<Property Id="RTMP_URL" Value="rtmp://128.200.3.10:19350/live" />
+
+		<StandardDirectory Id="ProgramFiles64Folder">
+			<Directory Id="INSTALLFOLDER" Name="ITB-ScreenRecorder" />
+		</StandardDirectory>
+
+		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+
+			<Component Id="ServiceExecutable" Bitness="always64" Guid="A21E3D4C-5B6A-7F8E-9D0C-1B2A3F4E5D6C">
+				<File Id="ServiceExe"
+					  Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe"
+					  KeyPath="yes" />
+
+				<ServiceInstall Id="ServiceInstaller"
+								Type="ownProcess"
+								Name="ITB_AgentService"
+								DisplayName="ITB Screen Recorder Supervisor Service"
+								Description="Supervises interactive screen recording sessions and reports system telemetry."
+								Start="auto"
+								Account="LocalSystem"
+								ErrorControl="normal" />
+
+				<ServiceControl Id="ServiceController"
+								Name="ITB_AgentService"
+								Start="install"
+								Stop="both"
+								Remove="uninstall"
+								Wait="yes" />
+			</Component>
+
+			<Component Id="RegistryConfiguration" Bitness="always64" Guid="C43E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F80">
+				<RegistryKey Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder">
+					<RegistryValue Name="DashboardApiUrl" Value="[DASHBOARD_URL]" Type="string" KeyPath="yes" />
+					<RegistryValue Name="RtmpServerBaseUrl" Value="[RTMP_URL]" Type="string" />
+					<RegistryValue Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
+				</RegistryKey>
+			</Component>
+
+			<Files Include="$(var.PublishDir)\**">
+				<Exclude Files="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe" />
+			</Files>
+
+		</ComponentGroup>
+
+		<Feature Id="MainFeature" Title="ITB Screen Recorder" Level="1">
+			<ComponentGroupRef Id="ProductComponents" />
+		</Feature>
+
+	</Package>
+</Wix>

@@ -22,7 +22,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         }
 
         public string RtmpServerBaseUrl { get; set; } = "rtmp://128.200.3.10:19350/live/";
-        public string DashboardApiUrl { get; set; } = "http://128.200.3.10:8080/api/v1/agent/telemetry";
+        public string DashboardApiUrl { get; set; } = "http://128.200.3.10:5090/api/v1/agent/telemetry";
         public int ReconnectDelaySeconds { get; set; } = 5;
         public int TargetFps { get; set; } = 30;
         public string VideoBitrate { get; set; } = "5M";
