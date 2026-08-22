@@ -8,9 +8,10 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 {
     public static class ConfigLoader
     {
+        // עדכון נתיב ה-Shared ללינוקס: שימוש בנתיב שרת סטנדרטי (/etc) במקום UserProfile
         private static readonly string SharedProgramDataPath = OperatingSystem.IsWindows()
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\appsettings.json"
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".itb", "appsettings.json");
+            : "/etc/itb-screen-recorder/appsettings.json";
 
         public static AppConfig Load()
         {
@@ -62,14 +63,30 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
                     if (!string.IsNullOrWhiteSpace(dashboardUrl))
                     {
                         config.DashboardApiUrl = dashboardUrl;
-                        Logger.Info($"[Config] Applied Registry Override DashboardApiUrl: {dashboardUrl}");
                     }
 
                     var rtmpUrl = key.GetValue("RtmpServerBaseUrl") as string;
                     if (!string.IsNullOrWhiteSpace(rtmpUrl))
                     {
                         config.RtmpServerBaseUrl = rtmpUrl;
-                        Logger.Info($"[Config] Applied Registry Override RtmpServerBaseUrl: {rtmpUrl}");
+                    }
+
+                    var videoBitrate = key.GetValue("VideoBitrate") as string;
+                    if (!string.IsNullOrWhiteSpace(videoBitrate))
+                    {
+                        config.VideoBitrate = videoBitrate;
+                    }
+
+                    var targetFps = key.GetValue("TargetFps");
+                    if (targetFps != null && int.TryParse(targetFps.ToString(), out int parsedFps))
+                    {
+                        config.TargetFps = parsedFps;
+                    }
+
+                    var autoStart = key.GetValue("AutoStartRecordingOnLaunch");
+                    if (autoStart != null && bool.TryParse(autoStart.ToString(), out bool parsedAutoStart))
+                    {
+                        config.AutoStartRecordingOnLaunch = parsedAutoStart;
                     }
                 }
             }

@@ -1,21 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>ITB_SCREEN_RECORDER.Core</RootNamespace>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<RootNamespace>ITB_SCREEN_RECORDER.Core</RootNamespace>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<!-- הזרקה אוטומטית של הדגל WINDOWS בעת קומפילציה על סביבת חלונות לטובת CI/CD -->
+		<DefineConstants Condition="'$(OS)' == 'Windows_NT'">$(DefineConstants);WINDOWS</DefineConstants>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.10" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.10" />
+		<!-- חבילת האבטחה לניהול הרשאות Named Pipes בסביבת Windows -->
+		<PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  <CopyToPublishDirectory>Never</CopyToPublishDirectory>
-    </None>
-  </ItemGroup>
+	<ItemGroup>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Never</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
 
 </Project>

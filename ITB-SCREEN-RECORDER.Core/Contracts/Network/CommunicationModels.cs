@@ -4,6 +4,8 @@ using System.Text.Json.Serialization; // <--- חובה להוסיף את ה-usin
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 {
     public enum AgentStatus { Offline = 0, Standby = 1, Streaming = 2, Error = 3 }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))] // <-- הוספת הממיר לתרגום מחרוזות Enum מול השרת
     public enum ServerCommand { Standby = 0, StartStream = 1, StopStream = 2 }
 
     public class AgentTelemetryReport

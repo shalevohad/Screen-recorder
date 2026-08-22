@@ -54,7 +54,6 @@ namespace ITBRecorderAgent.Engine
         {
             try
             {
-                // הבטחת קיום תיקיית יעד במידה ומדובר בנתיב מקומי (Offline Buffer)
                 if (destinationUrl.Contains(":\\") || destinationUrl.StartsWith("/"))
                 {
                     string? dir = Path.GetDirectoryName(destinationUrl);
@@ -165,38 +164,33 @@ namespace ITBRecorderAgent.Engine
         {
             if (OperatingSystem.IsWindows())
             {
-                string localFont = "arial.ttf";
-
-                // גישה מחוץ לקופסה: העתקת הפונט לתיקיית הריצה עוקפת לחלוטין את כל בעיות ה-Parsing וה-Fontconfig של FFmpeg
-                if (!File.Exists(localFont))
+                string winFont = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", "arial.ttf");
+                if (File.Exists(winFont))
                 {
-                    try
+                    return winFont.Replace("\\", "/").Replace(":", "\\:");
+                }
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                string[] linuxFontPaths =
+                {
+                    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/gnu-free/FreeSans.ttf",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+                };
+
+                foreach (var path in linuxFontPaths)
+                {
+                    if (File.Exists(path))
                     {
-                        File.Copy(@"C:\Windows\Fonts\arial.ttf", localFont, true);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn($"[ENGINE] Could not copy local font, execution will continue without it: {ex.Message}");
+                        return path.Replace(":", "\\:");
                     }
                 }
-
-                return localFont; // החזרת שם קובץ נקי ללא אותיות כונן או לוכסנים
             }
 
-            string[] linuxFontPaths =
-            {
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans.ttf"
-            };
-
-            foreach (var path in linuxFontPaths)
-            {
-                if (File.Exists(path)) return path;
-            }
-
-            return "DejaVuSans.ttf";
+            return "arial";
         }
 
         private string BuildFfmpegArguments(
@@ -213,6 +207,8 @@ namespace ITBRecorderAgent.Engine
         {
             var ffmpegArgs = new StringBuilder();
 
+            ffmpegArgs.Append("-use_wallclock_as_timestamps 1 ");
+
             string presetValue;
             string hardwareFlags = "";
 
@@ -224,7 +220,6 @@ namespace ITBRecorderAgent.Engine
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
                 presetValue = "veryfast";
-                // low_power: fixed-function low-latency encode path on Intel Quick Sync.
                 hardwareFlags = "-low_power 1";
             }
             else
@@ -236,27 +231,20 @@ namespace ITBRecorderAgent.Engine
             int gopSize = _config.TargetFps;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            // 1. קלט וידאו (מותאם לפורמט בזיכרון של רכיב ה-DXGI)
             ffmpegArgs.Append($"-thread_queue_size 1024 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
-
-            // 2. קלט אודיו ב-TCP
             ffmpegArgs.Append($"-thread_queue_size 1024 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
-            // פילטר טקסט לחותמת זמן (ללא ציטוטים מיותרים שמרסקים את ה-Parser)
             long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
-            string filterArg = $"-vf \"drawtext=fontfile={fontPath}:text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\" ";
+            string filterArg = $"-vf \"drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\" ";
             ffmpegArgs.Append(filterArg);
 
-            // 3. קידוד וידאו
             ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 10M ");
 
-            // 4. קידוד אודיו
             if (audioChannels > 0)
             {
-                ffmpegArgs.Append("-c:a aac -b:a 128k ");
+                ffmpegArgs.Append("-c:a aac -b:a 128k -af aresample=async=1 ");
             }
 
-            // 5. אריזת FLV מהירה לשמירה מקומית או שידור
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
             ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
 
@@ -295,7 +283,6 @@ namespace ITBRecorderAgent.Engine
             }
             catch
             {
-                // בלימת שגיאות רשת רגעיות
             }
         }
 
@@ -326,6 +313,10 @@ namespace ITBRecorderAgent.Engine
                 _ffmpegProcess = null;
             }
             catch { }
+            finally
+            {
+                _isDisposed = false;
+            }
         }
     }
 }

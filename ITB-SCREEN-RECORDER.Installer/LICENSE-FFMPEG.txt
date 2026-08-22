@@ -1,0 +1,4 @@
+THIRD-PARTY COMPONENTS AND DEPENDENCIES
+This software installation includes and utilizes FFmpeg as a strictly mandatory component required for the core audio/video capturing and encoding engines of the system to function.
+FFmpeg is free software licensed under the GNU General Public License (GPL). You may obtain a copy of the FFmpeg source code and its full license at: https://ffmpeg.org.
+By proceeding with this installation, you acknowledge and agree to the utilization of this component under its respective license.

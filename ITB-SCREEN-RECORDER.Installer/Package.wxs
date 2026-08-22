@@ -1,20 +1,103 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
-	<Package Name="ITB Screen Recorder Agent"
+	<!-- הוספת משתנה הגרסה לשם החבילה כדי שיופיע בכל הכותרות באשף ההתקנה -->
+	<Package Name="ITB Screen Recorder Agent $(var.Version)"
 			 Manufacturer="ITB"
-			 Version="1.0.0.0"
+			 Version="$(var.Version)"
 			 UpgradeCode="4F8E6E73-3B82-4E83-942C-B41E1C55B39A"
 			 Scope="perMachine"
 			 Compressed="yes">
 
-		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed." />
+		<!-- שדרוג חכם שמאפשר להתקין גם כשהגרסה זהה (עבור סביבות פיתוח ועדכונים מהירים) -->
+		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed."
+					  AllowSameVersionUpgrades="yes" />
+
 		<MediaTemplate EmbedCab="yes" />
 
+		<!-- סגירה גלובלית של ה-Worker לפני תחילת העתקת הקבצים (למניעת שגיאות קבצים נעולים) -->
+		<util:CloseApplication Id="CloseWorkerProcess"
+							   Target="ITB-SCREEN-RECORDER.AgentWorker.exe"
+							   CloseMessage="yes"
+							   RebootPrompt="no" />
+
+		<!-- טעינת ממשק המשתמש הבסיסי -->
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 
-		<Property Id="DASHBOARD_URL" Value="http://128.200.3.10:5090" />
-		<Property Id="RTMP_URL" Value="rtmp://128.200.3.10:19350/live" />
+		<!-- הזרקת קובץ הרישיון -->
+		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+		<!-- ============================================================== -->
+		<!-- SMART REGISTRY SEARCH & PRESERVATION LOGIC                     -->
+		<!-- קורא ערכים קיימים מה-Registry לפני שהוא דורס אותם בברירת מחדל -->
+		<!-- ============================================================== -->
+
+		<Property Id="DASHBOARD_URL">
+			<RegistrySearch Id="SearchDashboard" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="DashboardApiUrl" Type="raw" />
+		</Property>
+		<SetProperty Id="DASHBOARD_URL" Value="http://128.200.3.10:5090" After="AppSearch" Condition="NOT DASHBOARD_URL" />
+
+		<Property Id="RTMP_URL">
+			<RegistrySearch Id="SearchRtmp" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="RtmpServerBaseUrl" Type="raw" />
+		</Property>
+		<SetProperty Id="RTMP_URL" Value="rtmp://128.200.3.10:19350/live" After="AppSearch" Condition="NOT RTMP_URL" />
+
+		<Property Id="VIDEO_BITRATE">
+			<RegistrySearch Id="SearchBitrate" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="VideoBitrate" Type="raw" />
+		</Property>
+		<SetProperty Id="VIDEO_BITRATE" Value="5M" After="AppSearch" Condition="NOT VIDEO_BITRATE" />
+
+		<Property Id="TARGET_FPS">
+			<RegistrySearch Id="SearchFps" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="TargetFps" Type="raw" />
+		</Property>
+		<SetProperty Id="TARGET_FPS" Value="30" After="AppSearch" Condition="NOT TARGET_FPS" />
+
+		<Property Id="AUTO_START">
+			<RegistrySearch Id="SearchAutoStart" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="AutoStartRecordingOnLaunch" Type="raw" />
+		</Property>
+		<SetProperty Id="AUTO_START" Value="false" After="AppSearch" Condition="NOT AUTO_START" />
+
+		<!-- הוספת דגל ה-Debug למנגנון החיפוש החכם -->
+		<Property Id="DEBUG_MODE">
+			<RegistrySearch Id="SearchDebugMode" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="DebugMode" Type="raw" />
+		</Property>
+		<SetProperty Id="DEBUG_MODE" Value="0" After="AppSearch" Condition="NOT DEBUG_MODE" />
+
+		<!-- בניית מסך התצורה המתקדם ושילובו באשף ההתקנה -->
+		<UI>
+			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
+				<Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+				<Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+				<Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+				<Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Advanced Configuration" />
+				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Review or update server paths and performance parameters." />
+
+				<Control Id="DashboardLabel" Type="Text" X="20" Y="50" Width="330" Height="15" Text="Dashboard API URL:" />
+				<Control Id="DashboardEdit" Type="Edit" X="20" Y="65" Width="330" Height="18" Property="DASHBOARD_URL" />
+
+				<Control Id="RtmpLabel" Type="Text" X="20" Y="90" Width="330" Height="15" Text="RTMP Server URL:" />
+				<Control Id="RtmpEdit" Type="Edit" X="20" Y="105" Width="330" Height="18" Property="RTMP_URL" />
+
+				<Control Id="BitrateLabel" Type="Text" X="20" Y="130" Width="150" Height="15" Text="Video Bitrate:" />
+				<Control Id="BitrateEdit" Type="Edit" X="20" Y="145" Width="150" Height="18" Property="VIDEO_BITRATE" />
+
+				<Control Id="FpsLabel" Type="Text" X="190" Y="130" Width="160" Height="15" Text="Target FPS:" />
+				<Control Id="FpsEdit" Type="Edit" X="190" Y="145" Width="160" Height="18" Property="TARGET_FPS" />
+
+				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
+				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />
+				<Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+					<Publish Event="SpawnDialog" Value="CancelDlg" />
+				</Control>
+			</Dialog>
+
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ConfigurationDlg" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" Order="5" />
+			<Publish Dialog="ConfigurationDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1" />
+			<Publish Dialog="ConfigurationDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="1" />
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ConfigurationDlg" Condition="1" Order="5" />
+		</UI>
 
 		<StandardDirectory Id="ProgramFiles64Folder">
 			<Directory Id="INSTALLFOLDER" Name="ITB-ScreenRecorder" />
@@ -27,6 +110,7 @@
 					  Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe"
 					  KeyPath="yes" />
 
+				<!-- הטיפול בשירות (Service): התקנה, כיבוי בזמן הסרה והפעלה אוטומטית -->
 				<ServiceInstall Id="ServiceInstaller"
 								Type="ownProcess"
 								Name="ITB_AgentService"
@@ -49,7 +133,15 @@
 					<RegistryValue Name="DashboardApiUrl" Value="[DASHBOARD_URL]" Type="string" KeyPath="yes" />
 					<RegistryValue Name="RtmpServerBaseUrl" Value="[RTMP_URL]" Type="string" />
 					<RegistryValue Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
+					<RegistryValue Name="VideoBitrate" Value="[VIDEO_BITRATE]" Type="string" />
+					<RegistryValue Name="TargetFps" Value="[TARGET_FPS]" Type="integer" />
+					<RegistryValue Name="AutoStartRecordingOnLaunch" Value="[AUTO_START]" Type="string" />
+					<RegistryValue Name="DebugMode" Value="[DEBUG_MODE]" Type="integer" />
 				</RegistryKey>
+			</Component>
+
+			<Component Id="FfmpegLicenseDeclaration" Bitness="always64" Guid="D89A5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F99">
+				<File Id="FfmpegLicenseTxt" Source="LICENSE-FFMPEG.txt" KeyPath="yes" />
 			</Component>
 
 			<Files Include="$(var.PublishDir)\**">

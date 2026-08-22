@@ -26,3 +26,8 @@ mediamtx.exe
 /ITB-SCREEN-RECORDER.Server/Properties/PublishProfiles
 /ITB-SCREEN-RECORDER.AgentWorker/ffmpeg.exe
 /ITB-SCREEN-RECORDER.AgentWorker/ffmpeg.exe
+/ITB-SCREEN-RECORDER.AgentService/Properties/PublishProfiles/Agent - Windows.pubxml
+/ITB-SCREEN-RECORDER.AgentWorker/Properties/PublishProfiles/Agent - Windows.pubxml
+/ITB-SCREEN-RECORDER.Server/wwwroot/assets/index.js
+/ITB-SCREEN-RECORDER.Server/wwwroot/assets/index.js
+**/ffmpeg.exe

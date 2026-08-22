@@ -2,12 +2,12 @@
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
+using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Pipes;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -25,11 +25,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private bool _isWorkerStreaming;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
+        private StreamWriter? _workerCommandWriter;
 
         public AgentSupervisorService(ILogger<AgentSupervisorService> logger)
         {
             _logger = logger;
-            _workerPath = Path.Combine(AppContext.BaseDirectory, "ITB-SCREEN-RECORDER.AgentWorker.exe");
+
+            _workerPath = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "ITB-SCREEN-RECORDER.AgentWorker.exe" : "ITB-SCREEN-RECORDER.AgentWorker");
+            if (!File.Exists(_workerPath) && OperatingSystem.IsLinux())
+            {
+                _workerPath = Path.Combine(AppContext.BaseDirectory, "ITB-SCREEN-RECORDER.AgentWorker.exe");
+            }
+
             _config = ConfigLoader.Load();
             _httpClient = new HttpClient
             {
@@ -41,21 +48,38 @@ namespace ITB_SCREEN_RECORDER.AgentService
         {
             _logger.LogInformation("AgentSupervisorService initialized.");
 
-            // הפעלת משימת האזנה ל-IPC ברקע
             _ = Task.Run(() => ListenToWorkerIpcAsync(stoppingToken), stoppingToken);
 
-            // לולאת הדיווח המרכזית לשרת (Telemetry Heartbeat)
             while (!stoppingToken.IsCancellationRequested)
             {
                 EnsureWorkerRunning();
                 await SendTelemetryToServerAsync(stoppingToken);
-
-                await Task.Delay(3000, stoppingToken); // דיווח לשרת כל 3 שניות
+                await Task.Delay(3000, stoppingToken);
             }
 
+            if (OperatingSystem.IsWindows())
+            {
 #if WINDOWS
-            Infrastructure.WindowsProcessLauncher.TerminateWorkerProcesses();
+                try
+                {
+                    string workerName = Path.GetFileNameWithoutExtension(_workerPath);
+                    var procs = Process.GetProcessesByName(workerName);
+                    foreach (var proc in procs)
+                    {
+                        try
+                        {
+                            proc.Kill();
+                            proc.WaitForExit(1000);
+                        }
+                        catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Failed to terminate worker processes on shutdown: {Msg}", ex.Message);
+                }
 #endif
+            }
         }
 
         private async Task ListenToWorkerIpcAsync(CancellationToken ct)
@@ -64,26 +88,34 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 try
                 {
-                    using var pipeServer = new NamedPipeServerStream(
-                        "ITB_Agent_IPC",
-                        PipeDirection.InOut,
-                        1,
-                        PipeTransmissionMode.Byte,
-                        PipeOptions.Asynchronous);
+                    using var pipeServer = IpcServerFactory.CreateSecureServerPipe("ITB_Agent_IPC");
 
+                    _logger.LogInformation("Waiting for Worker IPC connection...");
                     await pipeServer.WaitForConnectionAsync(ct);
+                    _logger.LogInformation("Worker connected to IPC!");
+
                     using var reader = new StreamReader(pipeServer);
+                    using var writer = new StreamWriter(pipeServer) { AutoFlush = true };
+
+                    _workerCommandWriter = writer;
 
                     while (pipeServer.IsConnected && !ct.IsCancellationRequested)
                     {
                         string? line = await reader.ReadLineAsync(ct);
                         if (!string.IsNullOrEmpty(line))
                         {
-                            var status = JsonSerializer.Deserialize<WorkerIpcStatusMessage>(line);
-                            if (status != null)
+                            try
                             {
-                                _isWorkerStreaming = status.IsStreaming;
-                                _lastWorkerHeartbeat = DateTime.UtcNow;
+                                var status = JsonSerializer.Deserialize<WorkerIpcStatusMessage>(line);
+                                if (status != null)
+                                {
+                                    _isWorkerStreaming = status.IsStreaming;
+                                    _lastWorkerHeartbeat = DateTime.UtcNow;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning("Failed to parse IPC message from worker: {Msg}", ex.Message);
                             }
                         }
                     }
@@ -91,8 +123,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
-                    _logger.LogTrace("IPC server tick: {Msg}", ex.Message);
+                    _logger.LogTrace("IPC server tick warning: {Msg}", ex.Message);
                     await Task.Delay(1000, ct);
+                }
+                finally
+                {
+                    _workerCommandWriter = null;
                 }
             }
         }
@@ -104,7 +140,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 bool isWorkerAlive = (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 6;
                 bool isStreaming = isWorkerAlive && _isWorkerStreaming;
 
-                // איסוף מדדי חומרה מתוך ה-Core
                 var hardwareStats = HardwareProbe.GetTelemetry();
 
                 var report = new AgentTelemetryReport
@@ -121,12 +156,38 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     Timestamp = DateTime.UtcNow
                 };
 
-                string serverUrl = _config.DashboardApiUrl;
-                var response = await _httpClient.PostAsJsonAsync(serverUrl, report, ct);
+                string targetEndpoint = _config.DashboardApiUrl;
+                if (!targetEndpoint.Contains("/api/"))
+                {
+                    targetEndpoint = $"{targetEndpoint.TrimEnd('/')}/api/v1/agent/telemetry";
+                }
+
+                var response = await _httpClient.PostAsJsonAsync(targetEndpoint, report, ct);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    _logger.LogDebug("Telemetry reported successfully to server. Status: {Status}", report.Status);
+                    string responseJson = await response.Content.ReadAsStringAsync(ct);
+                    try
+                    {
+                        var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson);
+                        if (heartbeatResponse != null)
+                        {
+                            if (heartbeatResponse.Command == ServerCommand.StopStream)
+                            {
+                                _logger.LogInformation("[Service] Server requested STOP. Forwarding to Worker.");
+                                await SendCommandToWorkerAsync("Stop");
+                            }
+                            else if (heartbeatResponse.Command == ServerCommand.StartStream)
+                            {
+                                _logger.LogInformation("[Service] Server requested START. Forwarding to Worker.");
+                                await SendCommandToWorkerAsync("Start");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning("Failed to deserialize heartbeat response: {Msg}", ex.Message);
+                    }
                 }
             }
             catch (Exception ex)
@@ -135,16 +196,63 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
+        private async Task SendCommandToWorkerAsync(string command)
+        {
+            if (_workerCommandWriter != null)
+            {
+                try
+                {
+                    await _workerCommandWriter.WriteLineAsync(command);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Failed to dispatch command to worker: {Msg}", ex.Message);
+                }
+            }
+        }
+
         private void EnsureWorkerRunning()
         {
-#if WINDOWS
-            var procs = Process.GetProcessesByName("ITB-SCREEN-RECORDER.AgentWorker");
+            string processName = Path.GetFileNameWithoutExtension(_workerPath);
+            var procs = Process.GetProcessesByName(processName);
+
             if (procs.Length == 0 && File.Exists(_workerPath))
             {
-                _logger.LogInformation("Worker process not detected. Launching Worker in active user session...");
-                Infrastructure.WindowsProcessLauncher.StartWorkerInActiveSession(_workerPath, string.Empty);
-            }
+                _logger.LogInformation("Worker process not detected. Launching Worker...");
+
+                if (OperatingSystem.IsWindows())
+                {
+#if WINDOWS
+                    bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, string.Empty);
+                    if (!launched)
+                    {
+                        _logger.LogWarning("Failed to launch AgentWorker interactively. This is normal if no user is currently logged into Windows.");
+                    }
+                    else
+                    {
+                        _logger.LogInformation("AgentWorker successfully launched into the active user session.");
+                    }
 #endif
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = _workerPath,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    psi.EnvironmentVariables["DISPLAY"] = ":0";
+                    try
+                    {
+                        Process.Start(psi);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError("Failed to launch Worker on Linux: {Msg}", ex.Message);
+                    }
+                }
+            }
         }
     }
 }
