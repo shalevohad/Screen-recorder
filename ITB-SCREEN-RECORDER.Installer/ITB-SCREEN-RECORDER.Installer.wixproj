@@ -1,0 +1,48 @@
+﻿<Project Sdk="WixToolset.Sdk/5.0.0">
+	<PropertyGroup>
+		<OutputType>Package</OutputType>
+		<Platform>x64</Platform>
+		<Platforms>x64</Platforms>
+
+		<!-- ניהול מרכזי של גרסת ה-MSI -->
+		<Version>1.0.1.5</Version>
+
+		<!-- הזרקת הגרסה לשם הקובץ הסופי -->
+		<OutputName>ITB-ScreenRecorder-Agent-Setup-$(Version)</OutputName>
+
+		<StagingDir Condition="'$(StagingDir)' == ''">..\Publish\Staging\windows</StagingDir>
+		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">..\Publish\Agent\windows</FinalOutputDir>
+
+		<!-- העברת משתנה הגרסה הלאה לקובץ ה-WXS -->
+		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Content Include="LICENSE-FFMPEG.txt" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="License.rtf" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="WixToolset.Util.wixext" Version="5.0.0" />
+		<PackageReference Include="WixToolset.UI.wixext" Version="5.0.0" />
+	</ItemGroup>
+
+	<Target Name="PublishDependenciesBeforeBuild" BeforeTargets="BeforeBuild">
+		<Message Importance="high" Text="=== [1/3] Publishing Components to Staging ($(StagingDir)) ===" />
+
+		<!-- הפיכת ה-Service לעצמאי לחלוטין (Self-Contained) -->
+		<Exec Command="dotnet publish &quot;..\ITB-SCREEN-RECORDER.AgentService\ITB-SCREEN-RECORDER.AgentService.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(StagingDir)&quot;" />
+
+		<!-- הפיכת ה-Worker לעצמאי לחלוטין (Self-Contained) -->
+		<Exec Command="dotnet publish &quot;..\ITB-SCREEN-RECORDER.AgentWorker\ITB-SCREEN-RECORDER.AgentWorker.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(StagingDir)&quot;" />
+	</Target>
+
+	<Target Name="FinalizeDistributionPackage" AfterTargets="Build">
+		<Message Importance="high" Text="=== [2/3] Moving MSI to Distribution Folder ($(FinalOutputDir)) ===" />
+		<MakeDir Directories="$(FinalOutputDir)" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FinalOutputDir)" SkipUnchangedFiles="false" />
+		<Message Importance="high" Text="=== [3/3] Cleaning up temporary Staging files ===" />
+		<RemoveDir Directories="$(StagingDir)" />
+	</Target>
+</Project>

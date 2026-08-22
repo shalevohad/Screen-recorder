@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using ITB_SCREEN_RECORDER.Core.Models;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace ITB_SCREEN_RECORDER.Server.Services

@@ -1,20 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
-import videojs from 'video.js';
-import 'video.js/dist/video-js.css';
+import { useState } from 'react';
 import '../styles/StationThumbnail.css';
 import FullscreenModal from './FullscreenModal';
-
-// 💡 הוצאת האובייקט החוצה: מונע יצירה מחדש בכל רינדור ופותר את אזהרת הלינטר של ה-Dependencies
-const hlsConfig = {
-    backBufferLength: 10,
-    maxBufferLength: 6,
-    liveSyncDuration: 4,
-    enableLowInitialPlaylist: false
-};
+import WebRTCPlayer from './WebRTCPlayer';
 
 export default function StationThumbnail({
     hostname,
-    hlsUrl,
     isOnline,
     isStreaming,
     ipAddress = 'N/A',
@@ -24,10 +14,14 @@ export default function StationThumbnail({
     isPending = false,
     onToggleStream
 }) {
-    const videoRef = useRef(null);
-    const playerRef = useRef(null);
-    const retryTimeoutRef = useRef(null);
     const [showFullscreen, setShowFullscreen] = useState(false);
+
+    // חילוץ דינמי של כתובת השרת:
+    // window.location.hostname שואב אוטומטית את ה-IP או הדומיין שבו הדשבורד פתוח.
+    // import.meta.env.VITE_WEBRTC_PORT מאפשר דריסה של הפורט בקובץ .env בעתיד (ברירת מחדל 8889).
+    const serverHost = window.location.hostname;
+    const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
+    const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
 
     const formatTelemetry = (val) => {
         if (val === null || val === undefined || isNaN(val)) return '0.0';
@@ -41,72 +35,19 @@ export default function StationThumbnail({
         return '#ef4444';
     };
 
-    useEffect(() => {
-        if (!isOnline || !isStreaming || !hlsUrl) {
-            if (playerRef.current) {
-                playerRef.current.dispose();
-                playerRef.current = null;
-            }
-            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-            return;
-        }
-
-        const attemptStreamConnection = () => {
-            const player = playerRef.current;
-            if (!player) return;
-            player.error(null);
-            player.src({ src: hlsUrl, type: 'application/x-mpegURL' });
-            player.load();
-            player.play().catch(() => { });
-        };
-
-        if (!playerRef.current && videoRef.current) {
-            playerRef.current = videojs(videoRef.current, {
-                autoplay: true,
-                controls: false,
-                muted: true,
-                fluid: true,
-                responsive: true,
-                liveui: true,
-                html5: { vhs: hlsConfig },
-                liveTracker: { trackingThreshold: 3, liveTolerance: 5 }
-            }, function () {
-                this.on('error', () => {
-                    if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-                    retryTimeoutRef.current = setTimeout(attemptStreamConnection, 3000);
-                });
-            });
-            attemptStreamConnection();
-        } else if (playerRef.current) {
-            attemptStreamConnection();
-        }
-
-        return () => { if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current); };
-    }, [hlsUrl, isOnline, isStreaming, hostname]);
-
-    useEffect(() => {
-        return () => {
-            if (playerRef.current) {
-                playerRef.current.dispose();
-                playerRef.current = null;
-            }
-        };
-    }, []);
-
-    const isLive = isOnline && isStreaming && hlsUrl;
+    const isLive = isOnline && isStreaming;
 
     return (
         <>
             <div className={`station-card ${!isOnline ? 'offline' : ''}`}>
 
-                {/* Header */}
+                {/* Header (נשאר זהה) */}
                 <div className="station-card-header">
                     <div className="header-left-actions">
                         <div className={`status-pill ${isOnline ? 'online' : 'offline'}`}>
                             {isOnline ? 'ONLINE' : 'OFFLINE'}
                         </div>
 
-                        {/* חיווי מיקרופון */}
                         {hasAudio && isOnline && (
                             <div className="mic-indicator" title="Audio Stream Active">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -118,7 +59,6 @@ export default function StationThumbnail({
                             </div>
                         )}
 
-                        {/* כפתור הפעלה/עצירה דינמי לשידור */}
                         {isOnline && (
                             <button
                                 className={`stop-stream-btn ${isStreaming ? 'is-streaming' : 'is-idle'} ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -150,8 +90,12 @@ export default function StationThumbnail({
                 >
                     {isLive ? (
                         <>
-                            <div data-vjs-player className="station-thumbnail-video">
-                                <video ref={videoRef} className="video-js vjs-fluid vjs-default-skin" playsInline muted />
+                            <div className="station-thumbnail-video" style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
+                                {/* שימוש בכתובת הדינמית שיצרנו למעלה */}
+                                <WebRTCPlayer
+                                    streamPath={`live/${hostname}`}
+                                    webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                                />
                             </div>
                             <div className="play-overlay-hint">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -167,8 +111,9 @@ export default function StationThumbnail({
                     )}
                 </div>
 
-                {/* Telemetry Footer */}
+                {/* Telemetry Footer (נשאר זהה) */}
                 <div className="station-telemetry">
+                    {/* ... קוד ה-CPU/GPU נשאר בדיוק אותו דבר ... */}
                     <div className="telemetry-row">
                         <div className="telemetry-label">
                             <span>CPU</span>
@@ -177,10 +122,7 @@ export default function StationThumbnail({
                         <div className="telemetry-bar-bg">
                             <div
                                 className="telemetry-bar-fill"
-                                style={{
-                                    width: `${Math.min(100, Math.max(0, cpuUsage))}%`,
-                                    backgroundColor: getBarColor(cpuUsage)
-                                }}
+                                style={{ width: `${Math.min(100, Math.max(0, cpuUsage))}%`, backgroundColor: getBarColor(cpuUsage) }}
                             />
                         </div>
                     </div>
@@ -192,10 +134,7 @@ export default function StationThumbnail({
                         <div className="telemetry-bar-bg">
                             <div
                                 className="telemetry-bar-fill"
-                                style={{
-                                    width: `${Math.min(100, Math.max(0, gpuUsage))}%`,
-                                    backgroundColor: getBarColor(gpuUsage)
-                                }}
+                                style={{ width: `${Math.min(100, Math.max(0, gpuUsage))}%`, backgroundColor: getBarColor(gpuUsage) }}
                             />
                         </div>
                     </div>
@@ -206,7 +145,7 @@ export default function StationThumbnail({
             {showFullscreen && (
                 <FullscreenModal
                     hostname={hostname}
-                    hlsUrl={hlsUrl}
+                    webrtcBaseUrl={dynamicWebrtcBaseUrl} // העברת הכתובת הדינמית גם למודל המסך המלא
                     onClose={() => setShowFullscreen(false)}
                 />
             )}

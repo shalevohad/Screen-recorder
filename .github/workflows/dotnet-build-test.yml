@@ -24,11 +24,60 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
+    - name: Shutdown .NET Build Server (Prevent File Locking)
+      run: dotnet build-server shutdown
+
+    - name: Download FFmpeg for AgentWorker (Windows)
+      if: startsWith(matrix.os, 'windows')
+      shell: pwsh
+      run: |
+        $ffmpegDir = "ITB-SCREEN-RECORDER.AgentWorker"
+        New-Item -ItemType Directory -Force -Path $ffmpegDir
+        $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        $zipPath = "ffmpeg.zip"
+        Write-Host "Downloading FFmpeg for Windows..."
+        Invoke-WebRequest -Uri $url -OutFile $zipPath
+        Write-Host "Extracting FFmpeg..."
+        Expand-Archive -Path $zipPath -DestinationPath "ffmpeg_extracted" -Force
+        $exe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+        if ($exe) {
+            Copy-Item $exe.FullName -Destination "$ffmpegDir\ffmpeg.exe"
+            Write-Host "FFmpeg placed successfully in $ffmpegDir"
+        } else {
+            throw "Could not find ffmpeg.exe in downloaded archive"
+        }
+
+    - name: Download FFmpeg for AgentWorker (Linux)
+      if: startsWith(matrix.os, 'ubuntu')
+      run: |
+        FFMPEG_DIR="ITB-SCREEN-RECORDER.AgentWorker"
+        mkdir -p "$FFMPEG_DIR"
+        echo "Downloading FFmpeg static build for Linux..."
+        curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
+        tar -xf ffmpeg.tar.xz
+        EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-amd64-static")
+        # שמירת הקובץ בשם ffmpeg בדיוק כפי שהוגדר בתנאי הלינוקס ב-Csproj
+        cp "$EXTRACTED_DIR/ffmpeg" "$FFMPEG_DIR/ffmpeg"
+        chmod +x "$FFMPEG_DIR/ffmpeg"
+        echo "FFmpeg placed successfully in $FFMPEG_DIR"
+
     - name: Restore NuGet dependencies
       run: dotnet restore
 
-    - name: Build Solution (Release Configuration)
-      run: dotnet build --no-restore --configuration Release
+    - name: Build Solution (Release Configuration - Windows)
+      if: startsWith(matrix.os, 'windows')
+      run: |
+        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release
+
+    - name: Build Solution (Release Configuration - Linux)
+      if: startsWith(matrix.os, 'ubuntu')
+      run: |
+        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
 
     - name: Run .NET Automated Tests
       run: dotnet test --no-build --configuration Release --verbosity normal

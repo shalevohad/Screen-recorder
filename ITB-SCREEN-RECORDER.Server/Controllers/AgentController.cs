@@ -1,8 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using System;
 using System.Linq;
-using ITB_SCREEN_RECORDER.Core.Models;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
@@ -31,11 +30,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     .SelectMany(v => v.Errors)
                     .Select(e => e.ErrorMessage));
 
-                Console.WriteLine($"[VALIDATION FAILED]: {errors}");
                 return BadRequest(errors);
             }
 
-            // העברת אובייקט הטלמטריה המלא לשירות וקבלת המצב הרצוי (Desired State)
             var response = _telemetryState.ProcessHeartbeat(report);
             return Ok(response);
         }
@@ -43,10 +40,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         [HttpPost("command/{hostname}")]
         public IActionResult EnforceStreamingPolicy(string hostname, [FromQuery] bool enable)
         {
-            // תיקון קריאת המתודה בהתאם לחתימה החדשה של השרת
             _telemetryState.SetAgentStreamState(hostname, enable);
-
             return Ok(new { Hostname = hostname, StreamingRequested = enable });
+        }
+
+        [HttpGet("config/{hostname}")]
+        public IActionResult GetAgentConfig(string hostname)
+        {
+            // שאיבה דינמית מלאה דרך שירות הסטטוס המרכזי
+            var policy = _telemetryState.GetAgentPolicy(hostname, Request.Host.Host);
+            return Ok(policy);
         }
     }
 }

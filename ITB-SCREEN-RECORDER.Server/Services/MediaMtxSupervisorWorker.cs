@@ -1,12 +1,13 @@
 ﻿namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ITB_SCREEN_RECORDER.Core.Models;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -166,6 +167,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
     /// <summary>
     /// פונקציית ניקוי עצמית (Self-Healing) שמחסלת תהליכי MediaMTX יתומים התופסים את משאבי הרשת.
+    /// מטפלת בצורה בטוחה בשגיאות הרשאה (Access Denied) מבלי להקריס את השרת.
     /// </summary>
     private void CleanupOrphanedMediaMtxProcesses()
     {
@@ -181,14 +183,30 @@ public class MediaMtxSupervisorWorker : BackgroundService
                 {
                     try
                     {
-                        int pid = proc.Id;
-                        proc.Kill(entireProcessTree: true);
-                        proc.WaitForExit(2000);
-                        _logger.LogInformation("[MediaMTX Supervisor] Successfully terminated orphaned process PID: {Pid}", pid);
+                        if (!proc.HasExited)
+                        {
+                            int pid = proc.Id;
+                            proc.Kill(entireProcessTree: true);
+                            proc.WaitForExit(2000);
+                            _logger.LogInformation("[MediaMTX Supervisor] Successfully terminated orphaned process PID: {Pid}", pid);
+                        }
+                    }
+                    catch (Win32Exception ex) when (ex.NativeErrorCode == 5) // Access Denied
+                    {
+                        _logger.LogWarning("[MediaMTX Supervisor] Insufficient permissions to terminate process {Pid} (Access Denied). It may belong to the system or another user.", proc.Id);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // התהליך כבר נסגר בעצמו לפני שהגענו להרוג אותו
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError("[MediaMTX Supervisor] Failed to kill process {Pid}: {Message}", proc.Id, ex.Message);
+                        _logger.LogWarning("[MediaMTX Supervisor] Failed to kill process {Pid}: {Message}", proc.Id, ex.Message);
+                    }
+                    finally
+                    {
+                        // שחרור Handle מהזיכרון חובה כדי למנוע Memory Leak
+                        proc.Dispose();
                     }
                 }
             }
@@ -199,7 +217,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
     }
 
-    // פתרון מובטח: StopAsync רץ בצורה בטוחה וישירה בעת סגירת השרת
+    // פתרון מובטח: StopAsync רץ בצורה בטוחה וישירה בעת סגירת השרת ומטפל בבעיות גישה
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Server shutting down. Terminating MediaMTX process...");
@@ -208,15 +226,30 @@ public class MediaMtxSupervisorWorker : BackgroundService
         {
             if (_mtxProcess != null && !_mtxProcess.HasExited)
             {
-                // הורדת התהליך וכל עץ הבנים שלו באגרסיביות כדי שלא ישארו יתומים ברקע
-                _mtxProcess.Kill(entireProcessTree: true);
-                _mtxProcess.WaitForExit(3000);
-                _logger.LogInformation("MediaMTX process terminated successfully.");
+                try
+                {
+                    // הורדת התהליך וכל עץ הבנים שלו באגרסיביות כדי שלא ישארו יתומים ברקע
+                    _mtxProcess.Kill(entireProcessTree: true);
+                    _mtxProcess.WaitForExit(3000);
+                    _logger.LogInformation("MediaMTX process terminated successfully.");
+                }
+                catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
+                {
+                    _logger.LogWarning("[MediaMTX Supervisor] Access denied when attempting to terminate MediaMTX on shutdown.");
+                }
+                catch (InvalidOperationException)
+                {
+                    // נסגר כבר
+                }
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while terminating MediaMTX process.");
+        }
+        finally
+        {
+            _mtxProcess?.Dispose();
         }
 
         await base.StopAsync(cancellationToken);
