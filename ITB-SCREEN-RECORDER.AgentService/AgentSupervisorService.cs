@@ -1,7 +1,6 @@
 ﻿using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
-using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
@@ -17,6 +16,7 @@ using System.Runtime.InteropServices;
 // הוספת ה-Namespace של ה-Registry אך ורק בקומפילציה ל-Windows
 #if WINDOWS
 using Microsoft.Win32;
+using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
 #endif
 
 namespace ITB_SCREEN_RECORDER.AgentService

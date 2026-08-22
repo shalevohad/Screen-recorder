@@ -25,7 +25,7 @@
 		<Property Id="SERVER_IP">
 			<RegistrySearch Id="SearchServerIp" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="ServerIp" Type="raw" />
 		</Property>
-		<SetProperty Id="SERVER_IP" Value="128.200.3.10" After="AppSearch" Condition="NOT SERVER_IP" />
+		<SetProperty Id="SERVER_IP" Value="127.0.0.1:5090" After="AppSearch" Condition="NOT SERVER_IP" />
 
 		<Property Id="DEBUG_MODE">
 			<RegistrySearch Id="SearchDebugMode" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="DebugMode" Type="raw" />
