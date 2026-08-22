@@ -8,7 +8,8 @@ using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Common;
-using ITB_SCREEN_RECORDER.Core.Diagnostics; // <-- חובה בשביל ה-DebugHelper
+using ITB_SCREEN_RECORDER.Core.Diagnostics;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
 using ITBRecorderAgent.Providers.Video;
 using ITBRecorderAgent.Providers.Audio;
@@ -21,22 +22,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private readonly SemaphoreSlim _streamPermissionSignal = new SemaphoreSlim(0, 1);
         private readonly AppConfig _config;
         private volatile bool _isStreamingRequested = false;
-
-        private readonly string _rtmpTarget;
+        private volatile bool _requiresImmediateRestart = false;
 
         public WorkerEngine(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-
-            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
-            _rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
         }
 
         public async Task RunAsync(CancellationToken ct)
         {
-            // בדיקת דגלון ה-Debug מה-Registry והחלטה האם להסתיר או להציג את החלון
             DebugHelper.ApplyConsoleVisibility();
-
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             CancellationToken localToken = linkedCts.Token;
 
@@ -45,11 +40,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             while (!localToken.IsCancellationRequested)
             {
                 Logger.Info("[WorkerEngine] Worker is in Standby mode, waiting for streaming permission...");
-
                 await _streamPermissionSignal.WaitAsync(localToken);
 
                 if (localToken.IsCancellationRequested) break;
 
+                ApplyDynamicPolicy();
                 Logger.Info("[WorkerEngine] Starting initialization of capture engines...");
 
                 IScreenCaptureProvider? screenCapture = null;
@@ -66,31 +61,20 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     audioCapture.Initialize();
 
                     ffmpegManager = new FfmpegProcessManager(_config);
-
                     audioCapture.AudioDataAvailable += (s, data) =>
                     {
-                        if (ffmpegManager != null && ffmpegManager.IsRunning)
-                        {
-                            ffmpegManager.WriteAudioData(data);
-                        }
+                        if (ffmpegManager != null && ffmpegManager.IsRunning) ffmpegManager.WriteAudioData(data);
                     };
                     audioCapture.Start();
 
                     await Task.Delay(100, localToken);
 
-                    bool started = await ffmpegManager.StartAsync(
-                        _rtmpTarget,
-                        DateTime.UtcNow,
-                        screenCapture.Width,
-                        screenCapture.Height,
-                        48000,
-                        2,
-                        "f32le",
-                        localToken).ConfigureAwait(false);
+                    string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+                    string rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
 
+                    bool started = await ffmpegManager.StartAsync(rtmpTarget, DateTime.UtcNow, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
                     if (!started)
                     {
-                        Logger.Error("[WorkerEngine] Failed to start the FFmpeg pipeline.");
                         _isStreamingRequested = false;
                         continue;
                     }
@@ -98,19 +82,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     byte[] initialFrame = new byte[screenCapture.Width * screenCapture.Height * 4];
                     ffmpegManager.WriteVideoFrame(initialFrame);
 
-                    bool audioConnected = await ffmpegManager.CompleteAudioHandshakeAsync(localToken).ConfigureAwait(false);
-                    if (!audioConnected)
+                    if (!await ffmpegManager.CompleteAudioHandshakeAsync(localToken).ConfigureAwait(false))
                     {
-                        Logger.Error("[WorkerEngine] Failed to connect the audio channel to FFmpeg.");
                         _isStreamingRequested = false;
                         continue;
                     }
 
-                    Logger.Info("[WorkerEngine] Capture and streaming are active. Starting synchronization loop (Pacing).");
-
+                    Logger.Info("[WorkerEngine] Capture and streaming are active.");
                     int targetFrameTimeMs = 1000 / _config.TargetFps;
 
-                    while (!localToken.IsCancellationRequested && _isStreamingRequested)
+                    while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
                     {
                         long swStart = Stopwatch.GetTimestamp();
                         byte[]? currentFrame = null;
@@ -130,25 +111,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             byte[] frameToWrite = new byte[currentFrame.Length];
                             Buffer.BlockCopy(currentFrame, 0, frameToWrite, 0, currentFrame.Length);
 #if WINDOWS
-                            if (OperatingSystem.IsWindows())
-                            {
-                                MouseCursorOverlay.DrawMouseToFrame(frameToWrite, screenCapture.Width, screenCapture.Height);
-                            }
+                            if (OperatingSystem.IsWindows()) MouseCursorOverlay.DrawMouseToFrame(frameToWrite, screenCapture.Width, screenCapture.Height);
 #endif
-                            if (!ffmpegManager.WriteVideoFrame(frameToWrite))
-                            {
-                                Logger.Error("[WorkerEngine] Video streaming to FFmpeg failed on the current frame.");
-                                break;
-                            }
+                            if (!ffmpegManager.WriteVideoFrame(frameToWrite)) break;
                         }
 
                         long elapsedMs = (long)Stopwatch.GetElapsedTime(swStart).TotalMilliseconds;
                         int delay = targetFrameTimeMs - (int)elapsedMs;
-
-                        if (delay > 0)
-                        {
-                            await Task.Delay(delay, localToken).ConfigureAwait(false);
-                        }
+                        if (delay > 0) await Task.Delay(delay, localToken).ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex)
@@ -165,11 +135,44 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         if (screenCapture is IDisposable screenDisp) screenDisp.Dispose();
                         ffmpegManager?.Dispose();
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) { Logger.Error($"[WorkerEngine] Error teardown: {ex.Message}"); }
+                }
+
+                if (_requiresImmediateRestart)
+                {
+                    _requiresImmediateRestart = false;
+                    _isStreamingRequested = true;
+                    if (_streamPermissionSignal.CurrentCount == 0)
                     {
-                        Logger.Error($"[WorkerEngine] Error during resource teardown: {ex.Message}");
+                        _streamPermissionSignal.Release();
                     }
                 }
+            }
+        }
+
+        private void ApplyDynamicPolicy()
+        {
+            try
+            {
+                string policyPath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
+                if (File.Exists(policyPath))
+                {
+                    string json = File.ReadAllText(policyPath);
+                    var policy = JsonSerializer.Deserialize<AgentStreamPolicy>(json);
+
+                    if (policy != null)
+                    {
+                        if (policy.TargetFps > 0) _config.TargetFps = policy.TargetFps;
+                        if (!string.IsNullOrWhiteSpace(policy.VideoBitrate)) _config.VideoBitrate = policy.VideoBitrate;
+                        if (!string.IsNullOrWhiteSpace(policy.RtmpServerBaseUrl)) _config.RtmpServerBaseUrl = policy.RtmpServerBaseUrl;
+
+                        Logger.Info($"[WorkerEngine] Dynamic policy applied: {policy.TargetFps} FPS, {policy.VideoBitrate} Bitrate.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[WorkerEngine] Failed to read dynamic policy. Error: {ex.Message}");
             }
         }
 
@@ -198,18 +201,19 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                                     if (cmd.Equals("Stop", StringComparison.OrdinalIgnoreCase) || cmd.Equals("GracefulShutdown", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        Logger.Info("[WorkerEngine] Received STOP command from Service.");
+                                        Logger.Info("[WorkerEngine] Received STOP command.");
                                         _isStreamingRequested = false;
                                     }
                                     else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("ResumeAfterUnlock", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        Logger.Info("[WorkerEngine] Received START command from Service.");
+                                        Logger.Info("[WorkerEngine] Received START command.");
                                         _isStreamingRequested = true;
-
-                                        if (_streamPermissionSignal.CurrentCount == 0)
-                                        {
-                                            _streamPermissionSignal.Release();
-                                        }
+                                        if (_streamPermissionSignal.CurrentCount == 0) _streamPermissionSignal.Release();
+                                    }
+                                    else if (cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        Logger.Info("[WorkerEngine] Received RESTART command for on-the-fly policy update.");
+                                        _requiresImmediateRestart = true;
                                     }
                                 }
                             }
@@ -219,13 +223,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     while (!cts.Token.IsCancellationRequested && client.IsConnected)
                     {
-                        bool isActuallyStreaming = _isStreamingRequested;
-
                         var msg = new WorkerIpcStatusMessage
                         {
                             SessionState = InternalSessionState.ActiveInteractive,
                             CurrentFps = _config.TargetFps,
-                            IsStreaming = isActuallyStreaming
+                            IsStreaming = _isStreamingRequested || _requiresImmediateRestart
                         };
 
                         await writer.WriteLineAsync(JsonSerializer.Serialize(msg));
@@ -234,10 +236,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
                 catch
                 {
-                    if (!cts.Token.IsCancellationRequested)
-                    {
-                        await Task.Delay(2000, cts.Token);
-                    }
+                    if (!cts.Token.IsCancellationRequested) await Task.Delay(2000, cts.Token);
                 }
             }
         }

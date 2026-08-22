@@ -1,11 +1,13 @@
 ﻿using System;
-using System.IO; // חובה עבור Directory
+using System.IO;
 using System.Threading;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using Microsoft.Win32;
+using System.Runtime.InteropServices;
 
 namespace ITB_SCREEN_RECORDER.Server
 {
@@ -28,6 +30,31 @@ namespace ITB_SCREEN_RECORDER.Server
             }
 
             var builder = WebApplication.CreateBuilder(args);
+
+            // קריאת פורט ה-HTTP מה-Registry של השרת (אם קיים וההתקנה שינתה אותו) - תומך ב-Cross-Platform
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+#pragma warning disable CA1416 // Validate platform compatibility
+                try
+                {
+                    using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorderServer");
+                    if (key != null)
+                    {
+                        var httpPortVal = key.GetValue("HttpPort");
+                        if (httpPortVal != null && int.TryParse(httpPortVal.ToString(), out int customHttpPort))
+                        {
+                            // דריסת כתובת ההאזנה של Kestrel בזמן אמת לפי מה שנבחר בהתקנה!
+                            builder.WebHost.UseUrls($"http://0.0.0.0:{customHttpPort}");
+                            Console.WriteLine($"[SERVER] Overriding Kestrel listening URL from Registry to port: {customHttpPort}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SERVER] Warning: Failed to read HttpPort from Registry: {ex.Message}");
+                }
+#pragma warning restore CA1416
+            }
 
             // 2. תמיכה שקופה ב-Windows Services (מופעל רק אם רץ תחת SCM בחלונות)
             builder.Host.UseWindowsService(options =>
@@ -91,7 +118,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
             Console.WriteLine("[SERVER] ITB-SCREEN-RECORDER Middleware initialized successfully.");
 
-            // 7. הרצה דינמית - Kestrel קורא אוטומטית את הגדרות השרת והפורטים
+            // 7. הרצה דינמית - Kestrel פועל לפי הפורט שנקבע (ברירת מחדל או מה-Registry)
             app.Run();
         }
     }
