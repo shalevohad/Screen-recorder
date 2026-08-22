@@ -27,8 +27,17 @@ jobs:
     - name: Restore NuGet dependencies
       run: dotnet restore
 
-    - name: Build Solution (Release Configuration)
+    - name: Build Solution (Release Configuration - Windows)
+      if: startsWith(matrix.os, 'windows')
       run: dotnet build --no-restore --configuration Release
+
+    - name: Build Solution (Release Configuration - Linux)
+      if: startsWith(matrix.os, 'ubuntu')
+      # בלינוקס אנחנו נמנעים מלקמפל את פרויקט ההתקנה של WiX
+      run: |
+        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
 
     - name: Run .NET Automated Tests
       run: dotnet test --no-build --configuration Release --verbosity normal
