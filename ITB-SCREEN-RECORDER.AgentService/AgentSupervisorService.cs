@@ -4,7 +4,6 @@ using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -13,7 +12,12 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Runtime.InteropServices; // חובה עבור זיהוי OS
+using System.Runtime.InteropServices;
+
+// הוספת ה-Namespace של ה-Registry אך ורק בקומפילציה ל-Windows
+#if WINDOWS
+using Microsoft.Win32;
+#endif
 
 namespace ITB_SCREEN_RECORDER.AgentService
 {
@@ -48,11 +52,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 Timeout = TimeSpan.FromSeconds(5)
             };
 
-            LoadServerIpConfig(); // מתודה חדשה וחוצת-פלטפורמות
+            LoadServerIpConfig();
             LoadLocalPolicyFallback();
         }
 
-        // --- הפיכת קריאת התצורה ל-Cross-Platform ---
         private void LoadServerIpConfig()
         {
             var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
@@ -69,7 +72,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 _logger.LogInformation("Linux environment detected. No ITB_SERVER_IP env var found. Defaulting to {ServerBaseUrl}", _serverBaseUrl);
             }
 
-            // וידוא קיומו של פורט בכתובת - אם אין נקודתיים, נוסיף את פורט ברירת המחדל 5090
             if (!string.IsNullOrWhiteSpace(_serverBaseUrl) && !_serverBaseUrl.Contains(':'))
             {
                 _serverBaseUrl = $"{_serverBaseUrl.Trim()}:{_defaultPort}";
@@ -77,10 +79,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
-        // מתודה נפרדת ועטופה כדי למנוע טעינת ספריות Win32 על Linux ב-Runtime
         private void LoadServerIpFromRegistrySafe()
         {
-#pragma warning disable CA1416 // Validate platform compatibility
+            // הגנה כפולה ל-GitHub Actions: גם חוסם קומפילציה בלינוקס וגם משתיק אזהרות פלטפורמה בווינדוס
+#if WINDOWS
+#pragma warning disable CA1416
             try
             {
                 using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
@@ -98,8 +101,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 _logger.LogWarning("Failed to read ServerIp from Windows Registry: {Msg}", ex.Message);
             }
 #pragma warning restore CA1416
+#endif
         }
-        // ------------------------------------------------
 
         private void LoadLocalPolicyFallback()
         {
@@ -117,7 +120,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            // שליטה על חלון ה-Console בהתאם לדגל ה-Debug (פועל רק על Windows בתוך המתודה)
             DebugHelper.ApplyConsoleVisibility();
 
             _logger.LogInformation("AgentSupervisorService initialized. Target Server URL: {ServerBaseUrl}", _serverBaseUrl);
@@ -126,8 +128,19 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                EnsureWorkerRunning();
-                await SendTelemetryToServerAsync(stoppingToken);
+                try
+                {
+                    EnsureWorkerRunning();
+                    await SendTelemetryToServerAsync(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    if (DebugHelper.IsDebugModeEnabled())
+                    {
+                        _logger.LogError("Supervisor tick failed: {Msg}", ex.Message);
+                    }
+                }
+
                 await Task.Delay(3000, stoppingToken);
             }
 
@@ -242,7 +255,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson);
                         if (heartbeatResponse != null)
                         {
-                            // 1. בדיקת שינוי בפוליסה מהשרת (Thin Client Architecture)
                             if (heartbeatResponse.Policy != null)
                             {
                                 bool policyChanged =
@@ -258,7 +270,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     _currentPolicy = heartbeatResponse.Policy;
                                     await File.WriteAllTextAsync(_policyFilePath, JsonSerializer.Serialize(_currentPolicy), ct);
 
-                                    // אם אנחנו באמצע שידור, נשלח פקודת ריסטארט מיידית ל-Worker להחלפת פרמטרים על-חם
                                     if (isStreaming)
                                     {
                                         await SendCommandToWorkerAsync("Restart");
@@ -266,7 +277,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 }
                             }
 
-                            // 2. פקודות הפעלה ועצירה רגילות
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
                                 if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[Service] Server requested STOP. Forwarding to Worker.");
@@ -311,45 +321,75 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private void EnsureWorkerRunning()
         {
-            string processName = Path.GetFileNameWithoutExtension(_workerPath);
-            var procs = Process.GetProcessesByName(processName);
-
-            if (procs.Length == 0 && File.Exists(_workerPath))
+            try
             {
-                _logger.LogInformation("Worker process not detected. Launching Worker...");
+                string processName = Path.GetFileNameWithoutExtension(_workerPath);
+                var procs = Process.GetProcessesByName(processName);
 
-                if (OperatingSystem.IsWindows())
+                bool hasEverConnected = _lastWorkerHeartbeat != DateTime.MinValue;
+                bool isHeartbeatDead = hasEverConnected && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds > 15;
+
+                if (procs.Length > 0 && isHeartbeatDead)
                 {
+                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead. Terminating frozen process...");
+                    foreach (var proc in procs)
+                    {
+                        try
+                        {
+                            proc.Kill();
+                            proc.WaitForExit(2000);
+                        }
+                        catch { }
+                    }
+
+                    procs = Array.Empty<Process>();
+                    _lastWorkerHeartbeat = DateTime.MinValue;
+                    _isWorkerStreaming = false;
+                }
+
+                if (procs.Length == 0 && File.Exists(_workerPath))
+                {
+                    _logger.LogInformation("Worker process not detected (or was purged). Launching Worker...");
+
+                    if (OperatingSystem.IsWindows())
+                    {
 #if WINDOWS
-                    bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, string.Empty);
-                    if (!launched)
-                    {
-                        _logger.LogWarning("Failed to launch AgentWorker interactively. This is normal if no user is currently logged into Windows.");
-                    }
-                    else
-                    {
-                        _logger.LogInformation("AgentWorker successfully launched into the active user session.");
-                    }
+                        bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, string.Empty);
+                        if (!launched)
+                        {
+                            _logger.LogWarning("Failed to launch AgentWorker interactively. Normal if session is locked/logged out.");
+                        }
+                        else
+                        {
+                            _logger.LogInformation("AgentWorker successfully launched into the active user session.");
+                            _lastWorkerHeartbeat = DateTime.UtcNow;
+                        }
 #endif
-                }
-                else if (OperatingSystem.IsLinux())
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = _workerPath,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    psi.EnvironmentVariables["DISPLAY"] = ":0";
-                    try
-                    {
-                        Process.Start(psi);
                     }
-                    catch (Exception ex)
+                    else if (OperatingSystem.IsLinux())
                     {
-                        _logger.LogError("Failed to launch Worker on Linux: {Msg}", ex.Message);
+                        var psi = new ProcessStartInfo
+                        {
+                            FileName = _workerPath,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        psi.EnvironmentVariables["DISPLAY"] = ":0";
+                        try
+                        {
+                            Process.Start(psi);
+                            _lastWorkerHeartbeat = DateTime.UtcNow;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError("Failed to launch Worker on Linux: {Msg}", ex.Message);
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("Critical error in EnsureWorkerRunning: {Msg}", ex.Message);
             }
         }
     }

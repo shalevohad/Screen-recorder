@@ -5,7 +5,7 @@
 		<Platforms>x64</Platforms>
 
 		<!-- ניהול מרכזי של גרסת ה-MSI -->
-		<Version>1.0.1.0</Version>
+		<Version>1.0.1.5</Version>
 
 		<!-- הזרקת הגרסה לשם הקובץ הסופי -->
 		<OutputName>ITB-ScreenRecorder-Agent-Setup-$(Version)</OutputName>

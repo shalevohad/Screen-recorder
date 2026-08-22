@@ -1,18 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import StationThumbnail from './components/StationThumbnail';
+import DashboardGrid from './components/DashboardGrid';
 import './styles/App.scss';
 
 export default function App() {
     const [stations, setStations] = useState([]);
     const [actionPending, setActionPending] = useState({});
 
-    // שימוש ב-useCallback כדי לשמור על רפרנס יציב ולמנוע רינדורים מיותרים
     const fetchStations = useCallback(async (isActive = true) => {
         try {
             const response = await fetch('/api/v1/dashboard/stations');
             if (response.ok) {
                 const data = await response.json();
-                // וידוא שהקומפוננטה עדיין קיימת לפני עדכון הסטייט
                 if (isActive) {
                     setStations(data);
                 }
@@ -25,7 +23,6 @@ export default function App() {
     useEffect(() => {
         let isActive = true;
 
-        // עטיפה אסינכרונית שעוקפת את שגיאת הלינטר של React 19
         const loadData = async () => {
             await fetchStations(isActive);
         };
@@ -69,30 +66,12 @@ export default function App() {
                 </div>
             </header>
 
-            {/* NetSupport Style Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-                {stations.length === 0 ? (
-                    <div className="text-gray-500 font-mono col-span-full text-center py-24 border border-dashed border-gray-800 rounded-xl bg-gray-900/30">
-                        🔄 ממתין להתקשרות ראשונית...
-                    </div>
-                ) : (
-                    stations.map((station) => (
-                        <StationThumbnail
-                            key={station.hostname}
-                            hostname={station.hostname}
-                            ipAddress={station.ipAddress}
-                            hlsUrl={station.hlsUrl}
-                            isOnline={station.isOnline}
-                            isStreaming={station.isStreaming}
-                            cpuUsage={station.cpuUsage}
-                            gpuUsage={station.gpuUsage}
-                            hasAudio={station.hasAudio}
-                            isPending={actionPending[station.hostname]}
-                            onToggleStream={() => toggleStreamingPolicy(station.hostname, station.isStreaming)}
-                        />
-                    ))
-                )}
-            </div>
+            {/* החלפנו את הגריד הסטטי בקומפוננטת הזום הדינמית שלנו */}
+            <DashboardGrid
+                stations={stations}
+                actionPending={actionPending}
+                onToggleStream={toggleStreamingPolicy}
+            />
         </div>
     );
 }

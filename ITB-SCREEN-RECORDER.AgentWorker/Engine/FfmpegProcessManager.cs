@@ -194,20 +194,11 @@ namespace ITBRecorderAgent.Engine
         }
 
         private string BuildFfmpegArguments(
-            string destinationUrl,
-            DateTime calibratedStartTime,
-            int videoWidth,
-            int videoHeight,
-            int audioSampleRate,
-            int audioChannels,
-            string audioFormat,
-            string videoEncoder,
-            int tcpPort,
-            string fontPath)
+            string destinationUrl, DateTime calibratedStartTime,
+            int videoWidth, int videoHeight, int audioSampleRate, int audioChannels,
+            string audioFormat, string videoEncoder, int tcpPort, string fontPath)
         {
             var ffmpegArgs = new StringBuilder();
-
-            ffmpegArgs.Append("-use_wallclock_as_timestamps 1 ");
 
             string presetValue;
             string hardwareFlags = "";
@@ -215,7 +206,7 @@ namespace ITBRecorderAgent.Engine
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
                 presetValue = "p2";
-                hardwareFlags = "-tune ll -forced-idr 1";
+                hardwareFlags = "-tune ll -forced-idr 1 -delay 0";
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
@@ -231,22 +222,24 @@ namespace ITBRecorderAgent.Engine
             int gopSize = _config.TargetFps;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            ffmpegArgs.Append($"-thread_queue_size 1024 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
-            ffmpegArgs.Append($"-thread_queue_size 1024 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+            // קביעת קצב פנימי יציב ללא Wallclock
+            ffmpegArgs.Append($"-thread_queue_size 512 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
+            ffmpegArgs.Append($"-thread_queue_size 512 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
             long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
             string filterArg = $"-vf \"drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\" ";
             ffmpegArgs.Append(filterArg);
 
-            ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 10M ");
+            // CFR מושלם (Constant Frame Rate) + חיתוך Keyframe בכל שנייה בדיוק
+            ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 5M ");
 
             if (audioChannels > 0)
             {
-                ffmpegArgs.Append("-c:a aac -b:a 128k -af aresample=async=1 ");
+                ffmpegArgs.Append("-c:a aac -b:a 128k -af aresample=async=1000 ");
             }
 
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
-            ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
+            ffmpegArgs.Append($"-flvflags no_duration_filesize -f flv \"{destinationUrl}\"");
 
             return ffmpegArgs.ToString();
         }

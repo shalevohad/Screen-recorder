@@ -1,5 +1,4 @@
-﻿// 💡 השורה הזו בתחילת הקובץ אומרת ללינוקס: "תתעלם מכל מה שיש פה!"
-#if WINDOWS
+﻿#if WINDOWS
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -23,9 +22,9 @@ namespace ITBRecorderAgent.Providers.Video
         private IDXGIOutputDuplication? _deskDupl;
         private ID3D11Texture2D? _stagingTexture;
 
-        // Throttles reinitialize attempts once IsInitialized has gone false (e.g. screen
-        // lock/UAC secure desktop/RDP disconnect) so TryCaptureFrame keeps retrying instead
-        // of giving up permanently after a single failed reinit attempt.
+        // באפר קבוע ורב-פעמי. אין יותר הקצאות של byte[] בזמן ריצה!
+        private byte[]? _frameBuffer;
+
         private DateTime _lastReinitAttemptUtc = DateTime.MinValue;
         private static readonly TimeSpan ReinitRetryInterval = TimeSpan.FromSeconds(2);
 
@@ -34,17 +33,13 @@ namespace ITBRecorderAgent.Providers.Video
             try
             {
                 D3D11.D3D11CreateDevice(
-                    null,
-                    DriverType.Hardware,
-                    DeviceCreationFlags.BgraSupport,
+                    null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
                     new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
-                    out _device,
-                    out _context);
+                    out _device, out _context);
 
                 using var dxgiDevice = _device!.QueryInterface<IDXGIDevice>();
                 using var adapter = dxgiDevice.GetAdapter();
 
-                // 💡 תיקון: ב-Vortice משתמשים ב-EnumOutputs במקום GetOutput
                 adapter.EnumOutputs(0, out IDXGIOutput output);
                 using var output1 = output.QueryInterface<IDXGIOutput1>();
 
@@ -56,19 +51,23 @@ namespace ITBRecorderAgent.Providers.Video
 
                 var textureDesc = new Texture2DDescription
                 {
-                    Width = (uint)Width,     // 💡 תיקון המרה ל-uint
-                    Height = (uint)Height,   // 💡 תיקון המרה ל-uint
+                    Width = (uint)Width,
+                    Height = (uint)Height,
                     MipLevels = 1,
                     ArraySize = 1,
                     Format = Vortice.DXGI.Format.B8G8R8A8_UNorm,
                     SampleDescription = new SampleDescription(1, 0),
                     Usage = ResourceUsage.Staging,
                     BindFlags = BindFlags.None,
-                    CPUAccessFlags = CpuAccessFlags.Read, // 💡 שינוי ל-CPUAccessFlags
-                    MiscFlags = ResourceOptionFlags.None  // 💡 שינוי ל-MiscFlags
+                    CPUAccessFlags = CpuAccessFlags.Read,
+                    MiscFlags = ResourceOptionFlags.None
                 };
 
                 _stagingTexture = _device.CreateTexture2D(textureDesc);
+
+                // הקצאה חד-פעמית
+                _frameBuffer = new byte[Width * Height * 4];
+
                 IsInitialized = true;
                 Logger.Info($"[VIDEO] DXGI Desktop Duplication initialized: {Width}x{Height}");
             }
@@ -84,35 +83,23 @@ namespace ITBRecorderAgent.Providers.Video
         {
             frameData = null;
 
-            if (!IsInitialized || _deskDupl == null || _stagingTexture == null || _context == null)
+            if (!IsInitialized || _deskDupl == null || _stagingTexture == null || _context == null || _frameBuffer == null)
             {
-                // Keep retrying periodically instead of staying permanently dead after one
-                // failed reinit - the desktop becomes accessible again once the screen
-                // unlocks, the UAC secure desktop closes, or the RDP session reconnects.
                 if (DateTime.UtcNow - _lastReinitAttemptUtc >= ReinitRetryInterval)
                 {
                     _lastReinitAttemptUtc = DateTime.UtcNow;
-                    try
-                    {
-                        Initialize();
-                    }
-                    catch
-                    {
-                        // Still inaccessible; Initialize() already logged and disposed. Try again next interval.
-                    }
+                    try { Initialize(); } catch { }
                 }
-
-                if (!IsInitialized || _deskDupl == null || _stagingTexture == null || _context == null)
-                    return false;
+                if (!IsInitialized) return false;
             }
 
             try
             {
-                var result = _deskDupl.AcquireNextFrame(40, out _, out var desktopResource);
+                // Timeout שונה ל-5ms. אנחנו רוצים שהלולאה תחזור לעבוד מיד אם אין שינוי!
+                var result = _deskDupl.AcquireNextFrame(5, out _, out var desktopResource);
 
                 if (result.Failure)
                 {
-                    // 💡 תיקון התנגשות ה-ResultCode
                     if (result.Code == Vortice.DXGI.ResultCode.AccessLost.Code)
                     {
                         Logger.Warn("[VIDEO] DXGI Access Lost. Reinitializing...");
@@ -132,16 +119,23 @@ namespace ITBRecorderAgent.Providers.Video
                 var mapped = _context.Map(_stagingTexture, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
                 try
                 {
-                    frameData = new byte[Width * Height * 4];
                     int rowPitch = Width * 4;
 
-                    for (int y = 0; y < Height; y++)
+                    // אופטימיזציה מטורפת: אם ה-RowPitch מושלם, מבצעים העתקת בלוק אחת בלבד
+                    if (mapped.RowPitch == rowPitch)
                     {
-                        // 💡 קיבוע המרה ל-int בשורת ה-IntPtr.Add למניעת שגיאת ה-long
-                        IntPtr srcRow = IntPtr.Add(mapped.DataPointer, (int)(y * mapped.RowPitch));
-                        Marshal.Copy(srcRow, frameData, y * rowPitch, rowPitch);
+                        Marshal.Copy(mapped.DataPointer, _frameBuffer, 0, _frameBuffer.Length);
+                    }
+                    else
+                    {
+                        for (int y = 0; y < Height; y++)
+                        {
+                            IntPtr srcRow = IntPtr.Add(mapped.DataPointer, (int)(y * mapped.RowPitch));
+                            Marshal.Copy(srcRow, _frameBuffer, y * rowPitch, rowPitch);
+                        }
                     }
 
+                    frameData = _frameBuffer; // מחזירים רפרנס לבאפר שלנו (אפס אובייקטים חדשים ב-RAM!)
                     return true;
                 }
                 finally
@@ -176,5 +170,4 @@ namespace ITBRecorderAgent.Providers.Video
         }
     }
 }
-
-#endif // סגירת הבלוק בסוף הקובץ
+#endif

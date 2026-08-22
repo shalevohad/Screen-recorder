@@ -10,7 +10,6 @@
 
   <ItemGroup>
     <Content Include="ClientApp\public\css\tailwind.min.css" />
-    <Content Include="ClientApp\public\css\video-js.min.css" />
   </ItemGroup>
 
   <ItemGroup>

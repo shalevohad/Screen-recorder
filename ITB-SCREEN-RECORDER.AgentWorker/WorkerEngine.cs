@@ -91,34 +91,40 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     Logger.Info("[WorkerEngine] Capture and streaming are active.");
                     int targetFrameTimeMs = 1000 / _config.TargetFps;
 
+                    // באפר קבוע ורב-פעמי לעיבוד והזרקת העכבר
+                    byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
+
                     while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
                     {
-                        long swStart = Stopwatch.GetTimestamp();
-                        byte[]? currentFrame = null;
+                        long loopStart = Stopwatch.GetTimestamp();
 
                         if (screenCapture.TryCaptureFrame(out byte[]? frameData) && frameData != null)
                         {
                             lastVideoFrame = frameData;
-                            currentFrame = frameData;
-                        }
-                        else if (lastVideoFrame != null)
-                        {
-                            currentFrame = lastVideoFrame;
                         }
 
-                        if (currentFrame != null)
+                        if (lastVideoFrame != null)
                         {
-                            byte[] frameToWrite = new byte[currentFrame.Length];
-                            Buffer.BlockCopy(currentFrame, 0, frameToWrite, 0, currentFrame.Length);
+                            // העתקת הזיכרון לבאפר הרינדור - 0 הקצאות GC, מונע מריחת עכבר
+                            Buffer.BlockCopy(lastVideoFrame, 0, renderBuffer, 0, lastVideoFrame.Length);
+
 #if WINDOWS
-                            if (OperatingSystem.IsWindows()) MouseCursorOverlay.DrawMouseToFrame(frameToWrite, screenCapture.Width, screenCapture.Height);
+                            if (OperatingSystem.IsWindows())
+                            {
+                                MouseCursorOverlay.DrawMouseToFrame(renderBuffer, screenCapture.Width, screenCapture.Height);
+                            }
 #endif
-                            if (!ffmpegManager.WriteVideoFrame(frameToWrite)) break;
+                            if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
                         }
 
-                        long elapsedMs = (long)Stopwatch.GetElapsedTime(swStart).TotalMilliseconds;
+                        long elapsedMs = (long)Stopwatch.GetElapsedTime(loopStart).TotalMilliseconds;
                         int delay = targetFrameTimeMs - (int)elapsedMs;
-                        if (delay > 0) await Task.Delay(delay, localToken).ConfigureAwait(false);
+
+                        // שימוש ב-Thread.Sleep לייצוב מושלם של שעון ה-Pacing
+                        if (delay > 0)
+                        {
+                            Thread.Sleep(delay);
+                        }
                     }
                 }
                 catch (Exception ex)
