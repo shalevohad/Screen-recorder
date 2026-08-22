@@ -27,16 +27,38 @@ jobs:
     - name: Shutdown .NET Build Server (Prevent File Locking)
       run: dotnet build-server shutdown
 
-    - name: Download FFmpeg for AgentWorker (Windows)
-      if: startsWith(matrix.os, 'windows')
+    - name: Download FFmpeg for AgentWorker (Windows with Retry)
       shell: pwsh
       run: |
         $ffmpegDir = "ITB-SCREEN-RECORDER.AgentWorker"
         New-Item -ItemType Directory -Force -Path $ffmpegDir
         $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         $zipPath = "ffmpeg.zip"
-        Write-Host "Downloading FFmpeg for Windows..."
-        Invoke-WebRequest -Uri $url -OutFile $zipPath
+        
+        $maxAttempts = 5
+        $attempt = 0
+        $success = $false
+
+        while ($attempt -lt $maxAttempts -and -not $success) {
+            $attempt++
+            Write-Host "Attempt $attempt of $maxAttempts to download FFmpeg..."
+            try {
+                Invoke-WebRequest -Uri $url -OutFile $zipPath -ErrorAction Stop
+                $success = $true
+                Write-Host "Download successful!"
+            } catch {
+                Write-Warning "Download failed: $_"
+                if ($attempt -lt $maxAttempts) {
+                    Write-Host "Waiting 10 seconds before retrying..."
+                    Start-Sleep -Seconds 10
+                }
+            }
+        }
+
+        if (-not $success) {
+            throw "Failed to download FFmpeg after $maxAttempts attempts."
+        }
+
         Write-Host "Extracting FFmpeg..."
         Expand-Archive -Path $zipPath -DestinationPath "ffmpeg_extracted" -Force
         $exe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
