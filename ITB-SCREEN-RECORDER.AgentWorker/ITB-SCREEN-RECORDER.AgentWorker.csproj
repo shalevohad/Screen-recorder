@@ -37,10 +37,17 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Content Include="ffmpeg.exe">
+		<!-- בווינדוס מעתיקים ffmpeg.exe -->
+		<None Update="ffmpeg.exe" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
-		</Content>
+			<Link>ffmpeg.exe</Link>
+		</None>
+
+		<!-- בלינוקס מעתיקים ffmpeg ללא סיומת -->
+		<None Update="ffmpeg" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<Link>ffmpeg</Link>
+		</None>
 	</ItemGroup>
 
 </Project>
