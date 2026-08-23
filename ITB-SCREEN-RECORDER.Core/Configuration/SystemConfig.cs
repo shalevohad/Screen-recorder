@@ -23,6 +23,15 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Required]
         public SecuritySettings Security { get; set; } = null!;
+
+        [Required]
+        // תומך כעת גם ב-m קטנה וגם ב-M גדולה
+        [RegularExpression(@"^[1-5][Mm]$", ErrorMessage = "DefaultVideoBitrate must be between '1M' and '5M' (e.g., '5M').")]
+        public string DefaultVideoBitrate { get; set; } = "5M";
+
+        [Required]
+        [Range(15, 60, ErrorMessage = "DefaultTargetFps must be between 15 and 60.")]
+        public int DefaultTargetFps { get; set; } = 30;
     }
 
     public class MediaMtxSettings

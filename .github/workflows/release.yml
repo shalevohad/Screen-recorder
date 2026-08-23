@@ -1,19 +1,13 @@
-name: .NET Core Cross-Platform CI
+name: .NET Release & CD
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    tags:
+      - 'v*' # מופעל אוטומטית רק כשאתה דוחף Tag שמתחיל ב-v (למשל v1.0.0)
 
 jobs:
-  build-dotnet:
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-      fail-fast: false
-
-    runs-on: ${{ matrix.os }}
+  build-and-release:
+    runs-on: windows-latest # בניית מתקיני MSI דורשת סביבת Windows עם WiX
 
     steps:
     - name: Checkout repository
@@ -24,7 +18,7 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
-    - name: Shutdown .NET Build Server (Prevent File Locking)
+    - name: Shutdown .NET Build Server
       run: dotnet build-server shutdown
 
     - name: Download FFmpeg for AgentWorker (Windows with Retry)
@@ -69,37 +63,35 @@ jobs:
             throw "Could not find ffmpeg.exe in downloaded archive"
         }
 
-    - name: Download FFmpeg for AgentWorker (Linux)
-      if: startsWith(matrix.os, 'ubuntu')
-      run: |
-        FFMPEG_DIR="ITB-SCREEN-RECORDER.AgentWorker"
-        mkdir -p "$FFMPEG_DIR"
-        echo "Downloading FFmpeg static build for Linux..."
-        curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
-        tar -xf ffmpeg.tar.xz
-        EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-amd64-static")
-        # שמירת הקובץ בשם ffmpeg בדיוק כפי שהוגדר בתנאי הלינוקס ב-Csproj
-        cp "$EXTRACTED_DIR/ffmpeg" "$FFMPEG_DIR/ffmpeg"
-        chmod +x "$FFMPEG_DIR/ffmpeg"
-        echo "FFmpeg placed successfully in $FFMPEG_DIR"
-
     - name: Restore NuGet dependencies
       run: dotnet restore
 
-    - name: Build Solution (Release Configuration - Windows)
-      if: startsWith(matrix.os, 'windows')
+    - name: Build Solution and Generate MSI Installers (Release)
       run: |
         dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release
 
-    - name: Build Solution (Release Configuration - Linux)
-      if: startsWith(matrix.os, 'ubuntu')
+    - name: Extract Version from Tag
+      id: get_version
+      shell: pwsh
       run: |
-        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release
-        dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release
-        dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release
-        dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
+        $tag = "${{ github.ref_name }}"
+        Write-Host "Release Version: $tag"
+        echo "VERSION=$tag" >> $env:GITHUB_OUTPUT
 
-    - name: Run .NET Automated Tests
-      run: dotnet test --no-build --configuration Release --verbosity normal
+    - name: Create GitHub Release and Upload Artifacts
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        name: Release ${{ steps.get_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        files: |
+          Publish/Agent/windows/*.msi
+          Publish/Server/windows/*.msi
+          # לחלופין, אם קובצי ה-MSI יוצאים ישירות מתיקיות ה-bin/Release של ה-wixproj, נעדכן את הנתיבים בהתאם:
+          ITB-SCREEN-RECORDER.Installer/bin/x64/Release/*.msi
+          ITB-SCREEN-RECORDER.Server.Installer/bin/x64/Release/*.msi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

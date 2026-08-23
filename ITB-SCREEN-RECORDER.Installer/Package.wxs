@@ -1,0 +1,92 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+	<Package Name="ITB Screen Recorder Agent $(var.Version)"
+			 Manufacturer="ITB"
+			 Version="$(var.Version)"
+			 UpgradeCode="4F8E6E73-3B82-4E83-942C-B41E1C55B39A"
+			 Scope="perMachine"
+			 Compressed="yes">
+
+		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed."
+					  AllowSameVersionUpgrades="yes" />
+
+		<MediaTemplate EmbedCab="yes" />
+
+		<util:CloseApplication Id="CloseWorkerProcess"
+							   Target="ITB-SCREEN-RECORDER.AgentWorker.exe"
+							   CloseMessage="yes"
+							   RebootPrompt="no" />
+
+		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+		<Property Id="SERVER_IP">
+			<RegistrySearch Id="SearchServerIp" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="ServerIp" Type="raw" />
+		</Property>
+		<SetProperty Id="SERVER_IP" Value="127.0.0.1:5090" After="AppSearch" Condition="NOT SERVER_IP" />
+
+		<Property Id="DEBUG_MODE">
+			<RegistrySearch Id="SearchDebugMode" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="DebugMode" Type="raw" />
+		</Property>
+		<SetProperty Id="DEBUG_MODE" Value="0" After="AppSearch" Condition="NOT DEBUG_MODE" />
+
+		<UI>
+			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
+				<Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+				<Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+				<Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+				<Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent Configuration" />
+				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address of the Central ITB Server." />
+
+				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP Address:" />
+				<Control Id="IpEdit" Type="Edit" X="20" Y="75" Width="200" Height="18" Property="SERVER_IP" />
+
+				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
+				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />
+				<Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+					<Publish Event="SpawnDialog" Value="CancelDlg" />
+				</Control>
+			</Dialog>
+
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ConfigurationDlg" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" Order="5" />
+			<Publish Dialog="ConfigurationDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1" />
+			<Publish Dialog="ConfigurationDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="1" />
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ConfigurationDlg" Condition="1" Order="5" />
+		</UI>
+
+		<StandardDirectory Id="ProgramFiles64Folder">
+			<Directory Id="INSTALLFOLDER" Name="ITB-ScreenRecorder" />
+		</StandardDirectory>
+
+		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+			<Component Id="ServiceExecutable" Bitness="always64" Guid="A21E3D4C-5B6A-7F8E-9D0C-1B2A3F4E5D6C">
+				<File Id="ServiceExe" Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe" KeyPath="yes" />
+				<ServiceInstall Id="ServiceInstaller" Type="ownProcess" Name="ITB_AgentService" DisplayName="ITB Screen Recorder Supervisor Service" Description="Supervises interactive screen recording sessions." Start="auto" Account="LocalSystem" ErrorControl="normal" />
+				<ServiceControl Id="ServiceController" Name="ITB_AgentService" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+			</Component>
+
+			<Component Id="RegistryConfiguration" Bitness="always64" Guid="C43E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F80">
+				<RegistryKey Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder">
+					<RegistryValue Name="ServerIp" Value="[SERVER_IP]" Type="string" KeyPath="yes" />
+					<RegistryValue Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
+					<RegistryValue Name="DebugMode" Value="[DEBUG_MODE]" Type="integer" />
+				</RegistryKey>
+			</Component>
+
+			<Component Id="FfmpegLicenseDeclaration" Bitness="always64" Guid="D89A5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F99">
+				<File Id="FfmpegLicenseTxt" Source="LICENSE-FFMPEG.txt" KeyPath="yes" />
+			</Component>
+
+			<Files Include="$(var.PublishDir)\**">
+				<Exclude Files="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe" />
+			</Files>
+		</ComponentGroup>
+
+		<Feature Id="MainFeature" Title="ITB Screen Recorder" Level="1">
+			<ComponentGroupRef Id="ProductComponents" />
+		</Feature>
+	</Package>
+</Wix>

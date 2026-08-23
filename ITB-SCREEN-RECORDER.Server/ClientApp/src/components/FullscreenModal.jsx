@@ -1,11 +1,11 @@
 ﻿import { useEffect, useRef } from 'react';
-import VideoPlayer from './VideoPlayer';
+import WebRTCPlayer from './WebRTCPlayer';
 import '../styles/FullscreenModal.css';
 
-export default function FullscreenModal({ hostname, hlsUrl, onClose }) {
+// מקבל כעת את webrtcBaseUrl במקום את hlsUrl מהקומפוננטת אב
+export default function FullscreenModal({ hostname, webrtcBaseUrl, onClose }) {
     const modalBoxRef = useRef(null);
 
-    // סגירה בלחיצה על מקש ESC
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') onClose();
@@ -14,7 +14,6 @@ export default function FullscreenModal({ hostname, hlsUrl, onClose }) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose]);
 
-    // סגירה בלחיצה מחוץ למסגרת הוידאו
     const handleBackdropClick = (e) => {
         if (modalBoxRef.current && !modalBoxRef.current.contains(e.target)) {
             onClose();
@@ -29,11 +28,11 @@ export default function FullscreenModal({ hostname, hlsUrl, onClose }) {
                 backgroundColor: 'rgba(255, 255, 255, 0.15)',
                 backdropFilter: 'blur(15px)',
                 WebkitBackdropFilter: 'blur(15px)',
-                transform: 'translateZ(0)'
+                transform: 'translateZ(0)',
+                zIndex: 9999
             }}
         >
-            <div ref={modalBoxRef} className="stream-modal-box">
-                {/* Header */}
+            <div ref={modalBoxRef} className="stream-modal-box" style={{ display: 'flex', flexDirection: 'column' }}>
                 <div className="stream-modal-header">
                     <div className="stream-modal-title">
                         <span className="live-dot"></span>
@@ -44,9 +43,12 @@ export default function FullscreenModal({ hostname, hlsUrl, onClose }) {
                     </button>
                 </div>
 
-                {/* Body */}
-                <div className="stream-modal-body">
-                    <VideoPlayer hlsUrl={hlsUrl} hostname={hostname} />
+                <div className="stream-modal-body" style={{ flexGrow: 1, position: 'relative', backgroundColor: '#000' }}>
+                    <WebRTCPlayer
+                        streamPath={`live/${hostname}`}
+                        webrtcBaseUrl={webrtcBaseUrl}
+                        showControls={true}
+                    />
                 </div>
             </div>
         </div>

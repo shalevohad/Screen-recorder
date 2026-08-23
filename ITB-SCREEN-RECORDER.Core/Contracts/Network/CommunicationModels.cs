@@ -1,28 +1,39 @@
 ﻿using System;
-using System.Text.Json.Serialization; // <--- חובה להוסיף את ה-using הזה בראש הקובץ!
+using System.Text.Json.Serialization;
 
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 {
     public enum AgentStatus { Offline = 0, Standby = 1, Streaming = 2, Error = 3 }
+
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum ServerCommand { Standby = 0, StartStream = 1, StopStream = 2 }
+
+    public class AgentStreamPolicy
+    {
+        [JsonPropertyName("rtmpServerBaseUrl")]
+        public string RtmpServerBaseUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("videoBitrate")]
+        public string VideoBitrate { get; set; } = "5M";
+
+        [JsonPropertyName("targetFps")]
+        public int TargetFps { get; set; } = 30;
+    }
 
     public class AgentTelemetryReport
     {
-        // זיהוי ורשת
         [JsonPropertyName("hostname")]
         public string Hostname { get; set; } = string.Empty;
 
         [JsonPropertyName("ipAddress")]
         public string IpAddress { get; set; } = string.Empty;
 
-        // סטטוס אופרטיבי
         [JsonPropertyName("status")]
         public AgentStatus Status { get; set; }
 
         [JsonPropertyName("clientTimestamp")]
         public DateTime ClientTimestamp { get; set; }
 
-        // מדדי חומרה ותהליכים
         [JsonPropertyName("isProcessRunning")]
         public bool IsProcessRunning { get; set; }
 
@@ -35,7 +46,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("hasActiveMicrophone")]
         public bool HasActiveMicrophone { get; set; }
 
-        // שינוי מ-float ל-double מבטיח פרסור חלק של מספרים עשרוניים ארוכים
         [JsonPropertyName("cpuUsagePercentage")]
         public double CpuUsagePercentage { get; set; }
 
@@ -62,5 +72,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("serverUtcTime")]
         public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
+
+        [JsonPropertyName("policy")]
+        public AgentStreamPolicy? Policy { get; set; }
     }
 }

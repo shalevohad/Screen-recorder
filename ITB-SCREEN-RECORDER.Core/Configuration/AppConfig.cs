@@ -1,5 +1,4 @@
 ﻿using System;
-using System;
 using System.IO;
 
 namespace ITB_SCREEN_RECORDER.Core.Configuration
@@ -22,149 +21,63 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         }
 
         public string RtmpServerBaseUrl { get; set; } = "rtmp://128.200.3.10:19350/live/";
-        public string DashboardApiUrl { get; set; } = "http://128.200.3.10:8080/api/v1/agent/telemetry";
+        public string DashboardApiUrl { get; set; } = "http://128.200.3.10:5090/api/v1/agent/telemetry";
         public int ReconnectDelaySeconds { get; set; } = 5;
         public int TargetFps { get; set; } = 30;
         public string VideoBitrate { get; set; } = "5M";
         public string VideoEncoder { get; set; } = "auto";
 
+        // עדכון נתיבים ללינוקס: שימוש בתיקיות מערכת סטנדרטיות לשירותים במקום UserProfile
         public string LocalBufferPath { get; set; } = OperatingSystem.IsWindows()
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".itb", "buffer");
+            : "/var/lib/itb-screen-recorder/buffer";
 
         public bool AutoStartRecordingOnLaunch { get; set; } = false;
         public bool EnableFileLogging { get; set; } = true;
 
+        // עדכון נתיב הלוגים ללינוקס ל-/var/log המקובל ב-RedHat
         public string LogFilePath { get; set; } = OperatingSystem.IsWindows()
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Logs\Agent.log"
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".itb", "logs", "Agent.log");
+            : "/var/log/itb-screen-recorder/Agent.log";
 
         private string ResolveFFmpegPath()
         {
-            // If the config value is a full path and exists, use it
-            if (!string.IsNullOrEmpty(_ffmpegPath) && Path.IsPathRooted(_ffmpegPath) && File.Exists(_ffmpegPath))
+            // 1. קבלת הערך מהקונפיגורציה או fallback לברירת מחדל
+            string configuredPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath;
+
+            // 2. מסלול א' - המשתמש הזין נתיב מוחלט (Absolute Path) משלו
+            if (Path.IsPathRooted(configuredPath))
             {
-                return _ffmpegPath;
-            }
-
-            // If the config value is just a filename (not rooted), try to find it in common locations
-            if (!string.IsNullOrEmpty(_ffmpegPath) && !Path.IsPathRooted(_ffmpegPath))
-            {
-                // Try to find in PATH environment variable
-                string? ffmpegFromPath = FindFFmpegInPath(_ffmpegPath);
-                if (ffmpegFromPath != null)
-                    return ffmpegFromPath;
-
-                // Try common installation paths
-                string? ffmpegFromCommon = FindFFmpegInCommonPaths(_ffmpegPath);
-                if (ffmpegFromCommon != null)
-                    return ffmpegFromCommon;
-            }
-
-            // Fallback: use default resolution logic
-            return ResolveDefaultFFmpegPath();
-        }
-
-        private string? FindFFmpegInPath(string ffmpegName)
-        {
-            string pathVariable = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-            string[] paths = pathVariable.Split(Path.PathSeparator);
-
-            foreach (var directory in paths)
-            {
-                if (string.IsNullOrWhiteSpace(directory))
-                    continue;
-
-                string fullPath = Path.Combine(directory, ffmpegName);
-                if (File.Exists(fullPath))
-                    return fullPath;
-            }
-
-            return null;
-        }
-
-        private string? FindFFmpegInCommonPaths(string ffmpegName)
-        {
-            string[] commonPaths = OperatingSystem.IsWindows()
-                ? new[]
+                // הוספת .exe אוטומטית ל-Windows אם המשתמש שכח
+                if (OperatingSystem.IsWindows() && !configuredPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                 {
-                    @"C:\Program Files\FFMPEG",
-                    @"C:\Program Files (x86)\FFMPEG",
-                    @"C:\ffmpeg",
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "FFMPEG"),
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FFMPEG")
-                }
-                : new[]
-                {
-                    "/usr/bin",
-                    "/usr/local/bin",
-                    "/opt/ffmpeg/bin",
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin")
-                };
-
-            foreach (var directory in commonPaths)
-            {
-                if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-                    continue;
-
-                string fullPath = Path.Combine(directory, ffmpegName);
-                if (File.Exists(fullPath))
-                    return fullPath;
-            }
-
-            return null;
-        }
-
-        private string ResolveDefaultFFmpegPath()
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                // Try Windows default paths
-                string[] windowsPaths = new[]
-                {
-                    @"C:\Program Files\FFMPEG\ffmpeg.exe",
-                    @"C:\Program Files (x86)\FFMPEG\ffmpeg.exe",
-                    @"C:\ffmpeg\ffmpeg.exe"
-                };
-
-                foreach (var path in windowsPaths)
-                {
-                    if (File.Exists(path))
-                        return path;
+                    configuredPath += ".exe";
                 }
 
-                // If nothing found, try to find in PATH
-                string? pathResult = FindFFmpegInPath("ffmpeg.exe");
-                if (pathResult != null)
-                    return pathResult;
-
-                // Fallback to just the executable name (will use PATH at runtime)
-                return "ffmpeg.exe";
-            }
-            else
-            {
-                // On Linux, try standard locations
-                string[] linuxPaths = new[]
+                if (File.Exists(configuredPath))
                 {
-                    "/usr/bin/ffmpeg",
-                    "/usr/local/bin/ffmpeg",
-                    "/opt/ffmpeg/bin/ffmpeg"
-                };
-
-                foreach (var path in linuxPaths)
-                {
-                    if (File.Exists(path))
-                        return path;
+                    return configuredPath;
                 }
 
-                // If nothing found, try to find in PATH
-                string? pathResult = FindFFmpegInPath("ffmpeg");
-                if (pathResult != null)
-                    return pathResult;
-
-                // Fallback to just the executable name (will use PATH at runtime)
-                return "ffmpeg";
+                throw new FileNotFoundException($"CRITICAL: Custom FFmpeg executable not found at specified path: {configuredPath}");
             }
+
+            // 3. מסלול ב' - לא הוזן נתיב מוחלט, חיפוש בתיקיית השורש של האפליקציה (Air-Gapped)
+            string fileName = Path.GetFileName(configuredPath); // הגנה מפני Path Traversal
+
+            if (OperatingSystem.IsWindows() && !fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName += ".exe";
+            }
+
+            string absolutePath = Path.Combine(AppContext.BaseDirectory, fileName);
+
+            if (File.Exists(absolutePath))
+            {
+                return absolutePath;
+            }
+
+            throw new FileNotFoundException($"CRITICAL: FFmpeg executable is missing from the application root directory. Expected at: {absolutePath}");
         }
     }
 }

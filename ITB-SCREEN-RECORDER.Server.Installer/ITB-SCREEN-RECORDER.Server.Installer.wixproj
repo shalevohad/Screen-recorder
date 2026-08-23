@@ -1,0 +1,43 @@
+﻿<Project Sdk="WixToolset.Sdk/5.0.0">
+	<PropertyGroup>
+		<OutputType>Package</OutputType>
+		<Platform>x64</Platform>
+		<Platforms>x64</Platforms>
+
+		<!-- אם הועברה גרסה מבחוץ (למשל מ-GitHub Actions), נשתמש בה. אחרת ניקח את ברירת המחדל -->
+		<Version Condition="'$(ProductVersion)' != ''">$(ProductVersion)</Version>
+		<Version Condition="'$(Version)' == ''">1.0.1.5</Version>
+		
+		<OutputName>ITB-ScreenRecorder-Server-Setup-$(Version)</OutputName>
+
+		<StagingDir Condition="'$(StagingDir)' == ''">..\Publish\Staging\server</StagingDir>
+		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">..\Publish\Server\windows</FinalOutputDir>
+
+		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\LICENSE-MEDIAMTX.txt" />
+		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\mediamtx.yml" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="License.rtf" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="WixToolset.Util.wixext" Version="5.0.0" />
+		<PackageReference Include="WixToolset.UI.wixext" Version="5.0.0" />
+	</ItemGroup>
+
+	<Target Name="PublishDependenciesBeforeBuild" BeforeTargets="BeforeBuild">
+		<Message Importance="high" Text="=== [1/3] Publishing Server Components to Staging ($(StagingDir)) ===" />
+		<Exec Command="dotnet publish &quot;..\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(StagingDir)&quot;" />
+	</Target>
+
+	<Target Name="FinalizeDistributionPackage" AfterTargets="Build">
+		<Message Importance="high" Text="=== [2/3] Moving Server MSI to Distribution Folder ($(FinalOutputDir)) ===" />
+		<MakeDir Directories="$(FinalOutputDir)" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FinalOutputDir)" SkipUnchangedFiles="false" />
+		<Message Importance="high" Text="=== [3/3] Cleaning up temporary Staging files ===" />
+		<RemoveDir Directories="$(StagingDir)" />
+	</Target>
+</Project>

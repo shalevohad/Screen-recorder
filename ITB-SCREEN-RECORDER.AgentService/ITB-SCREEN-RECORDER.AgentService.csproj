@@ -21,4 +21,11 @@
 		<ProjectReference Include="..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<None Include="..\ITB-SCREEN-RECORDER.Core\appsettings.json">
+			<Link>appsettings.json</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
 </Project>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Pipes;
 using System.Text.Json;
 using System.Threading;
@@ -7,6 +8,8 @@ using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Diagnostics;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
 using ITBRecorderAgent.Providers.Video;
 using ITBRecorderAgent.Providers.Audio;
@@ -16,171 +19,231 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 {
     public class WorkerEngine
     {
+        private readonly SemaphoreSlim _streamPermissionSignal = new SemaphoreSlim(0, 1);
         private readonly AppConfig _config;
-        private readonly IScreenCaptureProvider _screenCapture;
-        private readonly IAudioCaptureProvider _audioCapture;
-        private readonly FfmpegProcessManager _ffmpegManager;
-
-        private byte[]? _lastVideoFrame;
-        private readonly string _rtmpTarget;
+        private volatile bool _isStreamingRequested = false;
+        private volatile bool _requiresImmediateRestart = false;
 
         public WorkerEngine(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-
-            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
-            _rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
-
-            _screenCapture = ScreenCaptureFactory.Create();
-            _audioCapture = AudioCaptureFactory.Create();
-            _ffmpegManager = new FfmpegProcessManager(_config);
         }
 
         public async Task RunAsync(CancellationToken ct)
         {
-            Logger.Info("[WorkerEngine] Starting initialization of capture engines...");
+            DebugHelper.ApplyConsoleVisibility();
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            CancellationToken localToken = linkedCts.Token;
 
-            _screenCapture.Initialize();
+            _ = Task.Run(() => MaintainIpcCommunicationAsync(linkedCts), localToken);
 
-            _audioCapture.Initialize();
-            _audioCapture.AudioDataAvailable += (s, data) =>
+            while (!localToken.IsCancellationRequested)
             {
-                if (_ffmpegManager != null && _ffmpegManager.IsRunning)
+                Logger.Info("[WorkerEngine] Worker is in Standby mode, waiting for streaming permission...");
+                await _streamPermissionSignal.WaitAsync(localToken);
+
+                if (localToken.IsCancellationRequested) break;
+
+                ApplyDynamicPolicy();
+                Logger.Info("[WorkerEngine] Starting initialization of capture engines...");
+
+                IScreenCaptureProvider? screenCapture = null;
+                IAudioCaptureProvider? audioCapture = null;
+                FfmpegProcessManager? ffmpegManager = null;
+                byte[]? lastVideoFrame = null;
+
+                try
                 {
-                    _ffmpegManager.WriteAudioData(data);
-                }
-            };
-            _audioCapture.Start();
+                    screenCapture = ScreenCaptureFactory.Create();
+                    screenCapture.Initialize();
 
-            await Task.Delay(100, ct);
+                    audioCapture = AudioCaptureFactory.Create();
+                    audioCapture.Initialize();
 
-            bool started = await _ffmpegManager.StartAsync(
-                _rtmpTarget,
-                DateTime.UtcNow,
-                _screenCapture.Width,
-                _screenCapture.Height,
-                48000,
-                2,
-                "f32le",
-                ct).ConfigureAwait(false);
+                    ffmpegManager = new FfmpegProcessManager(_config);
+                    audioCapture.AudioDataAvailable += (s, data) =>
+                    {
+                        if (ffmpegManager != null && ffmpegManager.IsRunning) ffmpegManager.WriteAudioData(data);
+                    };
+                    audioCapture.Start();
 
-            if (!started)
-            {
-                Logger.Error("[WorkerEngine] Failed to start the FFmpeg pipeline.");
-                return;
-            }
+                    await Task.Delay(100, localToken);
 
-            byte[] initialFrame = new byte[_screenCapture.Width * _screenCapture.Height * 4];
-            _ffmpegManager.WriteVideoFrame(initialFrame);
+                    string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+                    string rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
 
-            bool audioConnected = await _ffmpegManager.CompleteAudioHandshakeAsync(ct).ConfigureAwait(false);
-            if (!audioConnected)
-            {
-                Logger.Error("[WorkerEngine] Failed to connect the audio channel to FFmpeg.");
-                return;
-            }
+                    bool started = await ffmpegManager.StartAsync(rtmpTarget, DateTime.UtcNow, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
+                    if (!started)
+                    {
+                        _isStreamingRequested = false;
+                        continue;
+                    }
 
-            Logger.Info("[WorkerEngine] Capture and streaming are active. Starting synchronization loop (Pacing).");
+                    byte[] initialFrame = new byte[screenCapture.Width * screenCapture.Height * 4];
+                    ffmpegManager.WriteVideoFrame(initialFrame);
 
-            _ = Task.Run(() => MaintainIpcHeartbeatAsync(ct), ct);
+                    if (!await ffmpegManager.CompleteAudioHandshakeAsync(localToken).ConfigureAwait(false))
+                    {
+                        _isStreamingRequested = false;
+                        continue;
+                    }
 
-            int targetFrameTimeMs = 1000 / _config.TargetFps;
-            long totalFrames = 0;
+                    Logger.Info("[WorkerEngine] Capture and streaming are active.");
+                    int targetFrameTimeMs = 1000 / _config.TargetFps;
 
-            while (!ct.IsCancellationRequested)
-            {
-                long swStart = Stopwatch.GetTimestamp();
-                byte[]? currentFrame = null;
+                    // באפר קבוע ורב-פעמי לעיבוד והזרקת העכבר
+                    byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
 
-                if (_screenCapture.TryCaptureFrame(out byte[]? frameData) && frameData != null)
-                {
-                    _lastVideoFrame = frameData;
-                    currentFrame = frameData;
-                }
-                else if (_lastVideoFrame != null)
-                {
-                    currentFrame = _lastVideoFrame;
-                }
+                    while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
+                    {
+                        long loopStart = Stopwatch.GetTimestamp();
 
-                if (currentFrame != null)
-                {
-                    byte[] frameToWrite = new byte[currentFrame.Length];
-                    Buffer.BlockCopy(currentFrame, 0, frameToWrite, 0, currentFrame.Length);
+                        if (screenCapture.TryCaptureFrame(out byte[]? frameData) && frameData != null)
+                        {
+                            lastVideoFrame = frameData;
+                        }
+
+                        if (lastVideoFrame != null)
+                        {
+                            // העתקת הזיכרון לבאפר הרינדור - 0 הקצאות GC, מונע מריחת עכבר
+                            Buffer.BlockCopy(lastVideoFrame, 0, renderBuffer, 0, lastVideoFrame.Length);
 
 #if WINDOWS
-                    if (OperatingSystem.IsWindows())
-                    {
-                        MouseCursorOverlay.DrawMouseToFrame(frameToWrite, _screenCapture.Width, _screenCapture.Height);
-                    }
+                            if (OperatingSystem.IsWindows())
+                            {
+                                MouseCursorOverlay.DrawMouseToFrame(renderBuffer, screenCapture.Width, screenCapture.Height);
+                            }
 #endif
+                            if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
+                        }
 
-                    if (!_ffmpegManager.WriteVideoFrame(frameToWrite))
-                    {
-                        Logger.Error("[WorkerEngine] Video streaming to FFmpeg failed on the current frame.");
-                        break;
+                        long elapsedMs = (long)Stopwatch.GetElapsedTime(loopStart).TotalMilliseconds;
+                        int delay = targetFrameTimeMs - (int)elapsedMs;
+
+                        // שימוש ב-Thread.Sleep לייצוב מושלם של שעון ה-Pacing
+                        if (delay > 0)
+                        {
+                            Thread.Sleep(delay);
+                        }
                     }
-                    totalFrames++;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"[WorkerEngine] Error during streaming session: {ex.Message}");
+                }
+                finally
+                {
+                    Logger.Info("[WorkerEngine] Stopping and tearing down resources...");
+                    try
+                    {
+                        audioCapture?.Stop();
+                        if (audioCapture is IDisposable audioDisp) audioDisp.Dispose();
+                        if (screenCapture is IDisposable screenDisp) screenDisp.Dispose();
+                        ffmpegManager?.Dispose();
+                    }
+                    catch (Exception ex) { Logger.Error($"[WorkerEngine] Error teardown: {ex.Message}"); }
                 }
 
-                long elapsedMs = (long)Stopwatch.GetElapsedTime(swStart).TotalMilliseconds;
-                int delay = targetFrameTimeMs - (int)elapsedMs;
-
-                if (delay > 0)
+                if (_requiresImmediateRestart)
                 {
-                    await Task.Delay(delay, ct).ConfigureAwait(false);
+                    _requiresImmediateRestart = false;
+                    _isStreamingRequested = true;
+                    if (_streamPermissionSignal.CurrentCount == 0)
+                    {
+                        _streamPermissionSignal.Release();
+                    }
                 }
             }
-
-            Teardown();
         }
 
-        private async Task MaintainIpcHeartbeatAsync(CancellationToken ct)
+        private void ApplyDynamicPolicy()
         {
-            while (!ct.IsCancellationRequested)
+            try
+            {
+                string policyPath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
+                if (File.Exists(policyPath))
+                {
+                    string json = File.ReadAllText(policyPath);
+                    var policy = JsonSerializer.Deserialize<AgentStreamPolicy>(json);
+
+                    if (policy != null)
+                    {
+                        if (policy.TargetFps > 0) _config.TargetFps = policy.TargetFps;
+                        if (!string.IsNullOrWhiteSpace(policy.VideoBitrate)) _config.VideoBitrate = policy.VideoBitrate;
+                        if (!string.IsNullOrWhiteSpace(policy.RtmpServerBaseUrl)) _config.RtmpServerBaseUrl = policy.RtmpServerBaseUrl;
+
+                        Logger.Info($"[WorkerEngine] Dynamic policy applied: {policy.TargetFps} FPS, {policy.VideoBitrate} Bitrate.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[WorkerEngine] Failed to read dynamic policy. Error: {ex.Message}");
+            }
+        }
+
+        private async Task MaintainIpcCommunicationAsync(CancellationTokenSource cts)
+        {
+            while (!cts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    using var client = new NamedPipeClientStream(".", "ITB_Agent_IPC", PipeDirection.Out);
-                    await client.ConnectAsync(3000, ct);
+                    using var client = new NamedPipeClientStream(".", "ITB_Agent_IPC", PipeDirection.InOut, PipeOptions.Asynchronous);
+                    await client.ConnectAsync(3000, cts.Token);
 
+                    using var reader = new StreamReader(client);
                     using var writer = new StreamWriter(client) { AutoFlush = true };
 
-                    while (!ct.IsCancellationRequested && client.IsConnected)
+                    var listenerTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            while (!cts.Token.IsCancellationRequested && client.IsConnected)
+                            {
+                                string? line = await reader.ReadLineAsync(cts.Token);
+                                if (!string.IsNullOrWhiteSpace(line))
+                                {
+                                    string cmd = line.Trim();
+
+                                    if (cmd.Equals("Stop", StringComparison.OrdinalIgnoreCase) || cmd.Equals("GracefulShutdown", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        Logger.Info("[WorkerEngine] Received STOP command.");
+                                        _isStreamingRequested = false;
+                                    }
+                                    else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("ResumeAfterUnlock", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        Logger.Info("[WorkerEngine] Received START command.");
+                                        _isStreamingRequested = true;
+                                        if (_streamPermissionSignal.CurrentCount == 0) _streamPermissionSignal.Release();
+                                    }
+                                    else if (cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        Logger.Info("[WorkerEngine] Received RESTART command for on-the-fly policy update.");
+                                        _requiresImmediateRestart = true;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }, cts.Token);
+
+                    while (!cts.Token.IsCancellationRequested && client.IsConnected)
                     {
                         var msg = new WorkerIpcStatusMessage
                         {
                             SessionState = InternalSessionState.ActiveInteractive,
                             CurrentFps = _config.TargetFps,
-                            IsStreaming = true
+                            IsStreaming = _isStreamingRequested || _requiresImmediateRestart
                         };
 
                         await writer.WriteLineAsync(JsonSerializer.Serialize(msg));
-                        await Task.Delay(2000, ct);
+                        await Task.Delay(2000, cts.Token);
                     }
                 }
                 catch
                 {
-                    await Task.Delay(2000, ct);
+                    if (!cts.Token.IsCancellationRequested) await Task.Delay(2000, cts.Token);
                 }
-            }
-        }
-
-        private void Teardown()
-        {
-            Logger.Info("[WorkerEngine] Stopping and tearing down resources...");
-            try
-            {
-                _audioCapture?.Stop();
-                if (_audioCapture is IDisposable audioDisp) audioDisp.Dispose();
-
-                if (_screenCapture is IDisposable screenDisp) screenDisp.Dispose();
-
-                _ffmpegManager?.Dispose();
-                _lastVideoFrame = null;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"[WorkerEngine] Error during resource teardown: {ex.Message}");
             }
         }
     }

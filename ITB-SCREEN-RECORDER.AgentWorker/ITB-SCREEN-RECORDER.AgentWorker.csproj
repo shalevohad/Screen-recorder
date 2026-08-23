@@ -30,8 +30,23 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="appsettings.json">
+		<None Include="..\ITB-SCREEN-RECORDER.Core\appsettings.json">
+			<Link>appsettings.json</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- בווינדוס מעתיקים ffmpeg.exe -->
+		<None Update="ffmpeg.exe" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<Link>ffmpeg.exe</Link>
+		</None>
+
+		<!-- בלינוקס מעתיקים ffmpeg ללא סיומת -->
+		<None Update="ffmpeg" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<Link>ffmpeg</Link>
 		</None>
 	</ItemGroup>
 
