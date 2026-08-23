@@ -10,11 +10,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 {
     public interface ITelemetryStateService
     {
-        AgentHeartbeatResponse ProcessHeartbeat(AgentTelemetryReport report);
+        // הוספנו את ה-requestHost כפרמטר אופציונלי
+        AgentHeartbeatResponse ProcessHeartbeat(AgentTelemetryReport report, string requestHost = null);
         void SetAgentStreamState(string hostname, bool shouldStream);
         IEnumerable<AgentTelemetryReport> GetAllAgents();
-
-        // הוספת מתודה לשליפת פוליסה דינמית (עם תשתית עתידית לפי קליינט)
         AgentStreamPolicy GetAgentPolicy(string hostname, string requestHost);
     }
 
@@ -29,7 +28,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             _systemConfig = systemConfig.Value;
         }
 
-        public AgentHeartbeatResponse ProcessHeartbeat(AgentTelemetryReport report)
+        public AgentHeartbeatResponse ProcessHeartbeat(AgentTelemetryReport report, string requestHost = null)
         {
             if (report == null || string.IsNullOrWhiteSpace(report.Hostname))
             {
@@ -39,6 +38,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             string key = report.Hostname.ToUpperInvariant();
             _latestReports[key] = report;
 
+            // שומרים על הלוגיקה המקורית שלך - הפעלה אוטומטית כברירת מחדל
             _agentDesiredStates.CustomGetOrAdd(key, () => report.IsStreaming || report.IsScreenCapturing || true);
 
             bool desiredStreamState = _agentDesiredStates[key];
@@ -49,13 +49,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 commandToSend = desiredStreamState ? ServerCommand.StartStream : ServerCommand.StopStream;
             }
 
-            // הפוליסה הארגונית שנשלחת לתחנות (בעתיד ניתן לשלוף מה-DB לפי Hostname)
-            var currentGlobalPolicy = new AgentStreamPolicy
-            {
-                RtmpServerBaseUrl = "rtmp://127.0.0.1:19350/live",
-                VideoBitrate = "5M",
-                TargetFps = 30
-            };
+            // יצירת ה-Policy הדינמי: שימוש בכתובת הבקשה או כתובת גיבוי במידה וחסר
+            string hostToUse = !string.IsNullOrWhiteSpace(requestHost) ? requestHost : "128.200.3.10";
+            var currentGlobalPolicy = GetAgentPolicy(report.Hostname, hostToUse);
 
             return new AgentHeartbeatResponse
             {
@@ -80,6 +76,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
         public AgentStreamPolicy GetAgentPolicy(string hostname, string requestHost)
         {
+            // שליפת הפורט מהקונפיגורציה, או 19350 כדיפולט
             int rtmpPort = _systemConfig.MediaMtx?.RtmpPort > 0 ? _systemConfig.MediaMtx.RtmpPort : 19350;
 
             // 1. אכיפת טווח FPS
@@ -88,13 +85,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             if (fps > 60) fps = 60;
 
             // 2. אכיפת ונרמול Bitrate
-            string bitrate = (_systemConfig.DefaultVideoBitrate ?? "5M").ToUpper(); // המרה תמידית לאות גדולה
+            string bitrate = (_systemConfig.DefaultVideoBitrate ?? "5M").ToUpper();
             if (bitrate != "1M" && bitrate != "2M" && bitrate != "3M" && bitrate != "4M" && bitrate != "5M")
             {
                 bitrate = "5M"; // Fallback לערך בטוח
             }
-
-            // בעתיד: לפני יצירת האובייקט נוכל לבדוק במסד הנתונים אם קיים Override ספציפי עבור ה-hostname
 
             return new AgentStreamPolicy
             {
