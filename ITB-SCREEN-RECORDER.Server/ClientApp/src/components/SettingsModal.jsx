@@ -39,7 +39,7 @@ export default function SettingsModal({ onClose }) {
     };
 
     const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
-    const updateStorageField = (field, value) => setForm(prev => ({ ...prev, Storage: { ...prev.Storage, [field]: value } }));
+    const updateStorageField = (field, value) => setForm(prev => ({ ...prev, storage: { ...prev.storage, [field]: value } }));
 
     const handleSave = async (e) => {
         e.preventDefault();
