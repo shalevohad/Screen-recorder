@@ -9,7 +9,6 @@ jobs:
   build-and-release:
     runs-on: windows-latest
     
-    # הצהרת הרשאות מפורשת (קריטי לפתרון ה-403)
     permissions:
       contents: write
 
@@ -70,28 +69,36 @@ jobs:
     - name: Restore NuGet dependencies
       run: dotnet restore
 
-    - name: Build Solution and Generate MSI Installers (Release)
-      run: |
-        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release
-        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release
-        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release
-
-    - name: Extract Version from Tag
+    # שלב חדש: חילוץ וניקוי הגרסה מוקם לכאן - לפני הבנייה!
+    - name: Extract and Clean Version from Tag
       id: get_version
       shell: pwsh
       run: |
         $tag = "${{ github.ref_name }}"
-        Write-Host "Release Version: $tag"
-        echo "VERSION=$tag" >> $env:GITHUB_OUTPUT
+        Write-Host "Original Tag: $tag"
+        
+        # הסרת האות 'v' בתחילת המחרוזת לקבלת מספר נקי (למשל 1.0.1.17)
+        $cleanVersion = $tag -replace '^v', ''
+        Write-Host "Cleaned Version for Build: $cleanVersion"
+        
+        echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+        echo "CLEAN_VERSION=$cleanVersion" >> $env:GITHUB_OUTPUT
 
+    # הזרקת הגרסה הנקייה (CLEAN_VERSION) ישירות לתוך הקומפיילר
+    - name: Build Solution and Generate MSI Installers (Release)
+      run: |
+        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.CLEAN_VERSION }}
+        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.CLEAN_VERSION }}
+        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.CLEAN_VERSION }}
+
+    # יצירת ה-Release תוך שימוש בתג המקורי (עם ה-v)
     - name: Create GitHub Release and Upload Artifacts
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.get_version.outputs.VERSION }}
-        name: Release ${{ steps.get_version.outputs.VERSION }}
+        tag_name: ${{ steps.get_version.outputs.TAG }}
+        name: Release ${{ steps.get_version.outputs.TAG }}
         draft: false
         prerelease: false
-        # רשימה נקייה לחלוטין של נתיבי התוצרים
         files: |
           ITB-SCREEN-RECORDER.Installer/bin/x64/Release/*.msi
           ITB-SCREEN-RECORDER.Server.Installer/bin/x64/Release/*.msi
