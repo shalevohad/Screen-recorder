@@ -3,11 +3,15 @@ name: .NET Release & CD
 on:
   push:
     tags:
-      - 'v*' # מופעל אוטומטית רק כשאתה דוחף Tag שמתחיל ב-v (למשל v1.0.0)
+      - 'v*'
 
 jobs:
   build-and-release:
-    runs-on: windows-latest # בניית מתקיני MSI דורשת סביבת Windows עם WiX
+    runs-on: windows-latest
+    
+    # הצהרת הרשאות מפורשת (קריטי לפתרון ה-403)
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout repository
@@ -87,10 +91,8 @@ jobs:
         name: Release ${{ steps.get_version.outputs.VERSION }}
         draft: false
         prerelease: false
+        # רשימה נקייה לחלוטין של נתיבי התוצרים
         files: |
-          Publish/Agent/windows/*.msi
-          Publish/Server/windows/*.msi
-          # לחלופין, אם קובצי ה-MSI יוצאים ישירות מתיקיות ה-bin/Release של ה-wixproj, נעדכן את הנתיבים בהתאם:
           ITB-SCREEN-RECORDER.Installer/bin/x64/Release/*.msi
           ITB-SCREEN-RECORDER.Server.Installer/bin/x64/Release/*.msi
       env:
