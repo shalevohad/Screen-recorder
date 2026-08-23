@@ -33,7 +33,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(errors);
             }
 
-            var response = _telemetryState.ProcessHeartbeat(report);
+            // חילוץ כתובת השרת (IP/Host) בדיוק כפי שה-Agent פנה אליה
+            string requestHost = Request.Host.Host;
+
+            // העברת ה-requestHost לסרביס ליצירת ה-Policy הדינמי
+            var response = _telemetryState.ProcessHeartbeat(report, requestHost);
             return Ok(response);
         }
 
