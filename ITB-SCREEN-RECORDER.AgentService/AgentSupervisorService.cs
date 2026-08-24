@@ -259,9 +259,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         if (heartbeatResponse != null)
                         {
                             // 💡 הליבה: קריאת השעון המדויק של השרת וחישוב הסטייה
-                            if (heartbeatResponse.ServerTime != default)
+                            if (heartbeatResponse.ServerUtcTime != default)
                             {
-                                _serverUtcOffset = heartbeatResponse.ServerTime - DateTime.UtcNow;
+                                _serverUtcOffset = heartbeatResponse.ServerUtcTime - DateTime.UtcNow;
                             }
 
                             if (heartbeatResponse.Policy != null)

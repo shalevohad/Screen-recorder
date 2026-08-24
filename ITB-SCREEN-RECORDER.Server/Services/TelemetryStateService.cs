@@ -59,7 +59,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             {
                 ShouldStream = desiredStreamState,
                 Command = commandToSend,
-                ServerTime = DateTime.UtcNow,
                 ServerUtcTime = DateTime.UtcNow,
                 Policy = currentPolicy
             };

@@ -67,9 +67,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("command")]
         public ServerCommand Command { get; set; } = ServerCommand.Standby;
 
-        [JsonPropertyName("serverTime")]
-        public DateTime ServerTime { get; set; } = DateTime.UtcNow;
-
         [JsonPropertyName("serverUtcTime")]
         public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
 
