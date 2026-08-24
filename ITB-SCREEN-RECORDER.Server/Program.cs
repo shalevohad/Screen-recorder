@@ -89,6 +89,7 @@ namespace ITB_SCREEN_RECORDER.Server
             // תשתית HTTP + שירותי ניהול אחסון והקלטה
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<StoragePathResolver>();
+            builder.Services.AddSingleton<SettingsFileService>();
             builder.Services.AddSingleton<MediaMtxApiClient>();
             builder.Services.AddSingleton<EventLogger>();
 

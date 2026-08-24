@@ -219,7 +219,10 @@ namespace ITBRecorderAgent.Engine
                 hardwareFlags = "-tune zerolatency";
             }
 
-            int gopSize = _config.TargetFps;
+            // 2-second keyframe interval (instead of 1s) trims recording/stream size, since
+            // keyframes are much larger than delta frames. Tradeoff: live HLS viewers joining
+            // mid-stream wait up to ~2s for their first full frame instead of ~1s.
+            int gopSize = _config.TargetFps * 2;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
             // קביעת קצב פנימי יציב ללא Wallclock

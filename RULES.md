@@ -54,9 +54,20 @@ Recordings are written to `Storage.NetAppUncPath` when reachable; otherwise to `
 
 ---
 
-## 4. Storage quota (`MaxStorageQuotaGb`) — Configured, not enforced
+## 4. Storage quota (`MaxStorageQuotaGb`) — Configured, not enforced (planned)
 
-`SystemConfig.MaxStorageQuotaGb` is validated at startup (`[Range(10, 100000)]`) but no code path reads it or enforces a quota. There is currently no mechanism that stops recording or evicts old files when total storage usage exceeds this value — retention is time-based only (see Rule 3).
+`SystemConfig.MaxStorageQuotaGb` is validated at startup (`[Range(10, 100000)]`, currently `100`) but no code path reads it or enforces a quota. There is currently no mechanism that stops recording or evicts old files when total storage usage exceeds this value — retention is time-based only (see Rule 3).
+
+**Enforcement plan (not yet implemented):**
+
+- **New `StorageQuotaEnforcer` `BackgroundService`**, alongside `RecordingChunkScheduler` and `MediaMtxSupervisorWorker` rather than folded into either — separate concern (disk usage vs. clock-boundary rotation), own timer. Runs on its own interval (e.g. every 5 minutes — frequent enough to catch overage promptly, cheap enough not to matter) rather than piggybacking on the chunk-boundary tick, so quota checks aren't coupled to `Storage.ChunkIntervalMinutes`.
+- **Scope**: the quota applies to the *currently active* recordings root only (`StoragePathResolver.ResolveActiveRootAsync` — NetApp when reachable, else `LocalFallbackPath`), summed across **all** stations' subfolders under it (`{root}/live/*/*.mp4`), not per-station. `MaxStorageQuotaGb` is a single global Server-level value, so this matches its shape.
+- **Measurement**: recursively sum `*.mp4` file sizes under the active root (`Directory.EnumerateFiles(root, "*.mp4", SearchOption.AllDirectories)`), not disk free-space (`DriveInfo`/`GetDiskFreeSpaceEx`) — the quota is a budget for *our* recordings specifically, not a statement about total disk capacity, and free-space checks would be misleading on a shared NetApp volume with other consumers.
+- **Eviction**: when total usage exceeds the quota, delete the oldest `.mp4` files first (sort by the timestamp embedded in the filename, `%Y-%m-%d_%H-%M-%S-%f`, not `LastWriteTime` — more reliable if files are ever copied/moved) across all stations combined, until usage drops back under the quota. Evict globally-oldest-first, not round-robin per station, so one noisy/high-bitrate station doesn't starve eviction budget from quieter ones.
+- **Safety**: never evict the single newest file per station-folder, even if it's technically the oldest candidate somewhere in a pathological quota-smaller-than-one-chunk scenario — that file may still be open/actively written by MediaMTX. Skip files younger than roughly `2 * Storage.ChunkIntervalMinutes` as an extra guard against racing an in-progress or just-closed segment.
+- **Interaction with Rule 3's time-based retention**: this is an *additional* safety net, not a replacement. MediaMTX's own `recordDeleteAfter` (age-based) keeps running unchanged; the quota enforcer only acts when total size crosses the cap *before* age-based deletion has caught up (e.g. high-bitrate stations filling the quota well within the 30-day retention window).
+- **Auditability**: log every eviction via the existing `EventLogger` pattern (parallel to `LogChunkCutAsync` in `RecordingChunkScheduler`) — deleting recordings automatically is consequential enough to want a trail of what was removed and when.
+- **Edge cases to handle**: quota disabled/no-op if `MaxStorageQuotaGb <= 0`; log a warning (not a crash) if a single station's most recent chunk alone exceeds the quota, since eviction can't help there — that's a config problem (quota too low relative to `VideoBitrate` × `ChunkIntervalMinutes`) for an admin to fix, not something to fail loudly to end recording over.
 
 ---
 

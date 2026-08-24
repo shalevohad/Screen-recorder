@@ -31,3 +31,6 @@ mediamtx.exe
 /ITB-SCREEN-RECORDER.Server/wwwroot/assets/index.js
 /ITB-SCREEN-RECORDER.Server/wwwroot/assets/index.js
 **/ffmpeg.exe
+
+## Local-only convenience scripts (not part of the repo)
+/Launch.bat
