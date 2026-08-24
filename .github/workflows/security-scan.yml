@@ -2,9 +2,9 @@ name: Dependency Security Architecture Scan
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "release" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "release" ]
   schedule:
     # הרצה אוטומטית בכל יום ראשון ב-00:00 בלילה (שעון UTC)
     - cron: '0 0 * * 0'

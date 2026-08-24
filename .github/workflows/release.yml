@@ -2,8 +2,16 @@ name: .NET Release & CD
 
 on:
   push:
+    branches:
+      - release
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      custom_version:
+        description: 'גרסה מותאמת אישית (לדוגמה: 2.1.4)'
+        required: false
+        default: ''
 
 jobs:
   build-and-release:
@@ -15,6 +23,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Setup .NET SDK (8.0.x)
       uses: actions/setup-dotnet@v4
@@ -69,29 +79,56 @@ jobs:
     - name: Restore NuGet dependencies
       run: dotnet restore
 
-    # שלב חדש: חילוץ וניקוי הגרסה מוקם לכאן - לפני הבנייה!
-    - name: Extract and Clean Version from Tag
+    - name: Determine Release Version (SemVer 3-parts)
       id: get_version
       shell: pwsh
       run: |
-        $tag = "${{ github.ref_name }}"
-        Write-Host "Original Tag: $tag"
-        
-        # הסרת האות 'v' בתחילת המחרוזת לקבלת מספר נקי (למשל 1.0.1.17)
-        $cleanVersion = $tag -replace '^v', ''
-        Write-Host "Cleaned Version for Build: $cleanVersion"
-        
-        echo "TAG=$tag" >> $env:GITHUB_OUTPUT
-        echo "CLEAN_VERSION=$cleanVersion" >> $env:GITHUB_OUTPUT
+        $customVer = "${{ github.event.inputs.custom_version }}"
+        $refName = "${{ github.ref_name }}"
 
-    # הזרקת הגרסה הנקייה (CLEAN_VERSION) ישירות לתוך הקומפיילר
+        if ($customVer -ne "") {
+            $version = $customVer.TrimStart('v')
+            $tagName = "v$version"
+        } elseif ("${{ github.ref_type }}" -eq "tag") {
+            $tagName = $refName
+            $version = $refName.TrimStart('v')
+        } else {
+            # שליפת ה-Tag האחרון מ-Git
+            $latestTag = git tag -l "v*" --sort=-v:refname | Select-Object -First 1
+
+            if (-not $latestTag) {
+                $version = "1.0.1"
+            } else {
+                $rawVersion = $latestTag.TrimStart('v')
+                $parts = [System.Collections.Generic.List[string]]($rawVersion.Split('.'))
+
+                # חיתוך ל-3 ספרות (Major.Minor.Patch)
+                if ($parts.Count -gt 3) {
+                    $parts = $parts[0..2]
+                }
+                while ($parts.Count -lt 3) {
+                    $parts.Add("0")
+                }
+
+                # קידום הספרה השלישית (Patch)
+                $parts[2] = ([int]$parts[2] + 1).ToString()
+                $version = $parts -join '.'
+            }
+            $tagName = "v$version"
+        }
+
+        Write-Host "Calculated Version: $version"
+        Write-Host "Calculated Tag: $tagName"
+
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "TAG=$tagName" >> $env:GITHUB_OUTPUT
+
     - name: Build Solution and Generate MSI Installers (Release)
       run: |
-        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.CLEAN_VERSION }}
-        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.CLEAN_VERSION }}
-        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.CLEAN_VERSION }}
+        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.VERSION }}
+        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.VERSION }}
+        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.VERSION }}
 
-    # יצירת ה-Release תוך שימוש בתג המקורי (עם ה-v)
     - name: Create GitHub Release and Upload Artifacts
       uses: softprops/action-gh-release@v1
       with:

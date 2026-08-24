@@ -5,9 +5,9 @@ name: Node.js Cross-Platform CI
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "release" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "release" ]
 
 jobs:
   build:
