@@ -2,10 +2,12 @@
 using System.IO;
 using System.Threading;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration; // 💡 דרוש עבור Get<T>()
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Common;
 using Microsoft.Win32;
 using System.Runtime.InteropServices;
 
@@ -19,16 +21,35 @@ namespace ITB_SCREEN_RECORDER.Server
         {
             Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
+            // 💡 1. קודם כל יוצרים את ה-Builder כדי שיקרא את קובץ ה-appsettings.json
+            var builder = WebApplication.CreateBuilder(args);
+            // ניקוי הלוגרים המובנים של מיקרוסופט
+            builder.Logging.ClearProviders();
+            // הוספת הגשר שלנו ל-Core Logger
+            builder.Logging.AddProvider(new CoreLoggerProvider());
+
+            // 💡 2. טעינת תצורת הלוגר מתוך הקובץ (עם Fallback למקרה שחסר)
+            var appConfig = builder.Configuration.GetSection("AppConfig").Get<AppConfig>()
+                            ?? new AppConfig
+                            {
+                                EnableFileLogging = true,
+                                LogFilePath = Path.Combine(AppContext.BaseDirectory, "Logs", "Server-Log.txt"),
+                                LogRetentionDays = 30
+                            };
+
+            // 💡 3. אתחול הלוגר המרכזי עם התיוג "Server"
+            Logger.Initialize(appConfig, "Server");
+            Logger.AlwaysInfo("[SERVER] ITB-SCREEN-RECORDER Server process is starting...");
+
+            // 4. עכשיו כשהלוגר חי, בודקים Mutex ויכולים לתעד קריסה אם צריך
             using var serverMutex = new Mutex(true, MutexName, out bool createdNew);
             if (!createdNew)
             {
-                Console.WriteLine("[CRITICAL] Another instance of ITB-SCREEN-RECORDER Server is already running. Shutting down.");
+                Logger.Error("[CRITICAL] Another instance of ITB-SCREEN-RECORDER Server is already running. Shutting down.");
                 return;
             }
 
-            var builder = WebApplication.CreateBuilder(args);
-
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (OperatingSystem.IsWindows())
             {
 #pragma warning disable CA1416
                 try
@@ -40,23 +61,34 @@ namespace ITB_SCREEN_RECORDER.Server
                         if (httpPortVal != null && int.TryParse(httpPortVal.ToString(), out int customHttpPort))
                         {
                             builder.WebHost.UseUrls($"http://0.0.0.0:{customHttpPort}");
-                            Console.WriteLine($"[SERVER] Overriding Kestrel listening URL from Registry to port: {customHttpPort}");
+                            Logger.AlwaysInfo($"[SERVER] Overriding Kestrel listening URL from Registry to port: {customHttpPort}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[SERVER] Warning: Failed to read HttpPort from Registry: {ex.Message}");
+                    Logger.Warn($"[SERVER] Warning: Failed to read HttpPort from Registry: {ex.Message}");
                 }
 #pragma warning restore CA1416
             }
 
-            builder.Host.UseWindowsService(options =>
+            // 💡 5. רישום שירות המערכת בהתאם למערכת ההפעלה (Cross-Platform)
+            if (OperatingSystem.IsWindows())
             {
-                options.ServiceName = "ITB_ServerService";
-            });
+#pragma warning disable CA1416
+                builder.Host.UseWindowsService(options =>
+                {
+                    options.ServiceName = "ITB_ServerService";
+                });
+#pragma warning restore CA1416
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                builder.Host.UseSystemd();
+            }
 
-            builder.Host.UseSystemd();
+            // 💡 6. הזרקת ה-AppConfig ל-DI Container (למקרה ששירותים אחרים יצטרכו לדעת נתיבים)
+            builder.Services.AddSingleton(appConfig);
 
             builder.Services.AddOptions<SystemConfig>()
                 .Bind(builder.Configuration.GetSection("SystemConfig"))
@@ -78,15 +110,11 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddSingleton<StoragePathResolver>();
             builder.Services.AddSingleton<SettingsFileService>();
 
-            // תוספת קריטית - רישום השירות החדש
             builder.Services.AddSingleton<StationOverridesService>();
-
             builder.Services.AddSingleton<MediaMtxApiClient>();
             builder.Services.AddSingleton<EventLogger>();
 
             builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
-
-            // שירות רקע האחראי על חיתוך הקלטות מדויק לפי שעון קיר
             builder.Services.AddHostedService<RecordingChunkScheduler>();
 
             var app = builder.Build();
@@ -97,7 +125,6 @@ namespace ITB_SCREEN_RECORDER.Server
                 app.UseSwaggerUI();
             }
 
-            // הגשת הדשבורד הסטטי (React)
             app.UseDefaultFiles();
             app.UseStaticFiles();
 
@@ -106,7 +133,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
             app.MapControllers();
 
-            Console.WriteLine("[SERVER] ITB-SCREEN-RECORDER Middleware initialized successfully.");
+            Logger.AlwaysInfo("[SERVER] ITB-SCREEN-RECORDER Middleware initialized successfully.");
 
             app.Run();
         }

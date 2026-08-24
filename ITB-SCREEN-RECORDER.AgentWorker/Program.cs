@@ -13,7 +13,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private static async Task Main(string[] args)
         {
             var config = ConfigLoader.Load();
-            Logger.Initialize(config);
+            Logger.Initialize(config, "Worker");
 
             using var singleLock = new SingleInstanceLock("ITB_AgentWorker_Lock");
             if (!singleLock.Acquire())

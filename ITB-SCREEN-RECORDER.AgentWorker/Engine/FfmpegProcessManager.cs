@@ -63,10 +63,10 @@ namespace ITBRecorderAgent.Engine
                         Logger.Info($"[ENGINE] Created local buffer directory: {dir}");
                     }
                 }
+                var ffmpegPath = _config.GetResolvedFFmpegPath();
+                Logger.Info($"[FFMPEG] Resolved FFmpeg path: {ffmpegPath}");
 
-                Logger.Info($"[FFMPEG] Resolved FFmpeg path: {_config.FFmpegPath}");
-
-                string activeEncoder = await HardwareProbe.ResolveEncoderAsync(_config.FFmpegPath, _config.VideoEncoder);
+                string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
                 string fontPath = ResolvePlatformFontPath();
 
                 _tcpListener = new TcpListener(IPAddress.Loopback, 0);
@@ -89,7 +89,7 @@ namespace ITBRecorderAgent.Engine
 
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = _config.FFmpegPath,
+                    FileName = ffmpegPath,
                     Arguments = arguments,
                     RedirectStandardInput = true,
                     RedirectStandardError = true,

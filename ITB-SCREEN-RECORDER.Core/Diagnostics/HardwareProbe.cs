@@ -4,10 +4,10 @@ using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
 using ITB_SCREEN_RECORDER.Core.Common;
+using System.IO;
 
 namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 {
-    // מודל נתונים פשוט עבור ה-Service
     public class HardwareMetrics
     {
         public double CpuUsagePercentage { get; set; }
@@ -17,8 +17,6 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
     public static class HardwareProbe
     {
         private static string? _resolvedEncoder;
-
-        // המנוע החכם שכתבת למדידת ביצועים
         private static HardwareTelemetry? _telemetryEngine;
 
         public static async Task<string> ResolveEncoderAsync(string ffmpegPath, string configuredEncoder)
@@ -59,7 +57,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 var psi = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-hide_banner -loglevel error -f lavfi -i nullsrc=s=64x64:d=0.1 -c:v {encoderName} -f null -",
+                    Arguments = $"-hide_banner -loglevel error -f lavfi -i nullsrc=s=1920x1080:d=0.1 -c:v {encoderName} -f null -",
                     RedirectStandardError = true,
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
@@ -69,12 +67,31 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 using var proc = new Process { StartInfo = psi };
                 proc.Start();
 
-                var completed = await Task.Run(() => proc.WaitForExit(2000));
-                return completed && proc.ExitCode == 0;
+                // 💡 קריאת הודעת השגיאה המדויקת ש-FFmpeg זורק מאחורי הקלעים
+                string errorOutput = await proc.StandardError.ReadToEndAsync().ConfigureAwait(false);
+
+                var completed = await Task.Run(() => proc.WaitForExit(2000)).ConfigureAwait(false);
+
+                if (!completed)
+                {
+                    // הגנה: אם FFmpeg נתקע, נהרוג אותו ונרשום אזהרה
+                    proc.Kill();
+                    Logger.Warn($"[PROBE] FFmpeg probe for {encoderName} timed out and was terminated.");
+                    return false;
+                }
+
+                if (proc.ExitCode != 0)
+                {
+                    // 💡 הדפסת הסיבה האמיתית לכישלון אל קובץ הלוג!
+                    Logger.Warn($"[PROBE] {encoderName} is not supported. FFmpeg ExitCode: {proc.ExitCode}. Error Details: {errorOutput.Trim()}");
+                    return false;
+                }
+
+                return true;
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[PROBE] Probe for {encoderName} failed ({ex.Message}).");
+                Logger.Error($"[PROBE] Probe execution for {encoderName} failed to start. Exception: {ex.Message}");
                 return false;
             }
         }
@@ -104,13 +121,11 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
         public static HardwareMetrics GetTelemetry()
         {
-            // אתחול עצל (Lazy Initialization) של מנוע הטלמטריה שלך בפעם הראשונה
             if (_telemetryEngine == null)
             {
                 _telemetryEngine = new HardwareTelemetry();
             }
 
-            // קריאה לפונקציות החכמות שלך והחזרתן כאובייקט נתונים נקי ל-Service
             return new HardwareMetrics
             {
                 CpuUsagePercentage = _telemetryEngine.GetCpuUsagePercentage(),

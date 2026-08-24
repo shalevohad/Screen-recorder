@@ -53,7 +53,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         private static void ApplyRegistryOverrides(AppConfig config)
         {
             if (!OperatingSystem.IsWindows()) return;
-
+#if WINDOWS
             try
             {
                 using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
@@ -82,6 +82,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             {
                 Logger.Warn($"[Config] Could not read registry overrides: {ex.Message}");
             }
+#endif
         }
 
         private static string ResolveConfigPath()
