@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 
@@ -12,11 +13,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     public class DashboardController : ControllerBase
     {
         private readonly ITelemetryStateService _telemetryState;
+        private readonly StationOverridesService _overridesService;
         private readonly SystemConfig _config;
 
-        public DashboardController(ITelemetryStateService telemetryState, IOptions<SystemConfig> config)
+        public DashboardController(
+            ITelemetryStateService telemetryState,
+            StationOverridesService overridesService,
+            IOptions<SystemConfig> config)
         {
             _telemetryState = telemetryState;
+            _overridesService = overridesService;
             _config = config.Value;
         }
 
@@ -30,10 +36,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             var result = agents.Select(agent =>
             {
-                // חישוב דינמי למצב מקוון: אם חלפו יותר מ-15 שניות ללא פעימת חיים, התחנה מנותקת
                 bool isOnline = (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15;
-
-                // שימוש בנתון האמיתי שהגיע מה-Agent (ולא בערך קשיח)
                 bool isStreaming = agent.IsStreaming;
 
                 return new
@@ -44,7 +47,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     IsStreaming = isStreaming,
                     Status = isOnline ? (isStreaming ? "Streaming" : "Standby") : "Offline",
 
-                    // חשיפת המדדים המעודכנים ל-Dashboard
                     CpuUsage = agent.CpuUsagePercentage,
                     GpuUsage = agent.GpuUsagePercentage,
                     HasAudio = agent.HasActiveMicrophone || agent.HasActiveSpeakers,
@@ -55,6 +57,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             });
 
             return Ok(result);
+        }
+
+        [HttpPost("stations/{hostname}/override")]
+        public async Task<IActionResult> SetStationOverride(string hostname, [FromBody] StationOverride request)
+        {
+            await _overridesService.SetOverrideAsync(hostname, request);
+            return Ok(new { Message = $"Configuration for station '{hostname}' updated successfully." });
         }
     }
 }

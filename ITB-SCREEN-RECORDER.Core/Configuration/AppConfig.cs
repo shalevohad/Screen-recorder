@@ -24,7 +24,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public string DashboardApiUrl { get; set; } = "http://128.200.3.10:5090/api/v1/agent/telemetry";
         public int ReconnectDelaySeconds { get; set; } = 5;
         public int TargetFps { get; set; } = 30;
-        public string VideoBitrate { get; set; } = "5M";
+        public string VideoBitrate { get; set; } = "2M";
         public string VideoEncoder { get; set; } = "auto";
 
         // עדכון נתיבים ללינוקס: שימוש בתיקיות מערכת סטנדרטיות לשירותים במקום UserProfile

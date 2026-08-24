@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Linq;
+using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
@@ -17,7 +18,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("telemetry")]
-        public IActionResult ReceiveHeartbeat([FromBody] AgentTelemetryReport report)
+        public async Task<IActionResult> ReceiveHeartbeat([FromBody] AgentTelemetryReport report)
         {
             if (report == null || string.IsNullOrWhiteSpace(report.Hostname))
             {
@@ -33,11 +34,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(errors);
             }
 
-            // חילוץ כתובת השרת (IP/Host) בדיוק כפי שה-Agent פנה אליה
             string requestHost = Request.Host.Host;
 
-            // העברת ה-requestHost לסרביס ליצירת ה-Policy הדינמי
-            var response = _telemetryState.ProcessHeartbeat(report, requestHost);
+            // הפעלת שירות הסטטוס שמפיק את התשובה והפוליסה המעודכנת באופן מלא
+            var response = await _telemetryState.ProcessHeartbeatAsync(report, requestHost);
+
             return Ok(response);
         }
 
@@ -49,10 +50,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpGet("config/{hostname}")]
-        public IActionResult GetAgentConfig(string hostname)
+        public async Task<IActionResult> GetAgentConfig(string hostname)
         {
-            // שאיבה דינמית מלאה דרך שירות הסטטוס המרכזי
-            var policy = _telemetryState.GetAgentPolicy(hostname, Request.Host.Host);
+            var policy = await _telemetryState.GetAgentPolicyAsync(hostname, Request.Host.Host);
             return Ok(policy);
         }
     }

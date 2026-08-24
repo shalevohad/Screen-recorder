@@ -67,7 +67,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
+#if WINDOWS
                 LoadServerIpFromRegistrySafe();
+#endif
             }
             else
             {

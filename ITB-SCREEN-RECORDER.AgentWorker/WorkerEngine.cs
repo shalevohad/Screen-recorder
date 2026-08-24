@@ -47,6 +47,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                 if (localToken.IsCancellationRequested) break;
 
+                // טעינת הפוליסה המעודכנת תמיד לפני תחילת סשן הלכידה
                 ApplyDynamicPolicy();
                 Logger.Info("[WorkerEngine] Starting initialization of capture engines...");
 
@@ -101,6 +102,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     int targetFrameTimeMs = 1000 / _config.TargetFps;
                     byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
 
+                    // לולאת הלכידה הראשית - בודקת כל הזמן האם נדרש ריסטרט עקב שינוי פוליסה מהשרת
                     while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
                     {
                         long loopStart = Stopwatch.GetTimestamp();
@@ -145,6 +147,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     catch (Exception ex) { Logger.Error($"[WorkerEngine] Error teardown: {ex.Message}"); }
                 }
 
+                // אם הופעלה דרישת ריסטרט מיידית, נחזור מיד לראש הלולאה ונפעיל מחדש עם ההגדרות החדשות!
                 if (_requiresImmediateRestart)
                 {
                     _requiresImmediateRestart = false;
@@ -195,6 +198,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     using var reader = new StreamReader(client);
                     using var writer = new StreamWriter(client) { AutoFlush = true };
 
+                    // 💡 כאן הייתה השגיאה - אין צורך ב-_workerCommandWriter בתוך ה-WorkerEngine
+
                     var listenerTask = Task.Run(async () =>
                     {
                         try
@@ -220,6 +225,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             _serverUtcOffset = TimeSpan.FromTicks(ticks);
                                         }
 
+                                        ApplyDynamicPolicy();
+
                                         Logger.Info("[WorkerEngine] Received START command.");
                                         _isStreamingRequested = true;
                                         if (_streamPermissionSignal.CurrentCount == 0) _streamPermissionSignal.Release();
@@ -231,7 +238,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             _serverUtcOffset = TimeSpan.FromTicks(ticks);
                                         }
 
-                                        Logger.Info("[WorkerEngine] Received RESTART command for on-the-fly policy update.");
+                                        Logger.Info("[WorkerEngine] Received RESTART command for on-the-fly policy update. Reloading config...");
+
+                                        ApplyDynamicPolicy();
                                         _requiresImmediateRestart = true;
                                     }
                                 }
