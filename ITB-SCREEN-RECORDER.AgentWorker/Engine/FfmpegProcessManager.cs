@@ -199,50 +199,50 @@ namespace ITBRecorderAgent.Engine
             string audioFormat, string videoEncoder, int tcpPort, string fontPath)
         {
             var ffmpegArgs = new StringBuilder();
-
-            string presetValue;
-            string hardwareFlags = "";
-
-            if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
-            {
-                presetValue = "p2";
-                hardwareFlags = "-tune ll -forced-idr 1 -delay 0";
-            }
-            else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
-            {
-                presetValue = "veryfast";
-                hardwareFlags = "-low_power 1";
-            }
-            else
-            {
-                presetValue = "ultrafast";
-                hardwareFlags = "-tune zerolatency";
-            }
-
-            // 2-second keyframe interval (instead of 1s) trims recording/stream size, since
-            // keyframes are much larger than delta frames. Tradeoff: live HLS viewers joining
-            // mid-stream wait up to ~2s for their first full frame instead of ~1s.
             int gopSize = _config.TargetFps * 2;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            // קביעת קצב פנימי יציב ללא Wallclock
-            ffmpegArgs.Append($"-thread_queue_size 512 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
-            ffmpegArgs.Append($"-thread_queue_size 512 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+            // 1. קלט וידאו: שימוש בשעון אמת (Wallclock) והזרקת חותמות זמן לפריימים
+            ffmpegArgs.Append($"-thread_queue_size 1024 -use_wallclock_as_timestamps 1 -fflags +genpts ")
+                      .Append($"-f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
 
+            // 2. קלט שמע: קבלת סאונד אמיתי מה-TCP
+            ffmpegArgs.Append($"-thread_queue_size 1024 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+
+            // 3. מחולל מטרונום שקט: קלט וירטואלי 3 שמבטיח ציר זמן רציף לחלוטין
+            ffmpegArgs.Append($"-f lavfi -i anullsrc=channel_layout=stereo:sample_rate={audioSampleRate} ");
+
+            // 4. ניתוב פילטרים (Filter Complex): הזרקת זמן על הווידאו + מיזוג האודיו והשעון הפנימי
             long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
-            string filterArg = $"-vf \"drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\" ";
-            ffmpegArgs.Append(filterArg);
+            string filterComplex = $"-filter_complex \"[0:v]drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6[vout];[1:a][2:a]amix=inputs=2:duration=first:dropout_transition=0,aresample=async=1000[aout]\" ";
+            ffmpegArgs.Append(filterComplex);
 
-            // CFR מושלם (Constant Frame Rate) + חיתוך Keyframe בכל שנייה בדיוק
-            ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 5M ");
+            // 5. מיפוי ערוצי הפלט מהפילטר
+            ffmpegArgs.Append("-map \"[vout]\" -map \"[aout]\" ");
 
-            if (audioChannels > 0)
+            // 6. בקרת מקודד וידאו: VFR עם רצפת ביטרייט אפסית (0)
+            if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append("-c:a aac -b:a 128k -af aresample=async=1000 ");
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p2 -tune ull -rc vbr -cq 24 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize 10M ");
+            }
+            else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
+            {
+                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 24 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize 10M ");
+            }
+            else
+            {
+                ffmpegArgs.Append($"-c:v libx264 -preset ultrafast -tune zerolatency -crf 23 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize 10M ");
             }
 
+            // הגדרות כלליות לווידאו המאפשרות תצורה משתנה (VFR)
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min 1 -sc_threshold 0 -fps_mode vfr -pix_fmt yuv420p ");
+
+            // 7. קידוד האודיו המסונכרן
+            ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} ");
+
+            // 8. הזרמת FLV ל-MediaMTX (ללא Header חוסם)
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
-            ffmpegArgs.Append($"-flvflags no_duration_filesize -f flv \"{destinationUrl}\"");
+            ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
 
             return ffmpegArgs.ToString();
         }
@@ -309,10 +309,6 @@ namespace ITBRecorderAgent.Engine
                 _ffmpegProcess = null;
             }
             catch { }
-            finally
-            {
-                _isDisposed = false;
-            }
         }
     }
 }

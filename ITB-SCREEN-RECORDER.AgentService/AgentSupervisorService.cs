@@ -13,7 +13,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 
-// הוספת ה-Namespace של ה-Registry אך ורק בקומפילציה ל-Windows
 #if WINDOWS
 using Microsoft.Win32;
 using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
@@ -35,6 +34,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private bool _isWorkerStreaming;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private StreamWriter? _workerCommandWriter;
+
+        // 💡 שמירת סטיית הזמן מול השרת
+        private TimeSpan _serverUtcOffset = TimeSpan.Zero;
 
         public AgentSupervisorService(ILogger<AgentSupervisorService> logger)
         {
@@ -81,7 +83,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private void LoadServerIpFromRegistrySafe()
         {
-            // הגנה כפולה ל-GitHub Actions: גם חוסם קומפילציה בלינוקס וגם משתיק אזהרות פלטפורמה בווינדוס
 #if WINDOWS
 #pragma warning disable CA1416
             try
@@ -255,6 +256,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson);
                         if (heartbeatResponse != null)
                         {
+                            // 💡 הליבה: קריאת השעון המדויק של השרת וחישוב הסטייה
+                            if (heartbeatResponse.ServerTime != default)
+                            {
+                                _serverUtcOffset = heartbeatResponse.ServerTime - DateTime.UtcNow;
+                            }
+
                             if (heartbeatResponse.Policy != null)
                             {
                                 bool policyChanged =
@@ -272,7 +279,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                                     if (isStreaming)
                                     {
-                                        await SendCommandToWorkerAsync("Restart");
+                                        // 💡 הזרקת הסטייה לפקודת הריסטרט כדי שהוורקר לא יאבד סנכרון
+                                        await SendCommandToWorkerAsync($"Restart|{_serverUtcOffset.Ticks}");
                                     }
                                 }
                             }
@@ -285,7 +293,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             else if (heartbeatResponse.Command == ServerCommand.StartStream)
                             {
                                 if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[Service] Server requested START. Forwarding to Worker.");
-                                await SendCommandToWorkerAsync("Start");
+                                // 💡 הזרקת הסטייה לפקודת ההתחלה
+                                await SendCommandToWorkerAsync($"Start|{_serverUtcOffset.Ticks}");
                             }
                         }
                     }
