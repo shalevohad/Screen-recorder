@@ -211,14 +211,24 @@ namespace ITBRecorderAgent.Engine
             ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -framerate {_config.TargetFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
             ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
-            // 💡 השתמשות בשם קובץ יחסי (ללא נתיב מלא וללא רווחים) שפותרת את הבאג של Windows
             long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
-            string fpsHighFile = "itb_fps_high.txt";
-            string fpsLowFile = "itb_fps_low.txt";
+            string filterComplex;
 
-            string filterComplex = $"-filter_complex \"[0:v]drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6," +
-                                   $"drawtext=fontfile='{fontPath}':textfile='{fpsHighFile}':reload=1:x=10:y=45:fontsize=20:fontcolor=green:box=1:boxcolor=black@0.6," +
-                                   $"drawtext=fontfile='{fontPath}':textfile='{fpsLowFile}':reload=1:x=10:y=45:fontsize=20:fontcolor=red:box=1:boxcolor=black@0.6[vout]\" ";
+            // 💡 קריאה ישירה למחלקת הדיאגנוסטיקה בלי להעביר פרמטרים בחתימה!
+            if (DebugHelper.IsDebugModeEnabled())
+            {
+                string fpsHighFile = "itb_fps_high.txt";
+                string fpsLowFile = "itb_fps_low.txt";
+
+                filterComplex = $"-filter_complex \"[0:v]drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6," +
+                                       $"drawtext=fontfile='{fontPath}':textfile='{fpsHighFile}':reload=1:x=10:y=45:fontsize=20:fontcolor=green:box=1:boxcolor=black@0.6," +
+                                       $"drawtext=fontfile='{fontPath}':textfile='{fpsLowFile}':reload=1:x=10:y=45:fontsize=20:fontcolor=red:box=1:boxcolor=black@0.6[vout]\" ";
+            }
+            else
+            {
+                filterComplex = $"-filter_complex \"[0:v]drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6[vout]\" ";
+            }
+
             ffmpegArgs.Append(filterComplex);
 
             ffmpegArgs.Append("-map \"[vout]\" -map 1:a ");

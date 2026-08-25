@@ -41,8 +41,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
-        // 💡 התיקון האולטימטיבי למניעת קריסות Memory-Mapping בווינדוס!
-        // כותבים את הטקסט ישירות על גבי הישן, מרפדים ברווחים למחיקת שאריות, ולעולם לא מאפסים את הקובץ ל-0 בתים.
         private static void SafeWriteText(string path, string text)
         {
             try
@@ -61,6 +59,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         public async Task RunAsync(CancellationToken ct)
         {
             DebugHelper.ApplyConsoleVisibility();
+
+            // 💡 השתמשנו באותה פונקציה שכבר קוראת מה-Registry!
+            // (אם הפרופרטי ב-DebugHelper נקרא אצלך אחרת, למשל IsDebugMode, שנה כאן בהתאם)
+            bool showTelemetry = DebugHelper.IsDebugModeEnabled();
+
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             CancellationToken localToken = linkedCts.Token;
 
@@ -124,9 +127,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                         DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
 
-                        // אתחול בטוח של קובצי הטלמטריה
-                        SafeWriteText(fpsHighPath, "FPS: Init...");
-                        SafeWriteText(fpsLowPath, "");
+                        if (showTelemetry)
+                        {
+                            SafeWriteText(fpsHighPath, "FPS: Init...");
+                            SafeWriteText(fpsLowPath, "");
+                        }
 
                         bool started = await ffmpegManager.StartAsync(rtmpTarget, calibratedTime, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
                         if (!started)
@@ -244,11 +249,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 #endif
                                     if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
                                     framesProcessed++;
-                                    actualFpsCount++;
+                                    if (showTelemetry) actualFpsCount++;
                                 }
                             }
 
-                            if (Stopwatch.GetElapsedTime(fpsStopwatchTicks).TotalMilliseconds >= 1000)
+                            if (showTelemetry && Stopwatch.GetElapsedTime(fpsStopwatchTicks).TotalMilliseconds >= 1000)
                             {
                                 int currentFps = actualFpsCount;
                                 actualFpsCount = 0;
