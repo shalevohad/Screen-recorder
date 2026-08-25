@@ -53,7 +53,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         private static void ApplyRegistryOverrides(AppConfig config)
         {
             if (!OperatingSystem.IsWindows()) return;
-
+#if WINDOWS
             try
             {
                 using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
@@ -71,18 +71,6 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
                         config.RtmpServerBaseUrl = rtmpUrl;
                     }
 
-                    var videoBitrate = key.GetValue("VideoBitrate") as string;
-                    if (!string.IsNullOrWhiteSpace(videoBitrate))
-                    {
-                        config.VideoBitrate = videoBitrate;
-                    }
-
-                    var targetFps = key.GetValue("TargetFps");
-                    if (targetFps != null && int.TryParse(targetFps.ToString(), out int parsedFps))
-                    {
-                        config.TargetFps = parsedFps;
-                    }
-
                     var autoStart = key.GetValue("AutoStartRecordingOnLaunch");
                     if (autoStart != null && bool.TryParse(autoStart.ToString(), out bool parsedAutoStart))
                     {
@@ -94,6 +82,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             {
                 Logger.Warn($"[Config] Could not read registry overrides: {ex.Message}");
             }
+#endif
         }
 
         private static string ResolveConfigPath()

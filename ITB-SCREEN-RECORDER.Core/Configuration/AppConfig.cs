@@ -5,20 +5,8 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 {
     public class AppConfig
     {
-        private string _ffmpegPath = string.Empty;
-
-        public string FFmpegPath
-        {
-            get
-            {
-                if (string.IsNullOrEmpty(_ffmpegPath))
-                {
-                    _ffmpegPath = ResolveFFmpegPath();
-                }
-                return _ffmpegPath;
-            }
-            set { _ffmpegPath = value; }
-        }
+        // 1. שדה קונפיגורציה פשוט ונקי לחלוטין
+        public string FFmpegPath { get; set; } = string.Empty;
 
         public string RtmpServerBaseUrl { get; set; } = "rtmp://128.200.3.10:19350/live/";
         public string DashboardApiUrl { get; set; } = "http://128.200.3.10:5090/api/v1/agent/telemetry";
@@ -27,7 +15,6 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public string VideoBitrate { get; set; } = "5M";
         public string VideoEncoder { get; set; } = "auto";
 
-        // עדכון נתיבים ללינוקס: שימוש בתיקיות מערכת סטנדרטיות לשירותים במקום UserProfile
         public string LocalBufferPath { get; set; } = OperatingSystem.IsWindows()
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
             : "/var/lib/itb-screen-recorder/buffer";
@@ -35,20 +22,19 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public bool AutoStartRecordingOnLaunch { get; set; } = false;
         public bool EnableFileLogging { get; set; } = true;
 
-        // עדכון נתיב הלוגים ללינוקס ל-/var/log המקובל ב-RedHat
         public string LogFilePath { get; set; } = OperatingSystem.IsWindows()
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Logs\Agent.log"
             : "/var/log/itb-screen-recorder/Agent.log";
 
-        private string ResolveFFmpegPath()
-        {
-            // 1. קבלת הערך מהקונפיגורציה או fallback לברירת מחדל
-            string configuredPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath;
+        public int LogRetentionDays { get; set; } = 30;
 
-            // 2. מסלול א' - המשתמש הזין נתיב מוחלט (Absolute Path) משלו
+        // 2. פונקציה מפורשת שה-Worker קורא לה כדי לוודא ש-FFmpeg קיים
+        public string GetResolvedFFmpegPath()
+        {
+            string configuredPath = string.IsNullOrWhiteSpace(FFmpegPath) ? "ffmpeg" : FFmpegPath;
+
             if (Path.IsPathRooted(configuredPath))
             {
-                // הוספת .exe אוטומטית ל-Windows אם המשתמש שכח
                 if (OperatingSystem.IsWindows() && !configuredPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                 {
                     configuredPath += ".exe";
@@ -62,8 +48,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
                 throw new FileNotFoundException($"CRITICAL: Custom FFmpeg executable not found at specified path: {configuredPath}");
             }
 
-            // 3. מסלול ב' - לא הוזן נתיב מוחלט, חיפוש בתיקיית השורש של האפליקציה (Air-Gapped)
-            string fileName = Path.GetFileName(configuredPath); // הגנה מפני Path Traversal
+            string fileName = Path.GetFileName(configuredPath);
 
             if (OperatingSystem.IsWindows() && !fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {

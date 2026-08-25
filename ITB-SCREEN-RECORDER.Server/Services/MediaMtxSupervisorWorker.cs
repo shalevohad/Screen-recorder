@@ -69,6 +69,10 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     CleanupOrphanedMediaMtxProcesses();
                     await Task.Delay(1000, stoppingToken);
 
+                    // פאצ'ינג עדין לקובץ ה-YAML מבלי לדרוס שאר ההגדרות
+                    string ymlPath = Path.Combine(mtxFolder, "mediamtx.yml");
+                    PatchMediaMtxYaml(ymlPath, _configMonitor.CurrentValue);
+
                     _logger.LogInformation("Launching MediaMTX from: {Path}", mtxExePath);
 
                     var startInfo = new ProcessStartInfo
@@ -102,13 +106,12 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
                     _logger.LogInformation("MediaMTX started successfully with PID: {Pid}", _mtxProcess.Id);
 
-                    // הזרקת הגדרות ההקלטה (נתיב אחסון, פורמט, משך צ'אנק, שמירה) דרך ה-API בזמן ריצה
+                    // הזרקת הגדרות ההקלטה
                     _ = Task.Run(() => ApplyRecordingConfigAsync(stoppingToken), stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                // עצירה תקינה לבקשת השרת
                 break;
             }
             catch (Exception ex)
@@ -127,10 +130,56 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
     }
 
-    /// <summary>
-    /// ממתין לעליית ה-API של MediaMTX ולאחר מכן דוחף אליו את הגדרות ההקלטה (Storage) דרך
-    /// ה-Control API בזמן ריצה, כך שקובץ mediamtx.yml הסטטי נשאר ללא שינוי כ-fallback בטוח.
-    /// </summary>
+    private void PatchMediaMtxYaml(string ymlPath, SystemConfig config)
+    {
+        if (!File.Exists(ymlPath))
+        {
+            _logger.LogWarning("[MediaMTX] Cannot patch {Path} because the file does not exist.", ymlPath);
+            return;
+        }
+
+        var lines = File.ReadAllLines(ymlPath);
+        bool isModified = false;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string line = lines[i];
+
+            // דילוג על שורות ריקות או הערות
+            if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#"))
+                continue;
+
+            // החלפה מדויקת של מפתחות גלובליים בלבד (ללא פגיעה בהזחות של paths)
+            if (line.StartsWith("api:"))
+            {
+                lines[i] = "api: yes";
+                isModified = true;
+            }
+            else if (line.StartsWith("apiAddress:"))
+            {
+                lines[i] = $"apiAddress: 127.0.0.1:{config.MediaMtx.ApiPort}";
+                isModified = true;
+            }
+            else if (line.StartsWith("hlsAddress:"))
+            {
+                lines[i] = $"hlsAddress: :{config.MediaMtx.HlsPort}";
+                isModified = true;
+            }
+            else if (line.StartsWith("rtmpAddress:"))
+            {
+                lines[i] = $"rtmpAddress: :{config.MediaMtx.RtmpPort}";
+                isModified = true;
+            }
+        }
+
+        if (isModified)
+        {
+            // כתיבה בטוחה חזרה לאותו קובץ - שומרת על 100% מההגדרות האחרות
+            File.WriteAllLines(ymlPath, lines);
+            _logger.LogInformation("[MediaMTX] Successfully patched mediamtx.yml with current ports from appsettings.json.");
+        }
+    }
+
     private async Task ApplyRecordingConfigAsync(CancellationToken stoppingToken)
     {
         SystemConfig config = _configMonitor.CurrentValue;
@@ -165,10 +214,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
     }
 
-    /// <summary>
-    /// פונקציית ניקוי עצמית (Self-Healing) שמחסלת תהליכי MediaMTX יתומים התופסים את משאבי הרשת.
-    /// מטפלת בצורה בטוחה בשגיאות הרשאה (Access Denied) מבלי להקריס את השרת.
-    /// </summary>
     private void CleanupOrphanedMediaMtxProcesses()
     {
         try
@@ -197,7 +242,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     }
                     catch (InvalidOperationException)
                     {
-                        // התהליך כבר נסגר בעצמו לפני שהגענו להרוג אותו
                     }
                     catch (Exception ex)
                     {
@@ -205,7 +249,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     }
                     finally
                     {
-                        // שחרור Handle מהזיכרון חובה כדי למנוע Memory Leak
                         proc.Dispose();
                     }
                 }
@@ -217,7 +260,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
     }
 
-    // פתרון מובטח: StopAsync רץ בצורה בטוחה וישירה בעת סגירת השרת ומטפל בבעיות גישה
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Server shutting down. Terminating MediaMTX process...");
@@ -228,7 +270,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
             {
                 try
                 {
-                    // הורדת התהליך וכל עץ הבנים שלו באגרסיביות כדי שלא ישארו יתומים ברקע
                     _mtxProcess.Kill(entireProcessTree: true);
                     _mtxProcess.WaitForExit(3000);
                     _logger.LogInformation("MediaMTX process terminated successfully.");
@@ -239,7 +280,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
                 }
                 catch (InvalidOperationException)
                 {
-                    // נסגר כבר
                 }
             }
         }

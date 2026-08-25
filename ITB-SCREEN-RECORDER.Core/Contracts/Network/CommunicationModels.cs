@@ -14,7 +14,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public string RtmpServerBaseUrl { get; set; } = string.Empty;
 
         [JsonPropertyName("videoBitrate")]
-        public string VideoBitrate { get; set; } = "5M";
+        public string VideoBitrate { get; set; } = "2M";
 
         [JsonPropertyName("targetFps")]
         public int TargetFps { get; set; } = 30;
@@ -66,9 +66,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("command")]
         public ServerCommand Command { get; set; } = ServerCommand.Standby;
-
-        [JsonPropertyName("serverTime")]
-        public DateTime ServerTime { get; set; } = DateTime.UtcNow;
 
         [JsonPropertyName("serverUtcTime")]
         public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;

@@ -22,6 +22,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
 {
     public class AgentSupervisorService : BackgroundService
     {
+        private bool _lastWorkerLaunchFailed = false;
+        private bool _lastServerConnectionFailed = false;
         private readonly ILogger<AgentSupervisorService> _logger;
         private readonly string _workerPath;
         private readonly string _policyFilePath;
@@ -67,7 +69,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
+#if WINDOWS
                 LoadServerIpFromRegistrySafe();
+#endif
             }
             else
             {
@@ -257,9 +261,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         if (heartbeatResponse != null)
                         {
                             // 💡 הליבה: קריאת השעון המדויק של השרת וחישוב הסטייה
-                            if (heartbeatResponse.ServerTime != default)
+                            if (heartbeatResponse.ServerUtcTime != default)
                             {
-                                _serverUtcOffset = heartbeatResponse.ServerTime - DateTime.UtcNow;
+                                _serverUtcOffset = heartbeatResponse.ServerUtcTime - DateTime.UtcNow;
                             }
 
                             if (heartbeatResponse.Policy != null)
@@ -328,6 +332,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
+        // משתנה שמזכיר לנו האם כבר דיווחנו על כישלון ההפעלה האחרון
+
         private void EnsureWorkerRunning()
         {
             try
@@ -356,9 +362,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     _isWorkerStreaming = false;
                 }
 
-                if (procs.Length == 0 && File.Exists(_workerPath))
+                else if (procs.Length == 0 && File.Exists(_workerPath))
                 {
-                    _logger.LogInformation("Worker process not detected (or was purged). Launching Worker...");
+                    // נכתוב פעם אחת בלבד שהסוכן לא נמצא, בלי להציף בכל בדיקה
+                    if (!_lastWorkerLaunchFailed)
+                    {
+                        _logger.LogInformation("Worker process not detected (or was purged). Launching Worker...");
+                    }
 
                     if (OperatingSystem.IsWindows())
                     {
@@ -366,12 +376,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, string.Empty);
                         if (!launched)
                         {
-                            _logger.LogWarning("Failed to launch AgentWorker interactively. Normal if session is locked/logged out.");
+                            // 💡 כאן הסינון המרכזי: נדפיס את אזהרת ההפעלה האינטראקטיבית רק פעם אחת עד שהיא תצליח!
+                            if (!_lastWorkerLaunchFailed)
+                            {
+                                _logger.LogWarning("Failed to launch AgentWorker interactively. Normal if session is locked/logged out. (Further identical warnings suppressed).");
+                                _lastWorkerLaunchFailed = true; // נעלנו את הדיווח עד להצלחה הבאה
+                            }
                         }
                         else
                         {
                             _logger.LogInformation("AgentWorker successfully launched into the active user session.");
                             _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchFailed = false; // איפוס הדגל כשההפעלה מצליחה!
                         }
 #endif
                     }
@@ -388,6 +404,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         {
                             Process.Start(psi);
                             _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchFailed = false;
                         }
                         catch (Exception ex)
                         {
