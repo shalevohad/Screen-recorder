@@ -32,13 +32,20 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private readonly SemaphoreSlim _streamPermissionSignal = new SemaphoreSlim(0, 1);
         private readonly AppConfig _config;
         private volatile bool _isStreamingRequested = false;
-        private volatile bool _requiresImmediateRestart = false;
 
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
+
+        // 💡 Seamless ABR State Machine
+        private readonly int _baselineFps;
+        private volatile int _internalCaptureFps; // שולט בעומס המעבד מבלי לגעת ב-FFmpeg
+        private int _currentQosTier = 3;
 
         public WorkerEngine(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
+
+            _baselineFps = _config.TargetFps;
+            _internalCaptureFps = _baselineFps;
         }
 
         private static void SafeWriteText(string path, string text)
@@ -56,12 +63,34 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             catch { }
         }
 
+        // 💡 שינוי שכבות האיכות משנה רק את קצב הדגימה הפנימי (חוסך מעבד ורשת), ולא מאתחל שום דבר!
+        // 💡 שינוי שכבות האיכות משנה רק את קצב הדגימה הפנימי, ללא אתחול של FFmpeg!
+        private void SetQosTier(int tier)
+        {
+            if (tier >= 3)
+            {
+                _internalCaptureFps = _baselineFps;
+            }
+            else if (tier == 2)
+            {
+                // יורד ל-75% מהמקור, אך לעולם לא פחות מ-10
+                _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.75));
+            }
+            else if (tier == 1)
+            {
+                // יורד ל-50% מהמקור, אך לעולם לא פחות מ-10
+                _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.5));
+            }
+            else
+            {
+                // מצב הישרדות קיצוני - רצפת הברזל שהגדרת
+                _internalCaptureFps = 10;
+            }
+        }
+
         public async Task RunAsync(CancellationToken ct)
         {
             DebugHelper.ApplyConsoleVisibility();
-
-            // 💡 השתמשנו באותה פונקציה שכבר קוראת מה-Registry!
-            // (אם הפרופרטי ב-DebugHelper נקרא אצלך אחרת, למשל IsDebugMode, שנה כאן בהתאם)
             bool showTelemetry = DebugHelper.IsDebugModeEnabled();
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -83,18 +112,19 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     if (localToken.IsCancellationRequested) break;
 
-                    ApplyDynamicPolicy();
-                    Logger.Info("[WorkerEngine] Starting initialization of capture engines...");
+                    Logger.Info($"[WorkerEngine] Starting initialization... Outer Stream: {_baselineFps}FPS. Internal Capture: {_internalCaptureFps}FPS.");
 
                     IScreenCaptureProvider? screenCapture = null;
                     IAudioCaptureProvider? audioCapture = null;
                     FfmpegProcessManager? ffmpegManager = null;
-                    byte[]? lastVideoFrame = null;
 
                     bool isSessionActive = false;
+                    bool isCaptureActive = false;
                     long totalAudioBytes = 0;
                     long audioStartTicks = 0;
                     long lastRealAudioTicks = 0;
+
+                    byte[]? sharedLatestVideoFrame = null;
 
                     string fpsHighPath = Path.Combine(AppContext.BaseDirectory, "itb_fps_high.txt");
                     string fpsLowPath = Path.Combine(AppContext.BaseDirectory, "itb_fps_low.txt");
@@ -133,6 +163,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             SafeWriteText(fpsLowPath, "");
                         }
 
+                        // FFmpeg עולה רק פעם אחת ונשאר קבוע!
                         bool started = await ffmpegManager.StartAsync(rtmpTarget, calibratedTime, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
                         if (!started)
                         {
@@ -152,12 +183,34 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         }
 
                         Logger.Info("[WorkerEngine] Capture and streaming are active.");
-                        byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
-                        double targetFrameTimeMs = 1000.0 / _config.TargetFps;
 
-                        audioStartTicks = Stopwatch.GetTimestamp();
-                        lastRealAudioTicks = audioStartTicks;
                         isSessionActive = true;
+                        isCaptureActive = true;
+
+                        // 💡 חוט הלכידה מווסת עצמו דינמית כדי להוריד עומס במקרי חנק
+                        var captureWorkerTask = Task.Run(() =>
+                        {
+                            long lastCaptureTicks = Stopwatch.GetTimestamp();
+                            while (isCaptureActive && !localToken.IsCancellationRequested)
+                            {
+                                int currentLimit = _internalCaptureFps;
+                                double targetMs = 1000.0 / currentLimit;
+                                double elapsed = Stopwatch.GetElapsedTime(lastCaptureTicks).TotalMilliseconds;
+
+                                if (elapsed >= targetMs)
+                                {
+                                    if (screenCapture.TryCaptureFrame(out byte[]? newFrame) && newFrame != null)
+                                    {
+                                        Interlocked.Exchange(ref sharedLatestVideoFrame, newFrame);
+                                    }
+                                    lastCaptureTicks = Stopwatch.GetTimestamp();
+                                }
+                                else
+                                {
+                                    Thread.Sleep(1);
+                                }
+                            }
+                        });
 
                         var audioPacerTask = Task.Run(() =>
                         {
@@ -187,91 +240,150 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             }
                         });
 
-                        var keepAliveSw = Stopwatch.StartNew();
-                        const int KEEP_ALIVE_MS = 1000;
+                        byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
 
-                        long sessionStartTicks = 0;
+                        // 💡 התזמון החיצוני לעולם לא משתנה - שומר על הזרם יציב מול השרת!
+                        double targetFrameTimeMs = 1000.0 / _baselineFps;
+
+                        audioStartTicks = Stopwatch.GetTimestamp();
+                        lastRealAudioTicks = audioStartTicks;
+
+                        long sessionStartTicks = Stopwatch.GetTimestamp();
                         long framesProcessed = 0;
-                        bool isFirstFrameCaptured = false;
 
                         int actualFpsCount = 0;
-                        long fpsStopwatchTicks = Stopwatch.GetTimestamp();
+                        int duplicatedFramesCount = 0;
+                        int consecutiveChokeSeconds = 0;
+                        int consecutiveStableSeconds = 0;
 
-                        while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
+                        long fpsStopwatchTicks = sessionStartTicks;
+
+                        while (!localToken.IsCancellationRequested && _isStreamingRequested)
                         {
-                            if (!isFirstFrameCaptured)
-                            {
-                                if (screenCapture.TryCaptureFrame(out byte[]? firstFrame) && firstFrame != null)
-                                {
-                                    lastVideoFrame = firstFrame;
-                                    isFirstFrameCaptured = true;
-                                    sessionStartTicks = Stopwatch.GetTimestamp();
-                                    fpsStopwatchTicks = sessionStartTicks;
-                                }
-                                else
-                                {
-                                    Thread.Sleep(10);
-                                    continue;
-                                }
-                            }
-
                             double currentRealMs = Stopwatch.GetElapsedTime(sessionStartTicks).TotalMilliseconds;
                             long expectedFrames = (long)(currentRealMs / targetFrameTimeMs) + 1;
                             int framesToPush = (int)(expectedFrames - framesProcessed);
 
                             if (framesToPush > 0)
                             {
-                                if (framesToPush > 1)
-                                {
-                                    long dropped = framesToPush - 1;
-                                    framesProcessed += dropped;
-                                    framesToPush = 1;
-                                }
+                                byte[]? frameToEncode = Volatile.Read(ref sharedLatestVideoFrame);
 
-                                if (screenCapture.TryCaptureFrame(out byte[]? newFrame) && newFrame != null)
+                                if (frameToEncode != null)
                                 {
-                                    lastVideoFrame = newFrame;
-                                    keepAliveSw.Restart();
-                                }
-                                else if (lastVideoFrame != null && keepAliveSw.ElapsedMilliseconds >= KEEP_ALIVE_MS)
-                                {
-                                    keepAliveSw.Restart();
-                                }
-
-                                if (lastVideoFrame != null)
-                                {
-                                    Buffer.BlockCopy(lastVideoFrame, 0, renderBuffer, 0, lastVideoFrame.Length);
+                                    Buffer.BlockCopy(frameToEncode, 0, renderBuffer, 0, frameToEncode.Length);
 #if WINDOWS
                                     if (OperatingSystem.IsWindows())
                                     {
                                         MouseCursorOverlay.DrawMouseToFrame(renderBuffer, screenCapture.Width, screenCapture.Height);
                                     }
 #endif
-                                    if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
-                                    framesProcessed++;
-                                    if (showTelemetry) actualFpsCount++;
+
+                                    int actualFramesToPush = framesToPush;
+
+                                    if (framesToPush > 1 && framesToPush <= 3)
+                                    {
+                                        actualFramesToPush = 1; // 💡 סובלנות Jitter רגילה
+                                    }
+                                    else if (framesToPush > 3)
+                                    {
+                                        // 🚨 שבירת הסחרור הקטלני (Anti-Death Spiral) 🚨
+                                        // צינור ה-IPC רווי ולא יכול לבלוע מאות מגה-בייטים במכה.
+                                        // שומטים את החוב ומרצים את שעון התזמון קדימה.
+                                        actualFramesToPush = 1;
+                                        framesProcessed += (framesToPush - 1);
+
+                                        if (showTelemetry)
+                                        {
+                                            // רושמים את הנפילה לטובת מנגנון ה-ABR, מבלי לדחוף לצינור בפועל
+                                            duplicatedFramesCount += (framesToPush - 1);
+                                        }
+                                    }
+
+                                    for (int i = 0; i < actualFramesToPush; i++)
+                                    {
+                                        if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
+                                        framesProcessed++;
+
+                                        if (showTelemetry)
+                                        {
+                                            actualFpsCount++;
+                                            if (i > 0) duplicatedFramesCount++;
+                                        }
+                                    }
                                 }
                             }
 
                             if (showTelemetry && Stopwatch.GetElapsedTime(fpsStopwatchTicks).TotalMilliseconds >= 1000)
                             {
-                                int currentFps = actualFpsCount;
+                                int totalPushed = actualFpsCount;
+                                int dropped = duplicatedFramesCount;
+                                int realFps = totalPushed - dropped;
+
                                 actualFpsCount = 0;
+                                duplicatedFramesCount = 0;
                                 fpsStopwatchTicks = Stopwatch.GetTimestamp();
 
                                 Task.Run(() =>
                                 {
-                                    if (currentFps >= _config.TargetFps - 5)
+                                    if (dropped <= 3)
                                     {
-                                        SafeWriteText(fpsHighPath, $"FPS: {currentFps}");
+                                        SafeWriteText(fpsHighPath, $"FPS: {realFps}/{_internalCaptureFps} | T{_currentQosTier}");
                                         SafeWriteText(fpsLowPath, "");
                                     }
                                     else
                                     {
                                         SafeWriteText(fpsHighPath, "");
-                                        SafeWriteText(fpsLowPath, $"FPS: {currentFps} (LOW)");
+                                        SafeWriteText(fpsLowPath, $"FPS: {realFps}/{_internalCaptureFps} | CHOKE: {dropped} | T{_currentQosTier}");
                                     }
                                 });
+
+                                // 💡 Seamless Auto-Heal (אפס ניתוקים!)
+                                if (dropped >= (_baselineFps / 2)) // מצב חנק (Choke)
+                                {
+                                    consecutiveStableSeconds = 0;
+                                    consecutiveChokeSeconds++;
+
+                                    if (consecutiveChokeSeconds >= 15)
+                                    {
+                                        if (_currentQosTier > 0)
+                                        {
+                                            _currentQosTier--;
+                                            SetQosTier(_currentQosTier);
+                                            Logger.Warn($"[AUTO-HEAL] Severe choke detected. Downgrading INTERNAL capture to {_internalCaptureFps}FPS (Tier {_currentQosTier}). Stream is untouched.");
+                                            consecutiveChokeSeconds = 0;
+                                        }
+                                        else
+                                        {
+                                            consecutiveChokeSeconds = 0;
+                                        }
+                                    }
+                                }
+                                else if (dropped <= 3) // 💡 מצב יציב (סובלני לגיהוקים קלים של עד 3 פריימים!)
+                                {
+                                    consecutiveChokeSeconds = 0;
+                                    consecutiveStableSeconds++;
+
+                                    if (consecutiveStableSeconds >= 20) // 💡 קיצור זמן המבחן ל-20 שניות של יציבות סבירה
+                                    {
+                                        if (_currentQosTier < 3)
+                                        {
+                                            _currentQosTier++;
+                                            SetQosTier(_currentQosTier);
+                                            Logger.Info($"[AUTO-HEAL] Stream stable for 20s. Upgrading INTERNAL capture to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
+                                            consecutiveStableSeconds = 0; // מתחילים לספור מחדש לקראת הטיפוס ל-Tier הבא
+                                        }
+                                        else
+                                        {
+                                            consecutiveStableSeconds = 0;
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    // שטח אפור (4 עד 9 דרופים). המערכת לא חנוקה לגמרי, אבל לא מספיק יציבה כדי לטפס.
+                                    consecutiveChokeSeconds = 0;
+                                    consecutiveStableSeconds = 0;
+                                }
                             }
 
                             double nextFrameTargetMs = framesProcessed * targetFrameTimeMs;
@@ -281,7 +393,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 double msUntilNext = nextFrameTargetMs - currentMs;
 
                                 if (msUntilNext <= 0) break;
-
                                 if (msUntilNext > 2) Thread.Sleep(1);
                                 else Thread.SpinWait(500);
                             }
@@ -297,6 +408,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         try
                         {
                             isSessionActive = false;
+                            isCaptureActive = false;
+
                             audioCapture?.Stop();
                             if (audioCapture is IDisposable audioDisp) audioDisp.Dispose();
                             if (screenCapture is IDisposable screenDisp) screenDisp.Dispose();
@@ -304,50 +417,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         }
                         catch (Exception ex) { Logger.Error($"[WorkerEngine] Error teardown: {ex.Message}"); }
                     }
-
-                    if (_requiresImmediateRestart)
-                    {
-                        _requiresImmediateRestart = false;
-                        _isStreamingRequested = true;
-                        if (_streamPermissionSignal.CurrentCount == 0)
-                        {
-                            _streamPermissionSignal.Release();
-                        }
-                    }
                 }
             }
             finally
             {
                 if (OperatingSystem.IsWindows())
                 {
+#if WINDOWS
                     WindowsNative.TimeEndPeriod(1);
+#endif
                 }
-            }
-        }
-
-        private void ApplyDynamicPolicy()
-        {
-            try
-            {
-                string policyPath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
-                if (File.Exists(policyPath))
-                {
-                    string json = File.ReadAllText(policyPath);
-                    var policy = JsonSerializer.Deserialize<AgentStreamPolicy>(json);
-
-                    if (policy != null)
-                    {
-                        if (policy.TargetFps > 0) _config.TargetFps = policy.TargetFps;
-                        if (!string.IsNullOrWhiteSpace(policy.VideoBitrate)) _config.VideoBitrate = policy.VideoBitrate;
-                        if (!string.IsNullOrWhiteSpace(policy.RtmpServerBaseUrl)) _config.RtmpServerBaseUrl = policy.RtmpServerBaseUrl;
-
-                        Logger.Info($"[WorkerEngine] Dynamic policy applied: {policy.TargetFps} FPS, {policy.VideoBitrate} Bitrate.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"[WorkerEngine] Failed to read dynamic policy. Error: {ex.Message}");
             }
         }
 
@@ -387,23 +466,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             _serverUtcOffset = TimeSpan.FromTicks(ticks);
                                         }
 
-                                        ApplyDynamicPolicy();
-
                                         Logger.Info("[WorkerEngine] Received START command.");
                                         _isStreamingRequested = true;
                                         if (_streamPermissionSignal.CurrentCount == 0) _streamPermissionSignal.Release();
-                                    }
-                                    else if (cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        if (parts.Length > 1 && long.TryParse(parts[1], out long ticks))
-                                        {
-                                            _serverUtcOffset = TimeSpan.FromTicks(ticks);
-                                        }
-
-                                        Logger.Info("[WorkerEngine] Received RESTART command for on-the-fly policy update. Reloading config...");
-
-                                        ApplyDynamicPolicy();
-                                        _requiresImmediateRestart = true;
                                     }
                                 }
                             }
@@ -416,8 +481,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         var msg = new WorkerIpcStatusMessage
                         {
                             SessionState = InternalSessionState.ActiveInteractive,
-                            CurrentFps = _config.TargetFps,
-                            IsStreaming = _isStreamingRequested || _requiresImmediateRestart
+                            CurrentFps = _baselineFps,
+                            IsStreaming = _isStreamingRequested
                         };
 
                         await writer.WriteLineAsync(JsonSerializer.Serialize(msg));
