@@ -1,7 +1,26 @@
-import { useState } from 'react';
-import '../styles/StationThumbnail.css';
+import { useState, useEffect } from 'react';
+import '../styles/StationThumbnail.scss';
 import FullscreenModal from './FullscreenModal';
 import WebRTCPlayer from './WebRTCPlayer';
+import CyberLoadingOverlay from './CyberLoadingOverlay';
+
+const formatTelemetry = (val) => {
+    if (val === null || val === undefined || isNaN(val)) return '0.0';
+    return Number(val).toFixed(1);
+};
+
+const getBarColor = (val) => {
+    const num = Number(val);
+    if (num < 60) return '#10b981';
+    if (num < 85) return '#f59e0b';
+    return '#ef4444';
+};
+
+const getTrafficLightClass = (qosTier) => {
+    if (qosTier === 3) return 'qos-good';
+    if (qosTier >= 1) return 'qos-fair';
+    return 'qos-critical';
+};
 
 export default function StationThumbnail({
     hostname,
@@ -12,36 +31,41 @@ export default function StationThumbnail({
     gpuUsage = 0,
     hasAudio = false,
     isPending = false,
-    onToggleStream
+    onToggleStream,
+    actualFps = 0,
+    internalCaptureFps = 0,
+    droppedFrames = 0,
+    qosTier = 3
 }) {
     const [showFullscreen, setShowFullscreen] = useState(false);
+    const [retryKey, setRetryKey] = useState(0);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [prevIsStreaming, setPrevIsStreaming] = useState(isStreaming);
 
-    // חילוץ דינמי של כתובת השרת:
-    // window.location.hostname שואב אוטומטית את ה-IP או הדומיין שבו הדשבורד פתוח.
-    // import.meta.env.VITE_WEBRTC_PORT מאפשר דריסה של הפורט בקובץ .env בעתיד (ברירת מחדל 8889).
     const serverHost = window.location.hostname;
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
 
-    const formatTelemetry = (val) => {
-        if (val === null || val === undefined || isNaN(val)) return '0.0';
-        return Number(val).toFixed(1);
-    };
+    if (isStreaming !== prevIsStreaming) {
+        setPrevIsStreaming(isStreaming);
+        setIsVideoPlaying(false);
+    }
 
-    const getBarColor = (val) => {
-        const num = Number(val);
-        if (num < 60) return '#10b981';
-        if (num < 85) return '#f59e0b';
-        return '#ef4444';
-    };
+    useEffect(() => {
+        let timer;
+        if (isOnline && isStreaming) {
+            timer = setTimeout(() => {
+                setRetryKey(prev => prev + 1);
+            }, 2000);
+        }
+        return () => clearTimeout(timer);
+    }, [isOnline, isStreaming]);
 
     const isLive = isOnline && isStreaming;
 
     return (
         <>
             <div className={`station-card ${!isOnline ? 'offline' : ''}`}>
-
-                {/* Header (נשאר זהה) */}
                 <div className="station-card-header">
                     <div className="header-left-actions">
                         <div className={`status-pill ${isOnline ? 'online' : 'offline'}`}>
@@ -50,7 +74,7 @@ export default function StationThumbnail({
 
                         {hasAudio && isOnline && (
                             <div className="mic-indicator" title="Audio Stream Active">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
                                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                                     <line x1="12" y1="19" x2="12" y2="23"></line>
@@ -61,17 +85,25 @@ export default function StationThumbnail({
 
                         {isOnline && (
                             <button
-                                className={`stop-stream-btn ${isStreaming ? 'is-streaming' : 'is-idle'} ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className={`stream-action-btn ${isStreaming ? 'is-streaming' : 'is-idle'} ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={onToggleStream}
                                 disabled={isPending}
                                 title={isStreaming ? "Stop Streaming" : "Start Streaming"}
                             >
                                 {isPending ? (
-                                    <svg className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeDasharray="30" strokeDashoffset="0"></circle></svg>
+                                    <svg className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                                        <circle cx="12" cy="12" r="10" strokeDasharray="30" strokeDashoffset="0"></circle>
+                                    </svg>
                                 ) : isStreaming ? (
-                                    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                                    <>
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                                        <span className="btn-text">STOP</span>
+                                    </>
                                 ) : (
-                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                                    <>
+                                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                        <span className="btn-text">START</span>
+                                    </>
                                 )}
                             </button>
                         )}
@@ -83,69 +115,108 @@ export default function StationThumbnail({
                     </div>
                 </div>
 
-                {/* Video Stage / Thumbnail */}
                 <div
                     className="station-screen-area"
-                    onClick={() => isLive && setShowFullscreen(true)}
+                    onClick={() => isLive && isVideoPlaying && setShowFullscreen(true)}
                 >
+                    {isLive && isVideoPlaying && (
+                        <div className="traffic-light-badge" title={`FPS: ${actualFps} | Tier: ${qosTier}`}>
+                            <div className={`light-dot ${getTrafficLightClass(qosTier)}`}></div>
+                        </div>
+                    )}
+
                     {isLive ? (
                         <>
-                            <div className="station-thumbnail-video" style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-                                {/* שימוש בכתובת הדינמית שיצרנו למעלה */}
+                            {!isVideoPlaying && <CyberLoadingOverlay size="small" text="CONNECTING" />}
+
+                            <div className="station-thumbnail-video">
                                 <WebRTCPlayer
+                                    key={retryKey}
                                     streamPath={`live/${hostname}`}
                                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                                    onPlaying={() => setIsVideoPlaying(true)}
                                 />
                             </div>
-                            <div className="play-overlay-hint">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 8v8m0-8a4 4 0 018 0v8m0-8a4 4 0 018 0v8m0-8V8m0 8a4 4 0 118 0" />
-                                </svg>
-                                <span>מסך מלא</span>
-                            </div>
+
+                            {isVideoPlaying && (
+                                <div className="play-overlay-hint">
+                                    <span className="hint-text">EXPAND FULLSCREEN</span>
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="screen-offline-placeholder">
-                            <span>{isOnline && !isStreaming ? 'ממתין לשידור...' : 'אין חיבור לעמדה'}</span>
+                            <span>{isOnline && !isStreaming ? 'WAITING FOR STREAM...' : 'STATION OFFLINE'}</span>
                         </div>
                     )}
                 </div>
 
-                {/* Telemetry Footer (נשאר זהה) */}
                 <div className="station-telemetry">
-                    {/* ... קוד ה-CPU/GPU נשאר בדיוק אותו דבר ... */}
+                    {isStreaming && (
+                        <div className="inline-network-stats">
+                            <div className="stat-box">
+                                <div className="stat-header">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>
+                                    <span>FPS</span>
+                                </div>
+                                <span className="stat-value green">{actualFps}</span>
+                            </div>
+
+                            <div className="stat-box">
+                                <div className="stat-header">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+                                    <span>CAP</span>
+                                </div>
+                                <span className="stat-value yellow">{internalCaptureFps}</span>
+                            </div>
+
+                            <div className="stat-box">
+                                <div className="stat-header">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                                    <span>DROP</span>
+                                </div>
+                                <span className={`stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span>
+                            </div>
+
+                            <div className="stat-box">
+                                <div className="stat-header">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
+                                    <span>QOS</span>
+                                </div>
+                                <span className="stat-value blue">T{qosTier}</span>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="telemetry-row">
                         <div className="telemetry-label">
-                            <span>CPU</span>
-                            <span style={{ color: getBarColor(cpuUsage) }}>{formatTelemetry(cpuUsage)}%</span>
+                            <span className="label-name">CPU</span>
+                            <span className="label-value" style={{ color: getBarColor(cpuUsage) }}>{formatTelemetry(cpuUsage)}%</span>
                         </div>
                         <div className="telemetry-bar-bg">
-                            <div
-                                className="telemetry-bar-fill"
-                                style={{ width: `${Math.min(100, Math.max(0, cpuUsage))}%`, backgroundColor: getBarColor(cpuUsage) }}
-                            />
+                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, cpuUsage))}%`, backgroundColor: getBarColor(cpuUsage) }} />
                         </div>
                     </div>
                     <div className="telemetry-row">
                         <div className="telemetry-label">
-                            <span>GPU</span>
-                            <span style={{ color: getBarColor(gpuUsage) }}>{formatTelemetry(gpuUsage)}%</span>
+                            <span className="label-name">GPU</span>
+                            <span className="label-value" style={{ color: getBarColor(gpuUsage) }}>{formatTelemetry(gpuUsage)}%</span>
                         </div>
                         <div className="telemetry-bar-bg">
-                            <div
-                                className="telemetry-bar-fill"
-                                style={{ width: `${Math.min(100, Math.max(0, gpuUsage))}%`, backgroundColor: getBarColor(gpuUsage) }}
-                            />
+                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, gpuUsage))}%`, backgroundColor: getBarColor(gpuUsage) }} />
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Modal */}
             {showFullscreen && (
                 <FullscreenModal
                     hostname={hostname}
-                    webrtcBaseUrl={dynamicWebrtcBaseUrl} // העברת הכתובת הדינמית גם למודל המסך המלא
+                    webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                    actualFps={actualFps}
+                    internalCaptureFps={internalCaptureFps}
+                    droppedFrames={droppedFrames}
+                    qosTier={qosTier}
                     onClose={() => setShowFullscreen(false)}
                 />
             )}

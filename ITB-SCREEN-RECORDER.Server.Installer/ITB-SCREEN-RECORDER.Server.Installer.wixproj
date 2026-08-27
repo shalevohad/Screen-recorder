@@ -6,7 +6,7 @@
 
 		<!-- אם הועברה גרסה מבחוץ (למשל מ-GitHub Actions), נשתמש בה. אחרת ניקח את ברירת המחדל -->
 		<Version Condition="'$(ProductVersion)' != ''">$(ProductVersion)</Version>
-		<Version Condition="'$(Version)' == ''">1.0.21.1</Version>
+		<Version Condition="'$(Version)' == ''">1.0.21.2</Version>
 		
 		<OutputName>ITB-ScreenRecorder-Server-Setup-$(Version)</OutputName>
 

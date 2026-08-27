@@ -9,10 +9,6 @@ using Microsoft.Extensions.Hosting;
 
 namespace ITB_SCREEN_RECORDER.Server.Services
 {
-    // Patches the SystemConfig/Storage section of appsettings.json on disk, leaving every
-    // other section (Logging, Kestrel, MediaMtx, Security, ...) untouched.
-    // ASP.NET Core's built-in config reload watches this file, so IOptionsMonitor consumers
-    // pick the new values up automatically; IOptions singletons need an app restart.
     public class SettingsFileService
     {
         private readonly string _appSettingsPath;
@@ -37,6 +33,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 DashboardRefreshRateMs = (int)systemConfig["DashboardRefreshRateMs"]!,
                 DefaultVideoBitrate = (string)systemConfig["DefaultVideoBitrate"]!,
                 DefaultTargetFps = (int)systemConfig["DefaultTargetFps"]!,
+
+                DisplayTimezone = (string)(systemConfig["DisplayTimezone"] ?? "Asia/Jerusalem"),
+
+                // 💡 קריאת ה-Locale
+                DisplayLocale = (string)(systemConfig["DisplayLocale"] ?? "en-US"),
+
                 Storage = new StorageSettingsDto
                 {
                     NetAppUncPath = (string)storage["NetAppUncPath"]!,
@@ -63,6 +65,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 systemConfig["DefaultVideoBitrate"] = dto.DefaultVideoBitrate;
                 systemConfig["DefaultTargetFps"] = dto.DefaultTargetFps;
 
+                systemConfig["DisplayTimezone"] = dto.DisplayTimezone;
+
+                // 💡 כתיבת ה-Locale לדיסק
+                systemConfig["DisplayLocale"] = dto.DisplayLocale;
+
                 storage["NetAppUncPath"] = dto.Storage.NetAppUncPath;
                 storage["LocalFallbackPath"] = dto.Storage.LocalFallbackPath;
                 storage["ChunkIntervalMinutes"] = dto.Storage.ChunkIntervalMinutes;
@@ -71,7 +78,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
                 var json = root!.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
-                // Write to a temp file and swap in, so a crash mid-write can't corrupt appsettings.json.
                 var tempPath = _appSettingsPath + ".tmp";
                 await File.WriteAllTextAsync(tempPath, json).ConfigureAwait(false);
                 File.Move(tempPath, _appSettingsPath, overwrite: true);

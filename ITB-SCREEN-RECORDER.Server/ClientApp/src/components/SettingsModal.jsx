@@ -83,6 +83,37 @@ export default function SettingsModal({ onClose }) {
                                 <legend>System</legend>
 
                                 <label className="settings-field">
+                                    <span>Display Timezone</span>
+                                    <select
+                                        value={form.displayTimezone || 'Asia/Jerusalem'}
+                                        onChange={e => updateField('displayTimezone', e.target.value)}
+                                        required
+                                        style={{ backgroundColor: '#1f2937', color: 'white', border: '1px solid #374151', padding: '6px', borderRadius: '4px' }}
+                                    >
+                                        <option value="Asia/Jerusalem">Israel (Jerusalem)</option>
+                                        <option value="UTC">UTC (Standard)</option>
+                                        <option value="America/New_York">US Eastern (New York)</option>
+                                        <option value="Europe/London">UK (London)</option>
+                                    </select>
+                                </label>
+
+                                {/* 💡 השדה החדש לבחירת פורמט התאריך */}
+                                <label className="settings-field">
+                                    <span>Display Locale</span>
+                                    <select
+                                        value={form.displayLocale || 'en-US'}
+                                        onChange={e => updateField('displayLocale', e.target.value)}
+                                        required
+                                        style={{ backgroundColor: '#1f2937', color: 'white', border: '1px solid #374151', padding: '6px', borderRadius: '4px' }}
+                                    >
+                                        <option value="en-US">English (US)</option>
+                                        <option value="en-GB">English (UK)</option>
+                                        <option value="he-IL">Hebrew (Israel)</option>
+                                        <option value="fr-FR">French (France)</option>
+                                    </select>
+                                </label>
+
+                                <label className="settings-field">
                                     <span>Recording retention (days)</span>
                                     <input type="number" min={1} max={365} value={form.recordingRetentionDays}
                                         onChange={e => updateField('recordingRetentionDays', Number(e.target.value))} required />

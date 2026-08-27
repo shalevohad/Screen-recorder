@@ -67,7 +67,6 @@ namespace ITBRecorderAgent.Engine
                 Logger.Info($"[FFMPEG] Resolved FFmpeg path: {ffmpegPath}");
 
                 string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
-                string fontPath = ResolvePlatformFontPath();
 
                 _tcpListener = new TcpListener(IPAddress.Loopback, 0);
                 _tcpListener.Start();
@@ -82,8 +81,7 @@ namespace ITBRecorderAgent.Engine
                     audioChannels,
                     audioFormat,
                     activeEncoder,
-                    localPort,
-                    fontPath);
+                    localPort);
 
                 Logger.Info($"[FFMPEG] Starting FFmpeg process with arguments: {arguments}");
 
@@ -91,7 +89,7 @@ namespace ITBRecorderAgent.Engine
                 {
                     FileName = ffmpegPath,
                     Arguments = arguments,
-                    WorkingDirectory = AppContext.BaseDirectory, // 💡 הפתרון לרווחים: עבודה בתיקייה המקומית!
+                    WorkingDirectory = AppContext.BaseDirectory,
                     RedirectStandardInput = true,
                     RedirectStandardError = true,
                     RedirectStandardOutput = false,
@@ -161,93 +159,47 @@ namespace ITBRecorderAgent.Engine
             }
         }
 
-        private string ResolvePlatformFontPath()
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                string winFont = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", "arial.ttf");
-                if (File.Exists(winFont))
-                {
-                    return winFont.Replace("\\", "/").Replace(":", "\\:");
-                }
-            }
-            else if (OperatingSystem.IsLinux())
-            {
-                string[] linuxFontPaths =
-                {
-                    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
-                    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/gnu-free/FreeSans.ttf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-                };
-
-                foreach (var path in linuxFontPaths)
-                {
-                    if (File.Exists(path))
-                    {
-                        return path.Replace(":", "\\:");
-                    }
-                }
-            }
-
-            return "arial";
-        }
-
         private string BuildFfmpegArguments(
             string destinationUrl, DateTime calibratedStartTime,
             int videoWidth, int videoHeight, int audioSampleRate, int audioChannels,
-            string audioFormat, string videoEncoder, int tcpPort, string fontPath)
+            string audioFormat, string videoEncoder, int tcpPort)
         {
             var ffmpegArgs = new StringBuilder();
 
-            int gopSize = _config.TargetFps * 5;
-            int keyintMin = _config.TargetFps;
+            // 💡 מרווח של 2 שניות (GOP 2s) - פשרת הזהב: פתיחה מהירה ל-WebRTC עם משקל קובץ חסכוני[cite: 11]
+            int gopSize = _config.TargetFps * 2;
+            int keyintMin = _config.TargetFps * 2;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
             float bufferSize = float.Parse(_config.VideoBitrate.Split('M', 'm')[0]);
             string bufferSizeStr = $"{bufferSize}M";
 
+            // הגדרת מקורות (0 = וידאו מה-pipe, 1 = אודיו מה-TCP)
             ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -framerate {_config.TargetFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
             ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
-            long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
-            string filterComplex;
+            // מיפוי ישיר וללא שום פילטרים (Direct Map)
+            ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // 💡 קריאה ישירה למחלקת הדיאגנוסטיקה בלי להעביר פרמטרים בחתימה!
-            if (DebugHelper.IsDebugModeEnabled())
-            {
-                string fpsHighFile = "itb_fps_high.txt";
-                string fpsLowFile = "itb_fps_low.txt";
-
-                filterComplex = $"-filter_complex \"[0:v]drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6," +
-                                       $"drawtext=fontfile='{fontPath}':textfile='{fpsHighFile}':reload=1:x=10:y=45:fontsize=20:fontcolor=green:box=1:boxcolor=black@0.6," +
-                                       $"drawtext=fontfile='{fontPath}':textfile='{fpsLowFile}':reload=1:x=10:y=45:fontsize=20:fontcolor=red:box=1:boxcolor=black@0.6[vout]\" ";
-            }
-            else
-            {
-                filterComplex = $"-filter_complex \"[0:v]drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6[vout]\" ";
-            }
-
-            ffmpegArgs.Append(filterComplex);
-
-            ffmpegArgs.Append("-map \"[vout]\" -map 1:a ");
-
+            // הגדרות מקודד הוידאו[cite: 11]
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
                 ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} ");
+                // 💡 כפיית D3D11 וביטול B-Frames למניעת מסך שחור ב-Intel QSV
+                ffmpegArgs.Append($"-init_hw_device d3d11va -c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
                 ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 40 -video_track_timescale 90000 -fps_mode cfr -r {_config.TargetFps} -pix_fmt yuv420p ");
+            // 💡 כפיית Keyframes כל 2 שניות וביטול שבירת GOP דינמית לטובת יציבות MediaMTX
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -video_track_timescale 90000 -fps_mode cfr -r {_config.TargetFps} -pix_fmt yuv420p ");
 
+            // הגדרות מקודד האודיו והמטא-דאטה[cite: 11]
             ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} ");
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
             ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
