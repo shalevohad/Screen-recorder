@@ -14,15 +14,15 @@ export default function WebRTCPlayer({
     const [isVisible, setIsVisible] = useState(false);
     const [hasError, setHasError] = useState(false);
 
-    // סטייטים לסרגל הכלים דמוי YouTube
     const [isHovered, setIsHovered] = useState(false);
     const [isPlaying, setIsPlaying] = useState(true);
     const [isMuted, setIsMuted] = useState(true);
     const [volume, setVolume] = useState(1);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
-    // 1. ניטור חכם של נראות הרכיב על המסך
     useEffect(() => {
+        const currentContainer = containerRef.current; // 💡 שמירת רפרנס לנקודת זמן נוכחית לטובת ה-cleanup
+
         const observer = new IntersectionObserver(
             (entries) => {
                 if (entries[0].isIntersecting) {
@@ -34,26 +34,27 @@ export default function WebRTCPlayer({
             { threshold: 0.1 }
         );
 
-        if (containerRef.current) {
-            observer.observe(containerRef.current);
+        if (currentContainer) {
+            observer.observe(currentContainer);
         }
 
         return () => {
-            if (containerRef.current) {
-                observer.unobserve(containerRef.current);
+            if (currentContainer) {
+                observer.unobserve(currentContainer);
             }
         };
     }, []);
 
-    // 2. ניהול מחזור החיים של WebRTC
     useEffect(() => {
+        const currentVideo = videoRef.current; // 💡 שמירת רפרנס לוידאו לטובת ניקוי 
+
         if (!isVisible) {
             if (peerRef.current) {
                 peerRef.current.close();
                 peerRef.current = null;
             }
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
+            if (currentVideo) {
+                currentVideo.srcObject = null;
             }
             return;
         }
@@ -63,11 +64,11 @@ export default function WebRTCPlayer({
         peerRef.current = pc;
 
         pc.addTransceiver('video', { direction: 'recvonly' });
-        pc.addTransceiver('audio', { direction: 'recvonly' }); // משיכת סאונד
+        pc.addTransceiver('audio', { direction: 'recvonly' });
 
         pc.ontrack = (event) => {
-            if (videoRef.current && event.streams && event.streams[0]) {
-                videoRef.current.srcObject = event.streams[0];
+            if (currentVideo && event.streams && event.streams[0]) {
+                currentVideo.srcObject = event.streams[0];
             }
         };
 
@@ -112,13 +113,12 @@ export default function WebRTCPlayer({
             isSubscribed = false;
             pc.close();
             peerRef.current = null;
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
+            if (currentVideo) {
+                currentVideo.srcObject = null;
             }
         };
     }, [isVisible, streamPath, webrtcBaseUrl]);
 
-    // 3. פונקציות שליטה של נגן הוידאו
     const togglePlay = () => {
         if (videoRef.current) {
             if (isPlaying) {
@@ -192,7 +192,6 @@ export default function WebRTCPlayer({
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
 
-            {/* Custom YouTube-Style Controls Overlay */}
             {showControls && (
                 <div
                     className="yt-controls-bar"
@@ -206,7 +205,6 @@ export default function WebRTCPlayer({
                         zIndex: 20
                     }}
                 >
-                    {/* Progress Bar (Cosmetic for Live Stream) */}
                     <div className="yt-progress-container">
                         <div className="yt-progress-bg">
                             <div className="yt-progress-live"></div>

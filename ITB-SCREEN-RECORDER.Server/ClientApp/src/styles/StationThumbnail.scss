@@ -137,6 +137,22 @@
                 height: 0.625rem;
                 border-radius: 9999px;
                 border: 2px solid rgba(0, 0, 0, 0.8);
+                transition: background-color 0.3s ease, box-shadow 0.3s ease;
+
+                &.qos-good {
+                    background-color: #22c55e;
+                    box-shadow: 0 0 12px rgba(34, 197, 94, 0.9);
+                }
+
+                &.qos-fair {
+                    background-color: #eab308;
+                    box-shadow: 0 0 12px rgba(234, 179, 8, 0.9);
+                }
+
+                &.qos-critical {
+                    background-color: #ef4444;
+                    box-shadow: 0 0 12px rgba(239, 68, 68, 1);
+                }
             }
         }
 

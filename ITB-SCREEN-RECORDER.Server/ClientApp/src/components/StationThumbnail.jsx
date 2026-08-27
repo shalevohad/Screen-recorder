@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import '../styles/StationThumbnail.scss';
 import FullscreenModal from './FullscreenModal';
 import WebRTCPlayer from './WebRTCPlayer';
-import CyberLoadingOverlay from './CyberLoadingOverlay'; // 💡 הוספנו את הייבוא לכאן
+import CyberLoadingOverlay from './CyberLoadingOverlay';
 
 const formatTelemetry = (val) => {
     if (val === null || val === undefined || isNaN(val)) return '0.0';
@@ -16,10 +16,10 @@ const getBarColor = (val) => {
     return '#ef4444';
 };
 
-const getTrafficLightStyle = (qosTier) => {
-    if (qosTier === 3) return { backgroundColor: '#22c55e', boxShadow: '0 0 12px rgba(34,197,94,0.9)' };
-    if (qosTier >= 1) return { backgroundColor: '#eab308', boxShadow: '0 0 12px rgba(234,179,8,0.9)' };
-    return { backgroundColor: '#ef4444', boxShadow: '0 0 12px rgba(239,68,68,1)' };
+const getTrafficLightClass = (qosTier) => {
+    if (qosTier === 3) return 'qos-good';
+    if (qosTier >= 1) return 'qos-fair';
+    return 'qos-critical';
 };
 
 export default function StationThumbnail({
@@ -40,13 +40,18 @@ export default function StationThumbnail({
     const [showFullscreen, setShowFullscreen] = useState(false);
     const [retryKey, setRetryKey] = useState(0);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [prevIsStreaming, setPrevIsStreaming] = useState(isStreaming);
 
     const serverHost = window.location.hostname;
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
 
-    useEffect(() => {
+    if (isStreaming !== prevIsStreaming) {
+        setPrevIsStreaming(isStreaming);
         setIsVideoPlaying(false);
+    }
+
+    useEffect(() => {
         let timer;
         if (isOnline && isStreaming) {
             timer = setTimeout(() => {
@@ -116,13 +121,12 @@ export default function StationThumbnail({
                 >
                     {isLive && isVideoPlaying && (
                         <div className="traffic-light-badge" title={`FPS: ${actualFps} | Tier: ${qosTier}`}>
-                            <div className="light-dot" style={getTrafficLightStyle(qosTier)}></div>
+                            <div className={`light-dot ${getTrafficLightClass(qosTier)}`}></div>
                         </div>
                     )}
 
                     {isLive ? (
                         <>
-                            {/* חיווי הטעינה הקומפקטי */}
                             {!isVideoPlaying && <CyberLoadingOverlay size="small" text="CONNECTING" />}
 
                             <div className="station-thumbnail-video">
