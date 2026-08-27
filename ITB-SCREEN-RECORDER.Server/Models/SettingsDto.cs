@@ -24,6 +24,13 @@ namespace ITB_SCREEN_RECORDER.Server.Models
         public int DefaultTargetFps { get; set; } = 30;
 
         [Required]
+        public string DisplayTimezone { get; set; } = "Asia/Jerusalem";
+
+        // 💡 שדה חדש להגדרת הפורמט האזורי של התאריכים והשפות
+        [Required]
+        public string DisplayLocale { get; set; } = "en-US";
+
+        [Required]
         public StorageSettingsDto Storage { get; set; } = null!;
     }
 

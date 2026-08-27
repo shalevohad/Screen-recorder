@@ -57,6 +57,19 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+        // 💡 הוספת שדות הטלמטריה החדשים לתקשורת ה-Out-of-Band
+        [JsonPropertyName("actualFps")]
+        public int ActualFps { get; set; }
+
+        [JsonPropertyName("droppedFrames")]
+        public int DroppedFrames { get; set; }
+
+        [JsonPropertyName("internalCaptureFps")]
+        public int InternalCaptureFps { get; set; }
+
+        [JsonPropertyName("qosTier")]
+        public int QosTier { get; set; }
     }
 
     public class AgentHeartbeatResponse

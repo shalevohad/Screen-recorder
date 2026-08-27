@@ -23,7 +23,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
     public class AgentSupervisorService : BackgroundService
     {
         private bool _lastWorkerLaunchFailed = false;
-        private bool _lastServerConnectionFailed = false;
         private readonly ILogger<AgentSupervisorService> _logger;
         private readonly string _workerPath;
         private readonly string _policyFilePath;
@@ -39,6 +38,24 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         // 💡 שמירת סטיית הזמן מול השרת
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
+
+        // 💡 נתוני הטלמטריה האחרונים שהתקבלו מה-Worker
+        private IpcTelemetryDto? _lastTelemetry = null;
+
+        // מודלים פנימיים לפיענוח בטוח של ה-IPC מבלי לשנות את ספריות הליבה
+        private class IpcMessageDto
+        {
+            public bool IsStreaming { get; set; }
+            public IpcTelemetryDto? Telemetry { get; set; }
+        }
+
+        private class IpcTelemetryDto
+        {
+            public int ActualFps { get; set; }
+            public int DroppedFrames { get; set; }
+            public int InternalCaptureFps { get; set; }
+            public int QosTier { get; set; }
+        }
 
         public AgentSupervisorService(ILogger<AgentSupervisorService> logger)
         {
@@ -85,9 +102,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
+#if WINDOWS
         private void LoadServerIpFromRegistrySafe()
         {
-#if WINDOWS
 #pragma warning disable CA1416
             try
             {
@@ -106,8 +123,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 _logger.LogWarning("Failed to read ServerIp from Windows Registry: {Msg}", ex.Message);
             }
 #pragma warning restore CA1416
-#endif
         }
+#endif
 
         private void LoadLocalPolicyFallback()
         {
@@ -146,36 +163,36 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     }
                 }
 
-                await Task.Delay(3000, stoppingToken);
+                // 💡 קצב פעימות לב דינמי: 1000ms בשידור כדי לדחוף טלמטריה מדויקת, 3000ms במנוחה כדי לחסוך רשת.
+                int delayMs = _isWorkerStreaming ? 1000 : 3000;
+                await Task.Delay(delayMs, stoppingToken);
             }
 
-            if (OperatingSystem.IsWindows())
+            // ניקוי בסיום ריצה (תואם לינוקס ו-Windows)
+            try
             {
-#if WINDOWS
-                try
+                string workerName = Path.GetFileNameWithoutExtension(_workerPath);
+                var procs = Process.GetProcessesByName(workerName);
+                foreach (var proc in procs)
                 {
-                    string workerName = Path.GetFileNameWithoutExtension(_workerPath);
-                    var procs = Process.GetProcessesByName(workerName);
-                    foreach (var proc in procs)
+                    try
                     {
-                        try
-                        {
-                            proc.Kill();
-                            proc.WaitForExit(1000);
-                        }
-                        catch { }
+                        proc.Kill();
+                        proc.WaitForExit(1000);
                     }
+                    catch { }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("Failed to terminate worker processes on shutdown: {Msg}", ex.Message);
-                }
-#endif
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Failed to terminate worker processes on shutdown: {Msg}", ex.Message);
             }
         }
 
         private async Task ListenToWorkerIpcAsync(CancellationToken ct)
         {
+            var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
             while (!ct.IsCancellationRequested)
             {
                 try
@@ -198,10 +215,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         {
                             try
                             {
-                                var status = JsonSerializer.Deserialize<WorkerIpcStatusMessage>(line);
+                                var status = JsonSerializer.Deserialize<IpcMessageDto>(line, jsonOptions);
                                 if (status != null)
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
+                                    _lastTelemetry = status.Telemetry; // 💡 שמירת הטלמטריה האחרונה בזיכרון ה-Supervisor
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
                                 }
                             }
@@ -245,7 +263,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     CpuUsagePercentage = hardwareStats.CpuUsagePercentage,
                     GpuUsagePercentage = hardwareStats.GpuUsagePercentage,
                     ClientTimestamp = DateTime.UtcNow,
-                    Timestamp = DateTime.UtcNow
+                    Timestamp = DateTime.UtcNow,
+
+                    // 💡 הזרקת נתוני הדיבוג לשרת. במצב Standby הערכים יהיו 0.
+                    ActualFps = isStreaming ? (_lastTelemetry?.ActualFps ?? 0) : 0,
+                    DroppedFrames = isStreaming ? (_lastTelemetry?.DroppedFrames ?? 0) : 0,
+                    InternalCaptureFps = isStreaming ? (_lastTelemetry?.InternalCaptureFps ?? 0) : 0,
+                    QosTier = isStreaming ? (_lastTelemetry?.QosTier ?? 3) : 3
                 };
 
                 string targetEndpoint = $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
@@ -260,7 +284,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson);
                         if (heartbeatResponse != null)
                         {
-                            // 💡 הליבה: קריאת השעון המדויק של השרת וחישוב הסטייה
                             if (heartbeatResponse.ServerUtcTime != default)
                             {
                                 _serverUtcOffset = heartbeatResponse.ServerUtcTime - DateTime.UtcNow;
@@ -283,7 +306,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                                     if (isStreaming)
                                     {
-                                        // 💡 הזרקת הסטייה לפקודת הריסטרט כדי שהוורקר לא יאבד סנכרון
                                         await SendCommandToWorkerAsync($"Restart|{_serverUtcOffset.Ticks}");
                                     }
                                 }
@@ -297,7 +319,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             else if (heartbeatResponse.Command == ServerCommand.StartStream)
                             {
                                 if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[Service] Server requested START. Forwarding to Worker.");
-                                // 💡 הזרקת הסטייה לפקודת ההתחלה
                                 await SendCommandToWorkerAsync($"Start|{_serverUtcOffset.Ticks}");
                             }
                         }
@@ -332,8 +353,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
-        // משתנה שמזכיר לנו האם כבר דיווחנו על כישלון ההפעלה האחרון
-
         private void EnsureWorkerRunning()
         {
             try
@@ -361,10 +380,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     _lastWorkerHeartbeat = DateTime.MinValue;
                     _isWorkerStreaming = false;
                 }
-
                 else if (procs.Length == 0 && File.Exists(_workerPath))
                 {
-                    // נכתוב פעם אחת בלבד שהסוכן לא נמצא, בלי להציף בכל בדיקה
                     if (!_lastWorkerLaunchFailed)
                     {
                         _logger.LogInformation("Worker process not detected (or was purged). Launching Worker...");
@@ -376,18 +393,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, string.Empty);
                         if (!launched)
                         {
-                            // 💡 כאן הסינון המרכזי: נדפיס את אזהרת ההפעלה האינטראקטיבית רק פעם אחת עד שהיא תצליח!
                             if (!_lastWorkerLaunchFailed)
                             {
                                 _logger.LogWarning("Failed to launch AgentWorker interactively. Normal if session is locked/logged out. (Further identical warnings suppressed).");
-                                _lastWorkerLaunchFailed = true; // נעלנו את הדיווח עד להצלחה הבאה
+                                _lastWorkerLaunchFailed = true;
                             }
                         }
                         else
                         {
                             _logger.LogInformation("AgentWorker successfully launched into the active user session.");
                             _lastWorkerHeartbeat = DateTime.UtcNow;
-                            _lastWorkerLaunchFailed = false; // איפוס הדגל כשההפעלה מצליחה!
+                            _lastWorkerLaunchFailed = false;
                         }
 #endif
                     }
@@ -399,7 +415,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             UseShellExecute = false,
                             CreateNoWindow = true
                         };
-                        psi.EnvironmentVariables["DISPLAY"] = ":0";
+                        psi.EnvironmentVariables["DISPLAY"] = ":0"; // Fallback עבור סביבות X11
                         try
                         {
                             Process.Start(psi);

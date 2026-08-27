@@ -52,6 +52,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     HasAudio = agent.HasActiveMicrophone || agent.HasActiveSpeakers,
                     LastSeenUtc = agent.Timestamp,
 
+                    ActualFps = agent.ActualFps,
+                    InternalCaptureFps = agent.InternalCaptureFps,
+                    DroppedFrames = agent.DroppedFrames,
+                    QosTier = agent.QosTier,
+
                     HlsUrl = $"http://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });
