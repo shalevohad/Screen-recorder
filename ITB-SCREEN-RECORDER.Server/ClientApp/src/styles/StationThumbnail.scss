@@ -1,0 +1,273 @@
+﻿/* --- Station Thumbnail & Card Styles --- */
+.station-card {
+    /* 💡 רקע בהיר יותר להדגשת קונטרסט מול רקע הדשבורד */
+    background: linear-gradient(145deg, #151e2e 0%, #0d131f 100%);
+    border-radius: 1rem;
+    border: 1px solid #273549;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 520px;
+    position: relative;
+    box-sizing: border-box;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover {
+        border-color: #3b82f6;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .station-card-header {
+        padding: 0.625rem 0.875rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: rgba(15, 23, 42, 0.5);
+        border-bottom: 1px solid rgba(39, 53, 73, 0.8);
+
+        .header-left-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+
+            .status-pill {
+                font-size: 0.625rem;
+                padding: 0.125rem 0.5rem;
+                border-radius: 0.25rem;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+
+                &.online {
+                    background-color: rgba(22, 163, 74, 0.2);
+                    color: #4ade80;
+                    border: 1px solid rgba(22, 163, 74, 0.4);
+                }
+
+                &.offline {
+                    background-color: rgba(220, 38, 38, 0.2);
+                    color: #f87171;
+                    border: 1px solid rgba(220, 38, 38, 0.4);
+                }
+            }
+
+            .mic-indicator {
+                color: #34d399;
+                display: flex;
+                align-items: center;
+            }
+
+            .stream-action-btn {
+                color: #ffffff;
+                display: flex;
+                align-items: center;
+                gap: 0.375rem;
+                padding: 0.25rem 0.625rem;
+                border-radius: 0.5rem;
+                border: none;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.2s;
+
+                &.is-streaming {
+                    background-color: #dc2626;
+                    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+                }
+
+                &.is-idle {
+                    background-color: #16a34a;
+                    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4);
+                }
+
+                .btn-text {
+                    font-size: 0.6875rem;
+                    letter-spacing: 0.05em;
+                }
+            }
+        }
+
+        .station-identity {
+            text-align: right;
+
+            .station-hostname {
+                color: #f8fafc;
+                font-weight: 700;
+                font-size: 0.8125rem;
+                display: block;
+            }
+
+            .station-ip {
+                color: #94a3b8;
+                font-size: 0.625rem;
+                font-family: monospace;
+            }
+        }
+    }
+
+    .station-screen-area {
+        position: relative;
+        background-color: #000000;
+        cursor: pointer;
+        overflow: hidden;
+        aspect-ratio: 16/9;
+        width: 100%;
+
+        .traffic-light-badge {
+            position: absolute;
+            top: 0.625rem;
+            left: 0.625rem;
+            z-index: 10;
+            cursor: help;
+
+            .light-dot {
+                width: 0.625rem;
+                height: 0.625rem;
+                border-radius: 9999px;
+                border: 2px solid rgba(0, 0, 0, 0.8);
+            }
+        }
+
+        .station-thumbnail-video {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .screen-offline-placeholder {
+            background-color: #000000;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+            font-family: monospace;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        .play-overlay-hint {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            gap: 0.5rem;
+            pointer-events: none;
+
+            .hint-text {
+                font-size: 0.6875rem;
+                letter-spacing: 0.1em;
+                font-weight: 700;
+            }
+        }
+
+        &:hover .play-overlay-hint {
+            opacity: 1;
+        }
+    }
+
+    .station-telemetry {
+        padding: 0.75rem 0.875rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+
+        .inline-network-stats {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: #1e293b;
+            padding: 0.4rem 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
+            font-family: monospace;
+
+            .stat-box {
+                display: flex;
+                align-items: center;
+                gap: 0.375rem;
+
+                .stat-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.25rem;
+                    color: #94a3b8;
+                    font-size: 0.625rem;
+                    font-weight: 700;
+                    letter-spacing: 0.05em;
+
+                    svg {
+                        width: 12px;
+                        height: 12px;
+                        stroke: #94a3b8;
+                    }
+                }
+
+                .stat-value {
+                    font-size: 0.75rem;
+                    font-weight: 800;
+
+                    &.green {
+                        color: #22c55e;
+                    }
+
+                    &.yellow {
+                        color: #eab308;
+                    }
+
+                    &.red {
+                        color: #ef4444;
+                    }
+
+                    &.gray {
+                        color: #94a3b8;
+                    }
+
+                    &.blue {
+                        color: #3b82f6;
+                    }
+                }
+            }
+        }
+
+        .telemetry-row {
+            .telemetry-label {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.6875rem;
+                margin-bottom: 0.125rem;
+                font-family: monospace;
+
+                .label-name {
+                    color: #94a3b8;
+                }
+
+                .label-value {
+                    font-weight: 700;
+                }
+            }
+
+            .telemetry-bar-bg {
+                height: 0.25rem;
+                background-color: #273549;
+                border-radius: 0.125rem;
+                overflow: hidden;
+
+                .telemetry-bar-fill {
+                    height: 100%;
+                    border-radius: 0.125rem;
+                    transition: width 0.3s ease;
+                }
+            }
+        }
+    }
+}

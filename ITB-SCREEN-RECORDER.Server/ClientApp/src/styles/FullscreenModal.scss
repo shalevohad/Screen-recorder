@@ -1,0 +1,159 @@
+﻿/* --- Fullscreen Modal Backdrop & Box Layout --- */
+.stream-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem; /*[cite: 9] */
+}
+
+/* מסגרת המודל - סוד הקסם: מתעטפת בדיוק סביב התוכן ולוקחת מקסימום מקום[cite: 9] */
+.stream-modal-box {
+    width: fit-content;
+    height: fit-content;
+    max-width: 98vw;
+    max-height: 98vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #18181b; /*[cite: 9] */
+    border: 1px solid rgba(255, 255, 255, 0.15); /*[cite: 9] */
+    border-radius: 12px; /*[cite: 9] */
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.5); /*[cite: 9] */
+    overflow: hidden; /*[cite: 9] */
+    /* כותרת החלון העליונה - הוסב ל-Grid כדי למרכז את ה-Stats */
+    .stream-modal-header {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr; /* שמאל: כותרת | אמצע: נתונים | ימין: סגירה */
+        align-items: center;
+        padding: 0.75rem 1.25rem; /*[cite: 9] */
+        background-color: #18181b; /*[cite: 9] */
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08); /*[cite: 9] */
+        flex-shrink: 0; /*[cite: 9] */
+
+        .stream-modal-title {
+            justify-self: start;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem; /*[cite: 9] */
+
+            h2 {
+                color: #f4f4f5; /*[cite: 9] */
+                font-size: 0.875rem; /*[cite: 9] */
+                font-weight: 600; /*[cite: 9] */
+                letter-spacing: 0.05em; /*[cite: 9] */
+                margin: 0; /*[cite: 9] */
+                font-family: monospace;
+            }
+
+            .live-dot {
+                width: 8px; /*[cite: 9] */
+                height: 8px; /*[cite: 9] */
+                border-radius: 50%; /*[cite: 9] */
+                background-color: #ef4444; /*[cite: 9] */
+                animation: pulse 1.5s infinite; /*[cite: 9] */
+                box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+            }
+        }
+        /* שורת נתוני רשת (STAT) הממורכזת בכותרת */
+        .modal-network-stats {
+            justify-self: center;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            background-color: #1e293b;
+            padding: 0.4rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
+            font-family: monospace;
+
+            .modal-stat-box {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+
+                .modal-stat-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.25rem;
+                    color: #94a3b8;
+                    font-size: 0.6875rem;
+                    font-weight: 700;
+                    letter-spacing: 0.05em;
+
+                    svg {
+                        width: 12px;
+                        height: 12px;
+                        stroke: #94a3b8;
+                    }
+                }
+
+                .modal-stat-value {
+                    font-size: 0.875rem;
+                    font-weight: 800;
+
+                    &.green {
+                        color: #22c55e;
+                    }
+
+                    &.yellow {
+                        color: #eab308;
+                    }
+
+                    &.red {
+                        color: #ef4444;
+                    }
+
+                    &.gray {
+                        color: #94a3b8;
+                    }
+
+                    &.blue {
+                        color: #3b82f6;
+                    }
+                }
+            }
+        }
+        /* כפתור סגירה */
+        .stream-modal-close-btn {
+            justify-self: end;
+            background: transparent; /*[cite: 9] */
+            border: none; /*[cite: 9] */
+            color: #a1a1aa; /*[cite: 9] */
+            font-size: 1.1rem; /*[cite: 9] */
+            cursor: pointer; /*[cite: 9] */
+            padding: 0.25rem; /*[cite: 9] */
+            border-radius: 4px; /*[cite: 9] */
+            transition: color 0.15s ease, background-color 0.15s ease; /*[cite: 9] */
+
+            &:hover {
+                color: #ffffff; /*[cite: 9] */
+                background-color: #27272a; /*[cite: 9] */
+            }
+        }
+    }
+    /* מעטפת גוף המודל המכילה את קומפוננטת הנגן */
+    .stream-modal-body {
+        width: 100%; /*[cite: 9] */
+        display: flex; /*[cite: 9] */
+        flex-direction: column; /*[cite: 9] */
+        flex: 1; /*[cite: 9] */
+        min-height: 0; /* קריטי: מאפשר ל-flexbox לכווץ את התוכן מבלי לחרוג מ-100vw[cite: 9] */
+        min-width: 0; /*[cite: 9] */
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1; /*[cite: 9] */
+    }
+
+    50% {
+        opacity: 0.3; /*[cite: 9] */
+    }
+}

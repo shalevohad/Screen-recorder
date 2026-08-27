@@ -1,0 +1,156 @@
+/* --- Dashboard Grid & NOC War Room Command Bar --- */
+.dashboard-grid-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 100vh;
+    touch-action: pan-y;
+    position: relative;
+    box-sizing: border-box;
+    padding: 0 1.5rem 5rem 1.5rem; /* רווח למטה כדי שהתוכן לא יסתיר את ה-Zoom */
+
+    .noc-command-bar {
+        position: sticky;
+        top: 1rem;
+        z-index: 50;
+        width: 100%;
+        margin-bottom: 2rem;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+
+        > * {
+            pointer-events: auto;
+        }
+    }
+
+    .stations-grid-wrapper {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(var(--zoom-min-width, 380px), 1fr));
+        gap: 1.5rem;
+        width: 100%;
+        max-width: 1500px;
+        margin: 0 auto;
+        justify-content: center;
+        justify-items: center;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        flex: 1;
+
+        .station-wrapper-cell {
+            width: 100%;
+            max-width: 520px;
+        }
+    }
+
+    .stations-empty-state {
+        color: #6b7280;
+        font-family: monospace;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6rem 0;
+        border: 1px dashed #1f2937;
+        border-radius: 0.75rem;
+        background-color: rgba(17, 24, 39, 0.3);
+        width: 100%;
+        max-width: 800px;
+        margin: 0.5rem auto 0 auto;
+        letter-spacing: 0.1em;
+        font-size: 0.875rem;
+        flex: 1;
+    }
+    /* 💡 סרגל ה-ZOOM צף מינימליסטי וללא טקסט - מותאם למגע (Touch-friendly) */
+    .noc-footer-zoom {
+        position: fixed;
+        bottom: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background-color: rgba(11, 15, 25, 0.85);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(51, 65, 85, 0.8);
+        border-radius: 9999px;
+        padding: 0.5rem 0.75rem;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        user-select: none;
+        z-index: 100;
+
+        .zoom-btn {
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+            touch-action: manipulation;
+
+            &:hover:not(:disabled) {
+                color: #ffffff;
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+
+            &:active:not(:disabled) {
+                background-color: rgba(255, 255, 255, 0.1);
+                transform: scale(0.92);
+            }
+
+            &:disabled {
+                color: #334155;
+                cursor: not-allowed;
+            }
+        }
+
+        .zoom-slider {
+            cursor: pointer;
+            width: 10rem;
+            height: 0.5rem;
+            background-color: #1e293b;
+            border-radius: 9999px;
+            appearance: none;
+            touch-action: manipulation;
+            outline: none;
+            margin: 0 0.5rem;
+
+            &::-webkit-slider-thumb {
+                appearance: none;
+                width: 1.25rem;
+                height: 1.25rem;
+                background-color: #3b82f6;
+                border-radius: 50%;
+                cursor: pointer;
+                box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+                transition: transform 0.1s;
+            }
+
+            &::-moz-range-thumb {
+                width: 1.25rem;
+                height: 1.25rem;
+                background-color: #3b82f6;
+                border-radius: 50%;
+                cursor: pointer;
+                border: none;
+                box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+                transition: transform 0.1s;
+            }
+
+            &::-webkit-slider-thumb:active {
+                transform: scale(1.2);
+            }
+
+            &::-moz-range-thumb:active {
+                transform: scale(1.2);
+            }
+
+            &:disabled {
+                opacity: 0.5;
+            }
+        }
+    }
+}
