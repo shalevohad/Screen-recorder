@@ -166,8 +166,9 @@ namespace ITBRecorderAgent.Engine
         {
             var ffmpegArgs = new StringBuilder();
 
-            int gopSize = _config.TargetFps * 5;
-            int keyintMin = _config.TargetFps;
+            // 💡 מרווח של 2 שניות (GOP 2s) - פשרת הזהב: פתיחה מהירה ל-WebRTC עם משקל קובץ חסכוני[cite: 11]
+            int gopSize = _config.TargetFps * 2;
+            int keyintMin = _config.TargetFps * 2;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
             float bufferSize = float.Parse(_config.VideoBitrate.Split('M', 'm')[0]);
@@ -180,23 +181,25 @@ namespace ITBRecorderAgent.Engine
             // מיפוי ישיר וללא שום פילטרים (Direct Map)
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // הגדרות מקודד הוידאו
+            // הגדרות מקודד הוידאו[cite: 11]
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
                 ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} ");
+                // 💡 כפיית D3D11 וביטול B-Frames למניעת מסך שחור ב-Intel QSV
+                ffmpegArgs.Append($"-init_hw_device d3d11va -c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
                 ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 40 -video_track_timescale 90000 -fps_mode cfr -r {_config.TargetFps} -pix_fmt yuv420p ");
+            // 💡 כפיית Keyframes כל 2 שניות וביטול שבירת GOP דינמית לטובת יציבות MediaMTX
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -video_track_timescale 90000 -fps_mode cfr -r {_config.TargetFps} -pix_fmt yuv420p ");
 
-            // הגדרות מקודד האודיו והמטא-דאטה
+            // הגדרות מקודד האודיו והמטא-דאטה[cite: 11]
             ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} ");
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
             ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");

@@ -24,6 +24,9 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 #pragma warning disable CA1416
                 try
                 {
+#if DEBUG
+                    return true;
+#endif
                     // חיפוש המפתח בנתיב המעודכן של ההתקנה
                     using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
                     if (key != null)

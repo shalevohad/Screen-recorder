@@ -15,11 +15,12 @@ export default function DashboardGrid({ stations, actionPending, onToggleStream,
     }, [zoomLevel]);
 
     const gridZoomMap = {
-        1: 'min(100%, 200px)',
-        2: 'min(100%, 280px)',
-        3: 'min(100%, 360px)',
-        4: 'min(100%, 460px)',
-        5: 'min(100%, 520px)'
+        1: 'min(100%, 280px)',
+        2: 'min(100%, 360px)',
+        3: 'min(100%, 460px)',
+        4: 'min(100%, 520px)',
+        5: 'min(100%, 600px)',
+        6: 'min(100%, 700px)'
     };
 
     const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 1, 1));

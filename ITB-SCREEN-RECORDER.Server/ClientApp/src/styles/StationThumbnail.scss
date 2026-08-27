@@ -1,6 +1,5 @@
 ﻿/* --- Station Thumbnail & Card Styles --- */
 .station-card {
-    /* 💡 רקע בהיר יותר להדגשת קונטרסט מול רקע הדשבורד */
     background: linear-gradient(145deg, #151e2e 0%, #0d131f 100%);
     border-radius: 1rem;
     border: 1px solid #273549;
@@ -17,6 +16,19 @@
     &:hover {
         border-color: #3b82f6;
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+    }
+    /* 💡 אפקט Ghosting לתחנות מנותקות - שקיפות גבוהה והורדת צבע */
+    &.offline {
+        opacity: 0.35;
+        filter: grayscale(70%);
+        border-color: #1e293b;
+        box-shadow: none;
+
+        &:hover {
+            opacity: 0.6;
+            filter: grayscale(40%);
+            border-color: #334155;
+        }
     }
 
     .station-card-header {

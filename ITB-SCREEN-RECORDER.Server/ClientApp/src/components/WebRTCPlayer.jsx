@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import '../styles/VideoPlayer.css'; // שימוש במחלקות ה-YouTube שהכנת
+import '../styles/VideoPlayer.css';
 
-export default function WebRTCPlayer({ streamPath, webrtcBaseUrl = 'http://127.0.0.1:8889', showControls = false }) {
+export default function WebRTCPlayer({
+    streamPath,
+    webrtcBaseUrl = 'http://127.0.0.1:8889',
+    showControls = false,
+    onPlaying
+}) {
     const containerRef = useRef(null);
     const videoRef = useRef(null);
     const peerRef = useRef(null);
@@ -180,6 +185,10 @@ export default function WebRTCPlayer({ streamPath, webrtcBaseUrl = 'http://127.0
                 autoPlay
                 muted={isMuted}
                 playsInline
+                onPlaying={onPlaying}
+                onLoadedData={onPlaying}
+                onCanPlay={onPlaying}
+                onTimeUpdate={onPlaying}
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
 

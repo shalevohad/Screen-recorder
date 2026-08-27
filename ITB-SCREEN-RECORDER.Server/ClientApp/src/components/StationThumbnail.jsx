@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import '../styles/StationThumbnail.scss';
 import FullscreenModal from './FullscreenModal';
 import WebRTCPlayer from './WebRTCPlayer';
+import CyberLoadingOverlay from './CyberLoadingOverlay'; // 💡 הוספנו את הייבוא לכאן
 
-// פונקציות עזר סטטיות מחוץ לקומפוננטה לשיפור ביצועים במניעת רינדורים מיותרים
 const formatTelemetry = (val) => {
     if (val === null || val === undefined || isNaN(val)) return '0.0';
     return Number(val).toFixed(1);
@@ -39,12 +39,14 @@ export default function StationThumbnail({
 }) {
     const [showFullscreen, setShowFullscreen] = useState(false);
     const [retryKey, setRetryKey] = useState(0);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
     const serverHost = window.location.hostname;
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
 
     useEffect(() => {
+        setIsVideoPlaying(false);
         let timer;
         if (isOnline && isStreaming) {
             timer = setTimeout(() => {
@@ -110,9 +112,9 @@ export default function StationThumbnail({
 
                 <div
                     className="station-screen-area"
-                    onClick={() => isLive && setShowFullscreen(true)}
+                    onClick={() => isLive && isVideoPlaying && setShowFullscreen(true)}
                 >
-                    {isLive && (
+                    {isLive && isVideoPlaying && (
                         <div className="traffic-light-badge" title={`FPS: ${actualFps} | Tier: ${qosTier}`}>
                             <div className="light-dot" style={getTrafficLightStyle(qosTier)}></div>
                         </div>
@@ -120,16 +122,23 @@ export default function StationThumbnail({
 
                     {isLive ? (
                         <>
+                            {/* חיווי הטעינה הקומפקטי */}
+                            {!isVideoPlaying && <CyberLoadingOverlay size="small" text="CONNECTING" />}
+
                             <div className="station-thumbnail-video">
                                 <WebRTCPlayer
                                     key={retryKey}
                                     streamPath={`live/${hostname}`}
                                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                                    onPlaying={() => setIsVideoPlaying(true)}
                                 />
                             </div>
-                            <div className="play-overlay-hint">
-                                <span className="hint-text">EXPAND FULLSCREEN</span>
-                            </div>
+
+                            {isVideoPlaying && (
+                                <div className="play-overlay-hint">
+                                    <span className="hint-text">EXPAND FULLSCREEN</span>
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="screen-offline-placeholder">

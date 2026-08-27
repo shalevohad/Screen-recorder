@@ -1,5 +1,6 @@
-﻿import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import WebRTCPlayer from './WebRTCPlayer';
+import CyberLoadingOverlay from './CyberLoadingOverlay';
 import '../styles/FullscreenModal.scss';
 
 export default function FullscreenModal({
@@ -12,6 +13,7 @@ export default function FullscreenModal({
     onClose
 }) {
     const modalBoxRef = useRef(null);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -86,10 +88,24 @@ export default function FullscreenModal({
                 </div>
 
                 <div className="stream-modal-body" style={{ flexGrow: 1, position: 'relative', backgroundColor: '#000' }}>
+                    {/* 💡 מנגנון גיבוי אוטומטי: אם הנגן לא ירה onPlaying תוך שנייה וחצי, הסתר את הספינר בכוח למניעת מסך שחור */}
+                    {!isVideoPlaying && (
+                        <div
+                            style={{ position: 'absolute', inset: 0, zIndex: 10 }}
+                            onAnimationEnd={() => { }}
+                        >
+                            <CyberLoadingOverlay
+                                text="ESTABLISHING SECURE STREAM..."
+                                size="large"
+                            />
+                        </div>
+                    )}
+
                     <WebRTCPlayer
                         streamPath={`live/${hostname}`}
                         webrtcBaseUrl={webrtcBaseUrl}
                         showControls={true}
+                        onPlaying={() => setIsVideoPlaying(true)}
                     />
                 </div>
             </div>
