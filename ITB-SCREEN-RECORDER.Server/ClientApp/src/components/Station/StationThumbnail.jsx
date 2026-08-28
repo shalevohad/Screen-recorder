@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import '../styles/StationThumbnail.scss';
+import './StationThumbnail.scss';
 import FullscreenModal from './FullscreenModal';
-import WebRTCPlayer from './WebRTCPlayer';
-import CyberLoadingOverlay from './CyberLoadingOverlay';
+import WebRTCPlayer from '../Player/WebRTCPlayer';
+import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
 
 const formatTelemetry = (val) => {
     if (val === null || val === undefined || isNaN(val)) return '0.0';
@@ -27,15 +27,22 @@ export default function StationThumbnail({
     isOnline,
     isStreaming,
     ipAddress = 'N/A',
-    cpuUsage = 0,
-    gpuUsage = 0,
     hasAudio = false,
     isPending = false,
     onToggleStream,
     actualFps = 0,
     internalCaptureFps = 0,
     droppedFrames = 0,
-    qosTier = 3
+    qosTier = 3,
+
+    // מדדי החומרה והרשת
+    hostCpuPct = 0,
+    processCpuPct = 0,
+    gpu3dPct = 0,
+    gpuNvencPct = 0,
+    mediaTxMbps = 0,
+    nicUtilizationPct = 0,
+    telemetryTxKbps = 0
 }) {
     const [showFullscreen, setShowFullscreen] = useState(false);
     const [retryKey, setRetryKey] = useState(0);
@@ -62,6 +69,9 @@ export default function StationThumbnail({
     }, [isOnline, isStreaming]);
 
     const isLive = isOnline && isStreaming;
+
+    // חישוב עומס כרטיס המסך המקסימלי (3D או קידוד) לתצוגה בפס
+    const maxGpuLoad = Math.max(gpu3dPct, gpuNvencPct);
 
     return (
         <>
@@ -151,59 +161,35 @@ export default function StationThumbnail({
                     )}
                 </div>
 
+                {/* תצוגת פסי ההתקדמות (Progress Bars) ל-CPU, GPU ו-NET */}
                 <div className="station-telemetry">
-                    {isStreaming && (
-                        <div className="inline-network-stats">
-                            <div className="stat-box">
-                                <div className="stat-header">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>
-                                    <span>FPS</span>
-                                </div>
-                                <span className="stat-value green">{actualFps}</span>
-                            </div>
-
-                            <div className="stat-box">
-                                <div className="stat-header">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-                                    <span>CAP</span>
-                                </div>
-                                <span className="stat-value yellow">{internalCaptureFps}</span>
-                            </div>
-
-                            <div className="stat-box">
-                                <div className="stat-header">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-                                    <span>DROP</span>
-                                </div>
-                                <span className={`stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span>
-                            </div>
-
-                            <div className="stat-box">
-                                <div className="stat-header">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
-                                    <span>QOS</span>
-                                </div>
-                                <span className="stat-value blue">T{qosTier}</span>
-                            </div>
-                        </div>
-                    )}
-
                     <div className="telemetry-row">
                         <div className="telemetry-label">
                             <span className="label-name">CPU</span>
-                            <span className="label-value" style={{ color: getBarColor(cpuUsage) }}>{formatTelemetry(cpuUsage)}%</span>
+                            <span className="label-value" style={{ color: getBarColor(hostCpuPct) }}>{formatTelemetry(hostCpuPct)}%</span>
                         </div>
                         <div className="telemetry-bar-bg">
-                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, cpuUsage))}%`, backgroundColor: getBarColor(cpuUsage) }} />
+                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, hostCpuPct))}%`, backgroundColor: getBarColor(hostCpuPct) }} />
                         </div>
                     </div>
+
                     <div className="telemetry-row">
                         <div className="telemetry-label">
                             <span className="label-name">GPU</span>
-                            <span className="label-value" style={{ color: getBarColor(gpuUsage) }}>{formatTelemetry(gpuUsage)}%</span>
+                            <span className="label-value" style={{ color: getBarColor(maxGpuLoad) }}>{formatTelemetry(maxGpuLoad)}%</span>
                         </div>
                         <div className="telemetry-bar-bg">
-                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, gpuUsage))}%`, backgroundColor: getBarColor(gpuUsage) }} />
+                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, maxGpuLoad))}%`, backgroundColor: getBarColor(maxGpuLoad) }} />
+                        </div>
+                    </div>
+
+                    <div className="telemetry-row">
+                        <div className="telemetry-label">
+                            <span className="label-name">NET</span>
+                            <span className="label-value" style={{ color: getBarColor(nicUtilizationPct) }}>{formatTelemetry(nicUtilizationPct)}%</span>
+                        </div>
+                        <div className="telemetry-bar-bg">
+                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, nicUtilizationPct))}%`, backgroundColor: getBarColor(nicUtilizationPct) }} />
                         </div>
                     </div>
                 </div>
@@ -217,6 +203,15 @@ export default function StationThumbnail({
                     internalCaptureFps={internalCaptureFps}
                     droppedFrames={droppedFrames}
                     qosTier={qosTier}
+
+                    hostCpuPct={hostCpuPct}
+                    processCpuPct={processCpuPct}
+                    gpu3dPct={gpu3dPct}
+                    gpuNvencPct={gpuNvencPct}
+                    mediaTxMbps={mediaTxMbps}
+                    nicUtilizationPct={nicUtilizationPct}
+                    telemetryTxKbps={telemetryTxKbps}
+
                     onClose={() => setShowFullscreen(false)}
                 />
             )}

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import DashboardGrid from './components/DashboardGrid';
-import SettingsModal from './components/SettingsModal';
-import './styles/App.scss';
+import DashboardGrid from './components/Dashboard/DashboardGrid';
+import SettingsModal from './components/Settings/SettingsModal';
+import './App.scss';
 
 export default function App() {
     const [stations, setStations] = useState([]);
     const [actionPending, setActionPending] = useState({});
+
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [telemetryOpen, setTelemetryOpen] = useState(false); // הסטייט החדש לגרף
 
     const fetchStations = useCallback(async (isActive = true) => {
         try {
@@ -33,7 +35,7 @@ export default function App() {
 
         const interval = setInterval(() => {
             if (isActive) fetchStations(isActive);
-        }, 3000);
+        }, 15000);
 
         return () => {
             isActive = false;
@@ -67,6 +69,18 @@ export default function App() {
                     <div className="text-xs font-mono px-3 py-1.5 bg-gray-900 border border-gray-800 rounded-lg text-gray-300">
                         Active Agents: <span className="text-green-400 font-bold">{stations.length}</span>
                     </div>
+
+                    {/* 💡 כפתור הגרף החדש */}
+                    <button
+                        onClick={() => setTelemetryOpen(true)}
+                        title="Global Telemetry"
+                        className="p-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+                    >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </button>
+
                     <button
                         onClick={() => setSettingsOpen(true)}
                         title="Settings"
@@ -80,11 +94,12 @@ export default function App() {
                 </div>
             </header>
 
-            {/* החלפנו את הגריד הסטטי בקומפוננטת הזום הדינמית שלנו */}
             <DashboardGrid
                 stations={stations}
                 actionPending={actionPending}
                 onToggleStream={toggleStreamingPolicy}
+                telemetryOpen={telemetryOpen}
+                onCloseTelemetry={() => setTelemetryOpen(false)}
             />
 
             {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}

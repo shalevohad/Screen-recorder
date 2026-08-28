@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import '../styles/SettingsModal.css';
+import './SettingsModal.css';
 
 export default function SettingsModal({ onClose }) {
     const modalBoxRef = useRef(null);

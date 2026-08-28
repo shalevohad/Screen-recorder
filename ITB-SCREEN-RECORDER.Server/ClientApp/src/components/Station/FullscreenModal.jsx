@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import WebRTCPlayer from './WebRTCPlayer';
-import CyberLoadingOverlay from './CyberLoadingOverlay';
-import '../styles/FullscreenModal.scss';
+import WebRTCPlayer from '../Player/WebRTCPlayer';
+import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
+import './FullscreenModal.scss';
 
 export default function FullscreenModal({
     hostname,
@@ -10,6 +10,15 @@ export default function FullscreenModal({
     internalCaptureFps = 0,
     droppedFrames = 0,
     qosTier = 3,
+
+    hostCpuPct = 0,
+    processCpuPct = 0,
+    gpu3dPct = 0,
+    gpuNvencPct = 0,
+    mediaTxMbps = 0,
+    nicUtilizationPct = 0,
+    telemetryTxKbps = 0,
+
     onClose
 }) {
     const modalBoxRef = useRef(null);
@@ -42,7 +51,7 @@ export default function FullscreenModal({
             }}
         >
             <div ref={modalBoxRef} className="stream-modal-box" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="stream-modal-header">
+                <div className="stream-modal-header" style={{ flexWrap: 'wrap', gap: '15px' }}>
                     <div className="stream-modal-title">
                         <span className="live-dot"></span>
                         <h2>LIVE // {hostname}</h2>
@@ -50,35 +59,28 @@ export default function FullscreenModal({
 
                     <div className="modal-network-stats">
                         <div className="modal-stat-box">
-                            <div className="modal-stat-header">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>
-                                <span>FPS</span>
-                            </div>
+                            <div className="modal-stat-header"><span>FPS</span></div>
                             <span className="modal-stat-value green">{actualFps}</span>
                         </div>
-
                         <div className="modal-stat-box">
-                            <div className="modal-stat-header">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-                                <span>CAP</span>
-                            </div>
-                            <span className="modal-stat-value yellow">{internalCaptureFps}</span>
-                        </div>
-
-                        <div className="modal-stat-box">
-                            <div className="modal-stat-header">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-                                <span>DROP</span>
-                            </div>
+                            <div className="modal-stat-header"><span>DROP</span></div>
                             <span className={`modal-stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span>
                         </div>
-
                         <div className="modal-stat-box">
-                            <div className="modal-stat-header">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
-                                <span>QOS</span>
-                            </div>
-                            <span className="modal-stat-value blue">T{qosTier}</span>
+                            <div className="modal-stat-header"><span>CPU(P)</span></div>
+                            <span className="modal-stat-value yellow">{Number(processCpuPct).toFixed(1)}%</span>
+                        </div>
+                        <div className="modal-stat-box">
+                            <div className="modal-stat-header"><span>NVENC</span></div>
+                            <span className="modal-stat-value yellow">{Number(gpuNvencPct).toFixed(1)}%</span>
+                        </div>
+                        <div className="modal-stat-box" style={{ minWidth: '80px' }}>
+                            <div className="modal-stat-header"><span>VBR Mbps</span></div>
+                            <span className="modal-stat-value blue">{Number(mediaTxMbps / 1000).toFixed(2)}</span>
+                        </div>
+                        <div className="modal-stat-box" style={{ minWidth: '80px' }}>
+                            <div className="modal-stat-header"><span>C2 Kbps</span></div>
+                            <span className="modal-stat-value" style={{ color: '#a855f7' }}>{Number(telemetryTxKbps).toFixed(1)}</span>
                         </div>
                     </div>
 
@@ -88,7 +90,6 @@ export default function FullscreenModal({
                 </div>
 
                 <div className="stream-modal-body" style={{ flexGrow: 1, position: 'relative', backgroundColor: '#000' }}>
-                    {/* 💡 מנגנון גיבוי אוטומטי: אם הנגן לא ירה onPlaying תוך שנייה וחצי, הסתר את הספינר בכוח למניעת מסך שחור */}
                     {!isVideoPlaying && (
                         <div
                             style={{ position: 'absolute', inset: 0, zIndex: 10 }}

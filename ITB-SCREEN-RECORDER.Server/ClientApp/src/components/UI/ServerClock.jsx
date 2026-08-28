@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import '../styles/ServerClock.scss'; // ייבוא קובץ העיצוב הייעודי
+import './ServerClock.scss'; // ייבוא קובץ העיצוב הייעודי
 
 export default function ServerClock() {
     const [currentTime, setCurrentTime] = useState(new Date());

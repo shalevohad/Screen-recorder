@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import '../styles/VideoPlayer.css';
+import './VideoPlayer.scss';
 
 export default function WebRTCPlayer({
     streamPath,
