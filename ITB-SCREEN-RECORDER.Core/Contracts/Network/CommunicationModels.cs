@@ -46,19 +46,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("hasActiveMicrophone")]
         public bool HasActiveMicrophone { get; set; }
 
-        [JsonPropertyName("cpuUsagePercentage")]
-        public double CpuUsagePercentage { get; set; }
-
-        [JsonPropertyName("gpuUsagePercentage")]
-        public double GpuUsagePercentage { get; set; }
-
         [JsonPropertyName("isStreaming")]
         public bool IsStreaming { get; set; }
 
         [JsonPropertyName("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
-        // 💡 הוספת שדות הטלמטריה החדשים לתקשורת ה-Out-of-Band
         [JsonPropertyName("actualFps")]
         public int ActualFps { get; set; }
 
@@ -70,6 +63,33 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("qosTier")]
         public int QosTier { get; set; }
+
+        // מדדי רשת
+        [JsonPropertyName("mediaTxMbps")]
+        public double MediaTxMbps { get; set; }
+
+        [JsonPropertyName("telemetryTxKbps")]
+        public double TelemetryTxKbps { get; set; }
+
+        [JsonPropertyName("nicUtilizationPct")]
+        public double NicUtilizationPct { get; set; }
+
+        // מדדי חומרה - מעבד וזיכרון
+        [JsonPropertyName("hostCpuPct")]
+        public double HostCpuPct { get; set; }
+
+        [JsonPropertyName("processCpuPct")]
+        public double ProcessCpuPct { get; set; }
+
+        [JsonPropertyName("processRamMb")]
+        public double ProcessRamMb { get; set; }
+
+        // מדדי חומרה - כרטיס מסך
+        [JsonPropertyName("gpu3dPct")]
+        public double Gpu3dPct { get; set; }
+
+        [JsonPropertyName("gpuNvencPct")]
+        public double GpuNvencPct { get; set; }
     }
 
     public class AgentHeartbeatResponse

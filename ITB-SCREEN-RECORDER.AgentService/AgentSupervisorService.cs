@@ -7,7 +7,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,14 +35,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private bool _isWorkerStreaming;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private StreamWriter? _workerCommandWriter;
-
-        // 💡 שמירת סטיית הזמן מול השרת
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
-
-        // 💡 נתוני הטלמטריה האחרונים שהתקבלו מה-Worker
         private IpcTelemetryDto? _lastTelemetry = null;
 
-        // מודלים פנימיים לפיענוח בטוח של ה-IPC מבלי לשנות את ספריות הליבה
+        private long _lastTelemetryPayloadSizeBytes = 0;
+        private DateTime _lastTelemetrySendTime = DateTime.UtcNow;
+
         private class IpcMessageDto
         {
             public bool IsStreaming { get; set; }
@@ -55,6 +53,16 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public int DroppedFrames { get; set; }
             public int InternalCaptureFps { get; set; }
             public int QosTier { get; set; }
+            public double HostCpuPct { get; set; }
+            public double ProcessCpuPct { get; set; }
+            public double ProcessRamMb { get; set; }
+            public double Gpu3dPct { get; set; }
+            public double GpuNvencPct { get; set; }
+            public double MediaTxMbps { get; set; }
+            public double NicLinkSpeedMbps { get; set; }
+            public double NicTotalTxMbps { get; set; }
+            public double NicTotalRxMbps { get; set; }
+            public double AppLineUtilizationPct { get; set; }
         }
 
         public AgentSupervisorService(ILogger<AgentSupervisorService> logger)
@@ -163,12 +171,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     }
                 }
 
-                // 💡 קצב פעימות לב דינמי: 1000ms בשידור כדי לדחוף טלמטריה מדויקת, 3000ms במנוחה כדי לחסוך רשת.
                 int delayMs = _isWorkerStreaming ? 1000 : 3000;
                 await Task.Delay(delayMs, stoppingToken);
             }
 
-            // ניקוי בסיום ריצה (תואם לינוקס ו-Windows)
             try
             {
                 string workerName = Path.GetFileNameWithoutExtension(_workerPath);
@@ -219,7 +225,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 if (status != null)
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
-                                    _lastTelemetry = status.Telemetry; // 💡 שמירת הטלמטריה האחרונה בזיכרון ה-Supervisor
+                                    _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
                                 }
                             }
@@ -250,7 +256,15 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 bool isWorkerAlive = (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 6;
                 bool isStreaming = isWorkerAlive && _isWorkerStreaming;
 
-                var hardwareStats = HardwareProbe.GetTelemetry();
+                var fallbackHwStats = HardwareProbe.GetTelemetrySnapshot();
+
+                double elapsedSec = (DateTime.UtcNow - _lastTelemetrySendTime).TotalSeconds;
+                double currentTelemKbps = elapsedSec > 0 ? (_lastTelemetryPayloadSizeBytes * 8.0) / (elapsedSec * 1000.0) : 0;
+                _lastTelemetrySendTime = DateTime.UtcNow;
+
+                double currentHostCpu = isStreaming ? (_lastTelemetry?.HostCpuPct ?? fallbackHwStats.HostCpuUsagePct) : fallbackHwStats.HostCpuUsagePct;
+                double currentGpu3d = isStreaming ? (_lastTelemetry?.Gpu3dPct ?? fallbackHwStats.Gpu3dUsagePct) : fallbackHwStats.Gpu3dUsagePct;
+                double currentGpuNvenc = isStreaming ? (_lastTelemetry?.GpuNvencPct ?? 0) : 0;
 
                 var report = new AgentTelemetryReport
                 {
@@ -260,28 +274,41 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
                     IsScreenCapturing = isStreaming,
-                    CpuUsagePercentage = hardwareStats.CpuUsagePercentage,
-                    GpuUsagePercentage = hardwareStats.GpuUsagePercentage,
+                    HasActiveSpeakers = true,
+                    HasActiveMicrophone = true,
                     ClientTimestamp = DateTime.UtcNow,
                     Timestamp = DateTime.UtcNow,
 
-                    // 💡 הזרקת נתוני הדיבוג לשרת. במצב Standby הערכים יהיו 0.
                     ActualFps = isStreaming ? (_lastTelemetry?.ActualFps ?? 0) : 0,
                     DroppedFrames = isStreaming ? (_lastTelemetry?.DroppedFrames ?? 0) : 0,
                     InternalCaptureFps = isStreaming ? (_lastTelemetry?.InternalCaptureFps ?? 0) : 0,
-                    QosTier = isStreaming ? (_lastTelemetry?.QosTier ?? 3) : 3
+                    QosTier = isStreaming ? (_lastTelemetry?.QosTier ?? 3) : 3,
+
+                    HostCpuPct = Math.Round(currentHostCpu, 2),
+                    ProcessCpuPct = isStreaming ? Math.Round(_lastTelemetry?.ProcessCpuPct ?? 0, 2) : 0,
+                    ProcessRamMb = isStreaming ? Math.Round(_lastTelemetry?.ProcessRamMb ?? 0, 2) : 0,
+                    Gpu3dPct = Math.Round(currentGpu3d, 2),
+                    GpuNvencPct = Math.Round(currentGpuNvenc, 2),
+
+                    MediaTxMbps = isStreaming ? Math.Round(_lastTelemetry?.MediaTxMbps ?? 0, 2) : 0,
+                    TelemetryTxKbps = Math.Round(currentTelemKbps, 2),
+                    NicUtilizationPct = isStreaming ? Math.Round(_lastTelemetry?.AppLineUtilizationPct ?? 0, 4) : 0
                 };
+
+                string jsonPayload = JsonSerializer.Serialize(report);
+                _lastTelemetryPayloadSizeBytes = Encoding.UTF8.GetByteCount(jsonPayload);
 
                 string targetEndpoint = $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
 
-                var response = await _httpClient.PostAsJsonAsync(targetEndpoint, report, ct);
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(targetEndpoint, content, ct);
 
                 if (response.IsSuccessStatusCode)
                 {
                     string responseJson = await response.Content.ReadAsStringAsync(ct);
                     try
                     {
-                        var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson);
+                        var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                         if (heartbeatResponse != null)
                         {
                             if (heartbeatResponse.ServerUtcTime != default)
@@ -415,7 +442,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             UseShellExecute = false,
                             CreateNoWindow = true
                         };
-                        psi.EnvironmentVariables["DISPLAY"] = ":0"; // Fallback עבור סביבות X11
+                        psi.EnvironmentVariables["DISPLAY"] = ":0";
                         try
                         {
                             Process.Start(psi);

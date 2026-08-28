@@ -47,8 +47,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     IsStreaming = isStreaming,
                     Status = isOnline ? (isStreaming ? "Streaming" : "Standby") : "Offline",
 
-                    CpuUsage = agent.CpuUsagePercentage,
-                    GpuUsage = agent.GpuUsagePercentage,
                     HasAudio = agent.HasActiveMicrophone || agent.HasActiveSpeakers,
                     LastSeenUtc = agent.Timestamp,
 
@@ -56,6 +54,18 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     InternalCaptureFps = agent.InternalCaptureFps,
                     DroppedFrames = agent.DroppedFrames,
                     QosTier = agent.QosTier,
+
+                    // החזרת המדדים החדשים בצורתם הנקייה
+                    MediaTxMbps = agent.MediaTxMbps,
+                    TelemetryTxKbps = agent.TelemetryTxKbps,
+                    NicUtilizationPct = agent.NicUtilizationPct,
+
+                    HostCpuPct = agent.HostCpuPct,
+                    ProcessCpuPct = agent.ProcessCpuPct,
+                    ProcessRamMb = agent.ProcessRamMb,
+
+                    Gpu3dPct = agent.Gpu3dPct,
+                    GpuNvencPct = agent.GpuNvencPct,
 
                     HlsUrl = $"http://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };

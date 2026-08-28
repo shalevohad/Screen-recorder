@@ -11,10 +11,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     public class AgentController : ControllerBase
     {
         private readonly ITelemetryStateService _telemetryState;
+        private readonly TelemetryBroadcastService _broadcastService;
 
-        public AgentController(ITelemetryStateService telemetryState)
+        public AgentController(ITelemetryStateService telemetryState, TelemetryBroadcastService broadcastService)
         {
             _telemetryState = telemetryState;
+            _broadcastService = broadcastService;
         }
 
         [HttpPost("telemetry")]
@@ -36,8 +38,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             string requestHost = Request.Host.Host;
 
-            // הפעלת שירות הסטטוס שמפיק את התשובה והפוליסה המעודכנת באופן מלא
+            // 1. הפעלת שירות הסטטוס שמפיק את התשובה והפוליסה
             var response = await _telemetryState.ProcessHeartbeatAsync(report, requestHost);
+
+            // 2. 💡 דחיפת הדיווח בזמן אמת לטכנאים בחמ"ל מבלי לעכב את תשובת ה-HTTP לעמדה
+            _ = _broadcastService.BroadcastAgentUpdateAsync(report);
 
             return Ok(response);
         }

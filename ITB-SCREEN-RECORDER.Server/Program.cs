@@ -2,7 +2,7 @@
 using System.IO;
 using System.Threading;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration; // 💡 דרוש עבור Get<T>()
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ITB_SCREEN_RECORDER.Server.Services;
@@ -21,14 +21,10 @@ namespace ITB_SCREEN_RECORDER.Server
         {
             Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
-            // 💡 1. קודם כל יוצרים את ה-Builder כדי שיקרא את קובץ ה-appsettings.json
             var builder = WebApplication.CreateBuilder(args);
-            // ניקוי הלוגרים המובנים של מיקרוסופט
             builder.Logging.ClearProviders();
-            // הוספת הגשר שלנו ל-Core Logger
             builder.Logging.AddProvider(new CoreLoggerProvider());
 
-            // 💡 2. טעינת תצורת הלוגר מתוך הקובץ (עם Fallback למקרה שחסר)
             var appConfig = builder.Configuration.GetSection("AppConfig").Get<AppConfig>()
                             ?? new AppConfig
                             {
@@ -37,11 +33,9 @@ namespace ITB_SCREEN_RECORDER.Server
                                 LogRetentionDays = 30
                             };
 
-            // 💡 3. אתחול הלוגר המרכזי עם התיוג "Server"
             Logger.Initialize(appConfig, "Server");
             Logger.AlwaysInfo("[SERVER] ITB-SCREEN-RECORDER Server process is starting...");
 
-            // 4. עכשיו כשהלוגר חי, בודקים Mutex ויכולים לתעד קריסה אם צריך
             using var serverMutex = new Mutex(true, MutexName, out bool createdNew);
             if (!createdNew)
             {
@@ -72,7 +66,6 @@ namespace ITB_SCREEN_RECORDER.Server
 #pragma warning restore CA1416
             }
 
-            // 💡 5. רישום שירות המערכת בהתאם למערכת ההפעלה (Cross-Platform)
             if (OperatingSystem.IsWindows())
             {
 #pragma warning disable CA1416
@@ -87,7 +80,6 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Host.UseSystemd();
             }
 
-            // 💡 6. הזרקת ה-AppConfig ל-DI Container (למקרה ששירותים אחרים יצטרכו לדעת נתיבים)
             builder.Services.AddSingleton(appConfig);
 
             builder.Services.AddOptions<SystemConfig>()
@@ -105,6 +97,12 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddSwaggerGen();
 
             builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
+
+            // 💡 הוספת שירותי SignalR ותעבורת זמן אמת
+            builder.Services.AddSingleton<TelemetryBroadcastService>();
+            builder.Services.AddSignalR(options => {
+                options.EnableDetailedErrors = true;
+            });
 
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<StoragePathResolver>();
@@ -131,6 +129,8 @@ namespace ITB_SCREEN_RECORDER.Server
             app.UseRouting();
             app.UseAuthorization();
 
+            // 💡 מיפוי נקודת הקצה של Hub הטכנאים
+            app.MapHub<TelemetryHub>("/hubs/telemetry");
             app.MapControllers();
 
             Logger.AlwaysInfo("[SERVER] ITB-SCREEN-RECORDER Middleware initialized successfully.");

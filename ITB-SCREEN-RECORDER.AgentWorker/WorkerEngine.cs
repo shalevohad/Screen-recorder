@@ -35,12 +35,13 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
 
-        // 💡 Seamless ABR State Machine
+        // 💡 מנוע מדידת הרשת הפנימי
+        private readonly NetworkTelemetry _networkTelemetry = new NetworkTelemetry();
+
         private readonly int _baselineFps;
         private volatile int _internalCaptureFps;
         private volatile int _currentQosTier = 3;
 
-        // 💡 משתני טלמטריה בזיכרון בלבד (ללא קבצי טקסט!)
         private volatile int _lastRealFps = 0;
         private volatile int _lastDroppedFrames = 0;
 
@@ -51,26 +52,13 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _internalCaptureFps = _baselineFps;
         }
 
-        // 💡 שינוי שכבות האיכות משנה רק את קצב הדגימה הפנימי, ללא אתחול של FFmpeg!
         private void SetQosTier(int tier)
         {
-            _currentQosTier = tier; // עדכון השכבה לטובת הדיווח לשרת
-            if (tier >= 3)
-            {
-                _internalCaptureFps = _baselineFps;
-            }
-            else if (tier == 2)
-            {
-                _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.75));
-            }
-            else if (tier == 1)
-            {
-                _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.5));
-            }
-            else
-            {
-                _internalCaptureFps = 10; // רצפת הברזל (מצב הישרדות קיצוני)
-            }
+            _currentQosTier = tier;
+            if (tier >= 3) _internalCaptureFps = _baselineFps;
+            else if (tier == 2) _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.75));
+            else if (tier == 1) _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.5));
+            else _internalCaptureFps = 10;
         }
 
         public async Task RunAsync(CancellationToken ct)
@@ -129,6 +117,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 ffmpegManager.WriteAudioData(data);
                                 Interlocked.Add(ref totalAudioBytes, data.Length);
                                 Interlocked.Exchange(ref lastRealAudioTicks, Stopwatch.GetTimestamp());
+
+                                // 💡 תיעוד משקל האודיו היוצא
+                                _networkTelemetry.TrackMediaBytes(data.Length);
                             }
                         };
                         audioCapture.Start();
@@ -207,6 +198,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             byte[] silence = new byte[missingBytes];
                                             ffmpegManager.WriteAudioData(silence);
                                             Interlocked.Add(ref totalAudioBytes, missingBytes);
+
+                                            // 💡 תיעוד אודיו חלופי שיצא
+                                            _networkTelemetry.TrackMediaBytes(missingBytes);
                                         }
                                     }
                                 }
@@ -266,8 +260,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                     for (int i = 0; i < actualFramesToPush; i++)
                                     {
                                         if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
-                                        framesProcessed++;
 
+                                        // 💡 תיעוד משקל פריים שנשלח למקודד
+                                        _networkTelemetry.TrackMediaBytes(renderBuffer.Length);
+
+                                        framesProcessed++;
                                         actualFpsCount++;
                                         if (i > 0) duplicatedFramesCount++;
                                     }
@@ -284,11 +281,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 duplicatedFramesCount = 0;
                                 fpsStopwatchTicks = Stopwatch.GetTimestamp();
 
-                                // 💡 עדכון נתוני הטלמטריה לזיכרון בלבד
                                 _lastRealFps = realFps;
                                 _lastDroppedFrames = dropped;
 
-                                // 💡 Seamless Auto-Heal 
                                 if (dropped >= (_baselineFps / 2))
                                 {
                                     consecutiveStableSeconds = 0;
@@ -426,19 +421,36 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     while (!cts.Token.IsCancellationRequested && client.IsConnected)
                     {
+                        // 💡 שליפת נתוני החומרה והרשת העדכניים ללא נעילות
+                        var hwSnap = HardwareProbe.GetTelemetrySnapshot();
+                        var netSnap = _networkTelemetry.GetMetricsSnapshot();
+
                         var msg = new
                         {
                             SessionState = InternalSessionState.ActiveInteractive,
                             CurrentFps = _baselineFps,
                             IsStreaming = _isStreamingRequested,
 
-                            // 💡 הזרקת הטלמטריה מתבצעת באופן אוטומטי כל עוד יש שידור
                             Telemetry = _isStreamingRequested ? new
                             {
                                 ActualFps = _lastRealFps,
                                 DroppedFrames = _lastDroppedFrames,
                                 InternalCaptureFps = _internalCaptureFps,
-                                QosTier = _currentQosTier
+                                QosTier = _currentQosTier,
+
+                                // Hardware
+                                HostCpuPct = hwSnap.HostCpuUsagePct,
+                                ProcessCpuPct = hwSnap.ProcessCpuUsagePct,
+                                ProcessRamMb = hwSnap.ProcessRamMb,
+                                Gpu3dPct = hwSnap.Gpu3dUsagePct,
+                                GpuNvencPct = hwSnap.GpuNvencUsagePct,
+
+                                // Network
+                                MediaTxMbps = netSnap.AppMediaTxMbps,
+                                NicLinkSpeedMbps = netSnap.NicLinkSpeedMbps,
+                                NicTotalTxMbps = netSnap.NicTotalTxMbps,
+                                NicTotalRxMbps = netSnap.NicTotalRxMbps,
+                                AppLineUtilizationPct = netSnap.AppLineUtilizationPct
                             } : null
                         };
 

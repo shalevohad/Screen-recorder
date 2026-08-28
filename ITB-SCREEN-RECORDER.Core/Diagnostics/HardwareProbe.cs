@@ -4,14 +4,16 @@ using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
 using ITB_SCREEN_RECORDER.Core.Common;
-using System.IO;
 
 namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 {
-    public class HardwareMetrics
+    public class HardwareMetricsSnapshot
     {
-        public double CpuUsagePercentage { get; set; }
-        public double GpuUsagePercentage { get; set; }
+        public double HostCpuUsagePct { get; set; }
+        public double ProcessCpuUsagePct { get; set; }
+        public double Gpu3dUsagePct { get; set; }
+        public double GpuNvencUsagePct { get; set; }
+        public double ProcessRamMb { get; set; }
     }
 
     public static class HardwareProbe
@@ -67,14 +69,11 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 using var proc = new Process { StartInfo = psi };
                 proc.Start();
 
-                // 💡 קריאת הודעת השגיאה המדויקת ש-FFmpeg זורק מאחורי הקלעים
                 string errorOutput = await proc.StandardError.ReadToEndAsync().ConfigureAwait(false);
-
                 var completed = await Task.Run(() => proc.WaitForExit(2000)).ConfigureAwait(false);
 
                 if (!completed)
                 {
-                    // הגנה: אם FFmpeg נתקע, נהרוג אותו ונרשום אזהרה
                     proc.Kill();
                     Logger.Warn($"[PROBE] FFmpeg probe for {encoderName} timed out and was terminated.");
                     return false;
@@ -82,7 +81,6 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 if (proc.ExitCode != 0)
                 {
-                    // 💡 הדפסת הסיבה האמיתית לכישלון אל קובץ הלוג!
                     Logger.Warn($"[PROBE] {encoderName} is not supported. FFmpeg ExitCode: {proc.ExitCode}. Error Details: {errorOutput.Trim()}");
                     return false;
                 }
@@ -95,10 +93,6 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 return false;
             }
         }
-
-        // =========================================================
-        // פונקציות טלמטריה ורשת 
-        // =========================================================
 
         public static string GetLocalIpAddress()
         {
@@ -119,17 +113,23 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             return "127.0.0.1";
         }
 
-        public static HardwareMetrics GetTelemetry()
+        public static HardwareMetricsSnapshot GetTelemetrySnapshot()
         {
             if (_telemetryEngine == null)
             {
                 _telemetryEngine = new HardwareTelemetry();
             }
 
-            return new HardwareMetrics
+            var gpuState = _telemetryEngine.GetGpuUsage();
+            var sysState = _telemetryEngine.GetSystemUsage();
+
+            return new HardwareMetricsSnapshot
             {
-                CpuUsagePercentage = _telemetryEngine.GetCpuUsagePercentage(),
-                GpuUsagePercentage = _telemetryEngine.GetGpuUsagePercentage()
+                Gpu3dUsagePct = Math.Round(gpuState.Gpu3D, 2),
+                GpuNvencUsagePct = Math.Round(gpuState.GpuNvenc, 2),
+                HostCpuUsagePct = Math.Round(sysState.HostCpu, 2),
+                ProcessCpuUsagePct = Math.Round(sysState.ProcessCpu, 2),
+                ProcessRamMb = Math.Round(sysState.ProcessRamMb, 2)
             };
         }
     }
