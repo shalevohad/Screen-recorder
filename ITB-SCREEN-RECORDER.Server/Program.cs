@@ -112,6 +112,9 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddSingleton<MediaMtxApiClient>();
             builder.Services.AddSingleton<EventLogger>();
 
+            // 💡 רישום שירות הטלמטריה לרשת כ-Singleton עבור ה-API
+            builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Diagnostics.NetworkTelemetry>();
+
             builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
             builder.Services.AddHostedService<RecordingChunkScheduler>();
 

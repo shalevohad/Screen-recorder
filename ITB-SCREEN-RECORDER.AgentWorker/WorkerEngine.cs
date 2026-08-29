@@ -88,6 +88,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     Logger.Info($"[WorkerEngine] Starting initialization... Outer Stream: {_baselineFps}FPS. Internal Capture: {_internalCaptureFps}FPS.");
 
+                    // 💡 אתחול מנגנון הניתוב כדי למצוא את כרטיס הרשת הנכון שדרכו נצא לשרת
+                    if (Uri.TryCreate(_config.RtmpServerBaseUrl, UriKind.Absolute, out Uri? rtmpUri))
+                    {
+                        _networkTelemetry.ResolveRoutingInterface(rtmpUri.Host);
+                    }
+                    else
+                    {
+                        Logger.Warn($"[WorkerEngine] Could not parse RTMP URL for routing resolution: {_config.RtmpServerBaseUrl}");
+                    }
+
                     IScreenCaptureProvider? screenCapture = null;
                     IAudioCaptureProvider? audioCapture = null;
                     FfmpegProcessManager? ffmpegManager = null;
