@@ -45,12 +45,14 @@ export default function DashboardGrid({ stations: initialStations, actionPending
         connection.on("ReceiveAgentMetrics", (report) => {
             setLiveStations(prevStations => {
                 const idx = prevStations.findIndex(s => s.hostname === report.hostname);
+                const isAgentOnline = report.status === 1 || report.status === 2 || report.isProcessRunning;
+
                 if (idx > -1) {
                     const updated = [...prevStations];
-                    updated[idx] = { ...updated[idx], ...report, isOnline: true };
+                    updated[idx] = { ...updated[idx], ...report, isOnline: isAgentOnline };
                     return updated;
                 }
-                return [...prevStations, { ...report, isOnline: true }];
+                return [...prevStations, { ...report, isOnline: isAgentOnline }];
             });
         });
 
@@ -61,7 +63,6 @@ export default function DashboardGrid({ stations: initialStations, actionPending
         };
     }, []);
 
-    // 💡 חישוב נתונים אמיתיים ב-Mbps עבור הרשת, וממוצע/מקסימום לחומרה
     useEffect(() => {
         const interval = setInterval(() => {
             setLiveStations(current => {
@@ -71,7 +72,6 @@ export default function DashboardGrid({ stations: initialStations, actionPending
                 const cpuAvg = cpuValues.reduce((a, b) => a + b, 0) / current.length;
                 const cpuMax = Math.max(...cpuValues);
 
-                // שמירה על ערכי Mbps גולמיים ולא אחוזים עבור גרף הרשת
                 const netValues = current.map(s => (s.mediaTxMbps || 0) / 1000.0);
                 const netAvg = netValues.reduce((a, b) => a + b, 0) / current.length;
                 const netMax = Math.max(...netValues, 0);
@@ -79,7 +79,7 @@ export default function DashboardGrid({ stations: initialStations, actionPending
                 const totalTelemKbps = current.reduce((sum, s) => sum + (s.telemetryTxKbps || 0), 0);
                 const telemNorm = Math.min(100, (totalTelemKbps / 500.0) * 100);
 
-                const ramValues = current.map(s => s.processRamMb ? (s.processRamMb / 16384) * 100 : 0);
+                const ramValues = current.map(s => s.hostRamPct || (s.processRamMb ? (s.processRamMb / 16384) * 100 : 0));
                 const ramAvg = ramValues.length > 0 ? ramValues.reduce((a, b) => a + b, 0) / ramValues.length : 0;
 
                 setChartData(prev => {
@@ -129,26 +129,9 @@ export default function DashboardGrid({ stations: initialStations, actionPending
                 >
                     {liveStations.map((station) => (
                         <div key={station.hostname} className="station-wrapper-cell">
+                            {/* 💡 העברת כל נתוני התחנה במכה אחת כולל CPU, RAM, GPU ו-NET */}
                             <StationThumbnail
-                                hostname={station.hostname}
-                                ipAddress={station.ipAddress}
-                                isOnline={station.isOnline}
-                                isStreaming={station.isStreaming}
-                                hasAudio={station.hasAudio}
-
-                                actualFps={station.actualFps}
-                                internalCaptureFps={station.internalCaptureFps}
-                                droppedFrames={station.droppedFrames}
-                                qosTier={station.qosTier}
-
-                                hostCpuPct={station.hostCpuPct}
-                                processCpuPct={station.processCpuPct}
-                                gpu3dPct={station.gpu3dPct}
-                                gpuNvencPct={station.gpuNvencPct}
-                                mediaTxMbps={station.mediaTxMbps}
-                                nicUtilizationPct={station.nicUtilizationPct}
-                                telemetryTxKbps={station.telemetryTxKbps}
-
+                                {...station}
                                 isPending={actionPending[station.hostname]}
                                 onToggleStream={() => onToggleStream(station.hostname, station.isStreaming)}
                             />

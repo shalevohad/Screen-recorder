@@ -7,6 +7,44 @@ using ITB_SCREEN_RECORDER.Core.Common;
 
 namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 {
+    internal static class NativeMethods
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MEMORYSTATUSEX
+        {
+            public uint dwLength;
+            public uint dwMemoryLoad;
+            public ulong ullTotalPhys;
+            public ulong ullAvailPhys;
+            public ulong ullTotalPageFile;
+            public ulong ullAvailPageFile;
+            public ulong ullTotalVirtual;
+            public ulong ullAvailVirtual;
+            public ulong ullAvailExtendedVirtual;
+
+            public MEMORYSTATUSEX()
+            {
+                dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct FILETIME
+        {
+            public uint dwLowDateTime;
+            public uint dwHighDateTime;
+            public ulong ToInt64() => ((ulong)dwHighDateTime << 32) + dwLowDateTime;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetSystemTimes(out FILETIME lpIdleTime, out FILETIME lpKernelTime, out FILETIME lpUserTime);
+    }
+
     public class HardwareTelemetry : IDisposable
     {
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -39,11 +77,22 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         private NvmlDeviceGetUtilizationRatesDelegate? _getUtilization;
         private NvmlDeviceGetEncoderUtilizationDelegate? _getEncoderUtilization;
 
+        // משתנים למעקב CPU מארח (Windows)
+        private ulong _prevSysIdle = 0;
+        private ulong _prevSysKernel = 0;
+        private ulong _prevSysUser = 0;
+
+        // משתנים למעקב CPU מארח (Linux)
         private ulong _prevIdleTime = 0;
         private ulong _prevTotalTime = 0;
+
         private DateTime _lastCpuSampleTime;
         private TimeSpan _lastTotalProcessorTime;
         private readonly Process _currentProcess;
+
+        // 💡 Performance Counters לאיסוף עומס GPU כללי (תומך ב-Intel / AMD / Nvidia ב-Windows)
+        private PerformanceCounter? _gpuEngineCounter;
+        private bool _isPerfCounterInitialized = false;
 
         public HardwareTelemetry()
         {
@@ -52,6 +101,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             _lastTotalProcessorTime = _currentProcess.TotalProcessorTime;
 
             InitializeNvml();
+            InitializeGenericGpuCounter();
         }
 
         private void InitializeNvml()
@@ -76,44 +126,101 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                     if (initFunc() == 0 && getHandleFunc(0, out _nvmlDeviceHandle) == 0)
                     {
                         _isNvmlInitialized = true;
-                        Logger.Info("[TELEMETRY] NVIDIA NVML loaded (3D Core + NVENC support).");
+                        Logger.Info("[TELEMETRY] NVIDIA NVML loaded successfully.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[TELEMETRY] NVML not available: {ex.Message}");
+                Logger.Warn($"[TELEMETRY] NVML not available (Non-NVIDIA system or missing driver): {ex.Message}");
+            }
+        }
+
+        private void InitializeGenericGpuCounter()
+        {
+            if (!OperatingSystem.IsWindows()) return;
+
+            try
+            {
+#pragma warning disable CA1416
+                // בדיקה האם קיימת קטגוריית מונה GPU Generic במערכת
+                if (PerformanceCounterCategory.Exists("GPU Engine"))
+                {
+                    var category = new PerformanceCounterCategory("GPU Engine");
+                    var instanceNames = category.GetInstanceNames();
+                    // חיפוש מנוע רינדור פעיל כלשהו (3D)
+                    var targetInstance = instanceNames.FirstOrDefault(n => n.Contains("engtype_3D") || n.Contains("engtype_Render"));
+
+                    if (!string.IsNullOrEmpty(targetInstance))
+                    {
+                        _gpuEngineCounter = new PerformanceCounter("GPU Engine", "Utilization Percentage", targetInstance, true);
+                        _isPerfCounterInitialized = true;
+                        Logger.Info("[TELEMETRY] Generic GPU Performance Counter initialized successfully.");
+                    }
+                }
+#pragma warning restore CA1416
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[TELEMETRY] Failed to initialize generic GPU counter: {ex.Message}");
             }
         }
 
         public (float Gpu3D, float GpuNvenc) GetGpuUsage()
         {
-            if (!_isNvmlInitialized || _nvmlDeviceHandle == IntPtr.Zero) return (0f, 0f);
-
             float gpu3D = 0f;
             float nvenc = 0f;
 
-            try
+            // 1. נסה לקרוא קודם דרך NVIDIA NVML אם קיים
+            if (_isNvmlInitialized && _nvmlDeviceHandle != IntPtr.Zero)
             {
-                if (_getUtilization != null && _getUtilization(_nvmlDeviceHandle, out NvmlUtilization util) == 0)
-                    gpu3D = util.Gpu;
+                try
+                {
+                    if (_getUtilization != null && _getUtilization(_nvmlDeviceHandle, out NvmlUtilization util) == 0)
+                        gpu3D = util.Gpu;
 
-                if (_getEncoderUtilization != null && _getEncoderUtilization(_nvmlDeviceHandle, out uint encUtil, out _) == 0)
-                    nvenc = encUtil;
+                    if (_getEncoderUtilization != null && _getEncoderUtilization(_nvmlDeviceHandle, out uint encUtil, out _) == 0)
+                        nvenc = encUtil;
+
+                    return (gpu3D, nvenc);
+                }
+                catch { }
             }
-            catch { }
 
-            return (gpu3D, nvenc);
+            // 2. אם אין NVIDIA, נסה לקרוא דרך ה-Generic Performance Counter (מתאים ל-Intel / AMD)
+            if (_isPerfCounterInitialized && _gpuEngineCounter != null)
+            {
+                try
+                {
+#pragma warning disable CA1416
+                    gpu3D = _gpuEngineCounter.NextValue();
+#pragma warning restore CA1416
+                }
+                catch { }
+            }
+
+            return (Math.Clamp((float)Math.Round(gpu3D, 2), 0f, 100f), nvenc);
         }
 
-        public (float HostCpu, float ProcessCpu, float ProcessRamMb) GetSystemUsage()
+        public (float HostCpu, float ProcessCpu, float ProcessRamMb, float HostRamPct, float HostTotalRamMb) GetSystemUsage()
         {
             DateTime now = DateTime.UtcNow;
             double elapsedSeconds = (now - _lastCpuSampleTime).TotalSeconds;
 
-            float hostCpu = OperatingSystem.IsLinux() ? ReadLinuxCpuUsage() : 0f;
+            float hostCpu = 0f;
+            if (OperatingSystem.IsWindows())
+            {
+                hostCpu = ReadWindowsCpuUsage();
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                hostCpu = ReadLinuxCpuUsage();
+            }
+
             float processCpu = 0f;
             float processRamMb = 0f;
+            float hostRamPct = 0f;
+            float hostTotalRamMb = 0f;
 
             try
             {
@@ -130,10 +237,74 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 _lastCpuSampleTime = now;
                 _currentProcess.Refresh();
                 processRamMb = (float)Math.Round(_currentProcess.WorkingSet64 / (1024.0 * 1024.0), 2);
+
+                if (OperatingSystem.IsWindows())
+                {
+#pragma warning disable CA1416
+                    var memStatus = new NativeMethods.MEMORYSTATUSEX();
+                    if (NativeMethods.GlobalMemoryStatusEx(ref memStatus))
+                    {
+                        hostTotalRamMb = (float)Math.Round(memStatus.ullTotalPhys / (1024.0 * 1024.0), 2);
+                        hostRamPct = memStatus.dwMemoryLoad;
+                    }
+#pragma warning restore CA1416
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    if (File.Exists("/proc/meminfo"))
+                    {
+                        var lines = File.ReadLines("/proc/meminfo").Take(3).ToList();
+                        ulong memTotalKb = 0, memAvailableKb = 0;
+
+                        foreach (var line in lines)
+                        {
+                            if (line.StartsWith("MemTotal:")) memTotalKb = ulong.Parse(new string(line.Where(char.IsDigit).ToArray()));
+                            if (line.StartsWith("MemAvailable:")) memAvailableKb = ulong.Parse(new string(line.Where(char.IsDigit).ToArray()));
+                        }
+
+                        if (memTotalKb > 0)
+                        {
+                            hostTotalRamMb = (float)Math.Round(memTotalKb / 1024.0, 2);
+                            hostRamPct = (float)Math.Round((1.0 - ((double)memAvailableKb / memTotalKb)) * 100.0, 2);
+                        }
+                    }
+                }
             }
             catch { }
 
-            return (hostCpu, processCpu, processRamMb);
+            return (hostCpu, processCpu, processRamMb, hostRamPct, hostTotalRamMb);
+        }
+
+        private float ReadWindowsCpuUsage()
+        {
+            try
+            {
+#pragma warning disable CA1416
+                if (NativeMethods.GetSystemTimes(out var idleTime, out var kernelTime, out var userTime))
+                {
+                    ulong idle = idleTime.ToInt64();
+                    ulong kernel = kernelTime.ToInt64();
+                    ulong user = userTime.ToInt64();
+
+                    ulong sysIdleDiff = idle - _prevSysIdle;
+                    ulong sysKernelDiff = kernel - _prevSysKernel;
+                    ulong sysUserDiff = user - _prevSysUser;
+
+                    _prevSysIdle = idle;
+                    _prevSysKernel = kernel;
+                    _prevSysUser = user;
+
+                    ulong sysTotal = sysKernelDiff + sysUserDiff;
+                    if (sysTotal == 0) return 0f;
+
+                    ulong sysCpuTotal = sysTotal - sysIdleDiff;
+                    float cpuUsage = (float)((double)sysCpuTotal / sysTotal * 100.0);
+                    return Math.Clamp((float)Math.Round(cpuUsage, 2), 0f, 100f);
+                }
+#pragma warning restore CA1416
+            }
+            catch { }
+            return 0f;
         }
 
         private float ReadLinuxCpuUsage()
@@ -181,6 +352,8 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             {
                 NativeLibrary.Free(_nvmlLibHandle);
             }
+
+            _gpuEngineCounter?.Dispose();
             _currentProcess?.Dispose();
         }
     }

@@ -1,7 +1,7 @@
 ﻿using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
-using ITB_SCREEN_RECORDER.Core.Configuration; // הוספת הקונפיגורציה
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
@@ -29,8 +29,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private readonly string _workerPath;
         private readonly string _policyFilePath;
         private readonly HttpClient _httpClient;
-
-        // משתנה דינמי לנתיב הבאפר
         private readonly string _localBufferPath;
 
         private string _serverBaseUrl = "127.0.0.1:5090";
@@ -71,13 +69,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public double AppLineUtilizationPct { get; set; }
         }
 
-        // הזרקת AppConfig לבנאי
         public AgentSupervisorService(ILogger<AgentSupervisorService> logger, AppConfig config)
         {
             _logger = logger;
             _policyFilePath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
 
-            // שליפת הנתיב מהקונפיגורציה או שימוש בברירת מחדל
             _localBufferPath = string.IsNullOrWhiteSpace(config.LocalBufferPath)
                 ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
                 : config.LocalBufferPath;
@@ -108,7 +104,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 #endif
             }
 
-            // אם לא נמצא ב-Registry, נחפש משתנה סביבה
             if (!loadedFromRegistry)
             {
                 var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
@@ -134,7 +129,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private bool LoadServerIpFromRegistrySafe()
         {
 #pragma warning disable CA1416
-            // סריקה כפולה של 64-bit ו-32-bit כדי למנוע בעיות תאימות של מתקינים
             foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
             {
                 try
@@ -291,12 +285,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 double currentTelemKbps = elapsedSec > 0 ? (_lastTelemetryPayloadSizeBytes * 8.0) / (elapsedSec * 1000.0) : 0;
                 _lastTelemetrySendTime = DateTime.UtcNow;
 
-                double currentHostCpu = isStreaming ? (_lastTelemetry?.HostCpuPct ?? fallbackHwStats.HostCpuUsagePct) : fallbackHwStats.HostCpuUsagePct;
-                double currentGpu3d = isStreaming ? (_lastTelemetry?.Gpu3dPct ?? fallbackHwStats.Gpu3dUsagePct) : fallbackHwStats.Gpu3dUsagePct;
-                double currentGpuNvenc = isStreaming ? (_lastTelemetry?.GpuNvencPct ?? 0) : 0;
+                int offlineFilesCount = 0;
+                long offlineFilesSizeMb = 0;
 
-                // 💡 שימוש בנתיב הדינמי שהוזרק
-                (int offlineFilesCount, long offlineFilesSizeMb) = ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.GetBufferStats(_localBufferPath);
+                // ביצוע בטוח אם המתודה מוגדרת למערכת ספציפית
+                try
+                {
+                    var bufferStats = ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.GetBufferStats(_localBufferPath);
+                    offlineFilesCount = bufferStats.Item1;
+                    offlineFilesSizeMb = bufferStats.Item2;
+                }
+                catch { }
 
                 var report = new AgentTelemetryReport
                 {
@@ -316,17 +315,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     InternalCaptureFps = isStreaming ? (_lastTelemetry?.InternalCaptureFps ?? 0) : 0,
                     QosTier = isStreaming ? (_lastTelemetry?.QosTier ?? 3) : 3,
 
-                    // 💡 עומס מארח כללי - מדווח תמיד (גם ב-Standby)
                     HostCpuPct = Math.Round(_lastTelemetry?.HostCpuPct ?? fallbackHwStats.HostCpuUsagePct, 2),
                     Gpu3dPct = Math.Round(_lastTelemetry?.Gpu3dPct ?? fallbackHwStats.Gpu3dUsagePct, 2),
 
-                    // עומס ספציפי של תהליך ההקלטות
                     ProcessCpuPct = isStreaming ? Math.Round(_lastTelemetry?.ProcessCpuPct ?? 0, 2) : 0,
                     ProcessRamMb = isStreaming ? Math.Round(_lastTelemetry?.ProcessRamMb ?? 0, 2) : 0,
                     GpuNvencPct = isStreaming ? Math.Round(_lastTelemetry?.GpuNvencPct ?? 0, 2) : 0,
 
-                    // תעבורת אפליקציה מול תעבורת רשת כללית של הכרטיס
-                    MediaTxMbps = isStreaming ? Math.Round(_lastTelemetry?.MediaTxMbps ?? 0, 2) : 0,
+                    HostRamPct = Math.Round(fallbackHwStats.HostRamUsagePct, 2),
+                    HostTotalRamMb = Math.Round(fallbackHwStats.HostTotalRamMb, 2),
+
+                    MediaTxMbps = isStreaming ? Math.Round((_lastTelemetry?.MediaTxMbps / 1000) ?? 0, 2) : 0,
                     TelemetryTxKbps = Math.Round(currentTelemKbps, 2),
                     NicUtilizationPct = isStreaming ? Math.Round(_lastTelemetry?.AppLineUtilizationPct ?? 0, 4) : 0,
 
@@ -361,8 +360,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 _serverUtcOffset = heartbeatResponse.ServerUtcTime - DateTime.UtcNow;
                             }
 
-                            // 💡 ניתוב הפקודה למשתנה הסטטי בשירות הסנכרון
-                            ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.CurrentCommand = heartbeatResponse.OfflineBufferAction;
+                            try
+                            {
+                                ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.CurrentCommand = heartbeatResponse.OfflineBufferAction;
+                            }
+                            catch { }
 
                             if (heartbeatResponse.Policy != null)
                             {

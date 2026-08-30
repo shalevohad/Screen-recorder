@@ -3,7 +3,7 @@ import './StationThumbnail.scss';
 import FullscreenModal from './FullscreenModal';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
-import CategoryMetricBars from './CategoryMetricBars';
+import CategoryMetricBars from '../UI/CategoryMetricBars';
 
 const getTrafficLightClass = (qosTier) => {
     if (qosTier === 3) return 'qos-good';
@@ -12,30 +12,33 @@ const getTrafficLightClass = (qosTier) => {
 };
 
 export default function StationThumbnail({
-    hostname,
-    isOnline,
-    isStreaming,
+    // קבלת המאפיינים באופן פרטני בדיוק כפי שה-Dashboard שולח
+    hostname = 'UNKNOWN',
+    isOnline = false,
+    isStreaming = false,
     ipAddress = 'N/A',
     hasAudio = false,
-    isPending = false,
-    onToggleStream,
     actualFps = 0,
-    internalCaptureFps = 0,
-    droppedFrames = 0,
     qosTier = 3,
+    droppedFrames = 0,
+    internalCaptureFps = 0,
 
-    // מדדי החומרה והרשת
+    // מדדי חומרה ורשת
     hostCpuPct = 0,
     processCpuPct = 0,
     gpu3dPct = 0,
     gpuNvencPct = 0,
     mediaTxMbps = 0,
     netTotalTxMbps = 0,
+    hostRamPct = 0,
+    processRamMb = 0,
+    hostTotalRamMb = 0,
+    linkSpeedMbps = 1000,
     nicUtilizationPct = 0,
     telemetryTxKbps = 0,
-    ramAvg = 0,
-    processRamMb = 0,
-    hostTotalRamMb = 0
+
+    onToggleStream,
+    isPending = false
 }) {
     const [showFullscreen, setShowFullscreen] = useState(false);
     const [retryKey, setRetryKey] = useState(0);
@@ -115,10 +118,7 @@ export default function StationThumbnail({
                     </div>
                 </div>
 
-                <div
-                    className="station-screen-area"
-                    onClick={() => isLive && isVideoPlaying && setShowFullscreen(true)}
-                >
+                <div className="station-screen-area" onClick={() => isLive && isVideoPlaying && setShowFullscreen(true)}>
                     {isLive && isVideoPlaying && (
                         <div className="traffic-light-badge" title={`FPS: ${actualFps} | Tier: ${qosTier}`}>
                             <div className={`light-dot ${getTrafficLightClass(qosTier)}`}></div>
@@ -128,7 +128,6 @@ export default function StationThumbnail({
                     {isLive ? (
                         <>
                             {!isVideoPlaying && <CyberLoadingOverlay size="small" text="CONNECTING" />}
-
                             <div className="station-thumbnail-video">
                                 <WebRTCPlayer
                                     key={retryKey}
@@ -137,7 +136,6 @@ export default function StationThumbnail({
                                     onPlaying={() => setIsVideoPlaying(true)}
                                 />
                             </div>
-
                             {isVideoPlaying && (
                                 <div className="play-overlay-hint">
                                     <span className="hint-text">EXPAND FULLSCREEN</span>
@@ -151,19 +149,52 @@ export default function StationThumbnail({
                     )}
                 </div>
 
-                {/* שילוב רכיב פסי המדדים המודולרי (App Green למעלה, Host Blue צמוד מתחת) */}
-                <CategoryMetricBars
-                    hostCpuPct={hostCpuPct}
-                    processCpuPct={processCpuPct}
-                    gpu3dPct={gpu3dPct}
-                    gpuNvencPct={gpuNvencPct}
-                    mediaTxMbps={mediaTxMbps}
-                    netTotalTxMbps={netTotalTxMbps}
-                    ramAvg={ramAvg}
-                    processRamMb={processRamMb}
-                    hostTotalRamMb={hostTotalRamMb}
-                    compact={true}
-                />
+                <div className="station-telemetry">
+                    <div className="inline-network-stats">
+                        <div className="stat-box">
+                            <div className="stat-header">
+                                <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
+                                <span>FPS</span>
+                            </div>
+                            <span className="stat-value green">{actualFps}</span>
+                        </div>
+                        <div className="stat-box">
+                            <div className="stat-header">
+                                <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                                <span>CAP</span>
+                            </div>
+                            <span className="stat-value yellow">{internalCaptureFps}</span>
+                        </div>
+                        <div className="stat-box">
+                            <div className="stat-header">
+                                <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                <span>DROP</span>
+                            </div>
+                            <span className={`stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span>
+                        </div>
+                        <div className="stat-box">
+                            <div className="stat-header">
+                                <svg viewBox="0 0 24 24" fill="none" strokeWidth="2"><path d="M12 20V10M18 20V4M6 20v-4"></path></svg>
+                                <span>QOS</span>
+                            </div>
+                            <span className="stat-value blue">T{qosTier}</span>
+                        </div>
+                    </div>
+
+                    <CategoryMetricBars
+                        hostCpuPct={hostCpuPct}
+                        processCpuPct={processCpuPct}
+                        gpu3dPct={gpu3dPct}
+                        gpuNvencPct={gpuNvencPct}
+                        mediaTxMbps={mediaTxMbps}
+                        netTotalTxMbps={netTotalTxMbps}
+                        hostRamPct={hostRamPct}
+                        processRamMb={processRamMb}
+                        hostTotalRamMb={hostTotalRamMb}
+                        linkSpeedMbps={linkSpeedMbps}
+                        compact={true}
+                    />
+                </div>
             </div>
 
             {showFullscreen && (
@@ -174,7 +205,6 @@ export default function StationThumbnail({
                     internalCaptureFps={internalCaptureFps}
                     droppedFrames={droppedFrames}
                     qosTier={qosTier}
-
                     hostCpuPct={hostCpuPct}
                     processCpuPct={processCpuPct}
                     gpu3dPct={gpu3dPct}
@@ -183,10 +213,9 @@ export default function StationThumbnail({
                     netTotalTxMbps={netTotalTxMbps}
                     nicUtilizationPct={nicUtilizationPct}
                     telemetryTxKbps={telemetryTxKbps}
-                    ramAvg={ramAvg}
+                    hostRamPct={hostRamPct}
                     processRamMb={processRamMb}
                     hostTotalRamMb={hostTotalRamMb}
-
                     onClose={() => setShowFullscreen(false)}
                 />
             )}

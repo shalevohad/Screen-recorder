@@ -1,5 +1,5 @@
 /* 💡 איפוס אגרסיבי לכל הדף - תוקן ל-min-height למניעת קריסות פריסה */
-:global(html), :global(body), :global(#root) {
+html, body, #root {
     background-color: #030712 !important;
     margin: 0 !important;
     padding: 0 !important;

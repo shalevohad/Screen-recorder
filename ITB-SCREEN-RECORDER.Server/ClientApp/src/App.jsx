@@ -59,7 +59,7 @@ export default function App() {
     return (
         <div className="p-6 bg-[#010409] min-h-screen text-white dashboard-container dir-ltr">
             {/* Header */}
-            <header className="mb-6 flex justify-between items-center border-b border-gray-800 pb-4">
+            <header className="mb-6 flex justify-between items-center border-b border-gray-800 pb-4 dir-ltr">
                 <div>
                     <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                         ITB Screen Recorder - Live Agents Dashboard

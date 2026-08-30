@@ -1,27 +1,28 @@
 ﻿.category-metrics-container {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
     padding: 8px 10px;
     font-family: monospace;
     width: 100%;
 
     &.compact {
-        gap: 4px;
+        gap: 8px;
         padding: 4px 6px;
-        font-size: 10px;
+        font-size: 11px;
     }
 
     .metric-row {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 3px;
 
         .metric-label {
             display: flex;
             justify-content: space-between;
-            font-size: 10px;
+            font-size: 11px;
             color: #94a3b8;
+            margin-bottom: 2px;
 
             .metric-name {
                 font-weight: bold;
@@ -29,12 +30,13 @@
             }
 
             .app-val {
-                color: #4ade80; // ירוק לתרומת האפליקציה
+                color: #4ade80;
             }
-
+            /* ירוק */
             .host-val {
-                color: #38bdf8; // כחול לעומס המארח
+                color: #38bdf8;
             }
+            /* כחול */
         }
 
         .metric-bar-bg {

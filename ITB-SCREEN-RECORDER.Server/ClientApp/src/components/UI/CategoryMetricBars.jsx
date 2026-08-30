@@ -3,18 +3,17 @@
 const formatVal = (val, type) => {
     if (val === null || val === undefined || isNaN(val)) return '0';
     if (type === 'ram') return `${Number(val).toFixed(0)}M`;
-    if (type === 'net') return `${Number(val).toFixed(1)}M`;
-    return `${Number(val).toFixed(0)}%`;
+    if (type === 'net') return `${Number(val).toFixed(2)}M`;
+    return `${Number(val).toFixed(1)}%`;
 };
 
-// 💡 קומפוננטה קטנה ומבודדת לכל מדד בודד (CPU / RAM / GPU / NET וכו')
 function SingleMetricBar({ label, appVal, hostVal, appFormatted, hostFormatted }) {
     return (
         <div className="metric-row">
             <div className="metric-label">
                 <span className="metric-name">{label}</span>
                 <span className="metric-values">
-                    <span className="app-val">{appFormatted}</span> / <span className="host-val">{hostFormatted}</span>
+                    <span className="app-val" title="App Contribution">{appFormatted}</span> / <span className="host-val" title="Total Host Load">{hostFormatted}</span>
                 </span>
             </div>
             <div className="metric-bar-bg">
@@ -34,23 +33,18 @@ export default function CategoryMetricBars({
     gpuNvencPct = 0,
     mediaTxMbps = 0,
     netTotalTxMbps = 0,
-    ramAvg = 0,
+    hostRamPct = 0,
     processRamMb = 0,
     hostTotalRamMb = 0,
+    linkSpeedMbps = 1000,
     compact = false
 }) {
-    // חישוב דינמי של סך ה-RAM המקסימלי מתוך הטלמטריה
-    let totalRamMb = hostTotalRamMb;
-    if (!totalRamMb || totalRamMb <= 0) {
-        if (ramAvg > 0 && processRamMb > 0) {
-            totalRamMb = ramAvg > 0 ? (processRamMb / (ramAvg / 100)) : 16384;
-        } else {
-            totalRamMb = 16384;
-        }
-    }
+    // 💡 שימוש אוטומטי בנפח הפיזי, אם חסר מניח 128GB המותקנים בתחנת העבודה Z2 G9 שלך
+    const totalRamMb = hostTotalRamMb > 0 ? hostTotalRamMb : 131072;
+    const appRamPct = (processRamMb / totalRamMb) * 100;
 
-    const appRamPct = Math.min(100, Math.max(0, (processRamMb / totalRamMb) * 100));
-    const hostRamPct = Math.min(100, Math.max(0, ramAvg));
+    const appNetPct = (mediaTxMbps / linkSpeedMbps) * 100;
+    const hostNetPct = (netTotalTxMbps / linkSpeedMbps) * 100;
 
     const metrics = [
         {
@@ -58,8 +52,8 @@ export default function CategoryMetricBars({
             label: 'CPU',
             appVal: processCpuPct,
             hostVal: hostCpuPct,
-            appFormatted: formatVal(processCpuPct),
-            hostFormatted: formatVal(hostCpuPct)
+            appFormatted: `${Number(processCpuPct).toFixed(1)}%`,
+            hostFormatted: `${Number(hostCpuPct).toFixed(1)}%`
         },
         {
             key: 'ram',
@@ -67,21 +61,21 @@ export default function CategoryMetricBars({
             appVal: appRamPct,
             hostVal: hostRamPct,
             appFormatted: formatVal(processRamMb, 'ram'),
-            hostFormatted: formatVal(hostRamPct)
+            hostFormatted: `${Number(hostRamPct).toFixed(1)}%`
         },
         {
             key: 'gpu',
             label: 'GPU',
             appVal: gpuNvencPct,
             hostVal: gpu3dPct,
-            appFormatted: formatVal(gpuNvencPct),
-            hostFormatted: formatVal(gpu3dPct)
+            appFormatted: `${Number(gpuNvencPct).toFixed(1)}%`,
+            hostFormatted: `${Number(gpu3dPct).toFixed(1)}%`
         },
         {
             key: 'net',
             label: 'NET',
-            appVal: (mediaTxMbps / 1000) * 100,
-            hostVal: (netTotalTxMbps / 1000) * 100,
+            appVal: appNetPct,
+            hostVal: hostNetPct,
             appFormatted: formatVal(mediaTxMbps, 'net'),
             hostFormatted: formatVal(netTotalTxMbps, 'net')
         }

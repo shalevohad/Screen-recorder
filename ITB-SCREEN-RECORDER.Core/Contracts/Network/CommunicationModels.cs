@@ -8,7 +8,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum ServerCommand { Standby = 0, StartStream = 1, StopStream = 2 }
 
-    // 💡 נוסף Enum פקודות סנכרון 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum BufferCommand { WAIT = 0, UPLOAD_GRANTED = 1, DISCARD_ALL = 2 }
 
@@ -68,7 +67,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("qosTier")]
         public int QosTier { get; set; }
 
-        // מדדי רשת
         [JsonPropertyName("mediaTxMbps")]
         public double MediaTxMbps { get; set; }
 
@@ -78,7 +76,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("nicUtilizationPct")]
         public double NicUtilizationPct { get; set; }
 
-        // מדדי חומרה - מעבד וזיכרון
         [JsonPropertyName("hostCpuPct")]
         public double HostCpuPct { get; set; }
 
@@ -88,21 +85,24 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("processRamMb")]
         public double ProcessRamMb { get; set; }
 
-        // מדדי חומרה - כרטיס מסך
+        [JsonPropertyName("hostRamPct")]
+        public double HostRamPct { get; set; }
+
+        [JsonPropertyName("hostTotalRamMb")]
+        public double HostTotalRamMb { get; set; }
+
         [JsonPropertyName("gpu3dPct")]
         public double Gpu3dPct { get; set; }
 
         [JsonPropertyName("gpuNvencPct")]
         public double GpuNvencPct { get; set; }
 
-        // 💡 נוספו מדדי חוב באפר מקומי
         [JsonPropertyName("offlineFilesCount")]
         public int OfflineFilesCount { get; set; }
 
         [JsonPropertyName("offlineFilesTotalSizeMb")]
         public long OfflineFilesTotalSizeMb { get; set; }
 
-        // מדדי רשת כלליים של כרטיס הרשת (העומס הכללי על המכונה)
         [JsonPropertyName("nicTotalTxMbps")]
         public double NicTotalTxMbps { get; set; }
 
@@ -124,7 +124,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("policy")]
         public AgentStreamPolicy? Policy { get; set; }
 
-        // 💡 נוספה פקודת סנכרון חוב אופליין
         [JsonPropertyName("offlineBufferAction")]
         public BufferCommand OfflineBufferAction { get; set; } = BufferCommand.WAIT;
     }

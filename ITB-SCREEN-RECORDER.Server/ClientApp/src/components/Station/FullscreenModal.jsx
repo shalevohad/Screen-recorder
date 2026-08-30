@@ -1,7 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
-import CategoryMetricBars from './CategoryMetricBars';
+import CategoryMetricBars from '../UI/CategoryMetricBars';
 import './FullscreenModal.scss';
 
 export default function FullscreenModal({

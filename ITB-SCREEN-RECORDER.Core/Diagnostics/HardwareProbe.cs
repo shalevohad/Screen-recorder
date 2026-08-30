@@ -14,6 +14,8 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         public double Gpu3dUsagePct { get; set; }
         public double GpuNvencUsagePct { get; set; }
         public double ProcessRamMb { get; set; }
+        public double HostRamUsagePct { get; set; }
+        public double HostTotalRamMb { get; set; }
     }
 
     public static class HardwareProbe
@@ -129,7 +131,9 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 GpuNvencUsagePct = Math.Round(gpuState.GpuNvenc, 2),
                 HostCpuUsagePct = Math.Round(sysState.HostCpu, 2),
                 ProcessCpuUsagePct = Math.Round(sysState.ProcessCpu, 2),
-                ProcessRamMb = Math.Round(sysState.ProcessRamMb, 2)
+                ProcessRamMb = Math.Round(sysState.ProcessRamMb, 2),
+                HostRamUsagePct = Math.Round(sysState.HostRamPct, 2),
+                HostTotalRamMb = Math.Round(sysState.HostTotalRamMb, 2)
             };
         }
     }
