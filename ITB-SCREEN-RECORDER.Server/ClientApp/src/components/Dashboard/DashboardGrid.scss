@@ -4,7 +4,7 @@ html, body, #root {
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
-    min-height: 100vh !important; /* תוקן מ-height קשיח */
+    min-height: 100vh !important;
     max-width: none !important;
     overflow-x: hidden;
 }
@@ -21,14 +21,23 @@ html, body, #root {
     box-sizing: border-box;
     padding: 1rem 1.5rem 5rem 1.5rem;
 
+    .header-separator-line {
+        width: 100%;
+        max-width: 1500px;
+        margin: 0.75rem auto 1.5rem auto;
+        height: 1px;
+        background-color: #1e293b;
+    }
+
     .noc-command-bar {
         position: sticky;
-        top: 0; /* נצמד לחלק העליון */
+        top: 0;
         z-index: 50;
         width: 100%;
         display: flex;
         justify-content: center;
         pointer-events: none;
+        margin-bottom: 2rem;
 
         > * {
             pointer-events: auto;
@@ -41,7 +50,7 @@ html, body, #root {
         gap: 1.5rem;
         width: 100%;
         max-width: 1500px;
-        margin: 2rem auto 0 auto;
+        margin: 0 auto;
         justify-content: center;
         justify-items: center;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -52,23 +61,59 @@ html, body, #root {
             max-width: 520px;
         }
     }
-
-    .stations-empty-state {
-        color: #6b7280;
-        font-family: monospace;
+    /* 💡 אזור ריק עיצובי ב-Glassmorphism תואם לפאנל העליון */
+    .stations-empty-state-glass {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        border: 1px dashed #1f2937;
-        border-radius: 0.75rem;
-        background-color: rgba(17, 24, 39, 0.3);
+        gap: 16px;
+        padding: 48px;
         width: 100%;
-        max-width: 800px;
+        max-width: 600px;
         min-height: 300px;
-        /* 💡 הפתרון לפס הגלילה: margin: auto דוחף את האלמנט לאמצע המדויק ללא חריגה מגבולות המסך */
         margin: auto;
-        letter-spacing: 0.1em;
-        font-size: 0.875rem;
+        background: linear-gradient(180deg, rgba(30, 36, 51, 0.6) 0%, rgba(22, 27, 38, 0.6) 100%);
+        border: 1px solid rgba(42, 49, 64, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+
+        .empty-state-text {
+            color: #94a3b8;
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        /* אינדיקטור ויזואלי פעיל (מהבהב/רדאר) */
+        .connection-pulse-container {
+            position: relative;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            .pulse-dot-amber {
+                width: 10px;
+                height: 10px;
+                background-color: #f59e0b;
+                border-radius: 50%;
+                box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+            }
+
+            .pulse-ring {
+                position: absolute;
+                width: 24px;
+                height: 24px;
+                border: 2px solid #f59e0b;
+                border-radius: 50%;
+                animation: radar-pulse 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+                opacity: 0;
+            }
+        }
     }
 
     .noc-footer-zoom {
@@ -163,5 +208,17 @@ html, body, #root {
                 opacity: 0.5;
             }
         }
+    }
+}
+
+@keyframes radar-pulse {
+    0% {
+        transform: scale(0.6);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(2.4);
+        opacity: 0;
     }
 }

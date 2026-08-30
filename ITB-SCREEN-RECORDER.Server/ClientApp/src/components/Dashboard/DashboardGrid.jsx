@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as signalR from '@microsoft/signalr';
 import StationThumbnail from '../Station/StationThumbnail';
+import CommandCenterHeader from '../UI/CommandCenterHeader';
 import ServerClock from '../UI/ServerClock';
 import TelemetryModal from './TelemetryModal';
 import './DashboardGrid.scss';
@@ -10,6 +11,20 @@ export default function DashboardGrid({ stations: initialStations, actionPending
     const [liveStations, setLiveStations] = useState(initialStations);
     const [prevInitialStations, setPrevInitialStations] = useState(initialStations);
     const [chartData, setChartData] = useState([]);
+
+    const [isTelemetryOpen, setIsTelemetryOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    // 💡 הרחבת הסטייט לכלול גם נתוני Host וגם Process נפרדים
+    const [actualServerHealth, setActualServerHealth] = useState({
+        hostCpuPct: 0,
+        processCpuPct: 0,
+        processRamMb: 0,
+        hostTotalRamMb: 16384,
+        netTxMbps: 0,
+        netMaxMbps: 1000,
+        uptimeSeconds: 0
+    });
 
     if (initialStations !== prevInitialStations) {
         setPrevInitialStations(initialStations);
@@ -32,6 +47,34 @@ export default function DashboardGrid({ stations: initialStations, actionPending
     useEffect(() => {
         localStorage.setItem('itb_dashboard_zoom', zoomLevel);
     }, [zoomLevel]);
+
+    useEffect(() => {
+        const fetchServerHealth = async () => {
+            try {
+                const response = await fetch('/api/monitoring/server');
+                if (response.ok) {
+                    const data = await response.json();
+
+                    setActualServerHealth({
+                        hostCpuPct: data.hostCpuPct || 0,
+                        processCpuPct: data.processCpuPct || 0,
+                        processRamMb: data.processRamMb || 0,
+                        hostTotalRamMb: data.hostTotalRamMb || 16384,
+                        netTxMbps: data.serverNetworkTxMbps || 0,
+                        netMaxMbps: data.serverNetworkLinkSpeed > 0 ? data.serverNetworkLinkSpeed : 1000,
+                        uptimeSeconds: data.uptimeSeconds || 0
+                    });
+                }
+            } catch (error) {
+                // התעלמות שקטה
+            }
+        };
+
+        fetchServerHealth();
+        const healthInterval = setInterval(fetchServerHealth, 2000);
+
+        return () => clearInterval(healthInterval);
+    }, []);
 
     useEffect(() => {
         const port = import.meta.env?.VITE_SERVER_PORT || '5090';
@@ -114,13 +157,13 @@ export default function DashboardGrid({ stations: initialStations, actionPending
     return (
         <div className="dashboard-grid-container" dir={direction}>
 
-            <div className="noc-command-bar" style={{ display: 'flex', justifyContent: 'center' }}>
-                <ServerClock />
-            </div>
-
             {liveStations.length === 0 ? (
-                <div className="stations-empty-state">
-                    🔄 WAITING FOR INITIAL CONNECTION...
+                <div className="stations-empty-state-glass">
+                    <div className="connection-pulse-container">
+                        <div className="pulse-dot-amber"></div>
+                        <div className="pulse-ring"></div>
+                    </div>
+                    <span className="empty-state-text">WAITING FOR INITIAL CONNECTION...</span>
                 </div>
             ) : (
                 <div
@@ -129,7 +172,6 @@ export default function DashboardGrid({ stations: initialStations, actionPending
                 >
                     {liveStations.map((station) => (
                         <div key={station.hostname} className="station-wrapper-cell">
-                            {/* 💡 העברת כל נתוני התחנה במכה אחת כולל CPU, RAM, GPU ו-NET */}
                             <StationThumbnail
                                 {...station}
                                 isPending={actionPending[station.hostname]}
@@ -140,11 +182,21 @@ export default function DashboardGrid({ stations: initialStations, actionPending
                 </div>
             )}
 
-            {telemetryOpen && (
+            {isTelemetryOpen && (
                 <TelemetryModal
                     chartData={chartData}
-                    onClose={onCloseTelemetry}
+                    onClose={() => setIsTelemetryOpen(false)}
                 />
+            )}
+
+            {isSettingsOpen && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#0f172a', border: '1px solid #334155', padding: '2rem', borderRadius: '8px', color: '#fff', width: '400px' }}>
+                        <h3>Command Center Settings</h3>
+                        <p style={{ color: '#94a3b8', fontSize: '14px', margin: '1rem 0' }}>Configuration panel placeholder.</p>
+                        <button onClick={() => setIsSettingsOpen(false)} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Close</button>
+                    </div>
+                </div>
             )}
 
             <div className="noc-footer-zoom">

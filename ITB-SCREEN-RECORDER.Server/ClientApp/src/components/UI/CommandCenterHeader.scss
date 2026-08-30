@@ -1,0 +1,236 @@
+.command-center-top-bar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(10, 15, 26, 0.95) 100%);
+    border: 1px solid rgba(51, 65, 85, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-sizing: border-box;
+    position: sticky;
+    top: 12px;
+    z-index: 50;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    .brand-logo-section {
+        grid-column: 1;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+
+        .tactical-emblem {
+            position: relative;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(74, 222, 128, 0.4);
+            border-radius: 8px;
+            color: #4ade80;
+            transition: width 0.25s, height 0.25s;
+
+            svg {
+                width: 18px;
+                height: 18px;
+                filter: drop-shadow(0 0 6px rgba(74, 222, 128, 0.5));
+            }
+
+            .emblem-core-pulse {
+                position: absolute;
+                inset: -2px;
+                border: 1px solid rgba(74, 222, 128, 0.3);
+                border-radius: 10px;
+                animation: emblem-glow 3s infinite ease-in-out;
+            }
+        }
+
+        .brand-text-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+
+            .brand-title-row {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                font-family: 'Inter', system-ui, sans-serif;
+
+                .brand-name {
+                    background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+                    color: transparent;
+                    -webkit-background-clip: text;
+                    font-weight: 900;
+                    font-size: 1.25rem;
+                    letter-spacing: 0.5px;
+                    transition: font-size 0.25s ease;
+                }
+
+                .brand-main {
+                    color: #f8fafc;
+                    font-weight: 800;
+                    font-size: 1.25rem;
+                    letter-spacing: 0.8px;
+                    transition: font-size 0.25s ease;
+                }
+            }
+
+            .brand-subtitle {
+                color: #64748b;
+                font-family: monospace;
+                font-size: 0.65rem;
+                font-weight: 600;
+                letter-spacing: 1px;
+                transition: opacity 0.25s;
+            }
+        }
+    }
+
+    .header-clock-section {
+        grid-column: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        .noc-clock-panel {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            gap: 16px;
+        }
+    }
+
+    .header-actions-group {
+        grid-column: 3;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        justify-self: end;
+        flex-shrink: 0;
+
+        .active-agents-badge {
+            background-color: rgba(17, 24, 39, 0.8);
+            border: 1px solid rgba(51, 65, 85, 0.8);
+            color: #4ade80;
+            font-family: monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.5rem;
+        }
+
+        .header-icon-btn {
+            background-color: rgba(17, 24, 39, 0.8);
+            border: 1px solid rgba(51, 65, 85, 0.8);
+            color: #94a3b8;
+            width: 36px;
+            height: 36px;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+
+            &:hover {
+                color: #ffffff;
+                border-color: #64748b;
+                background-color: rgba(30, 41, 59, 0.9);
+            }
+        }
+    }
+    /* 💡 מצב גלילה עם אנימציית ירידה מלמעלה (Drop from Top) */
+    &.scrolled {
+        padding: 0.35rem 0.8rem;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(10, 15, 26, 0.98) 100%);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+        animation: dropFromTop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+        .brand-logo-section {
+            .tactical-emblem {
+                width: 30px;
+                height: 30px;
+
+                svg {
+                    width: 15px;
+                    height: 15px;
+                }
+            }
+
+            .brand-text-group {
+                .brand-title-row {
+                    .brand-name,
+                    .brand-main {
+                        font-size: 0.95rem;
+                    }
+                }
+
+                .brand-subtitle {
+                    font-size: 0.55rem;
+                    opacity: 0.8;
+                }
+            }
+        }
+    }
+}
+
+@keyframes dropFromTop {
+    0% {
+        transform: translateY(-12px);
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@media (max-width: 1185px) {
+    .command-center-top-bar {
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        row-gap: 0.75rem;
+
+        .brand-logo-section {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .header-actions-group {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .header-clock-section {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            border-top: 1px solid rgba(51, 65, 85, 0.4);
+            padding-top: 0.5rem;
+            justify-content: center;
+        }
+    }
+}
+
+@keyframes emblem-glow {
+    0%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.8;
+        transform: scale(1.04);
+    }
+}

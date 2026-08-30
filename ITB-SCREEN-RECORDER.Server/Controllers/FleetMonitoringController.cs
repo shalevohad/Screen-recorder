@@ -64,22 +64,26 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             var hardwareSnapshot = HardwareProbe.GetTelemetrySnapshot();
             var netSnapshot = _serverNetworkTelemetry.GetMetricsSnapshot();
 
-            double totalTx = netSnapshot.Nics.Sum(n => n.TxMbps);
-            double totalRx = netSnapshot.Nics.Sum(n => n.RxMbps);
-
             var serverMetrics = new
             {
                 serverHostname = Environment.MachineName,
+
+                // עומס פיזי מלא של השרת מול עומס התוכנה
+                hostCpuPct = Math.Round(hardwareSnapshot.HostCpuUsagePct, 1),
                 processCpuPct = Math.Round(hardwareSnapshot.ProcessCpuUsagePct, 1),
+                hostTotalRamMb = Math.Round(hardwareSnapshot.HostTotalRamMb, 1),
                 processRamMb = Math.Round(hardwareSnapshot.ProcessRamMb, 1),
 
-                serverNetworkTxMbps = Math.Round(totalTx, 2),
-                serverNetworkRxMbps = Math.Round(totalRx, 2),
+                // 💡 הנתונים עבור השעון (HUD): נמשכים נטו מהכרטיס הרלוונטי המנותב לאחסון/תחנות
+                serverNetworkTxMbps = Math.Round(netSnapshot.NicTotalTxMbps, 2),
+                serverNetworkRxMbps = Math.Round(netSnapshot.NicTotalRxMbps, 2),
+                serverNetworkLinkSpeed = Math.Round(netSnapshot.NicLinkSpeedMbps, 2),
 
                 activeThreads = currentProcess.Threads.Count,
                 uptimeSeconds = Math.Round(uptime.TotalSeconds, 0),
                 connectedAgents = activeAgentsCount,
 
+                // 💡 רשימת כלל הכרטיסים מוחזרת במלואה כפי שהייתה
                 nics = netSnapshot.Nics.Select(n => new
                 {
                     nicName = n.Name,
