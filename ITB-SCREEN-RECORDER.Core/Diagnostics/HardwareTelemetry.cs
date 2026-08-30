@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -90,9 +91,9 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         private TimeSpan _lastTotalProcessorTime;
         private readonly Process _currentProcess;
 
-        // 💡 Performance Counters לאיסוף עומס GPU כללי (תומך ב-Intel / AMD / Nvidia ב-Windows)
-        private PerformanceCounter? _gpuEngineCounter;
-        private bool _isPerfCounterInitialized = false;
+        // רשימת מונים דינמית לכל מנועי ה-GPU הפעילים (Intel / AMD / Nvidia Generic)
+        private readonly List<PerformanceCounter> _gpuCounters = new();
+        private bool _isGenericGpuInitialized = false;
 
         public HardwareTelemetry()
         {
@@ -101,7 +102,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             _lastTotalProcessorTime = _currentProcess.TotalProcessorTime;
 
             InitializeNvml();
-            InitializeGenericGpuCounter();
+            InitializeGenericGpuCounters();
         }
 
         private void InitializeNvml()
@@ -132,37 +133,45 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[TELEMETRY] NVML not available (Non-NVIDIA system or missing driver): {ex.Message}");
+                Logger.Warn($"[TELEMETRY] NVML not available: {ex.Message}");
             }
         }
 
-        private void InitializeGenericGpuCounter()
+        private void InitializeGenericGpuCounters()
         {
             if (!OperatingSystem.IsWindows()) return;
 
             try
             {
 #pragma warning disable CA1416
-                // בדיקה האם קיימת קטגוריית מונה GPU Generic במערכת
                 if (PerformanceCounterCategory.Exists("GPU Engine"))
                 {
                     var category = new PerformanceCounterCategory("GPU Engine");
                     var instanceNames = category.GetInstanceNames();
-                    // חיפוש מנוע רינדור פעיל כלשהו (3D)
-                    var targetInstance = instanceNames.FirstOrDefault(n => n.Contains("engtype_3D") || n.Contains("engtype_Render"));
 
-                    if (!string.IsNullOrEmpty(targetInstance))
+                    // איסוף כל המנועים שקשורים לרינדור 3D או Compute (תומך בכל סוגי הכרטיסים)
+                    foreach (var name in instanceNames.Where(n => n.Contains("engtype_3D") || n.Contains("engtype_Compute") || n.Contains("engtype_Render")))
                     {
-                        _gpuEngineCounter = new PerformanceCounter("GPU Engine", "Utilization Percentage", targetInstance, true);
-                        _isPerfCounterInitialized = true;
-                        Logger.Info("[TELEMETRY] Generic GPU Performance Counter initialized successfully.");
+                        try
+                        {
+                            var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", name, true);
+                            counter.NextValue(); // קריאה ראשונה לאתחול ה-Baseline
+                            _gpuCounters.Add(counter);
+                        }
+                        catch { }
+                    }
+
+                    if (_gpuCounters.Count > 0)
+                    {
+                        _isGenericGpuInitialized = true;
+                        Logger.Info($"[TELEMETRY] Initialized {_gpuCounters.Count} generic GPU performance counters.");
                     }
                 }
 #pragma warning restore CA1416
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[TELEMETRY] Failed to initialize generic GPU counter: {ex.Message}");
+                Logger.Warn($"[TELEMETRY] Failed to initialize generic GPU counters: {ex.Message}");
             }
         }
 
@@ -171,7 +180,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             float gpu3D = 0f;
             float nvenc = 0f;
 
-            // 1. נסה לקרוא קודם דרך NVIDIA NVML אם קיים
+            // 1. ניסיון קריאה דרך NVIDIA NVML הישיר
             if (_isNvmlInitialized && _nvmlDeviceHandle != IntPtr.Zero)
             {
                 try
@@ -187,13 +196,18 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 catch { }
             }
 
-            // 2. אם אין NVIDIA, נסה לקרוא דרך ה-Generic Performance Counter (מתאים ל-Intel / AMD)
-            if (_isPerfCounterInitialized && _gpuEngineCounter != null)
+            // 2. ניסיון קריאה דרך מוני ה-GPU הכלליים (Intel / AMD / Generic Windows)
+            if (_isGenericGpuInitialized && _gpuCounters.Count > 0)
             {
                 try
                 {
 #pragma warning disable CA1416
-                    gpu3D = _gpuEngineCounter.NextValue();
+                    float totalUsage = 0f;
+                    foreach (var counter in _gpuCounters)
+                    {
+                        totalUsage += counter.NextValue();
+                    }
+                    gpu3D = Math.Min(100f, totalUsage);
 #pragma warning restore CA1416
                 }
                 catch { }
@@ -353,7 +367,12 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 NativeLibrary.Free(_nvmlLibHandle);
             }
 
-            _gpuEngineCounter?.Dispose();
+            foreach (var counter in _gpuCounters)
+            {
+                try { counter.Dispose(); } catch { }
+            }
+            _gpuCounters.Clear();
+
             _currentProcess?.Dispose();
         }
     }
