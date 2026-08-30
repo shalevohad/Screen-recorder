@@ -1,6 +1,7 @@
 ﻿using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
+using ITB_SCREEN_RECORDER.Core.Configuration; // הוספת הקונפיגורציה
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
@@ -12,6 +13,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using System.Linq;
 
 #if WINDOWS
 using Microsoft.Win32;
@@ -27,6 +29,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private readonly string _workerPath;
         private readonly string _policyFilePath;
         private readonly HttpClient _httpClient;
+
+        // משתנה דינמי לנתיב הבאפר
+        private readonly string _localBufferPath;
 
         private string _serverBaseUrl = "127.0.0.1:5090";
         private int _defaultPort = 5090;
@@ -44,6 +49,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private class IpcMessageDto
         {
             public bool IsStreaming { get; set; }
+            public bool IsOfflineMode { get; set; }
             public IpcTelemetryDto? Telemetry { get; set; }
         }
 
@@ -65,10 +71,16 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public double AppLineUtilizationPct { get; set; }
         }
 
-        public AgentSupervisorService(ILogger<AgentSupervisorService> logger)
+        // הזרקת AppConfig לבנאי
+        public AgentSupervisorService(ILogger<AgentSupervisorService> logger, AppConfig config)
         {
             _logger = logger;
             _policyFilePath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
+
+            // שליפת הנתיב מהקונפיגורציה או שימוש בברירת מחדל
+            _localBufferPath = string.IsNullOrWhiteSpace(config.LocalBufferPath)
+                ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
+                : config.LocalBufferPath;
 
             _workerPath = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "ITB-SCREEN-RECORDER.AgentWorker.exe" : "ITB-SCREEN-RECORDER.AgentWorker");
             if (!File.Exists(_workerPath) && OperatingSystem.IsLinux())
@@ -251,6 +263,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private async Task SendTelemetryToServerAsync(CancellationToken ct)
         {
+            bool isServerConnectedThisTick = false;
             try
             {
                 bool isWorkerAlive = (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 6;
@@ -265,6 +278,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 double currentHostCpu = isStreaming ? (_lastTelemetry?.HostCpuPct ?? fallbackHwStats.HostCpuUsagePct) : fallbackHwStats.HostCpuUsagePct;
                 double currentGpu3d = isStreaming ? (_lastTelemetry?.Gpu3dPct ?? fallbackHwStats.Gpu3dUsagePct) : fallbackHwStats.Gpu3dUsagePct;
                 double currentGpuNvenc = isStreaming ? (_lastTelemetry?.GpuNvencPct ?? 0) : 0;
+
+                // 💡 שימוש בנתיב הדינמי שהוזרק
+                (int offlineFilesCount, long offlineFilesSizeMb) = ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.GetBufferStats(_localBufferPath);
 
                 var report = new AgentTelemetryReport
                 {
@@ -292,7 +308,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     MediaTxMbps = isStreaming ? Math.Round(_lastTelemetry?.MediaTxMbps ?? 0, 2) : 0,
                     TelemetryTxKbps = Math.Round(currentTelemKbps, 2),
-                    NicUtilizationPct = isStreaming ? Math.Round(_lastTelemetry?.AppLineUtilizationPct ?? 0, 4) : 0
+                    NicUtilizationPct = isStreaming ? Math.Round(_lastTelemetry?.AppLineUtilizationPct ?? 0, 4) : 0,
+
+                    OfflineFilesCount = offlineFilesCount,
+                    OfflineFilesTotalSizeMb = offlineFilesSizeMb
                 };
 
                 string jsonPayload = JsonSerializer.Serialize(report);
@@ -305,6 +324,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 if (response.IsSuccessStatusCode)
                 {
+                    isServerConnectedThisTick = true;
+                    await SendCommandToWorkerAsync("ServerConnected");
+
                     string responseJson = await response.Content.ReadAsStringAsync(ct);
                     try
                     {
@@ -315,6 +337,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             {
                                 _serverUtcOffset = heartbeatResponse.ServerUtcTime - DateTime.UtcNow;
                             }
+
+                            // 💡 ניתוב הפקודה למשתנה הסטטי בשירות הסנכרון
+                            ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.CurrentCommand = heartbeatResponse.OfflineBufferAction;
 
                             if (heartbeatResponse.Policy != null)
                             {
@@ -340,12 +365,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
-                                if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[Service] Server requested STOP. Forwarding to Worker.");
                                 await SendCommandToWorkerAsync("Stop");
                             }
                             else if (heartbeatResponse.Command == ServerCommand.StartStream)
                             {
-                                if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[Service] Server requested START. Forwarding to Worker.");
                                 await SendCommandToWorkerAsync($"Start|{_serverUtcOffset.Ticks}");
                             }
                         }
@@ -361,6 +384,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 if (DebugHelper.IsDebugModeEnabled())
                 {
                     _logger.LogWarning("Failed to send telemetry report to server: {Msg}", ex.Message);
+                }
+            }
+            finally
+            {
+                if (!isServerConnectedThisTick)
+                {
+                    await SendCommandToWorkerAsync("ServerDisconnected");
                 }
             }
         }

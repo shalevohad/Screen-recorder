@@ -32,10 +32,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private readonly SemaphoreSlim _streamPermissionSignal = new SemaphoreSlim(0, 1);
         private readonly AppConfig _config;
         private volatile bool _isStreamingRequested = false;
+        private volatile bool _requiresImmediateRestart = false;
 
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
-
-        // 💡 מנוע מדידת הרשת הפנימי
+        private volatile bool _isOfflineModeActive = false;
         private readonly NetworkTelemetry _networkTelemetry = new NetworkTelemetry();
 
         private readonly int _baselineFps;
@@ -81,14 +81,18 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                 while (!localToken.IsCancellationRequested)
                 {
-                    Logger.Info("[WorkerEngine] Worker is in Standby mode, waiting for streaming permission...");
-                    await _streamPermissionSignal.WaitAsync(localToken);
+                    if (!_isStreamingRequested)
+                    {
+                        Logger.Info("[WorkerEngine] Worker is in Standby mode, waiting for streaming permission...");
+                        await _streamPermissionSignal.WaitAsync(localToken);
+                    }
 
                     if (localToken.IsCancellationRequested) break;
 
+                    _requiresImmediateRestart = false;
+
                     Logger.Info($"[WorkerEngine] Starting initialization... Outer Stream: {_baselineFps}FPS. Internal Capture: {_internalCaptureFps}FPS.");
 
-                    // 💡 אתחול מנגנון הניתוב כדי למצוא את כרטיס הרשת הנכון שדרכו נצא לשרת
                     if (Uri.TryCreate(_config.RtmpServerBaseUrl, UriKind.Absolute, out Uri? rtmpUri))
                     {
                         _networkTelemetry.ResolveRoutingInterface(rtmpUri.Host);
@@ -127,8 +131,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 ffmpegManager.WriteAudioData(data);
                                 Interlocked.Add(ref totalAudioBytes, data.Length);
                                 Interlocked.Exchange(ref lastRealAudioTicks, Stopwatch.GetTimestamp());
-
-                                // 💡 תיעוד משקל האודיו היוצא
                                 _networkTelemetry.TrackMediaBytes(data.Length);
                             }
                         };
@@ -136,11 +138,27 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                         await Task.Delay(100, localToken);
 
-                        string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
-                        string rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
                         DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
+                        string destinationTarget;
 
-                        bool started = await ffmpegManager.StartAsync(rtmpTarget, calibratedTime, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
+                        if (_isOfflineModeActive)
+                        {
+                            string bufferDir = _config.LocalBufferPath;
+                            if (string.IsNullOrWhiteSpace(bufferDir)) bufferDir = @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer";
+                            Directory.CreateDirectory(bufferDir);
+
+                            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+                            destinationTarget = Path.Combine(bufferDir, $"{safeMachineName}_{calibratedTime:yyyyMMdd_HHmmss}.flv");
+                            Logger.Warn($"[WorkerEngine] SERVER OFFLINE. Starting Isolated Local Recording to: {destinationTarget}");
+                        }
+                        else
+                        {
+                            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+                            destinationTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
+                            Logger.Info($"[WorkerEngine] Starting LIVE streaming to: {destinationTarget}");
+                        }
+
+                        bool started = await ffmpegManager.StartAsync(destinationTarget, calibratedTime, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
                         if (!started)
                         {
                             _isStreamingRequested = false;
@@ -208,8 +226,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             byte[] silence = new byte[missingBytes];
                                             ffmpegManager.WriteAudioData(silence);
                                             Interlocked.Add(ref totalAudioBytes, missingBytes);
-
-                                            // 💡 תיעוד אודיו חלופי שיצא
                                             _networkTelemetry.TrackMediaBytes(missingBytes);
                                         }
                                     }
@@ -234,7 +250,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                         long fpsStopwatchTicks = sessionStartTicks;
 
-                        while (!localToken.IsCancellationRequested && _isStreamingRequested)
+                        while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
                         {
                             double currentRealMs = Stopwatch.GetElapsedTime(sessionStartTicks).TotalMilliseconds;
                             long expectedFrames = (long)(currentRealMs / targetFrameTimeMs) + 1;
@@ -269,9 +285,17 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                                     for (int i = 0; i < actualFramesToPush; i++)
                                     {
-                                        if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
+                                        if (!ffmpegManager.WriteVideoFrame(renderBuffer))
+                                        {
+                                            if (!_isOfflineModeActive)
+                                            {
+                                                Logger.Warn("[WorkerEngine] Network/MediaMTX connection lost (Broken Pipe). Switching to ISOLATED MODE.");
+                                                _isOfflineModeActive = true;
+                                                _requiresImmediateRestart = true;
+                                            }
+                                            break;
+                                        }
 
-                                        // 💡 תיעוד משקל פריים שנשלח למקודד
                                         _networkTelemetry.TrackMediaBytes(renderBuffer.Length);
 
                                         framesProcessed++;
@@ -280,6 +304,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                     }
                                 }
                             }
+
+                            if (_requiresImmediateRestart) break;
 
                             if (Stopwatch.GetElapsedTime(fpsStopwatchTicks).TotalMilliseconds >= 1000)
                             {
@@ -423,6 +449,24 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         _isStreamingRequested = true;
                                         if (_streamPermissionSignal.CurrentCount == 0) _streamPermissionSignal.Release();
                                     }
+                                    else if (cmd.Equals("ServerDisconnected", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (!_isOfflineModeActive && _isStreamingRequested)
+                                        {
+                                            Logger.Warn("[WorkerEngine] IPC commanded Isolated Mode.");
+                                            _isOfflineModeActive = true;
+                                            _requiresImmediateRestart = true;
+                                        }
+                                    }
+                                    else if (cmd.Equals("ServerConnected", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (_isOfflineModeActive && _isStreamingRequested)
+                                        {
+                                            Logger.Info("[WorkerEngine] Server is back online. Restoring LIVE RTMP.");
+                                            _isOfflineModeActive = false;
+                                            _requiresImmediateRestart = true;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -431,7 +475,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     while (!cts.Token.IsCancellationRequested && client.IsConnected)
                     {
-                        // 💡 שליפת נתוני החומרה והרשת העדכניים ללא נעילות
                         var hwSnap = HardwareProbe.GetTelemetrySnapshot();
                         var netSnap = _networkTelemetry.GetMetricsSnapshot();
 
@@ -440,6 +483,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             SessionState = InternalSessionState.ActiveInteractive,
                             CurrentFps = _baselineFps,
                             IsStreaming = _isStreamingRequested,
+                            IsOfflineMode = _isOfflineModeActive,
 
                             Telemetry = _isStreamingRequested ? new
                             {
@@ -448,14 +492,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 InternalCaptureFps = _internalCaptureFps,
                                 QosTier = _currentQosTier,
 
-                                // Hardware
                                 HostCpuPct = hwSnap.HostCpuUsagePct,
                                 ProcessCpuPct = hwSnap.ProcessCpuUsagePct,
                                 ProcessRamMb = hwSnap.ProcessRamMb,
                                 Gpu3dPct = hwSnap.Gpu3dUsagePct,
                                 GpuNvencPct = hwSnap.GpuNvencUsagePct,
 
-                                // Network
                                 MediaTxMbps = netSnap.AppMediaTxMbps,
                                 NicLinkSpeedMbps = netSnap.NicLinkSpeedMbps,
                                 NicTotalTxMbps = netSnap.NicTotalTxMbps,

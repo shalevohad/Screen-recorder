@@ -13,14 +13,15 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     {
         private readonly ITelemetryStateService _telemetryState;
         private readonly NetworkTelemetry _serverNetworkTelemetry;
+        private readonly OfflineSyncManager _syncManager;
 
-        public FleetMonitoringController(ITelemetryStateService telemetryState, NetworkTelemetry serverNetworkTelemetry)
+        public FleetMonitoringController(ITelemetryStateService telemetryState, NetworkTelemetry serverNetworkTelemetry, OfflineSyncManager syncManager)
         {
             _telemetryState = telemetryState;
             _serverNetworkTelemetry = serverNetworkTelemetry;
+            _syncManager = syncManager;
         }
 
-        // --- 1. צי העמדות (Tabular Data) ---
         [HttpGet("fleet")]
         public IActionResult GetFleetMetrics()
         {
@@ -44,7 +45,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(agents);
         }
 
-        // --- 2. שרת הניהול המרכזי (כולל את כל כרטיסי הרשת הפנימיים) ---
         [HttpGet("server")]
         public IActionResult GetServerMetrics()
         {
@@ -73,7 +73,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 uptimeSeconds = Math.Round(uptime.TotalSeconds, 0),
                 connectedAgents = activeAgentsCount,
 
-                // 💡 מערך כרטיסי הרשת שולב ישירות פנימה
                 nics = netSnapshot.Nics.Select(n => new
                 {
                     nicName = n.Name,
@@ -85,6 +84,37 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             };
 
             return Ok(serverMetrics);
+        }
+
+        // 💡 נתוני חובות וסנכרון - ה-Endpoint הכללי 
+        [HttpGet("sync-status")]
+        public IActionResult GetSyncStatusMetrics()
+        {
+            var allStations = _telemetryState.GetAllAgents();
+            var stationsWithDebt = allStations.Where(s => s.OfflineFilesTotalSizeMb > 0).ToList();
+
+            long globalDebtMb = stationsWithDebt.Sum(s => s.OfflineFilesTotalSizeMb);
+
+            var response = new
+            {
+                globalMetrics = new
+                {
+                    totalStationsWithDebt = stationsWithDebt.Count,
+                    globalDebtSizeMb = globalDebtMb,
+                    currentlySyncingStations = _syncManager.GetActiveUploadsCount(),
+                    serverUploadQueueState = globalDebtMb > 0 ? "SYNCING" : "IDLE"
+                },
+                stationDebts = stationsWithDebt.Select(s => new
+                {
+                    hostname = s.Hostname,
+                    ipAddress = s.IpAddress,
+                    debtSizeMb = s.OfflineFilesTotalSizeMb,
+                    filesPending = s.OfflineFilesCount,
+                    syncStatus = _syncManager.GetSyncCommand(s.Hostname, s.OfflineFilesTotalSizeMb).ToString()
+                })
+            };
+
+            return Ok(response);
         }
     }
 }

@@ -98,7 +98,9 @@ namespace ITB_SCREEN_RECORDER.Server
 
             builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
 
-            // 💡 הוספת שירותי SignalR ותעבורת זמן אמת
+            // 💡 שירות הסנכרון
+            builder.Services.AddSingleton<OfflineSyncManager>();
+
             builder.Services.AddSingleton<TelemetryBroadcastService>();
             builder.Services.AddSignalR(options => {
                 options.EnableDetailedErrors = true;
@@ -112,7 +114,6 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddSingleton<MediaMtxApiClient>();
             builder.Services.AddSingleton<EventLogger>();
 
-            // 💡 רישום שירות הטלמטריה לרשת כ-Singleton עבור ה-API
             builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Diagnostics.NetworkTelemetry>();
 
             builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
@@ -132,7 +133,6 @@ namespace ITB_SCREEN_RECORDER.Server
             app.UseRouting();
             app.UseAuthorization();
 
-            // 💡 מיפוי נקודת הקצה של Hub הטכנאים
             app.MapHub<TelemetryHub>("/hubs/telemetry");
             app.MapControllers();
 
