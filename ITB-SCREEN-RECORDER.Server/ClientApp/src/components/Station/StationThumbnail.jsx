@@ -3,18 +3,7 @@ import './StationThumbnail.scss';
 import FullscreenModal from './FullscreenModal';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
-
-const formatTelemetry = (val) => {
-    if (val === null || val === undefined || isNaN(val)) return '0.0';
-    return Number(val).toFixed(1);
-};
-
-const getBarColor = (val) => {
-    const num = Number(val);
-    if (num < 60) return '#10b981';
-    if (num < 85) return '#f59e0b';
-    return '#ef4444';
-};
+import CategoryMetricBars from './CategoryMetricBars';
 
 const getTrafficLightClass = (qosTier) => {
     if (qosTier === 3) return 'qos-good';
@@ -41,8 +30,12 @@ export default function StationThumbnail({
     gpu3dPct = 0,
     gpuNvencPct = 0,
     mediaTxMbps = 0,
+    netTotalTxMbps = 0,
     nicUtilizationPct = 0,
-    telemetryTxKbps = 0
+    telemetryTxKbps = 0,
+    ramAvg = 0,
+    processRamMb = 0,
+    hostTotalRamMb = 0
 }) {
     const [showFullscreen, setShowFullscreen] = useState(false);
     const [retryKey, setRetryKey] = useState(0);
@@ -69,9 +62,6 @@ export default function StationThumbnail({
     }, [isOnline, isStreaming]);
 
     const isLive = isOnline && isStreaming;
-
-    // חישוב עומס כרטיס המסך המקסימלי (3D או קידוד) לתצוגה בפס
-    const maxGpuLoad = Math.max(gpu3dPct, gpuNvencPct);
 
     return (
         <>
@@ -161,38 +151,19 @@ export default function StationThumbnail({
                     )}
                 </div>
 
-                {/* תצוגת פסי ההתקדמות (Progress Bars) ל-CPU, GPU ו-NET */}
-                <div className="station-telemetry">
-                    <div className="telemetry-row">
-                        <div className="telemetry-label">
-                            <span className="label-name">CPU</span>
-                            <span className="label-value" style={{ color: getBarColor(hostCpuPct) }}>{formatTelemetry(hostCpuPct)}%</span>
-                        </div>
-                        <div className="telemetry-bar-bg">
-                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, hostCpuPct))}%`, backgroundColor: getBarColor(hostCpuPct) }} />
-                        </div>
-                    </div>
-
-                    <div className="telemetry-row">
-                        <div className="telemetry-label">
-                            <span className="label-name">GPU</span>
-                            <span className="label-value" style={{ color: getBarColor(maxGpuLoad) }}>{formatTelemetry(maxGpuLoad)}%</span>
-                        </div>
-                        <div className="telemetry-bar-bg">
-                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, maxGpuLoad))}%`, backgroundColor: getBarColor(maxGpuLoad) }} />
-                        </div>
-                    </div>
-
-                    <div className="telemetry-row">
-                        <div className="telemetry-label">
-                            <span className="label-name">NET</span>
-                            <span className="label-value" style={{ color: getBarColor(nicUtilizationPct) }}>{formatTelemetry(nicUtilizationPct)}%</span>
-                        </div>
-                        <div className="telemetry-bar-bg">
-                            <div className="telemetry-bar-fill" style={{ width: `${Math.min(100, Math.max(0, nicUtilizationPct))}%`, backgroundColor: getBarColor(nicUtilizationPct) }} />
-                        </div>
-                    </div>
-                </div>
+                {/* שילוב רכיב פסי המדדים המודולרי (App Green למעלה, Host Blue צמוד מתחת) */}
+                <CategoryMetricBars
+                    hostCpuPct={hostCpuPct}
+                    processCpuPct={processCpuPct}
+                    gpu3dPct={gpu3dPct}
+                    gpuNvencPct={gpuNvencPct}
+                    mediaTxMbps={mediaTxMbps}
+                    netTotalTxMbps={netTotalTxMbps}
+                    ramAvg={ramAvg}
+                    processRamMb={processRamMb}
+                    hostTotalRamMb={hostTotalRamMb}
+                    compact={true}
+                />
             </div>
 
             {showFullscreen && (
@@ -209,8 +180,12 @@ export default function StationThumbnail({
                     gpu3dPct={gpu3dPct}
                     gpuNvencPct={gpuNvencPct}
                     mediaTxMbps={mediaTxMbps}
+                    netTotalTxMbps={netTotalTxMbps}
                     nicUtilizationPct={nicUtilizationPct}
                     telemetryTxKbps={telemetryTxKbps}
+                    ramAvg={ramAvg}
+                    processRamMb={processRamMb}
+                    hostTotalRamMb={hostTotalRamMb}
 
                     onClose={() => setShowFullscreen(false)}
                 />

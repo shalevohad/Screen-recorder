@@ -101,6 +101,13 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("offlineFilesTotalSizeMb")]
         public long OfflineFilesTotalSizeMb { get; set; }
+
+        // מדדי רשת כלליים של כרטיס הרשת (העומס הכללי על המכונה)
+        [JsonPropertyName("nicTotalTxMbps")]
+        public double NicTotalTxMbps { get; set; }
+
+        [JsonPropertyName("nicTotalRxMbps")]
+        public double NicTotalRxMbps { get; set; }
     }
 
     public class AgentHeartbeatResponse

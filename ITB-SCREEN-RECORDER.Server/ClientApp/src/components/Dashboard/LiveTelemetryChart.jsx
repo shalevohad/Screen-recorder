@@ -11,7 +11,6 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
     const [currentTime, setCurrentTime] = useState(Date.now());
     const svgRef = useRef(null);
 
-    // עדכון תדיר ורציף של הזמן עבור החלקה ויזואלית מלאה (Smooth Animation Frame)
     useEffect(() => {
         let animationFrameId;
         const updateSmoothTime = () => {
@@ -22,7 +21,6 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         return () => cancelAnimationFrame(animationFrameId);
     }, []);
 
-    // יצירת מערך נתונים עם חותמות זמן מדויקות מבוססות מילישניות
     const timeStampedData = useMemo(() => {
         if (!chartData || chartData.length === 0) return [];
         const now = currentTime;
@@ -36,7 +34,6 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         });
     }, [chartData, currentTime]);
 
-    // הגדרת חלון הזמן הגולש (60 השניות האחרונות או אזור זום מוגדר)
     const timeWindow = useMemo(() => {
         const maxTime = currentTime;
         const minTime = maxTime - 60000;
@@ -47,7 +44,6 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         return { minTime, maxTime };
     }, [currentTime, zoomWindow]);
 
-    // תוויות ציר X בקפיצות של 5 שניות שנעות וגולשות הצידה ברציפות
     const timeLabels = useMemo(() => {
         const { minTime, maxTime } = timeWindow;
         const spanMs = maxTime - minTime || 1;
@@ -62,21 +58,44 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         return arr;
     }, [timeWindow]);
 
-    // בניית הנתיבים (Paths) של הגרף הממופים במדויק לפי חותמות הזמן
-    const { paths, labels, maxScale } = useMemo(() => {
+    // 💡 חישוב דינמי של ציר ה-Y לפי ה-Peak (הערך המקסימלי) בתוך חלון הזמן הנוכחי
+    const scaleMax = useMemo(() => {
+        if (amplitudeMax) return amplitudeMax;
+        if (!timeStampedData || timeStampedData.length === 0) return type === 'hardware' ? 100 : 10;
+
+        const { minTime, maxTime } = timeWindow;
+        let currentMax = 0;
+
+        timeStampedData.forEach(pt => {
+            if (pt.timestamp >= minTime && pt.timestamp <= maxTime) {
+                if (type === 'hardware') {
+                    if (activeLayers.hostCpu && (pt.hostCpuPct || pt.cpuAvg) > currentMax) currentMax = pt.hostCpuPct || pt.cpuAvg;
+                    if (activeLayers.appCpu && (pt.processCpuPct || pt.appCpuPct) > currentMax) currentMax = pt.processCpuPct || pt.appCpuPct;
+                    if (activeLayers.ramAvg && pt.ramAvg > currentMax) currentMax = pt.ramAvg;
+                } else {
+                    if (activeLayers.netTotal && (pt.netTotalTxMbps || pt.nicTotalTxMbps) > currentMax) currentMax = pt.netTotalTxMbps || pt.nicTotalTxMbps;
+                    if (activeLayers.netApp && (pt.netTxMbps || pt.mediaTxMbps) > currentMax) currentMax = pt.netTxMbps || pt.mediaTxMbps;
+                    if (activeLayers.telem && (pt.telemNorm || pt.telemetryTxKbps) > currentMax) currentMax = pt.telemNorm || pt.telemetryTxKbps;
+                }
+            }
+        });
+
+        if (currentMax <= 0) return type === 'hardware' ? 100 : 10;
+        return Math.ceil(currentMax * 1.15); // מרווח של 15% מעל הפีק הגבוה ביותר בחלון
+    }, [timeStampedData, timeWindow, activeLayers, type, amplitudeMax]);
+
+    const { paths, labels } = useMemo(() => {
         if (!timeStampedData || timeStampedData.length === 0) {
-            return { paths: {}, labels: {}, maxScale: 100 };
+            return { paths: {}, labels: {} };
         }
 
         const w = 1000;
         const h = 130;
         const { minTime, maxTime } = timeWindow;
         const spanMs = maxTime - minTime || 1;
+        const maxVal = scaleMax || 100;
 
-        const defaultMax = type === 'hardware' ? 100 : 10000;
-        const scaleMax = amplitudeMax || defaultMax;
-
-        const buildPath = (key) => {
+        const buildPath = (getKey) => {
             let path = "";
             let isFirst = true;
 
@@ -85,8 +104,9 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
                 const x = ((pt.timestamp - minTime) / spanMs) * w;
 
                 if (x >= -50 && x <= w + 50) {
-                    const val = Math.min(scaleMax, Math.max(0, pt[key] || 0));
-                    const y = h - (val / scaleMax) * h;
+                    const rawVal = getKey(pt);
+                    const val = Math.min(maxVal, Math.max(0, rawVal || 0));
+                    const y = h - (val / maxVal) * h;
 
                     if (isFirst) {
                         path += `M ${x},${y}`;
@@ -102,29 +122,26 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         if (type === 'hardware') {
             return {
                 paths: {
-                    avg: activeLayers.cpuAvg ? buildPath('cpuAvg') : '',
-                    max: activeLayers.cpuMax ? buildPath('cpuMax') : '',
-                    ramAvg: activeLayers.ramAvg ? buildPath('ramAvg') : '',
+                    hostCpu: activeLayers.hostCpu ? buildPath(d => d.hostCpuPct || d.cpuAvg) : '',
+                    appCpu: activeLayers.appCpu ? buildPath(d => d.processCpuPct || d.appCpuPct) : '',
+                    ramAvg: activeLayers.ramAvg ? buildPath(d => d.ramAvg) : '',
                 },
-                labels: { title: '⚡ SYSTEM HARDWARE (CPU AVG vs MAX & RAM)' },
-                maxScale: 100
+                labels: { title: '⚡ HOST vs APP HARDWARE (CPU & RAM)' }
             };
         } else {
             return {
                 paths: {
-                    avg: activeLayers.netAvg ? buildPath('netAvg') : '',
-                    max: activeLayers.netMax ? buildPath('netMax') : '',
-                    telem: activeLayers.telem ? buildPath('telemNorm') : '',
+                    netTotal: activeLayers.netTotal ? buildPath(d => d.netTotalTxMbps || d.nicTotalTxMbps) : '',
+                    netApp: activeLayers.netApp ? buildPath(d => d.netTxMbps || d.mediaTxMbps) : '',
+                    telem: activeLayers.telem ? buildPath(d => d.telemNorm || d.telemetryTxKbps) : '',
                 },
-                labels: { title: `🌐 NETWORK TRAFFIC (BANDWIDTH - Scale: ${scaleMax >= 1000 ? (scaleMax / 1000) + ' Gbps' : scaleMax + ' Mbps'})` },
-                maxScale: scaleMax
+                labels: { title: `🌐 TOTAL NETWORK vs APP STREAMING (Dynamic Peak Scale)` }
             };
         }
-    }, [timeStampedData, timeWindow, activeLayers, type, amplitudeMax]);
+    }, [timeStampedData, timeWindow, activeLayers, type, scaleMax]);
 
     const isHardware = type === 'hardware';
 
-    // חישוב מדויק של מיקום העכבר והצגת ה-Tooltip
     const handleMouseMove = (e) => {
         if (!svgRef.current || timeStampedData.length === 0) return;
         const rect = svgRef.current.getBoundingClientRect();
@@ -163,7 +180,6 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         setDragEnd(e.clientX - rect.left);
     };
 
-    // תיקון חישוב הזום כך שיתפוס בדיוק את תחום הגרירה
     const handleMouseUp = () => {
         if (isDragging && dragStart !== null && dragEnd !== null && Math.abs(dragEnd - dragStart) > 10) {
             if (!svgRef.current) return;
@@ -180,7 +196,7 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
             const newStartMs = minTime + startPct * span;
             const newEndMs = minTime + endPct * span;
 
-            if (newEndMs - newStartMs > 2000) { // מינימום 2 שניות לזום
+            if (newEndMs - newStartMs > 2000) {
                 setZoomWindow({ startMs: newStartMs, endMs: newEndMs });
             }
         }
@@ -220,14 +236,14 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
                 <div style={{ display: 'flex', gap: '8px', fontSize: '11px' }}>
                     {isHardware ? (
                         <>
-                            <button onClick={() => onToggleLayer('cpuAvg')} className={`toggle-btn ${activeLayers.cpuAvg ? 'active-cpu' : ''}`}>{activeLayers.cpuAvg ? '🟡' : '◯'} CPU Avg</button>
-                            <button onClick={() => onToggleLayer('cpuMax')} className={`toggle-btn ${activeLayers.cpuMax ? 'active-cpu-max' : ''}`}>{activeLayers.cpuMax ? '🟠' : '◯'} CPU Max</button>
+                            <button onClick={() => onToggleLayer('hostCpu')} className={`toggle-btn ${activeLayers.hostCpu ? 'active-cpu' : ''}`}>{activeLayers.hostCpu ? '🟡' : '◯'} Host CPU</button>
+                            <button onClick={() => onToggleLayer('appCpu')} className={`toggle-btn ${activeLayers.appCpu ? 'active-cpu-max' : ''}`}>{activeLayers.appCpu ? '🟠' : '◯'} App CPU</button>
                             <button onClick={() => onToggleLayer('ramAvg')} className={`toggle-btn ${activeLayers.ramAvg ? 'active-ram' : ''}`}>{activeLayers.ramAvg ? '🔵' : '◯'} RAM</button>
                         </>
                     ) : (
                         <>
-                            <button onClick={() => onToggleLayer('netAvg')} className={`toggle-btn ${activeLayers.netAvg ? 'active-media' : ''}`}>{activeLayers.netAvg ? '🟢' : '◯'} Net Avg</button>
-                            <button onClick={() => onToggleLayer('netMax')} className={`toggle-btn ${activeLayers.netMax ? 'active-media-max' : ''}`}>{activeLayers.netMax ? '🔵' : '◯'} Net Peak</button>
+                            <button onClick={() => onToggleLayer('netTotal')} className={`toggle-btn ${activeLayers.netTotal ? 'active-media' : ''}`}>{activeLayers.netTotal ? '🟢' : '◯'} Total Net Tx</button>
+                            <button onClick={() => onToggleLayer('netApp')} className={`toggle-btn ${activeLayers.netApp ? 'active-media-max' : ''}`}>{activeLayers.netApp ? '🔵' : '◯'} App Media Tx</button>
                             <button onClick={() => onToggleLayer('telem')} className={`toggle-btn ${activeLayers.telem ? 'active-telemetry' : ''}`}>{activeLayers.telem ? '🟣' : '◯'} C2</button>
                         </>
                     )}
@@ -243,8 +259,8 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
                 onMouseLeave={handleMouseLeave}
             >
                 <div className="chart-max-label" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', padding: '0 5px', color: '#64748b', fontSize: '10px' }}>
-                    <span>{isHardware ? '100%' : (maxScale >= 1000 ? (maxScale / 1000) + ' Gbps' : maxScale + ' Mbps')}</span>
-                    <span>Smooth Rolling 60s (Drag to Zoom)</span>
+                    <span>Peak Max: {scaleMax.toFixed(1)} {isHardware ? '%' : 'Mbps'}</span>
+                    <span>Smooth Rolling 60s (Peak Y-Axis Scale)</span>
                 </div>
 
                 {activeDataPoint && hoverState && (
@@ -265,15 +281,15 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
                     }}>
                         {isHardware ? (
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                <span style={{ color: '#f59e0b' }}>CPU Avg: {activeDataPoint.cpuAvg?.toFixed(1)}%</span>
-                                <span style={{ color: '#f97316' }}>CPU Max: {activeDataPoint.cpuMax?.toFixed(1)}%</span>
+                                <span style={{ color: '#f59e0b' }}>Host CPU: {(activeDataPoint.hostCpuPct || activeDataPoint.cpuAvg)?.toFixed(1)}%</span>
+                                <span style={{ color: '#f97316' }}>App CPU: {(activeDataPoint.processCpuPct || activeDataPoint.appCpuPct)?.toFixed(1)}%</span>
                                 <span style={{ color: '#3b82f6' }}>RAM: {activeDataPoint.ramAvg?.toFixed(1)}%</span>
                             </div>
                         ) : (
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                <span style={{ color: '#38bdf8' }}>Net Avg: {activeDataPoint.netAvg?.toFixed(2)} Mbps</span>
-                                <span style={{ color: '#60a5fa' }}>Net Peak: {activeDataPoint.netMax?.toFixed(2)} Mbps</span>
-                                <span style={{ color: '#a855f7' }}>C2: {activeDataPoint.telemNorm?.toFixed(1)}%</span>
+                                <span style={{ color: '#38bdf8' }}>Total Net: {(activeDataPoint.netTotalTxMbps || activeDataPoint.nicTotalTxMbps)?.toFixed(2)} Mbps</span>
+                                <span style={{ color: '#60a5fa' }}>App Tx: {(activeDataPoint.netTxMbps || activeDataPoint.mediaTxMbps)?.toFixed(2)} Mbps</span>
+                                <span style={{ color: '#a855f7' }}>C2: {(activeDataPoint.telemNorm || activeDataPoint.telemetryTxKbps)?.toFixed(1)}</span>
                             </div>
                         )}
                     </div>
@@ -302,20 +318,19 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
 
                     {isHardware ? (
                         <>
-                            {activeLayers.cpuMax && <path d={paths.max} fill="none" stroke="#f97316" strokeWidth="1.5" strokeDasharray="2 2" />}
-                            {activeLayers.cpuAvg && <path d={paths.avg} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinejoin="round" />}
+                            {activeLayers.appCpu && <path d={paths.appCpu} fill="none" stroke="#f97316" strokeWidth="1.5" strokeDasharray="2 2" />}
+                            {activeLayers.hostCpu && <path d={paths.hostCpu} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinejoin="round" />}
                             {activeLayers.ramAvg && <path d={paths.ramAvg} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />}
                         </>
                     ) : (
                         <>
-                            {activeLayers.netMax && <path d={paths.max} fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeDasharray="2 2" />}
-                            {activeLayers.netAvg && <path d={paths.avg} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinejoin="round" />}
+                            {activeLayers.netApp && <path d={paths.netApp} fill="none" stroke="#60a5fa" strokeWidth="1.5" strokeDasharray="2 2" />}
+                            {activeLayers.netTotal && <path d={paths.netTotal} fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinejoin="round" />}
                             {activeLayers.telem && <path d={paths.telem} fill="none" stroke="#a855f7" strokeWidth="2" strokeLinejoin="round" />}
                         </>
                     )}
                 </svg>
 
-                {/* ציר זמן תחתתי חלק שגולש שמאלה בקפיצות של 5 שניות */}
                 <div style={{ position: 'relative', height: '20px', width: '100%', marginTop: '4px', fontSize: '10px', color: '#64748b', fontFamily: 'monospace' }}>
                     {timeLabels.map((t, idx) => (
                         <div key={idx} style={{ position: 'absolute', left: `${t.leftPct}%`, transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>

@@ -32,11 +32,18 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     return new
                     {
                         agentHostname = a.Hostname,
-                        cpuAvgPct = Math.Round(a.HostCpuPct, 1),
-                        gpuAvgPct = Math.Round(a.Gpu3dPct, 1),
-                        ramAvgPct = Math.Round((a.ProcessRamMb / 16384.0) * 100, 1),
-                        netTxMbps = Math.Round(a.MediaTxMbps, 2),
-                        c2TelemetryKbps = Math.Round(a.TelemetryTxKbps, 2),
+
+                        // עומס מארח כללי (Total Machine Load)
+                        hostCpuPct = Math.Round(a.HostCpuPct, 1),
+                        hostGpuPct = Math.Round(a.Gpu3dPct, 1),
+                        netTotalTxMbps = Math.Round(a.NicTotalTxMbps, 2),
+                        netTotalRxMbps = Math.Round(a.NicTotalRxMbps, 2),
+
+                        // תרומת תוכנת ההקלטות (App Specific Load)
+                        appCpuPct = Math.Round(a.ProcessCpuPct, 1),
+                        appRamMb = Math.Round(a.ProcessRamMb, 1),
+                        appNetTxMbps = Math.Round(a.MediaTxMbps, 2),
+
                         netUsagePct = Math.Round(a.NicUtilizationPct, 2),
                         isStreaming = a.IsStreaming ? 1 : 0
                     };

@@ -99,50 +99,66 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private void LoadServerIpConfig()
         {
-            var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
-            if (!string.IsNullOrWhiteSpace(envIp))
-            {
-                _serverBaseUrl = envIp.Trim();
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            bool loadedFromRegistry = false;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
 #if WINDOWS
-                LoadServerIpFromRegistrySafe();
+                loadedFromRegistry = LoadServerIpFromRegistrySafe();
 #endif
             }
-            else
+
+            // אם לא נמצא ב-Registry, נחפש משתנה סביבה
+            if (!loadedFromRegistry)
             {
-                _logger.LogInformation("Linux environment detected. No ITB_SERVER_IP env var found. Defaulting to {ServerBaseUrl}", _serverBaseUrl);
+                var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
+                if (!string.IsNullOrWhiteSpace(envIp))
+                {
+                    _serverBaseUrl = envIp.Trim();
+                    _logger.LogInformation("Loaded ServerIp from Environment Variable: {ServerBaseUrl}", _serverBaseUrl);
+                }
+                else
+                {
+                    _logger.LogWarning("ServerIp not found in Registry or Environment. Using default fallback: {ServerBaseUrl}", _serverBaseUrl);
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(_serverBaseUrl) && !_serverBaseUrl.Contains(':'))
             {
                 _serverBaseUrl = $"{_serverBaseUrl.Trim()}:{_defaultPort}";
-                _logger.LogInformation("No port specified in server address. Automatically appended default port {DefaultPort}: {ServerBaseUrl}", _defaultPort, _serverBaseUrl);
+                _logger.LogInformation("Configured Server URL: {ServerBaseUrl}", _serverBaseUrl);
             }
         }
 
 #if WINDOWS
-        private void LoadServerIpFromRegistrySafe()
+        private bool LoadServerIpFromRegistrySafe()
         {
 #pragma warning disable CA1416
-            try
+            // סריקה כפולה של 64-bit ו-32-bit כדי למנוע בעיות תאימות של מתקינים
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
             {
-                using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
-                if (key != null)
+                try
                 {
-                    var ipVal = key.GetValue("ServerIp");
-                    if (ipVal != null && !string.IsNullOrWhiteSpace(ipVal.ToString()))
+                    using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                    using var key = baseKey.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
+                    if (key != null)
                     {
-                        _serverBaseUrl = ipVal.ToString()!;
+                        var ipVal = key.GetValue("ServerIp");
+                        if (ipVal != null && !string.IsNullOrWhiteSpace(ipVal.ToString()))
+                        {
+                            _serverBaseUrl = ipVal.ToString()!.Trim();
+                            _logger.LogInformation("Successfully loaded ServerIp from Windows Registry ({View}): {ServerBaseUrl}", view, _serverBaseUrl);
+                            return true;
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Failed to read ServerIp from Windows Registry: {Msg}", ex.Message);
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Failed to read ServerIp from Windows Registry view {View}: {Msg}", view, ex.Message);
+                }
             }
 #pragma warning restore CA1416
+            return false;
         }
 #endif
 
@@ -300,15 +316,22 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     InternalCaptureFps = isStreaming ? (_lastTelemetry?.InternalCaptureFps ?? 0) : 0,
                     QosTier = isStreaming ? (_lastTelemetry?.QosTier ?? 3) : 3,
 
-                    HostCpuPct = Math.Round(currentHostCpu, 2),
+                    // 💡 עומס מארח כללי - מדווח תמיד (גם ב-Standby)
+                    HostCpuPct = Math.Round(_lastTelemetry?.HostCpuPct ?? fallbackHwStats.HostCpuUsagePct, 2),
+                    Gpu3dPct = Math.Round(_lastTelemetry?.Gpu3dPct ?? fallbackHwStats.Gpu3dUsagePct, 2),
+
+                    // עומס ספציפי של תהליך ההקלטות
                     ProcessCpuPct = isStreaming ? Math.Round(_lastTelemetry?.ProcessCpuPct ?? 0, 2) : 0,
                     ProcessRamMb = isStreaming ? Math.Round(_lastTelemetry?.ProcessRamMb ?? 0, 2) : 0,
-                    Gpu3dPct = Math.Round(currentGpu3d, 2),
-                    GpuNvencPct = Math.Round(currentGpuNvenc, 2),
+                    GpuNvencPct = isStreaming ? Math.Round(_lastTelemetry?.GpuNvencPct ?? 0, 2) : 0,
 
+                    // תעבורת אפליקציה מול תעבורת רשת כללית של הכרטיס
                     MediaTxMbps = isStreaming ? Math.Round(_lastTelemetry?.MediaTxMbps ?? 0, 2) : 0,
                     TelemetryTxKbps = Math.Round(currentTelemKbps, 2),
                     NicUtilizationPct = isStreaming ? Math.Round(_lastTelemetry?.AppLineUtilizationPct ?? 0, 4) : 0,
+
+                    NicTotalTxMbps = Math.Round(_lastTelemetry?.NicTotalTxMbps ?? 0, 2),
+                    NicTotalRxMbps = Math.Round(_lastTelemetry?.NicTotalRxMbps ?? 0, 2),
 
                     OfflineFilesCount = offlineFilesCount,
                     OfflineFilesTotalSizeMb = offlineFilesSizeMb

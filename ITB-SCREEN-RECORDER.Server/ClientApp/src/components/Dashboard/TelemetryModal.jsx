@@ -5,11 +5,11 @@ import './TelemetryModal.scss';
 export default function TelemetryModal({ chartData, onClose }) {
     const modalRef = useRef(null);
     const [activeLayers, setActiveLayers] = useState({
-        cpuAvg: true,
-        cpuMax: true,
+        hostCpu: true,
+        appCpu: true,
         ramAvg: true,
-        netAvg: true,
-        netMax: true,
+        netTotal: true,
+        netApp: true,
         telem: true
     });
 
@@ -31,12 +31,12 @@ export default function TelemetryModal({ chartData, onClose }) {
         <div className="telemetry-modal-backdrop" onClick={handleBackdropClick}>
             <div ref={modalRef} className="telemetry-modal-box">
                 <div className="telemetry-modal-header">
-                    <h2>GLOBAL FLEET DIAGNOSTICS & TELEMETRY</h2>
+                    <h2>GLOBAL AGENTS DIAGNOSTICS & TELEMETRY</h2>
                     <button onClick={onClose} className="telemetry-modal-close-btn" title="Close (ESC)">✕</button>
                 </div>
 
                 <div className="telemetry-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', justifyContent: 'flex-start' }}>
-                    {/* גרף 1: חומרה (CPU Avg vs Max & RAM) */}
+                    {/* גרף 1: חומרה (Host CPU vs App CPU & RAM) */}
                     <LiveTelemetryChart
                         chartData={chartData}
                         activeLayers={activeLayers}
@@ -44,7 +44,7 @@ export default function TelemetryModal({ chartData, onClose }) {
                         type="hardware"
                     />
 
-                    {/* גרף 2: רשת (Network Avg vs Max & C2) */}
+                    {/* גרף 2: רשת (Total Network vs App Streaming Tx) */}
                     <LiveTelemetryChart
                         chartData={chartData}
                         activeLayers={activeLayers}

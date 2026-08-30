@@ -91,7 +91,6 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 snapshot.AppMediaTxMbps = Math.Round((mediaBytes * 8.0) / (elapsedSeconds * 1_000_000.0), 2);
                 snapshot.AppTelemetryTxKbps = Math.Round((telemBytes * 8.0) / (elapsedSeconds * 1_000.0), 2);
 
-                // 💡 סינון קפדני: לוקחים אך ורק כרטיסים פיזיים פעילים, ללא VPN, ללא Virtual Switch, וללא Loopback
                 var activeNics = NetworkInterface.GetAllNetworkInterfaces()
                     .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
                                   nic.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
@@ -121,15 +120,15 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                             if (linkSpeed > 0)
                             {
                                 double maxThroughput = Math.Max(txMbps, rxMbps);
-                                utilPct = Math.Round((maxThroughput / linkSpeed) * 100.0, 2);
+                                // 💡 חישוב מדויק של אחוז הניצולת לכל כרטיס
+                                utilPct = Math.Round((maxThroughput / linkSpeed) * 100.0, 4);
                             }
                         }
 
                         _nicStates[nic.Id] = (currentSent, currentReceived);
 
-                        // 💡 סינון נוסף: נציג רק כרטיסים שיש להם מהירות לינק אמיתית ושעוברת בהם תעבורה או שהם הוגדרו כממשקי ליבה
                         bool hasTraffic = (txMbps > 0.05 || rxMbps > 0.05);
-                        bool isRelevantNic = hasTraffic || linkSpeed >= 1000; // מציג כרטיסי 1Gbps ומעלה או כאלה שפעילים כרגע
+                        bool isRelevantNic = hasTraffic || linkSpeed >= 1000;
 
                         if (linkSpeed > 0 && isRelevantNic)
                         {
@@ -155,7 +154,19 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                     snapshot.NicLinkSpeedMbps = targetNic.LinkSpeedMbps;
                     snapshot.NicTotalTxMbps = targetNic.TxMbps;
                     snapshot.NicTotalRxMbps = targetNic.RxMbps;
-                    snapshot.AppLineUtilizationPct = Math.Round(((snapshot.AppMediaTxMbps + (snapshot.AppTelemetryTxKbps / 1000.0)) / targetNic.LinkSpeedMbps) * 100.0, 4);
+
+                    // 💡 תיקון חישוב ניצולת הקו של האפליקציה:
+                    // המרה מדויקת של Kbps ל-Mbps (חלוקה ב-1000) והשוואה למהירות הלינק ב-Mbps
+                    double totalAppMbps = snapshot.AppMediaTxMbps + (snapshot.AppTelemetryTxKbps / 1000.0);
+
+                    if (targetNic.LinkSpeedMbps > 0)
+                    {
+                        snapshot.AppLineUtilizationPct = Math.Round((totalAppMbps / targetNic.LinkSpeedMbps) * 100.0, 4);
+                    }
+                    else
+                    {
+                        snapshot.AppLineUtilizationPct = 0;
+                    }
                 }
             }
 

@@ -1,6 +1,7 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
+import CategoryMetricBars from './CategoryMetricBars';
 import './FullscreenModal.scss';
 
 export default function FullscreenModal({
@@ -16,8 +17,12 @@ export default function FullscreenModal({
     gpu3dPct = 0,
     gpuNvencPct = 0,
     mediaTxMbps = 0,
+    netTotalTxMbps = 0,
     nicUtilizationPct = 0,
     telemetryTxKbps = 0,
+    ramAvg = 0,
+    processRamMb = 0,
+    hostTotalRamMb = 0,
 
     onClose
 }) {
@@ -67,8 +72,8 @@ export default function FullscreenModal({
                             <span className={`modal-stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span>
                         </div>
                         <div className="modal-stat-box">
-                            <div className="modal-stat-header"><span>CPU(P)</span></div>
-                            <span className="modal-stat-value yellow">{Number(processCpuPct).toFixed(1)}%</span>
+                            <div className="modal-stat-header"><span>CPU (App/Host)</span></div>
+                            <span className="modal-stat-value yellow">{Number(processCpuPct).toFixed(1)}% / {Number(hostCpuPct).toFixed(1)}%</span>
                         </div>
                         <div className="modal-stat-box">
                             <div className="modal-stat-header"><span>NVENC</span></div>
@@ -76,7 +81,7 @@ export default function FullscreenModal({
                         </div>
                         <div className="modal-stat-box" style={{ minWidth: '80px' }}>
                             <div className="modal-stat-header"><span>VBR Mbps</span></div>
-                            <span className="modal-stat-value blue">{Number(mediaTxMbps / 1000).toFixed(2)}</span>
+                            <span className="modal-stat-value blue">{Number(mediaTxMbps).toFixed(2)}</span>
                         </div>
                         <div className="modal-stat-box" style={{ minWidth: '80px' }}>
                             <div className="modal-stat-header"><span>C2 Kbps</span></div>
@@ -87,6 +92,21 @@ export default function FullscreenModal({
                     <button onClick={onClose} className="stream-modal-close-btn" title="Close (ESC)">
                         ✕
                     </button>
+                </div>
+
+                {/* שילוב פסי הקטגוריות המודולריים במודל */}
+                <div style={{ padding: '10px 20px', background: '#020617', borderBottom: '1px solid #1e293b' }}>
+                    <CategoryMetricBars
+                        hostCpuPct={hostCpuPct}
+                        processCpuPct={processCpuPct}
+                        gpu3dPct={gpu3dPct}
+                        gpuNvencPct={gpuNvencPct}
+                        mediaTxMbps={mediaTxMbps}
+                        netTotalTxMbps={netTotalTxMbps}
+                        ramAvg={ramAvg}
+                        processRamMb={processRamMb}
+                        hostTotalRamMb={hostTotalRamMb}
+                    />
                 </div>
 
                 <div className="stream-modal-body" style={{ flexGrow: 1, position: 'relative', backgroundColor: '#000' }}>
