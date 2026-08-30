@@ -1,4 +1,4 @@
-/* ITB Screen Recorder - Main Application Styles */
+﻿/* ITB Screen Recorder - Main Application Styles */
 
 body {
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -7,6 +7,17 @@ body {
     margin: 0;
     padding: 0;
     min-height: 100vh;
+}
+
+/* 💡 הגדרות גלובליות ל-LTR ו-RTL */
+.dir-ltr {
+    direction: ltr;
+    text-align: left;
+}
+
+.dir-rtl {
+    direction: rtl;
+    text-align: right;
 }
 
 /* Video.js customization for smooth streaming */

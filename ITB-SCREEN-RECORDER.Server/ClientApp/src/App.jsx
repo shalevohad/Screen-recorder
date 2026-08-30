@@ -57,12 +57,12 @@ export default function App() {
     };
 
     return (
-        <div className="p-6 bg-[#010409] min-h-screen text-white dashboard-container">
+        <div className="p-6 bg-[#010409] min-h-screen text-white dashboard-container dir-ltr">
             {/* Header */}
             <header className="mb-6 flex justify-between items-center border-b border-gray-800 pb-4">
                 <div>
                     <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                        ITB Screen Recorder - Live Fleet Dashboard
+                        ITB Screen Recorder - Live Agents Dashboard
                     </h1>
                 </div>
                 <div className="flex items-center gap-3">
