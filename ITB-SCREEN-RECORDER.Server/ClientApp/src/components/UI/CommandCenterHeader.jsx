@@ -4,14 +4,9 @@ import './CommandCenterHeader.scss';
 
 export default function CommandCenterHeader({
     activeAgentsCount = 0,
+    serverHealth,
     onOpenTelemetry,
-    onOpenSettings,
-    serverCpu,
-    serverRamUsedMb,
-    serverRamTotalMb,
-    serverNetTxMbps,
-    serverNetMaxMbps,
-    serverUptimeSeconds
+    onOpenSettings
 }) {
     const [isScrolled, setIsScrolled] = useState(false);
 
@@ -43,16 +38,16 @@ export default function CommandCenterHeader({
                 </div>
             </div>
 
-            {/* מרכז: שעון השרת ומדדי הבריאות */}
+            {/* מרכז: שעון השרת ומדדי הבריאות המעודכנים */}
             <div className="header-clock-section">
                 <ServerClock
-                    hostCpu={serverCpu?.hostCpuPct || 0}
-                    processCpu={serverCpu?.processCpuPct || 0}
-                    serverRamUsedMb={serverRamUsedMb}
-                    serverRamTotalMb={serverRamTotalMb}
-                    serverNetTxMbps={serverNetTxMbps}
-                    serverNetMaxMbps={serverNetMaxMbps}
-                    serverUptimeSeconds={serverUptimeSeconds}
+                    hostCpu={serverHealth?.hostCpuPct || 0}
+                    processCpu={serverHealth?.processCpuPct || 0}
+                    serverRamUsedMb={serverHealth?.processRamMb || 0}
+                    serverRamTotalMb={serverHealth?.hostTotalRamMb || 16384}
+                    serverNetTxMbps={serverHealth?.netTxMbps || 0}
+                    serverNetMaxMbps={serverHealth?.netMaxMbps || 1000}
+                    serverUptimeSeconds={serverHealth?.uptimeSeconds || 0}
                 />
             </div>
 

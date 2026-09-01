@@ -5,14 +5,7 @@ import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
 import CategoryMetricBars from '../UI/CategoryMetricBars';
 
-const getTrafficLightClass = (qosTier) => {
-    if (qosTier === 3) return 'qos-good';
-    if (qosTier >= 1) return 'qos-fair';
-    return 'qos-critical';
-};
-
 export default function StationThumbnail({
-    // קבלת המאפיינים באופן פרטני בדיוק כפי שה-Dashboard שולח
     hostname = 'UNKNOWN',
     isOnline = false,
     isStreaming = false,
@@ -23,7 +16,6 @@ export default function StationThumbnail({
     droppedFrames = 0,
     internalCaptureFps = 0,
 
-    // מדדי חומרה ורשת
     hostCpuPct = 0,
     processCpuPct = 0,
     gpu3dPct = 0,
@@ -45,6 +37,8 @@ export default function StationThumbnail({
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const [prevIsStreaming, setPrevIsStreaming] = useState(isStreaming);
 
+    const [recordingSeconds, setRecordingSeconds] = useState(0);
+
     const serverHost = window.location.hostname;
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
@@ -63,6 +57,24 @@ export default function StationThumbnail({
         }
         return () => clearTimeout(timer);
     }, [isOnline, isStreaming]);
+
+    useEffect(() => {
+        let timer;
+        if (isStreaming) {
+            timer = setInterval(() => {
+                setRecordingSeconds(sec => sec + 1);
+            }, 1000);
+        } else {
+            setRecordingSeconds(0);
+        }
+        return () => clearInterval(timer);
+    }, [isStreaming]);
+
+    const formatTimer = (totalSec) => {
+        const m = Math.floor(totalSec / 60);
+        const s = totalSec % 60;
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
 
     const isLive = isOnline && isStreaming;
 
@@ -91,7 +103,7 @@ export default function StationThumbnail({
                                 className={`stream-action-btn ${isStreaming ? 'is-streaming' : 'is-idle'} ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={onToggleStream}
                                 disabled={isPending}
-                                title={isStreaming ? "Stop Streaming" : "Start Streaming"}
+                                title={isStreaming ? "Stop Recording / Streaming" : "Start Streaming"}
                             >
                                 {isPending ? (
                                     <svg className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
@@ -99,8 +111,9 @@ export default function StationThumbnail({
                                     </svg>
                                 ) : isStreaming ? (
                                     <>
-                                        <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><rect x="6" y="6" width="12" height="12"></rect></svg>
-                                        <span className="btn-text">STOP</span>
+                                        <div className="rec-dot-pulse"></div>
+                                        <span className="btn-text">RECORDING</span>
+                                        <span className="btn-timer">{formatTimer(recordingSeconds)}</span>
                                     </>
                                 ) : (
                                     <>
@@ -119,12 +132,6 @@ export default function StationThumbnail({
                 </div>
 
                 <div className="station-screen-area" onClick={() => isLive && isVideoPlaying && setShowFullscreen(true)}>
-                    {isLive && isVideoPlaying && (
-                        <div className="traffic-light-badge" title={`FPS: ${actualFps} | Tier: ${qosTier}`}>
-                            <div className={`light-dot ${getTrafficLightClass(qosTier)}`}></div>
-                        </div>
-                    )}
-
                     {isLive ? (
                         <>
                             {!isVideoPlaying && <CyberLoadingOverlay size="small" text="CONNECTING" />}

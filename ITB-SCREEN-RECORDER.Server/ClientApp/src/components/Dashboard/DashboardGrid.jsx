@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as signalR from '@microsoft/signalr';
 import StationThumbnail from '../Station/StationThumbnail';
-import CommandCenterHeader from '../UI/CommandCenterHeader';
-import ServerClock from '../UI/ServerClock';
 import TelemetryModal from './TelemetryModal';
 import './DashboardGrid.scss';
 
@@ -14,17 +12,6 @@ export default function DashboardGrid({ stations: initialStations, actionPending
 
     const [isTelemetryOpen, setIsTelemetryOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-    // 💡 הרחבת הסטייט לכלול גם נתוני Host וגם Process נפרדים
-    const [actualServerHealth, setActualServerHealth] = useState({
-        hostCpuPct: 0,
-        processCpuPct: 0,
-        processRamMb: 0,
-        hostTotalRamMb: 16384,
-        netTxMbps: 0,
-        netMaxMbps: 1000,
-        uptimeSeconds: 0
-    });
 
     if (initialStations !== prevInitialStations) {
         setPrevInitialStations(initialStations);
@@ -47,34 +34,6 @@ export default function DashboardGrid({ stations: initialStations, actionPending
     useEffect(() => {
         localStorage.setItem('itb_dashboard_zoom', zoomLevel);
     }, [zoomLevel]);
-
-    useEffect(() => {
-        const fetchServerHealth = async () => {
-            try {
-                const response = await fetch('/api/monitoring/server');
-                if (response.ok) {
-                    const data = await response.json();
-
-                    setActualServerHealth({
-                        hostCpuPct: data.hostCpuPct || 0,
-                        processCpuPct: data.processCpuPct || 0,
-                        processRamMb: data.processRamMb || 0,
-                        hostTotalRamMb: data.hostTotalRamMb || 16384,
-                        netTxMbps: data.serverNetworkTxMbps || 0,
-                        netMaxMbps: data.serverNetworkLinkSpeed > 0 ? data.serverNetworkLinkSpeed : 1000,
-                        uptimeSeconds: data.uptimeSeconds || 0
-                    });
-                }
-            } catch (error) {
-                // התעלמות שקטה
-            }
-        };
-
-        fetchServerHealth();
-        const healthInterval = setInterval(fetchServerHealth, 2000);
-
-        return () => clearInterval(healthInterval);
-    }, []);
 
     useEffect(() => {
         const port = import.meta.env?.VITE_SERVER_PORT || '5090';

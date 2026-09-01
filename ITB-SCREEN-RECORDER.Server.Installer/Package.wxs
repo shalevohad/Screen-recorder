@@ -13,21 +13,24 @@
 					  AllowSameVersionUpgrades="yes"
 					  Schedule="afterInstallInitialize" />
 
+		<!-- ביטול Restart Manager להתקנות שקטות (Zero-Touch) -->
 		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
+		<!-- 1. חיסול שירותים ותהליכים רצים לפני ההתקנה -->
 		<CustomAction Id="KillServerProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.Server.exe /T" Execute="immediate" Return="ignore" />
 		<CustomAction Id="KillMediaMtxProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM mediamtx.exe /T" Execute="immediate" Return="ignore" />
 
-		<!-- 💡 עדכון הגדרות השרת ב-JSON באמצעות PowerShell -->
-		<SetProperty Id="UpdateServerJson"
-					 Value="powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $p='[INSTALLFOLDER]appsettings.json'; $j=Get-Content $p -Raw | ConvertFrom-Json; $j.Kestrel.Endpoints.Http.Url='http://0.0.0.0:[HTTP_PORT]'; $j.SystemConfig.MediaMtx.RtmpPort=[int]'[RTMP_PORT]'; $j.SystemConfig.MediaMtx.ApiPort=[int]'[API_PORT]'; $j.SystemConfig.MediaMtx.HlsPort=[int]'[HLS_PORT]'; $j.SystemConfig.Storage.LocalFallbackPath='[DATA_DIR]'; $j | ConvertTo-Json -Depth 10 | Set-Content $p } catch { }&quot;"
-					 Before="UpdateServerJson"
-					 Sequence="execute" />
+		<!-- 2. אריזת הנתונים (6 משתנים מופרדים ב-|) לתוך ה-ID של הפעולה הבאה -->
+		<CustomAction Id="SetServerJsonDataArgs"
+					  Property="UpdateServerJson"
+					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]"
+					  Execute="immediate" />
 
+		<!-- 3. ריצת הסקריפט: חסין ממחיקת סוגריים של MSI, עוקף הערות, מחליף פורטים ומכפיל לוכסנים בנתיבים -->
 		<CustomAction Id="UpdateServerJson"
-					  Directory="INSTALLFOLDER"
-					  ExeCommand="[UpdateServerJson]"
+					  Directory="System64Folder"
+					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $log='C:\Windows\Temp\itb-server.log'; 'START' | Out-File $log; $d='[UpdateServerJson]'; $arr=$d.Split('|'); $cleanDir=$arr[0].TrimEnd('\'); $p=Join-Path $cleanDir 'appsettings.json'; $httpPort=$arr[1]; $rtmpPort=$arr[2]; $apiPort=$arr[3]; $hlsPort=$arr[4]; $dataDir=$arr[5]; $dataDirJson=$dataDir.Replace('\', '\\'); 'Target File: '+$p+' | HTTP: '+$httpPort | Out-File $log -Append; if(-not(Test-Path $p)){ 'File Not Found' | Out-File $log -Append; exit 0 }; $c=Get-Content $p -Raw; $q=[\[]char[\]]34; $c=$c -replace ('(?i)'+$q+'Url'+$q+'\s*:\s*'+$q+'http://0\.0\.0\.0:\d+'+$q),($q+'Url'+$q+': '+$q+'http://0.0.0.0:'+$httpPort+$q); $c=$c -replace ('(?i)'+$q+'RtmpPort'+$q+'\s*:\s*\d+'),($q+'RtmpPort'+$q+': '+$rtmpPort); $c=$c -replace ('(?i)'+$q+'ApiPort'+$q+'\s*:\s*\d+'),($q+'ApiPort'+$q+': '+$apiPort); $c=$c -replace ('(?i)'+$q+'HlsPort'+$q+'\s*:\s*\d+'),($q+'HlsPort'+$q+': '+$hlsPort); $c=$c -replace ('(?i)'+$q+'LocalFallbackPath'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'LocalFallbackPath'+$q+': '+$q+$dataDirJson+$q); $c | Set-Content $p -Encoding UTF8; 'SUCCESS' | Out-File $log -Append; exit 0 } catch { 'ERR: '+$_.Exception.Message | Out-File $log -Append; exit 0 }&quot;"
 					  Execute="deferred"
 					  Impersonate="no"
 					  Return="ignore" />
@@ -35,13 +38,19 @@
 		<InstallExecuteSequence>
 			<Custom Action="KillServerProc" Before="InstallValidate" />
 			<Custom Action="KillMediaMtxProc" Before="InstallValidate" />
-			<!-- הפעלה רק בהתקנה חדשה -->
-			<Custom Action="UpdateServerJson" After="InstallFiles" Condition="NOT WIX_UPGRADE_DETECTED" />
+
+			<!-- הזרקת הנתונים למערכת רגע לפני יצירת תסריט ההתקנה -->
+			<Custom Action="SetServerJsonDataArgs" Before="InstallInitialize" Condition="NOT WIX_UPGRADE_DETECTED" />
+
+			<!-- הרצת הסקריפט רק לאחר שהקבצים הועתקו, שנייה לפני הדלקת השירות -->
+			<Custom Action="UpdateServerJson" Before="StartServices" Condition="NOT WIX_UPGRADE_DETECTED" />
 		</InstallExecuteSequence>
 
+		<!-- ממשק המשתמש -->
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
+		<!-- ברירות מחדל -->
 		<Property Id="HTTP_PORT" Value="5090" />
 		<Property Id="RTMP_PORT" Value="19350" />
 		<Property Id="API_PORT" Value="9997" />

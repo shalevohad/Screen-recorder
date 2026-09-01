@@ -11,6 +11,17 @@ export default function App() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [telemetryOpen, setTelemetryOpen] = useState(false);
 
+    // 💡 ניהול מדדי השרת המרכזיים ברמת ה-App כדי להזין את ה-Header העליון
+    const [actualServerHealth, setActualServerHealth] = useState({
+        hostCpuPct: 0,
+        processCpuPct: 0,
+        processRamMb: 0,
+        hostTotalRamMb: 16384,
+        netTxMbps: 0,
+        netMaxMbps: 1000,
+        uptimeSeconds: 0
+    });
+
     const fetchStations = useCallback(async (isActive = true) => {
         try {
             const response = await fetch('/api/v1/dashboard/stations');
@@ -23,6 +34,39 @@ export default function App() {
         } catch (err) {
             console.error('Failed to fetch stations telemetry:', err);
         }
+    }, []);
+
+    // 💡 דגימת מדדי השרת כל 2 שניות ברמת האפליקציה הראשית
+    useEffect(() => {
+        let isActive = true;
+
+        const fetchServerHealth = async () => {
+            try {
+                const response = await fetch('/api/monitoring/server');
+                if (response.ok && isActive) {
+                    const data = await response.json();
+                    setActualServerHealth({
+                        hostCpuPct: data.hostCpuPct || 0,
+                        processCpuPct: data.processCpuPct || 0,
+                        processRamMb: data.processRamMb || 0,
+                        hostTotalRamMb: data.hostTotalRamMb > 0 ? data.hostTotalRamMb : 16384,
+                        netTxMbps: data.serverNetworkTxMbps || 0,
+                        netMaxMbps: data.serverNetworkLinkSpeed > 0 ? data.serverNetworkLinkSpeed : 1000,
+                        uptimeSeconds: data.uptimeSeconds || 0
+                    });
+                }
+            } catch (error) {
+                // התעלמות שקטה בשגיאות תקשורת זמניות
+            }
+        };
+
+        fetchServerHealth();
+        const healthInterval = setInterval(fetchServerHealth, 2000);
+
+        return () => {
+            isActive = false;
+            clearInterval(healthInterval);
+        };
     }, []);
 
     useEffect(() => {
@@ -59,9 +103,10 @@ export default function App() {
 
     return (
         <div className="p-6 bg-[#010409] min-h-screen text-white dashboard-container dir-ltr">
-            {/* 💡 החלפת ה-Header הישן ב-CommandCenterHeader המבצעי החדש */}
-            <CommandCenterHeader 
+            {/* 💡 העברת מדדי השרת אל ה-CommandCenterHeader העליון */}
+            <CommandCenterHeader
                 activeAgentsCount={stations.length}
+                serverHealth={actualServerHealth}
                 onOpenTelemetry={() => setTelemetryOpen(true)}
                 onOpenSettings={() => setSettingsOpen(true)}
             />

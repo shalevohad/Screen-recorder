@@ -55,10 +55,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     DroppedFrames = agent.DroppedFrames,
                     QosTier = agent.QosTier,
 
-                    // החזרת המדדים החדשים בצורתם הנקייה
                     MediaTxMbps = agent.MediaTxMbps,
+                    NicTotalRxMbps = agent.NicTotalRxMbps,
+                    NicTotalTxMbps = agent.NicTotalTxMbps,
+                    NetTotalTxMbps = agent.NicTotalTxMbps,
                     TelemetryTxKbps = agent.TelemetryTxKbps,
                     NicUtilizationPct = agent.NicUtilizationPct,
+                    LinkSpeedMbps = agent.LinkSpeedMbps > 0 ? agent.LinkSpeedMbps : 1000,
 
                     HostCpuPct = agent.HostCpuPct,
                     ProcessCpuPct = agent.ProcessCpuPct,

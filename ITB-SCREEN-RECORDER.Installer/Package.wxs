@@ -13,37 +13,44 @@
 					  AllowSameVersionUpgrades="yes"
 					  Schedule="afterInstallInitialize" />
 
+		<!-- ביטול Restart Manager להתקנות שקטות (Zero-Touch) -->
 		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
-		<!-- פעולות חיסול אגרסיביות -->
-		<CustomAction Id="KillAgentWorker" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentWorker.exe /T" Execute="immediate" Return="ignore" />
+		<!-- 1. חיסול שירותים ותהליכים רצים -->
 		<CustomAction Id="KillAgentServiceProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentService.exe /T" Execute="immediate" Return="ignore" />
+		<CustomAction Id="KillAgentWorker" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentWorker.exe /T" Execute="immediate" Return="ignore" />
 
-		<!-- 💡 יצירת פקודת PowerShell שקטה שעורכת את ה-JSON בהתקנה הראשונית -->
-		<SetProperty Id="UpdateAgentJson"
-					 Value="powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $p='[INSTALLFOLDER]appsettings.json'; $j=Get-Content $p -Raw | ConvertFrom-Json; $j.DashboardApiUrl='http://[SERVER_IP]/api/v1/agent/telemetry'; $j.RtmpServerBaseUrl='rtmp://[SERVER_IP]/live/'; $j | ConvertTo-Json -Depth 10 | Set-Content $p } catch { }&quot;"
-					 Before="UpdateAgentJson"
-					 Sequence="execute" />
+		<!-- 2. אריזת הנתונים לתוך ה-ID של הפעולה הבאה (Immediate) -->
+		<CustomAction Id="SetJsonDataArgs"
+					  Property="UpdateAgentJson"
+					  Value="[INSTALLFOLDER]|[SERVER_IP]"
+					  Execute="immediate" />
 
+		<!-- 3. ריצת הסקריפט: עוקף את ה"אכילה" של הסוגריים המרובעים ב-MSI -->
 		<CustomAction Id="UpdateAgentJson"
-					  Directory="INSTALLFOLDER"
-					  ExeCommand="[UpdateAgentJson]"
+					  Directory="System64Folder"
+					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $log='C:\Windows\Temp\itb-agent.log'; 'START' | Out-File $log; $d='[UpdateAgentJson]'; $arr=$d.Split('|'); $cleanDir=$arr[0].TrimEnd('\'); $p=Join-Path $cleanDir 'appsettings.json'; $ip=$arr[1]; 'Target File: '+$p+' | IP: '+$ip | Out-File $log -Append; if(-not(Test-Path $p)){ 'File Not Found' | Out-File $log -Append; exit 0 }; $h=if($ip.Contains(':')){$ip.Split(':')[0]}else{$ip}; $c=Get-Content $p -Raw; $q=[\[]char[\]]34; $c=$c -replace ('(?i)'+$q+'DashboardApiUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'DashboardApiUrl'+$q+': '+$q+'http://'+$h+':5090/api/v1/agent/telemetry'+$q); $c=$c -replace ('(?i)'+$q+'RtmpServerBaseUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'RtmpServerBaseUrl'+$q+': '+$q+'rtmp://'+$h+':19350/live/'+$q); $c | Set-Content $p -Encoding UTF8; 'SUCCESS' | Out-File $log -Append; exit 0 } catch { 'ERR: '+$_.Exception.Message | Out-File $log -Append; exit 0 }&quot;"
 					  Execute="deferred"
 					  Impersonate="no"
 					  Return="ignore" />
 
 		<InstallExecuteSequence>
-			<Custom Action="KillAgentWorker" Before="InstallValidate" />
 			<Custom Action="KillAgentServiceProc" Before="InstallValidate" />
-			<!-- 💡 הפעלת הפקודה רק לאחר העתקת הקבצים החדשים, ורק אם מדובר בהתקנה חדשה (ולא שדרוג) -->
-			<Custom Action="UpdateAgentJson" After="InstallFiles" Condition="NOT WIX_UPGRADE_DETECTED" />
+			<Custom Action="KillAgentWorker" Before="InstallValidate" />
+
+			<!-- הזרקת הנתונים למערכת רגע לפני יצירת תסריט ההתקנה -->
+			<Custom Action="SetJsonDataArgs" Before="InstallInitialize" Condition="NOT WIX_UPGRADE_DETECTED" />
+
+			<!-- הרצת הסקריפט רק לאחר שהקבצים הועתקו, שנייה לפני הדלקת השירות -->
+			<Custom Action="UpdateAgentJson" Before="StartServices" Condition="NOT WIX_UPGRADE_DETECTED" />
 		</InstallExecuteSequence>
 
+		<!-- ממשק המשתמש -->
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<Property Id="SERVER_IP" Value="127.0.0.1:5090" />
+		<Property Id="SERVER_IP" Value="127.0.0.1" />
 
 		<UI>
 			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
@@ -54,7 +61,7 @@
 				<Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent Configuration" />
 				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address or Hostname of the Central ITB Server." />
 
-				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP/Host (e.g. 192.168.1.50:5090):" />
+				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP/Host (e.g. 192.168.1.50):" />
 				<Control Id="IpEdit" Type="Edit" X="20" Y="75" Width="200" Height="18" Property="SERVER_IP" />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />

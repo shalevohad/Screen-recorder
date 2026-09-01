@@ -76,6 +76,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("nicUtilizationPct")]
         public double NicUtilizationPct { get; set; }
 
+        [JsonPropertyName("linkSpeedMbps")]
+        public double LinkSpeedMbps { get; set; } = 1000;
+
         [JsonPropertyName("hostCpuPct")]
         public double HostCpuPct { get; set; }
 

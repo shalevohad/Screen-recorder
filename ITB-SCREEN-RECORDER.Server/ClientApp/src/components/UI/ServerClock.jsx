@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import './ServerClock.scss';
 
 function ServerMetricRow({ color, title, iconSvg, primaryValue, secondaryValue }) {
@@ -17,7 +17,7 @@ export default function ServerClock({
     hostCpu = 0,
     processCpu = 0,
     serverRamUsedMb = 0,
-    serverRamTotalMb = 131072,
+    serverRamTotalMb = 16384,
     serverNetTxMbps = 0,
     serverNetMaxMbps = 1000,
     serverUptimeSeconds = 0
@@ -26,8 +26,6 @@ export default function ServerClock({
     const [localUptime, setLocalUptime] = useState(serverUptimeSeconds);
     const [timezone, setTimezone] = useState('Asia/Jerusalem');
     const [locale, setLocale] = useState('en-US');
-
-    const lastSyncTimeRef = useRef(0);
 
     useEffect(() => {
         let isActive = true;
@@ -45,14 +43,8 @@ export default function ServerClock({
     }, []);
 
     useEffect(() => {
-        if (!serverUptimeSeconds) return;
-
-        const now = Date.now();
-        const fiveMinutesMs = 5 * 60 * 1000;
-
-        if (lastSyncTimeRef.current === 0 || now - lastSyncTimeRef.current >= fiveMinutesMs) {
+        if (serverUptimeSeconds > 0) {
             setLocalUptime(serverUptimeSeconds);
-            lastSyncTimeRef.current = now;
         }
     }, [serverUptimeSeconds]);
 
@@ -85,6 +77,7 @@ export default function ServerClock({
     const formattedTime = timeFormatter.format(currentTime);
     const displayLocation = timezone.split('/').pop().replace('_', ' ').toUpperCase();
 
+    // חישוב אחוז ניצול RAM כללי למערכת
     const ramPct = serverRamTotalMb > 0 ? (serverRamUsedMb / serverRamTotalMb) * 100 : 0;
     const netPct = serverNetMaxMbps > 0 ? (serverNetTxMbps / serverNetMaxMbps) * 100 : 0;
 
@@ -111,6 +104,12 @@ export default function ServerClock({
         return str;
     };
 
+    // פונקציית עזר להצגת נפח ה-RAM (MB או GB)
+    const formatMemorySize = (mb) => {
+        const gb = mb / 1024;
+        return gb >= 1 ? `${gb.toFixed(0)}G` : `${Math.round(mb)}M`;
+    };
+
     const cpuIcon = (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -134,9 +133,14 @@ export default function ServerClock({
         </svg>
     );
 
+    // נתוני האפליקציה (Process RAM מתוך ה-API)
+    const appRamMb = serverRamUsedMb; // הערך שמגיע מ-processRamMb
+    const appRamPctOfTotal = serverRamTotalMb > 0 ? (appRamMb / serverRamTotalMb) * 100 : 0;
+    const totalRamGbStr = formatMemorySize(serverRamTotalMb);
+    const appRamStr = formatMemorySize(appRamMb);
+
     return (
         <div className="noc-clock-panel">
-
             <div className="clock-section-left">
                 <div className="location-row">
                     <div className="live-dot"></div>
@@ -155,7 +159,7 @@ export default function ServerClock({
             <div className="clock-divider"></div>
 
             <div className="clock-section-right">
-                {/* CPU: Host general first, App contribution second */}
+                {/* CPU */}
                 <ServerMetricRow
                     color={getStatusColor(hostCpu)}
                     title={`Host Total CPU: ${hostCpu.toFixed(1)}%\nApp CPU: ${processCpu.toFixed(1)}%`}
@@ -164,13 +168,13 @@ export default function ServerClock({
                     secondaryValue={` (App ${processCpu.toFixed(1)}%)`}
                 />
 
-                {/* RAM: Total RAM percentage first, App RAM second */}
+                {/* RAM: אחוז כללי בירוק, פירוט מוחלט ואחוז תרומה בסוגריים כחולים */}
                 <ServerMetricRow
                     color={getStatusColor(ramPct)}
-                    title={`Host Total RAM: ${ramPct.toFixed(1)}%\nApp RAM: ${(serverRamUsedMb / 1024).toFixed(1)}G of ${(serverRamTotalMb / 1024).toFixed(0)}G`}
+                    title={`Host Total RAM: ${ramPct.toFixed(1)}%\nApp RAM: ${appRamStr} of ${totalRamGbStr} (${appRamPctOfTotal.toFixed(1)}%)`}
                     iconSvg={ramIcon}
                     primaryValue={`${ramPct.toFixed(1)}%`}
-                    secondaryValue={` (${(serverRamUsedMb / 1024).toFixed(1)}G)`}
+                    secondaryValue={` (${appRamStr} / ${totalRamGbStr} (${appRamPctOfTotal.toFixed(1)}%))`}
                 />
 
                 {/* NET */}

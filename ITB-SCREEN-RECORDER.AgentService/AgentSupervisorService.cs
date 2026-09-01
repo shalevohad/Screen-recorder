@@ -302,6 +302,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     MediaTxMbps = isStreaming ? Math.Round((_lastTelemetry?.MediaTxMbps / 1000) ?? 0, 2) : 0,
                     TelemetryTxKbps = Math.Round(currentTelemKbps, 2),
                     NicUtilizationPct = isStreaming ? Math.Round(_lastTelemetry?.AppLineUtilizationPct ?? 0, 4) : 0,
+                    LinkSpeedMbps = _lastTelemetry?.NicLinkSpeedMbps > 0 ? _lastTelemetry.NicLinkSpeedMbps : 1000,
 
                     NicTotalTxMbps = Math.Round(_lastTelemetry?.NicTotalTxMbps ?? 0, 2),
                     NicTotalRxMbps = Math.Round(_lastTelemetry?.NicTotalRxMbps ?? 0, 2),
