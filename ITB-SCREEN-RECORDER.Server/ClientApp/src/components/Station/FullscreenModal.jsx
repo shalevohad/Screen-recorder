@@ -1,7 +1,6 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
-import CategoryMetricBars from '../UI/CategoryMetricBars';
 import './FullscreenModal.scss';
 
 export default function FullscreenModal({
@@ -55,38 +54,22 @@ export default function FullscreenModal({
                 zIndex: 9999
             }}
         >
-            <div ref={modalBoxRef} className="stream-modal-box" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="stream-modal-header" style={{ flexWrap: 'wrap', gap: '15px' }}>
+            <div ref={modalBoxRef} className="stream-modal-box">
+
+                {/* 💡 Tactical HUD Overlay - צף מעל הוידאו ומופיע במעבר עכבר */}
+                <div className="stream-modal-header">
                     <div className="stream-modal-title">
                         <span className="live-dot"></span>
                         <h2>LIVE // {hostname}</h2>
                     </div>
 
                     <div className="modal-network-stats">
-                        <div className="modal-stat-box">
-                            <div className="modal-stat-header"><span>FPS</span></div>
-                            <span className="modal-stat-value green">{actualFps}</span>
-                        </div>
-                        <div className="modal-stat-box">
-                            <div className="modal-stat-header"><span>DROP</span></div>
-                            <span className={`modal-stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span>
-                        </div>
-                        <div className="modal-stat-box">
-                            <div className="modal-stat-header"><span>CPU (App/Host)</span></div>
-                            <span className="modal-stat-value yellow">{Number(processCpuPct).toFixed(1)}% / {Number(hostCpuPct).toFixed(1)}%</span>
-                        </div>
-                        <div className="modal-stat-box">
-                            <div className="modal-stat-header"><span>NVENC</span></div>
-                            <span className="modal-stat-value yellow">{Number(gpuNvencPct).toFixed(1)}%</span>
-                        </div>
-                        <div className="modal-stat-box" style={{ minWidth: '80px' }}>
-                            <div className="modal-stat-header"><span>VBR Mbps</span></div>
-                            <span className="modal-stat-value blue">{Number(mediaTxMbps).toFixed(2)}</span>
-                        </div>
-                        <div className="modal-stat-box" style={{ minWidth: '80px' }}>
-                            <div className="modal-stat-header"><span>C2 Kbps</span></div>
-                            <span className="modal-stat-value" style={{ color: '#a855f7' }}>{Number(telemetryTxKbps).toFixed(1)}</span>
-                        </div>
+                        <span className="stat-pill">FPS <span className="val green">{actualFps}</span></span>
+                        <span className="stat-pill">DROP <span className={`val ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span></span>
+                        <span className="stat-pill">CPU <span className="val yellow">{Number(hostCpuPct).toFixed(1)}%</span></span>
+                        <span className="stat-pill">NVENC <span className="val yellow">{Number(gpuNvencPct).toFixed(1)}%</span></span>
+                        <span className="stat-pill">VBR <span className="val blue">{Number(mediaTxMbps).toFixed(2)}</span></span>
+                        <span className="stat-pill">C2 <span className="val purple">{Number(telemetryTxKbps).toFixed(1)}</span></span>
                     </div>
 
                     <button onClick={onClose} className="stream-modal-close-btn" title="Close (ESC)">
@@ -94,22 +77,7 @@ export default function FullscreenModal({
                     </button>
                 </div>
 
-                {/* שילוב פסי הקטגוריות המודולריים במודל */}
-                <div style={{ padding: '10px 20px', background: '#020617', borderBottom: '1px solid #1e293b' }}>
-                    <CategoryMetricBars
-                        hostCpuPct={hostCpuPct}
-                        processCpuPct={processCpuPct}
-                        gpu3dPct={gpu3dPct}
-                        gpuNvencPct={gpuNvencPct}
-                        mediaTxMbps={mediaTxMbps}
-                        netTotalTxMbps={netTotalTxMbps}
-                        ramAvg={ramAvg}
-                        processRamMb={processRamMb}
-                        hostTotalRamMb={hostTotalRamMb}
-                    />
-                </div>
-
-                <div className="stream-modal-body" style={{ flexGrow: 1, position: 'relative', backgroundColor: '#000' }}>
+                <div className="stream-modal-body">
                     {!isVideoPlaying && (
                         <div
                             style={{ position: 'absolute', inset: 0, zIndex: 10 }}

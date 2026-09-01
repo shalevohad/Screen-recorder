@@ -13,10 +13,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
-using System.Linq;
 
 #if WINDOWS
-using Microsoft.Win32;
 using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
 #endif
 
@@ -26,13 +24,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
     {
         private bool _lastWorkerLaunchFailed = false;
         private readonly ILogger<AgentSupervisorService> _logger;
+        private readonly AppConfig _config;
         private readonly string _workerPath;
         private readonly string _policyFilePath;
         private readonly HttpClient _httpClient;
         private readonly string _localBufferPath;
 
         private string _serverBaseUrl = "127.0.0.1:5090";
-        private int _defaultPort = 5090;
         private AgentStreamPolicy _currentPolicy = new AgentStreamPolicy();
 
         private bool _isWorkerStreaming;
@@ -72,11 +70,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
         public AgentSupervisorService(ILogger<AgentSupervisorService> logger, AppConfig config)
         {
             _logger = logger;
+            _config = config ?? throw new ArgumentNullException(nameof(config));
             _policyFilePath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
 
-            _localBufferPath = string.IsNullOrWhiteSpace(config.LocalBufferPath)
+            _localBufferPath = string.IsNullOrWhiteSpace(_config.LocalBufferPath)
                 ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
-                : config.LocalBufferPath;
+                : _config.LocalBufferPath;
 
             _workerPath = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "ITB-SCREEN-RECORDER.AgentWorker.exe" : "ITB-SCREEN-RECORDER.AgentWorker");
             if (!File.Exists(_workerPath) && OperatingSystem.IsLinux())
@@ -89,72 +88,38 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 Timeout = TimeSpan.FromSeconds(5)
             };
 
-            LoadServerIpConfig();
+            InitServerConfiguration();
             LoadLocalPolicyFallback();
         }
 
-        private void LoadServerIpConfig()
+        private void InitServerConfiguration()
         {
-            bool loadedFromRegistry = false;
-
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (!string.IsNullOrWhiteSpace(_config.DashboardApiUrl))
             {
-#if WINDOWS
-                loadedFromRegistry = LoadServerIpFromRegistrySafe();
-#endif
+                if (Uri.TryCreate(_config.DashboardApiUrl, UriKind.Absolute, out Uri? parsedUri))
+                {
+                    _serverBaseUrl = parsedUri.Authority;
+                }
+                else
+                {
+                    _serverBaseUrl = _config.DashboardApiUrl.Replace("http://", "").Replace("https://", "").TrimEnd('/');
+                }
+                _logger.LogInformation("Loaded Server Endpoint from AppConfig: {ServerBaseUrl}", _serverBaseUrl);
             }
-
-            if (!loadedFromRegistry)
+            else
             {
                 var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
                 if (!string.IsNullOrWhiteSpace(envIp))
                 {
-                    _serverBaseUrl = envIp.Trim();
-                    _logger.LogInformation("Loaded ServerIp from Environment Variable: {ServerBaseUrl}", _serverBaseUrl);
+                    _serverBaseUrl = envIp.Trim().Contains(':') ? envIp.Trim() : $"{envIp.Trim()}:5090";
+                    _logger.LogInformation("Loaded Server IP from Environment Variable: {ServerBaseUrl}", _serverBaseUrl);
                 }
                 else
                 {
-                    _logger.LogWarning("ServerIp not found in Registry or Environment. Using default fallback: {ServerBaseUrl}", _serverBaseUrl);
+                    _logger.LogWarning("Using fallback Server URL: {ServerBaseUrl}", _serverBaseUrl);
                 }
-            }
-
-            if (!string.IsNullOrWhiteSpace(_serverBaseUrl) && !_serverBaseUrl.Contains(':'))
-            {
-                _serverBaseUrl = $"{_serverBaseUrl.Trim()}:{_defaultPort}";
-                _logger.LogInformation("Configured Server URL: {ServerBaseUrl}", _serverBaseUrl);
             }
         }
-
-#if WINDOWS
-        private bool LoadServerIpFromRegistrySafe()
-        {
-#pragma warning disable CA1416
-            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
-            {
-                try
-                {
-                    using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                    using var key = baseKey.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
-                    if (key != null)
-                    {
-                        var ipVal = key.GetValue("ServerIp");
-                        if (ipVal != null && !string.IsNullOrWhiteSpace(ipVal.ToString()))
-                        {
-                            _serverBaseUrl = ipVal.ToString()!.Trim();
-                            _logger.LogInformation("Successfully loaded ServerIp from Windows Registry ({View}): {ServerBaseUrl}", view, _serverBaseUrl);
-                            return true;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("Failed to read ServerIp from Windows Registry view {View}: {Msg}", view, ex.Message);
-                }
-            }
-#pragma warning restore CA1416
-            return false;
-        }
-#endif
 
         private void LoadLocalPolicyFallback()
         {
@@ -170,11 +135,21 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
+        private string GetEffectiveRtmpDestination()
+        {
+            string baseUrl = !string.IsNullOrWhiteSpace(_currentPolicy.RtmpServerBaseUrl)
+                ? _currentPolicy.RtmpServerBaseUrl
+                : _config.RtmpServerBaseUrl;
+
+            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+            return $"{baseUrl.TrimEnd('/')}/{safeMachineName}";
+        }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             DebugHelper.ApplyConsoleVisibility();
 
-            _logger.LogInformation("AgentSupervisorService initialized. Target Server URL: {ServerBaseUrl}", _serverBaseUrl);
+            _logger.LogInformation("AgentSupervisorService active. Dashboard endpoint: {ServerBaseUrl}", _serverBaseUrl);
 
             _ = Task.Run(() => ListenToWorkerIpcAsync(stoppingToken), stoppingToken);
 
@@ -189,7 +164,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     if (DebugHelper.IsDebugModeEnabled())
                     {
-                        _logger.LogError("Supervisor tick failed: {Msg}", ex.Message);
+                        _logger.LogError("Supervisor tick error: {Msg}", ex.Message);
                     }
                 }
 
@@ -213,7 +188,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("Failed to terminate worker processes on shutdown: {Msg}", ex.Message);
+                _logger.LogWarning("Failed to cleanup worker processes on shutdown: {Msg}", ex.Message);
             }
         }
 
@@ -229,7 +204,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Waiting for Worker IPC connection...");
                     await pipeServer.WaitForConnectionAsync(ct);
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Worker connected to IPC!");
+                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Worker connected to IPC.");
 
                     using var reader = new StreamReader(pipeServer);
                     using var writer = new StreamWriter(pipeServer) { AutoFlush = true };
@@ -288,7 +263,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 int offlineFilesCount = 0;
                 long offlineFilesSizeMb = 0;
 
-                // ביצוע בטוח אם המתודה מוגדרת למערכת ספציפית
                 try
                 {
                     var bufferStats = ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.GetBufferStats(_localBufferPath);
@@ -339,7 +313,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 string jsonPayload = JsonSerializer.Serialize(report);
                 _lastTelemetryPayloadSizeBytes = Encoding.UTF8.GetByteCount(jsonPayload);
 
-                string targetEndpoint = $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
+                string targetEndpoint = _serverBaseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? $"{_serverBaseUrl.TrimEnd('/')}/api/v1/agent/telemetry"
+                    : $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
 
                 using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 var response = await _httpClient.PostAsync(targetEndpoint, content, ct);
@@ -375,15 +351,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                                 if (policyChanged)
                                 {
-                                    if (DebugHelper.IsDebugModeEnabled())
-                                        _logger.LogInformation("Policy change detected from server. Updating local cache.");
-
                                     _currentPolicy = heartbeatResponse.Policy;
                                     await File.WriteAllTextAsync(_policyFilePath, JsonSerializer.Serialize(_currentPolicy), ct);
 
                                     if (isStreaming)
                                     {
-                                        await SendCommandToWorkerAsync($"Restart|{_serverUtcOffset.Ticks}");
+                                        string dest = GetEffectiveRtmpDestination();
+                                        await SendCommandToWorkerAsync($"Restart|{dest}|{_serverUtcOffset.Ticks}");
                                     }
                                 }
                             }
@@ -394,13 +368,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             }
                             else if (heartbeatResponse.Command == ServerCommand.StartStream)
                             {
-                                await SendCommandToWorkerAsync($"Start|{_serverUtcOffset.Ticks}");
+                                string dest = GetEffectiveRtmpDestination();
+                                await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning("Failed to deserialize heartbeat response: {Msg}", ex.Message);
+                        _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
                 }
             }
@@ -408,7 +383,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 if (DebugHelper.IsDebugModeEnabled())
                 {
-                    _logger.LogWarning("Failed to send telemetry report to server: {Msg}", ex.Message);
+                    _logger.LogWarning("Telemetry transmission failed: {Msg}", ex.Message);
                 }
             }
             finally
@@ -447,7 +422,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 if (procs.Length > 0 && isHeartbeatDead)
                 {
-                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead. Terminating frozen process...");
+                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead. Terminating process...");
                     foreach (var proc in procs)
                     {
                         try
@@ -466,7 +441,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     if (!_lastWorkerLaunchFailed)
                     {
-                        _logger.LogInformation("Worker process not detected (or was purged). Launching Worker...");
+                        _logger.LogInformation("Launching Worker process...");
                     }
 
                     if (OperatingSystem.IsWindows())
@@ -477,13 +452,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         {
                             if (!_lastWorkerLaunchFailed)
                             {
-                                _logger.LogWarning("Failed to launch AgentWorker interactively. Normal if session is locked/logged out. (Further identical warnings suppressed).");
+                                _logger.LogWarning("Failed to launch AgentWorker interactively. Session might be locked/logged out.");
                                 _lastWorkerLaunchFailed = true;
                             }
                         }
                         else
                         {
-                            _logger.LogInformation("AgentWorker successfully launched into the active user session.");
+                            _logger.LogInformation("AgentWorker launched successfully into active session.");
                             _lastWorkerHeartbeat = DateTime.UtcNow;
                             _lastWorkerLaunchFailed = false;
                         }
@@ -513,7 +488,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
             catch (Exception ex)
             {
-                _logger.LogError("Critical error in EnsureWorkerRunning: {Msg}", ex.Message);
+                _logger.LogError("Error in EnsureWorkerRunning: {Msg}", ex.Message);
             }
         }
     }

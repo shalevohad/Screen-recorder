@@ -10,27 +10,40 @@
 			 Compressed="yes">
 
 		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed."
-					  AllowSameVersionUpgrades="yes" />
+					  AllowSameVersionUpgrades="yes"
+					  Schedule="afterInstallInitialize" />
 
+		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
-		<util:CloseApplication Id="CloseWorkerProcess"
-							   Target="ITB-SCREEN-RECORDER.AgentWorker.exe"
-							   CloseMessage="yes"
-							   RebootPrompt="no" />
+		<!-- פעולות חיסול אגרסיביות -->
+		<CustomAction Id="KillAgentWorker" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentWorker.exe /T" Execute="immediate" Return="ignore" />
+		<CustomAction Id="KillAgentServiceProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentService.exe /T" Execute="immediate" Return="ignore" />
+
+		<!-- 💡 יצירת פקודת PowerShell שקטה שעורכת את ה-JSON בהתקנה הראשונית -->
+		<SetProperty Id="UpdateAgentJson"
+					 Value="powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $p='[INSTALLFOLDER]appsettings.json'; $j=Get-Content $p -Raw | ConvertFrom-Json; $j.DashboardApiUrl='http://[SERVER_IP]/api/v1/agent/telemetry'; $j.RtmpServerBaseUrl='rtmp://[SERVER_IP]/live/'; $j | ConvertTo-Json -Depth 10 | Set-Content $p } catch { }&quot;"
+					 Before="UpdateAgentJson"
+					 Sequence="execute" />
+
+		<CustomAction Id="UpdateAgentJson"
+					  Directory="INSTALLFOLDER"
+					  ExeCommand="[UpdateAgentJson]"
+					  Execute="deferred"
+					  Impersonate="no"
+					  Return="ignore" />
+
+		<InstallExecuteSequence>
+			<Custom Action="KillAgentWorker" Before="InstallValidate" />
+			<Custom Action="KillAgentServiceProc" Before="InstallValidate" />
+			<!-- 💡 הפעלת הפקודה רק לאחר העתקת הקבצים החדשים, ורק אם מדובר בהתקנה חדשה (ולא שדרוג) -->
+			<Custom Action="UpdateAgentJson" After="InstallFiles" Condition="NOT WIX_UPGRADE_DETECTED" />
+		</InstallExecuteSequence>
 
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<Property Id="SERVER_IP">
-			<RegistrySearch Id="SearchServerIp" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="ServerIp" Type="raw" />
-		</Property>
-		<SetProperty Id="SERVER_IP" Value="127.0.0.1:5090" After="AppSearch" Condition="NOT SERVER_IP" />
-
-		<Property Id="DEBUG_MODE">
-			<RegistrySearch Id="SearchDebugMode" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="DebugMode" Type="raw" />
-		</Property>
-		<SetProperty Id="DEBUG_MODE" Value="0" After="AppSearch" Condition="NOT DEBUG_MODE" />
+		<Property Id="SERVER_IP" Value="127.0.0.1:5090" />
 
 		<UI>
 			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
@@ -39,9 +52,9 @@
 				<Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
 
 				<Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent Configuration" />
-				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address of the Central ITB Server." />
+				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address or Hostname of the Central ITB Server." />
 
-				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP Address:" />
+				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP/Host (e.g. 192.168.1.50:5090):" />
 				<Control Id="IpEdit" Type="Edit" X="20" Y="75" Width="200" Height="18" Property="SERVER_IP" />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
@@ -51,10 +64,12 @@
 				</Control>
 			</Dialog>
 
-			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ConfigurationDlg" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" Order="5" />
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ConfigurationDlg" Condition="NOT WIX_UPGRADE_DETECTED" Order="5" />
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="WIX_UPGRADE_DETECTED" Order="6" />
 			<Publish Dialog="ConfigurationDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1" />
 			<Publish Dialog="ConfigurationDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="1" />
-			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ConfigurationDlg" Condition="1" Order="5" />
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ConfigurationDlg" Condition="NOT WIX_UPGRADE_DETECTED" Order="5" />
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Condition="WIX_UPGRADE_DETECTED" Order="6" />
 		</UI>
 
 		<StandardDirectory Id="ProgramFiles64Folder">
@@ -68,14 +83,6 @@
 				<ServiceControl Id="ServiceController" Name="ITB_AgentService" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
 			</Component>
 
-			<Component Id="RegistryConfiguration" Bitness="always64" Guid="C43E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F80">
-				<RegistryKey Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder">
-					<RegistryValue Name="ServerIp" Value="[SERVER_IP]" Type="string" KeyPath="yes" />
-					<RegistryValue Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
-					<RegistryValue Name="DebugMode" Value="[DEBUG_MODE]" Type="integer" />
-				</RegistryKey>
-			</Component>
-
 			<Component Id="FfmpegLicenseDeclaration" Bitness="always64" Guid="D89A5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F99">
 				<File Id="FfmpegLicenseTxt" Source="LICENSE-FFMPEG.txt" KeyPath="yes" />
 			</Component>
@@ -85,7 +92,7 @@
 			</Files>
 		</ComponentGroup>
 
-		<Feature Id="MainFeature" Title="ITB Screen Recorder" Level="1">
+		<Feature Id="MainFeature" Title="ITB Screen Recorder Agent" Level="1">
 			<ComponentGroupRef Id="ProductComponents" />
 		</Feature>
 	</Package>

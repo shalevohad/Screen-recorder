@@ -34,6 +34,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private volatile bool _isStreamingRequested = false;
         private volatile bool _requiresImmediateRestart = false;
 
+        private string _injectedRtmpDestination = string.Empty;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
         private volatile bool _isOfflineModeActive = false;
         private readonly NetworkTelemetry _networkTelemetry = new NetworkTelemetry();
@@ -48,7 +49,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         public WorkerEngine(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _baselineFps = _config.TargetFps;
+            _baselineFps = _config.TargetFps > 0 ? _config.TargetFps : 30;
             _internalCaptureFps = _baselineFps;
         }
 
@@ -83,7 +84,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 {
                     if (!_isStreamingRequested)
                     {
-                        Logger.Info("[WorkerEngine] Worker is in Standby mode, waiting for streaming permission...");
+                        Logger.Info("[WorkerEngine] Worker in Standby, waiting for Supervisor stream command...");
                         await _streamPermissionSignal.WaitAsync(localToken);
                     }
 
@@ -91,15 +92,18 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     _requiresImmediateRestart = false;
 
-                    Logger.Info($"[WorkerEngine] Starting initialization... Outer Stream: {_baselineFps}FPS. Internal Capture: {_internalCaptureFps}FPS.");
+                    Logger.Info($"[WorkerEngine] Initializing capture pipeline... Stream FPS: {_baselineFps}, Internal Capture: {_internalCaptureFps}");
 
-                    if (Uri.TryCreate(_config.RtmpServerBaseUrl, UriKind.Absolute, out Uri? rtmpUri))
+                    string targetDestination = _injectedRtmpDestination;
+                    if (string.IsNullOrWhiteSpace(targetDestination))
+                    {
+                        string safeName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+                        targetDestination = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeName}";
+                    }
+
+                    if (Uri.TryCreate(targetDestination, UriKind.Absolute, out Uri? rtmpUri))
                     {
                         _networkTelemetry.ResolveRoutingInterface(rtmpUri.Host);
-                    }
-                    else
-                    {
-                        Logger.Warn($"[WorkerEngine] Could not parse RTMP URL for routing resolution: {_config.RtmpServerBaseUrl}");
                     }
 
                     IScreenCaptureProvider? screenCapture = null;
@@ -144,18 +148,22 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         if (_isOfflineModeActive)
                         {
                             string bufferDir = _config.LocalBufferPath;
-                            if (string.IsNullOrWhiteSpace(bufferDir)) bufferDir = @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer";
+                            if (string.IsNullOrWhiteSpace(bufferDir))
+                            {
+                                bufferDir = OperatingSystem.IsWindows()
+                                    ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
+                                    : "/var/lib/itb-screen-recorder/buffer";
+                            }
                             Directory.CreateDirectory(bufferDir);
 
                             string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
                             destinationTarget = Path.Combine(bufferDir, $"{safeMachineName}_{calibratedTime:yyyyMMdd_HHmmss}.flv");
-                            Logger.Warn($"[WorkerEngine] SERVER OFFLINE. Starting Isolated Local Recording to: {destinationTarget}");
+                            Logger.Warn($"[WorkerEngine] Operating in Isolated Buffer Mode -> {destinationTarget}");
                         }
                         else
                         {
-                            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
-                            destinationTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
-                            Logger.Info($"[WorkerEngine] Starting LIVE streaming to: {destinationTarget}");
+                            destinationTarget = targetDestination;
+                            Logger.Info($"[WorkerEngine] Live RTMP Streaming -> {destinationTarget}");
                         }
 
                         bool started = await ffmpegManager.StartAsync(destinationTarget, calibratedTime, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
@@ -175,8 +183,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             _isStreamingRequested = false;
                             continue;
                         }
-
-                        Logger.Info("[WorkerEngine] Capture and streaming are active.");
 
                         isSessionActive = true;
                         isCaptureActive = true;
@@ -289,7 +295,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         {
                                             if (!_isOfflineModeActive)
                                             {
-                                                Logger.Warn("[WorkerEngine] Network/MediaMTX connection lost (Broken Pipe). Switching to ISOLATED MODE.");
+                                                Logger.Warn("[WorkerEngine] Output pipeline closed. Switching to isolated buffer mode.");
                                                 _isOfflineModeActive = true;
                                                 _requiresImmediateRestart = true;
                                             }
@@ -330,7 +336,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         if (_currentQosTier > 0)
                                         {
                                             SetQosTier(_currentQosTier - 1);
-                                            Logger.Warn($"[AUTO-HEAL] Severe choke detected. Downgrading INTERNAL capture to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
+                                            Logger.Warn($"[AUTO-HEAL] Downscaling capture rate to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
                                             consecutiveChokeSeconds = 0;
                                         }
                                         else
@@ -349,7 +355,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         if (_currentQosTier < 3)
                                         {
                                             SetQosTier(_currentQosTier + 1);
-                                            Logger.Info($"[AUTO-HEAL] Stream stable for 20s. Upgrading INTERNAL capture to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
+                                            Logger.Info($"[AUTO-HEAL] Pipeline recovered. Upscaling capture rate to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
                                             consecutiveStableSeconds = 0;
                                         }
                                         else
@@ -379,11 +385,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error($"[WorkerEngine] Error during streaming session: {ex.Message}");
+                        Logger.Error($"[WorkerEngine] Streaming execution error: {ex.Message}");
                     }
                     finally
                     {
-                        Logger.Info("[WorkerEngine] Stopping and tearing down resources...");
+                        Logger.Info("[WorkerEngine] Tearing down pipeline resources...");
                         try
                         {
                             isSessionActive = false;
@@ -394,7 +400,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             if (screenCapture is IDisposable screenDisp) screenDisp.Dispose();
                             ffmpegManager?.Dispose();
                         }
-                        catch (Exception ex) { Logger.Error($"[WorkerEngine] Error teardown: {ex.Message}"); }
+                        catch (Exception ex) { Logger.Error($"[WorkerEngine] Teardown exception: {ex.Message}"); }
                     }
                 }
             }
@@ -435,25 +441,35 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                                     if (cmd.Equals("Stop", StringComparison.OrdinalIgnoreCase) || cmd.Equals("GracefulShutdown", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        Logger.Info("[WorkerEngine] Received STOP command.");
+                                        Logger.Info("[WorkerEngine] Received STOP command from Supervisor.");
                                         _isStreamingRequested = false;
                                     }
-                                    else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("ResumeAfterUnlock", StringComparison.OrdinalIgnoreCase))
+                                    else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        if (parts.Length > 1 && long.TryParse(parts[1], out long ticks))
+                                        if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
+                                        {
+                                            _injectedRtmpDestination = parts[1];
+                                        }
+
+                                        if (parts.Length > 2 && long.TryParse(parts[2], out long ticks))
                                         {
                                             _serverUtcOffset = TimeSpan.FromTicks(ticks);
                                         }
 
-                                        Logger.Info("[WorkerEngine] Received START command.");
+                                        Logger.Info($"[WorkerEngine] Received START/RESTART command. Destination: {_injectedRtmpDestination}");
                                         _isStreamingRequested = true;
+                                        if (cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            _requiresImmediateRestart = true;
+                                        }
+
                                         if (_streamPermissionSignal.CurrentCount == 0) _streamPermissionSignal.Release();
                                     }
                                     else if (cmd.Equals("ServerDisconnected", StringComparison.OrdinalIgnoreCase))
                                     {
                                         if (!_isOfflineModeActive && _isStreamingRequested)
                                         {
-                                            Logger.Warn("[WorkerEngine] IPC commanded Isolated Mode.");
+                                            Logger.Warn("[WorkerEngine] Server link down. Switching to Isolated Buffer Mode.");
                                             _isOfflineModeActive = true;
                                             _requiresImmediateRestart = true;
                                         }
@@ -462,7 +478,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                     {
                                         if (_isOfflineModeActive && _isStreamingRequested)
                                         {
-                                            Logger.Info("[WorkerEngine] Server is back online. Restoring LIVE RTMP.");
+                                            Logger.Info("[WorkerEngine] Server link restored. Reconnecting Live Stream.");
                                             _isOfflineModeActive = false;
                                             _requiresImmediateRestart = true;
                                         }
