@@ -25,9 +25,8 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public SecuritySettings Security { get; set; } = null!;
 
         [Required]
-        // תומך כעת גם ב-m קטנה וגם ב-M גדולה
-        [RegularExpression(@"^[1-5][Mm]$", ErrorMessage = "DefaultVideoBitrate must be between '1M' and '5M' (e.g., '5M').")]
-        public string DefaultVideoBitrate { get; set; } = "5M";
+        [RegularExpression(ConfigValidationRules.BitrateRegex, ErrorMessage = ConfigValidationRules.BitrateErrorMessage)]
+        public string DefaultVideoBitrate { get; set; } = "2500K";
 
         [Required]
         [Range(15, 60, ErrorMessage = "DefaultTargetFps must be between 15 and 60.")]
@@ -76,5 +75,11 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Range(1, 24)]
         public int TokenExpirationHours { get; set; }
+    }
+
+    public class StationOverride
+    {
+        public string? VideoBitrate { get; set; }
+        public int? TargetFps { get; set; }
     }
 }

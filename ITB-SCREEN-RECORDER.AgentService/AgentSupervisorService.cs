@@ -1,21 +1,20 @@
 ﻿using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 
-// הוספת ה-Namespace של ה-Registry אך ורק בקומפילציה ל-Windows
 #if WINDOWS
-using Microsoft.Win32;
 using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
 #endif
 
@@ -23,23 +22,67 @@ namespace ITB_SCREEN_RECORDER.AgentService
 {
     public class AgentSupervisorService : BackgroundService
     {
+        private bool _lastWorkerLaunchFailed = false;
         private readonly ILogger<AgentSupervisorService> _logger;
+        private readonly AppConfig _config;
         private readonly string _workerPath;
         private readonly string _policyFilePath;
         private readonly HttpClient _httpClient;
+        private readonly string _localBufferPath;
 
         private string _serverBaseUrl = "127.0.0.1:5090";
-        private int _defaultPort = 5090;
-        private AgentStreamPolicy _currentPolicy = new AgentStreamPolicy();
+        private AgentStreamPolicy _currentPolicy;
 
         private bool _isWorkerStreaming;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private StreamWriter? _workerCommandWriter;
+        private TimeSpan _serverUtcOffset = TimeSpan.Zero;
+        private IpcTelemetryDto? _lastTelemetry = null;
 
-        public AgentSupervisorService(ILogger<AgentSupervisorService> logger)
+        private long _lastTelemetryPayloadSizeBytes = 0;
+        private DateTime _lastTelemetrySendTime = DateTime.UtcNow;
+
+        private class IpcMessageDto
+        {
+            public bool IsStreaming { get; set; }
+            public bool IsOfflineMode { get; set; }
+            public IpcTelemetryDto? Telemetry { get; set; }
+        }
+
+        private class IpcTelemetryDto
+        {
+            public int ActualFps { get; set; }
+            public int DroppedFrames { get; set; }
+            public int InternalCaptureFps { get; set; }
+            public int QosTier { get; set; }
+            public double HostCpuPct { get; set; }
+            public double ProcessCpuPct { get; set; }
+            public double ProcessRamMb { get; set; }
+            public double Gpu3dPct { get; set; }
+            public double GpuNvencPct { get; set; }
+            public double MediaTxMbps { get; set; }
+            public double NicLinkSpeedMbps { get; set; }
+            public double NicTotalTxMbps { get; set; }
+            public double NicTotalRxMbps { get; set; }
+            public double AppLineUtilizationPct { get; set; }
+        }
+
+        public AgentSupervisorService(ILogger<AgentSupervisorService> logger, AppConfig config)
         {
             _logger = logger;
+            _config = config ?? throw new ArgumentNullException(nameof(config));
             _policyFilePath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
+
+            _currentPolicy = new AgentStreamPolicy
+            {
+                TargetFps = _config.TargetFps > 0 ? _config.TargetFps : 30,
+                VideoBitrate = string.IsNullOrWhiteSpace(_config.VideoBitrate) ? "5000k" : _config.VideoBitrate,
+                RtmpServerBaseUrl = _config.RtmpServerBaseUrl ?? string.Empty
+            };
+
+            _localBufferPath = string.IsNullOrWhiteSpace(_config.LocalBufferPath)
+                ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
+                : _config.LocalBufferPath;
 
             _workerPath = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "ITB-SCREEN-RECORDER.AgentWorker.exe" : "ITB-SCREEN-RECORDER.AgentWorker");
             if (!File.Exists(_workerPath) && OperatingSystem.IsLinux())
@@ -52,56 +95,37 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 Timeout = TimeSpan.FromSeconds(5)
             };
 
-            LoadServerIpConfig();
+            InitServerConfiguration();
             LoadLocalPolicyFallback();
         }
 
-        private void LoadServerIpConfig()
+        private void InitServerConfiguration()
         {
-            var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
-            if (!string.IsNullOrWhiteSpace(envIp))
+            if (!string.IsNullOrWhiteSpace(_config.DashboardApiUrl))
             {
-                _serverBaseUrl = envIp.Trim();
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                LoadServerIpFromRegistrySafe();
+                if (Uri.TryCreate(_config.DashboardApiUrl, UriKind.Absolute, out Uri? parsedUri))
+                {
+                    _serverBaseUrl = parsedUri.Authority;
+                }
+                else
+                {
+                    _serverBaseUrl = _config.DashboardApiUrl.Replace("http://", "").Replace("https://", "").TrimEnd('/');
+                }
+                _logger.LogInformation("Loaded Server Endpoint from AppConfig: {ServerBaseUrl}", _serverBaseUrl);
             }
             else
             {
-                _logger.LogInformation("Linux environment detected. No ITB_SERVER_IP env var found. Defaulting to {ServerBaseUrl}", _serverBaseUrl);
-            }
-
-            if (!string.IsNullOrWhiteSpace(_serverBaseUrl) && !_serverBaseUrl.Contains(':'))
-            {
-                _serverBaseUrl = $"{_serverBaseUrl.Trim()}:{_defaultPort}";
-                _logger.LogInformation("No port specified in server address. Automatically appended default port {DefaultPort}: {ServerBaseUrl}", _defaultPort, _serverBaseUrl);
-            }
-        }
-
-        private void LoadServerIpFromRegistrySafe()
-        {
-            // הגנה כפולה ל-GitHub Actions: גם חוסם קומפילציה בלינוקס וגם משתיק אזהרות פלטפורמה בווינדוס
-#if WINDOWS
-#pragma warning disable CA1416
-            try
-            {
-                using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
-                if (key != null)
+                var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
+                if (!string.IsNullOrWhiteSpace(envIp))
                 {
-                    var ipVal = key.GetValue("ServerIp");
-                    if (ipVal != null && !string.IsNullOrWhiteSpace(ipVal.ToString()))
-                    {
-                        _serverBaseUrl = ipVal.ToString()!;
-                    }
+                    _serverBaseUrl = envIp.Trim().Contains(':') ? envIp.Trim() : $"{envIp.Trim()}:5090";
+                    _logger.LogInformation("Loaded Server IP from Environment Variable: {ServerBaseUrl}", _serverBaseUrl);
+                }
+                else
+                {
+                    _logger.LogWarning("Using fallback Server URL: {ServerBaseUrl}", _serverBaseUrl);
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("Failed to read ServerIp from Windows Registry: {Msg}", ex.Message);
-            }
-#pragma warning restore CA1416
-#endif
         }
 
         private void LoadLocalPolicyFallback()
@@ -118,11 +142,21 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
+        private string GetEffectiveRtmpDestination()
+        {
+            string baseUrl = !string.IsNullOrWhiteSpace(_currentPolicy.RtmpServerBaseUrl)
+                ? _currentPolicy.RtmpServerBaseUrl
+                : _config.RtmpServerBaseUrl;
+
+            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+            return $"{baseUrl.TrimEnd('/')}/{safeMachineName}";
+        }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             DebugHelper.ApplyConsoleVisibility();
 
-            _logger.LogInformation("AgentSupervisorService initialized. Target Server URL: {ServerBaseUrl}", _serverBaseUrl);
+            _logger.LogInformation("AgentSupervisorService active. Dashboard endpoint: {ServerBaseUrl}", _serverBaseUrl);
 
             _ = Task.Run(() => ListenToWorkerIpcAsync(stoppingToken), stoppingToken);
 
@@ -137,40 +171,38 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     if (DebugHelper.IsDebugModeEnabled())
                     {
-                        _logger.LogError("Supervisor tick failed: {Msg}", ex.Message);
+                        _logger.LogError("Supervisor tick error: {Msg}", ex.Message);
                     }
                 }
 
-                await Task.Delay(3000, stoppingToken);
+                int delayMs = _isWorkerStreaming ? 1000 : 3000;
+                await Task.Delay(delayMs, stoppingToken);
             }
 
-            if (OperatingSystem.IsWindows())
+            try
             {
-#if WINDOWS
-                try
+                string workerName = Path.GetFileNameWithoutExtension(_workerPath);
+                var procs = Process.GetProcessesByName(workerName);
+                foreach (var proc in procs)
                 {
-                    string workerName = Path.GetFileNameWithoutExtension(_workerPath);
-                    var procs = Process.GetProcessesByName(workerName);
-                    foreach (var proc in procs)
+                    try
                     {
-                        try
-                        {
-                            proc.Kill();
-                            proc.WaitForExit(1000);
-                        }
-                        catch { }
+                        proc.Kill();
+                        proc.WaitForExit(1000);
                     }
+                    catch { }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("Failed to terminate worker processes on shutdown: {Msg}", ex.Message);
-                }
-#endif
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Failed to cleanup worker processes on shutdown: {Msg}", ex.Message);
             }
         }
 
         private async Task ListenToWorkerIpcAsync(CancellationToken ct)
         {
+            var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
             while (!ct.IsCancellationRequested)
             {
                 try
@@ -179,7 +211,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Waiting for Worker IPC connection...");
                     await pipeServer.WaitForConnectionAsync(ct);
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Worker connected to IPC!");
+                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Worker connected to IPC.");
 
                     using var reader = new StreamReader(pipeServer);
                     using var writer = new StreamWriter(pipeServer) { AutoFlush = true };
@@ -193,10 +225,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         {
                             try
                             {
-                                var status = JsonSerializer.Deserialize<WorkerIpcStatusMessage>(line);
+                                var status = JsonSerializer.Deserialize<IpcMessageDto>(line, jsonOptions);
                                 if (status != null)
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
+                                    _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
                                 }
                             }
@@ -222,12 +255,28 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private async Task SendTelemetryToServerAsync(CancellationToken ct)
         {
+            bool isServerConnectedThisTick = false;
             try
             {
                 bool isWorkerAlive = (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 6;
                 bool isStreaming = isWorkerAlive && _isWorkerStreaming;
 
-                var hardwareStats = HardwareProbe.GetTelemetry();
+                var fallbackHwStats = HardwareProbe.GetTelemetrySnapshot();
+
+                double elapsedSec = (DateTime.UtcNow - _lastTelemetrySendTime).TotalSeconds;
+                double currentTelemKbps = elapsedSec > 0 ? (_lastTelemetryPayloadSizeBytes * 8.0) / (elapsedSec * 1000.0) : 0;
+                _lastTelemetrySendTime = DateTime.UtcNow;
+
+                int offlineFilesCount = 0;
+                long offlineFilesSizeMb = 0;
+
+                try
+                {
+                    var bufferStats = ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.GetBufferStats(_localBufferPath);
+                    offlineFilesCount = bufferStats.Item1;
+                    offlineFilesSizeMb = bufferStats.Item2;
+                }
+                catch { }
 
                 var report = new AgentTelemetryReport
                 {
@@ -237,61 +286,118 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
                     IsScreenCapturing = isStreaming,
-                    CpuUsagePercentage = hardwareStats.CpuUsagePercentage,
-                    GpuUsagePercentage = hardwareStats.GpuUsagePercentage,
+                    HasActiveSpeakers = true,
+                    HasActiveMicrophone = true,
                     ClientTimestamp = DateTime.UtcNow,
-                    Timestamp = DateTime.UtcNow
+                    Timestamp = DateTime.UtcNow,
+
+                    ActualFps = isStreaming ? (_lastTelemetry?.ActualFps ?? 0) : 0,
+                    DroppedFrames = isStreaming ? (_lastTelemetry?.DroppedFrames ?? 0) : 0,
+                    InternalCaptureFps = isStreaming ? (_lastTelemetry?.InternalCaptureFps ?? 0) : 0,
+                    QosTier = isStreaming ? (_lastTelemetry?.QosTier ?? 3) : 3,
+
+                    HostCpuPct = Math.Round(_lastTelemetry?.HostCpuPct ?? fallbackHwStats.HostCpuUsagePct, 2),
+                    Gpu3dPct = Math.Round(_lastTelemetry?.Gpu3dPct ?? fallbackHwStats.Gpu3dUsagePct, 2),
+
+                    ProcessCpuPct = isStreaming ? Math.Round(_lastTelemetry?.ProcessCpuPct ?? 0, 2) : 0,
+                    ProcessRamMb = isStreaming ? Math.Round(_lastTelemetry?.ProcessRamMb ?? 0, 2) : 0,
+                    GpuNvencPct = isStreaming ? Math.Round(_lastTelemetry?.GpuNvencPct ?? 0, 2) : 0,
+
+                    HostRamPct = Math.Round(fallbackHwStats.HostRamUsagePct, 2),
+                    HostTotalRamMb = Math.Round(fallbackHwStats.HostTotalRamMb, 2),
+
+                    MediaTxMbps = isStreaming ? Math.Round((_lastTelemetry?.MediaTxMbps / 1000) ?? 0, 2) : 0,
+                    TelemetryTxKbps = Math.Round(currentTelemKbps, 2),
+                    NicUtilizationPct = isStreaming ? Math.Round(_lastTelemetry?.AppLineUtilizationPct ?? 0, 4) : 0,
+                    LinkSpeedMbps = _lastTelemetry?.NicLinkSpeedMbps > 0 ? _lastTelemetry.NicLinkSpeedMbps : 1000,
+
+                    NicTotalTxMbps = Math.Round(_lastTelemetry?.NicTotalTxMbps ?? 0, 2),
+                    NicTotalRxMbps = Math.Round(_lastTelemetry?.NicTotalRxMbps ?? 0, 2),
+
+                    OfflineFilesCount = offlineFilesCount,
+                    OfflineFilesTotalSizeMb = offlineFilesSizeMb
                 };
 
-                string targetEndpoint = $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
+                string jsonPayload = JsonSerializer.Serialize(report);
+                _lastTelemetryPayloadSizeBytes = Encoding.UTF8.GetByteCount(jsonPayload);
 
-                var response = await _httpClient.PostAsJsonAsync(targetEndpoint, report, ct);
+                string targetEndpoint = _serverBaseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? $"{_serverBaseUrl.TrimEnd('/')}/api/v1/agent/telemetry"
+                    : $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
+
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(targetEndpoint, content, ct);
 
                 if (response.IsSuccessStatusCode)
                 {
+                    isServerConnectedThisTick = true;
+                    await SendCommandToWorkerAsync("ServerConnected");
+
                     string responseJson = await response.Content.ReadAsStringAsync(ct);
                     try
                     {
-                        var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson);
+                        var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                         if (heartbeatResponse != null)
                         {
+                            if (heartbeatResponse.ServerUtcTime != default)
+                            {
+                                _serverUtcOffset = heartbeatResponse.ServerUtcTime - DateTime.UtcNow;
+                            }
+
+                            try
+                            {
+                                ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.CurrentCommand = heartbeatResponse.OfflineBufferAction;
+                            }
+                            catch { }
+
                             if (heartbeatResponse.Policy != null)
                             {
-                                bool policyChanged =
-                                    _currentPolicy.VideoBitrate != heartbeatResponse.Policy.VideoBitrate ||
-                                    _currentPolicy.TargetFps != heartbeatResponse.Policy.TargetFps ||
-                                    _currentPolicy.RtmpServerBaseUrl != heartbeatResponse.Policy.RtmpServerBaseUrl;
+                                bool bitrateChanged = _currentPolicy.VideoBitrate != heartbeatResponse.Policy.VideoBitrate;
+                                bool fpsChanged = _currentPolicy.TargetFps != heartbeatResponse.Policy.TargetFps;
+                                bool urlChanged = _currentPolicy.RtmpServerBaseUrl != heartbeatResponse.Policy.RtmpServerBaseUrl;
 
-                                if (policyChanged)
+                                if (bitrateChanged || fpsChanged || urlChanged)
                                 {
-                                    if (DebugHelper.IsDebugModeEnabled())
-                                        _logger.LogInformation("Policy change detected from server. Updating local cache.");
+                                    int oldFps = _currentPolicy.TargetFps;
+                                    int newFps = heartbeatResponse.Policy.TargetFps;
 
                                     _currentPolicy = heartbeatResponse.Policy;
                                     await File.WriteAllTextAsync(_policyFilePath, JsonSerializer.Serialize(_currentPolicy), ct);
 
                                     if (isStreaming)
                                     {
-                                        await SendCommandToWorkerAsync("Restart");
+                                        // בדיקה האם ניתן להימנע מריסטארט: רק FPS השתנה וערכו נמוך או שווה לקצב המקורי
+                                        if (!bitrateChanged && !urlChanged && fpsChanged && newFps <= oldFps)
+                                        {
+                                            _logger.LogInformation("Applying lower capture FPS ({NewFps}) on the fly without pipeline restart.", newFps);
+                                            await SendCommandToWorkerAsync($"SetCaptureFps|{newFps}");
+                                        }
+                                        else
+                                        {
+                                            // שינוי Bitrate, שינוי כתובת יעד או העלאת FPS מחייבים ריסטארט מהיר
+                                            _logger.LogInformation("Pipeline restart required for policy update (BitrateChanged: {B}, UrlChanged: {U}, FpsChanged: {F}).",
+                                                bitrateChanged, urlChanged, fpsChanged);
+                                            string dest = GetEffectiveRtmpDestination();
+                                            await SendCommandToWorkerAsync($"Restart|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                        }
                                     }
                                 }
                             }
 
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
-                                if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[Service] Server requested STOP. Forwarding to Worker.");
                                 await SendCommandToWorkerAsync("Stop");
                             }
                             else if (heartbeatResponse.Command == ServerCommand.StartStream)
                             {
-                                if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[Service] Server requested START. Forwarding to Worker.");
-                                await SendCommandToWorkerAsync("Start");
+                                string dest = GetEffectiveRtmpDestination();
+                                await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning("Failed to deserialize heartbeat response: {Msg}", ex.Message);
+                        _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
                 }
             }
@@ -299,7 +405,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 if (DebugHelper.IsDebugModeEnabled())
                 {
-                    _logger.LogWarning("Failed to send telemetry report to server: {Msg}", ex.Message);
+                    _logger.LogWarning("Telemetry transmission failed: {Msg}", ex.Message);
+                }
+            }
+            finally
+            {
+                if (!isServerConnectedThisTick)
+                {
+                    await SendCommandToWorkerAsync("ServerDisconnected");
                 }
             }
         }
@@ -331,7 +444,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 if (procs.Length > 0 && isHeartbeatDead)
                 {
-                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead. Terminating frozen process...");
+                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead. Terminating process...");
                     foreach (var proc in procs)
                     {
                         try
@@ -346,10 +459,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     _lastWorkerHeartbeat = DateTime.MinValue;
                     _isWorkerStreaming = false;
                 }
-
-                if (procs.Length == 0 && File.Exists(_workerPath))
+                else if (procs.Length == 0 && File.Exists(_workerPath))
                 {
-                    _logger.LogInformation("Worker process not detected (or was purged). Launching Worker...");
+                    if (!_lastWorkerLaunchFailed)
+                    {
+                        _logger.LogInformation("Launching Worker process...");
+                    }
 
                     if (OperatingSystem.IsWindows())
                     {
@@ -357,12 +472,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, string.Empty);
                         if (!launched)
                         {
-                            _logger.LogWarning("Failed to launch AgentWorker interactively. Normal if session is locked/logged out.");
+                            if (!_lastWorkerLaunchFailed)
+                            {
+                                _logger.LogWarning("Failed to launch AgentWorker interactively. Session might be locked/logged out.");
+                                _lastWorkerLaunchFailed = true;
+                            }
                         }
                         else
                         {
-                            _logger.LogInformation("AgentWorker successfully launched into the active user session.");
+                            _logger.LogInformation("AgentWorker launched successfully into active session.");
                             _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchFailed = false;
                         }
 #endif
                     }
@@ -379,6 +499,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         {
                             Process.Start(psi);
                             _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchFailed = false;
                         }
                         catch (Exception ex)
                         {
@@ -389,7 +510,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
             catch (Exception ex)
             {
-                _logger.LogError("Critical error in EnsureWorkerRunning: {Msg}", ex.Message);
+                _logger.LogError("Error in EnsureWorkerRunning: {Msg}", ex.Message);
             }
         }
     }

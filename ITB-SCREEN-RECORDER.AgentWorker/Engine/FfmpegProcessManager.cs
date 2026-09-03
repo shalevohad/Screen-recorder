@@ -50,6 +50,8 @@ namespace ITBRecorderAgent.Engine
             int audioSampleRate,
             int audioChannels,
             string audioFormat,
+            int targetFps,
+            string videoBitrate,
             CancellationToken cancellationToken)
         {
             try
@@ -63,11 +65,10 @@ namespace ITBRecorderAgent.Engine
                         Logger.Info($"[ENGINE] Created local buffer directory: {dir}");
                     }
                 }
+                var ffmpegPath = _config.GetResolvedFFmpegPath();
+                Logger.Info($"[FFMPEG] Resolved FFmpeg path: {ffmpegPath}");
 
-                Logger.Info($"[FFMPEG] Resolved FFmpeg path: {_config.FFmpegPath}");
-
-                string activeEncoder = await HardwareProbe.ResolveEncoderAsync(_config.FFmpegPath, _config.VideoEncoder);
-                string fontPath = ResolvePlatformFontPath();
+                string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
 
                 _tcpListener = new TcpListener(IPAddress.Loopback, 0);
                 _tcpListener.Start();
@@ -83,14 +84,16 @@ namespace ITBRecorderAgent.Engine
                     audioFormat,
                     activeEncoder,
                     localPort,
-                    fontPath);
+                    targetFps,
+                    videoBitrate);
 
                 Logger.Info($"[FFMPEG] Starting FFmpeg process with arguments: {arguments}");
 
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = _config.FFmpegPath,
+                    FileName = ffmpegPath,
                     Arguments = arguments,
+                    WorkingDirectory = AppContext.BaseDirectory,
                     RedirectStandardInput = true,
                     RedirectStandardError = true,
                     RedirectStandardOutput = false,
@@ -160,86 +163,50 @@ namespace ITBRecorderAgent.Engine
             }
         }
 
-        private string ResolvePlatformFontPath()
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                string winFont = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts", "arial.ttf");
-                if (File.Exists(winFont))
-                {
-                    return winFont.Replace("\\", "/").Replace(":", "\\:");
-                }
-            }
-            else if (OperatingSystem.IsLinux())
-            {
-                string[] linuxFontPaths =
-                {
-                    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
-                    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/gnu-free/FreeSans.ttf",
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-                };
-
-                foreach (var path in linuxFontPaths)
-                {
-                    if (File.Exists(path))
-                    {
-                        return path.Replace(":", "\\:");
-                    }
-                }
-            }
-
-            return "arial";
-        }
-
         private string BuildFfmpegArguments(
             string destinationUrl, DateTime calibratedStartTime,
             int videoWidth, int videoHeight, int audioSampleRate, int audioChannels,
-            string audioFormat, string videoEncoder, int tcpPort, string fontPath)
+            string audioFormat, string videoEncoder, int tcpPort,
+            int targetFps, string videoBitrate)
         {
             var ffmpegArgs = new StringBuilder();
 
-            string presetValue;
-            string hardwareFlags = "";
+            int effectiveFps = targetFps > 0 ? targetFps : (_config.TargetFps > 0 ? _config.TargetFps : 30);
+
+            string normalizedBitrate = string.IsNullOrWhiteSpace(videoBitrate) ? _config.VideoBitrate : videoBitrate.Trim();
+            if (int.TryParse(normalizedBitrate, out _))
+            {
+                normalizedBitrate += "k";
+            }
+            string bufferSizeStr = normalizedBitrate;
+
+            int gopSize = effectiveFps * 2;
+            int keyintMin = effectiveFps * 2;
+            string utcTimestampIso = calibratedStartTime.ToString("o");
+
+            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
+            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+
+            ffmpegArgs.Append("-map 0:v -map 1:a ");
 
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                presetValue = "p2";
-                hardwareFlags = "-tune ll -forced-idr 1 -delay 0";
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
-                presetValue = "veryfast";
-                hardwareFlags = "-low_power 1";
+                ffmpegArgs.Append($"-init_hw_device d3d11va -c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
-                presetValue = "ultrafast";
-                hardwareFlags = "-tune zerolatency";
+                ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            int gopSize = _config.TargetFps;
-            string utcTimestampIso = calibratedStartTime.ToString("o");
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -video_track_timescale 90000 -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
 
-            // קביעת קצב פנימי יציב ללא Wallclock
-            ffmpegArgs.Append($"-thread_queue_size 512 -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -r {_config.TargetFps} -i pipe:0 ");
-            ffmpegArgs.Append($"-thread_queue_size 512 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
-
-            long startUnixEpoch = new DateTimeOffset(calibratedStartTime).ToUnixTimeSeconds();
-            string filterArg = $"-vf \"drawtext=fontfile='{fontPath}':text='%{{pts\\:localtime\\:{startUnixEpoch}}}':x=10:y=10:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.6\" ";
-            ffmpegArgs.Append(filterArg);
-
-            // CFR מושלם (Constant Frame Rate) + חיתוך Keyframe בכל שנייה בדיוק
-            ffmpegArgs.Append($"-c:v {videoEncoder} -preset {presetValue} {hardwareFlags} -pix_fmt yuv420p -g {gopSize} -keyint_min {gopSize} -sc_threshold 0 -fps_mode cfr -b:v {_config.VideoBitrate} -maxrate {_config.VideoBitrate} -bufsize 5M ");
-
-            if (audioChannels > 0)
-            {
-                ffmpegArgs.Append("-c:a aac -b:a 128k -af aresample=async=1000 ");
-            }
-
+            ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} ");
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
-            ffmpegArgs.Append($"-flvflags no_duration_filesize -f flv \"{destinationUrl}\"");
+            ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
 
             return ffmpegArgs.ToString();
         }
@@ -253,7 +220,6 @@ namespace ITBRecorderAgent.Engine
                 lock (_writeLock)
                 {
                     _videoStdinStream.Write(frameData, 0, frameData.Length);
-                    _videoStdinStream.Flush();
                 }
                 return true;
             }
@@ -306,10 +272,6 @@ namespace ITBRecorderAgent.Engine
                 _ffmpegProcess = null;
             }
             catch { }
-            finally
-            {
-                _isDisposed = false;
-            }
         }
     }
 }

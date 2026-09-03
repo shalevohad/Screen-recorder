@@ -1,0 +1,333 @@
+﻿.station-card {
+    background: linear-gradient(145deg, #151e2e 0%, #0d131f 100%);
+    border-radius: 12px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    position: relative;
+    box-sizing: border-box;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.4);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+        border-color: rgba(59, 130, 246, 0.6);
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.85), 0 0 20px rgba(59, 130, 246, 0.15);
+    }
+
+    &.offline {
+        opacity: 0.38;
+        filter: grayscale(60%);
+        border-color: #1e293b;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+
+        &:hover {
+            opacity: 0.65;
+            filter: grayscale(30%);
+            transform: none;
+        }
+    }
+
+    .station-card-header {
+        padding: 6px 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: rgba(15, 23, 42, 0.85);
+        border-bottom: 1px solid rgba(39, 53, 73, 0.8);
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
+
+        .header-left-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tactical-station-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 10px;
+            font-weight: 800;
+            cursor: pointer;
+            background: #090d16;
+            transition: all 0.2s ease;
+
+            &.is-streaming {
+                border: 1.8px solid #ef4444;
+                color: #ef4444;
+                background: #2a1820;
+                box-shadow: 0 0 10px rgba(239, 68, 68, 0.4), inset 0 0 6px rgba(239, 68, 68, 0.2);
+
+                .hud-recording-ring {
+                    width: 6px;
+                    height: 6px;
+                    background-color: #ef4444;
+                    border-radius: 50%;
+                    box-shadow: 0 0 6px #ef4444;
+                    animation: pulse-dot-action 1.2s infinite;
+                }
+
+                .btn-timer {
+                    border-left: 1px solid rgba(239, 68, 68, 0.4);
+                    padding-left: 4px;
+                    color: #fca5a5;
+                }
+
+                &:hover {
+                    border-color: #f87171;
+                    background: #3b1d28;
+                }
+            }
+
+            &.is-idle {
+                border: 1.8px solid #166534;
+                color: #22c55e;
+                background: #0d1b14;
+
+                &:hover {
+                    border-color: #22c55e;
+                    color: #4ade80;
+                    background: #142a1e;
+                    box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+                }
+            }
+
+            &.is-pending {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+        }
+
+        .station-identity {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            text-align: right;
+
+            .station-hostname {
+                color: #f8fafc;
+                font-weight: 800;
+                font-size: 12px;
+                letter-spacing: 0.3px;
+                line-height: 1;
+            }
+
+            .station-ip-inline {
+                color: #94a3b8;
+                font-size: 10px;
+                font-family: monospace;
+                line-height: 1;
+            }
+        }
+    }
+
+    .station-screen-area {
+        position: relative;
+        background-color: #000000;
+        cursor: pointer;
+        aspect-ratio: 16/9;
+        width: 100%;
+
+        .station-thumbnail-video {
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .screen-offline-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+            font-family: monospace;
+            font-size: 11px;
+        }
+    }
+
+    .station-metrics-toggle-bar {
+        background: #0b0f17;
+        text-align: center;
+        border-top: 1px solid #1e293b;
+        padding: 2px 0;
+
+        .toggle-btn-compact {
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 9px;
+            font-family: monospace;
+            cursor: pointer;
+
+            &:hover {
+                color: #94a3b8;
+            }
+        }
+    }
+
+    .station-telemetry {
+        padding: 6px 10px 8px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        background: #090d14;
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+
+        .inline-network-stats {
+            display: flex;
+            justify-content: space-between;
+            background: #111827;
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid #1f2937;
+            font-family: monospace;
+            font-size: 9px;
+
+            .stat-box {
+                display: flex;
+                gap: 3px;
+
+                .stat-label {
+                    color: #64748b;
+                }
+
+                .stat-value {
+                    font-weight: 700;
+
+                    &.green {
+                        color: #22c55e;
+                    }
+
+                    &.yellow {
+                        color: #eab308;
+                    }
+
+                    &.red {
+                        color: #ef4444;
+                    }
+
+                    &.blue {
+                        color: #3b82f6;
+                    }
+
+                    &.gray {
+                        color: #94a3b8;
+                    }
+                }
+            }
+        }
+
+        .metric-bars-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+
+            .dual-metric-group {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+
+                .telemetry-label {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: baseline;
+                    font-size: 10px;
+                    font-family: monospace;
+                    line-height: 1;
+
+                    .cat-name {
+                        color: #94a3b8;
+                        font-weight: 700;
+
+                        .link-badge {
+                            color: #38bdf8;
+                        }
+                    }
+
+                    .cat-values {
+                        display: flex;
+                        gap: 4px;
+
+                        .val-host {
+                            color: #22c55e;
+                            font-weight: 700;
+                        }
+
+                        .val-app {
+                            color: #60a5fa;
+                            font-weight: 600;
+                        }
+                    }
+                }
+
+                .bars-pair {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 1.5px;
+
+                    .bar-track {
+                        height: 3px;
+                        background-color: #1e293b;
+                        border-radius: 1px;
+                        overflow: hidden;
+                        width: 100%;
+
+                        &.app-track {
+                            height: 2.5px;
+                            background-color: rgba(30, 41, 59, 0.7);
+                        }
+
+                        .bar-fill {
+                            height: 100%;
+                            border-radius: 1px;
+                            transition: width 0.3s ease;
+
+                            &.host-green {
+                                background-color: #22c55e;
+                            }
+
+                            &.app-blue {
+                                background-color: #38bdf8;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@keyframes pulse-dot-action {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.3;
+        transform: scale(0.85);
+    }
+}
+
+@keyframes spin-rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin-rotation 0.8s linear infinite;
+}

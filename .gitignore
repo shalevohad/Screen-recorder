@@ -31,3 +31,10 @@ mediamtx.exe
 /ITB-SCREEN-RECORDER.Server/wwwroot/assets/index.js
 /ITB-SCREEN-RECORDER.Server/wwwroot/assets/index.js
 **/ffmpeg.exe
+
+## Local-only convenience scripts (not part of the repo)
+/Launch.bat
+/ITB-SCREEN-RECORDER.AgentService/Properties/PublishProfiles/Agent - Windows.pubxml
+/ITB-SCREEN-RECORDER.AgentWorker/Properties/PublishProfiles/Agent - Windows.pubxml
+/ITB-SCREEN-RECORDER.AgentWorker/Properties/PublishProfiles/FolderProfile.pubxml
+/ITB-SCREEN-RECORDER.AgentService/Properties/PublishProfiles/FolderProfile.pubxml

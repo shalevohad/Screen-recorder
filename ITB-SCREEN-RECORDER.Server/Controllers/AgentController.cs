@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Linq;
+using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
@@ -10,14 +11,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     public class AgentController : ControllerBase
     {
         private readonly ITelemetryStateService _telemetryState;
+        private readonly TelemetryBroadcastService _broadcastService;
 
-        public AgentController(ITelemetryStateService telemetryState)
+        public AgentController(ITelemetryStateService telemetryState, TelemetryBroadcastService broadcastService)
         {
             _telemetryState = telemetryState;
+            _broadcastService = broadcastService;
         }
 
         [HttpPost("telemetry")]
-        public IActionResult ReceiveHeartbeat([FromBody] AgentTelemetryReport report)
+        public async Task<IActionResult> ReceiveHeartbeat([FromBody] AgentTelemetryReport report)
         {
             if (report == null || string.IsNullOrWhiteSpace(report.Hostname))
             {
@@ -33,11 +36,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(errors);
             }
 
-            // חילוץ כתובת השרת (IP/Host) בדיוק כפי שה-Agent פנה אליה
             string requestHost = Request.Host.Host;
 
-            // העברת ה-requestHost לסרביס ליצירת ה-Policy הדינמי
-            var response = _telemetryState.ProcessHeartbeat(report, requestHost);
+            // 1. הפעלת שירות הסטטוס שמפיק את התשובה והפוליסה
+            var response = await _telemetryState.ProcessHeartbeatAsync(report, requestHost);
+
+            // 2. 💡 דחיפת הדיווח בזמן אמת לטכנאים בחמ"ל מבלי לעכב את תשובת ה-HTTP לעמדה
+            _ = _broadcastService.BroadcastAgentUpdateAsync(report);
+
             return Ok(response);
         }
 
@@ -49,11 +55,38 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpGet("config/{hostname}")]
-        public IActionResult GetAgentConfig(string hostname)
+        public async Task<IActionResult> GetAgentConfig(string hostname)
         {
-            // שאיבה דינמית מלאה דרך שירות הסטטוס המרכזי
-            var policy = _telemetryState.GetAgentPolicy(hostname, Request.Host.Host);
+            var policy = await _telemetryState.GetAgentPolicyAsync(hostname, Request.Host.Host);
             return Ok(policy);
+        }
+
+        /// <summary>
+        /// אוכף מדיניות שידור/הקלטה גורפת על כלל העמדות המחוברות ברשת (Fleet Wide)
+        /// </summary>
+        /// <param name="enable">true להפעלת שידור/הקלטה בכל העמדות, false לעצירה גורפת</param>
+        [HttpPost("fleet-streaming-policy")]
+        public IActionResult EnforceFleetWideStreamingPolicy([FromQuery] bool enable)
+        {
+            var allAgents = _telemetryState.GetAllAgents();
+
+            // סינון עמדות שנצפו ב-15 השניות האחרונות (Online בלבד)
+            var activeAgents = allAgents
+                .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15)
+                .ToList();
+
+            foreach (var agent in activeAgents)
+            {
+                _telemetryState.SetAgentStreamState(agent.Hostname, enable);
+            }
+
+            return Ok(new
+            {
+                Action = enable ? "START_ALL" : "STOP_ALL",
+                TargetStationCount = activeAgents.Count,
+                TargetHostnames = activeAgents.Select(a => a.Hostname).ToList(),
+                TimestampUtc = DateTime.UtcNow
+            });
         }
     }
 }

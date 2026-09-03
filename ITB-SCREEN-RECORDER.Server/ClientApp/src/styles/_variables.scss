@@ -1,0 +1,40 @@
+:root {
+    /* 1. רקעים */
+    --bg-void: #131924;
+    --bg-app: #080c14;
+    --bg-card-from: #151e2e;
+    --bg-card-to: #0d131f;
+    --bg-panel: rgba(15, 23, 42, 0.88);
+    --bg-dark-well: #090d16;
+    --bg-input: #111827;
+    /* 2. צבעי סטטוס טקטיים */
+    --c2-green: #22c55e;
+    --c2-green-light: #4ade80;
+    --c2-green-deep: #0c2317;
+    --c2-yellow: #eab308;
+    --c2-yellow-light: #fde047;
+    --c2-yellow-deep: #261e0c;
+    --c2-red: #ef4444;
+    --c2-red-light: #f87171;
+    --c2-red-deep: #240f12;
+    --c2-blue: #38bdf8;
+    --c2-blue-light: #60a5fa;
+    --c2-blue-deep: #141e2e;
+    --c2-cyan: #06b6d4;
+    --c2-cyan-light: #22d3ee;
+    --c2-cyan-deep: #122129;
+    /* 3. היררכיית ניטרליים ואפורים */
+    --slate-light: #f8fafc;
+    --slate-muted: #94a3b8;
+    --slate-dark: #64748b;
+    --slate-dim: #475569;
+    --slate-border: #334155;
+    --slate-line: #1e293b;
+    /* 4. הילות וזוהר */
+    --glow-green: 0 0 14px rgba(34, 197, 94, 0.55);
+    --glow-yellow: 0 0 14px rgba(234, 179, 8, 0.55);
+    --glow-red: 0 0 14px rgba(239, 68, 68, 0.6);
+    --glow-blue: 0 0 14px rgba(56, 189, 248, 0.55);
+    --glow-cyan: 0 0 14px rgba(6, 182, 212, 0.55);
+    --shadow-dock: 0 16px 40px rgba(0, 0, 0, 0.85);
+}

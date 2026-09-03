@@ -1,0 +1,71 @@
+.telemetry-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    /* 💡 טשטוש כהה ועמוק התואם בדיוק ל-FullscreenModal */
+    background-color: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+}
+
+.telemetry-modal-box {
+    width: 95vw;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.telemetry-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background-color: #020617;
+    border-bottom: 1px solid #1e293b;
+    flex-shrink: 0;
+
+    h2 {
+        color: #f8fafc;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        margin: 0;
+    }
+}
+
+.telemetry-modal-close-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0.35rem 0.6rem;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+
+    &:hover {
+        color: #f8fafc;
+        background-color: #1e293b;
+    }
+}
+
+.telemetry-modal-body {
+    padding: 2rem;
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}

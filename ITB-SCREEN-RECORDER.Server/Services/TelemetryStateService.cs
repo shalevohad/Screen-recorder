@@ -4,17 +4,17 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 
 namespace ITB_SCREEN_RECORDER.Server.Services
 {
     public interface ITelemetryStateService
     {
-        // הוספנו את ה-requestHost כפרמטר אופציונלי
-        AgentHeartbeatResponse ProcessHeartbeat(AgentTelemetryReport report, string requestHost = null);
+        Task<AgentHeartbeatResponse> ProcessHeartbeatAsync(AgentTelemetryReport report, string requestHost = null);
         void SetAgentStreamState(string hostname, bool shouldStream);
         IEnumerable<AgentTelemetryReport> GetAllAgents();
-        AgentStreamPolicy GetAgentPolicy(string hostname, string requestHost);
+        Task<AgentStreamPolicy> GetAgentPolicyAsync(string hostname, string requestHost);
     }
 
     public class TelemetryStateService : ITelemetryStateService
@@ -22,13 +22,15 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         private readonly ConcurrentDictionary<string, bool> _agentDesiredStates = new();
         private readonly ConcurrentDictionary<string, AgentTelemetryReport> _latestReports = new();
         private readonly SystemConfig _systemConfig;
+        private readonly StationOverridesService _overridesService;
 
-        public TelemetryStateService(IOptions<SystemConfig> systemConfig)
+        public TelemetryStateService(IOptions<SystemConfig> systemConfig, StationOverridesService overridesService)
         {
             _systemConfig = systemConfig.Value;
+            _overridesService = overridesService;
         }
 
-        public AgentHeartbeatResponse ProcessHeartbeat(AgentTelemetryReport report, string requestHost = null)
+        public async Task<AgentHeartbeatResponse> ProcessHeartbeatAsync(AgentTelemetryReport report, string requestHost = null)
         {
             if (report == null || string.IsNullOrWhiteSpace(report.Hostname))
             {
@@ -38,7 +40,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             string key = report.Hostname.ToUpperInvariant();
             _latestReports[key] = report;
 
-            // שומרים על הלוגיקה המקורית שלך - הפעלה אוטומטית כברירת מחדל
             _agentDesiredStates.CustomGetOrAdd(key, () => report.IsStreaming || report.IsScreenCapturing || true);
 
             bool desiredStreamState = _agentDesiredStates[key];
@@ -49,16 +50,17 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 commandToSend = desiredStreamState ? ServerCommand.StartStream : ServerCommand.StopStream;
             }
 
-            // יצירת ה-Policy הדינמי: שימוש בכתובת הבקשה או כתובת גיבוי במידה וחסר
             string hostToUse = !string.IsNullOrWhiteSpace(requestHost) ? requestHost : "128.200.3.10";
-            var currentGlobalPolicy = GetAgentPolicy(report.Hostname, hostToUse);
+
+            // הפקת הפוליסה המותאמת אישית (כולל בדיקת Overrides לעמדה)
+            var currentPolicy = await GetAgentPolicyAsync(report.Hostname, hostToUse);
 
             return new AgentHeartbeatResponse
             {
                 ShouldStream = desiredStreamState,
                 Command = commandToSend,
-                ServerTime = DateTime.UtcNow,
-                Policy = currentGlobalPolicy
+                ServerUtcTime = DateTime.UtcNow,
+                Policy = currentPolicy
             };
         }
 
@@ -74,21 +76,36 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return _latestReports.Values.ToList();
         }
 
-        public AgentStreamPolicy GetAgentPolicy(string hostname, string requestHost)
+        public async Task<AgentStreamPolicy> GetAgentPolicyAsync(string hostname, string requestHost)
         {
-            // שליפת הפורט מהקונפיגורציה, או 19350 כדיפולט
             int rtmpPort = _systemConfig.MediaMtx?.RtmpPort > 0 ? _systemConfig.MediaMtx.RtmpPort : 19350;
 
-            // 1. אכיפת טווח FPS
+            // ברירות מחדל גלובליות מתוך ה-SystemConfig
             int fps = _systemConfig.DefaultTargetFps;
             if (fps < 15) fps = 15;
             if (fps > 60) fps = 60;
 
-            // 2. אכיפת ונרמול Bitrate
-            string bitrate = (_systemConfig.DefaultVideoBitrate ?? "5M").ToUpper();
-            if (bitrate != "1M" && bitrate != "2M" && bitrate != "3M" && bitrate != "4M" && bitrate != "5M")
+            string bitrate = _systemConfig.DefaultVideoBitrate ?? "3000k";
+
+            // אם נשלח מספר טהור ללא אות (למשל 5000), מוסיפים 'k' עבור FFmpeg
+            if (int.TryParse(bitrate, out int numericBitrate))
             {
-                bitrate = "5M"; // Fallback לערך בטוח
+                bitrate = $"{numericBitrate}k";
+            }
+
+            // בדיקה האם יש הגדרות מיוחדות (Overrides) לעמדה זו בקובץ ה-stations-config.json
+            var overrides = await _overridesService.GetAllAsync();
+            if (overrides.TryGetValue(hostname, out var stationConfig))
+            {
+                if (!string.IsNullOrEmpty(stationConfig.VideoBitrate))
+                {
+                    bitrate = stationConfig.VideoBitrate.ToUpper();
+                }
+
+                if (stationConfig.TargetFps.HasValue && stationConfig.TargetFps.Value >= 15 && stationConfig.TargetFps.Value <= 60)
+                {
+                    fps = stationConfig.TargetFps.Value;
+                }
             }
 
             return new AgentStreamPolicy

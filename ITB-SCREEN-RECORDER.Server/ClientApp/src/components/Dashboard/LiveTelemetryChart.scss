@@ -1,0 +1,68 @@
+.live-telemetry-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.telemetry-toggles {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    font-size: 12px;
+    font-family: monospace;
+
+    .toggle-btn {
+        background: transparent;
+        border: 1px solid #333;
+        color: #666;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        &:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        /* מודיפיירים למצבים הפעילים */
+        &.active-media {
+            border-color: #38bdf8;
+            color: #38bdf8;
+            background-color: rgba(56, 189, 248, 0.05);
+        }
+
+        &.active-telemetry {
+            border-color: #a855f7;
+            color: #a855f7;
+            background-color: rgba(168, 85, 247, 0.05);
+        }
+
+        &.active-cpu {
+            border-color: #f59e0b;
+            color: #f59e0b;
+            background-color: rgba(245, 158, 11, 0.05);
+        }
+    }
+}
+
+.chart-canvas-wrapper {
+    width: 100%;
+    height: 250px; /* 💡 הוגדל מ-100 פיקסלים */
+    background-color: #0f172a;
+    border-radius: 6px;
+    border: 1px solid #1e293b;
+    position: relative;
+    overflow: hidden;
+}
+
+.chart-max-label {
+    position: absolute;
+    left: 10px;
+    top: 5px;
+    font-size: 10px;
+    color: #475569;
+    pointer-events: none; /* מונע חסימה של העכבר מעל הטקסט */
+}
