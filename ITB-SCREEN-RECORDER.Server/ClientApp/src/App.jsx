@@ -28,6 +28,7 @@ export default function App() {
     }, [apiBaseUrl]);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchStations();
     }, [fetchStations]);
 
@@ -123,7 +124,7 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json' }
             });
             if (res.ok) {
-                setStations(prev => prev.map(s => ({ ...s, isStreaming: false })));
+                setStations(prev => prev.map(s => ({ ...s, isStreaming: false })))
             }
         } catch (err) {
             console.error('[App] Failed bulk stop:', err);
@@ -140,6 +141,7 @@ export default function App() {
             />
 
             <DashboardGrid
+                key={sortedStations.length}
                 stations={sortedStations}
                 actionPending={actionPending}
                 onToggleStream={handleToggleStream}

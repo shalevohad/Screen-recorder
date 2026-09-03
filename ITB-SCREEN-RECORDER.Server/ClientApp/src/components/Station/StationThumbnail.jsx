@@ -45,19 +45,17 @@ export default function StationThumbnail({
 
     const isLive = isOnline && isStreaming;
 
-    // 💡 טיפול בטיימר ההקלטה מבוסס תנאי בתוך ה-interval מבלי לאפס בתוך אפקט מסונכרן שגוי
     useEffect(() => {
         if (!isStreaming) return;
         const timer = setInterval(() => setRecordingSeconds(p => p + 1), 1000);
         return () => clearInterval(timer);
     }, [isStreaming]);
 
-    // איפוס שנייה בלחיצה או כאשר הסטרים נעצר
-    useEffect(() => {
-        if (!isStreaming) {
-            setRecordingSeconds(0);
-        }
-    }, [isStreaming]);
+    // Derived/Event-driven reset or direct check
+    const currentRecordingSeconds = isStreaming ? recordingSeconds : 0;
+    if (!isStreaming && recordingSeconds !== 0) {
+        setRecordingSeconds(0);
+    }
 
     const formatTimer = (sec) => {
         const m = Math.floor(sec / 60);
@@ -114,7 +112,7 @@ export default function StationThumbnail({
                                 <>
                                     <span className="hud-recording-ring"></span>
                                     <span className="btn-text">REC</span>
-                                    <span className="btn-timer">{formatTimer(recordingSeconds)}</span>
+                                    <span className="btn-timer">{formatTimer(currentRecordingSeconds)}</span>
                                 </>
                             ) : (
                                 <>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import StationThumbnail from '../Station/StationThumbnail';
 import './DashboardGrid.scss';
@@ -13,11 +13,9 @@ export default function DashboardGrid({
 }) {
     const [liveStations, setLiveStations] = useState(initialStations);
 
-    // ברירת מחדל: מסונן מראש ומיון מ-A ל-Z
     const [hideOffline, setHideOffline] = useState(true);
     const [sortAsc, setSortAsc] = useState(true);
 
-    // 💡 ברירת מחדל כבוי (false) עם שמירה וטעינה מ-localStorage
     const [globalShowMetrics, setGlobalShowMetrics] = useState(() => {
         const saved = localStorage.getItem('itb_global_show_metrics');
         return saved !== null ? JSON.parse(saved) : false;
@@ -35,10 +33,6 @@ export default function DashboardGrid({
     useEffect(() => {
         localStorage.setItem('itb_dashboard_zoom', zoomLevel);
     }, [zoomLevel]);
-
-    useEffect(() => {
-        setLiveStations(initialStations);
-    }, [initialStations]);
 
     useEffect(() => {
         const port = import.meta.env?.VITE_SERVER_PORT || '5090';
@@ -67,7 +61,6 @@ export default function DashboardGrid({
         return () => { connection.stop(); };
     }, []);
 
-    // 1. חישוב זכאות לפעולות ולחצני ה-Dock
     const hasStations = liveStations.length > 0;
     const canSort = liveStations.length > 1;
 
@@ -81,7 +74,6 @@ export default function DashboardGrid({
         return liveStations.some(s => s.isStreaming);
     }, [liveStations]);
 
-    // 2. עיבוד התחנות: סינון ומיון (A-Z)
     const processedStations = useMemo(() => {
         let list = [...liveStations];
         if (hideOffline) {
@@ -112,10 +104,7 @@ export default function DashboardGrid({
     return (
         <div className="dashboard-layout-wrapper" dir={direction}>
             <div className="dashboard-content-container">
-
-                {/* סרגל צד טקטי */}
                 <aside className="dashboard-vertical-dock tactical-c2-dock">
-                    {/* כפתור Start All */}
                     <button
                         className={`dock-icon-btn tactical-btn-start ${!canStartAny ? 'disabled' : ''}`}
                         onClick={canStartAny ? onBulkStart : undefined}
@@ -129,7 +118,6 @@ export default function DashboardGrid({
                         </svg>
                     </button>
 
-                    {/* כפתור Stop All */}
                     <button
                         className={`dock-icon-btn tactical-btn-stop ${!canStopAny ? 'disabled' : ''}`}
                         onClick={canStopAny ? onBulkStop : undefined}
@@ -145,16 +133,10 @@ export default function DashboardGrid({
 
                     <div className="dock-divider"></div>
 
-                    {/* כפתור Filter Toggle */}
                     <button
                         className={`dock-icon-btn tactical-btn-filter ${hideOffline ? 'is-engaged' : ''} ${!hasStations ? 'disabled' : ''}`}
                         onClick={hasStations ? () => setHideOffline(p => !p) : undefined}
                         disabled={!hasStations}
-                        title={!hasStations
-                            ? "Filter disabled (No agents connected)"
-                            : hideOffline
-                                ? "Filter: Showing active agents only (Click to show all)"
-                                : "Filter: Showing all agents (Click to hide offline)"}
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="12" cy="12" r="9.5" />
@@ -165,16 +147,10 @@ export default function DashboardGrid({
                         </svg>
                     </button>
 
-                    {/* כפתור Sort A-Z / Z-A */}
                     <button
                         className={`dock-icon-btn tactical-btn-sort ${!sortAsc ? 'is-reversed' : ''} ${!canSort ? 'disabled' : ''}`}
                         onClick={canSort ? () => setSortAsc(p => !p) : undefined}
                         disabled={!canSort}
-                        title={!canSort
-                            ? "Sorting disabled (Insufficient agents)"
-                            : sortAsc
-                                ? "Sort agents: Ascending (A-Z)"
-                                : "Sort agents: Descending (Z-A)"}
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M3 6h7M3 12h5M3 18h3" />
@@ -192,16 +168,10 @@ export default function DashboardGrid({
                         </svg>
                     </button>
 
-                    {/* כפתור Sensors HUD Toggle */}
                     <button
                         className={`dock-icon-btn tactical-btn-sensors ${globalShowMetrics ? 'is-engaged' : ''} ${!hasStations ? 'disabled' : ''}`}
                         onClick={hasStations ? () => setGlobalShowMetrics(p => !p) : undefined}
                         disabled={!hasStations}
-                        title={!hasStations
-                            ? "Telemetry HUD disabled (No agents connected)"
-                            : globalShowMetrics
-                                ? "Telemetry HUD: Visible on all cards"
-                                : "Telemetry HUD: Hidden on all cards"}
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
                             <rect x="3" y="3" width="18" height="18" rx="2.5" />
@@ -213,7 +183,6 @@ export default function DashboardGrid({
                     </button>
                 </aside>
 
-                {/* אזור הגריד המרכזי */}
                 <main className="dashboard-main-area">
                     {processedStations.length === 0 ? (
                         <div className="stations-empty-state-glass">
@@ -247,7 +216,6 @@ export default function DashboardGrid({
                 </main>
             </div>
 
-            {/* סרגל זום תחתון צף */}
             <div className="noc-footer-zoom-pill">
                 <button onClick={handleZoomOut} disabled={zoomLevel === 1} className="zoom-btn" title="Zoom Out (-)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import './ServerTelemetryWidget.scss';
 
 function SparklineChart({ data, color, limit = 40 }) {
@@ -34,18 +34,15 @@ function SparklineChart({ data, color, limit = 40 }) {
 export default function ServerTelemetryWidget({ serverTelemetry }) {
     const historyPoints = 40;
 
-    // מדדי CPU
     const cpuPct = serverTelemetry?.cpuUsagePct ?? serverTelemetry?.hostCpuUsagePct ?? 0;
     const appCpuPct = serverTelemetry?.appCpuUsagePct ?? serverTelemetry?.processCpuUsagePct ?? 0;
 
-    // מדדי RAM
     const hostRamPct = serverTelemetry?.hostRamPct ?? serverTelemetry?.hostRamUsagePct ?? 0;
     const appRamMb = serverTelemetry?.appRamMb ?? serverTelemetry?.processRamMb ?? 0;
     const hostTotalRamMb = serverTelemetry?.hostTotalRamMb ?? 131072;
     const appRamDisplay = appRamMb >= 1024 ? `${(appRamMb / 1024).toFixed(1)}G` : `${Math.round(appRamMb)}M`;
     const totalRamDisplay = `${Math.round(hostTotalRamMb / 1024)}G`;
 
-    // מדדי NET
     const netTxMbps = serverTelemetry?.nicTotalTxMbps ?? 0;
     const netRxMbps = serverTelemetry?.nicTotalRxMbps ?? 0;
     const totalNetMbps = netTxMbps + netRxMbps;
@@ -53,16 +50,38 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
     const linkSpeedMbps = serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000;
     const netUtilPct = serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100);
 
-    const [cpuHistory, setCpuHistory] = useState([cpuPct]);
-    const [ramHistory, setRamHistory] = useState([hostRamPct]);
-    const [netHistory, setNetHistory] = useState([netUtilPct]);
+    // 💡 שימוש ב-useState לאתחול חד-פעמי, כאשר העדכון מתבצע בצורה נקייה 
+    // או שמירת היסטוריה מבוססת מדדים ישירים ללא פגיעה ב-lifecycle.
+    // מכיוון ש-serverTelemetry מתעדכן מבחוץ, ניתן לשמור את ההיסטוריה ב-ref או להשתמש בטכניקה הבאה:
+    const [history, setHistory] = useState({
+        cpu: [cpuPct],
+        ram: [hostRamPct],
+        net: [netUtilPct],
+        lastCpu: cpuPct,
+        lastRam: hostRamPct,
+        lastNet: netUtilPct
+    });
 
-    // עדכון היסטוריה בצורה בטוחה בליגטורות של React 19
-    useEffect(() => {
-        setCpuHistory(prev => [...prev, cpuPct].slice(-historyPoints));
-        setRamHistory(prev => [...prev, hostRamPct].slice(-historyPoints));
-        setNetHistory(prev => [...prev, netUtilPct].slice(-historyPoints));
-    }, [cpuPct, hostRamPct, netUtilPct]);
+    // עדכון מבוסס ערך נוכחי ללא קריאת setState סינכרונית אסורה מחוץ לאירוע
+    let cpuHistory = history.cpu;
+    let ramHistory = history.ram;
+    let netHistory = history.net;
+
+    if (cpuPct !== history.lastCpu || hostRamPct !== history.lastRam || netUtilPct !== history.lastNet) {
+        cpuHistory = [...history.cpu, cpuPct].slice(-historyPoints);
+        ramHistory = [...history.ram, hostRamPct].slice(-historyPoints);
+        netHistory = [...history.net, netUtilPct].slice(-historyPoints);
+
+        // עדכון סטייט בטוח בלחיזור הרינדור הבא
+        setHistory({
+            cpu: cpuHistory,
+            ram: ramHistory,
+            net: netHistory,
+            lastCpu: cpuPct,
+            lastRam: hostRamPct,
+            lastNet: netUtilPct
+        });
+    }
 
     const formatCurrentRate = (mbps) => {
         if (mbps >= 1000) return `${(mbps / 1000).toFixed(1)}G`;
@@ -96,7 +115,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
 
     return (
         <div className="server-telemetry-widget layout-large">
-            {/* CPU Pod */}
             <div className={`telemetry-pod ${getStatusClass(cpuPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">CPU LOAD</span>
@@ -113,7 +131,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
                 </div>
             </div>
 
-            {/* RAM Pod */}
             <div className={`telemetry-pod ${getStatusClass(hostRamPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">RAM USAGE</span>
@@ -130,7 +147,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
                 </div>
             </div>
 
-            {/* NET Pod */}
             <div className={`telemetry-pod ${getStatusClass(netUtilPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">NET LOAD</span>
