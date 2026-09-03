@@ -1,11 +1,12 @@
 html, body, #root {
-    background-color: var(--bg-void) !important;
+    background-color: #131924 !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     min-height: 100vh !important;
     max-width: none !important;
     overflow-x: hidden;
+    overflow-y: auto !important; /* 💡 וידוא גלילה אנכית ראשית ברמת ה-body */
 }
 
 .dashboard-layout-wrapper {
