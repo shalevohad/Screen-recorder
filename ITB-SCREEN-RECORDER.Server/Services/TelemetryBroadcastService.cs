@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 
 namespace ITB_SCREEN_RECORDER.Server.Services
 {
-    // Hub המנהל את קבוצות החיבורים של משתמשי הפאנל ב-React
     public class TelemetryHub : Hub
     {
         public override async Task OnConnectedAsync()
@@ -20,7 +19,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         }
     }
 
-    // השירות העסקי שמזריק נתונים אל תוך ה-Hub ב-Fire and Forget
     public class TelemetryBroadcastService
     {
         private readonly IHubContext<TelemetryHub> _hubContext;
@@ -32,8 +30,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
         public async Task BroadcastAgentUpdateAsync(AgentTelemetryReport report)
         {
-            // דחיפת המידע המלא בזמן אמת לכל הדפדפנים המחוברים
             await _hubContext.Clients.Group("DashboardWatchers").SendAsync("ReceiveAgentMetrics", report);
+        }
+
+        public async Task BroadcastServerTelemetryAsync(object serverTelemetry)
+        {
+            await _hubContext.Clients.Group("DashboardWatchers").SendAsync("ReceiveServerTelemetry", serverTelemetry);
         }
     }
 }

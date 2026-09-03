@@ -4,14 +4,15 @@ import path from 'path'
 
 export default defineConfig({
     plugins: [react()],
+    resolve: {
+        alias: {
+            '@': path.resolve(import.meta.dirname, './src')
+        }
+    },
     build: {
-        // הזרקה ישירה ל-wwwroot של השרת
         outDir: path.resolve(import.meta.dirname, '../wwwroot'),
         emptyOutDir: true,
-
-        // השתקת האזהרה על קבצים גדולים (מעלה את הרף ל-1.5MB)
         chunkSizeWarningLimit: 1500,
-
         rollupOptions: {
             output: {
                 entryFileNames: 'assets/[name].js',

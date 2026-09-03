@@ -1,194 +1,103 @@
 .noc-clock-panel {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    background: linear-gradient(180deg, #1e2433 0%, #161b26 100%);
-    border: 1px solid #2a3140;
-    border-radius: 8px;
-    padding: 6px 16px;
     gap: 16px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
     user-select: none;
-    max-width: 100%;
-    box-sizing: border-box;
+    padding: 0 4px;
 
-    .clock-section-left {
+    .clock-col {
         display: flex;
         flex-direction: column;
-        align-items: center;
         justify-content: center;
-        gap: 2px;
-        min-width: 110px;
+    }
 
-        .location-row {
+    .chrono-col {
+        align-items: center;
+        text-align: center;
+        gap: 1.5px;
+
+        .chrono-main-row {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
+            align-items: baseline;
+            gap: 2px;
+            line-height: 1;
 
-            .live-dot {
-                width: 8px;
-                height: 8px;
-                background-color: #ef4444;
-                border-radius: 50%;
-                box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
-                animation: pulse-dot 2s infinite;
-            }
-
-            .location-text {
-                color: #e2e8f0;
-                font-weight: 700;
-                font-size: 13px;
+            .chrono-digits {
+                color: var(--c2-green);
+                font-size: 1.45rem;
+                font-weight: 900;
                 letter-spacing: 0.5px;
-                line-height: 1.2;
-            }
-        }
-
-        .date-text {
-            color: #94a3b8;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            line-height: 1.2;
-        }
-    }
-
-    .clock-divider {
-        width: 1px;
-        align-self: stretch;
-        background-color: #334155;
-        opacity: 0.7;
-        margin: 4px 0;
-    }
-
-    .clock-section-middle {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 0 8px;
-        gap: 0;
-
-        .digital-time {
-            color: #4ade80;
-            font-size: 36px;
-            font-weight: 700;
-            line-height: 0.9;
-            font-variant-numeric: tabular-nums;
-            text-shadow: 0 0 15px rgba(74, 222, 128, 0.35);
-            margin-top: 6px;
-        }
-
-        .uptime-text {
-            color: #64748b;
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            font-family: monospace;
-            margin-top: -1px;
-        }
-    }
-
-    .clock-section-right {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 1px;
-
-        .metric-line {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            font-family: monospace;
-            font-weight: 700;
-            line-height: 1.1;
-            cursor: help;
-
-            svg {
-                width: 12px;
-                height: 12px;
-                opacity: 0.9;
+                text-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
             }
 
-            .metric-val {
-                display: flex;
-                align-items: baseline;
-                gap: 2px;
+            .chrono-seconds {
+                color: var(--c2-green-light);
+                font-size: 1.45rem;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+                text-shadow: 0 0 14px rgba(74, 222, 128, 0.5);
             }
 
-            .metric-primary {
+            .chrono-tz {
+                color: var(--slate-dark);
+                font-size: 0.65rem;
                 font-weight: 700;
-            }
-
-            .metric-secondary {
-                color: #60a5fa;
-                font-size: 10px;
-                font-weight: 600;
-            }
-        }
-    }
-}
-
-/* 💡 רספונסיביות וכיווץ אוטומטי במצב שהחלון מצומצם */
-@media (max-width: 768px) {
-    .noc-clock-panel {
-        padding: 4px 10px;
-        gap: 10px;
-
-        .clock-section-left {
-            min-width: 90px;
-
-            .location-text {
-                font-size: 11px;
-            }
-
-            .date-text {
-                font-size: 9px;
+                margin-left: 3px;
             }
         }
 
-        .clock-section-middle {
-            .digital-time {
-                font-size: 26px;
-            }
+        .chrono-sub-row {
+            line-height: 1;
 
-            .uptime-text {
-                font-size: 9px;
+            .chrono-utc {
+                color: var(--slate-muted);
+                font-size: 0.72rem;
+                font-weight: 700;
+                letter-spacing: 0.6px;
             }
         }
 
-        .clock-section-right {
-            .metric-line {
-                font-size: 10px;
-                gap: 5px;
+        .chrono-uptime-row {
+            line-height: 1;
 
-                svg {
-                    width: 10px;
-                    height: 10px;
-                }
-
-                .metric-secondary {
-                    font-size: 8px;
-                }
+            .chrono-uptime {
+                color: var(--slate-dim);
+                font-size: 0.65rem;
+                font-weight: 700;
+                letter-spacing: 0.4px;
             }
         }
     }
-}
 
-@keyframes pulse-dot {
-    0% {
-        opacity: 1;
-        transform: scale(1);
-    }
+    .date-col {
+        text-align: left;
+        gap: 1px;
+        padding-left: 14px;
+        border-left: 1px solid rgba(51, 65, 85, 0.5);
 
-    50% {
-        opacity: 0.6;
-        transform: scale(0.9);
-    }
+        .date-day-name {
+            color: var(--c2-blue-light);
+            font-size: 0.65rem;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            line-height: 1;
+        }
 
-    100% {
-        opacity: 1;
-        transform: scale(1);
+        .date-month-day {
+            color: var(--slate-light);
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            line-height: 1.1;
+        }
+
+        .date-year {
+            color: var(--slate-dark);
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            line-height: 1;
+        }
     }
 }

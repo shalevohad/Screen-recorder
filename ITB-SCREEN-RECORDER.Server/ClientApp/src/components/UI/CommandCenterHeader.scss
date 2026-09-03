@@ -3,20 +3,21 @@
     grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 1rem;
-    width: 100%;
-    max-width: 1600px;
-    margin: 0 auto;
-    padding: 0.5rem 1rem;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(10, 15, 26, 0.95) 100%);
-    border: 1px solid rgba(51, 65, 85, 0.6);
+    width: calc(100% - 32px);
+    max-width: none !important;
+    margin: 12px auto 0 auto;
+    padding: 0.5rem 1.25rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.88) 0%, rgba(10, 15, 26, 0.94) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.25);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 20px rgba(59, 130, 246, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.08);
     box-sizing: border-box;
     position: sticky;
     top: 12px;
-    z-index: 50;
+    z-index: 1000;
+    user-select: none;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 
     .brand-logo-section {
@@ -36,7 +37,7 @@
             background: rgba(30, 41, 59, 0.6);
             border: 1px solid rgba(74, 222, 128, 0.4);
             border-radius: 8px;
-            color: #4ade80;
+            color: var(--c2-green-light);
             transition: width 0.25s, height 0.25s;
 
             svg {
@@ -76,7 +77,7 @@
                 }
 
                 .brand-main {
-                    color: #f8fafc;
+                    color: var(--slate-light);
                     font-weight: 800;
                     font-size: 1.25rem;
                     letter-spacing: 0.8px;
@@ -85,7 +86,7 @@
             }
 
             .brand-subtitle {
-                color: #64748b;
+                color: var(--slate-dark);
                 font-family: monospace;
                 font-size: 0.65rem;
                 font-weight: 600;
@@ -115,47 +116,125 @@
         grid-column: 3;
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 10px;
         justify-self: end;
         flex-shrink: 0;
+        /* קאונטר סוכנים טקטי חכם */
+        .tactical-agents-counter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 42px;
+            padding: 0 12px;
+            background: rgba(13, 20, 36, 0.88);
+            border: 1.5px solid var(--slate-border);
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
-        .active-agents-badge {
-            background-color: rgba(17, 24, 39, 0.8);
-            border: 1px solid rgba(51, 65, 85, 0.8);
-            color: #4ade80;
-            font-family: monospace;
-            font-size: 0.8rem;
-            font-weight: 600;
-            padding: 0.4rem 0.8rem;
-            border-radius: 0.5rem;
+            &:hover {
+                border-color: var(--c2-blue);
+                background: rgba(20, 30, 48, 0.95);
+                transform: translateY(-1px);
+            }
+
+            &.is-filtered {
+                border-color: rgba(56, 189, 248, 0.6);
+                background: rgba(14, 28, 46, 0.95);
+                box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+            }
+
+            .counter-nodes-icon {
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--slate-muted);
+
+                svg {
+                    width: 17px;
+                    height: 17px;
+                }
+
+                .status-dot {
+                    position: absolute;
+                    top: -1px;
+                    right: -2px;
+                    width: 5px;
+                    height: 5px;
+                    border-radius: 50%;
+                    background-color: var(--slate-dark);
+
+                    &.online {
+                        background-color: var(--c2-green);
+                        box-shadow: 0 0 6px var(--c2-green);
+                    }
+                }
+            }
+
+            .counter-figures {
+                display: flex;
+                align-items: baseline;
+                gap: 2px;
+                line-height: 1;
+
+                .primary-count {
+                    font-size: 16px;
+                    font-weight: 900;
+                    color: var(--c2-green-light);
+                    letter-spacing: -0.5px;
+                    text-shadow: 0 0 8px rgba(74, 222, 128, 0.35);
+                }
+
+                .filter-deficit {
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: var(--c2-red-light);
+                    opacity: 0.85;
+                    margin-left: 2px;
+                    letter-spacing: -0.3px;
+                }
+
+                .total-denominator {
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: var(--slate-dark);
+                    letter-spacing: -0.2px;
+                }
+            }
         }
 
         .header-icon-btn {
-            background-color: rgba(17, 24, 39, 0.8);
-            border: 1px solid rgba(51, 65, 85, 0.8);
-            color: #94a3b8;
-            width: 36px;
-            height: 36px;
-            border-radius: 0.5rem;
+            background-color: rgba(13, 20, 36, 0.88);
+            border: 1.5px solid var(--slate-border);
+            color: var(--slate-muted);
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 
             &:hover {
-                color: #ffffff;
-                border-color: #64748b;
-                background-color: rgba(30, 41, 59, 0.9);
+                color: var(--slate-light);
+                border-color: var(--c2-blue);
+                background-color: rgba(20, 30, 48, 0.95);
+                transform: translateY(-1px);
             }
         }
     }
-    /* 💡 מצב גלילה עם אנימציית ירידה מלמעלה (Drop from Top) */
+
     &.scrolled {
-        padding: 0.35rem 0.8rem;
-        background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(10, 15, 26, 0.98) 100%);
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
-        animation: dropFromTop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        padding: 0.35rem 1rem;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(10, 15, 26, 0.98) 100%);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85), 0 0 15px rgba(59, 130, 246, 0.15);
 
         .brand-logo-section {
             .tactical-emblem {
@@ -185,19 +264,7 @@
     }
 }
 
-@keyframes dropFromTop {
-    0% {
-        transform: translateY(-12px);
-        opacity: 0.7;
-    }
-
-    100% {
-        transform: translateY(0);
-        opacity: 1;
-    }
-}
-
-@media (max-width: 1185px) {
+@media (max-width: 1200px) {
     .command-center-top-bar {
         grid-template-columns: 1fr auto;
         grid-template-rows: auto auto;

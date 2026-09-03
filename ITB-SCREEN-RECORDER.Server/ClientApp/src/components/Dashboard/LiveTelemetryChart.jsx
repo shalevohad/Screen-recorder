@@ -8,7 +8,7 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState(null);
     const [dragEnd, setDragEnd] = useState(null);
-    const [currentTime, setCurrentTime] = useState(Date.now());
+    const [currentTime, setCurrentTime] = useState(() => Date.now());
     const svgRef = useRef(null);
 
     useEffect(() => {

@@ -91,14 +91,14 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 snapshot.AppMediaTxMbps = Math.Round((mediaBytes * 8.0) / (elapsedSeconds * 1_000_000.0), 2);
                 snapshot.AppTelemetryTxKbps = Math.Round((telemBytes * 8.0) / (elapsedSeconds * 1_000.0), 2);
 
+                // סינון מתאמים פעילים - הותרת כרטיסים פיזיים ו-vEthernet שנושא תעבורה
                 var activeNics = NetworkInterface.GetAllNetworkInterfaces()
                     .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
                                   nic.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
                                   nic.NetworkInterfaceType != NetworkInterfaceType.Tunnel &&
-                                  !nic.Name.Contains("Virtual", StringComparison.OrdinalIgnoreCase) &&
-                                  !nic.Name.Contains("VMware", StringComparison.OrdinalIgnoreCase) &&
-                                  !nic.Name.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) &&
-                                  !nic.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase))
+                                  nic.Speed > 0 &&
+                                  !nic.Description.Contains("WSL", StringComparison.OrdinalIgnoreCase) &&
+                                  !nic.Description.Contains("Pseudo", StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
                 foreach (var nic in activeNics)
@@ -110,7 +110,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                         long currentReceived = stats.BytesReceived;
 
                         double txMbps = 0, rxMbps = 0, utilPct = 0;
-                        double linkSpeed = nic.Speed / 1_000_000.0;
+                        double linkSpeed = Math.Round(nic.Speed / 1_000_000.0, 0);
 
                         if (_nicStates.TryGetValue(nic.Id, out var prevState))
                         {
@@ -119,27 +119,22 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                             if (linkSpeed > 0)
                             {
-                                double maxThroughput = Math.Max(txMbps, rxMbps);
-                                // 💡 חישוב מדויק של אחוז הניצולת לכל כרטיס
-                                utilPct = Math.Round((maxThroughput / linkSpeed) * 100.0, 4);
+                                utilPct = Math.Round(((txMbps + rxMbps) / linkSpeed) * 100.0, 2);
                             }
                         }
 
                         _nicStates[nic.Id] = (currentSent, currentReceived);
 
-                        bool hasTraffic = (txMbps > 0.05 || rxMbps > 0.05);
-                        bool isRelevantNic = hasTraffic || linkSpeed >= 1000;
-
-                        if (linkSpeed > 0 && isRelevantNic)
+                        if (linkSpeed > 0)
                         {
                             snapshot.Nics.Add(new NicMetric
                             {
                                 Id = nic.Id,
                                 Name = nic.Name,
                                 LinkSpeedMbps = linkSpeed,
-                                TxMbps = txMbps,
-                                RxMbps = rxMbps,
-                                UtilizationPct = utilPct
+                                TxMbps = Math.Max(0, txMbps),
+                                RxMbps = Math.Max(0, rxMbps),
+                                UtilizationPct = Math.Max(0, utilPct)
                             });
                         }
                     }
@@ -147,26 +142,15 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 }
 
                 var targetNic = snapshot.Nics.FirstOrDefault(n => n.Id == _routedNicId)
-                             ?? snapshot.Nics.OrderByDescending(n => n.RxMbps + n.TxMbps).FirstOrDefault();
+                             ?? snapshot.Nics.OrderByDescending(n => n.TxMbps + n.RxMbps).FirstOrDefault(n => (n.TxMbps + n.RxMbps) > 0)
+                             ?? snapshot.Nics.OrderByDescending(n => n.LinkSpeedMbps).FirstOrDefault();
 
                 if (targetNic != null)
                 {
                     snapshot.NicLinkSpeedMbps = targetNic.LinkSpeedMbps;
                     snapshot.NicTotalTxMbps = targetNic.TxMbps;
                     snapshot.NicTotalRxMbps = targetNic.RxMbps;
-
-                    // 💡 תיקון חישוב ניצולת הקו של האפליקציה:
-                    // המרה מדויקת של Kbps ל-Mbps (חלוקה ב-1000) והשוואה למהירות הלינק ב-Mbps
-                    double totalAppMbps = snapshot.AppMediaTxMbps + (snapshot.AppTelemetryTxKbps / 1000.0);
-
-                    if (targetNic.LinkSpeedMbps > 0)
-                    {
-                        snapshot.AppLineUtilizationPct = Math.Round((totalAppMbps / targetNic.LinkSpeedMbps) * 100.0, 4);
-                    }
-                    else
-                    {
-                        snapshot.AppLineUtilizationPct = 0;
-                    }
+                    snapshot.AppLineUtilizationPct = targetNic.UtilizationPct;
                 }
             }
 

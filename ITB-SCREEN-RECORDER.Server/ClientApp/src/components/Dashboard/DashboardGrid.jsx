@@ -1,30 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import StationThumbnail from '../Station/StationThumbnail';
-import TelemetryModal from './TelemetryModal';
 import './DashboardGrid.scss';
 
-export default function DashboardGrid({ stations: initialStations, actionPending, onToggleStream, telemetryOpen, onCloseTelemetry, direction = 'ltr' }) {
-
+export default function DashboardGrid({
+    stations: initialStations,
+    actionPending,
+    onToggleStream,
+    onBulkStart,
+    onBulkStop,
+    direction = 'ltr'
+}) {
     const [liveStations, setLiveStations] = useState(initialStations);
-    const [prevInitialStations, setPrevInitialStations] = useState(initialStations);
-    const [chartData, setChartData] = useState([]);
-
-    const [isTelemetryOpen, setIsTelemetryOpen] = useState(false);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-    if (initialStations !== prevInitialStations) {
-        setPrevInitialStations(initialStations);
-        setLiveStations(prev => {
-            const merged = [...prev];
-            initialStations.forEach(station => {
-                if (!merged.some(s => s.hostname === station.hostname)) {
-                    merged.push(station);
-                }
-            });
-            return merged;
-        });
-    }
+    const [hideOffline, setHideOffline] = useState(false);
+    const [sortAsc, setSortAsc] = useState(true);
+    const [globalShowMetrics, setGlobalShowMetrics] = useState(true);
 
     const [zoomLevel, setZoomLevel] = useState(() => {
         const savedZoom = localStorage.getItem('itb_dashboard_zoom');
@@ -36,6 +26,10 @@ export default function DashboardGrid({ stations: initialStations, actionPending
     }, [zoomLevel]);
 
     useEffect(() => {
+        setLiveStations(initialStations);
+    }, [initialStations]);
+
+    useEffect(() => {
         const port = import.meta.env?.VITE_SERVER_PORT || '5090';
         const hubUrl = `http://${window.location.hostname}:${port}/hubs/telemetry`;
 
@@ -45,137 +39,169 @@ export default function DashboardGrid({ stations: initialStations, actionPending
             .build();
 
         connection.on("ReceiveAgentMetrics", (report) => {
-            setLiveStations(prevStations => {
-                const idx = prevStations.findIndex(s => s.hostname === report.hostname);
-                const isAgentOnline = report.status === 1 || report.status === 2 || report.isProcessRunning;
+            setLiveStations(prev => {
+                const idx = prev.findIndex(s => s.hostname === report.hostname);
+                const isOnline = report.status === 1 || report.status === 2 || report.isProcessRunning;
 
                 if (idx > -1) {
-                    const updated = [...prevStations];
-                    updated[idx] = { ...updated[idx], ...report, isOnline: isAgentOnline };
-                    return updated;
+                    const copy = [...prev];
+                    copy[idx] = { ...copy[idx], ...report, isOnline };
+                    return copy;
                 }
-                return [...prevStations, { ...report, isOnline: isAgentOnline }];
+                return [...prev, { ...report, isOnline }];
             });
         });
 
         connection.start().catch(err => console.error("[SignalR] Connection Error:", err));
-
-        return () => {
-            connection.stop();
-        };
+        return () => { connection.stop(); };
     }, []);
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setLiveStations(current => {
-                if (current.length === 0) return current;
+    const processedStations = useMemo(() => {
+        let list = [...liveStations];
+        if (hideOffline) {
+            list = list.filter(s => s.isOnline);
+        }
+        list.sort((a, b) => {
+            const comp = a.hostname.localeCompare(b.hostname, undefined, { numeric: true, sensitivity: 'base' });
+            return sortAsc ? comp : -comp;
+        });
+        return list;
+    }, [liveStations, hideOffline, sortAsc]);
 
-                const cpuValues = current.map(s => s.hostCpuPct || 0);
-                const cpuAvg = cpuValues.reduce((a, b) => a + b, 0) / current.length;
-                const cpuMax = Math.max(...cpuValues);
-
-                const netValues = current.map(s => (s.mediaTxMbps || 0) / 1000.0);
-                const netAvg = netValues.reduce((a, b) => a + b, 0) / current.length;
-                const netMax = Math.max(...netValues, 0);
-
-                const totalTelemKbps = current.reduce((sum, s) => sum + (s.telemetryTxKbps || 0), 0);
-                const telemNorm = Math.min(100, (totalTelemKbps / 500.0) * 100);
-
-                const ramValues = current.map(s => s.hostRamPct || (s.processRamMb ? (s.processRamMb / 16384) * 100 : 0));
-                const ramAvg = ramValues.length > 0 ? ramValues.reduce((a, b) => a + b, 0) / ramValues.length : 0;
-
-                setChartData(prev => {
-                    const next = [...prev, {
-                        cpuAvg,
-                        cpuMax,
-                        netAvg,
-                        netMax,
-                        telemNorm,
-                        ramAvg
-                    }];
-                    return next.length > 60 ? next.slice(1) : next;
-                });
-                return current;
-            });
-        }, 1000);
-        return () => clearInterval(interval);
-    }, []);
+    const isSingleStation = processedStations.length === 1;
 
     const gridZoomMap = {
-        1: 'min(100%, 280px)',
-        2: 'min(100%, 360px)',
-        3: 'min(100%, 460px)',
-        4: 'min(100%, 520px)',
-        5: 'min(100%, 600px)',
-        6: 'min(100%, 700px)'
+        1: 'min(100%, 250px)',
+        2: 'min(100%, 310px)',
+        3: 'min(100%, 380px)',
+        4: 'min(100%, 460px)',
+        5: 'min(100%, 540px)'
     };
 
     const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 1, 1));
     const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 1, 5));
 
     return (
-        <div className="dashboard-grid-container" dir={direction}>
+        <div className="dashboard-layout-wrapper" dir={direction}>
+            {/* מעטפת תוכן ראשית: מחזיקה את הסרגל האנכי משמאל ואת הגריד מימין זה לצד זה */}
+            <div className="dashboard-content-container">
 
-            {liveStations.length === 0 ? (
-                <div className="stations-empty-state-glass">
-                    <div className="connection-pulse-container">
-                        <div className="pulse-dot-amber"></div>
-                        <div className="pulse-ring"></div>
-                    </div>
-                    <span className="empty-state-text">WAITING FOR INITIAL CONNECTION...</span>
-                </div>
-            ) : (
-                <div
-                    className="stations-grid-wrapper"
-                    style={{ '--zoom-min-width': gridZoomMap[zoomLevel] }}
-                >
-                    {liveStations.map((station) => (
-                        <div key={station.hostname} className="station-wrapper-cell">
-                            <StationThumbnail
-                                {...station}
-                                isPending={actionPending[station.hostname]}
-                                onToggleStream={() => onToggleStream(station.hostname, station.isStreaming)}
-                            />
+                {/* סרגל צד טקטי צר - רוחב קבוע, צמוד לשמאל ו-Sticky בגלילה */}
+                <aside className="dashboard-vertical-dock tactical-c2-dock">
+                    <button
+                        className="dock-icon-btn tactical-btn-start"
+                        onClick={onBulkStart}
+                        title="Start streaming on all active agents"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                            <polygon points="6 3 20 12 6 21 6 3" />
+                            <line x1="20" y1="4" x2="20" y2="20" strokeWidth="3" />
+                            <circle cx="11" cy="12" r="2.2" fill="currentColor" />
+                        </svg>
+                    </button>
+
+                    <button
+                        className="dock-icon-btn tactical-btn-stop"
+                        onClick={onBulkStop}
+                        title="Stop all active streams across fleet"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="4" y="4" width="16" height="16" rx="2" />
+                            <line x1="9" y1="9" x2="15" y2="15" strokeWidth="3" />
+                            <line x1="15" y1="9" x2="9" y2="15" strokeWidth="3" />
+                        </svg>
+                    </button>
+
+                    <div className="dock-divider"></div>
+
+                    <button
+                        className={`dock-icon-btn tactical-btn-filter ${hideOffline ? 'is-engaged' : ''}`}
+                        onClick={() => setHideOffline(p => !p)}
+                        title={hideOffline ? "Filter: Showing active agents only" : "Filter: Showing all agents (including offline)"}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="9.5" />
+                            <path d="M12 2.5a9.5 9.5 0 0 1 9.5 9.5" strokeWidth="3.2" />
+                            <line x1="12" y1="12" x2="18.5" y2="5.5" strokeWidth="2.6" />
+                            <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+                            {hideOffline && <circle cx="16" cy="8" r="1.8" fill="currentColor" />}
+                        </svg>
+                    </button>
+
+                    <button
+                        className={`dock-icon-btn tactical-btn-sort ${!sortAsc ? 'is-reversed' : ''}`}
+                        onClick={() => setSortAsc(p => !p)}
+                        title={sortAsc ? "Sort agents: Ascending (A-Z)" : "Sort agents: Descending (Z-A)"}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h7M3 12h5M3 18h3" />
+                            {sortAsc ? (
+                                <>
+                                    <path d="M17 18V6" strokeWidth="3" />
+                                    <path d="M13 10l4-4 4 4" strokeWidth="2.6" />
+                                </>
+                            ) : (
+                                <>
+                                    <path d="M17 6v12" strokeWidth="3" />
+                                    <path d="M13 14l4 4 4-4" strokeWidth="2.6" />
+                                </>
+                            )}
+                        </svg>
+                    </button>
+
+                    <button
+                        className={`dock-icon-btn tactical-btn-sensors ${globalShowMetrics ? 'is-engaged' : ''}`}
+                        onClick={() => setGlobalShowMetrics(p => !p)}
+                        title={globalShowMetrics ? "Telemetry HUD: Visible on all cards" : "Telemetry HUD: Hidden on all cards"}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2.5" />
+                            <path d="M7 16v-4M12 16V8M17 16v-6" strokeWidth="3" />
+                            <circle cx="12" cy="8" r="1.2" fill="currentColor" />
+                            <circle cx="17" cy="10" r="1.2" fill="currentColor" />
+                            <circle cx="7" cy="12" r="1.2" fill="currentColor" />
+                        </svg>
+                    </button>
+                </aside>
+
+                {/* אזור הגריד המרכזי */}
+                <main className="dashboard-main-area">
+                    {processedStations.length === 0 ? (
+                        <div className="stations-empty-state-glass">
+                            <div className="connection-pulse-container">
+                                <div className="pulse-dot-amber"></div>
+                                <div className="pulse-ring"></div>
+                            </div>
+                            <span className="empty-state-text">WAITING FOR INITIAL CONNECTION...</span>
                         </div>
-                    ))}
-                </div>
-            )}
+                    ) : (
+                        <div
+                            className={`stations-grid-wrapper tight-grid ${isSingleStation ? 'single-station' : ''}`}
+                            style={{ '--zoom-min-width': gridZoomMap[zoomLevel] }}
+                        >
+                            {processedStations.map((station) => (
+                                <div key={station.hostname} className="station-wrapper-cell">
+                                    <StationThumbnail
+                                        {...station}
+                                        isPending={actionPending[station.hostname]}
+                                        onToggleStream={() => onToggleStream(station.hostname, station.isStreaming)}
+                                        globalShowMetrics={globalShowMetrics}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </main>
+            </div>
 
-            {isTelemetryOpen && (
-                <TelemetryModal
-                    chartData={chartData}
-                    onClose={() => setIsTelemetryOpen(false)}
-                />
-            )}
-
-            {isSettingsOpen && (
-                <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ background: '#0f172a', border: '1px solid #334155', padding: '2rem', borderRadius: '8px', color: '#fff', width: '400px' }}>
-                        <h3>Command Center Settings</h3>
-                        <p style={{ color: '#94a3b8', fontSize: '14px', margin: '1rem 0' }}>Configuration panel placeholder.</p>
-                        <button onClick={() => setIsSettingsOpen(false)} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Close</button>
-                    </div>
-                </div>
-            )}
-
-            <div className="noc-footer-zoom">
-                <button onClick={handleZoomOut} disabled={zoomLevel === 1 || liveStations.length === 0} className="zoom-btn" title="Zoom Out">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        <line x1="8" y1="11" x2="14" y2="11"></line>
-                    </svg>
+            {/* סרגל זום תחתון צף */}
+            <div className="noc-footer-zoom-pill">
+                <button onClick={handleZoomOut} disabled={zoomLevel === 1} className="zoom-btn" title="Zoom Out (-)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
-
-                <input type="range" min="1" max="5" step="1" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))} disabled={liveStations.length === 0} className="zoom-slider" />
-
-                <button onClick={handleZoomIn} disabled={zoomLevel === 5 || liveStations.length === 0} className="zoom-btn" title="Zoom In">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        <line x1="11" y1="8" x2="11" y2="14"></line>
-                        <line x1="8" y1="11" x2="14" y2="11"></line>
-                    </svg>
+                <input type="range" min="1" max="5" step="1" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))} className="zoom-slider" />
+                <button onClick={handleZoomIn} disabled={zoomLevel === 5} className="zoom-btn" title="Zoom In (+)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </button>
             </div>
         </div>

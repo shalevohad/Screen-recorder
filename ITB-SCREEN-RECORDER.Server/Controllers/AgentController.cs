@@ -60,5 +60,33 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             var policy = await _telemetryState.GetAgentPolicyAsync(hostname, Request.Host.Host);
             return Ok(policy);
         }
+
+        /// <summary>
+        /// אוכף מדיניות שידור/הקלטה גורפת על כלל העמדות המחוברות ברשת (Fleet Wide)
+        /// </summary>
+        /// <param name="enable">true להפעלת שידור/הקלטה בכל העמדות, false לעצירה גורפת</param>
+        [HttpPost("fleet-streaming-policy")]
+        public IActionResult EnforceFleetWideStreamingPolicy([FromQuery] bool enable)
+        {
+            var allAgents = _telemetryState.GetAllAgents();
+
+            // סינון עמדות שנצפו ב-15 השניות האחרונות (Online בלבד)
+            var activeAgents = allAgents
+                .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15)
+                .ToList();
+
+            foreach (var agent in activeAgents)
+            {
+                _telemetryState.SetAgentStreamState(agent.Hostname, enable);
+            }
+
+            return Ok(new
+            {
+                Action = enable ? "START_ALL" : "STOP_ALL",
+                TargetStationCount = activeAgents.Count,
+                TargetHostnames = activeAgents.Select(a => a.Hostname).ToList(),
+                TimestampUtc = DateTime.UtcNow
+            });
+        }
     }
 }

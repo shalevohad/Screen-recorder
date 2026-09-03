@@ -1,125 +1,151 @@
 import { useState, useEffect, useCallback } from 'react';
-import DashboardGrid from './components/Dashboard/DashboardGrid';
+import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/UI/CommandCenterHeader';
-import SettingsModal from './components/Settings/SettingsModal';
+import DashboardGrid from './components/Dashboard/DashboardGrid';
 import './App.scss';
 
 export default function App() {
     const [stations, setStations] = useState([]);
+    const [serverTelemetry, setServerTelemetry] = useState(null);
     const [actionPending, setActionPending] = useState({});
+    const [hideOffline, setHideOffline] = useState(false);
 
-    const [settingsOpen, setSettingsOpen] = useState(false);
-    const [telemetryOpen, setTelemetryOpen] = useState(false);
+    const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
+    const apiBaseUrl = `http://${window.location.hostname}:${apiPort}`;
 
-    // 💡 ניהול מדדי השרת המרכזיים ברמת ה-App כדי להזין את ה-Header העליון
-    const [actualServerHealth, setActualServerHealth] = useState({
-        hostCpuPct: 0,
-        processCpuPct: 0,
-        processRamMb: 0,
-        hostTotalRamMb: 16384,
-        netTxMbps: 0,
-        netMaxMbps: 1000,
-        uptimeSeconds: 0
-    });
-
-    const fetchStations = useCallback(async (isActive = true) => {
+    // 1. טעינה ראשונית של רשימת העמדות
+    const fetchStations = useCallback(async () => {
         try {
-            const response = await fetch('/api/v1/dashboard/stations');
-            if (response.ok) {
-                const data = await response.json();
-                if (isActive) {
-                    setStations(data);
-                }
+            const res = await fetch(`${apiBaseUrl}/api/agents`);
+            if (res.ok) {
+                const data = await res.json();
+                setStations(data);
             }
         } catch (err) {
-            console.error('Failed to fetch stations telemetry:', err);
+            console.error('[App] Failed to fetch agents:', err);
         }
-    }, []);
-
-    // 💡 דגימת מדדי השרת כל 2 שניות ברמת האפליקציה הראשית
-    useEffect(() => {
-        let isActive = true;
-
-        const fetchServerHealth = async () => {
-            try {
-                const response = await fetch('/api/monitoring/server');
-                if (response.ok && isActive) {
-                    const data = await response.json();
-                    setActualServerHealth({
-                        hostCpuPct: data.hostCpuPct || 0,
-                        processCpuPct: data.processCpuPct || 0,
-                        processRamMb: data.processRamMb || 0,
-                        hostTotalRamMb: data.hostTotalRamMb > 0 ? data.hostTotalRamMb : 16384,
-                        netTxMbps: data.serverNetworkTxMbps || 0,
-                        netMaxMbps: data.serverNetworkLinkSpeed > 0 ? data.serverNetworkLinkSpeed : 1000,
-                        uptimeSeconds: data.uptimeSeconds || 0
-                    });
-                }
-            } catch (error) {
-                // התעלמות שקטה בשגיאות תקשורת זמניות
-            }
-        };
-
-        fetchServerHealth();
-        const healthInterval = setInterval(fetchServerHealth, 2000);
-
-        return () => {
-            isActive = false;
-            clearInterval(healthInterval);
-        };
-    }, []);
+    }, [apiBaseUrl]);
 
     useEffect(() => {
-        let isActive = true;
-
-        const loadData = async () => {
-            await fetchStations(isActive);
-        };
-
-        loadData();
-
-        const interval = setInterval(() => {
-            if (isActive) fetchStations(isActive);
-        }, 15000);
-
-        return () => {
-            isActive = false;
-            clearInterval(interval);
-        };
+        fetchStations();
     }, [fetchStations]);
 
-    const toggleStreamingPolicy = async (hostname, currentStreamingStatus) => {
-        const nextState = !currentStreamingStatus;
+    // 2. חיבור SignalR מרכזי לטלמטריית שרת ועמדות
+    useEffect(() => {
+        const hubUrl = `${apiBaseUrl}/hubs/telemetry`;
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl(hubUrl)
+            .withAutomaticReconnect([0, 2000, 5000, 10000])
+            .build();
+
+        // קבלת טלמטריית שרת כוללת עבור השעון וה-Header
+        connection.on('ReceiveServerTelemetry', (telemetry) => {
+            setServerTelemetry(telemetry);
+        });
+
+        // קבלת מדדי סוכן חיים ועדכון סטטוס מקומי
+        connection.on('ReceiveAgentMetrics', (report) => {
+            setStations(prev => {
+                const idx = prev.findIndex(s => s.hostname === report.hostname);
+                const isOnline = report.status === 1 || report.status === 2 || report.isProcessRunning;
+
+                if (idx > -1) {
+                    const copy = [...prev];
+                    copy[idx] = { ...copy[idx], ...report, isOnline };
+                    return copy;
+                }
+                return [...prev, { ...report, isOnline }];
+            });
+        });
+
+        connection.start()
+            .then(() => console.log('[App] SignalR Connected to Hub'))
+            .catch(err => console.error('[App] SignalR Connection Error:', err));
+
+        return () => {
+            connection.stop();
+        };
+    }, [apiBaseUrl]);
+
+    // 3. הפעלה/עצירה של שידור עמדה בודדת
+    const handleToggleStream = async (hostname, isCurrentlyStreaming) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
+
+        const endpoint = isCurrentlyStreaming ? 'stop-stream' : 'start-stream';
         try {
-            const response = await fetch(`/api/v1/agent/command/${hostname}?enable=${nextState}`, { method: 'POST' });
-            if (response.ok) await fetchStations();
+            const res = await fetch(`${apiBaseUrl}/api/agents/${hostname}/${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (res.ok) {
+                setStations(prev => prev.map(st => {
+                    if (st.hostname === hostname) {
+                        return { ...st, isStreaming: !isCurrentlyStreaming };
+                    }
+                    return st;
+                }));
+            } else {
+                console.error(`[App] Failed to ${endpoint} for ${hostname}`);
+            }
         } catch (err) {
-            console.error(err);
+            console.error(`[App] Error toggling stream for ${hostname}:`, err);
         } finally {
             setActionPending(prev => ({ ...prev, [hostname]: false }));
         }
     };
 
+    // 4. הפעלת שידור גורפת (Fleet Bulk Start)
+    const handleBulkStart = async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/agents/fleet/start-stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setStations(prev => prev.map(s => s.isOnline ? { ...s, isStreaming: true } : s));
+            }
+        } catch (err) {
+            console.error('[App] Failed bulk start:', err);
+        }
+    };
+
+    // 5. עצירת שידור גורפת (Fleet Bulk Stop)
+    const handleBulkStop = async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/agents/fleet/stop-stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setStations(prev => prev.map(s => ({ ...s, isStreaming: false })));
+            }
+        } catch (err) {
+            console.error('[App] Failed bulk stop:', err);
+        }
+    };
+
     return (
-        <div className="p-6 bg-[#010409] min-h-screen text-white dashboard-container dir-ltr">
-            {/* 💡 העברת מדדי השרת אל ה-CommandCenterHeader העליון */}
+        <div className="itb-command-center-app" dir="ltr">
+            {/* Header טקטי ראשי עם שעון NOC, מודול טלמטריה וקאונטר סוכנים חכם */}
             <CommandCenterHeader
-                activeAgentsCount={stations.length}
-                serverHealth={actualServerHealth}
-                onOpenTelemetry={() => setTelemetryOpen(true)}
-                onOpenSettings={() => setSettingsOpen(true)}
+                stations={stations}
+                hideOffline={hideOffline}
+                onToggleFilter={() => setHideOffline(prev => !prev)}
+                serverTelemetry={serverTelemetry}
             />
 
+            {/* גריד העמדות וסרגל הצד הטקטי */}
             <DashboardGrid
                 stations={stations}
+                hideOffline={hideOffline}
+                setHideOffline={setHideOffline}
                 actionPending={actionPending}
-                onToggleStream={toggleStreamingPolicy}
-                telemetryOpen={telemetryOpen}
-                onCloseTelemetry={() => setTelemetryOpen(false)}
+                onToggleStream={handleToggleStream}
+                onBulkStart={handleBulkStart}
+                onBulkStop={handleBulkStop}
+                direction="ltr"
             />
-
-            {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
         </div>
     );
 }

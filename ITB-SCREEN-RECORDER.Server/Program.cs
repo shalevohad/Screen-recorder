@@ -97,13 +97,13 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddSwaggerGen();
 
             builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
-
-            // 💡 שירות הסנכרון
             builder.Services.AddSingleton<OfflineSyncManager>();
-
             builder.Services.AddSingleton<TelemetryBroadcastService>();
+
             builder.Services.AddSignalR(options => {
                 options.EnableDetailedErrors = true;
+            }).AddJsonProtocol(options => {
+                options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
             });
 
             builder.Services.AddHttpClient();
@@ -118,6 +118,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
             builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
             builder.Services.AddHostedService<RecordingChunkScheduler>();
+            builder.Services.AddHostedService<ServerTelemetryHostService>();
 
             var app = builder.Build();
 

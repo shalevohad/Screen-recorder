@@ -3,26 +3,17 @@ import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
 import './FullscreenModal.scss';
 
+// הלינטר תוקן: הוסרו 9 משתני הטלמטריה שלא הודפסו בפועל
 export default function FullscreenModal({
     hostname,
     webrtcBaseUrl,
     actualFps = 0,
-    internalCaptureFps = 0,
     droppedFrames = 0,
-    qosTier = 3,
-
     hostCpuPct = 0,
-    processCpuPct = 0,
-    gpu3dPct = 0,
     gpuNvencPct = 0,
+    gpu3dPct = 0,
     mediaTxMbps = 0,
-    netTotalTxMbps = 0,
-    nicUtilizationPct = 0,
     telemetryTxKbps = 0,
-    ramAvg = 0,
-    processRamMb = 0,
-    hostTotalRamMb = 0,
-
     onClose
 }) {
     const modalBoxRef = useRef(null);
@@ -56,7 +47,6 @@ export default function FullscreenModal({
         >
             <div ref={modalBoxRef} className="stream-modal-box">
 
-                {/* 💡 Tactical HUD Overlay - צף מעל הוידאו ומופיע במעבר עכבר */}
                 <div className="stream-modal-header">
                     <div className="stream-modal-title">
                         <span className="live-dot"></span>
@@ -67,7 +57,11 @@ export default function FullscreenModal({
                         <span className="stat-pill">FPS <span className="val green">{actualFps}</span></span>
                         <span className="stat-pill">DROP <span className={`val ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span></span>
                         <span className="stat-pill">CPU <span className="val yellow">{Number(hostCpuPct).toFixed(1)}%</span></span>
-                        <span className="stat-pill">NVENC <span className="val yellow">{Number(gpuNvencPct).toFixed(1)}%</span></span>
+                        <span className="stat-pill">GPU 3D&nbsp;
+                            <span className="val yellow">{Number(gpu3dPct).toFixed(1)}%</span>
+                            &nbsp;
+                            <span className="val yellow">({Number(gpuNvencPct).toFixed(1)}%)</span>
+                        </span>
                         <span className="stat-pill">VBR <span className="val blue">{Number(mediaTxMbps).toFixed(2)}</span></span>
                         <span className="stat-pill">C2 <span className="val purple">{Number(telemetryTxKbps).toFixed(1)}</span></span>
                     </div>
