@@ -45,13 +45,18 @@ export default function StationThumbnail({
 
     const isLive = isOnline && isStreaming;
 
+    // 💡 טיפול בטיימר ההקלטה מבוסס תנאי בתוך ה-interval מבלי לאפס בתוך אפקט מסונכרן שגוי
+    useEffect(() => {
+        if (!isStreaming) return;
+        const timer = setInterval(() => setRecordingSeconds(p => p + 1), 1000);
+        return () => clearInterval(timer);
+    }, [isStreaming]);
+
+    // איפוס שנייה בלחיצה או כאשר הסטרים נעצר
     useEffect(() => {
         if (!isStreaming) {
             setRecordingSeconds(0);
-            return;
         }
-        const timer = setInterval(() => setRecordingSeconds(p => p + 1), 1000);
-        return () => clearInterval(timer);
     }, [isStreaming]);
 
     const formatTimer = (sec) => {
@@ -149,7 +154,6 @@ export default function StationThumbnail({
                 )}
             </div>
 
-            {/* 💡 המדדים והכפתור יוצגו אך ורק אם globalShowMetrics מופעל */}
             {globalShowMetrics && (
                 <div className="station-telemetry">
                     <div className="inline-network-stats">

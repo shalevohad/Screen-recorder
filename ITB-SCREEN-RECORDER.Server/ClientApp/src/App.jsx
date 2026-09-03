@@ -10,10 +10,6 @@ export default function App() {
     const [serverTelemetry, setServerTelemetry] = useState(null);
     const [actionPending, setActionPending] = useState({});
 
-    // סינון ברירת מחדל
-    const [hideOffline, setHideOffline] = useState(true);
-
-    // ניהול מודאל הגדרות עם תמיכה ב-Toggle דרך כפתור הגלגל שיניים
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
@@ -21,7 +17,7 @@ export default function App() {
 
     const fetchStations = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet`);
+            const res = await fetch(`${apiBaseUrl}/api/agents`);
             if (res.ok) {
                 const data = await res.json();
                 setStations(data);
@@ -138,7 +134,6 @@ export default function App() {
         <div className="itb-command-center-app" dir="ltr">
             <CommandCenterHeader
                 stations={sortedStations}
-                hideOffline={hideOffline}
                 serverTelemetry={serverTelemetry}
                 isSettingsOpen={isSettingsOpen}
                 onOpenSettings={() => setIsSettingsOpen(prev => !prev)}

@@ -19,7 +19,28 @@ export default function FullscreenModal({
 }) {
     const modalBoxRef = useRef(null);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-    const [elapsedTimeStr, setElapsedTimeStr] = useState('00:00:00');
+
+    // 💡 אתחול ראשוני ללא קריאת setState בתוך effect
+    const [elapsedTimeStr, setElapsedTimeStr] = useState(() => {
+        if (!streamingSinceUtc) return '00:00:00';
+        const start = new Date(streamingSinceUtc).getTime();
+        const now = Date.now();
+        let diffSec = Math.max(0, Math.floor((now - start) / 1000));
+
+        const days = Math.floor(diffSec / 86400);
+        diffSec %= 86400;
+        const hours = Math.floor(diffSec / 3600);
+        diffSec %= 3600;
+        const minutes = Math.floor(diffSec / 60);
+        const seconds = diffSec % 60;
+
+        const pad = (n) => String(n).padStart(2, '0');
+
+        if (days > 0) {
+            return `${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+        }
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    });
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -29,12 +50,8 @@ export default function FullscreenModal({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose]);
 
-    // 💡 חישוב מדויק התומך בטווחי זמן ארוכים (שניות, דקות, שעות, ימים וחודשים)
     useEffect(() => {
-        if (!streamingSinceUtc) {
-            setElapsedTimeStr('00:00:00');
-            return;
-        }
+        if (!streamingSinceUtc) return;
 
         const updateTimer = () => {
             const start = new Date(streamingSinceUtc).getTime();
@@ -57,7 +74,6 @@ export default function FullscreenModal({
             }
         };
 
-        updateTimer();
         const interval = setInterval(updateTimer, 1000);
         return () => clearInterval(interval);
     }, [streamingSinceUtc]);

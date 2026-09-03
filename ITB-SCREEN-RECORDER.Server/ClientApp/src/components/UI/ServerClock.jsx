@@ -5,6 +5,7 @@ export default function ServerClock({ uptimeSeconds: initialUptime = 0 }) {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [uptimeSeconds, setUptimeSeconds] = useState(initialUptime);
 
+    // עדכון הטימר הרגיל בלבד בתוך ה-effect
     useEffect(() => {
         const timer = setInterval(() => {
             setCurrentTime(new Date());
@@ -13,12 +14,6 @@ export default function ServerClock({ uptimeSeconds: initialUptime = 0 }) {
 
         return () => clearInterval(timer);
     }, []);
-
-    useEffect(() => {
-        if (initialUptime !== undefined) {
-            setUptimeSeconds(initialUptime);
-        }
-    }, [initialUptime]);
 
     const formatUptime = (totalSec) => {
         const d = Math.floor(totalSec / 86400);
