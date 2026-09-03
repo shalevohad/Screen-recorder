@@ -10,53 +10,53 @@
 			 Compressed="yes">
 
 		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder Server is already installed."
-					  AllowSameVersionUpgrades="yes" />
+					  AllowSameVersionUpgrades="yes"
+					  Schedule="afterInstallInitialize" />
 
+		<!-- ביטול Restart Manager להתקנות שקטות (Zero-Touch) -->
+		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
-		<util:CloseApplication Id="CloseServerProcess"
-							   Target="ITB-SCREEN-RECORDER.Server.exe"
-							   CloseMessage="yes"
-							   RebootPrompt="no" />
+		<!-- 1. חיסול שירותים ותהליכים רצים לפני ההתקנה -->
+		<CustomAction Id="KillServerProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.Server.exe /T" Execute="immediate" Return="ignore" />
+		<CustomAction Id="KillMediaMtxProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM mediamtx.exe /T" Execute="immediate" Return="ignore" />
 
+		<!-- 2. אריזת הנתונים (6 משתנים מופרדים ב-|) לתוך ה-ID של הפעולה הבאה -->
+		<CustomAction Id="SetServerJsonDataArgs"
+					  Property="UpdateServerJson"
+					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]"
+					  Execute="immediate" />
+
+		<!-- 3. ריצת הסקריפט: חסין ממחיקת סוגריים של MSI, עוקף הערות, מחליף פורטים ומכפיל לוכסנים בנתיבים -->
+		<CustomAction Id="UpdateServerJson"
+					  Directory="System64Folder"
+					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $log='C:\Windows\Temp\itb-server.log'; 'START' | Out-File $log; $d='[UpdateServerJson]'; $arr=$d.Split('|'); $cleanDir=$arr[0].TrimEnd('\'); $p=Join-Path $cleanDir 'appsettings.json'; $httpPort=$arr[1]; $rtmpPort=$arr[2]; $apiPort=$arr[3]; $hlsPort=$arr[4]; $dataDir=$arr[5]; $dataDirJson=$dataDir.Replace('\', '\\'); 'Target File: '+$p+' | HTTP: '+$httpPort | Out-File $log -Append; if(-not(Test-Path $p)){ 'File Not Found' | Out-File $log -Append; exit 0 }; $c=Get-Content $p -Raw; $q=[\[]char[\]]34; $c=$c -replace ('(?i)'+$q+'Url'+$q+'\s*:\s*'+$q+'http://0\.0\.0\.0:\d+'+$q),($q+'Url'+$q+': '+$q+'http://0.0.0.0:'+$httpPort+$q); $c=$c -replace ('(?i)'+$q+'RtmpPort'+$q+'\s*:\s*\d+'),($q+'RtmpPort'+$q+': '+$rtmpPort); $c=$c -replace ('(?i)'+$q+'ApiPort'+$q+'\s*:\s*\d+'),($q+'ApiPort'+$q+': '+$apiPort); $c=$c -replace ('(?i)'+$q+'HlsPort'+$q+'\s*:\s*\d+'),($q+'HlsPort'+$q+': '+$hlsPort); $c=$c -replace ('(?i)'+$q+'LocalFallbackPath'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'LocalFallbackPath'+$q+': '+$q+$dataDirJson+$q); $c | Set-Content $p -Encoding UTF8; 'SUCCESS' | Out-File $log -Append; exit 0 } catch { 'ERR: '+$_.Exception.Message | Out-File $log -Append; exit 0 }&quot;"
+					  Execute="deferred"
+					  Impersonate="no"
+					  Return="ignore" />
+
+		<InstallExecuteSequence>
+			<Custom Action="KillServerProc" Before="InstallValidate" />
+			<Custom Action="KillMediaMtxProc" Before="InstallValidate" />
+
+			<!-- הזרקת הנתונים למערכת רגע לפני יצירת תסריט ההתקנה -->
+			<Custom Action="SetServerJsonDataArgs" Before="InstallInitialize" Condition="NOT WIX_UPGRADE_DETECTED" />
+
+			<!-- הרצת הסקריפט רק לאחר שהקבצים הועתקו, שנייה לפני הדלקת השירות -->
+			<Custom Action="UpdateServerJson" Before="StartServices" Condition="NOT WIX_UPGRADE_DETECTED" />
+		</InstallExecuteSequence>
+
+		<!-- ממשק המשתמש -->
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<!-- הגדרת פורט ה-HTTP (Dashboard) -->
-		<Property Id="HTTP_PORT">
-			<RegistrySearch Id="SearchHttpPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorderServer" Name="HttpPort" Type="raw" />
-		</Property>
-		<SetProperty Id="HTTP_PORT" Value="5090" After="AppSearch" Condition="NOT HTTP_PORT" />
+		<!-- ברירות מחדל -->
+		<Property Id="HTTP_PORT" Value="5090" />
+		<Property Id="RTMP_PORT" Value="19350" />
+		<Property Id="API_PORT" Value="9997" />
+		<Property Id="HLS_PORT" Value="8888" />
+		<Property Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" />
 
-		<!-- הגדרת פורט RTMP של MediaMTX (ברירת מחדל 19350) -->
-		<Property Id="RTMP_PORT">
-			<RegistrySearch Id="SearchRtmpPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorderServer" Name="RtmpPort" Type="raw" />
-		</Property>
-		<SetProperty Id="RTMP_PORT" Value="19350" After="AppSearch" Condition="NOT RTMP_PORT" />
-
-		<!-- הגדרת פורט API של MediaMTX (ברירת מחדל 9997) -->
-		<Property Id="API_PORT">
-			<RegistrySearch Id="SearchApiPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorderServer" Name="ApiPort" Type="raw" />
-		</Property>
-		<SetProperty Id="API_PORT" Value="9997" After="AppSearch" Condition="NOT API_PORT" />
-
-		<!-- הגדרת פורט HLS של MediaMTX (ברירת מחדל 8888) -->
-		<Property Id="HLS_PORT">
-			<RegistrySearch Id="SearchHlsPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorderServer" Name="HlsPort" Type="raw" />
-		</Property>
-		<SetProperty Id="HLS_PORT" Value="8888" After="AppSearch" Condition="NOT HLS_PORT" />
-
-		<Property Id="DATA_DIR">
-			<RegistrySearch Id="SearchDataDir" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorderServer" Name="DataDirectory" Type="raw" />
-		</Property>
-		<SetProperty Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" After="AppSearch" Condition="NOT DATA_DIR" />
-
-		<Property Id="DEBUG_MODE">
-			<RegistrySearch Id="SearchDebugMode" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorderServer" Name="DebugMode" Type="raw" />
-		</Property>
-		<SetProperty Id="DEBUG_MODE" Value="0" After="AppSearch" Condition="NOT DEBUG_MODE" />
-
-		<!-- עיצוב מסך ההגדרות המתקדם עם כל שדות הפורטים -->
 		<UI>
 			<Dialog Id="ServerConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
 				<Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
@@ -66,27 +66,21 @@
 				<Control Id="Title" Type="Text" X="15" Y="6" Width="300" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Advanced Server Configuration" />
 				<Control Id="Description" Type="Text" X="25" Y="23" Width="330" Height="15" Transparent="yes" NoPrefix="yes" Text="Configure server ports and data directory." />
 
-				<!-- שדה 1: HTTP Port -->
 				<Control Id="PortLabel" Type="Text" X="20" Y="52" Width="150" Height="15" Text="HTTP Dashboard Port:" />
 				<Control Id="PortEdit" Type="Edit" X="180" Y="50" Width="170" Height="18" Property="HTTP_PORT" />
 
-				<!-- שדה 2: RTMP Port -->
 				<Control Id="RtmpLabel" Type="Text" X="20" Y="77" Width="150" Height="15" Text="MediaMTX RTMP Port:" />
 				<Control Id="RtmpEdit" Type="Edit" X="180" Y="75" Width="170" Height="18" Property="RTMP_PORT" />
 
-				<!-- שדה 3: API Port -->
 				<Control Id="ApiLabel" Type="Text" X="20" Y="102" Width="150" Height="15" Text="MediaMTX API Port:" />
 				<Control Id="ApiEdit" Type="Edit" X="180" Y="100" Width="170" Height="18" Property="API_PORT" />
 
-				<!-- שדה 4: HLS Port -->
 				<Control Id="HlsLabel" Type="Text" X="20" Y="127" Width="150" Height="15" Text="MediaMTX HLS Port:" />
 				<Control Id="HlsEdit" Type="Edit" X="180" Y="125" Width="170" Height="18" Property="HLS_PORT" />
 
-				<!-- שדה 5: Data Directory -->
 				<Control Id="DataDirLabel" Type="Text" X="20" Y="157" Width="150" Height="15" Text="Data Directory Path:" />
 				<Control Id="DataDirEdit" Type="Edit" X="20" Y="172" Width="330" Height="18" Property="DATA_DIR" />
 
-				<!-- כפתורי ניווט -->
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />
 				<Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
@@ -94,10 +88,14 @@
 				</Control>
 			</Dialog>
 
-			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ServerConfigurationDlg" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" Order="5" />
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ServerConfigurationDlg" Condition="NOT WIX_UPGRADE_DETECTED" Order="5" />
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="WIX_UPGRADE_DETECTED" Order="6" />
+
 			<Publish Dialog="ServerConfigurationDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1" />
 			<Publish Dialog="ServerConfigurationDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="1" />
-			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ServerConfigurationDlg" Condition="1" Order="5" />
+
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ServerConfigurationDlg" Condition="NOT WIX_UPGRADE_DETECTED" Order="5" />
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Condition="WIX_UPGRADE_DETECTED" Order="6" />
 		</UI>
 
 		<StandardDirectory Id="ProgramFiles64Folder">
@@ -109,19 +107,6 @@
 				<File Id="ServerServiceExe" Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.Server.exe" KeyPath="yes" />
 				<ServiceInstall Id="ServiceInstaller" Type="ownProcess" Name="ITB_ServerService" DisplayName="ITB Screen Recorder Central Server" Description="Central streaming receiver, telemetry ingestion, and dashboard service." Start="auto" Account="LocalSystem" ErrorControl="normal" />
 				<ServiceControl Id="ServiceController" Name="ITB_ServerService" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
-			</Component>
-
-			<!-- שמירת כל הפורטים החדשים לתוך ה-Registry -->
-			<Component Id="RegistryConfiguration" Bitness="always64" Guid="E65A7B8C-9D0E-1F2A-3B4C-5D6E7F8091A2">
-				<RegistryKey Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorderServer">
-					<RegistryValue Name="HttpPort" Value="[HTTP_PORT]" Type="string" KeyPath="yes" />
-					<RegistryValue Name="RtmpPort" Value="[RTMP_PORT]" Type="string" />
-					<RegistryValue Name="ApiPort" Value="[API_PORT]" Type="string" />
-					<RegistryValue Name="HlsPort" Value="[HLS_PORT]" Type="string" />
-					<RegistryValue Name="DataDirectory" Value="[DATA_DIR]" Type="string" />
-					<RegistryValue Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
-					<RegistryValue Name="DebugMode" Value="[DEBUG_MODE]" Type="integer" />
-				</RegistryKey>
 			</Component>
 
 			<Component Id="MediaMtxLicenseDeclaration" Bitness="always64" Guid="F76B8C9D-0E1F-2A3B-4C5D-6E7F8091A2B3">

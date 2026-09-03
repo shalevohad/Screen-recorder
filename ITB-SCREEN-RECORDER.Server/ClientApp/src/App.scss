@@ -1,0 +1,67 @@
+﻿/* איפוס גלובלי והגדרת סביבת C2 טקטית */
+html, body, #root {
+    background-color: var(--bg-void, #030712) !important;
+    color: var(--slate-light, #f8fafc);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    max-width: none !important;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+*, *::before, *::after {
+    box-sizing: inherit;
+}
+
+/* מעטפת האפליקציה הראשית */
+.itb-command-center-app {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 100vh;
+    background-color: var(--bg-void, #030712);
+    background-image: radial-gradient(ellipse at 50% 0%, rgba(30, 58, 138, 0.12) 0%, transparent 60%), radial-gradient(circle at 100% 100%, rgba(15, 23, 42, 0.4) 0%, transparent 50%);
+    position: relative;
+    padding-bottom: 2rem;
+    /* קו רשת רקע טקטי עדין מאוד */
+    &::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-size: 40px 40px;
+        background-image: linear-gradient(to right, rgba(51, 65, 85, 0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(51, 65, 85, 0.1) 1px, transparent 1px);
+        pointer-events: none;
+        z-index: 1;
+    }
+    /* תוכן האפליקציה מעל הרשת */
+    > * {
+        position: relative;
+        z-index: 2;
+    }
+}
+
+/* סקרולבר טקטי מותאם אישית לדפדפן */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark-well, #090d16);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--slate-line, #1e293b);
+    border-radius: 4px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+
+    &:hover {
+        background: var(--slate-border, #334155);
+        border-color: rgba(59, 130, 246, 0.4);
+    }
+}

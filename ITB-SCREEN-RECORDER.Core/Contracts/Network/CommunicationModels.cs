@@ -8,6 +8,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum ServerCommand { Standby = 0, StartStream = 1, StopStream = 2 }
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum BufferCommand { WAIT = 0, UPLOAD_GRANTED = 1, DISCARD_ALL = 2 }
+
     public class AgentStreamPolicy
     {
         [JsonPropertyName("rtmpServerBaseUrl")]
@@ -46,19 +49,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("hasActiveMicrophone")]
         public bool HasActiveMicrophone { get; set; }
 
-        [JsonPropertyName("cpuUsagePercentage")]
-        public double CpuUsagePercentage { get; set; }
-
-        [JsonPropertyName("gpuUsagePercentage")]
-        public double GpuUsagePercentage { get; set; }
-
         [JsonPropertyName("isStreaming")]
         public bool IsStreaming { get; set; }
 
         [JsonPropertyName("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
-        // 💡 הוספת שדות הטלמטריה החדשים לתקשורת ה-Out-of-Band
         [JsonPropertyName("actualFps")]
         public int ActualFps { get; set; }
 
@@ -70,6 +66,51 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("qosTier")]
         public int QosTier { get; set; }
+
+        [JsonPropertyName("mediaTxMbps")]
+        public double MediaTxMbps { get; set; }
+
+        [JsonPropertyName("telemetryTxKbps")]
+        public double TelemetryTxKbps { get; set; }
+
+        [JsonPropertyName("nicUtilizationPct")]
+        public double NicUtilizationPct { get; set; }
+
+        [JsonPropertyName("linkSpeedMbps")]
+        public double LinkSpeedMbps { get; set; } = 1000;
+
+        [JsonPropertyName("hostCpuPct")]
+        public double HostCpuPct { get; set; }
+
+        [JsonPropertyName("processCpuPct")]
+        public double ProcessCpuPct { get; set; }
+
+        [JsonPropertyName("processRamMb")]
+        public double ProcessRamMb { get; set; }
+
+        [JsonPropertyName("hostRamPct")]
+        public double HostRamPct { get; set; }
+
+        [JsonPropertyName("hostTotalRamMb")]
+        public double HostTotalRamMb { get; set; }
+
+        [JsonPropertyName("gpu3dPct")]
+        public double Gpu3dPct { get; set; }
+
+        [JsonPropertyName("gpuNvencPct")]
+        public double GpuNvencPct { get; set; }
+
+        [JsonPropertyName("offlineFilesCount")]
+        public int OfflineFilesCount { get; set; }
+
+        [JsonPropertyName("offlineFilesTotalSizeMb")]
+        public long OfflineFilesTotalSizeMb { get; set; }
+
+        [JsonPropertyName("nicTotalTxMbps")]
+        public double NicTotalTxMbps { get; set; }
+
+        [JsonPropertyName("nicTotalRxMbps")]
+        public double NicTotalRxMbps { get; set; }
     }
 
     public class AgentHeartbeatResponse
@@ -85,5 +126,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("policy")]
         public AgentStreamPolicy? Policy { get; set; }
+
+        [JsonPropertyName("offlineBufferAction")]
+        public BufferCommand OfflineBufferAction { get; set; } = BufferCommand.WAIT;
     }
 }

@@ -1,4 +1,4 @@
-import '../styles/CyberLoadingOverlay.scss';
+import './CyberLoadingOverlay.scss';
 
 export default function CyberLoadingOverlay({ text = "CONNECTING", size = "small" }) {
     return (

@@ -32,45 +32,36 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private readonly SemaphoreSlim _streamPermissionSignal = new SemaphoreSlim(0, 1);
         private readonly AppConfig _config;
         private volatile bool _isStreamingRequested = false;
+        private volatile bool _requiresImmediateRestart = false;
 
+        private string _injectedRtmpDestination = string.Empty;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
+        private volatile bool _isOfflineModeActive = false;
+        private readonly NetworkTelemetry _networkTelemetry = new NetworkTelemetry();
 
-        // 💡 Seamless ABR State Machine
-        private readonly int _baselineFps;
+        private volatile int _baselineFps;
+        private volatile string _currentVideoBitrate;
         private volatile int _internalCaptureFps;
         private volatile int _currentQosTier = 3;
 
-        // 💡 משתני טלמטריה בזיכרון בלבד (ללא קבצי טקסט!)
         private volatile int _lastRealFps = 0;
         private volatile int _lastDroppedFrames = 0;
 
         public WorkerEngine(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _baselineFps = _config.TargetFps;
+            _baselineFps = _config.TargetFps > 0 ? _config.TargetFps : 30;
+            _currentVideoBitrate = string.IsNullOrWhiteSpace(_config.VideoBitrate) ? "5000k" : _config.VideoBitrate;
             _internalCaptureFps = _baselineFps;
         }
 
-        // 💡 שינוי שכבות האיכות משנה רק את קצב הדגימה הפנימי, ללא אתחול של FFmpeg!
         private void SetQosTier(int tier)
         {
-            _currentQosTier = tier; // עדכון השכבה לטובת הדיווח לשרת
-            if (tier >= 3)
-            {
-                _internalCaptureFps = _baselineFps;
-            }
-            else if (tier == 2)
-            {
-                _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.75));
-            }
-            else if (tier == 1)
-            {
-                _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.5));
-            }
-            else
-            {
-                _internalCaptureFps = 10; // רצפת הברזל (מצב הישרדות קיצוני)
-            }
+            _currentQosTier = tier;
+            if (tier >= 3) _internalCaptureFps = _baselineFps;
+            else if (tier == 2) _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.75));
+            else if (tier == 1) _internalCaptureFps = Math.Max(10, (int)(_baselineFps * 0.5));
+            else _internalCaptureFps = 10;
         }
 
         public async Task RunAsync(CancellationToken ct)
@@ -93,12 +84,29 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                 while (!localToken.IsCancellationRequested)
                 {
-                    Logger.Info("[WorkerEngine] Worker is in Standby mode, waiting for streaming permission...");
-                    await _streamPermissionSignal.WaitAsync(localToken);
+                    if (!_isStreamingRequested)
+                    {
+                        Logger.Info("[WorkerEngine] Worker in Standby, waiting for Supervisor stream command...");
+                        await _streamPermissionSignal.WaitAsync(localToken);
+                    }
 
                     if (localToken.IsCancellationRequested) break;
 
-                    Logger.Info($"[WorkerEngine] Starting initialization... Outer Stream: {_baselineFps}FPS. Internal Capture: {_internalCaptureFps}FPS.");
+                    _requiresImmediateRestart = false;
+
+                    Logger.Info($"[WorkerEngine] Initializing capture pipeline... Baseline FPS: {_baselineFps}, Bitrate: {_currentVideoBitrate}, Internal Capture: {_internalCaptureFps}");
+
+                    string targetDestination = _injectedRtmpDestination;
+                    if (string.IsNullOrWhiteSpace(targetDestination))
+                    {
+                        string safeName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+                        targetDestination = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeName}";
+                    }
+
+                    if (Uri.TryCreate(targetDestination, UriKind.Absolute, out Uri? rtmpUri))
+                    {
+                        _networkTelemetry.ResolveRoutingInterface(rtmpUri.Host);
+                    }
 
                     IScreenCaptureProvider? screenCapture = null;
                     IAudioCaptureProvider? audioCapture = null;
@@ -129,17 +137,49 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 ffmpegManager.WriteAudioData(data);
                                 Interlocked.Add(ref totalAudioBytes, data.Length);
                                 Interlocked.Exchange(ref lastRealAudioTicks, Stopwatch.GetTimestamp());
+                                _networkTelemetry.TrackMediaBytes(data.Length);
                             }
                         };
                         audioCapture.Start();
 
                         await Task.Delay(100, localToken);
 
-                        string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
-                        string rtmpTarget = $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{safeMachineName}";
                         DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
+                        string destinationTarget;
 
-                        bool started = await ffmpegManager.StartAsync(rtmpTarget, calibratedTime, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
+                        if (_isOfflineModeActive)
+                        {
+                            string bufferDir = _config.LocalBufferPath;
+                            if (string.IsNullOrWhiteSpace(bufferDir))
+                            {
+                                bufferDir = OperatingSystem.IsWindows()
+                                    ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
+                                    : "/var/lib/itb-screen-recorder/buffer";
+                            }
+                            Directory.CreateDirectory(bufferDir);
+
+                            string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
+                            destinationTarget = Path.Combine(bufferDir, $"{safeMachineName}_{calibratedTime:yyyyMMdd_HHmmss}.flv");
+                            Logger.Warn($"[WorkerEngine] Operating in Isolated Buffer Mode -> {destinationTarget}");
+                        }
+                        else
+                        {
+                            destinationTarget = targetDestination;
+                            Logger.Info($"[WorkerEngine] Live RTMP Streaming -> {destinationTarget}");
+                        }
+
+                        bool started = await ffmpegManager.StartAsync(
+                            destinationTarget,
+                            calibratedTime,
+                            screenCapture.Width,
+                            screenCapture.Height,
+                            48000,
+                            2,
+                            "f32le",
+                            _baselineFps,
+                            _currentVideoBitrate,
+                            localToken).ConfigureAwait(false);
+
                         if (!started)
                         {
                             _isStreamingRequested = false;
@@ -156,8 +196,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             _isStreamingRequested = false;
                             continue;
                         }
-
-                        Logger.Info("[WorkerEngine] Capture and streaming are active.");
 
                         isSessionActive = true;
                         isCaptureActive = true;
@@ -207,6 +245,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             byte[] silence = new byte[missingBytes];
                                             ffmpegManager.WriteAudioData(silence);
                                             Interlocked.Add(ref totalAudioBytes, missingBytes);
+                                            _networkTelemetry.TrackMediaBytes(missingBytes);
                                         }
                                     }
                                 }
@@ -230,7 +269,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                         long fpsStopwatchTicks = sessionStartTicks;
 
-                        while (!localToken.IsCancellationRequested && _isStreamingRequested)
+                        while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
                         {
                             double currentRealMs = Stopwatch.GetElapsedTime(sessionStartTicks).TotalMilliseconds;
                             long expectedFrames = (long)(currentRealMs / targetFrameTimeMs) + 1;
@@ -265,14 +304,27 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                                     for (int i = 0; i < actualFramesToPush; i++)
                                     {
-                                        if (!ffmpegManager.WriteVideoFrame(renderBuffer)) break;
-                                        framesProcessed++;
+                                        if (!ffmpegManager.WriteVideoFrame(renderBuffer))
+                                        {
+                                            if (!_isOfflineModeActive)
+                                            {
+                                                Logger.Warn("[WorkerEngine] Output pipeline closed. Switching to isolated buffer mode.");
+                                                _isOfflineModeActive = true;
+                                                _requiresImmediateRestart = true;
+                                            }
+                                            break;
+                                        }
 
+                                        _networkTelemetry.TrackMediaBytes(renderBuffer.Length);
+
+                                        framesProcessed++;
                                         actualFpsCount++;
                                         if (i > 0) duplicatedFramesCount++;
                                     }
                                 }
                             }
+
+                            if (_requiresImmediateRestart) break;
 
                             if (Stopwatch.GetElapsedTime(fpsStopwatchTicks).TotalMilliseconds >= 1000)
                             {
@@ -284,11 +336,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 duplicatedFramesCount = 0;
                                 fpsStopwatchTicks = Stopwatch.GetTimestamp();
 
-                                // 💡 עדכון נתוני הטלמטריה לזיכרון בלבד
                                 _lastRealFps = realFps;
                                 _lastDroppedFrames = dropped;
 
-                                // 💡 Seamless Auto-Heal 
                                 if (dropped >= (_baselineFps / 2))
                                 {
                                     consecutiveStableSeconds = 0;
@@ -299,7 +349,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         if (_currentQosTier > 0)
                                         {
                                             SetQosTier(_currentQosTier - 1);
-                                            Logger.Warn($"[AUTO-HEAL] Severe choke detected. Downgrading INTERNAL capture to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
+                                            Logger.Warn($"[AUTO-HEAL] Downscaling capture rate to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
                                             consecutiveChokeSeconds = 0;
                                         }
                                         else
@@ -318,7 +368,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         if (_currentQosTier < 3)
                                         {
                                             SetQosTier(_currentQosTier + 1);
-                                            Logger.Info($"[AUTO-HEAL] Stream stable for 20s. Upgrading INTERNAL capture to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
+                                            Logger.Info($"[AUTO-HEAL] Pipeline recovered. Upscaling capture rate to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
                                             consecutiveStableSeconds = 0;
                                         }
                                         else
@@ -348,11 +398,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error($"[WorkerEngine] Error during streaming session: {ex.Message}");
+                        Logger.Error($"[WorkerEngine] Streaming execution error: {ex.Message}");
                     }
                     finally
                     {
-                        Logger.Info("[WorkerEngine] Stopping and tearing down resources...");
+                        Logger.Info("[WorkerEngine] Tearing down pipeline resources...");
                         try
                         {
                             isSessionActive = false;
@@ -363,7 +413,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             if (screenCapture is IDisposable screenDisp) screenDisp.Dispose();
                             ffmpegManager?.Dispose();
                         }
-                        catch (Exception ex) { Logger.Error($"[WorkerEngine] Error teardown: {ex.Message}"); }
+                        catch (Exception ex) { Logger.Error($"[WorkerEngine] Teardown exception: {ex.Message}"); }
                     }
                 }
             }
@@ -404,19 +454,67 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                                     if (cmd.Equals("Stop", StringComparison.OrdinalIgnoreCase) || cmd.Equals("GracefulShutdown", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        Logger.Info("[WorkerEngine] Received STOP command.");
+                                        Logger.Info("[WorkerEngine] Received STOP command from Supervisor.");
                                         _isStreamingRequested = false;
                                     }
-                                    else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("ResumeAfterUnlock", StringComparison.OrdinalIgnoreCase))
+                                    else if (cmd.Equals("SetCaptureFps", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        if (parts.Length > 1 && long.TryParse(parts[1], out long ticks))
+                                        // שינוי קצב לכידה ללא ריסטארט של FFmpeg
+                                        if (parts.Length > 1 && int.TryParse(parts[1], out int captureFps) && captureFps >= 10 && captureFps <= 120)
+                                        {
+                                            _internalCaptureFps = Math.Min(captureFps, _baselineFps);
+                                            Logger.Info($"[WorkerEngine] Updated internal capture rate on the fly to {_internalCaptureFps} FPS (Stream stays {_baselineFps} FPS).");
+                                        }
+                                    }
+                                    else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
+                                        {
+                                            _injectedRtmpDestination = parts[1];
+                                        }
+
+                                        if (parts.Length > 2 && long.TryParse(parts[2], out long ticks))
                                         {
                                             _serverUtcOffset = TimeSpan.FromTicks(ticks);
                                         }
 
-                                        Logger.Info("[WorkerEngine] Received START command.");
+                                        if (parts.Length > 3 && int.TryParse(parts[3], out int dynamicFps) && dynamicFps >= 10 && dynamicFps <= 120)
+                                        {
+                                            _baselineFps = dynamicFps;
+                                            _internalCaptureFps = dynamicFps;
+                                        }
+
+                                        if (parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]))
+                                        {
+                                            _currentVideoBitrate = parts[4].Trim();
+                                        }
+
+                                        Logger.Info($"[WorkerEngine] Received START/RESTART command. Destination: {_injectedRtmpDestination}, FPS: {_baselineFps}, Bitrate: {_currentVideoBitrate}");
                                         _isStreamingRequested = true;
+                                        if (cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            _requiresImmediateRestart = true;
+                                        }
+
                                         if (_streamPermissionSignal.CurrentCount == 0) _streamPermissionSignal.Release();
+                                    }
+                                    else if (cmd.Equals("ServerDisconnected", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (!_isOfflineModeActive && _isStreamingRequested)
+                                        {
+                                            Logger.Warn("[WorkerEngine] Server link down. Switching to Isolated Buffer Mode.");
+                                            _isOfflineModeActive = true;
+                                            _requiresImmediateRestart = true;
+                                        }
+                                    }
+                                    else if (cmd.Equals("ServerConnected", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (_isOfflineModeActive && _isStreamingRequested)
+                                        {
+                                            Logger.Info("[WorkerEngine] Server link restored. Reconnecting Live Stream.");
+                                            _isOfflineModeActive = false;
+                                            _requiresImmediateRestart = true;
+                                        }
                                     }
                                 }
                             }
@@ -426,19 +524,34 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     while (!cts.Token.IsCancellationRequested && client.IsConnected)
                     {
+                        var hwSnap = HardwareProbe.GetTelemetrySnapshot();
+                        var netSnap = _networkTelemetry.GetMetricsSnapshot();
+
                         var msg = new
                         {
                             SessionState = InternalSessionState.ActiveInteractive,
                             CurrentFps = _baselineFps,
                             IsStreaming = _isStreamingRequested,
+                            IsOfflineMode = _isOfflineModeActive,
 
-                            // 💡 הזרקת הטלמטריה מתבצעת באופן אוטומטי כל עוד יש שידור
                             Telemetry = _isStreamingRequested ? new
                             {
                                 ActualFps = _lastRealFps,
                                 DroppedFrames = _lastDroppedFrames,
                                 InternalCaptureFps = _internalCaptureFps,
-                                QosTier = _currentQosTier
+                                QosTier = _currentQosTier,
+
+                                HostCpuPct = hwSnap.HostCpuUsagePct,
+                                ProcessCpuPct = hwSnap.ProcessCpuUsagePct,
+                                ProcessRamMb = hwSnap.ProcessRamMb,
+                                Gpu3dPct = hwSnap.Gpu3dUsagePct,
+                                GpuNvencPct = hwSnap.GpuNvencUsagePct,
+
+                                MediaTxMbps = netSnap.AppMediaTxMbps,
+                                NicLinkSpeedMbps = netSnap.NicLinkSpeedMbps,
+                                NicTotalTxMbps = netSnap.NicTotalTxMbps,
+                                NicTotalRxMbps = netSnap.NicTotalRxMbps,
+                                AppLineUtilizationPct = netSnap.AppLineUtilizationPct
                             } : null
                         };
 

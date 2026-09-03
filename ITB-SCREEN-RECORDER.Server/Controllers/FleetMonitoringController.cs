@@ -1,0 +1,166 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using ITB_SCREEN_RECORDER.Server.Services;
+using System.Linq;
+using System;
+using System.Diagnostics;
+using ITB_SCREEN_RECORDER.Core.Diagnostics;
+
+namespace ITB_SCREEN_RECORDER.Server.Controllers
+{
+    [ApiController]
+    [Route("api/monitoring")]
+    public class FleetMonitoringController : ControllerBase
+    {
+        private readonly ITelemetryStateService _telemetryState;
+        private readonly NetworkTelemetry _serverNetworkTelemetry;
+        private readonly OfflineSyncManager _syncManager;
+
+        public FleetMonitoringController(ITelemetryStateService telemetryState, NetworkTelemetry serverNetworkTelemetry, OfflineSyncManager syncManager)
+        {
+            _telemetryState = telemetryState;
+            _serverNetworkTelemetry = serverNetworkTelemetry;
+            _syncManager = syncManager;
+        }
+
+        [HttpGet("fleet")]
+        public IActionResult GetFleetMetrics()
+        {
+            var agents = _telemetryState.GetAllAgents()
+                .Where(a => !string.IsNullOrEmpty(a.Hostname))
+                .Select(a =>
+                {
+                    return new
+                    {
+                        agentHostname = a.Hostname,
+
+                        // עומס מארח כללי (Total Machine Load)
+                        hostCpuPct = Math.Round(a.HostCpuPct, 1),
+                        hostGpuPct = Math.Round(a.Gpu3dPct, 1),
+                        netTotalTxMbps = Math.Round(a.NicTotalTxMbps, 2),
+                        netTotalRxMbps = Math.Round(a.NicTotalRxMbps, 2),
+
+                        // תרומת תוכנת ההקלטות (App Specific Load)
+                        appCpuPct = Math.Round(a.ProcessCpuPct, 1),
+                        appRamMb = Math.Round(a.ProcessRamMb, 1),
+                        appNetTxMbps = Math.Round(a.MediaTxMbps, 2),
+
+                        netUsagePct = Math.Round(a.NicUtilizationPct, 2),
+                        isStreaming = a.IsStreaming ? 1 : 0
+                    };
+                });
+
+            return Ok(agents);
+        }
+
+        [HttpGet("fleet/{agentHostname}")]
+        public IActionResult GetStationMetrics(string agentHostname)
+        {
+            // חיפוש העמדה הספציפית ב-State ללא רגישות לאותיות רישיות/קטנות
+            var agent = _telemetryState.GetAllAgents()
+                .FirstOrDefault(a => string.Equals(a.Hostname, agentHostname, StringComparison.OrdinalIgnoreCase));
+
+            if (agent == null)
+            {
+                // החזרת 404 מאפשרת ל-OpManager לדעת מיד שהעמדה לא מדווחת
+                return NotFound(new { error = $"Station '{agentHostname}' not found or offline" });
+            }
+
+            var metrics = new
+            {
+                agentHostname = agent.Hostname,
+
+                // עומס מארח כללי
+                hostCpuPct = Math.Round(agent.HostCpuPct, 1),
+                hostGpuPct = Math.Round(agent.Gpu3dPct, 1),
+                netTotalTxMbps = Math.Round(agent.NicTotalTxMbps, 2),
+                netTotalRxMbps = Math.Round(agent.NicTotalRxMbps, 2),
+
+                // תרומת תוכנת ההקלטות
+                appCpuPct = Math.Round(agent.ProcessCpuPct, 1),
+                appRamMb = Math.Round(agent.ProcessRamMb, 1),
+                appNetTxMbps = Math.Round(agent.MediaTxMbps, 2),
+
+                netUsagePct = Math.Round(agent.NicUtilizationPct, 2),
+                isStreaming = agent.IsStreaming ? 1 : 0
+            };
+
+            return Ok(metrics);
+        }
+
+        [HttpGet("server")]
+        public IActionResult GetServerMetrics()
+        {
+            using var currentProcess = Process.GetCurrentProcess();
+            var uptime = DateTime.Now - currentProcess.StartTime;
+
+            var activeAgentsCount = _telemetryState.GetAllAgents()
+                .Count(a => !string.IsNullOrEmpty(a.Hostname));
+
+            var hardwareSnapshot = HardwareProbe.GetTelemetrySnapshot();
+            var netSnapshot = _serverNetworkTelemetry.GetMetricsSnapshot();
+
+            var serverMetrics = new
+            {
+                serverHostname = Environment.MachineName,
+
+                // עומס פיזי מלא של השרת מול עומס התוכנה
+                hostCpuPct = Math.Round(hardwareSnapshot.HostCpuUsagePct, 1),
+                processCpuPct = Math.Round(hardwareSnapshot.ProcessCpuUsagePct, 1),
+                hostTotalRamMb = Math.Round(hardwareSnapshot.HostTotalRamMb, 1),
+                processRamMb = Math.Round(hardwareSnapshot.ProcessRamMb, 1),
+
+                // 💡 הנתונים עבור השעון (HUD): נמשכים נטו מהכרטיס הרלוונטי המנותב לאחסון/תחנות
+                serverNetworkTxMbps = Math.Round(netSnapshot.NicTotalTxMbps, 2),
+                serverNetworkRxMbps = Math.Round(netSnapshot.NicTotalRxMbps, 2),
+                serverNetworkLinkSpeed = Math.Round(netSnapshot.NicLinkSpeedMbps, 2),
+
+                activeThreads = currentProcess.Threads.Count,
+                uptimeSeconds = Math.Round(uptime.TotalSeconds, 0),
+                connectedAgents = activeAgentsCount,
+
+                // 💡 רשימת כלל הכרטיסים מוחזרת במלואה כפי שהייתה
+                nics = netSnapshot.Nics.Select(n => new
+                {
+                    nicName = n.Name,
+                    capacityMbps = Math.Round(n.LinkSpeedMbps, 2),
+                    txMbps = Math.Round(n.TxMbps, 2),
+                    rxMbps = Math.Round(n.RxMbps, 2),
+                    usagePct = Math.Round(n.UtilizationPct, 2)
+                })
+            };
+
+            return Ok(serverMetrics);
+        }
+
+        // 💡 נתוני חובות וסנכרון - ה-Endpoint הכללי 
+        [HttpGet("sync-status")]
+        public IActionResult GetSyncStatusMetrics()
+        {
+            var allStations = _telemetryState.GetAllAgents();
+            var stationsWithDebt = allStations.Where(s => s.OfflineFilesTotalSizeMb > 0).ToList();
+
+            long globalDebtMb = stationsWithDebt.Sum(s => s.OfflineFilesTotalSizeMb);
+
+            var response = new
+            {
+                globalMetrics = new
+                {
+                    totalStationsWithDebt = stationsWithDebt.Count,
+                    globalDebtSizeMb = globalDebtMb,
+                    currentlySyncingStations = _syncManager.GetActiveUploadsCount(),
+                    serverUploadQueueState = globalDebtMb > 0 ? "SYNCING" : "IDLE"
+                },
+                stationDebts = stationsWithDebt.Select(s => new
+                {
+                    hostname = s.Hostname,
+                    ipAddress = s.IpAddress,
+                    debtSizeMb = s.OfflineFilesTotalSizeMb,
+                    filesPending = s.OfflineFilesCount,
+                    syncStatus = _syncManager.GetSyncCommand(s.Hostname, s.OfflineFilesTotalSizeMb).ToString()
+                })
+            };
+
+            return Ok(response);
+        }
+    }
+}

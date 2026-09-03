@@ -10,27 +10,47 @@
 			 Compressed="yes">
 
 		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed."
-					  AllowSameVersionUpgrades="yes" />
+					  AllowSameVersionUpgrades="yes"
+					  Schedule="afterInstallInitialize" />
 
+		<!-- ביטול Restart Manager להתקנות שקטות (Zero-Touch) -->
+		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
-		<util:CloseApplication Id="CloseWorkerProcess"
-							   Target="ITB-SCREEN-RECORDER.AgentWorker.exe"
-							   CloseMessage="yes"
-							   RebootPrompt="no" />
+		<!-- 1. חיסול שירותים ותהליכים רצים -->
+		<CustomAction Id="KillAgentServiceProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentService.exe /T" Execute="immediate" Return="ignore" />
+		<CustomAction Id="KillAgentWorker" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentWorker.exe /T" Execute="immediate" Return="ignore" />
 
+		<!-- 2. אריזת הנתונים לתוך ה-ID של הפעולה הבאה (Immediate) -->
+		<CustomAction Id="SetJsonDataArgs"
+					  Property="UpdateAgentJson"
+					  Value="[INSTALLFOLDER]|[SERVER_IP]"
+					  Execute="immediate" />
+
+		<!-- 3. ריצת הסקריפט: עוקף את ה"אכילה" של הסוגריים המרובעים ב-MSI -->
+		<CustomAction Id="UpdateAgentJson"
+					  Directory="System64Folder"
+					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $log='C:\Windows\Temp\itb-agent.log'; 'START' | Out-File $log; $d='[UpdateAgentJson]'; $arr=$d.Split('|'); $cleanDir=$arr[0].TrimEnd('\'); $p=Join-Path $cleanDir 'appsettings.json'; $ip=$arr[1]; 'Target File: '+$p+' | IP: '+$ip | Out-File $log -Append; if(-not(Test-Path $p)){ 'File Not Found' | Out-File $log -Append; exit 0 }; $h=if($ip.Contains(':')){$ip.Split(':')[0]}else{$ip}; $c=Get-Content $p -Raw; $q=[\[]char[\]]34; $c=$c -replace ('(?i)'+$q+'DashboardApiUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'DashboardApiUrl'+$q+': '+$q+'http://'+$h+':5090/api/v1/agent/telemetry'+$q); $c=$c -replace ('(?i)'+$q+'RtmpServerBaseUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'RtmpServerBaseUrl'+$q+': '+$q+'rtmp://'+$h+':19350/live/'+$q); $c | Set-Content $p -Encoding UTF8; 'SUCCESS' | Out-File $log -Append; exit 0 } catch { 'ERR: '+$_.Exception.Message | Out-File $log -Append; exit 0 }&quot;"
+					  Execute="deferred"
+					  Impersonate="no"
+					  Return="ignore" />
+
+		<InstallExecuteSequence>
+			<Custom Action="KillAgentServiceProc" Before="InstallValidate" />
+			<Custom Action="KillAgentWorker" Before="InstallValidate" />
+
+			<!-- הזרקת הנתונים למערכת רגע לפני יצירת תסריט ההתקנה -->
+			<Custom Action="SetJsonDataArgs" Before="InstallInitialize" Condition="NOT WIX_UPGRADE_DETECTED" />
+
+			<!-- הרצת הסקריפט רק לאחר שהקבצים הועתקו, שנייה לפני הדלקת השירות -->
+			<Custom Action="UpdateAgentJson" Before="StartServices" Condition="NOT WIX_UPGRADE_DETECTED" />
+		</InstallExecuteSequence>
+
+		<!-- ממשק המשתמש -->
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<Property Id="SERVER_IP">
-			<RegistrySearch Id="SearchServerIp" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="ServerIp" Type="raw" />
-		</Property>
-		<SetProperty Id="SERVER_IP" Value="127.0.0.1:5090" After="AppSearch" Condition="NOT SERVER_IP" />
-
-		<Property Id="DEBUG_MODE">
-			<RegistrySearch Id="SearchDebugMode" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder" Name="DebugMode" Type="raw" />
-		</Property>
-		<SetProperty Id="DEBUG_MODE" Value="0" After="AppSearch" Condition="NOT DEBUG_MODE" />
+		<Property Id="SERVER_IP" Value="127.0.0.1" />
 
 		<UI>
 			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
@@ -39,9 +59,9 @@
 				<Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
 
 				<Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent Configuration" />
-				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address of the Central ITB Server." />
+				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address or Hostname of the Central ITB Server." />
 
-				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP Address:" />
+				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP/Host (e.g. 192.168.1.50):" />
 				<Control Id="IpEdit" Type="Edit" X="20" Y="75" Width="200" Height="18" Property="SERVER_IP" />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
@@ -51,10 +71,12 @@
 				</Control>
 			</Dialog>
 
-			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ConfigurationDlg" Condition="WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID=&quot;1&quot;" Order="5" />
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ConfigurationDlg" Condition="NOT WIX_UPGRADE_DETECTED" Order="5" />
+			<Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="WIX_UPGRADE_DETECTED" Order="6" />
 			<Publish Dialog="ConfigurationDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1" />
 			<Publish Dialog="ConfigurationDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="1" />
-			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ConfigurationDlg" Condition="1" Order="5" />
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ConfigurationDlg" Condition="NOT WIX_UPGRADE_DETECTED" Order="5" />
+			<Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Condition="WIX_UPGRADE_DETECTED" Order="6" />
 		</UI>
 
 		<StandardDirectory Id="ProgramFiles64Folder">
@@ -68,14 +90,6 @@
 				<ServiceControl Id="ServiceController" Name="ITB_AgentService" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
 			</Component>
 
-			<Component Id="RegistryConfiguration" Bitness="always64" Guid="C43E5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F80">
-				<RegistryKey Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder">
-					<RegistryValue Name="ServerIp" Value="[SERVER_IP]" Type="string" KeyPath="yes" />
-					<RegistryValue Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
-					<RegistryValue Name="DebugMode" Value="[DEBUG_MODE]" Type="integer" />
-				</RegistryKey>
-			</Component>
-
 			<Component Id="FfmpegLicenseDeclaration" Bitness="always64" Guid="D89A5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F99">
 				<File Id="FfmpegLicenseTxt" Source="LICENSE-FFMPEG.txt" KeyPath="yes" />
 			</Component>
@@ -85,7 +99,7 @@
 			</Files>
 		</ComponentGroup>
 
-		<Feature Id="MainFeature" Title="ITB Screen Recorder" Level="1">
+		<Feature Id="MainFeature" Title="ITB Screen Recorder Agent" Level="1">
 			<ComponentGroupRef Id="ProductComponents" />
 		</Feature>
 	</Package>

@@ -1,0 +1,103 @@
+.noc-clock-panel {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+    user-select: none;
+    padding: 0 4px;
+
+    .clock-col {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .chrono-col {
+        align-items: center;
+        text-align: center;
+        gap: 1.5px;
+
+        .chrono-main-row {
+            display: flex;
+            align-items: baseline;
+            gap: 2px;
+            line-height: 1;
+
+            .chrono-digits {
+                color: var(--c2-green);
+                font-size: 1.45rem;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+                text-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+            }
+
+            .chrono-seconds {
+                color: var(--c2-green-light);
+                font-size: 1.45rem;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+                text-shadow: 0 0 14px rgba(74, 222, 128, 0.5);
+            }
+
+            .chrono-tz {
+                color: var(--slate-dark);
+                font-size: 0.65rem;
+                font-weight: 700;
+                margin-left: 3px;
+            }
+        }
+
+        .chrono-sub-row {
+            line-height: 1;
+
+            .chrono-utc {
+                color: var(--slate-muted);
+                font-size: 0.72rem;
+                font-weight: 700;
+                letter-spacing: 0.6px;
+            }
+        }
+
+        .chrono-uptime-row {
+            line-height: 1;
+
+            .chrono-uptime {
+                color: var(--slate-dim);
+                font-size: 0.65rem;
+                font-weight: 700;
+                letter-spacing: 0.4px;
+            }
+        }
+    }
+
+    .date-col {
+        text-align: left;
+        gap: 1px;
+        padding-left: 14px;
+        border-left: 1px solid rgba(51, 65, 85, 0.5);
+
+        .date-day-name {
+            color: var(--c2-blue-light);
+            font-size: 0.65rem;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            line-height: 1;
+        }
+
+        .date-month-day {
+            color: var(--slate-light);
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            line-height: 1.1;
+        }
+
+        .date-year {
+            color: var(--slate-dark);
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            line-height: 1;
+        }
+    }
+}

@@ -50,6 +50,8 @@ namespace ITBRecorderAgent.Engine
             int audioSampleRate,
             int audioChannels,
             string audioFormat,
+            int targetFps,
+            string videoBitrate,
             CancellationToken cancellationToken)
         {
             try
@@ -81,7 +83,9 @@ namespace ITBRecorderAgent.Engine
                     audioChannels,
                     audioFormat,
                     activeEncoder,
-                    localPort);
+                    localPort,
+                    targetFps,
+                    videoBitrate);
 
                 Logger.Info($"[FFMPEG] Starting FFmpeg process with arguments: {arguments}");
 
@@ -162,44 +166,44 @@ namespace ITBRecorderAgent.Engine
         private string BuildFfmpegArguments(
             string destinationUrl, DateTime calibratedStartTime,
             int videoWidth, int videoHeight, int audioSampleRate, int audioChannels,
-            string audioFormat, string videoEncoder, int tcpPort)
+            string audioFormat, string videoEncoder, int tcpPort,
+            int targetFps, string videoBitrate)
         {
             var ffmpegArgs = new StringBuilder();
 
-            // 💡 מרווח של 2 שניות (GOP 2s) - פשרת הזהב: פתיחה מהירה ל-WebRTC עם משקל קובץ חסכוני[cite: 11]
-            int gopSize = _config.TargetFps * 2;
-            int keyintMin = _config.TargetFps * 2;
+            int effectiveFps = targetFps > 0 ? targetFps : (_config.TargetFps > 0 ? _config.TargetFps : 30);
+
+            string normalizedBitrate = string.IsNullOrWhiteSpace(videoBitrate) ? _config.VideoBitrate : videoBitrate.Trim();
+            if (int.TryParse(normalizedBitrate, out _))
+            {
+                normalizedBitrate += "k";
+            }
+            string bufferSizeStr = normalizedBitrate;
+
+            int gopSize = effectiveFps * 2;
+            int keyintMin = effectiveFps * 2;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            float bufferSize = float.Parse(_config.VideoBitrate.Split('M', 'm')[0]);
-            string bufferSizeStr = $"{bufferSize}M";
-
-            // הגדרת מקורות (0 = וידאו מה-pipe, 1 = אודיו מה-TCP)
-            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -framerate {_config.TargetFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
+            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
             ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
-            // מיפוי ישיר וללא שום פילטרים (Direct Map)
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // הגדרות מקודד הוידאו[cite: 11]
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
-                // 💡 כפיית D3D11 וביטול B-Frames למניעת מסך שחור ב-Intel QSV
-                ffmpegArgs.Append($"-init_hw_device d3d11va -c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
+                ffmpegArgs.Append($"-init_hw_device d3d11va -c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
-                ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 22 -b:v 0 -maxrate {_config.VideoBitrate} -bufsize {bufferSizeStr} ");
+                ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            // 💡 כפיית Keyframes כל 2 שניות וביטול שבירת GOP דינמית לטובת יציבות MediaMTX
-            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -video_track_timescale 90000 -fps_mode cfr -r {_config.TargetFps} -pix_fmt yuv420p ");
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -video_track_timescale 90000 -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
 
-            // הגדרות מקודד האודיו והמטא-דאטה[cite: 11]
             ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} ");
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
             ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");

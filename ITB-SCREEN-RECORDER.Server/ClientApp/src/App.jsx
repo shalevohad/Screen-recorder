@@ -1,93 +1,161 @@
-import { useState, useEffect, useCallback } from 'react';
-import DashboardGrid from './components/DashboardGrid';
-import SettingsModal from './components/SettingsModal';
-import './styles/App.scss';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import * as signalR from '@microsoft/signalr';
+import CommandCenterHeader from './components/UI/CommandCenterHeader';
+import DashboardGrid from './components/Dashboard/DashboardGrid';
+import SettingsModal from './components/Settings/SettingsModal';
+import './App.scss';
 
 export default function App() {
     const [stations, setStations] = useState([]);
+    const [serverTelemetry, setServerTelemetry] = useState(null);
     const [actionPending, setActionPending] = useState({});
-    const [settingsOpen, setSettingsOpen] = useState(false);
 
-    const fetchStations = useCallback(async (isActive = true) => {
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
+    const apiBaseUrl = `http://${window.location.hostname}:${apiPort}`;
+
+    const fetchStations = useCallback(async () => {
         try {
-            const response = await fetch('/api/v1/dashboard/stations');
-            if (response.ok) {
-                const data = await response.json();
-                if (isActive) {
-                    setStations(data);
-                }
+            const res = await fetch(`${apiBaseUrl}/api/agents`);
+            if (res.ok) {
+                const data = await res.json();
+                setStations(data);
             }
         } catch (err) {
-            console.error('Failed to fetch stations telemetry:', err);
+            console.error('[App] Failed to fetch agents:', err);
         }
-    }, []);
+    }, [apiBaseUrl]);
 
     useEffect(() => {
-        let isActive = true;
-
-        const loadData = async () => {
-            await fetchStations(isActive);
-        };
-
-        loadData();
-
-        const interval = setInterval(() => {
-            if (isActive) fetchStations(isActive);
-        }, 3000);
-
-        return () => {
-            isActive = false;
-            clearInterval(interval);
-        };
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        fetchStations();
     }, [fetchStations]);
 
-    const toggleStreamingPolicy = async (hostname, currentStreamingStatus) => {
-        const nextState = !currentStreamingStatus;
+    useEffect(() => {
+        const hubUrl = `${apiBaseUrl}/hubs/telemetry`;
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl(hubUrl)
+            .withAutomaticReconnect([0, 2000, 5000, 10000])
+            .build();
+
+        connection.on('ReceiveServerTelemetry', (telemetry) => {
+            setServerTelemetry(telemetry);
+        });
+
+        connection.on('ReceiveAgentMetrics', (report) => {
+            setStations(prev => {
+                const idx = prev.findIndex(s => s.hostname === report.hostname);
+                const isOnline = report.status === 1 || report.status === 2 || report.isProcessRunning;
+
+                if (idx > -1) {
+                    const copy = [...prev];
+                    copy[idx] = { ...copy[idx], ...report, isOnline };
+                    return copy;
+                }
+                return [...prev, { ...report, isOnline }];
+            });
+        });
+
+        connection.start()
+            .then(() => console.log('[App] SignalR Connected to Hub'))
+            .catch(err => console.error('[App] SignalR Connection Error:', err));
+
+        return () => {
+            connection.stop();
+        };
+    }, [apiBaseUrl]);
+
+    const sortedStations = useMemo(() => {
+        return [...stations].sort((a, b) => {
+            const nameA = (a.displayName || a.hostname || '').toLowerCase();
+            const nameB = (b.displayName || b.hostname || '').toLowerCase();
+            return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }, [stations]);
+
+    const handleSettingsSaved = useCallback(async () => {
+        await fetchStations();
+    }, [fetchStations]);
+
+    const handleToggleStream = async (hostname, isCurrentlyStreaming) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
+        const targetEnable = !isCurrentlyStreaming;
+
         try {
-            const response = await fetch(`/api/v1/agent/command/${hostname}?enable=${nextState}`, { method: 'POST' });
-            if (response.ok) await fetchStations();
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/command/${hostname}?enable=${targetEnable}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (res.ok) {
+                setStations(prev => prev.map(st => {
+                    if (st.hostname === hostname) {
+                        return { ...st, isStreaming: targetEnable };
+                    }
+                    return st;
+                }));
+            }
         } catch (err) {
-            console.error(err);
+            console.error(`[App] Error toggling stream for ${hostname}:`, err);
         } finally {
             setActionPending(prev => ({ ...prev, [hostname]: false }));
         }
     };
 
-    return (
-        <div className="p-6 bg-[#010409] min-h-screen text-white dashboard-container">
-            {/* Header */}
-            <header className="mb-6 flex justify-between items-center border-b border-gray-800 pb-4">
-                <div>
-                    <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                        ITB Screen Recorder - Live Fleet Dashboard
-                    </h1>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="text-xs font-mono px-3 py-1.5 bg-gray-900 border border-gray-800 rounded-lg text-gray-300">
-                        Active Agents: <span className="text-green-400 font-bold">{stations.length}</span>
-                    </div>
-                    <button
-                        onClick={() => setSettingsOpen(true)}
-                        title="Settings"
-                        className="p-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-                    >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="3" />
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                        </svg>
-                    </button>
-                </div>
-            </header>
+    const handleBulkStart = async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy?enable=true`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setStations(prev => prev.map(s => s.isOnline ? { ...s, isStreaming: true } : s));
+            }
+        } catch (err) {
+            console.error('[App] Failed bulk start:', err);
+        }
+    };
 
-            {/* החלפנו את הגריד הסטטי בקומפוננטת הזום הדינמית שלנו */}
-            <DashboardGrid
-                stations={stations}
-                actionPending={actionPending}
-                onToggleStream={toggleStreamingPolicy}
+    const handleBulkStop = async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy?enable=false`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                setStations(prev => prev.map(s => ({ ...s, isStreaming: false })))
+            }
+        } catch (err) {
+            console.error('[App] Failed bulk stop:', err);
+        }
+    };
+
+    return (
+        <div className="itb-command-center-app" dir="ltr">
+            <CommandCenterHeader
+                stations={sortedStations}
+                serverTelemetry={serverTelemetry}
+                isSettingsOpen={isSettingsOpen}
+                onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
             />
 
-            {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+            <DashboardGrid
+                key={sortedStations.length}
+                stations={sortedStations}
+                actionPending={actionPending}
+                onToggleStream={handleToggleStream}
+                onBulkStart={handleBulkStart}
+                onBulkStop={handleBulkStop}
+                direction="ltr"
+            />
+
+            {isSettingsOpen && (
+                <SettingsModal
+                    onClose={() => setIsSettingsOpen(false)}
+                    onSettingsSaved={handleSettingsSaved}
+                />
+            )}
         </div>
     );
 }

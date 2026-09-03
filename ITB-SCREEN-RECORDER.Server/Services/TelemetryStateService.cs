@@ -85,7 +85,13 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             if (fps < 15) fps = 15;
             if (fps > 60) fps = 60;
 
-            string bitrate = (_systemConfig.DefaultVideoBitrate ?? "5M").ToUpper();
+            string bitrate = _systemConfig.DefaultVideoBitrate ?? "3000k";
+
+            // אם נשלח מספר טהור ללא אות (למשל 5000), מוסיפים 'k' עבור FFmpeg
+            if (int.TryParse(bitrate, out int numericBitrate))
+            {
+                bitrate = $"{numericBitrate}k";
+            }
 
             // בדיקה האם יש הגדרות מיוחדות (Overrides) לעמדה זו בקובץ ה-stations-config.json
             var overrides = await _overridesService.GetAllAsync();

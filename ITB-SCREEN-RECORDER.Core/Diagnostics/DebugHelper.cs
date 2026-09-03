@@ -9,7 +9,6 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 {
     public static class DebugHelper
     {
-        // קריאת דגלון ה-Debug מה-Registry ב-Windows או ממשתנה סביבה ב-Linux
         public static bool IsDebugModeEnabled()
         {
             if (OperatingSystem.IsLinux())
@@ -22,25 +21,25 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             {
 #if WINDOWS
 #pragma warning disable CA1416
-                try
+                foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
                 {
-#if DEBUG
-                    return true;
-#endif
-                    // חיפוש המפתח בנתיב המעודכן של ההתקנה
-                    using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
-                    if (key != null)
+                    try
                     {
-                        var val = key.GetValue("DebugMode");
-                        if (val != null && int.TryParse(val.ToString(), out int debugVal))
+                        using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                        using var key = baseKey.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
+                        if (key != null)
                         {
-                            return debugVal == 1; // 1 = Debug On, 0 = Debug Off
+                            var val = key.GetValue("DebugMode");
+                            if (val != null && int.TryParse(val.ToString(), out int debugVal))
+                            {
+                                return debugVal == 1;
+                            }
                         }
                     }
-                }
-                catch
-                {
-                    // התעלמות משגיאות הרשאה - ברירת המחדל תהיה מוסתר/שקט
+                    catch
+                    {
+                        // התעלמות והמשך ניסיון בנתיב המקביל
+                    }
                 }
 #pragma warning restore CA1416
 #endif
@@ -49,7 +48,6 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             return false;
         }
 
-        // פונקציה להצגה/הסתרה של חלון ה-CMD (רלוונטי רק ל-Windows)
         public static void ApplyConsoleVisibility()
         {
             if (OperatingSystem.IsWindows())

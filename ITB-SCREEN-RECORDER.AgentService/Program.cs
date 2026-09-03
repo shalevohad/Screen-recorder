@@ -3,8 +3,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging; // 💡 תוספת עבור Logging
+using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.AgentService;
+using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Common;
 
@@ -28,16 +29,17 @@ else if (OperatingSystem.IsLinux())
 
 var appConfig = ConfigLoader.Load();
 
-// אתחול הלוגר המרכזי של המערכת שלנו
 Logger.Initialize(appConfig, "Service");
 Logger.AlwaysInfo("[SERVICE] ITB-SCREEN-RECORDER Agent Supervisor Service is starting...");
 
-// 💡 ניתוב הלוגים של תשתית מיקרוסופט ישירות ללוגר שלנו!
 builder.Logging.ClearProviders();
 builder.Logging.AddProvider(new CoreLoggerProvider());
 
 builder.Services.AddSingleton(appConfig);
+
+// 💡 הרשמה מקבילה של ההשגחה והסנכרון
 builder.Services.AddHostedService<AgentSupervisorService>();
+builder.Services.AddHostedService<OfflineBufferDrainingService>();
 
 try
 {
