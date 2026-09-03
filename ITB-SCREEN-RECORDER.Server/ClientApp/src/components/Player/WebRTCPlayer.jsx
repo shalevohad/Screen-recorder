@@ -11,6 +11,11 @@ export default function WebRTCPlayer({
     const videoRef = useRef(null);
     const peerRef = useRef(null);
 
+    // 💡 ניהול מצבי ה-Retry החכם מבפנים
+    const [retryCount, setRetryCount] = useState(0);
+    const maxRetries = 5;
+    const retryTimeoutRef = useRef(null);
+
     const [isVisible, setIsVisible] = useState(false);
     const [hasError, setHasError] = useState(false);
 
@@ -21,64 +26,74 @@ export default function WebRTCPlayer({
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     useEffect(() => {
-        const currentContainer = containerRef.current; // 💡 שמירת רפרנס לנקודת זמן נוכחית לטובת ה-cleanup
+        const currentContainer = containerRef.current;
 
         const observer = new IntersectionObserver(
             (entries) => {
-                if (entries[0].isIntersecting) {
-                    setIsVisible(true);
-                } else {
-                    setIsVisible(false);
-                }
+                setIsVisible(entries[0].isIntersecting);
             },
             { threshold: 0.1 }
         );
 
-        if (currentContainer) {
-            observer.observe(currentContainer);
-        }
+        if (currentContainer) observer.observe(currentContainer);
 
         return () => {
-            if (currentContainer) {
-                observer.unobserve(currentContainer);
-            }
+            if (currentContainer) observer.unobserve(currentContainer);
         };
     }, []);
 
     useEffect(() => {
-        const currentVideo = videoRef.current; // 💡 שמירת רפרנס לוידאו לטובת ניקוי 
+        const currentVideo = videoRef.current;
 
         if (!isVisible) {
             if (peerRef.current) {
                 peerRef.current.close();
                 peerRef.current = null;
             }
-            if (currentVideo) {
-                currentVideo.srcObject = null;
-            }
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+            if (currentVideo) currentVideo.srcObject = null;
             return;
         }
 
         let isSubscribed = true;
-        const pc = new RTCPeerConnection();
-        peerRef.current = pc;
-
-        pc.addTransceiver('video', { direction: 'recvonly' });
-        pc.addTransceiver('audio', { direction: 'recvonly' });
-
-        pc.ontrack = (event) => {
-            if (currentVideo && event.streams && event.streams[0]) {
-                currentVideo.srcObject = event.streams[0];
-            }
-        };
-
-        pc.onconnectionstatechange = () => {
-            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-                if (isSubscribed) setHasError(true);
-            }
-        };
 
         const connectToWHEP = async () => {
+            if (!isSubscribed) return;
+
+            // סגירת חיבור קודם אם קיים לפני פתיחת חדש
+            if (peerRef.current && peerRef.current.signalingState !== 'closed') {
+                peerRef.current.close();
+            }
+
+            const pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+            peerRef.current = pc;
+
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+
+            pc.ontrack = (event) => {
+                if (currentVideo && event.streams && event.streams[0]) {
+                    currentVideo.srcObject = event.streams[0];
+                    currentVideo.play().catch(err => {
+                        if (err.name !== 'AbortError') console.warn("[WebRTC] Play error:", err);
+                    });
+                }
+            };
+
+            // 💡 מעקב חכם אחרי סטטוס החיבור האמיתי
+            pc.onconnectionstatechange = () => {
+                if (!isSubscribed) return;
+
+                if (pc.connectionState === 'connected') {
+                    setRetryCount(0); // איפוס מונה הנסיונות בהצלחה
+                    setHasError(false);
+                } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+                    handleSmartRetry();
+                }
+            };
+
             try {
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
@@ -90,11 +105,11 @@ export default function WebRTCPlayer({
                     body: pc.localDescription.sdp
                 });
 
-                if (!response.ok) throw new Error("WHEP failed");
+                if (!response.ok) throw new Error(`WHEP failed with status ${response.status}`);
 
                 const answerSdp = await response.text();
 
-                if (isSubscribed) {
+                if (isSubscribed && pc.signalingState !== 'closed') {
                     await pc.setRemoteDescription(new RTCSessionDescription({
                         type: 'answer',
                         sdp: answerSdp
@@ -102,8 +117,29 @@ export default function WebRTCPlayer({
                     setHasError(false);
                 }
             } catch (err) {
-                console.error(`[WebRTC] Connection failed:`, err);
-                if (isSubscribed) setHasError(true);
+                console.error(`[WebRTC] Connection attempt failed:`, err);
+                handleSmartRetry();
+            }
+        };
+
+        const handleSmartRetry = () => {
+            if (!isSubscribed) return;
+
+            if (retryCount < maxRetries) {
+                setRetryCount(prev => prev + 1);
+                // חישוב השהייה מדורגת (Exponential Backoff): 1s, 2s, 4s, 8s... עד מקסימום 10 שניות
+                const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 10000);
+
+                console.warn(`[WebRTC] Connection lost. Retrying in ${delay}ms (Attempt ${retryCount}/${maxRetries})...`);
+                setHasError(true);
+
+                if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = setTimeout(() => {
+                    if (isSubscribed) connectToWHEP();
+                }, delay);
+            } else {
+                console.error("[WebRTC] Max retry attempts reached. Stream offline.");
+                setHasError(true);
             }
         };
 
@@ -111,11 +147,12 @@ export default function WebRTCPlayer({
 
         return () => {
             isSubscribed = false;
-            pc.close();
-            peerRef.current = null;
-            if (currentVideo) {
-                currentVideo.srcObject = null;
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+            if (peerRef.current) {
+                peerRef.current.close();
+                peerRef.current = null;
             }
+            if (currentVideo) currentVideo.srcObject = null;
         };
     }, [isVisible, streamPath, webrtcBaseUrl]);
 
@@ -172,10 +209,11 @@ export default function WebRTCPlayer({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {hasError && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', zIndex: 10 }}>
-                    <span style={{ backgroundColor: 'rgba(0,0,0,0.7)', padding: '4px 8px', borderRadius: '4px' }}>
-                        Stream Offline
+            {/* הצגת הודעת שגיאה רק אם עברנו את כל מכסת הנסיונות ולא בזמן חיבור ראשוני */}
+            {hasError && retryCount >= maxRetries && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', zIndex: 10, background: 'rgba(0,0,0,0.6)' }}>
+                    <span style={{ backgroundColor: 'rgba(0,0,0,0.8)', padding: '6px 12px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        STREAM OFFLINE
                     </span>
                 </div>
             )}
@@ -185,10 +223,16 @@ export default function WebRTCPlayer({
                 autoPlay
                 muted={isMuted}
                 playsInline
-                onPlaying={onPlaying}
-                onLoadedData={onPlaying}
-                onCanPlay={onPlaying}
-                onTimeUpdate={onPlaying}
+                onPlaying={() => {
+                    setIsPlaying(true);
+                    if (onPlaying) onPlaying();
+                }}
+                onLoadedData={() => {
+                    if (onPlaying) onPlaying();
+                }}
+                onCanPlay={() => {
+                    if (onPlaying) onPlaying();
+                }}
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
 

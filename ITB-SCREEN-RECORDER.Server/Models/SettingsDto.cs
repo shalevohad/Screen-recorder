@@ -1,3 +1,4 @@
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using System.ComponentModel.DataAnnotations;
 
 namespace ITB_SCREEN_RECORDER.Server.Models
@@ -16,18 +17,16 @@ namespace ITB_SCREEN_RECORDER.Server.Models
         public int DashboardRefreshRateMs { get; set; }
 
         [Required]
-        [RegularExpression(@"^[1-5][Mm]$", ErrorMessage = "DefaultVideoBitrate must be between '1M' and '5M' (e.g., '5M').")]
-        public string DefaultVideoBitrate { get; set; } = "5M";
+        [RegularExpression(ConfigValidationRules.BitrateRegex, ErrorMessage = ConfigValidationRules.BitrateErrorMessage)]
+        public string DefaultVideoBitrate { get; set; } = "2500k";
 
         [Required]
         [Range(15, 60, ErrorMessage = "DefaultTargetFps must be between 15 and 60.")]
         public int DefaultTargetFps { get; set; } = 30;
 
-        [Required]
+        // אינם נדרשים עוד בטופס ה-UI - שומרים על ערך דיפולטיבי
         public string DisplayTimezone { get; set; } = "Asia/Jerusalem";
 
-        // 💡 שדה חדש להגדרת הפורמט האזורי של התאריכים והשפות
-        [Required]
         public string DisplayLocale { get; set; } = "en-US";
 
         [Required]

@@ -73,7 +73,6 @@
                     font-weight: 900;
                     font-size: 1.25rem;
                     letter-spacing: 0.5px;
-                    transition: font-size 0.25s ease;
                 }
 
                 .brand-main {
@@ -81,7 +80,6 @@
                     font-weight: 800;
                     font-size: 1.25rem;
                     letter-spacing: 0.8px;
-                    transition: font-size 0.25s ease;
                 }
             }
 
@@ -91,7 +89,6 @@
                 font-size: 0.65rem;
                 font-weight: 600;
                 letter-spacing: 1px;
-                transition: opacity 0.25s;
             }
         }
     }
@@ -116,39 +113,20 @@
         grid-column: 3;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 16px;
         justify-self: end;
         flex-shrink: 0;
-        /* קאונטר סוכנים טקטי חכם */
-        .tactical-agents-counter {
+
+        .fleet-nodes-indicator {
             display: flex;
             align-items: center;
-            gap: 8px;
-            height: 42px;
-            padding: 0 12px;
-            background: rgba(13, 20, 36, 0.88);
-            border: 1.5px solid var(--slate-border);
-            border-radius: 8px;
-            box-sizing: border-box;
+            gap: 9px;
+            padding: 0 4px;
             font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            cursor: pointer;
             user-select: none;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: default;
 
-            &:hover {
-                border-color: var(--c2-blue);
-                background: rgba(20, 30, 48, 0.95);
-                transform: translateY(-1px);
-            }
-
-            &.is-filtered {
-                border-color: rgba(56, 189, 248, 0.6);
-                background: rgba(14, 28, 46, 0.95);
-                box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
-            }
-
-            .counter-nodes-icon {
+            .indicator-icon {
                 position: relative;
                 display: flex;
                 align-items: center;
@@ -156,54 +134,76 @@
                 color: var(--slate-muted);
 
                 svg {
-                    width: 17px;
-                    height: 17px;
+                    width: 20px;
+                    height: 20px;
                 }
 
-                .status-dot {
+                .status-beacon {
                     position: absolute;
-                    top: -1px;
+                    top: -2px;
                     right: -2px;
-                    width: 5px;
-                    height: 5px;
+                    width: 6px;
+                    height: 6px;
                     border-radius: 50%;
                     background-color: var(--slate-dark);
 
                     &.online {
                         background-color: var(--c2-green);
-                        box-shadow: 0 0 6px var(--c2-green);
+                        box-shadow: 0 0 8px var(--c2-green);
+                    }
+
+                    &.offline {
+                        background-color: var(--slate-dim);
                     }
                 }
             }
 
-            .counter-figures {
+            .indicator-data {
                 display: flex;
-                align-items: baseline;
-                gap: 2px;
+                flex-direction: column;
                 line-height: 1;
+                gap: 2px;
 
-                .primary-count {
-                    font-size: 16px;
-                    font-weight: 900;
-                    color: var(--c2-green-light);
-                    letter-spacing: -0.5px;
-                    text-shadow: 0 0 8px rgba(74, 222, 128, 0.35);
-                }
-
-                .filter-deficit {
-                    font-size: 11px;
+                .data-title {
+                    font-size: 9px;
                     font-weight: 800;
-                    color: var(--c2-red-light);
-                    opacity: 0.85;
-                    margin-left: 2px;
-                    letter-spacing: -0.3px;
+                    color: var(--slate-dark);
+                    letter-spacing: 0.8px;
                 }
 
-                .total-denominator {
-                    font-size: 11px;
-                    font-weight: 700;
-                    color: var(--slate-dark);
-                    letter-spacing: -0.2px;
+                .data-values {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 5px;
+
+                    .count-active {
+                        font-size: 17px;
+                        font-weight: 900;
+                        color: var(--c2-green-light);
+                        letter-spacing: -0.5px;
+                        text-shadow: 0 0 8px rgba(74, 222, 128, 0.35);
+                    }
+
+                    .count-warning {
+                        font-size: 10px;
+                        font-weight: 800;
+                        color: var(--c2-yellow-light);
+                        letter-spacing: -0.2px;
+                    }
+
+                    .count-filtered {
+                        font-size: 10px;
+                        font-weight: 800;
+                        color: var(--c2-red-light);
+                        opacity: 0.9;
+                        letter-spacing: -0.2px;
+                    }
+
+                    .count-total {
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: var(--slate-dark);
+                    }
                 }
             }
         }
@@ -228,65 +228,19 @@
                 background-color: rgba(20, 30, 48, 0.95);
                 transform: translateY(-1px);
             }
+            /* 💡 מצב פעיל מובטח בתוך ההדר עם דריסה מלאה */
+            &.is-active {
+                color: #38bdf8 !important;
+                background: rgba(56, 189, 248, 0.18) !important;
+                border-color: rgba(56, 189, 248, 0.6) !important;
+                box-shadow: 0 0 16px rgba(56, 189, 248, 0.45), inset 0 0 6px rgba(56, 189, 248, 0.2) !important;
+            }
         }
     }
 
     &.scrolled {
         padding: 0.35rem 1rem;
         background: linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(10, 15, 26, 0.98) 100%);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85), 0 0 15px rgba(59, 130, 246, 0.15);
-
-        .brand-logo-section {
-            .tactical-emblem {
-                width: 30px;
-                height: 30px;
-
-                svg {
-                    width: 15px;
-                    height: 15px;
-                }
-            }
-
-            .brand-text-group {
-                .brand-title-row {
-                    .brand-name,
-                    .brand-main {
-                        font-size: 0.95rem;
-                    }
-                }
-
-                .brand-subtitle {
-                    font-size: 0.55rem;
-                    opacity: 0.8;
-                }
-            }
-        }
-    }
-}
-
-@media (max-width: 1200px) {
-    .command-center-top-bar {
-        grid-template-columns: 1fr auto;
-        grid-template-rows: auto auto;
-        row-gap: 0.75rem;
-
-        .brand-logo-section {
-            grid-column: 1;
-            grid-row: 1;
-        }
-
-        .header-actions-group {
-            grid-column: 2;
-            grid-row: 1;
-        }
-
-        .header-clock-section {
-            grid-column: 1 / -1;
-            grid-row: 2;
-            border-top: 1px solid rgba(51, 65, 85, 0.4);
-            padding-top: 0.5rem;
-            justify-content: center;
-        }
     }
 }
 

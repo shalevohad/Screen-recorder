@@ -15,6 +15,7 @@ export default function StationThumbnail({
     qosTier = 3,
     droppedFrames = 0,
     internalCaptureFps = 0,
+    lastSeenUtc = null,
 
     hostCpuPct = 0,
     processCpuPct = 0,
@@ -31,11 +32,9 @@ export default function StationThumbnail({
 
     onToggleStream,
     isPending = false,
-    globalShowMetrics = true
+    globalShowMetrics = false
 }) {
-    const [localShowMetrics, setLocalShowMetrics] = useState(true);
     const [showFullscreen, setShowFullscreen] = useState(false);
-    const [retryKey, setRetryKey] = useState(0);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
 
@@ -45,38 +44,6 @@ export default function StationThumbnail({
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
 
     const isLive = isOnline && isStreaming;
-    const isVisibleMetrics = globalShowMetrics && localShowMetrics;
-
-    useEffect(() => {
-        let retryInterval;
-        if (isLive) {
-            setIsVideoPlaying(false);
-            retryInterval = setInterval(() => {
-                if (!isVideoPlaying) {
-                    setRetryKey(k => k + 1);
-                }
-            }, 3000);
-        } else {
-            setIsVideoPlaying(false);
-        }
-
-        return () => clearInterval(retryInterval);
-    }, [isLive, isVideoPlaying]);
-
-    useEffect(() => {
-        if (!cardRef.current || !isLive) return;
-
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting && !isVideoPlaying) {
-                    setRetryKey(k => k + 1);
-                }
-            });
-        }, { threshold: 0.2 });
-
-        observer.observe(cardRef.current);
-        return () => observer.disconnect();
-    }, [isLive, isVideoPlaying]);
 
     useEffect(() => {
         if (!isStreaming) {
@@ -168,7 +135,6 @@ export default function StationThumbnail({
                         {!isVideoPlaying && <CyberLoadingOverlay size="small" text="CONNECTING..." />}
                         <div className="station-thumbnail-video">
                             <WebRTCPlayer
-                                key={retryKey}
                                 streamPath={`live/${hostname}`}
                                 webrtcBaseUrl={dynamicWebrtcBaseUrl}
                                 onPlaying={() => setIsVideoPlaying(true)}
@@ -183,13 +149,8 @@ export default function StationThumbnail({
                 )}
             </div>
 
-            <div className="station-metrics-toggle-bar">
-                <button className="toggle-btn-compact" onClick={() => setLocalShowMetrics(p => !p)}>
-                    {isVisibleMetrics ? '▴ HIDE METRICS' : '▾ SHOW METRICS'}
-                </button>
-            </div>
-
-            {isVisibleMetrics && (
+            {/* 💡 המדדים והכפתור יוצגו אך ורק אם globalShowMetrics מופעל */}
+            {globalShowMetrics && (
                 <div className="station-telemetry">
                     <div className="inline-network-stats">
                         <div className="stat-box">
@@ -291,9 +252,12 @@ export default function StationThumbnail({
                     hostname={hostname}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
                     actualFps={actualFps}
-                    internalCaptureFps={internalCaptureFps}
                     droppedFrames={droppedFrames}
-                    qosTier={qosTier}
+                    hostCpuPct={hostCpuPct}
+                    gpuNvencPct={gpuNvencPct}
+                    gpu3dPct={gpu3dPct}
+                    mediaTxMbps={mediaTxMbps}
+                    streamingSinceUtc={lastSeenUtc}
                     onClose={() => setShowFullscreen(false)}
                 />
             )}

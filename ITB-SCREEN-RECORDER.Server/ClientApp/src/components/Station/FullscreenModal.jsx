@@ -1,9 +1,9 @@
 ﻿import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
 import './FullscreenModal.scss';
 
-// הלינטר תוקן: הוסרו 9 משתני הטלמטריה שלא הודפסו בפועל
 export default function FullscreenModal({
     hostname,
     webrtcBaseUrl,
@@ -14,10 +14,12 @@ export default function FullscreenModal({
     gpu3dPct = 0,
     mediaTxMbps = 0,
     telemetryTxKbps = 0,
+    streamingSinceUtc,
     onClose
 }) {
     const modalBoxRef = useRef(null);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+    const [elapsedTimeStr, setElapsedTimeStr] = useState('00:00:00');
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -27,30 +29,53 @@ export default function FullscreenModal({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [onClose]);
 
+    // 💡 חישוב מדויק התומך בטווחי זמן ארוכים (שניות, דקות, שעות, ימים וחודשים)
+    useEffect(() => {
+        if (!streamingSinceUtc) {
+            setElapsedTimeStr('00:00:00');
+            return;
+        }
+
+        const updateTimer = () => {
+            const start = new Date(streamingSinceUtc).getTime();
+            const now = Date.now();
+            let diffSec = Math.max(0, Math.floor((now - start) / 1000));
+
+            const days = Math.floor(diffSec / 86400);
+            diffSec %= 86400;
+            const hours = Math.floor(diffSec / 3600);
+            diffSec %= 3600;
+            const minutes = Math.floor(diffSec / 60);
+            const seconds = diffSec % 60;
+
+            const pad = (n) => String(n).padStart(2, '0');
+
+            if (days > 0) {
+                setElapsedTimeStr(`${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
+            } else {
+                setElapsedTimeStr(`${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
+            }
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [streamingSinceUtc]);
+
     const handleBackdropClick = (e) => {
         if (modalBoxRef.current && !modalBoxRef.current.contains(e.target)) {
             onClose();
         }
     };
 
-    return (
-        <div
-            className="stream-modal-backdrop"
-            onClick={handleBackdropClick}
-            style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                backdropFilter: 'blur(15px)',
-                WebkitBackdropFilter: 'blur(15px)',
-                transform: 'translateZ(0)',
-                zIndex: 9999
-            }}
-        >
+    const modalContent = (
+        <div className="stream-modal-backdrop" onClick={handleBackdropClick}>
             <div ref={modalBoxRef} className="stream-modal-box">
-
                 <div className="stream-modal-header">
                     <div className="stream-modal-title">
                         <span className="live-dot"></span>
                         <h2>LIVE // {hostname}</h2>
+                        <span className="uptime-badge" title="Active stream session duration">{elapsedTimeStr}</span>
                     </div>
 
                     <div className="modal-network-stats">
@@ -73,10 +98,7 @@ export default function FullscreenModal({
 
                 <div className="stream-modal-body">
                     {!isVideoPlaying && (
-                        <div
-                            style={{ position: 'absolute', inset: 0, zIndex: 10 }}
-                            onAnimationEnd={() => { }}
-                        >
+                        <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
                             <CyberLoadingOverlay
                                 text="ESTABLISHING SECURE STREAM..."
                                 size="large"
@@ -94,4 +116,6 @@ export default function FullscreenModal({
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 }

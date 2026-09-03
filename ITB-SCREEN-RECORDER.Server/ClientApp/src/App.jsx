@@ -1,22 +1,27 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/UI/CommandCenterHeader';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
+import SettingsModal from './components/Settings/SettingsModal';
 import './App.scss';
 
 export default function App() {
     const [stations, setStations] = useState([]);
     const [serverTelemetry, setServerTelemetry] = useState(null);
     const [actionPending, setActionPending] = useState({});
-    const [hideOffline, setHideOffline] = useState(false);
+
+    // סינון ברירת מחדל
+    const [hideOffline, setHideOffline] = useState(true);
+
+    // ניהול מודאל הגדרות עם תמיכה ב-Toggle דרך כפתור הגלגל שיניים
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
     const apiBaseUrl = `http://${window.location.hostname}:${apiPort}`;
 
-    // 1. טעינה ראשונית של רשימת העמדות
     const fetchStations = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/agents`);
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet`);
             if (res.ok) {
                 const data = await res.json();
                 setStations(data);
@@ -30,7 +35,6 @@ export default function App() {
         fetchStations();
     }, [fetchStations]);
 
-    // 2. חיבור SignalR מרכזי לטלמטריית שרת ועמדות
     useEffect(() => {
         const hubUrl = `${apiBaseUrl}/hubs/telemetry`;
         const connection = new signalR.HubConnectionBuilder()
@@ -38,12 +42,10 @@ export default function App() {
             .withAutomaticReconnect([0, 2000, 5000, 10000])
             .build();
 
-        // קבלת טלמטריית שרת כוללת עבור השעון וה-Header
         connection.on('ReceiveServerTelemetry', (telemetry) => {
             setServerTelemetry(telemetry);
         });
 
-        // קבלת מדדי סוכן חיים ועדכון סטטוס מקומי
         connection.on('ReceiveAgentMetrics', (report) => {
             setStations(prev => {
                 const idx = prev.findIndex(s => s.hostname === report.hostname);
@@ -67,13 +69,24 @@ export default function App() {
         };
     }, [apiBaseUrl]);
 
-    // 3. הפעלה/עצירה של שידור עמדה בודדת
+    const sortedStations = useMemo(() => {
+        return [...stations].sort((a, b) => {
+            const nameA = (a.displayName || a.hostname || '').toLowerCase();
+            const nameB = (b.displayName || b.hostname || '').toLowerCase();
+            return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }, [stations]);
+
+    const handleSettingsSaved = useCallback(async () => {
+        await fetchStations();
+    }, [fetchStations]);
+
     const handleToggleStream = async (hostname, isCurrentlyStreaming) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
+        const targetEnable = !isCurrentlyStreaming;
 
-        const endpoint = isCurrentlyStreaming ? 'stop-stream' : 'start-stream';
         try {
-            const res = await fetch(`${apiBaseUrl}/api/agents/${hostname}/${endpoint}`, {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/command/${hostname}?enable=${targetEnable}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -81,12 +94,10 @@ export default function App() {
             if (res.ok) {
                 setStations(prev => prev.map(st => {
                     if (st.hostname === hostname) {
-                        return { ...st, isStreaming: !isCurrentlyStreaming };
+                        return { ...st, isStreaming: targetEnable };
                     }
                     return st;
                 }));
-            } else {
-                console.error(`[App] Failed to ${endpoint} for ${hostname}`);
             }
         } catch (err) {
             console.error(`[App] Error toggling stream for ${hostname}:`, err);
@@ -95,10 +106,9 @@ export default function App() {
         }
     };
 
-    // 4. הפעלת שידור גורפת (Fleet Bulk Start)
     const handleBulkStart = async () => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/agents/fleet/start-stream`, {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy?enable=true`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -110,10 +120,9 @@ export default function App() {
         }
     };
 
-    // 5. עצירת שידור גורפת (Fleet Bulk Stop)
     const handleBulkStop = async () => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/agents/fleet/stop-stream`, {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy?enable=false`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -127,25 +136,29 @@ export default function App() {
 
     return (
         <div className="itb-command-center-app" dir="ltr">
-            {/* Header טקטי ראשי עם שעון NOC, מודול טלמטריה וקאונטר סוכנים חכם */}
             <CommandCenterHeader
-                stations={stations}
+                stations={sortedStations}
                 hideOffline={hideOffline}
-                onToggleFilter={() => setHideOffline(prev => !prev)}
                 serverTelemetry={serverTelemetry}
+                isSettingsOpen={isSettingsOpen}
+                onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
             />
 
-            {/* גריד העמדות וסרגל הצד הטקטי */}
             <DashboardGrid
-                stations={stations}
-                hideOffline={hideOffline}
-                setHideOffline={setHideOffline}
+                stations={sortedStations}
                 actionPending={actionPending}
                 onToggleStream={handleToggleStream}
                 onBulkStart={handleBulkStart}
                 onBulkStop={handleBulkStop}
                 direction="ltr"
             />
+
+            {isSettingsOpen && (
+                <SettingsModal
+                    onClose={() => setIsSettingsOpen(false)}
+                    onSettingsSaved={handleSettingsSaved}
+                />
+            )}
         </div>
     );
 }

@@ -317,3 +317,17 @@
         transform: scale(0.85);
     }
 }
+
+@keyframes spin-rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin-rotation 0.8s linear infinite;
+}

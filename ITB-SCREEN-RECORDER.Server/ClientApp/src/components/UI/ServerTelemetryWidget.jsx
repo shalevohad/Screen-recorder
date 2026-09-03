@@ -37,21 +37,45 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
     const [netHistory, setNetHistory] = useState([]);
     const historyPoints = 40;
 
+    // מדדי CPU
     const cpuPct = serverTelemetry?.cpuUsagePct ?? serverTelemetry?.hostCpuUsagePct ?? 0;
     const appCpuPct = serverTelemetry?.appCpuUsagePct ?? serverTelemetry?.processCpuUsagePct ?? 0;
 
+    // מדדי RAM
     const hostRamPct = serverTelemetry?.hostRamPct ?? serverTelemetry?.hostRamUsagePct ?? 0;
     const appRamMb = serverTelemetry?.appRamMb ?? serverTelemetry?.processRamMb ?? 0;
     const hostTotalRamMb = serverTelemetry?.hostTotalRamMb ?? 131072;
     const appRamDisplay = appRamMb >= 1024 ? `${(appRamMb / 1024).toFixed(1)}G` : `${Math.round(appRamMb)}M`;
     const totalRamDisplay = `${Math.round(hostTotalRamMb / 1024)}G`;
 
+    // מדדי NET
     const netTxMbps = serverTelemetry?.nicTotalTxMbps ?? 0;
     const netRxMbps = serverTelemetry?.nicTotalRxMbps ?? 0;
     const totalNetMbps = netTxMbps + netRxMbps;
+
+    // זיהוי גודל החיבור של הכרטיס (Link Speed)
     const linkSpeedMbps = serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000;
     const netUtilPct = serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100);
-    const linkDisplay = linkSpeedMbps >= 1000 ? `${Math.round(linkSpeedMbps / 1000)}G` : `${Math.round(linkSpeedMbps)}M`;
+
+    // עיצוב תצוגת הקצב הנוכחי (Kbps / Mbps / Gbps)
+    const formatCurrentRate = (mbps) => {
+        if (mbps >= 1000) return `${(mbps / 1000).toFixed(1)}G`;
+        if (mbps >= 1) return `${mbps.toFixed(1)}M`;
+        const kbps = mbps * 1000;
+        return `${Math.round(kbps)}K`;
+    };
+
+    // עיצוב תצוגת רוחב הפס המרבי של החיבור (למשל 1G / 2.5G / 10G / 100M)
+    const formatLinkSpeed = (mbps) => {
+        if (mbps >= 1000) {
+            const gbps = mbps / 1000;
+            return gbps % 1 === 0 ? `${gbps}G` : `${gbps.toFixed(1)}G`;
+        }
+        return `${Math.round(mbps)}M`;
+    };
+
+    const currentRateDisplay = formatCurrentRate(totalNetMbps);
+    const linkCapacityDisplay = formatLinkSpeed(linkSpeedMbps);
 
     useEffect(() => {
         setCpuHistory(prev => [...prev, cpuPct].slice(-historyPoints));
@@ -107,11 +131,11 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
                 </div>
             </div>
 
-            {/* NET Pod */}
+            {/* NET Pod - בפורמט זהה ל-RAM: כמה מתוך כמה זוהה */}
             <div className={`telemetry-pod ${getStatusClass(netUtilPct)}`}>
                 <div className="pod-header">
-                    <span className="pod-title">NET ({linkDisplay})</span>
-                    <span className="pod-sub">{totalNetMbps.toFixed(1)}M Total</span>
+                    <span className="pod-title">NET LOAD</span>
+                    <span className="pod-sub">{currentRateDisplay} / {linkCapacityDisplay}</span>
                 </div>
                 <div className="pod-content-row">
                     <span className="pod-val">{netUtilPct.toFixed(1)}%</span>

@@ -31,7 +31,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private readonly string _localBufferPath;
 
         private string _serverBaseUrl = "127.0.0.1:5090";
-        private AgentStreamPolicy _currentPolicy = new AgentStreamPolicy();
+        private AgentStreamPolicy _currentPolicy;
 
         private bool _isWorkerStreaming;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
@@ -72,6 +72,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
             _logger = logger;
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _policyFilePath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
+
+            _currentPolicy = new AgentStreamPolicy
+            {
+                TargetFps = _config.TargetFps > 0 ? _config.TargetFps : 30,
+                VideoBitrate = string.IsNullOrWhiteSpace(_config.VideoBitrate) ? "5000k" : _config.VideoBitrate,
+                RtmpServerBaseUrl = _config.RtmpServerBaseUrl ?? string.Empty
+            };
 
             _localBufferPath = string.IsNullOrWhiteSpace(_config.LocalBufferPath)
                 ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
@@ -345,20 +352,34 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                             if (heartbeatResponse.Policy != null)
                             {
-                                bool policyChanged =
-                                    _currentPolicy.VideoBitrate != heartbeatResponse.Policy.VideoBitrate ||
-                                    _currentPolicy.TargetFps != heartbeatResponse.Policy.TargetFps ||
-                                    _currentPolicy.RtmpServerBaseUrl != heartbeatResponse.Policy.RtmpServerBaseUrl;
+                                bool bitrateChanged = _currentPolicy.VideoBitrate != heartbeatResponse.Policy.VideoBitrate;
+                                bool fpsChanged = _currentPolicy.TargetFps != heartbeatResponse.Policy.TargetFps;
+                                bool urlChanged = _currentPolicy.RtmpServerBaseUrl != heartbeatResponse.Policy.RtmpServerBaseUrl;
 
-                                if (policyChanged)
+                                if (bitrateChanged || fpsChanged || urlChanged)
                                 {
+                                    int oldFps = _currentPolicy.TargetFps;
+                                    int newFps = heartbeatResponse.Policy.TargetFps;
+
                                     _currentPolicy = heartbeatResponse.Policy;
                                     await File.WriteAllTextAsync(_policyFilePath, JsonSerializer.Serialize(_currentPolicy), ct);
 
                                     if (isStreaming)
                                     {
-                                        string dest = GetEffectiveRtmpDestination();
-                                        await SendCommandToWorkerAsync($"Restart|{dest}|{_serverUtcOffset.Ticks}");
+                                        // בדיקה האם ניתן להימנע מריסטארט: רק FPS השתנה וערכו נמוך או שווה לקצב המקורי
+                                        if (!bitrateChanged && !urlChanged && fpsChanged && newFps <= oldFps)
+                                        {
+                                            _logger.LogInformation("Applying lower capture FPS ({NewFps}) on the fly without pipeline restart.", newFps);
+                                            await SendCommandToWorkerAsync($"SetCaptureFps|{newFps}");
+                                        }
+                                        else
+                                        {
+                                            // שינוי Bitrate, שינוי כתובת יעד או העלאת FPS מחייבים ריסטארט מהיר
+                                            _logger.LogInformation("Pipeline restart required for policy update (BitrateChanged: {B}, UrlChanged: {U}, FpsChanged: {F}).",
+                                                bitrateChanged, urlChanged, fpsChanged);
+                                            string dest = GetEffectiveRtmpDestination();
+                                            await SendCommandToWorkerAsync($"Restart|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                        }
                                     }
                                 }
                             }
@@ -370,7 +391,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             else if (heartbeatResponse.Command == ServerCommand.StartStream)
                             {
                                 string dest = GetEffectiveRtmpDestination();
-                                await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}");
+                                await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
                             }
                         }
                     }

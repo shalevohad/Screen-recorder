@@ -81,7 +81,7 @@ html, body, #root {
             border: 1.8px solid var(--slate-border);
             color: var(--slate-dark);
 
-            &.tactical-btn-filter:hover:not(.is-engaged) {
+            &.tactical-btn-filter:hover:not(.is-engaged):not(:disabled) {
                 background: var(--c2-blue-deep);
                 border-color: rgba(56, 189, 248, 0.45);
                 color: var(--c2-blue);
@@ -89,7 +89,7 @@ html, body, #root {
                 transform: translateY(-1px);
             }
 
-            &.tactical-btn-sensors:hover:not(.is-engaged) {
+            &.tactical-btn-sensors:hover:not(.is-engaged):not(:disabled) {
                 background: var(--c2-cyan-deep);
                 border-color: rgba(6, 182, 212, 0.45);
                 color: var(--c2-cyan-light);
@@ -97,7 +97,7 @@ html, body, #root {
                 transform: translateY(-1px);
             }
 
-            &.tactical-btn-sort:hover:not(.is-reversed) {
+            &.tactical-btn-sort:hover:not(.is-reversed):not(:disabled) {
                 background: #1e1b15;
                 border-color: rgba(245, 158, 11, 0.45);
                 color: var(--c2-yellow-light);
@@ -105,7 +105,7 @@ html, body, #root {
                 transform: translateY(-1px);
             }
 
-            &.tactical-btn-start:hover {
+            &.tactical-btn-start:hover:not(:disabled) {
                 background: #13221a;
                 border-color: rgba(34, 197, 94, 0.6);
                 color: var(--c2-green-light);
@@ -113,7 +113,7 @@ html, body, #root {
                 transform: translateY(-1px);
             }
 
-            &.tactical-btn-stop:hover {
+            &.tactical-btn-stop:hover:not(:disabled) {
                 background: var(--c2-red-deep);
                 border-color: rgba(239, 68, 68, 0.6);
                 color: var(--c2-red-light);
@@ -146,6 +146,18 @@ html, body, #root {
                     color: var(--c2-yellow-light) !important;
                     box-shadow: var(--glow-yellow) !important;
                 }
+            }
+            /* מצב כפתור מנוטרל (Disabled) */
+            &:disabled,
+            &.disabled {
+                opacity: 0.22 !important;
+                cursor: not-allowed !important;
+                pointer-events: none !important;
+                border-color: var(--slate-line) !important;
+                background: rgba(17, 24, 39, 0.4) !important;
+                color: var(--slate-dim, #475569) !important;
+                box-shadow: none !important;
+                transform: none !important;
             }
         }
     }

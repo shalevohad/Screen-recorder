@@ -39,7 +39,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private volatile bool _isOfflineModeActive = false;
         private readonly NetworkTelemetry _networkTelemetry = new NetworkTelemetry();
 
-        private readonly int _baselineFps;
+        private volatile int _baselineFps;
+        private volatile string _currentVideoBitrate;
         private volatile int _internalCaptureFps;
         private volatile int _currentQosTier = 3;
 
@@ -50,6 +51,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _baselineFps = _config.TargetFps > 0 ? _config.TargetFps : 30;
+            _currentVideoBitrate = string.IsNullOrWhiteSpace(_config.VideoBitrate) ? "5000k" : _config.VideoBitrate;
             _internalCaptureFps = _baselineFps;
         }
 
@@ -92,7 +94,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     _requiresImmediateRestart = false;
 
-                    Logger.Info($"[WorkerEngine] Initializing capture pipeline... Stream FPS: {_baselineFps}, Internal Capture: {_internalCaptureFps}");
+                    Logger.Info($"[WorkerEngine] Initializing capture pipeline... Baseline FPS: {_baselineFps}, Bitrate: {_currentVideoBitrate}, Internal Capture: {_internalCaptureFps}");
 
                     string targetDestination = _injectedRtmpDestination;
                     if (string.IsNullOrWhiteSpace(targetDestination))
@@ -166,7 +168,18 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             Logger.Info($"[WorkerEngine] Live RTMP Streaming -> {destinationTarget}");
                         }
 
-                        bool started = await ffmpegManager.StartAsync(destinationTarget, calibratedTime, screenCapture.Width, screenCapture.Height, 48000, 2, "f32le", localToken).ConfigureAwait(false);
+                        bool started = await ffmpegManager.StartAsync(
+                            destinationTarget,
+                            calibratedTime,
+                            screenCapture.Width,
+                            screenCapture.Height,
+                            48000,
+                            2,
+                            "f32le",
+                            _baselineFps,
+                            _currentVideoBitrate,
+                            localToken).ConfigureAwait(false);
+
                         if (!started)
                         {
                             _isStreamingRequested = false;
@@ -444,6 +457,15 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         Logger.Info("[WorkerEngine] Received STOP command from Supervisor.");
                                         _isStreamingRequested = false;
                                     }
+                                    else if (cmd.Equals("SetCaptureFps", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        // שינוי קצב לכידה ללא ריסטארט של FFmpeg
+                                        if (parts.Length > 1 && int.TryParse(parts[1], out int captureFps) && captureFps >= 10 && captureFps <= 120)
+                                        {
+                                            _internalCaptureFps = Math.Min(captureFps, _baselineFps);
+                                            Logger.Info($"[WorkerEngine] Updated internal capture rate on the fly to {_internalCaptureFps} FPS (Stream stays {_baselineFps} FPS).");
+                                        }
+                                    }
                                     else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
                                     {
                                         if (parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]))
@@ -456,7 +478,18 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             _serverUtcOffset = TimeSpan.FromTicks(ticks);
                                         }
 
-                                        Logger.Info($"[WorkerEngine] Received START/RESTART command. Destination: {_injectedRtmpDestination}");
+                                        if (parts.Length > 3 && int.TryParse(parts[3], out int dynamicFps) && dynamicFps >= 10 && dynamicFps <= 120)
+                                        {
+                                            _baselineFps = dynamicFps;
+                                            _internalCaptureFps = dynamicFps;
+                                        }
+
+                                        if (parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]))
+                                        {
+                                            _currentVideoBitrate = parts[4].Trim();
+                                        }
+
+                                        Logger.Info($"[WorkerEngine] Received START/RESTART command. Destination: {_injectedRtmpDestination}, FPS: {_baselineFps}, Bitrate: {_currentVideoBitrate}");
                                         _isStreamingRequested = true;
                                         if (cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))
                                         {
