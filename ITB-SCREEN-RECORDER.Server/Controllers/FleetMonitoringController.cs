@@ -52,6 +52,41 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(agents);
         }
 
+        [HttpGet("fleet/{agentHostname}")]
+        public IActionResult GetStationMetrics(string agentHostname)
+        {
+            // חיפוש העמדה הספציפית ב-State ללא רגישות לאותיות רישיות/קטנות
+            var agent = _telemetryState.GetAllAgents()
+                .FirstOrDefault(a => string.Equals(a.Hostname, agentHostname, StringComparison.OrdinalIgnoreCase));
+
+            if (agent == null)
+            {
+                // החזרת 404 מאפשרת ל-OpManager לדעת מיד שהעמדה לא מדווחת
+                return NotFound(new { error = $"Station '{agentHostname}' not found or offline" });
+            }
+
+            var metrics = new
+            {
+                agentHostname = agent.Hostname,
+
+                // עומס מארח כללי
+                hostCpuPct = Math.Round(agent.HostCpuPct, 1),
+                hostGpuPct = Math.Round(agent.Gpu3dPct, 1),
+                netTotalTxMbps = Math.Round(agent.NicTotalTxMbps, 2),
+                netTotalRxMbps = Math.Round(agent.NicTotalRxMbps, 2),
+
+                // תרומת תוכנת ההקלטות
+                appCpuPct = Math.Round(agent.ProcessCpuPct, 1),
+                appRamMb = Math.Round(agent.ProcessRamMb, 1),
+                appNetTxMbps = Math.Round(agent.MediaTxMbps, 2),
+
+                netUsagePct = Math.Round(agent.NicUtilizationPct, 2),
+                isStreaming = agent.IsStreaming ? 1 : 0
+            };
+
+            return Ok(metrics);
+        }
+
         [HttpGet("server")]
         public IActionResult GetServerMetrics()
         {
