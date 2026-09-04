@@ -3,7 +3,7 @@ import './StationTuningFlyout.scss';
 
 const FPS_TICKS = [
     { val: 10, label: '10' },
-    { val: 24, label: '20' },
+    { val: 20, label: '20' },
     { val: 30, label: '30' },
     { val: 60, label: '60' }
 ];
