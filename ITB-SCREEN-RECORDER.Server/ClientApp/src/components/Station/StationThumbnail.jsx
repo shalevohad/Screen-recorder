@@ -1,11 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import './StationThumbnail.scss';
-import FullscreenModal from './FullscreenModal';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
-import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
-import TacticalStatusBadge from '../UI/TacticalStatusBadge';
-import StationTuningFlyout from './StationTuningFlyout';
-import StationMetricsPanel from './StationMetricsPanel';
+import { Badge } from '../UI/Badge';
+import { getStationTacticalBadgeConfig, getDropFramesBadgeConfig } from '../../adapters/tacticalStatusAdapter';
 
 export default function StationThumbnail(props) {
     const {
@@ -13,41 +10,25 @@ export default function StationThumbnail(props) {
         isOnline = false,
         isStreaming = false,
         ipAddress = 'N/A',
-        hasAudio = false,
-        lastSeenUtc = null,
-        targetFps = null,
-        targetBitrateKbps = null,
-        actualFps = 0,
-        internalCaptureFps = 0,
-        mediaTxMbps = 0,
+        droppedFrames = 0,
+        hostCpuPct = 0,
+        gpuNvencPct = 0,
         onToggleStream,
-        isPending = false,
-        globalShowMetrics = false
+        onSelectStation,
+        onOpenFullscreen,
+        onQuickBookmark,
+        onQuickPlayback,
+        onQuickExport
     } = props;
 
-    const [showFullscreen, setShowFullscreen] = useState(false);
-    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
-    const [isTuningOpen, setIsTuningOpen] = useState(false);
 
-    const cardRef = useRef(null);
-    const tuningWrapRef = useRef(null);
-
-    const serverHost = window.location.hostname;
-    const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
+    const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
-    const apiBaseUrl = `http://${serverHost}:${apiPort}`;
 
     const isLive = isOnline && isStreaming;
-
-    // גזירת הערכים הנוכחיים הפעילים ביותר של התחנה
-    const activeLiveFps = targetFps
-        || (internalCaptureFps > 0 ? internalCaptureFps : null)
-        || (actualFps > 0 ? Math.round(actualFps) : 30);
-
-    const activeLiveBitrate = targetBitrateKbps
-        || (mediaTxMbps > 0 ? Math.round(mediaTxMbps * 1000) : 3000);
+    const hasCriticalError = !isOnline || droppedFrames > 5;
 
     useEffect(() => {
         if (!isStreaming) return;
@@ -58,155 +39,166 @@ export default function StationThumbnail(props) {
         };
     }, [isStreaming]);
 
-    useEffect(() => {
-        const handleClickOutside = (e) => {
-            if (tuningWrapRef.current && !tuningWrapRef.current.contains(e.target)) {
-                setIsTuningOpen(false);
-            }
-        };
-
-        if (isTuningOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isTuningOpen]);
-
     const formatTimer = (sec) => {
         const m = Math.floor(sec / 60);
         const s = sec % 60;
         return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
 
+    // פתיחת ה-FullscreenModal המבצעי
+    const triggerFullscreenModal = (e) => {
+        e?.stopPropagation?.();
+        onOpenFullscreen?.(props);
+    };
+
+    const computeHealthScore = () => {
+        if (!isOnline) return 0;
+        let score = 100;
+        if (droppedFrames > 0) score -= Math.min(40, droppedFrames * 5);
+        if (hostCpuPct > 85) score -= 25;
+        if (gpuNvencPct > 90) score -= 20;
+        return Math.max(10, score);
+    };
+
+    const health = computeHealthScore();
+    const statusBadge = getStationTacticalBadgeConfig(props, formatTimer(recordingSeconds));
+    const dropBadge = getDropFramesBadgeConfig(droppedFrames);
+
     return (
-        <div ref={cardRef} className={`station-card ${!isOnline ? 'offline' : ''}`}>
-            <div className="station-card-header">
-                <div className="header-left-actions">
-                    <TacticalStatusBadge
-                        type="link"
-                        status={isOnline ? 'ok' : 'offline'}
-                        label="TELEMETRY LINK"
-                        statusText={isOnline ? "ACTIVE" : "OFFLINE"}
-                        description={isOnline ? `Agent telemetry operational via SignalR (${ipAddress})` : "Agent offline / no heartbeat"}
-                    />
-
-                    <TacticalStatusBadge
-                        type={hasAudio ? 'audio' : 'audio-off'}
-                        status={hasAudio ? 'ok' : 'crit'}
-                        label="AUDIO CHANNEL"
-                        statusText={hasAudio ? "LIVE (WASAPI)" : "MUTED / NO AUDIO"}
-                        description={hasAudio
-                            ? "WASAPI loopback audio stream operational and transmitting"
-                            : "No audio feed detected. Station microphone or loopback is inactive"}
-                    />
-
-                    {isOnline && (
-                        <button
-                            className={`tactical-station-btn ${isStreaming ? 'is-streaming' : 'is-idle'} ${isPending ? 'is-pending' : ''}`}
-                            onClick={onToggleStream}
-                            disabled={isPending}
-                            title={isStreaming ? "Stop video stream & telemetry broadcast" : "Start streaming agent screen & audio"}
-                        >
-                            {isPending ? (
-                                <svg className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                                    <circle cx="12" cy="12" r="10" strokeDasharray="30" strokeDashoffset="0"></circle>
-                                </svg>
-                            ) : isStreaming ? (
-                                <>
-                                    <span className="hud-recording-ring"></span>
-                                    <span className="btn-text">REC</span>
-                                    <span className="btn-timer">{formatTimer(recordingSeconds)}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10">
-                                        <polygon points="6 4 18 12 6 20 6 4" />
-                                    </svg>
-                                    <span className="btn-text">START</span>
-                                </>
-                            )}
-                        </button>
-                    )}
-
-                    {isOnline && (
-                        <div className="tuning-container" ref={tuningWrapRef}>
-                            <button
-                                className={`tactical-tuning-btn ${isTuningOpen ? 'is-active' : ''}`}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsTuningOpen(prev => !prev);
-                                }}
-                                title="Adjust Station FPS & Bitrate Sliders"
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                                    <line x1="4" y1="21" x2="4" y2="14" />
-                                    <line x1="4" y1="10" x2="4" y2="3" />
-                                    <line x1="12" y1="21" x2="12" y2="12" />
-                                    <line x1="12" y1="8" x2="12" y2="3" />
-                                    <line x1="20" y1="21" x2="20" y2="16" />
-                                    <line x1="20" y1="12" x2="20" y2="3" />
-                                    <circle cx="4" cy="12" r="2.5" fill="currentColor" />
-                                    <circle cx="12" cy="10" r="2.5" fill="currentColor" />
-                                    <circle cx="20" cy="14" r="2.5" fill="currentColor" />
-                                </svg>
-                            </button>
-
-                            {isTuningOpen && (
-                                <StationTuningFlyout
-                                    hostname={hostname}
-                                    currentFps={activeLiveFps}
-                                    currentBitrateKbps={activeLiveBitrate}
-                                    apiBaseUrl={apiBaseUrl}
-                                    onClose={() => setIsTuningOpen(false)}
-                                />
-                            )}
-                        </div>
-                    )}
+        <div
+            className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
+            onClick={() => onSelectStation?.(props)}
+            title="Click card background to open Station Inspector"
+        >
+            <div className="card-minimal-header">
+                <div className="station-brand">
+                    <span className="station-name">{hostname}</span>
+                    <span className="station-ip">{ipAddress}</span>
                 </div>
 
-                <div className="station-identity">
-                    <span className="station-hostname">{hostname}</span>
-                    <span className="station-ip-sub">{ipAddress}</span>
+                <div className="station-header-right">
+                    <div className="station-status-cluster">
+                        <Badge
+                            variant={statusBadge.variant}
+                            pulse={statusBadge.pulse}
+                            ariaLabel={statusBadge.ariaLabel}
+                        >
+                            {statusBadge.label}
+                        </Badge>
+
+                        {dropBadge && (
+                            <Badge
+                                variant={dropBadge.variant}
+                                pulse={dropBadge.pulse}
+                                ariaLabel={dropBadge.ariaLabel}
+                            >
+                                {dropBadge.label}
+                            </Badge>
+                        )}
+                    </div>
+
+                    {/* כפתור כניסה למודל מסך מלא */}
+                    <button
+                        className="header-action-icon-btn fullscreen-btn"
+                        onClick={triggerFullscreenModal}
+                        title="Open Fullscreen Theater Mode"
+                        aria-label="Toggle Fullscreen"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                        </svg>
+                    </button>
+
+                    {/* כפתור פתיחת ה-Inspector בצד */}
+                    <button
+                        className="header-action-icon-btn inspect-drawer-trigger"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectStation?.(props);
+                        }}
+                        title="Open Station Inspector: Telemetry & Tuning"
+                        aria-label="Open Station Inspector"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="4" y1="21" x2="4" y2="14" />
+                            <line x1="4" y1="10" x2="4" y2="3" />
+                            <line x1="12" y1="21" x2="12" y2="12" />
+                            <line x1="12" y1="8" x2="12" y2="3" />
+                            <line x1="20" y1="21" x2="20" y2="16" />
+                            <line x1="20" y1="12" x2="20" y2="3" />
+                            <line x1="1" y1="14" x2="7" y2="14" />
+                            <line x1="9" y1="8" x2="15" y2="8" />
+                            <line x1="17" y1="16" x2="23" y2="16" />
+                        </svg>
+                    </button>
                 </div>
             </div>
 
-            <div className="station-screen-area" onClick={() => isLive && isVideoPlaying && setShowFullscreen(true)}>
+            {/* לחיצה ישירה על אזור הווידאו מפעילה את מודל המסך המלא */}
+            <div
+                className="card-screen-viewport"
+                onClick={triggerFullscreenModal}
+                title="Click video to open Fullscreen Theater"
+            >
                 {isLive ? (
-                    <>
-                        {!isVideoPlaying && <CyberLoadingOverlay size="small" text="CONNECTING..." />}
-                        <div className="station-thumbnail-video">
-                            <WebRTCPlayer
-                                streamPath={`live/${hostname}`}
-                                webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                                onPlaying={() => setIsVideoPlaying(true)}
-                                onError={() => setIsVideoPlaying(false)}
-                            />
-                        </div>
-                    </>
+                    <div className="webrtc-container" style={{ pointerEvents: 'none' }}>
+                        <WebRTCPlayer
+                            streamPath={`live/${hostname}`}
+                            webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                        />
+                    </div>
                 ) : (
-                    <div className="screen-offline-placeholder">
-                        <span>{isOnline ? 'STANDBY' : 'STATION OFFLINE'}</span>
+                    <div className="offline-screen-matte">
+                        <span>{isOnline ? 'STANDBY' : 'OFFLINE'}</span>
                     </div>
                 )}
+
+                {/* סרגל פעולות בריחוף מעל הווידאו */}
+                <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
+                    <button
+                        className={`action-btn ${isStreaming ? 'stop' : 'start'}`}
+                        onClick={onToggleStream}
+                        title={isStreaming ? "Stop Stream" : "Start Stream"}
+                    >
+                        {isStreaming ? 'STOP' : 'START'}
+                    </button>
+                    <button
+                        className="action-btn"
+                        onClick={triggerFullscreenModal}
+                        title="Fullscreen Theater Mode"
+                    >
+                        FULL
+                    </button>
+                    <button
+                        className="action-btn"
+                        onClick={() => onQuickBookmark?.(hostname)}
+                        title="Add Bookmark"
+                    >
+                        BM
+                    </button>
+                    <button
+                        className="action-btn"
+                        onClick={() => onQuickPlayback?.(hostname)}
+                        title="Open Playback"
+                    >
+                        PLAY
+                    </button>
+                    <button
+                        className="action-btn"
+                        onClick={() => onQuickExport?.(hostname)}
+                        title="Export Clip"
+                    >
+                        EXP
+                    </button>
+                </div>
             </div>
 
-            {globalShowMetrics && <StationMetricsPanel {...props} />}
-
-            {showFullscreen && (
-                <FullscreenModal
-                    hostname={hostname}
-                    webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                    actualFps={props.actualFps}
-                    droppedFrames={props.droppedFrames}
-                    hostCpuPct={props.hostCpuPct}
-                    gpuNvencPct={props.gpuNvencPct}
-                    gpu3dPct={props.gpu3dPct}
-                    mediaTxMbps={props.mediaTxMbps}
-                    streamingSinceUtc={lastSeenUtc}
-                    onClose={() => setShowFullscreen(false)}
+            <div className="health-bar-track" title={`Station Health: ${health}%`}>
+                <div
+                    className={`health-bar-fill ${health < 50 ? 'crit' : health < 80 ? 'warn' : 'good'}`}
+                    style={{ width: `${health}%` }}
                 />
-            )}
+            </div>
         </div>
     );
 }

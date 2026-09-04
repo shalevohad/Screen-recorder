@@ -15,6 +15,21 @@ export default function StationOverridesTab({
 
     const customOverridesCount = Object.keys(overrides).length;
 
+    const fpsTicks = [
+        { val: 10, label: '10' },
+        { val: 20, label: '20' },
+        { val: 30, label: '30' },
+        { val: 60, label: '60' }
+    ];
+
+    const bitrateTicks = [
+        { val: 1000, label: '1M' },
+        { val: 2500, label: '2.5M' },
+        { val: 5000, label: '5M' },
+        { val: 10000, label: '10M' },
+        { val: 20000, label: '20M' }
+    ];
+
     const parseBitrateVal = (val, fallback) => {
         if (!val) return fallback;
         const raw = String(val).trim().toUpperCase();
@@ -52,9 +67,54 @@ export default function StationOverridesTab({
         return a.hostname.localeCompare(b.hostname, undefined, { numeric: true });
     });
 
+    const renderSliderWithTicks = (value, min, max, step, onChange, ticks) => (
+        <div className="range-with-input">
+            <div className="slider-input-inline-row">
+                <input
+                    type="range"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={Math.max(min, Math.min(max, Number(value) || min))}
+                    onChange={e => onChange(Number(e.target.value))}
+                    className="tactical-range-slider"
+                />
+                <input
+                    type="number"
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={value}
+                    onChange={e => onChange(Number(e.target.value))}
+                />
+            </div>
+
+            <div className="slider-ticks-track">
+                {ticks.map((tick) => {
+                    const THUMB_RADIUS = 12;
+                    const pct = ((tick.val - min) / (max - min)) * 100;
+                    // המיקום מתייחס לרוחב הפנוי של פס הסליידר (ללא אזור תיבת המספרים)
+                    const isCurrent = Number(value) === tick.val;
+                    return (
+                        <button
+                            key={tick.val}
+                            type="button"
+                            className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                            style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                            onClick={() => onChange(tick.val)}
+                            title={`Set ${tick.label}`}
+                        >
+                            <span className="tick-pip"></span>
+                            <span className="tick-text">{tick.label}</span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+
     return (
         <div className="stations-overrides-container">
-            {/* פס בקרה עליון ואיפוס גורף */}
             <div className="overrides-control-header">
                 <div className="overrides-counter-badge">
                     <span className="count-num">{customOverridesCount}</span>
@@ -110,28 +170,28 @@ export default function StationOverridesTab({
                                         <div className="edit-inputs-row">
                                             <label>
                                                 <span>Target FPS</span>
-                                                <input
-                                                    type="number"
-                                                    min={15}
-                                                    max={60}
-                                                    value={overrideFps}
-                                                    onChange={e => setOverrideFps(e.target.value)}
-                                                />
+                                                {renderSliderWithTicks(
+                                                    overrideFps,
+                                                    10,
+                                                    60,
+                                                    1,
+                                                    val => setOverrideFps(val),
+                                                    fpsTicks
+                                                )}
                                             </label>
                                             <label>
                                                 <span>Bitrate (Kbps)</span>
-                                                <input
-                                                    type="number"
-                                                    min={500}
-                                                    max={50000}
-                                                    step={250}
-                                                    value={overrideBitrateKbps}
-                                                    onChange={e => setOverrideBitrateKbps(e.target.value)}
-                                                />
+                                                {renderSliderWithTicks(
+                                                    overrideBitrateKbps,
+                                                    1000,
+                                                    50000,
+                                                    250,
+                                                    val => setOverrideBitrateKbps(val),
+                                                    bitrateTicks
+                                                )}
                                             </label>
                                         </div>
 
-                                        {/* התרעה דינמית למשתמש */}
                                         {willTriggerRestart ? (
                                             <div className="override-pipeline-notice warning">
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

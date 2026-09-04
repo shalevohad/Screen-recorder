@@ -1,15 +1,24 @@
 ﻿import { useState, useEffect } from 'react';
 import './ServerClock.scss';
 
-export default function ServerClock({ uptimeSeconds: initialUptime = 0 }) {
+export default function ServerClock({ uptimeSeconds: serverUptime = 0 }) {
     const [currentTime, setCurrentTime] = useState(new Date());
-    const [uptimeSeconds, setUptimeSeconds] = useState(initialUptime);
 
-    // עדכון הטימר הרגיל בלבד בתוך ה-effect
+    // שמירת ה-Uptime המעודכן שמתקבל מהשרת, והמשך ספירה מקומית ממנו
+    const [elapsedUptime, setElapsedUptime] = useState(serverUptime);
+
+    // עדכון ה-Uptime בכל פעם שהנתון החדש מתקבל מהשרת
+    useEffect(() => {
+        if (serverUptime !== undefined && serverUptime !== null) {
+            setElapsedUptime(serverUptime);
+        }
+    }, [serverUptime]);
+
+    // קידום השעון וה-Uptime בכל שנייה
     useEffect(() => {
         const timer = setInterval(() => {
             setCurrentTime(new Date());
-            setUptimeSeconds(prev => prev + 1);
+            setElapsedUptime(prev => prev + 1);
         }, 1000);
 
         return () => clearInterval(timer);
@@ -57,7 +66,7 @@ export default function ServerClock({ uptimeSeconds: initialUptime = 0 }) {
                     <span className="chrono-utc">UTC: {utcHours}:{utcMinutes}:{utcSeconds}</span>
                 </div>
                 <div className="chrono-uptime-row">
-                    <span className="chrono-uptime">{formatUptime(uptimeSeconds)}</span>
+                    <span className="chrono-uptime">{formatUptime(elapsedUptime)}</span>
                 </div>
             </div>
 

@@ -18,17 +18,34 @@ const BITRATE_TICKS = [
 
 const THUMB_RADIUS = 12;
 
-export default function StationTuningFlyout({
-    hostname,
-    currentFps,
-    currentBitrateKbps,
-    apiBaseUrl,
-    onClose
-}) {
-    const [selectedFps, setSelectedFps] = useState(currentFps || 30);
-    const [selectedBitrate, setSelectedBitrate] = useState(currentBitrateKbps || 3000);
+export default function StationTuningFlyout(props) {
+    const {
+        hostname: directHostname,
+        station,
+        stationName,
+        agentId,
+        currentFps,
+        currentBitrateKbps,
+        apiBaseUrl = '',
+        onClose
+    } = props;
+
+    // 💡 חילוץ בטוח של שם העמדה ממגוון מקורות אפשריים
+    const targetHostname = directHostname || station?.hostname || stationName || agentId || '';
+
+    // 💡 ניקוי בסיס ה-URL למניעת שרשור "undefined" או סלאשים כפולים
+    const cleanBaseUrl = (apiBaseUrl && apiBaseUrl !== 'undefined')
+        ? apiBaseUrl.replace(/\/+$/, '')
+        : '';
+
+    const [selectedFps, setSelectedFps] = useState(
+        currentFps || station?.actualFps || station?.targetFps || 30
+    );
+    const [selectedBitrate, setSelectedBitrate] = useState(
+        currentBitrateKbps || station?.targetBitrateKbps || 3000
+    );
     const [isSaving, setIsSaving] = useState(false);
-    const [isLoadingConfig, setIsLoadingConfig] = useState(true);
+    const [isLoadingConfig, setIsLoadingConfig] = useState(Boolean(targetHostname));
     const [statusText, setStatusText] = useState('');
     const [isFadingOut, setIsFadingOut] = useState(false);
 
@@ -43,10 +60,15 @@ export default function StationTuningFlyout({
     }, []);
 
     useEffect(() => {
+        if (!targetHostname) {
+            setIsLoadingConfig(false);
+            return;
+        }
+
         let isMounted = true;
         async function fetchCurrentStationConfig() {
             try {
-                const res = await fetch(`${apiBaseUrl}/api/v1/agent/config/${hostname}`);
+                const res = await fetch(`${cleanBaseUrl}/api/v1/agent/config/${encodeURIComponent(targetHostname)}`);
                 if (res.ok) {
                     const policy = await res.json();
                     if (!isMounted) return;
@@ -64,7 +86,7 @@ export default function StationTuningFlyout({
                     }
                 }
             } catch (err) {
-                console.warn(`[StationTuning] Could not fetch server config for ${hostname}, using live telemetry`, err);
+                console.warn(`[StationTuning] Could not fetch server config for ${targetHostname}, using defaults`, err);
             } finally {
                 if (isMounted) setIsLoadingConfig(false);
             }
@@ -72,7 +94,7 @@ export default function StationTuningFlyout({
 
         fetchCurrentStationConfig();
         return () => { isMounted = false; };
-    }, [apiBaseUrl, hostname]);
+    }, [cleanBaseUrl, targetHostname]);
 
     const handleFpsBlur = () => {
         let num = parseInt(selectedFps, 10);
@@ -89,6 +111,11 @@ export default function StationTuningFlyout({
     };
 
     const handleApply = async () => {
+        if (!targetHostname) {
+            setStatusText('ERR: NO ID');
+            return;
+        }
+
         let fpsNum = parseInt(selectedFps, 10);
         if (isNaN(fpsNum) || fpsNum < 10) fpsNum = 10;
         if (fpsNum > 60) fpsNum = 60;
@@ -103,7 +130,7 @@ export default function StationTuningFlyout({
         setStatusText('SYNCING...');
 
         try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/tuning/${hostname}`, {
+            const res = await fetch(`${cleanBaseUrl}/api/v1/agent/tuning/${encodeURIComponent(targetHostname)}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -114,8 +141,6 @@ export default function StationTuningFlyout({
 
             if (res.ok) {
                 setStatusText('APPLIED');
-
-                // 💡 הצגת הסטטוס לרגע קט, הפעלת fade-out וסגירה אוטומטית
                 closeTimerRef.current = setTimeout(() => {
                     setIsFadingOut(true);
                     setTimeout(() => {
@@ -126,7 +151,7 @@ export default function StationTuningFlyout({
                 setStatusText('ERR');
             }
         } catch (err) {
-            console.error(`[StationTuning] Failed for ${hostname}:`, err);
+            console.error(`[StationTuning] Failed for ${targetHostname}:`, err);
             setStatusText('FAILED');
         } finally {
             setIsSaving(false);

@@ -1,6 +1,6 @@
 ﻿/* איפוס גלובלי והגדרת סביבת C2 טקטית */
 html, body, #root {
-    background-color: var(--bg-void, #030712) !important;
+    background-color: var(--bg-void, #131924) !important;
     color: var(--slate-light, #f8fafc);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     margin: 0 !important;
@@ -24,11 +24,11 @@ html, body, #root {
     flex-direction: column;
     width: 100%;
     min-height: 100vh;
-    background-color: var(--bg-void, #030712);
+    background-color: var(--bg-void, #131924);
     background-image: radial-gradient(ellipse at 50% 0%, rgba(30, 58, 138, 0.12) 0%, transparent 60%), radial-gradient(circle at 100% 100%, rgba(15, 23, 42, 0.4) 0%, transparent 50%);
     position: relative;
     padding-bottom: 2rem;
-    /* קו רשת רקע טקטי עדין מאוד */
+    /* קו רשת רקע טקטי עדין */
     &::before {
         content: '';
         position: fixed;
@@ -38,14 +38,14 @@ html, body, #root {
         pointer-events: none;
         z-index: 1;
     }
-    /* תוכן האפליקציה מעל הרשת */
+
     > * {
         position: relative;
         z-index: 2;
     }
 }
 
-/* סקרולבר טקטי מותאם אישית לדפדפן */
+/* סקרולבר טקטי */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -58,10 +58,176 @@ html, body, #root {
 ::-webkit-scrollbar-thumb {
     background: var(--slate-line, #1e293b);
     border-radius: 4px;
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    border: 1px solid var(--border-card);
 
     &:hover {
         background: var(--slate-border, #334155);
-        border-color: rgba(59, 130, 246, 0.4);
+        border-color: var(--border-card-hover);
+    }
+}
+
+/* ==========================================================================
+   Tactical Base Styles: מוגדל כברירת מחדל לקריאות ממרחק (1080p / 1440p / קיר מסכים)
+   ========================================================================== */
+
+/* סרגל עליון */
+.command-center-top-bar {
+    padding: 0.75rem 1.6rem;
+
+    .brand-logo-section {
+        .tactical-emblem {
+            width: 44px;
+            height: 44px;
+
+            svg {
+                width: 22px;
+                height: 22px;
+            }
+        }
+
+        .brand-title-row {
+            .brand-name, .brand-main {
+                font-size: 1.45rem;
+            }
+        }
+    }
+
+    .header-clock-section .noc-clock-panel {
+        .chrono-digits, .chrono-seconds {
+            font-size: 1.85rem;
+        }
+
+        .chrono-utc {
+            font-size: 0.85rem;
+        }
+
+        .date-month-day {
+            font-size: 0.95rem;
+        }
+    }
+
+    .header-fleet-summary .fleet-summary-pill {
+        padding: 8px 20px;
+        gap: 20px;
+
+        .summary-pod {
+            .pod-lbl {
+                font-size: 10.5px;
+            }
+
+            .pod-val-row .pod-primary {
+                font-size: 18px;
+            }
+
+            .pod-val-row .pod-total {
+                font-size: 13px;
+            }
+        }
+    }
+
+    .server-telemetry-widget {
+        .telemetry-pod {
+            width: 170px;
+            padding: 8px 12px;
+
+            .pod-title {
+                font-size: 11.5px;
+            }
+
+            .pod-val {
+                font-size: 21px;
+            }
+
+            .pod-sub {
+                font-size: 10px;
+            }
+        }
+    }
+
+    .fleet-nodes-indicator {
+        .data-title {
+            font-size: 10.5px;
+        }
+
+        .count-active {
+            font-size: 22px;
+        }
+    }
+}
+
+/* כרטיסיות עמדה */
+.station-tactical-card {
+    border-width: 1.5px;
+
+    .card-minimal-header {
+        padding: 12px 16px;
+
+        .station-brand {
+            .station-name {
+                font-size: 17px;
+                letter-spacing: 0.8px;
+            }
+
+            .station-ip {
+                font-size: 13px;
+                font-weight: 800;
+                color: var(--slate-muted);
+            }
+        }
+
+        .header-action-icon-btn {
+            width: 32px;
+            height: 32px;
+
+            svg {
+                width: 17px;
+                height: 17px;
+            }
+        }
+    }
+
+    .c2-badge {
+        font-size: 11.5px;
+        padding: 3px 9px;
+        letter-spacing: 0.6px;
+    }
+
+    .health-bar-track {
+        height: 5px;
+    }
+}
+
+/* רשימה דחוסה */
+.stations-dense-table {
+    thead th {
+        font-size: 12px;
+        padding: 14px 18px;
+    }
+
+    tbody .dense-row td {
+        font-size: 14px;
+        padding: 12px 18px;
+
+        &.dense-hostname {
+            font-size: 15px;
+        }
+
+        &.dense-ip {
+            font-size: 13px;
+        }
+
+        &.dense-metric {
+            font-size: 13px;
+        }
+
+        .dense-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+        }
+
+        .dense-act-btn {
+            font-size: 12px;
+            padding: 5px 12px;
+        }
     }
 }
