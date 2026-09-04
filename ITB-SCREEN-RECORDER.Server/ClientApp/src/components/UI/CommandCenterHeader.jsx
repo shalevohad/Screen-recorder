@@ -40,7 +40,7 @@ export default function CommandCenterHeader({
                 <div className="brand-text-group">
                     <div className="brand-title-row">
                         <span className="brand-name">ITB</span>
-                        <span className="brand-main">COMMAND CENTER</span>
+                        <span className="brand-main">RECORDING CENTER</span>
                     </div>
                     <span className="brand-subtitle">LIVE AGENT OPERATIONS</span>
                 </div>
