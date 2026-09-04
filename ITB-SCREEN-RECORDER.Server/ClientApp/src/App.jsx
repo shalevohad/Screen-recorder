@@ -103,28 +103,44 @@ export default function App() {
         }
     };
 
-    const handleBulkStart = async () => {
+    const handleBulkStart = async (targetHostnames = []) => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy?enable=true`, {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enable: true,
+                    hostnames: targetHostnames.length > 0 ? targetHostnames : null
+                })
             });
+
             if (res.ok) {
-                setStations(prev => prev.map(s => s.isOnline ? { ...s, isStreaming: true } : s));
+                setStations(prev => prev.map(s => {
+                    const shouldUpdate = targetHostnames.length === 0 || targetHostnames.includes(s.hostname);
+                    return (shouldUpdate && s.isOnline) ? { ...s, isStreaming: true } : s;
+                }));
             }
         } catch (err) {
             console.error('[App] Failed bulk start:', err);
         }
     };
 
-    const handleBulkStop = async () => {
+    const handleBulkStop = async (targetHostnames = []) => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy?enable=false`, {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enable: false,
+                    hostnames: targetHostnames.length > 0 ? targetHostnames : null
+                })
             });
+
             if (res.ok) {
-                setStations(prev => prev.map(s => ({ ...s, isStreaming: false })))
+                setStations(prev => prev.map(s => {
+                    const shouldUpdate = targetHostnames.length === 0 || targetHostnames.includes(s.hostname);
+                    return shouldUpdate ? { ...s, isStreaming: false } : s;
+                }));
             }
         } catch (err) {
             console.error('[App] Failed bulk stop:', err);

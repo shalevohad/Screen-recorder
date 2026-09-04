@@ -48,14 +48,11 @@ export default function StationThumbnail({
     useEffect(() => {
         if (!isStreaming) return;
         const timer = setInterval(() => setRecordingSeconds(p => p + 1), 1000);
-        return () => clearInterval(timer);
+        return () => {
+            clearInterval(timer);
+            setRecordingSeconds(0);
+        };
     }, [isStreaming]);
-
-    // Derived/Event-driven reset or direct check
-    const currentRecordingSeconds = isStreaming ? recordingSeconds : 0;
-    if (!isStreaming && recordingSeconds !== 0) {
-        setRecordingSeconds(0);
-    }
 
     const formatTimer = (sec) => {
         const m = Math.floor(sec / 60);
@@ -84,18 +81,21 @@ export default function StationThumbnail({
                     <TacticalStatusBadge
                         type="link"
                         status={isOnline ? 'ok' : 'offline'}
-                        title={isOnline ? "TELEMETRY LINK ACTIVE" : "STATION OFFLINE"}
-                        description={isOnline ? `Agent connected via SignalR (${ipAddress})` : "No heartbeat detected from agent"}
+                        label="TELEMETRY LINK"
+                        statusText={isOnline ? "ACTIVE" : "OFFLINE"}
+                        description={isOnline ? `Agent telemetry operational via SignalR (${ipAddress})` : "Agent offline / no heartbeat"}
                     />
 
-                    {hasAudio && isOnline && (
-                        <TacticalStatusBadge
-                            type="audio"
-                            status="ok"
-                            title="VOICE TRANSPONDER ACTIVE"
-                            description="WASAPI loopback capture operational"
-                        />
-                    )}
+                    {/* חיווי ערוץ סאונד: ירוק כשיש שידור סאונד, אדום מושתק כשאין */}
+                    <TacticalStatusBadge
+                        type={hasAudio ? 'audio' : 'audio-off'}
+                        status={hasAudio ? 'ok' : 'crit'}
+                        label="AUDIO CHANNEL"
+                        statusText={hasAudio ? "LIVE (WASAPI)" : "MUTED / NO AUDIO"}
+                        description={hasAudio
+                            ? "WASAPI loopback audio stream operational and transmitting"
+                            : "No audio feed detected. Station microphone or desktop loopback is inactive"}
+                    />
 
                     {isOnline && (
                         <button
@@ -112,14 +112,14 @@ export default function StationThumbnail({
                                 <>
                                     <span className="hud-recording-ring"></span>
                                     <span className="btn-text">REC</span>
-                                    <span className="btn-timer">{formatTimer(currentRecordingSeconds)}</span>
+                                    <span className="btn-timer">{formatTimer(recordingSeconds)}</span>
                                 </>
                             ) : (
                                 <>
                                     <svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10">
                                         <polygon points="6 4 18 12 6 20 6 4" />
                                     </svg>
-                                    <span className="btn-text">START STREAM</span>
+                                    <span className="btn-text">START</span>
                                 </>
                             )}
                         </button>
@@ -162,6 +162,10 @@ export default function StationThumbnail({
                         <div className="stat-box">
                             <span className="stat-label">CAP</span>
                             <span className="stat-value yellow">{internalCaptureFps}</span>
+                        </div>
+                        <div className="stat-box">
+                            <span className="stat-label">AUDIO</span>
+                            <span className={`stat-value ${hasAudio ? 'green' : 'red'}`}>{hasAudio ? 'ON' : 'OFF'}</span>
                         </div>
                         <div className="stat-box">
                             <span className="stat-label">DROP</span>

@@ -3,8 +3,10 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
     border-radius: 6px;
     box-sizing: border-box;
     cursor: help;
@@ -30,83 +32,94 @@
 
     &.status-ok {
         background: var(--c2-green-deep);
-        border: 1.8px solid var(--c2-green);
+        border: 1.5px solid var(--c2-green);
         color: var(--c2-green-light);
         box-shadow: var(--glow-green);
     }
 
     &.status-warn {
         background: var(--c2-yellow-deep);
-        border: 1.8px solid var(--c2-yellow);
+        border: 1.5px solid var(--c2-yellow);
         color: var(--c2-yellow-light);
         box-shadow: var(--glow-yellow);
     }
 
     &.status-crit {
         background: var(--c2-red-deep);
-        border: 1.8px solid var(--c2-red);
+        border: 1.5px solid var(--c2-red);
         color: var(--c2-red-light);
         box-shadow: var(--glow-red);
     }
 
     &.status-offline {
         background: var(--bg-input);
-        border: 1.8px solid var(--slate-border);
+        border: 1.5px solid var(--slate-border);
         color: var(--slate-dark);
     }
 
     .tactical-hud-tooltip {
         position: absolute;
         bottom: calc(100% + 8px);
-        left: 50%;
-        transform: translateX(-50%) translateY(4px);
-        background: var(--bg-dark-well);
+        left: 0;
+        background: linear-gradient(135deg, var(--bg-tooltip) 0%, var(--bg-panel-dark) 100%);
         border: 1px solid var(--slate-border);
-        border-radius: 6px;
-        padding: 6px 10px;
-        min-width: 140px;
-        max-width: 220px;
+        border-radius: 7px;
+        padding: 7px 11px;
+        width: 220px;
         white-space: normal;
         pointer-events: none;
         opacity: 0;
         visibility: hidden;
+        transform: translateY(4px);
         transition: opacity 0.18s ease, transform 0.18s ease;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.9);
+        box-shadow: var(--shadow-tooltip);
         z-index: 1000;
-        font-family: monospace;
+        font-family: 'JetBrains Mono', monospace;
 
         .tooltip-header {
             display: flex;
             align-items: center;
-            gap: 5px;
-            margin-bottom: 2px;
+            gap: 6px;
+            line-height: 1.2;
 
             .tooltip-dot {
-                width: 5px;
-                height: 5px;
+                width: 6px;
+                height: 6px;
                 border-radius: 50%;
                 background-color: currentColor;
+                flex-shrink: 0;
             }
 
             .tooltip-title {
-                font-size: 9.5px;
+                font-size: 10px;
                 font-weight: 800;
+                color: var(--slate-light);
+                letter-spacing: 0.5px;
+            }
+
+            .tooltip-status {
+                font-size: 10px;
+                font-weight: 800;
+                margin-left: auto;
                 letter-spacing: 0.5px;
             }
         }
 
         .tooltip-desc {
-            font-size: 8.5px;
+            font-family: 'Inter', system-ui, sans-serif;
+            font-size: 9.5px;
             color: var(--slate-muted);
-            line-height: 1.25;
+            line-height: 1.35;
+            margin-top: 6px;
+            padding-top: 5px;
+            border-top: 1px solid var(--border-subtle);
         }
 
         &::after {
             content: '';
             position: absolute;
             top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 14px;
             border-width: 5px;
             border-style: solid;
             border-color: var(--slate-border) transparent transparent transparent;
@@ -119,42 +132,54 @@
         .tactical-hud-tooltip {
             opacity: 1;
             visibility: visible;
-            transform: translateX(-50%) translateY(0);
+            transform: translateY(0);
         }
 
         &.status-ok .tactical-hud-tooltip {
-            border-color: var(--c2-green);
-            color: var(--c2-green-light);
+            border-color: var(--c2-green-border);
+
+            .tooltip-status {
+                color: var(--c2-green-light);
+            }
 
             &::after {
-                border-top-color: var(--c2-green);
+                border-top-color: var(--c2-green-border);
             }
         }
 
         &.status-warn .tactical-hud-tooltip {
-            border-color: var(--c2-yellow);
-            color: var(--c2-yellow-light);
+            border-color: var(--c2-yellow-border);
+
+            .tooltip-status {
+                color: var(--c2-yellow-light);
+            }
 
             &::after {
-                border-top-color: var(--c2-yellow);
+                border-top-color: var(--c2-yellow-border);
             }
         }
 
         &.status-crit .tactical-hud-tooltip {
-            border-color: var(--c2-red);
-            color: var(--c2-red-light);
+            border-color: var(--c2-red-border);
+
+            .tooltip-status {
+                color: var(--c2-red-light);
+            }
 
             &::after {
-                border-top-color: var(--c2-red);
+                border-top-color: var(--c2-red-border);
             }
         }
 
         &.status-offline .tactical-hud-tooltip {
-            border-color: var(--slate-dark);
-            color: var(--slate-muted);
+            border-color: var(--border-subtle);
+
+            .tooltip-status {
+                color: var(--slate-dark);
+            }
 
             &::after {
-                border-top-color: var(--slate-dark);
+                border-top-color: var(--border-subtle);
             }
         }
     }

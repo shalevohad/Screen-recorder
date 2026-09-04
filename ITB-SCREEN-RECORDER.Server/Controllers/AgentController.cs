@@ -1,4 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
@@ -6,6 +8,19 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
+    /// <summary>
+    /// מודל בקשה להפעלת מדיניות שידור/הקלטה גורפת או מפולטרת
+    /// </summary>
+    public class FleetStreamingPolicyRequest
+    {
+        public bool Enable { get; set; }
+
+        /// <summary>
+        /// רשימת תחנות ספציפיות שעליהן תבוצע הפעולה (אם ריק/null - מופעל על כלל העמדות המחוברות)
+        /// </summary>
+        public List<string>? Hostnames { get; set; }
+    }
+
     [ApiController]
     [Route("api/v1/agent")]
     public class AgentController : ControllerBase
@@ -41,7 +56,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             // 1. הפעלת שירות הסטטוס שמפיק את התשובה והפוליסה
             var response = await _telemetryState.ProcessHeartbeatAsync(report, requestHost);
 
-            // 2. 💡 דחיפת הדיווח בזמן אמת לטכנאים בחמ"ל מבלי לעכב את תשובת ה-HTTP לעמדה
+            // 2. דחיפת הדיווח בזמן אמת לטכנאים בחמ"ל מבלי לעכב את תשובת ה-HTTP לעמדה
             _ = _broadcastService.BroadcastAgentUpdateAsync(report);
 
             return Ok(response);
@@ -62,12 +77,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         /// <summary>
-        /// אוכף מדיניות שידור/הקלטה גורפת על כלל העמדות המחוברות ברשת (Fleet Wide)
+        /// אוכף מדיניות שידור/הקלטה על כלל העמדות או על רשימת עמדות מפולטרת
         /// </summary>
-        /// <param name="enable">true להפעלת שידור/הקלטה בכל העמדות, false לעצירה גורפת</param>
         [HttpPost("fleet-streaming-policy")]
-        public IActionResult EnforceFleetWideStreamingPolicy([FromQuery] bool enable)
+        public IActionResult EnforceFleetWideStreamingPolicy(
+            [FromBody] FleetStreamingPolicyRequest? request,
+            [FromQuery] bool? enable)
         {
+            // קביעת מצב ההפעלה/עצירה מתמיכה ב-Body או כ-Fallback מ-Query Parameter
+            bool targetEnable = request?.Enable ?? enable ?? false;
+
             var allAgents = _telemetryState.GetAllAgents();
 
             // סינון עמדות שנצפו ב-15 השניות האחרונות (Online בלבד)
@@ -75,14 +94,22 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15)
                 .ToList();
 
+            // אם נשלחה רשימת עמדות ספציפית (פילטור מה-Dashboard), מבצעים סינון נוסף
+            if (request?.Hostnames != null && request.Hostnames.Any())
+            {
+                var filterSet = new HashSet<string>(request.Hostnames, StringComparer.OrdinalIgnoreCase);
+                activeAgents = activeAgents.Where(agent => filterSet.Contains(agent.Hostname)).ToList();
+            }
+
             foreach (var agent in activeAgents)
             {
-                _telemetryState.SetAgentStreamState(agent.Hostname, enable);
+                _telemetryState.SetAgentStreamState(agent.Hostname, targetEnable);
             }
 
             return Ok(new
             {
-                Action = enable ? "START_ALL" : "STOP_ALL",
+                Action = targetEnable ? "START_POLICY" : "STOP_POLICY",
+                IsFiltered = request?.Hostnames != null && request.Hostnames.Any(),
                 TargetStationCount = activeAgents.Count,
                 TargetHostnames = activeAgents.Select(a => a.Hostname).ToList(),
                 TimestampUtc = DateTime.UtcNow

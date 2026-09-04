@@ -1,107 +1,87 @@
 ﻿.station-card {
-    background: linear-gradient(145deg, #151e2e 0%, #0d131f 100%);
-    border-radius: 12px;
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    overflow: visible;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    overflow: visible !important;
+    position: relative;
     display: flex;
     flex-direction: column;
-    width: 100%;
-    position: relative;
+    box-shadow: var(--shadow-card);
+    transition: transform 0.2s ease, border-color 0.2s ease;
     box-sizing: border-box;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.4);
-    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 
     &:hover {
-        transform: translateY(-2px);
-        border-color: rgba(59, 130, 246, 0.6);
-        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.85), 0 0 20px rgba(59, 130, 246, 0.15);
+        border-color: var(--border-card-hover);
+        z-index: 60;
     }
 
     &.offline {
-        opacity: 0.38;
-        filter: grayscale(60%);
-        border-color: #1e293b;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-
-        &:hover {
-            opacity: 0.65;
-            filter: grayscale(30%);
-            transform: none;
-        }
+        opacity: 0.6;
+        border-color: var(--border-offline);
     }
 
     .station-card-header {
-        padding: 6px 10px;
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        background-color: rgba(15, 23, 42, 0.85);
-        border-bottom: 1px solid rgba(39, 53, 73, 0.8);
-        border-top-left-radius: 12px;
-        border-top-right-radius: 12px;
+        justify-content: space-between;
+        padding: 6px 10px;
+        background: var(--bg-panel-tactical);
+        border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+        border-radius: 9px 9px 0 0;
+        height: 42px;
+        box-sizing: border-box;
+        overflow: visible !important;
 
         .header-left-actions {
             display: flex;
             align-items: center;
             gap: 6px;
-        }
+            overflow: visible !important;
 
-        .tactical-station-btn {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 10px;
-            font-weight: 800;
-            cursor: pointer;
-            background: #090d16;
-            transition: all 0.2s ease;
+            .tactical-station-btn {
+                height: 28px !important;
+                min-height: 28px !important;
+                max-height: 28px !important;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0 8px;
+                border-radius: 6px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+                font-weight: 700;
+                box-sizing: border-box;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                gap: 5px;
+                margin: 0;
 
-            &.is-streaming {
-                border: 1.8px solid #ef4444;
-                color: #ef4444;
-                background: #2a1820;
-                box-shadow: 0 0 10px rgba(239, 68, 68, 0.4), inset 0 0 6px rgba(239, 68, 68, 0.2);
+                &.is-idle {
+                    background: rgba(15, 23, 42, 0.8);
+                    border: 1px solid var(--c2-blue-border);
+                    color: var(--c2-blue);
+
+                    &:hover {
+                        background: var(--c2-blue-tint);
+                        border-color: var(--c2-blue);
+                        box-shadow: 0 0 10px var(--c2-blue-glow);
+                    }
+                }
+
+                &.is-streaming {
+                    background: var(--c2-red-tint);
+                    border: 1px solid var(--c2-red-border);
+                    color: var(--c2-red-light);
+                    box-shadow: 0 0 8px var(--c2-red-glow);
+                }
 
                 .hud-recording-ring {
-                    width: 6px;
-                    height: 6px;
-                    background-color: #ef4444;
+                    width: 7px;
+                    height: 7px;
+                    background-color: var(--c2-red);
                     border-radius: 50%;
-                    box-shadow: 0 0 6px #ef4444;
-                    animation: pulse-dot-action 1.2s infinite;
+                    animation: emblem-glow 1.2s infinite ease-in-out;
                 }
-
-                .btn-timer {
-                    border-left: 1px solid rgba(239, 68, 68, 0.4);
-                    padding-left: 4px;
-                    color: #fca5a5;
-                }
-
-                &:hover {
-                    border-color: #f87171;
-                    background: #3b1d28;
-                }
-            }
-
-            &.is-idle {
-                border: 1.8px solid #166534;
-                color: #22c55e;
-                background: #0d1b14;
-
-                &:hover {
-                    border-color: #22c55e;
-                    color: #4ade80;
-                    background: #142a1e;
-                    box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
-                }
-            }
-
-            &.is-pending {
-                opacity: 0.5;
-                cursor: not-allowed;
             }
         }
 
@@ -109,118 +89,98 @@
             display: flex;
             align-items: baseline;
             gap: 6px;
-            text-align: right;
+            font-family: 'JetBrains Mono', monospace;
 
             .station-hostname {
-                color: #f8fafc;
-                font-weight: 800;
+                color: var(--slate-light);
                 font-size: 12px;
-                letter-spacing: 0.3px;
-                line-height: 1;
+                font-weight: 800;
+                letter-spacing: 0.5px;
             }
 
             .station-ip-inline {
-                color: #94a3b8;
+                color: var(--slate-muted);
                 font-size: 10px;
-                font-family: monospace;
-                line-height: 1;
             }
         }
     }
 
     .station-screen-area {
         position: relative;
-        background-color: #000000;
-        cursor: pointer;
-        aspect-ratio: 16/9;
         width: 100%;
+        aspect-ratio: 16 / 9;
+        background-color: #000;
+        cursor: pointer;
+        overflow: hidden;
+
+        .screen-offline-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            color: var(--slate-dark);
+            font-family: monospace;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
 
         .station-thumbnail-video {
             width: 100%;
             height: 100%;
-            pointer-events: none;
-        }
-
-        .screen-offline-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #64748b;
-            font-family: monospace;
-            font-size: 11px;
-        }
-    }
-
-    .station-metrics-toggle-bar {
-        background: #0b0f17;
-        text-align: center;
-        border-top: 1px solid #1e293b;
-        padding: 2px 0;
-
-        .toggle-btn-compact {
-            background: none;
-            border: none;
-            color: #64748b;
-            font-size: 9px;
-            font-family: monospace;
-            cursor: pointer;
-
-            &:hover {
-                color: #94a3b8;
-            }
         }
     }
 
     .station-telemetry {
-        padding: 6px 10px 8px 10px;
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-        background: #090d14;
-        border-bottom-left-radius: 12px;
-        border-bottom-right-radius: 12px;
+        padding: 8px 10px;
+        background: var(--bg-panel-dark);
+        border-top: 1px solid rgba(59, 130, 246, 0.15);
+        border-radius: 0 0 9px 9px;
 
         .inline-network-stats {
-            display: flex;
-            justify-content: space-between;
-            background: #111827;
-            padding: 3px 8px;
-            border-radius: 4px;
-            border: 1px solid #1f2937;
-            font-family: monospace;
-            font-size: 9px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+            margin-bottom: 8px;
 
             .stat-box {
                 display: flex;
-                gap: 3px;
+                flex-direction: column;
+                align-items: center;
+                background: rgba(15, 23, 42, 0.6);
+                border: 1px solid var(--border-subtle);
+                border-radius: 4px;
+                padding: 3px 0;
 
                 .stat-label {
-                    color: #64748b;
+                    font-size: 8px;
+                    color: var(--slate-dark);
+                    font-weight: 700;
                 }
 
                 .stat-value {
-                    font-weight: 700;
+                    font-size: 11px;
+                    font-weight: 800;
+                    font-family: 'JetBrains Mono', monospace;
 
                     &.green {
-                        color: #22c55e;
+                        color: var(--c2-green-light);
                     }
 
                     &.yellow {
-                        color: #eab308;
-                    }
-
-                    &.red {
-                        color: #ef4444;
+                        color: var(--c2-yellow-light);
                     }
 
                     &.blue {
-                        color: #3b82f6;
+                        color: var(--c2-blue);
+                    }
+
+                    &.red {
+                        color: var(--c2-red-light);
                     }
 
                     &.gray {
-                        color: #94a3b8;
+                        color: var(--slate-muted);
                     }
                 }
             }
@@ -232,39 +192,28 @@
             gap: 5px;
 
             .dual-metric-group {
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-
                 .telemetry-label {
                     display: flex;
                     justify-content: space-between;
-                    align-items: baseline;
-                    font-size: 10px;
+                    font-size: 9px;
                     font-family: monospace;
-                    line-height: 1;
+                    margin-bottom: 2px;
 
                     .cat-name {
-                        color: #94a3b8;
+                        color: var(--slate-muted);
                         font-weight: 700;
-
-                        .link-badge {
-                            color: #38bdf8;
-                        }
                     }
 
                     .cat-values {
-                        display: flex;
-                        gap: 4px;
+                        color: var(--slate-dark);
 
                         .val-host {
-                            color: #22c55e;
+                            color: var(--c2-green-light);
                             font-weight: 700;
                         }
 
                         .val-app {
-                            color: #60a5fa;
-                            font-weight: 600;
+                            color: var(--c2-blue);
                         }
                     }
                 }
@@ -272,49 +221,30 @@
                 .bars-pair {
                     display: flex;
                     flex-direction: column;
-                    gap: 1.5px;
+                    gap: 1px;
 
                     .bar-track {
                         height: 3px;
-                        background-color: #1e293b;
-                        border-radius: 1px;
+                        background: rgba(30, 41, 59, 0.8);
+                        border-radius: 2px;
                         overflow: hidden;
-                        width: 100%;
-
-                        &.app-track {
-                            height: 2.5px;
-                            background-color: rgba(30, 41, 59, 0.7);
-                        }
 
                         .bar-fill {
                             height: 100%;
-                            border-radius: 1px;
                             transition: width 0.3s ease;
 
                             &.host-green {
-                                background-color: #22c55e;
+                                background: var(--c2-green);
                             }
 
                             &.app-blue {
-                                background-color: #38bdf8;
+                                background: var(--c2-blue);
                             }
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@keyframes pulse-dot-action {
-    0%, 100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-
-    50% {
-        opacity: 0.3;
-        transform: scale(0.85);
     }
 }
 
