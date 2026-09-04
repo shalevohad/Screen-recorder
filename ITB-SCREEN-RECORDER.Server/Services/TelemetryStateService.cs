@@ -82,7 +82,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             // ברירות מחדל גלובליות מתוך ה-SystemConfig
             int fps = _systemConfig.DefaultTargetFps;
-            if (fps < 15) fps = 15;
+            if (fps < 10) fps = 10;
             if (fps > 60) fps = 60;
 
             string bitrate = _systemConfig.DefaultVideoBitrate ?? "3000k";
@@ -102,7 +102,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     bitrate = stationConfig.VideoBitrate.ToUpper();
                 }
 
-                if (stationConfig.TargetFps.HasValue && stationConfig.TargetFps.Value >= 15 && stationConfig.TargetFps.Value <= 60)
+                if (stationConfig.TargetFps.HasValue && stationConfig.TargetFps.Value >= 10 && stationConfig.TargetFps.Value <= 60)
                 {
                     fps = stationConfig.TargetFps.Value;
                 }

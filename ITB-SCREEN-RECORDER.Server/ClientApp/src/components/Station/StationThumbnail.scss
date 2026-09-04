@@ -2,7 +2,7 @@
     background: var(--bg-surface-elevated);
     border: 1px solid var(--border-card);
     border-radius: 10px;
-    overflow: visible !important;
+    overflow: visible !important; /* מאפשר ל-Tooltips ול-Flyout לפרוץ בחופשיות */
     position: relative;
     display: flex;
     flex-direction: column;
@@ -83,24 +83,76 @@
                     animation: emblem-glow 1.2s infinite ease-in-out;
                 }
             }
+
+            .tuning-container {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+
+                .tactical-tuning-btn {
+                    width: 28px;
+                    height: 28px;
+                    min-width: 28px;
+                    min-height: 28px;
+                    background: rgba(15, 23, 42, 0.8);
+                    border: 1.5px solid var(--slate-border);
+                    border-radius: 6px;
+                    color: var(--slate-muted);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    box-sizing: border-box;
+                    transition: all 0.2s ease;
+
+                    svg {
+                        width: 14px;
+                        height: 14px;
+                    }
+
+                    &:hover {
+                        color: var(--c2-cyan-light);
+                        border-color: var(--c2-cyan-border);
+                        background: var(--c2-cyan-tint);
+                    }
+
+                    &.is-active {
+                        color: var(--c2-cyan-light);
+                        border-color: var(--c2-cyan);
+                        background: var(--c2-cyan-tint);
+                        box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+                    }
+                }
+            }
         }
 
         .station-identity {
             display: flex;
-            align-items: baseline;
-            gap: 6px;
+            flex-direction: column;
+            align-items: center; /* 💡 יישור למרכז מתחת לשם */
+            justify-content: center;
+            line-height: 1.1;
+            min-width: 0;
             font-family: 'JetBrains Mono', monospace;
 
             .station-hostname {
                 color: var(--slate-light);
-                font-size: 12px;
+                font-size: 11.5px;
                 font-weight: 800;
                 letter-spacing: 0.5px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 150px;
             }
 
-            .station-ip-inline {
+            .station-ip-sub {
                 color: var(--slate-muted);
-                font-size: 10px;
+                font-size: 9px;
+                font-weight: 600;
+                letter-spacing: 0.3px;
+                margin-top: 2px;
+                text-align: center;
             }
         }
     }
@@ -112,6 +164,10 @@
         background-color: #000;
         cursor: pointer;
         overflow: hidden;
+        /* 💡 מעגל את תחתית הנגן כאשר פאנל הטלמטריה כבוי ומעלים את הקצוות השחורים */
+        &:last-child {
+            border-radius: 0 0 9px 9px;
+        }
 
         .screen-offline-placeholder {
             display: flex;
@@ -128,122 +184,6 @@
         .station-thumbnail-video {
             width: 100%;
             height: 100%;
-        }
-    }
-
-    .station-telemetry {
-        padding: 8px 10px;
-        background: var(--bg-panel-dark);
-        border-top: 1px solid rgba(59, 130, 246, 0.15);
-        border-radius: 0 0 9px 9px;
-
-        .inline-network-stats {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 6px;
-            margin-bottom: 8px;
-
-            .stat-box {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                background: rgba(15, 23, 42, 0.6);
-                border: 1px solid var(--border-subtle);
-                border-radius: 4px;
-                padding: 3px 0;
-
-                .stat-label {
-                    font-size: 8px;
-                    color: var(--slate-dark);
-                    font-weight: 700;
-                }
-
-                .stat-value {
-                    font-size: 11px;
-                    font-weight: 800;
-                    font-family: 'JetBrains Mono', monospace;
-
-                    &.green {
-                        color: var(--c2-green-light);
-                    }
-
-                    &.yellow {
-                        color: var(--c2-yellow-light);
-                    }
-
-                    &.blue {
-                        color: var(--c2-blue);
-                    }
-
-                    &.red {
-                        color: var(--c2-red-light);
-                    }
-
-                    &.gray {
-                        color: var(--slate-muted);
-                    }
-                }
-            }
-        }
-
-        .metric-bars-container {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-
-            .dual-metric-group {
-                .telemetry-label {
-                    display: flex;
-                    justify-content: space-between;
-                    font-size: 9px;
-                    font-family: monospace;
-                    margin-bottom: 2px;
-
-                    .cat-name {
-                        color: var(--slate-muted);
-                        font-weight: 700;
-                    }
-
-                    .cat-values {
-                        color: var(--slate-dark);
-
-                        .val-host {
-                            color: var(--c2-green-light);
-                            font-weight: 700;
-                        }
-
-                        .val-app {
-                            color: var(--c2-blue);
-                        }
-                    }
-                }
-
-                .bars-pair {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 1px;
-
-                    .bar-track {
-                        height: 3px;
-                        background: rgba(30, 41, 59, 0.8);
-                        border-radius: 2px;
-                        overflow: hidden;
-
-                        .bar-fill {
-                            height: 100%;
-                            transition: width 0.3s ease;
-
-                            &.host-green {
-                                background: var(--c2-green);
-                            }
-
-                            &.app-blue {
-                                background: var(--c2-blue);
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

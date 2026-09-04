@@ -5,20 +5,21 @@ using System.Linq;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
-    /// <summary>
-    /// מודל בקשה להפעלת מדיניות שידור/הקלטה גורפת או מפולטרת
-    /// </summary>
     public class FleetStreamingPolicyRequest
     {
         public bool Enable { get; set; }
-
-        /// <summary>
-        /// רשימת תחנות ספציפיות שעליהן תבוצע הפעולה (אם ריק/null - מופעל על כלל העמדות המחוברות)
-        /// </summary>
         public List<string>? Hostnames { get; set; }
+    }
+
+    public class AgentTuningRequest
+    {
+        public int? Fps { get; set; }
+        public int? BitrateKbps { get; set; }
+        public string? Bitrate { get; set; }
     }
 
     [ApiController]
@@ -27,11 +28,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     {
         private readonly ITelemetryStateService _telemetryState;
         private readonly TelemetryBroadcastService _broadcastService;
+        private readonly StationOverridesService _overridesService;
 
-        public AgentController(ITelemetryStateService telemetryState, TelemetryBroadcastService broadcastService)
+        public AgentController(
+            ITelemetryStateService telemetryState,
+            TelemetryBroadcastService broadcastService,
+            StationOverridesService overridesService)
         {
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
+            _overridesService = overridesService;
         }
 
         [HttpPost("telemetry")]
@@ -52,14 +58,51 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             }
 
             string requestHost = Request.Host.Host;
-
-            // 1. הפעלת שירות הסטטוס שמפיק את התשובה והפוליסה
             var response = await _telemetryState.ProcessHeartbeatAsync(report, requestHost);
-
-            // 2. דחיפת הדיווח בזמן אמת לטכנאים בחמ"ל מבלי לעכב את תשובת ה-HTTP לעמדה
             _ = _broadcastService.BroadcastAgentUpdateAsync(report);
 
             return Ok(response);
+        }
+
+        [HttpPost("tuning/{hostname}")]
+        public async Task<IActionResult> UpdateStationTuning(string hostname, [FromBody] AgentTuningRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(hostname) || request == null)
+            {
+                return BadRequest("Invalid tuning request.");
+            }
+
+            var allOverrides = await _overridesService.GetAllAsync();
+            var stationConfig = allOverrides.TryGetValue(hostname, out var existing)
+                ? existing
+                : new StationOverride();
+
+            // מינימום 10 FPS, מקסימום 60 FPS
+            if (request.Fps.HasValue && request.Fps.Value >= 10 && request.Fps.Value <= 60)
+            {
+                stationConfig.TargetFps = request.Fps.Value;
+            }
+
+            // מינימום 1000 Kbps
+            if (request.BitrateKbps.HasValue && request.BitrateKbps.Value >= 1000)
+            {
+                stationConfig.VideoBitrate = $"{request.BitrateKbps.Value}k";
+            }
+            else if (!string.IsNullOrWhiteSpace(request.Bitrate))
+            {
+                stationConfig.VideoBitrate = request.Bitrate.Trim();
+            }
+
+            await _overridesService.SetOverrideAsync(hostname, stationConfig);
+
+            return Ok(new
+            {
+                Hostname = hostname,
+                TargetFps = stationConfig.TargetFps,
+                VideoBitrate = stationConfig.VideoBitrate,
+                Message = "Tuning saved. Policy updated for next heartbeat.",
+                TimestampUtc = DateTime.UtcNow
+            });
         }
 
         [HttpPost("command/{hostname}")]
@@ -76,25 +119,18 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(policy);
         }
 
-        /// <summary>
-        /// אוכף מדיניות שידור/הקלטה על כלל העמדות או על רשימת עמדות מפולטרת
-        /// </summary>
         [HttpPost("fleet-streaming-policy")]
         public IActionResult EnforceFleetWideStreamingPolicy(
             [FromBody] FleetStreamingPolicyRequest? request,
             [FromQuery] bool? enable)
         {
-            // קביעת מצב ההפעלה/עצירה מתמיכה ב-Body או כ-Fallback מ-Query Parameter
             bool targetEnable = request?.Enable ?? enable ?? false;
-
             var allAgents = _telemetryState.GetAllAgents();
 
-            // סינון עמדות שנצפו ב-15 השניות האחרונות (Online בלבד)
             var activeAgents = allAgents
                 .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15)
                 .ToList();
 
-            // אם נשלחה רשימת עמדות ספציפית (פילטור מה-Dashboard), מבצעים סינון נוסף
             if (request?.Hostnames != null && request.Hostnames.Any())
             {
                 var filterSet = new HashSet<string>(request.Hostnames, StringComparer.OrdinalIgnoreCase);

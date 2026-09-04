@@ -1,0 +1,120 @@
+.station-telemetry {
+    padding: 8px 10px;
+    background: var(--bg-panel-dark);
+    border-top: 1px solid rgba(59, 130, 246, 0.15);
+    border-radius: 0 0 9px 9px;
+
+    .inline-network-stats {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+        margin-bottom: 8px;
+
+        .stat-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-subtle);
+            border-radius: 4px;
+            padding: 3px 0;
+
+            .stat-label {
+                font-size: 8px;
+                color: var(--slate-dark);
+                font-weight: 700;
+            }
+
+            .stat-value {
+                font-size: 11px;
+                font-weight: 800;
+                font-family: 'JetBrains Mono', monospace;
+
+                &.green {
+                    color: var(--c2-green-light);
+                }
+
+                &.yellow {
+                    color: var(--c2-yellow-light);
+                }
+
+                &.blue {
+                    color: var(--c2-blue);
+                }
+
+                &.red {
+                    color: var(--c2-red-light);
+                }
+
+                &.gray {
+                    color: var(--slate-muted);
+                }
+            }
+        }
+    }
+
+    .metric-bars-container {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+
+        .dual-metric-group {
+            .telemetry-label {
+                display: flex;
+                justify-content: space-between;
+                font-size: 9px;
+                font-family: monospace;
+                margin-bottom: 2px;
+
+                .cat-name {
+                    color: var(--slate-muted);
+                    font-weight: 700;
+
+                    .link-badge {
+                        color: var(--c2-cyan-light);
+                        font-weight: 800;
+                    }
+                }
+
+                .cat-values {
+                    color: var(--slate-dark);
+
+                    .val-host {
+                        color: var(--c2-green-light);
+                        font-weight: 700;
+                    }
+
+                    .val-app {
+                        color: var(--c2-blue);
+                    }
+                }
+            }
+
+            .bars-pair {
+                display: flex;
+                flex-direction: column;
+                gap: 1px;
+
+                .bar-track {
+                    height: 3px;
+                    background: rgba(30, 41, 59, 0.8);
+                    border-radius: 2px;
+                    overflow: hidden;
+
+                    .bar-fill {
+                        height: 100%;
+                        transition: width 0.3s ease;
+
+                        &.host-green {
+                            background: var(--c2-green);
+                        }
+
+                        &.app-blue {
+                            background: var(--c2-blue);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
