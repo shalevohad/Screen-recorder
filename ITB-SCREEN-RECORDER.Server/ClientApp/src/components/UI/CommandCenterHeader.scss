@@ -3,10 +3,11 @@
     top: 12px;
     z-index: 1000;
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr auto auto;
     align-items: center;
-    gap: 1rem;
+    gap: 1.5rem;
     width: calc(100% - 32px);
+    min-width: 515px; /* 💡 מגבלת רוחב מינימלית למניעת כיווץ מתחת ל-515px */
     max-width: none !important;
     margin: 12px auto 0 auto;
     padding: 0.5rem 1.25rem;
@@ -109,8 +110,15 @@
         }
     }
 
-    .header-actions-group {
+    .header-telemetry-wrapper {
         grid-column: 3;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .header-actions-group {
+        grid-column: 4;
         display: flex;
         align-items: center;
         gap: 16px;
@@ -193,10 +201,6 @@
 
                     .count-filtered {
                         font-size: 10px;
-                        font-weight: 800;
-                        color: var(--c2-red-light);
-                        opacity: 0.9;
-                        letter-spacing: -0.2px;
                     }
 
                     .count-total {
@@ -241,6 +245,82 @@
     &.scrolled {
         padding: 0.35rem 1rem;
         background: linear-gradient(135deg, var(--bg-panel-tactical) 0%, var(--bg-panel-dark) 100%);
+    }
+}
+
+/* 💡 מעטפת אפליקציית ה-C2 הכללית (מומלץ לוודא שה-Root או הקונטיינר הראשי מחיל את המינימום גובה) */
+.command-center-layout,
+#root,
+body,
+html {
+    min-width: 515px;
+    min-height: 635px;
+}
+
+@media (max-width: 1550px) {
+    .command-center-top-bar {
+        grid-template-columns: auto 1fr auto;
+        row-gap: 12px;
+
+        .brand-logo-section {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .header-clock-section {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .header-actions-group {
+            grid-column: 3;
+            grid-row: 1;
+            justify-self: end;
+        }
+
+        .header-telemetry-wrapper {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            justify-content: center;
+            border-top: 1px solid rgba(51, 65, 85, 0.4);
+            padding-top: 10px;
+        }
+    }
+}
+
+@media (max-width: 1100px) {
+    .command-center-top-bar {
+        grid-template-columns: auto 1fr;
+        row-gap: 10px;
+
+        .brand-logo-section {
+            grid-column: 1;
+            grid-row: 1;
+            justify-content: flex-start;
+        }
+
+        .header-actions-group {
+            grid-column: 2;
+            grid-row: 1;
+            justify-self: end;
+            display: flex;
+        }
+
+        .header-clock-section {
+            grid-column: 1 / -1;
+            grid-row: 2;
+            border-top: 1px solid rgba(51, 65, 85, 0.4);
+            padding-top: 8px;
+            justify-content: center;
+        }
+
+        .header-telemetry-wrapper {
+            grid-column: 1 / -1;
+            grid-row: 3;
+            border-top: 1px solid rgba(51, 65, 85, 0.4);
+            padding-top: 8px;
+            justify-content: center;
+        }
     }
 }
 
