@@ -10,6 +10,10 @@ export default function App() {
     const [serverTelemetry, setServerTelemetry] = useState(null);
     const [actionPending, setActionPending] = useState({});
 
+    // סנכרון גלובלי של סינון Offline ומצב בידוד תקלות
+    const [hideOffline, setHideOffline] = useState(true);
+    const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
+
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
@@ -28,7 +32,6 @@ export default function App() {
     }, [apiBaseUrl]);
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchStations();
     }, [fetchStations]);
 
@@ -154,6 +157,9 @@ export default function App() {
                 serverTelemetry={serverTelemetry}
                 isSettingsOpen={isSettingsOpen}
                 onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
+                hideOffline={hideOffline}
+                isFaultFilterActive={isFaultFilterActive}
+                onToggleFaultFilter={() => setIsFaultFilterActive(prev => !prev)}
             />
 
             <DashboardGrid
@@ -164,6 +170,10 @@ export default function App() {
                 onBulkStart={handleBulkStart}
                 onBulkStop={handleBulkStop}
                 direction="ltr"
+                hideOffline={hideOffline}
+                onToggleHideOffline={() => setHideOffline(prev => !prev)}
+                isFaultFilterActive={isFaultFilterActive}
+                onExitFaultFilter={() => setIsFaultFilterActive(false)}
             />
 
             {isSettingsOpen && (

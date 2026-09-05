@@ -200,6 +200,68 @@ html, body, #root {
         flex-direction: column;
         align-items: flex-start;
         width: 100%;
+        /* באנר בידוד תקלות טקטי */
+        .tactical-fault-isolation-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 16px;
+            padding: 8px 14px;
+            background: rgba(239, 68, 68, 0.12);
+            border: 1.5px solid rgba(239, 68, 68, 0.55);
+            border-radius: 8px;
+            box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
+            box-sizing: border-box;
+            animation: bannerSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+            .isolation-info {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-family: 'JetBrains Mono', monospace;
+
+                .pulse-alert-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background-color: var(--c2-red, #ef4444);
+                    box-shadow: 0 0 8px #ef4444;
+                    animation: radar-pulse 1.4s infinite ease-out;
+                }
+
+                .isolation-title {
+                    color: var(--c2-red-light, #f87171);
+                    font-weight: 800;
+                    font-size: 0.8rem;
+                    letter-spacing: 0.06em;
+                }
+
+                .isolation-desc {
+                    color: #cbd5e1;
+                    font-size: 0.76rem;
+                }
+            }
+
+            .btn-exit-isolation {
+                background: rgba(17, 24, 39, 0.85);
+                border: 1px solid rgba(239, 68, 68, 0.5);
+                color: var(--c2-red-light, #f87171);
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.72rem;
+                font-weight: 700;
+                padding: 4px 10px;
+                border-radius: 5px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    background: rgba(239, 68, 68, 0.25);
+                    color: #fff;
+                    border-color: var(--c2-red, #ef4444);
+                }
+            }
+        }
 
         .fleet-search-shelf {
             position: sticky;
@@ -734,5 +796,17 @@ html, body, #root {
     100% {
         transform: scale(2.4);
         opacity: 0;
+    }
+}
+
+@keyframes bannerSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }

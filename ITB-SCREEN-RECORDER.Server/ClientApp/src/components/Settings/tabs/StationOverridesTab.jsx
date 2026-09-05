@@ -1,34 +1,41 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+
+const ITEMS_PER_PAGE = 4;
+
+const FPS_TICKS = [
+    { val: 10, label: '10' },
+    { val: 20, label: '20' },
+    { val: 30, label: '30' },
+    { val: 60, label: '60' }
+];
+
+const BITRATE_TICKS = [
+    { val: 1000, label: '1M' },
+    { val: 5000, label: '5M' },
+    { val: 10000, label: '10M' },
+    { val: 20000, label: '20M' }
+];
 
 export default function StationOverridesTab({
     stations = [],
     overrides = {},
-    defaultTargetFps,
-    defaultVideoBitrateKbps,
+    defaultTargetFps = 20,
+    defaultVideoBitrateKbps = 2500,
     onSaveOverride,
     onResetOverride,
     onResetAllOverrides
 }) {
     const [editingStation, setEditingStation] = useState(null);
-    const [overrideFps, setOverrideFps] = useState(30);
-    const [overrideBitrateKbps, setOverrideBitrateKbps] = useState(5000);
+    const [overrideFps, setOverrideFps] = useState(20);
+    const [overrideBitrateKbps, setOverrideBitrateKbps] = useState(2500);
+
+    // ניהול חיפוש מתקפל, סינון ודפדוף
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterMode, setFilterMode] = useState('all'); // 'all' | 'custom' | 'default'
+    const [currentPage, setCurrentPage] = useState(1);
 
     const customOverridesCount = Object.keys(overrides).length;
-
-    const fpsTicks = [
-        { val: 10, label: '10' },
-        { val: 20, label: '20' },
-        { val: 30, label: '30' },
-        { val: 60, label: '60' }
-    ];
-
-    const bitrateTicks = [
-        { val: 1000, label: '1M' },
-        { val: 2500, label: '2.5M' },
-        { val: 5000, label: '5M' },
-        { val: 10000, label: '10M' },
-        { val: 20000, label: '20M' }
-    ];
 
     const parseBitrateVal = (val, fallback) => {
         if (!val) return fallback;
@@ -59,13 +66,36 @@ export default function StationOverridesTab({
         }
     };
 
-    const sortedStations = [...stations].sort((a, b) => {
-        const aCustom = !!overrides[a.hostname.toUpperCase()];
-        const bCustom = !!overrides[b.hostname.toUpperCase()];
-        if (aCustom && !bCustom) return -1;
-        if (!aCustom && bCustom) return 1;
-        return a.hostname.localeCompare(b.hostname, undefined, { numeric: true });
-    });
+    const handleCloseSearch = () => {
+        setSearchQuery('');
+        setIsSearchOpen(false);
+        setCurrentPage(1);
+    };
+
+    // סינון ומיון העמדות
+    const filteredStations = useMemo(() => {
+        return stations
+            .filter(st => {
+                const isCustom = !!overrides[st.hostname.toUpperCase()];
+                const matchesSearch = st.hostname.toLowerCase().includes(searchQuery.toLowerCase().trim());
+
+                if (!matchesSearch) return false;
+                if (filterMode === 'custom') return isCustom;
+                if (filterMode === 'default') return !isCustom;
+                return true;
+            })
+            .sort((a, b) => {
+                const aCustom = !!overrides[a.hostname.toUpperCase()];
+                const bCustom = !!overrides[b.hostname.toUpperCase()];
+                if (aCustom && !bCustom) return -1;
+                if (!aCustom && bCustom) return 1;
+                return a.hostname.localeCompare(b.hostname, undefined, { numeric: true });
+            });
+    }, [stations, overrides, searchQuery, filterMode]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredStations.length / ITEMS_PER_PAGE));
+    const activePage = Math.min(currentPage, totalPages);
+    const paginatedStations = filteredStations.slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE);
 
     const renderSliderWithTicks = (value, min, max, step, onChange, ticks) => (
         <div className="range-with-input">
@@ -93,7 +123,6 @@ export default function StationOverridesTab({
                 {ticks.map((tick) => {
                     const THUMB_RADIUS = 12;
                     const pct = ((tick.val - min) / (max - min)) * 100;
-                    // המיקום מתייחס לרוחב הפנוי של פס הסליידר (ללא אזור תיבת המספרים)
                     const isCurrent = Number(value) === tick.val;
                     return (
                         <button
@@ -114,34 +143,97 @@ export default function StationOverridesTab({
     );
 
     return (
-        <div className="stations-overrides-container">
-            <div className="overrides-control-header">
-                <div className="overrides-counter-badge">
-                    <span className="count-num">{customOverridesCount}</span>
-                    <span className="count-label">Custom Profiles Active</span>
-                </div>
+        <fieldset className="settings-fieldset stations-overrides-fieldset">
+            <legend>Station Stream Overrides</legend>
 
-                {customOverridesCount > 0 && (
-                    <button
-                        type="button"
-                        className="btn-reset-all-overrides"
-                        onClick={handleConfirmResetAll}
-                        title="Reset all customized stations back to fleet defaults"
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                            <path d="M3 3v5h5" />
+            <div className="overrides-toolbar">
+                {/* שורת חיפוש לרוחב מלא - מופיעה רק בלחיצה על אייקון החיפוש */}
+                {isSearchOpen && (
+                    <div className="toolbar-search-fullwidth">
+                        <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
                         </svg>
-                        Reset All to Defaults
-                    </button>
+                        <input
+                            type="text"
+                            placeholder="Search stations..."
+                            value={searchQuery}
+                            autoFocus
+                            onChange={e => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                        />
+                        <button
+                            type="button"
+                            className="close-search-btn"
+                            onClick={handleCloseSearch}
+                            title="Close search"
+                        >
+                            ✕
+                        </button>
+                    </div>
                 )}
+
+                {/* שורת כפתורי סינון - יורדת מתחת לחיפוש כשהוא פתוח */}
+                <div className="toolbar-actions-row">
+                    {!isSearchOpen && (
+                        <button
+                            type="button"
+                            className="btn-search-toggle"
+                            onClick={() => setIsSearchOpen(true)}
+                            title="Open station search"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                                <circle cx="11" cy="11" r="8" />
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg>
+                        </button>
+                    )}
+
+                    <div className="toolbar-filters">
+                        <button
+                            type="button"
+                            className={`filter-chip ${filterMode === 'all' ? 'active' : ''}`}
+                            onClick={() => { setFilterMode('all'); setCurrentPage(1); }}
+                        >
+                            All ({stations.length})
+                        </button>
+                        <button
+                            type="button"
+                            className={`filter-chip ${filterMode === 'custom' ? 'active' : ''}`}
+                            onClick={() => { setFilterMode('custom'); setCurrentPage(1); }}
+                        >
+                            Modified ({customOverridesCount})
+                        </button>
+                        <button
+                            type="button"
+                            className={`filter-chip ${filterMode === 'default' ? 'active' : ''}`}
+                            onClick={() => { setFilterMode('default'); setCurrentPage(1); }}
+                        >
+                            Default ({stations.length - customOverridesCount})
+                        </button>
+                    </div>
+
+                    {customOverridesCount > 0 && (
+                        <button
+                            type="button"
+                            className="btn-reset-all-overrides"
+                            onClick={handleConfirmResetAll}
+                            title="Reset all customized stations back to default"
+                        >
+                            Reset All
+                        </button>
+                    )}
+                </div>
             </div>
 
+            {/* רשימת עמדות */}
             <div className="overrides-list">
-                {sortedStations.length === 0 ? (
-                    <div className="no-stations-notice">No stations currently discovered.</div>
+                {paginatedStations.length === 0 ? (
+                    <div className="no-stations-notice">No stations match the selected filter.</div>
                 ) : (
-                    sortedStations.map(st => {
+                    paginatedStations.map(st => {
                         const override = overrides[st.hostname.toUpperCase()];
                         const isCustom = !!override;
                         const isEditing = editingStation === st.hostname;
@@ -158,7 +250,7 @@ export default function StationOverridesTab({
                                 <div className="card-top-row">
                                     <div className="station-title-group">
                                         <span className="station-name">{st.hostname}</span>
-                                        {isCustom && <span className="custom-indicator-dot" title="Non-default profile active"></span>}
+                                        {isCustom && <span className="custom-indicator-dot" title="Custom override active"></span>}
                                     </div>
                                     <span className={`policy-badge ${isCustom ? 'custom' : 'default'}`}>
                                         {isCustom ? 'CUSTOM OVERRIDE' : 'GLOBAL DEFAULT'}
@@ -167,43 +259,42 @@ export default function StationOverridesTab({
 
                                 {isEditing ? (
                                     <div className="card-edit-box">
-                                        <div className="edit-inputs-row">
-                                            <label>
-                                                <span>Target FPS</span>
-                                                {renderSliderWithTicks(
-                                                    overrideFps,
-                                                    10,
-                                                    60,
-                                                    1,
-                                                    val => setOverrideFps(val),
-                                                    fpsTicks
-                                                )}
-                                            </label>
-                                            <label>
-                                                <span>Bitrate (Kbps)</span>
-                                                {renderSliderWithTicks(
-                                                    overrideBitrateKbps,
-                                                    1000,
-                                                    50000,
-                                                    250,
-                                                    val => setOverrideBitrateKbps(val),
-                                                    bitrateTicks
-                                                )}
-                                            </label>
+                                        <div className="edit-field-group">
+                                            <span className="field-label">Target FPS</span>
+                                            {renderSliderWithTicks(
+                                                overrideFps,
+                                                10,
+                                                60,
+                                                1,
+                                                val => setOverrideFps(val),
+                                                FPS_TICKS
+                                            )}
+                                        </div>
+
+                                        <div className="edit-field-group">
+                                            <span className="field-label">Bitrate (Kbps)</span>
+                                            {renderSliderWithTicks(
+                                                overrideBitrateKbps,
+                                                1000,
+                                                20000,
+                                                250,
+                                                val => setOverrideBitrateKbps(val),
+                                                BITRATE_TICKS
+                                            )}
                                         </div>
 
                                         {willTriggerRestart ? (
                                             <div className="override-pipeline-notice warning">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
                                                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                                                     <line x1="12" y1="9" x2="12" y2="13" />
                                                     <line x1="12" y1="17" x2="12.01" y2="17" />
                                                 </svg>
-                                                <span>Modifying bitrate or increasing FPS causes a ~1s recording drop while the encoder restarts.</span>
+                                                <span>Modifying bitrate or increasing FPS causes a ~1s drop while the encoder restarts.</span>
                                             </div>
                                         ) : (
                                             <div className="override-pipeline-notice safe">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
                                                     <polyline points="20 6 9 17 4 12" />
                                                 </svg>
                                                 <span>Lowering FPS applies on-the-fly without dropping the stream.</span>
@@ -246,6 +337,33 @@ export default function StationOverridesTab({
                     })
                 )}
             </div>
-        </div>
+
+            {/* דפדוף */}
+            {totalPages > 1 && (
+                <div className="overrides-pagination">
+                    <span className="page-indicator">
+                        Page {activePage} of {totalPages} ({filteredStations.length} stations)
+                    </span>
+                    <div className="pagination-btns">
+                        <button
+                            type="button"
+                            disabled={activePage === 1}
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            className="btn-page"
+                        >
+                            ◀ Prev
+                        </button>
+                        <button
+                            type="button"
+                            disabled={activePage >= totalPages}
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            className="btn-page"
+                        >
+                            Next ▶
+                        </button>
+                    </div>
+                </div>
+            )}
+        </fieldset>
     );
 }

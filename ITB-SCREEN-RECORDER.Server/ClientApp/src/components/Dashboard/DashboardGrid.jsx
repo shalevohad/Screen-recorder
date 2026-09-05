@@ -4,6 +4,9 @@ import StationInspectorDrawer from '../Station/StationInspectorDrawer';
 import FullscreenModal from '../Station/FullscreenModal';
 import './DashboardGrid.scss';
 
+// זיהוי עמדה תקולה: אך ורק עמדות Online פעילות שסובלות מנפילת פריימים
+const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
+
 export default function DashboardGrid({
     stations = [],
     actionPending = {},
@@ -13,9 +16,12 @@ export default function DashboardGrid({
     onQuickBookmark,
     onQuickPlayback,
     onQuickExport,
-    direction = 'ltr'
+    direction = 'ltr',
+    hideOffline = true,
+    onToggleHideOffline,
+    isFaultFilterActive = false,
+    onExitFaultFilter
 }) {
-    const [hideOffline, setHideOffline] = useState(true);
     const [sortAsc, setSortAsc] = useState(true);
 
     const [inspectedStation, setInspectedStation] = useState(null);
@@ -72,10 +78,22 @@ export default function DashboardGrid({
         }
     }, [isSearchOpen]);
 
+    const faultyStationsCount = useMemo(() => {
+        return stations.filter(isStationFaulty).length;
+    }, [stations]);
+
+    useEffect(() => {
+        if (isFaultFilterActive && faultyStationsCount === 0) {
+            onExitFaultFilter?.();
+        }
+    }, [isFaultFilterActive, faultyStationsCount, onExitFaultFilter]);
+
     const processedStations = useMemo(() => {
         let list = [...stations];
 
-        if (hideOffline) {
+        if (isFaultFilterActive) {
+            list = list.filter(isStationFaulty);
+        } else if (hideOffline) {
             list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
         }
 
@@ -96,9 +114,8 @@ export default function DashboardGrid({
         });
 
         return list;
-    }, [stations, hideOffline, searchQuery, sortAsc]);
+    }, [stations, isFaultFilterActive, hideOffline, searchQuery, sortAsc]);
 
-    // סנכרון חי של נתוני העמדה הפתוחה במסך מלא או במגירה
     useEffect(() => {
         if (inspectedStation) {
             const fresh = stations.find(s => s.hostname === inspectedStation.hostname);
@@ -110,7 +127,6 @@ export default function DashboardGrid({
         }
     }, [stations, inspectedStation?.hostname, fullscreenStation?.hostname]);
 
-    const hasVisibleStations = processedStations.length > 0;
     const canSort = processedStations.length > 1;
 
     const canStartAny = useMemo(() => {
@@ -249,7 +265,7 @@ export default function DashboardGrid({
 
                     <button
                         className={`dock-icon-btn tactical-btn-filter ${hideOffline ? 'is-engaged' : ''}`}
-                        onClick={() => setHideOffline(p => !p)}
+                        onClick={onToggleHideOffline}
                         title={hideOffline ? "Filter: Active only" : "Filter: All stations"}
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
@@ -285,6 +301,26 @@ export default function DashboardGrid({
                 </aside>
 
                 <main className="dashboard-main-area">
+                    {isFaultFilterActive && (
+                        <div className="tactical-fault-isolation-banner">
+                            <div className="isolation-info">
+                                <span className="pulse-alert-dot" />
+                                <span className="isolation-title">FAULT ISOLATION MODE</span>
+                                <span className="isolation-desc">
+                                    Displaying {processedStations.length} station{processedStations.length === 1 ? '' : 's'} with critical issues. Automatically reverts once resolved.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                className="btn-exit-isolation"
+                                onClick={onExitFaultFilter}
+                                title="Exit fault isolation mode"
+                            >
+                                ✕ Exit Filter
+                            </button>
+                        </div>
+                    )}
+
                     <div className={`fleet-search-shelf ${isSearchOpen ? 'is-open' : ''}`}>
                         <div className="search-shelf-inner">
                             <div className="search-input-field">
@@ -325,7 +361,11 @@ export default function DashboardGrid({
                                 <div className="pulse-ring"></div>
                             </div>
                             <span className="empty-state-text">
-                                {searchQuery ? "NO AGENTS MATCH SEARCH QUERY" : "NO AGENTS CONNECTED / FILTERED OUT"}
+                                {isFaultFilterActive
+                                    ? "ALL AGENTS HEALTH NOMINAL"
+                                    : searchQuery
+                                        ? "NO AGENTS MATCH SEARCH QUERY"
+                                        : "NO AGENTS CONNECTED / FILTERED OUT"}
                             </span>
                             {searchQuery && (
                                 <button className="clear-filter-action-btn" onClick={handleClearFilter}>
@@ -491,7 +531,6 @@ export default function DashboardGrid({
                 </div>
             )}
 
-            {/* פאנל Inspector */}
             <StationInspectorDrawer
                 station={inspectedStation}
                 onClose={() => setInspectedStation(null)}
@@ -505,7 +544,6 @@ export default function DashboardGrid({
                 }}
             />
 
-            {/* מודל המסך המלא */}
             {fullscreenStation && (
                 <FullscreenModal
                     {...fullscreenStation}

@@ -8,15 +8,20 @@ export default function CommandCenterHeader({
     hideOffline = true,
     serverTelemetry,
     isSettingsOpen = false,
-    onOpenSettings
+    onOpenSettings,
+    isFaultFilterActive = false,
+    onToggleFaultFilter
 }) {
     const totalCount = stations.length;
 
-    // חישוב מדדי הסוכנים בזמן אמת
+    // חישוב מדדים: התראות נספרות אך ורק עבור עמדות אונליין עם נפילת פריימים
     const agentMetrics = useMemo(() => {
-        const onlineCount = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2).length;
+        const onlineStations = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2);
+        const onlineCount = onlineStations.length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
-        const criticalAlerts = stations.filter(s => !s.isOnline || (s.droppedFrames || 0) > 5).length;
+
+        // עמדה Offline איננה תקלה מבצעית! תקלה = עמדה פעילה עם מעל 5 dropped frames
+        const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
         const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
 
         return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps };
@@ -26,32 +31,18 @@ export default function CommandCenterHeader({
         (s.isOnline || s.status === 1 || s.status === 2) && s.isProcessRunning
     ).length;
 
-    const connectedNoWorkerCount = stations.filter(s =>
-        (s.isOnline || s.status === 1 || s.status === 2) && !s.isProcessRunning
-    ).length;
-
-    const fullyOfflineCount = stations.filter(s =>
+    const offlineCount = stations.filter(s =>
         !s.isOnline && s.status !== 1 && s.status !== 2 && !s.isProcessRunning
     ).length;
 
-    const filteredOutCount = connectedNoWorkerCount + fullyOfflineCount;
-
-    const [isExpanded, setIsExpanded] = useState(() => {
-        const saved = localStorage.getItem('itb_header_telemetry_expanded');
-        return saved !== null ? JSON.parse(saved) : true;
-    });
+    const [isExpanded, setIsExpanded] = useState(true);
 
     const toggleExpand = () => {
-        setIsExpanded(prev => {
-            const next = !prev;
-            localStorage.setItem('itb_header_telemetry_expanded', JSON.stringify(next));
-            return next;
-        });
+        setIsExpanded(prev => !prev);
     };
 
     return (
         <header className={`command-center-top-bar ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
-            {/* --- שורה ראשונה: ליבת המערכת ושעון --- */}
             <div className="top-row-main">
                 <div className="brand-logo-section">
                     <div className="tactical-emblem">
@@ -101,21 +92,20 @@ export default function CommandCenterHeader({
                         </div>
 
                         <div className="indicator-data">
-                            <div className="data-title">CONNECTED AGENTS</div>
+                            <div className="data-title">
+                                CONNECTED AGENTS
+                            </div>
                             <div className="data-values">
-                                <span className="count-active">{activeWorkerCount}</span>
-                                {connectedNoWorkerCount > 0 && (
-                                    <span className="count-warning" title={`${connectedNoWorkerCount} agents connected without active worker`}>
-                                        ({connectedNoWorkerCount} NO WORKER)
+                                {/* אם אופליין לא מוסתר - מציג את כל העמדות המנוטרות (1). אם מוסתר - מציג פעילים */}
+                                <span className="count-active">
+                                    {hideOffline ? activeWorkerCount : totalCount}
+                                </span>
+
+                                {/* תג HIDDEN ללא מינוס - מוצג אך ורק כשאופליין באמת מוסתר */}
+                                {hideOffline && offlineCount > 0 && (
+                                    <span className="count-filtered" title={`${offlineCount} offline stations hidden from view`}>
+                                        [{offlineCount} HIDDEN]
                                     </span>
-                                )}
-                                {hideOffline && filteredOutCount > 0 && (
-                                    <span className="count-filtered" title={`${filteredOutCount} non-operational stations hidden from view`}>
-                                        [-{filteredOutCount} HIDDEN]
-                                    </span>
-                                )}
-                                {!hideOffline && totalCount > 0 && (
-                                    <span className="count-total">/{totalCount}</span>
                                 )}
                             </div>
                         </div>
@@ -134,7 +124,6 @@ export default function CommandCenterHeader({
                 </div>
             </div>
 
-            {/* --- שורה שנייה: סיכום סוכנים וטלמטריה ממורכזים --- */}
             <div className="top-row-telemetry">
                 <div className="header-fleet-summary">
                     <div className="fleet-summary-pill">
@@ -159,13 +148,30 @@ export default function CommandCenterHeader({
 
                         <div className="summary-divider"></div>
 
-                        <div className={`summary-pod ${agentMetrics.criticalAlerts > 0 ? 'alert' : 'nominal'}`}>
+                        <div
+                            className={`summary-pod health-pod ${agentMetrics.criticalAlerts > 0 ? 'alert is-clickable' : 'nominal'} ${isFaultFilterActive ? 'filter-active' : ''}`}
+                            onClick={() => {
+                                if (agentMetrics.criticalAlerts > 0 && onToggleFaultFilter) {
+                                    onToggleFaultFilter();
+                                }
+                            }}
+                            title={
+                                agentMetrics.criticalAlerts > 0
+                                    ? isFaultFilterActive
+                                        ? "Click to exit fault isolation mode"
+                                        : `Click to isolate ${agentMetrics.criticalAlerts} agent(s) with issues`
+                                    : "Fleet health nominal"
+                            }
+                        >
                             <span className="pod-lbl">AGENT HEALTH</span>
                             <div className="pod-val-row">
                                 {agentMetrics.criticalAlerts > 0 ? (
                                     <>
                                         <span className="alert-beacon-dot"></span>
-                                        <span className="pod-primary red">{agentMetrics.criticalAlerts} ALERTS</span>
+                                        <span className="pod-primary red">
+                                            {isFaultFilterActive ? `${agentMetrics.criticalAlerts} FILTERED` : `${agentMetrics.criticalAlerts} ALERTS`}
+                                        </span>
+                                        {isFaultFilterActive && <span className="filter-active-indicator">✕</span>}
                                     </>
                                 ) : (
                                     <>

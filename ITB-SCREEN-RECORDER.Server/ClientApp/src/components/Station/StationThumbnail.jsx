@@ -28,7 +28,9 @@ export default function StationThumbnail(props) {
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
 
     const isLive = isOnline && isStreaming;
-    const hasCriticalError = !isOnline || droppedFrames > 5;
+
+    // עמדה מקבלת מסגרת אדומה קריטית אך ורק כשהיא אונליין וסובלת מנפילת פריימים חריגה
+    const hasCriticalError = isOnline && (droppedFrames > 5);
 
     useEffect(() => {
         if (!isStreaming) return;
@@ -45,7 +47,6 @@ export default function StationThumbnail(props) {
         return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
 
-    // פתיחת ה-FullscreenModal המבצעי
     const triggerFullscreenModal = (e) => {
         e?.stopPropagation?.();
         onOpenFullscreen?.(props);
@@ -97,7 +98,6 @@ export default function StationThumbnail(props) {
                         )}
                     </div>
 
-                    {/* כפתור כניסה למודל מסך מלא */}
                     <button
                         className="header-action-icon-btn fullscreen-btn"
                         onClick={triggerFullscreenModal}
@@ -109,7 +109,6 @@ export default function StationThumbnail(props) {
                         </svg>
                     </button>
 
-                    {/* כפתור פתיחת ה-Inspector בצד */}
                     <button
                         className="header-action-icon-btn inspect-drawer-trigger"
                         onClick={(e) => {
@@ -134,7 +133,6 @@ export default function StationThumbnail(props) {
                 </div>
             </div>
 
-            {/* לחיצה ישירה על אזור הווידאו מפעילה את מודל המסך המלא */}
             <div
                 className="card-screen-viewport"
                 onClick={triggerFullscreenModal}
@@ -153,7 +151,6 @@ export default function StationThumbnail(props) {
                     </div>
                 )}
 
-                {/* סרגל פעולות בריחוף מעל הווידאו */}
                 <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
                     <button
                         className={`action-btn ${isStreaming ? 'stop' : 'start'}`}

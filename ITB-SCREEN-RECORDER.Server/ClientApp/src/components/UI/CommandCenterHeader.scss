@@ -372,6 +372,39 @@
                         background-color: var(--c2-green);
                         box-shadow: var(--glow-green);
                     }
+                    /* סגנונות אינטראקטיביים עבור פילטור תקלות */
+                    &.health-pod.is-clickable {
+                        cursor: pointer;
+                        padding: 4px 8px;
+                        margin: -4px -8px;
+                        border-radius: 6px;
+                        transition: all 0.2s ease;
+
+                        &:hover {
+                            background: rgba(239, 68, 68, 0.12);
+                            box-shadow: 0 0 8px rgba(239, 68, 68, 0.25);
+                            transform: translateY(-1px);
+                        }
+                    }
+
+                    &.health-pod.filter-active {
+                        background: rgba(239, 68, 68, 0.18) !important;
+                        border: 1px solid var(--c2-red) !important;
+                        box-shadow: 0 0 12px rgba(239, 68, 68, 0.4) !important;
+                        animation: emblem-glow 2s infinite ease-in-out;
+
+                        .filter-active-indicator {
+                            font-size: 10px;
+                            font-weight: 800;
+                            color: var(--c2-red-light);
+                            margin-left: 4px;
+                            opacity: 0.8;
+                        }
+
+                        &:hover .filter-active-indicator {
+                            opacity: 1;
+                        }
+                    }
                 }
 
                 .summary-divider {

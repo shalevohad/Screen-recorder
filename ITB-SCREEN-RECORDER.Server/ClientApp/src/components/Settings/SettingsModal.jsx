@@ -4,6 +4,10 @@ import AgentOperationsTab from './tabs/AgentOperationsTab';
 import StorageRetentionTab from './tabs/StorageRetentionTab';
 import StationOverridesTab from './tabs/StationOverridesTab';
 import './SettingsModal.scss';
+import './styles/_commonControls.scss';
+import './styles/_agentOperations.scss';
+import './styles/_storageRetention.scss';
+import './styles/_stationOverrides.scss';
 
 export default function SettingsModal({ onClose, onSettingsSaved }) {
     const modalBoxRef = useRef(null);
