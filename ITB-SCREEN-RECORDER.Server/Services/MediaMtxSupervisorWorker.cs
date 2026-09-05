@@ -14,8 +14,6 @@ using Microsoft.Extensions.Options;
 
 public class MediaMtxSupervisorWorker : BackgroundService
 {
-    private const string RecordFormat = "fmp4";
-
     private readonly ILogger<MediaMtxSupervisorWorker> _logger;
     private readonly IOptionsMonitor<SystemConfig> _configMonitor;
     private readonly StoragePathResolver _storageResolver;
@@ -38,7 +36,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
     {
         _logger.LogInformation("MediaMTX Supervisor Service starting...");
 
-        // 1. ניקוי אקטיבי ראשוני של תהליכים יתומים מיד עם עליית השרת
+        // 1. ניקוי אקטיבי של תהליכים יתומים מיד עם עליית השרת
         CleanupOrphanedMediaMtxProcesses();
         await Task.Delay(1000, stoppingToken);
 
@@ -51,6 +49,20 @@ public class MediaMtxSupervisorWorker : BackgroundService
             mtxFolder = baseDir;
             mtxExePath = Path.Combine(baseDir, "mediamtx.exe");
         }
+
+        // האזנה לשינויי קונפיגורציה בזמן אמת (Hot-Reload) ללא צורך באיתחול השרת
+        using var changeListener = _configMonitor.OnChange(async updatedConfig =>
+        {
+            try
+            {
+                _logger.LogInformation("[MediaMTX Supervisor] Detected configuration change, updating MediaMTX recording parameters...");
+                await ApplyRecordingConfigAsync(stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[MediaMTX Supervisor] Failed to apply updated recording configuration.");
+            }
+        });
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -65,11 +77,11 @@ public class MediaMtxSupervisorWorker : BackgroundService
                         continue;
                     }
 
-                    // 2. הבטחת שטח נקי וסגירת פורטים תפוסים לפני כל ניסיון הרמה מחדש
+                    // 2. הבטחת שטח נקי וסגירת פורטים תפוסים לפני כל הרמה
                     CleanupOrphanedMediaMtxProcesses();
                     await Task.Delay(1000, stoppingToken);
 
-                    // פאצ'ינג עדין לקובץ ה-YAML מבלי לדרוס שאר ההגדרות
+                    // עדכון פורטים מדויק בקובץ mediamtx.yml ללא פגיעה בשאר ההגדרות
                     string ymlPath = Path.Combine(mtxFolder, "mediamtx.yml");
                     PatchMediaMtxYaml(ymlPath, _configMonitor.CurrentValue);
 
@@ -84,6 +96,16 @@ public class MediaMtxSupervisorWorker : BackgroundService
                         RedirectStandardError = true,
                         CreateNoWindow = true
                     };
+
+                    // שליפת אזור הזמן מתוך הקונפיגורציה (ברירת מחדל: UTC)
+                    string targetTz = string.IsNullOrWhiteSpace(_configMonitor.CurrentValue.MediaMtx.Timezone)
+                        ? "UTC"
+                        : _configMonitor.CurrentValue.MediaMtx.Timezone;
+
+                    // כפיית אזור הזמן הנבחר על מנוע ה-Go של MediaMTX
+                    startInfo.EnvironmentVariables["TZ"] = targetTz;
+
+                    _logger.LogInformation("Configuring MediaMTX environment with TZ={Timezone}", targetTz);
 
                     _mtxProcess = new Process { StartInfo = startInfo };
 
@@ -104,9 +126,9 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     _mtxProcess.BeginOutputReadLine();
                     _mtxProcess.BeginErrorReadLine();
 
-                    _logger.LogInformation("MediaMTX started successfully with PID: {Pid}", _mtxProcess.Id);
+                    _logger.LogInformation("MediaMTX started successfully with PID: {Pid} (TZ: {Tz})", _mtxProcess.Id, targetTz);
 
-                    // הזרקת הגדרות ההקלטה
+                    // הזרקת הגדרות ההקלטה דרך ה-API מיד כשהשרת זמין
                     _ = Task.Run(() => ApplyRecordingConfigAsync(stoppingToken), stoppingToken);
                 }
             }
@@ -145,11 +167,9 @@ public class MediaMtxSupervisorWorker : BackgroundService
         {
             string line = lines[i];
 
-            // דילוג על שורות ריקות או הערות
             if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#"))
                 continue;
 
-            // החלפה מדויקת של מפתחות גלובליים בלבד (ללא פגיעה בהזחות של paths)
             if (line.StartsWith("api:"))
             {
                 lines[i] = "api: yes";
@@ -174,7 +194,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
         if (isModified)
         {
-            // כתיבה בטוחה חזרה לאותו קובץ - שומרת על 100% מההגדרות האחרות
             File.WriteAllLines(ymlPath, lines);
             _logger.LogInformation("[MediaMTX] Successfully patched mediamtx.yml with current ports from appsettings.json.");
         }
@@ -193,24 +212,40 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
 
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
-        string recordPath = $"{root.TrimEnd('\\', '/')}/%path/%Y-%m-%d_%H-%M-%S-%f";
+        string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
+
+        // סיומת Z תקנית עבור UTC, או מבנה שעה נקי לכל אזור זמן אחר
+        string targetTz = string.IsNullOrWhiteSpace(config.MediaMtx.Timezone) ? "UTC" : config.MediaMtx.Timezone;
+        bool isUtc = string.Equals(targetTz, "UTC", StringComparison.OrdinalIgnoreCase);
+        string timeFormat = isUtc ? "%Y%m%dT%H%M%SZ" : "%Y%m%dT%H%M%S";
+
+        // תבנית שמירה ישירה: ללא ספריית live, שמירה ישירה תחת מזהה העמדה (%path)
+        string recordPath = $"{cleanRoot}/%path/{timeFormat}";
+
+        string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
+        string retentionHours = $"{config.Storage.RetentionDays * 24}h";
+
+        // שליפת פורמט ההקלטה מתוך הקונפיגורציה (fmp4 כברירת מחדל)
+        string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
+            ? "fmp4"
+            : config.Storage.RecordFormat.Trim().ToLowerInvariant();
 
         bool applied = await _apiClient.PatchPathDefaultsAsync(
             apiPort,
             recordPath,
-            RecordFormat,
-            $"{config.Storage.ChunkIntervalMinutes}m",
-            $"{config.Storage.RetentionDays}d",
+            recordFormat,
+            chunkDuration,
+            retentionHours,
             stoppingToken).ConfigureAwait(false);
 
         if (applied)
         {
-            _logger.LogInformation("[STORAGE] Recording enabled. Root: '{Root}', Chunk interval: {Interval}m, Retention: {Retention}d.",
-                root, config.Storage.ChunkIntervalMinutes, config.Storage.RetentionDays);
+            _logger.LogInformation("[STORAGE] Recording configuration applied -> Root: '{Root}', Path: '{RecordPath}', Format: '{Format}', Chunk: {Interval}, Retention: {Retention}",
+                cleanRoot, recordPath, recordFormat, chunkDuration, retentionHours);
         }
         else
         {
-            _logger.LogError("[CRITICAL] Failed to apply recording configuration to MediaMTX.");
+            _logger.LogError("[CRITICAL] Failed to apply recording configuration to MediaMTX via API.");
         }
     }
 
@@ -236,9 +271,9 @@ public class MediaMtxSupervisorWorker : BackgroundService
                             _logger.LogInformation("[MediaMTX Supervisor] Successfully terminated orphaned process PID: {Pid}", pid);
                         }
                     }
-                    catch (Win32Exception ex) when (ex.NativeErrorCode == 5) // Access Denied
+                    catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
                     {
-                        _logger.LogWarning("[MediaMTX Supervisor] Insufficient permissions to terminate process {Pid} (Access Denied). It may belong to the system or another user.", proc.Id);
+                        _logger.LogWarning("[MediaMTX Supervisor] Insufficient permissions to terminate process {Pid} (Access Denied).", proc.Id);
                     }
                     catch (InvalidOperationException)
                     {

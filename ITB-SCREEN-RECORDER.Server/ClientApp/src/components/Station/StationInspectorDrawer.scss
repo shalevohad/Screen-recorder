@@ -214,12 +214,13 @@
                                 border-radius: 50%;
 
                                 &.app {
-                                    background: var(--c2-cyan);
-                                    box-shadow: 0 0 6px var(--c2-cyan);
+                                    background: var(--c2-cyan-light);
+                                    box-shadow: 0 0 6px var(--c2-cyan-tint);
                                 }
 
                                 &.sys {
-                                    background: var(--c2-blue);
+                                    background: var(--c2-amber);
+                                    box-shadow: 0 0 6px var(--c2-amber-tint);
                                 }
                             }
                         }
@@ -265,7 +266,7 @@
                                 font-family: 'JetBrains Mono', monospace;
                                 font-size: 9.5px;
                                 font-weight: 800;
-                                color: var(--c2-cyan);
+                                color: var(--c2-cyan-light);
                                 letter-spacing: 0.2px;
                             }
 
@@ -288,7 +289,7 @@
                         .gauge-bar-track {
                             display: flex;
                             width: 100%;
-                            height: 4px;
+                            height: 5px;
                             background: var(--slate-line);
                             border-radius: 2px;
                             margin-top: 4px;
@@ -299,12 +300,13 @@
                                 transition: width 0.3s ease;
 
                                 &.app {
-                                    background: var(--c2-cyan);
-                                    box-shadow: 0 0 6px var(--c2-cyan);
+                                    background: var(--c2-cyan-light);
+                                    box-shadow: 0 0 6px var(--c2-cyan-tint);
                                 }
 
                                 &.sys {
-                                    background: var(--c2-blue);
+                                    background: var(--c2-amber);
+                                    box-shadow: 0 0 6px var(--c2-amber-tint);
 
                                     &.crit {
                                         background: var(--c2-red);
