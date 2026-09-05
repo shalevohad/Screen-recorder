@@ -3,7 +3,6 @@ import StationTuningFlyout from './StationTuningFlyout';
 import { Badge } from '../UI/Badge';
 import './StationInspectorDrawer.scss';
 
-// 💡 פונקציית עזר מקיפה לחילוץ Target FPS מכל שדה אפשרי באובייקט
 const resolveTargetFps = (st) => {
     if (!st) return 30;
     const candidates = [
@@ -30,47 +29,37 @@ export default function StationInspectorDrawer({
     onToggleFullscreen,
     ...tuningProps
 }) {
-    if (!station) return null;
-
-    // ניהול הטאב הפעיל (בדומה ל-SettingsModal)
+    // 1. כל ה-Hooks מוגדרים ראשונים ברמת הרכיב ללא תנאי
     const [activeTab, setActiveTab] = useState('telemetry');
     const [confirmStop, setConfirmStop] = useState(false);
 
-    // סנכרון Target FPS מדויק מכל מקור אפשרי
-    const [activeTargetFps, setActiveTargetFps] = useState(() => resolveTargetFps(station));
+    // סנכרון Target FPS לפי תבנית React הרשמית המונעת cascading renders
+    const [prevStationId, setPrevStationId] = useState(station?.hostname);
+    const [overrideTargetFps, setOverrideTargetFps] = useState(null);
 
-    useEffect(() => {
-        const resolved = resolveTargetFps(station);
-        if (resolved) {
-            setActiveTargetFps(resolved);
-        }
-    }, [
-        station.targetFps,
-        station.targetFPS,
-        station.configuredFps,
-        station.videoFps,
-        station.fps,
-        station.tuning?.targetFps,
-        station.tuning?.fps,
-        station.override?.targetFps
-    ]);
+    if (station?.hostname !== prevStationId) {
+        setPrevStationId(station?.hostname);
+        setOverrideTargetFps(null);
+    }
 
-    // איפוס אוטומטי של אישור עצירה לאחר 4 שניות
+    const activeTargetFps = overrideTargetFps ?? resolveTargetFps(station);
+
     useEffect(() => {
         if (!confirmStop) return;
         const timer = setTimeout(() => setConfirmStop(false), 4000);
         return () => clearTimeout(timer);
     }, [confirmStop]);
 
+    // 2. Early Return מתבצע אך ורק לאחר ריצת כל ה-Hooks
+    if (!station) return null;
+
     const isLive = station.isStreaming;
     const stationId = station.hostname || station.stationName || '';
 
-    // 1. נתוני רשת (NET TX) וקיבולת ממשק
     const mediaTx = Number(station.mediaTxMbps ?? 0);
     const linkSpeedMbps = Number(station.linkSpeedMbps ?? station.nicSpeedMbps ?? 1000);
     const netLoadPct = Math.min(100, (mediaTx / linkSpeedMbps) * 100);
 
-    // 2. נתוני זיכרון (RAM) - נפח בפועל מתוך סך ה-RAM המותקן
     const hostRamPct = Number(station.hostRamPct ?? station.ramUsagePct ?? station.ramPct ?? 0);
     const totalRamGb = Number(station.totalRamGb ?? (station.totalRamMb ? station.totalRamMb / 1024 : 32));
     const usedRamGb = (hostRamPct / 100) * totalRamGb;
@@ -80,12 +69,10 @@ export default function StationInspectorDrawer({
     const appRamPct = totalRamGb > 0 ? (appRamGb / totalRamGb) * 100 : 0;
     const sysRamPart = Math.max(0, hostRamPct - appRamPct);
 
-    // 3. נתוני מעבד (CPU)
     const hostCpu = Number(station.hostCpuPct ?? station.cpuLoadPct ?? 0);
     const appCpu = Number(station.appCpuPct ?? station.processCpuPct ?? 0);
     const sysCpuPart = Math.max(0, hostCpu - appCpu);
 
-    // 4. נתוני מאיץ גרפי
     const nvencTotal = Number(station.gpuNvencPct ?? 0);
     const gpu3dTotal = Number(station.gpu3dPct ?? station.gpuPct ?? 0);
 
@@ -97,7 +84,6 @@ export default function StationInspectorDrawer({
     return (
         <div className="inspector-drawer-backdrop" onClick={onClose}>
             <div className="inspector-drawer-panel" onClick={(e) => e.stopPropagation()} dir="ltr">
-                {/* כותרת עליונה */}
                 <div className="drawer-header">
                     <div className="drawer-title-group">
                         <div className="station-identity-line">
@@ -122,7 +108,6 @@ export default function StationInspectorDrawer({
                     </div>
                 </div>
 
-                {/* סרגל טאבים טקטי במבנה של SettingsModal */}
                 <div className="drawer-tabs-nav">
                     <button
                         type="button"
@@ -169,9 +154,7 @@ export default function StationInspectorDrawer({
                     </button>
                 </div>
 
-                {/* תוכן הטאב הפעיל */}
                 <div className="drawer-body">
-                    {/* טאב 1: Telemetry & Capacity Metrics */}
                     {activeTab === 'telemetry' && (
                         <div className="tab-content-pane">
                             <div className="inspector-card">
@@ -184,7 +167,6 @@ export default function StationInspectorDrawer({
                                 </div>
 
                                 <div className="telemetry-grid">
-                                    {/* 1. FPS */}
                                     <div className="gauge-box">
                                         <span className="gauge-label">ACTUAL FPS</span>
                                         <div className="gauge-val-row">
@@ -199,7 +181,6 @@ export default function StationInspectorDrawer({
                                         </div>
                                     </div>
 
-                                    {/* 2. Network TX */}
                                     <div className="gauge-box">
                                         <span className="gauge-label">NETWORK TX LOAD</span>
                                         <div className="gauge-val-row">
@@ -215,7 +196,6 @@ export default function StationInspectorDrawer({
                                         </div>
                                     </div>
 
-                                    {/* 3. CPU */}
                                     <div className="gauge-box">
                                         <span className="gauge-label">CPU UTILIZATION</span>
                                         <div className="gauge-val-row">
@@ -235,7 +215,6 @@ export default function StationInspectorDrawer({
                                         </div>
                                     </div>
 
-                                    {/* 4. RAM */}
                                     <div className="gauge-box">
                                         <span className="gauge-label">RAM USAGE</span>
                                         <div className="gauge-val-row">
@@ -257,7 +236,6 @@ export default function StationInspectorDrawer({
                                         </div>
                                     </div>
 
-                                    {/* 5. NVENC */}
                                     <div className="gauge-box">
                                         <span className="gauge-label">NVENC GPU LOAD</span>
                                         <div className="gauge-val-row">
@@ -272,7 +250,6 @@ export default function StationInspectorDrawer({
                                         </div>
                                     </div>
 
-                                    {/* 6. GPU 3D */}
                                     <div className="gauge-box">
                                         <span className="gauge-label">GPU 3D ENGINE</span>
                                         <div className="gauge-val-row">
@@ -306,7 +283,6 @@ export default function StationInspectorDrawer({
                         </div>
                     )}
 
-                    {/* טאב 2: Pipeline Tuning */}
                     {activeTab === 'tuning' && (
                         <div className="tab-content-pane tuning-pane">
                             <StationTuningFlyout
@@ -319,7 +295,7 @@ export default function StationInspectorDrawer({
                                 onTuningApplied={(appliedPolicy) => {
                                     const newFps = appliedPolicy?.targetFps || appliedPolicy?.fps;
                                     if (newFps) {
-                                        setActiveTargetFps(Number(newFps));
+                                        setOverrideTargetFps(Number(newFps));
                                     }
                                 }}
                                 {...tuningProps}
@@ -327,7 +303,6 @@ export default function StationInspectorDrawer({
                         </div>
                     )}
 
-                    {/* טאב 3: Stream Operations & Actions */}
                     {activeTab === 'operations' && (
                         <div className="tab-content-pane operations-pane">
                             <div className="stream-control-card">
@@ -373,7 +348,6 @@ export default function StationInspectorDrawer({
                                 )}
                             </div>
 
-                            {/* פעולות טקטיות מהירות */}
                             <div className="operations-quick-actions-card">
                                 <span className="card-section-title">TACTICAL ACTIONS</span>
                                 <div className="quick-actions-grid">

@@ -24,8 +24,17 @@ export default function DashboardGrid({
 }) {
     const [sortAsc, setSortAsc] = useState(true);
 
-    const [inspectedStation, setInspectedStation] = useState(null);
-    const [fullscreenStation, setFullscreenStation] = useState(null);
+    // שמירת ה-hostname בלבד מונעת סנכרון כפול ו-cascading renders
+    const [inspectedHostname, setInspectedHostname] = useState(null);
+    const [fullscreenHostname, setFullscreenHostname] = useState(null);
+
+    const inspectedStation = useMemo(() => {
+        return stations.find(s => s.hostname === inspectedHostname) || null;
+    }, [stations, inspectedHostname]);
+
+    const fullscreenStation = useMemo(() => {
+        return stations.find(s => s.hostname === fullscreenHostname) || null;
+    }, [stations, fullscreenHostname]);
 
     const [viewMode, setViewMode] = useState(() => {
         return localStorage.getItem('itb_dashboard_view_mode') || 'grid';
@@ -115,17 +124,6 @@ export default function DashboardGrid({
 
         return list;
     }, [stations, isFaultFilterActive, hideOffline, searchQuery, sortAsc]);
-
-    useEffect(() => {
-        if (inspectedStation) {
-            const fresh = stations.find(s => s.hostname === inspectedStation.hostname);
-            if (fresh) setInspectedStation(fresh);
-        }
-        if (fullscreenStation) {
-            const fresh = stations.find(s => s.hostname === fullscreenStation.hostname);
-            if (fresh) setFullscreenStation(fresh);
-        }
-    }, [stations, inspectedStation?.hostname, fullscreenStation?.hostname]);
 
     const canSort = processedStations.length > 1;
 
@@ -384,8 +382,8 @@ export default function DashboardGrid({
                                         {...station}
                                         isPending={actionPending[station.hostname]}
                                         onToggleStream={() => onToggleStream(station.hostname, station.isStreaming)}
-                                        onSelectStation={() => setInspectedStation(station)}
-                                        onOpenFullscreen={() => setFullscreenStation(station)}
+                                        onSelectStation={() => setInspectedHostname(station.hostname)}
+                                        onOpenFullscreen={() => setFullscreenHostname(station.hostname)}
                                         onQuickBookmark={onQuickBookmark}
                                         onQuickPlayback={onQuickPlayback}
                                         onQuickExport={onQuickExport}
@@ -416,8 +414,8 @@ export default function DashboardGrid({
                                             <tr
                                                 key={s.hostname}
                                                 className={`dense-row ${!s.isOnline ? 'is-offline' : ''} ${hasDrops ? 'has-crit' : ''}`}
-                                                onClick={() => setInspectedStation(s)}
-                                                onDoubleClick={() => setFullscreenStation(s)}
+                                                onClick={() => setInspectedHostname(s.hostname)}
+                                                onDoubleClick={() => setFullscreenHostname(s.hostname)}
                                                 title="Click to inspect, double-click for Fullscreen"
                                             >
                                                 <td>
@@ -446,7 +444,7 @@ export default function DashboardGrid({
                                                     </button>
                                                     <button
                                                         className="dense-act-btn full"
-                                                        onClick={() => setFullscreenStation(s)}
+                                                        onClick={() => setFullscreenHostname(s.hostname)}
                                                         title="Open Station in Fullscreen View"
                                                     >
                                                         FULL
@@ -471,7 +469,7 @@ export default function DashboardGrid({
                                                         className="dense-inspect-btn"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            setInspectedStation(s);
+                                                            setInspectedHostname(s.hostname);
                                                         }}
                                                     >
                                                         INSPECT ↗
@@ -533,14 +531,14 @@ export default function DashboardGrid({
 
             <StationInspectorDrawer
                 station={inspectedStation}
-                onClose={() => setInspectedStation(null)}
+                onClose={() => setInspectedHostname(null)}
                 onToggleStream={onToggleStream}
                 onQuickBookmark={onQuickBookmark}
                 onQuickPlayback={onQuickPlayback}
                 onQuickExport={onQuickExport}
                 onToggleFullscreen={() => {
-                    setFullscreenStation(inspectedStation);
-                    setInspectedStation(null);
+                    setFullscreenHostname(inspectedHostname);
+                    setInspectedHostname(null);
                 }}
             />
 
@@ -550,14 +548,14 @@ export default function DashboardGrid({
                     hostname={fullscreenStation.hostname}
                     isStreaming={fullscreenStation.isStreaming}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                    onClose={() => setFullscreenStation(null)}
+                    onClose={() => setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
                     onQuickBookmark={onQuickBookmark}
                     onQuickPlayback={onQuickPlayback}
                     onQuickExport={onQuickExport}
                     onOpenInspector={() => {
-                        setInspectedStation(fullscreenStation);
-                        setFullscreenStation(null);
+                        setInspectedHostname(fullscreenHostname);
+                        setFullscreenHostname(null);
                     }}
                 />
             )}

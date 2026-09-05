@@ -4,15 +4,14 @@ import './ServerClock.scss';
 export default function ServerClock({ uptimeSeconds: serverUptime = 0 }) {
     const [currentTime, setCurrentTime] = useState(new Date());
 
-    // שמירת ה-Uptime המעודכן שמתקבל מהשרת, והמשך ספירה מקומית ממנו
+    // סנכרון Prop-to-State ישיר בזמן רינדור ללא useEffect וללא cascading renders
+    const [prevServerUptime, setPrevServerUptime] = useState(serverUptime);
     const [elapsedUptime, setElapsedUptime] = useState(serverUptime);
 
-    // עדכון ה-Uptime בכל פעם שהנתון החדש מתקבל מהשרת
-    useEffect(() => {
-        if (serverUptime !== undefined && serverUptime !== null) {
-            setElapsedUptime(serverUptime);
-        }
-    }, [serverUptime]);
+    if (serverUptime !== prevServerUptime) {
+        setPrevServerUptime(serverUptime);
+        setElapsedUptime(serverUptime);
+    }
 
     // קידום השעון וה-Uptime בכל שנייה
     useEffect(() => {

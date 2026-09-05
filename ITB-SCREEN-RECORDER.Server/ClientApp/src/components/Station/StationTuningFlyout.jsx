@@ -30,10 +30,8 @@ export default function StationTuningFlyout(props) {
         onClose
     } = props;
 
-    // 💡 חילוץ בטוח של שם העמדה ממגוון מקורות אפשריים
     const targetHostname = directHostname || station?.hostname || stationName || agentId || '';
 
-    // 💡 ניקוי בסיס ה-URL למניעת שרשור "undefined" או סלאשים כפולים
     const cleanBaseUrl = (apiBaseUrl && apiBaseUrl !== 'undefined')
         ? apiBaseUrl.replace(/\/+$/, '')
         : '';
@@ -61,7 +59,6 @@ export default function StationTuningFlyout(props) {
 
     useEffect(() => {
         if (!targetHostname) {
-            setIsLoadingConfig(false);
             return;
         }
 
@@ -171,7 +168,6 @@ export default function StationTuningFlyout(props) {
                 <button className="tuning-close" onClick={onClose} title="Close">✕</button>
             </div>
 
-            {/* Target FPS Control */}
             <div className="tuning-section">
                 <div className="tuning-label-row">
                     <span className="tuning-label">TARGET FPS</span>
@@ -225,7 +221,6 @@ export default function StationTuningFlyout(props) {
                 </div>
             </div>
 
-            {/* Video Bitrate Control */}
             <div className="tuning-section">
                 <div className="tuning-label-row">
                     <span className="tuning-label">

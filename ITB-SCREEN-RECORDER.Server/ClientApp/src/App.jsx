@@ -32,8 +32,26 @@ export default function App() {
     }, [apiBaseUrl]);
 
     useEffect(() => {
-        fetchStations();
-    }, [fetchStations]);
+        let isMounted = true;
+
+        const loadInitialStations = async () => {
+            try {
+                const res = await fetch(`${apiBaseUrl}/api/agents`);
+                if (res.ok && isMounted) {
+                    const data = await res.json();
+                    setStations(data);
+                }
+            } catch (err) {
+                console.error('[App] Failed to fetch agents:', err);
+            }
+        };
+
+        loadInitialStations();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [apiBaseUrl]);
 
     useEffect(() => {
         const hubUrl = `${apiBaseUrl}/hubs/telemetry`;

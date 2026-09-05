@@ -11,8 +11,8 @@ export default function WebRTCPlayer({
     const videoRef = useRef(null);
     const peerRef = useRef(null);
 
-    // 💡 ניהול מצבי ה-Retry החכם מבפנים
     const [retryCount, setRetryCount] = useState(0);
+    const retryCountRef = useRef(0);
     const maxRetries = 5;
     const retryTimeoutRef = useRef(null);
 
@@ -60,7 +60,6 @@ export default function WebRTCPlayer({
         const connectToWHEP = async () => {
             if (!isSubscribed) return;
 
-            // סגירת חיבור קודם אם קיים לפני פתיחת חדש
             if (peerRef.current && peerRef.current.signalingState !== 'closed') {
                 peerRef.current.close();
             }
@@ -82,12 +81,12 @@ export default function WebRTCPlayer({
                 }
             };
 
-            // 💡 מעקב חכם אחרי סטטוס החיבור האמיתי
             pc.onconnectionstatechange = () => {
                 if (!isSubscribed) return;
 
                 if (pc.connectionState === 'connected') {
-                    setRetryCount(0); // איפוס מונה הנסיונות בהצלחה
+                    retryCountRef.current = 0;
+                    setRetryCount(0);
                     setHasError(false);
                 } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
                     handleSmartRetry();
@@ -125,12 +124,13 @@ export default function WebRTCPlayer({
         const handleSmartRetry = () => {
             if (!isSubscribed) return;
 
-            if (retryCount < maxRetries) {
-                setRetryCount(prev => prev + 1);
-                // חישוב השהייה מדורגת (Exponential Backoff): 1s, 2s, 4s, 8s... עד מקסימום 10 שניות
-                const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 10000);
+            if (retryCountRef.current < maxRetries) {
+                const nextAttempt = retryCountRef.current + 1;
+                retryCountRef.current = nextAttempt;
+                setRetryCount(nextAttempt);
 
-                console.warn(`[WebRTC] Connection lost. Retrying in ${delay}ms (Attempt ${retryCount}/${maxRetries})...`);
+                const delay = Math.min(1000 * Math.pow(2, nextAttempt - 1), 10000);
+                console.warn(`[WebRTC] Connection lost. Retrying in ${delay}ms (Attempt ${nextAttempt}/${maxRetries})...`);
                 setHasError(true);
 
                 if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
@@ -209,7 +209,6 @@ export default function WebRTCPlayer({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* הצגת הודעת שגיאה רק אם עברנו את כל מכסת הנסיונות ולא בזמן חיבור ראשוני */}
             {hasError && retryCount >= maxRetries && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', zIndex: 10, background: 'rgba(0,0,0,0.6)' }}>
                     <span style={{ backgroundColor: 'rgba(0,0,0,0.8)', padding: '6px 12px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem' }}>

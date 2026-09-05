@@ -14,7 +14,6 @@ export default function FullscreenModal({
     appCpuPct = 0,
     hostRamPct = 0,
     appRamMb = 0,
-    totalRamGb = 32,
     gpuNvencPct = 0,
     gpu3dPct = 0,
     mediaTxMbps = 0,
@@ -32,7 +31,6 @@ export default function FullscreenModal({
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const [confirmStop, setConfirmStop] = useState(false);
 
-    // חישוב זמן פעילות
     const [elapsedTimeStr, setElapsedTimeStr] = useState(() => {
         if (!streamingSinceUtc) return '00:00:00';
         const start = new Date(streamingSinceUtc).getTime();
@@ -117,7 +115,6 @@ export default function FullscreenModal({
         <div className="stream-modal-backdrop" onClick={handleBackdropClick}>
             <div ref={modalBoxRef} className="stream-modal-box">
                 <div className="stream-modal-header">
-                    {/* כותרת ומצב עמדה */}
                     <div className="stream-modal-title">
                         <span className={`live-dot ${isStreaming ? 'streaming' : 'idle'}`}></span>
                         <h2>LIVE // {hostname}</h2>
@@ -128,7 +125,6 @@ export default function FullscreenModal({
                         )}
                     </div>
 
-                    {/* מדדי טלמטריה מלאים: FPS, Drops, CPU, RAM, GPU, VBR, C2 */}
                     <div className="modal-network-stats">
                         <span className="stat-pill" title={`Target: ${targetFps} FPS`}>
                             FPS <span className="val green">{actualFps}</span>
@@ -162,7 +158,6 @@ export default function FullscreenModal({
                         </span>
                     </div>
 
-                    {/* סרגל פעולות טקטיות צף ישירות ב-HUD */}
                     <div className="modal-actions-cluster">
                         {!isStreaming ? (
                             <button
