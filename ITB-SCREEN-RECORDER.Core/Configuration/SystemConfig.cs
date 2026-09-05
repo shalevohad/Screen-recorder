@@ -46,6 +46,12 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Range(1024, 65535)]
         public int HlsPort { get; set; }
+
+        /// <summary>
+        /// אזור הזמן שכפוי על תהליך MediaMTX (קובע את שמות הקבצים וה-creation_time ב-Header)
+        /// ברירת מחדל: UTC.
+        /// </summary>
+        public string Timezone { get; set; } = "UTC";
     }
 
     public class StorageSettings
@@ -64,6 +70,11 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Required(ErrorMessage = "ChunkEventLogPath is required in appsettings.json")]
         public string ChunkEventLogPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// פורמט הקלטת המדיה ב-MediaMTX (fmp4 או mpegts). ברירת מחדל: fmp4.
+        /// </summary>
+        public string RecordFormat { get; set; } = "fmp4";
     }
 
     public class SecuritySettings
