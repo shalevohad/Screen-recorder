@@ -26,9 +26,19 @@
     <Folder Include="ClientApp\src\components\Settings\styles\" />
     <Folder Include="ClientApp\src\components\Settings\tabs\" />
     <Folder Include="ClientApp\src\styles\" />
+    <Folder Include="Features\Extractor\Bin\" />
     <Folder Include="MediaMTX\" />
     <Folder Include="wwwroot\css\" />
   </ItemGroup>
+
+<ItemGroup>
+	<!-- כל קובץ בינארי שיושב בתיקיית ה-Bin של ה-Extractor מועתק לפלט הריצה -->
+	<None Update="Features\Extractor\Bin\**">
+		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		<Visible>true</Visible>
+	</None>
+</ItemGroup>
   
   <ItemGroup>
     <None Update="MediaMTX\mediamtx.exe">
