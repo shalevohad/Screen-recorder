@@ -16,12 +16,13 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public int DashboardRefreshRateMs { get; set; }
 
         /// <summary>
-        /// אזור הזמן המוצג ב-Dashboard (לדוגמה: "Asia/Jerusalem" או "UTC").
+        /// אזור הזמן לתצוגה ב-Dashboard (למשל: "Asia/Jerusalem").
+        /// מופרד לחלוטין מ-MediaMtx.Timezone שמוגדר כ-UTC.
         /// </summary>
         public string DisplayTimezone { get; set; } = "UTC";
 
         /// <summary>
-        /// תבנית שפת התצוגה של התאריכים (לדוגמה: "en-US").
+        /// שפת תצוגת התאריכים ב-Dashboard.
         /// </summary>
         public string DisplayLocale { get; set; } = "en-US";
 
@@ -57,6 +58,9 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Range(1024, 65535)]
         public int HlsPort { get; set; }
 
+        /// <summary>
+        /// נשאר תמיד UTC עבור שמות קובצי ההקלטה.
+        /// </summary>
         public string Timezone { get; set; } = "UTC";
     }
 
