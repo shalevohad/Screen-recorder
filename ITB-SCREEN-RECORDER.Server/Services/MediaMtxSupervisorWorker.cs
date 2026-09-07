@@ -19,6 +19,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
     private readonly StoragePathResolver _storageResolver;
     private readonly MediaMtxApiClient _apiClient;
     private Process? _mtxProcess;
+    private string _activeTimezone = "UTC";
 
     public MediaMtxSupervisorWorker(
         ILogger<MediaMtxSupervisorWorker> logger,
@@ -36,7 +37,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
     {
         _logger.LogInformation("MediaMTX Supervisor Service starting...");
 
-        // 1. ניקוי אקטיבי של תהליכים יתומים מיד עם עליית השרת
         CleanupOrphanedMediaMtxProcesses();
         await Task.Delay(1000, stoppingToken);
 
@@ -50,13 +50,27 @@ public class MediaMtxSupervisorWorker : BackgroundService
             mtxExePath = Path.Combine(baseDir, "mediamtx.exe");
         }
 
-        // האזנה לשינויי קונפיגורציה בזמן אמת (Hot-Reload) ללא צורך באיתחול השרת
+        // האזנה לשינויי קונפיגורציה בזמן אמת (Hot-Reload)
         using var changeListener = _configMonitor.OnChange(async updatedConfig =>
         {
             try
             {
-                _logger.LogInformation("[MediaMTX Supervisor] Detected configuration change, updating MediaMTX recording parameters...");
-                await ApplyRecordingConfigAsync(stoppingToken);
+                string newTz = string.IsNullOrWhiteSpace(updatedConfig.MediaMtx.Timezone) ? "UTC" : updatedConfig.MediaMtx.Timezone.Trim();
+
+                // אם השתנה ה-Timezone עבור MediaMTX, מאתחלים את התהליך כדי להחיל את משתנה הסביבה TZ
+                if (!string.Equals(newTz, _activeTimezone, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("[MediaMTX Supervisor] MediaMtx.Timezone changed from {OldTz} to {NewTz}. Restarting process...", _activeTimezone, newTz);
+                    if (_mtxProcess != null && !_mtxProcess.HasExited)
+                    {
+                        _mtxProcess.Kill(entireProcessTree: true);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("[MediaMTX Supervisor] Detected configuration change, updating recording parameters...");
+                    await ApplyRecordingConfigAsync(stoppingToken);
+                }
             }
             catch (Exception ex)
             {
@@ -77,11 +91,9 @@ public class MediaMtxSupervisorWorker : BackgroundService
                         continue;
                     }
 
-                    // 2. הבטחת שטח נקי וסגירת פורטים תפוסים לפני כל הרמה
                     CleanupOrphanedMediaMtxProcesses();
                     await Task.Delay(1000, stoppingToken);
 
-                    // עדכון פורטים מדויק בקובץ mediamtx.yml ללא פגיעה בשאר ההגדרות
                     string ymlPath = Path.Combine(mtxFolder, "mediamtx.yml");
                     PatchMediaMtxYaml(ymlPath, _configMonitor.CurrentValue);
 
@@ -97,19 +109,17 @@ public class MediaMtxSupervisorWorker : BackgroundService
                         CreateNoWindow = true
                     };
 
-                    // שליפת אזור הזמן מתוך הקונפיגורציה (ברירת מחדל: UTC)
-                    string targetTz = string.IsNullOrWhiteSpace(_configMonitor.CurrentValue.MediaMtx.Timezone)
+                    _activeTimezone = string.IsNullOrWhiteSpace(_configMonitor.CurrentValue.MediaMtx.Timezone)
                         ? "UTC"
-                        : _configMonitor.CurrentValue.MediaMtx.Timezone;
+                        : _configMonitor.CurrentValue.MediaMtx.Timezone.Trim();
 
-                    // כפיית אזור הזמן הנבחר על מנוע ה-Go של MediaMTX
-                    startInfo.EnvironmentVariables["TZ"] = targetTz;
+                    // כפיית אזור הזמן הנבחר מקובץ הקונפיג על סביבת הריצה של MediaMTX
+                    startInfo.EnvironmentVariables["TZ"] = _activeTimezone;
 
-                    _logger.LogInformation("Configuring MediaMTX environment with TZ={Timezone}", targetTz);
+                    _logger.LogInformation("Configuring MediaMTX environment with TZ={Timezone}", _activeTimezone);
 
                     _mtxProcess = new Process { StartInfo = startInfo };
 
-                    // הזרמת לוגים של MediaMTX ישירות ל-ILogger של השרת
                     _mtxProcess.OutputDataReceived += (sender, args) =>
                     {
                         if (!string.IsNullOrEmpty(args.Data))
@@ -126,9 +136,8 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     _mtxProcess.BeginOutputReadLine();
                     _mtxProcess.BeginErrorReadLine();
 
-                    _logger.LogInformation("MediaMTX started successfully with PID: {Pid} (TZ: {Tz})", _mtxProcess.Id, targetTz);
+                    _logger.LogInformation("MediaMTX started successfully with PID: {Pid} (TZ: {Tz})", _mtxProcess.Id, _activeTimezone);
 
-                    // הזרקת הגדרות ההקלטה דרך ה-API מיד כשהשרת זמין
                     _ = Task.Run(() => ApplyRecordingConfigAsync(stoppingToken), stoppingToken);
                 }
             }
@@ -212,20 +221,11 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
 
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
-        string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
-
-        // סיומת Z תקנית עבור UTC, או מבנה שעה נקי לכל אזור זמן אחר
-        string targetTz = string.IsNullOrWhiteSpace(config.MediaMtx.Timezone) ? "UTC" : config.MediaMtx.Timezone;
-        bool isUtc = string.Equals(targetTz, "UTC", StringComparison.OrdinalIgnoreCase);
-        string timeFormat = isUtc ? "%Y%m%dT%H%M%SZ" : "%Y%m%dT%H%M%S";
-
-        // תבנית שמירה ישירה: ללא ספריית live, שמירה ישירה תחת מזהה העמדה (%path)
-        string recordPath = $"{cleanRoot}/%path/{timeFormat}";
+        string recordPath = _storageResolver.BuildRecordPath(root, config);
 
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
         string retentionHours = $"{config.Storage.RetentionDays * 24}h";
 
-        // שליפת פורמט ההקלטה מתוך הקונפיגורציה (fmp4 כברירת מחדל)
         string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
             ? "fmp4"
             : config.Storage.RecordFormat.Trim().ToLowerInvariant();
@@ -241,7 +241,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
         if (applied)
         {
             _logger.LogInformation("[STORAGE] Recording configuration applied -> Root: '{Root}', Path: '{RecordPath}', Format: '{Format}', Chunk: {Interval}, Retention: {Retention}",
-                cleanRoot, recordPath, recordFormat, chunkDuration, retentionHours);
+                root, recordPath, recordFormat, chunkDuration, retentionHours);
         }
         else
         {

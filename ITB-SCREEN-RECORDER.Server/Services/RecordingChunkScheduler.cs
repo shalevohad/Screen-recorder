@@ -1,4 +1,4 @@
-namespace ITB_SCREEN_RECORDER.Server.Services;
+﻿namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
 using System.Threading;
@@ -9,16 +9,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// Wakes up at every UTC wall-clock multiple of Storage.ChunkIntervalMinutes and forces
+/// Wakes up at every wall-clock multiple of Storage.ChunkIntervalMinutes and forces
 /// MediaMTX to cut a new recording segment for every currently-streaming station, so chunk
-/// boundaries land exactly on the clock (e.g. 17:00, 17:15, 17:30) regardless of when each
-/// station started streaming. Also re-applies the recording path if the storage root
-/// (NetApp vs local fallback) changed since it was last applied.
+/// boundaries land exactly on the clock regardless of when each station started streaming.
 /// </summary>
 public class RecordingChunkScheduler : BackgroundService
 {
-    private const string RecordFormat = "fmp4";
-
     private readonly IOptionsMonitor<SystemConfig> _configMonitor;
     private readonly StoragePathResolver _storageResolver;
     private readonly MediaMtxApiClient _apiClient;
@@ -26,6 +22,7 @@ public class RecordingChunkScheduler : BackgroundService
     private readonly ILogger<RecordingChunkScheduler> _logger;
 
     private string? _lastAppliedRoot;
+    private string? _lastAppliedTimezone;
 
     public RecordingChunkScheduler(
         IOptionsMonitor<SystemConfig> configMonitor,
@@ -81,21 +78,32 @@ public class RecordingChunkScheduler : BackgroundService
         SystemConfig config = _configMonitor.CurrentValue;
 
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
-        if (root != _lastAppliedRoot)
+        string currentTimezone = config.MediaMtx?.Timezone ?? "UTC";
+
+        // עדכון הגדרות הנתיב אם השתנה ה-Storage Root או אזור הזמן המוגדר
+        if (root != _lastAppliedRoot || !string.Equals(currentTimezone, _lastAppliedTimezone, StringComparison.OrdinalIgnoreCase))
         {
-            string recordPath = BuildRecordPath(root);
+            string recordPath = _storageResolver.BuildRecordPath(root, config);
+            string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
+                ? "fmp4"
+                : config.Storage.RecordFormat.Trim().ToLowerInvariant();
+
+            string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
+            string retentionHours = $"{config.Storage.RetentionDays * 24}h";
+
             bool applied = await _apiClient.PatchPathDefaultsAsync(
                 config.MediaMtx.ApiPort,
                 recordPath,
-                RecordFormat,
-                $"{config.Storage.ChunkIntervalMinutes}m",
-                $"{config.Storage.RetentionDays}d",
+                recordFormat,
+                chunkDuration,
+                retentionHours,
                 stoppingToken).ConfigureAwait(false);
 
             if (applied)
             {
                 _lastAppliedRoot = root;
-                _logger.LogInformation("[CHUNK SCHEDULER] Applied recording root '{Root}' to MediaMTX.", root);
+                _lastAppliedTimezone = currentTimezone;
+                _logger.LogInformation("[CHUNK SCHEDULER] Applied recording root '{Root}' (Path: '{RecordPath}', TZ: '{Timezone}') to MediaMTX.", root, recordPath, currentTimezone);
             }
         }
 
@@ -108,14 +116,8 @@ public class RecordingChunkScheduler : BackgroundService
 
         if (activePaths.Count > 0)
         {
-            _logger.LogInformation("[CHUNK SCHEDULER] Rotated {Count} active recording(s) at UTC chunk boundary.", activePaths.Count);
+            _logger.LogInformation("[CHUNK SCHEDULER] Rotated {Count} active recording(s) at clock boundary.", activePaths.Count);
         }
-    }
-
-    private static string BuildRecordPath(string root)
-    {
-        string normalizedRoot = root.TrimEnd('\\', '/');
-        return $"{normalizedRoot}/%path/%Y-%m-%d_%H-%M-%S-%f";
     }
 
     internal static DateTime ComputeNextBoundaryUtc(DateTime nowUtc, int intervalMinutes)

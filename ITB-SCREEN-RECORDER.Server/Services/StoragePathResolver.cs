@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
@@ -40,6 +40,22 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             Directory.CreateDirectory(storage.LocalFallbackPath);
             return storage.LocalFallbackPath;
+        }
+
+        /// <summary>
+        /// בונה את תבנית נתיב ההקלטה עבור MediaMTX בהתאם לאזור הזמן המוגדר ב-SystemConfig.MediaMtx.Timezone.
+        /// </summary>
+        public string BuildRecordPath(string root, SystemConfig config)
+        {
+            string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
+            string targetTz = string.IsNullOrWhiteSpace(config.MediaMtx?.Timezone) ? "UTC" : config.MediaMtx.Timezone.Trim();
+            bool isUtc = string.Equals(targetTz, "UTC", StringComparison.OrdinalIgnoreCase);
+
+            // כאשר אזור הזמן מוגדר כ-UTC התבנית מקבלת סיומת Z תקנית (%Y%m%dT%H%M%SZ).
+            // עבור אזור זמן מותאם אחר, התבנית מפיקה תאריך ושעה ללא סיומת Z מטעה.
+            string timeFormat = isUtc ? "%Y%m%dT%H%M%SZ" : "%Y%m%dT%H%M%S";
+
+            return $"{cleanRoot}/%path/{timeFormat}";
         }
 
         private static async Task<bool> IsNetAppReachableAsync(string uncPath)
