@@ -47,6 +47,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private volatile int _lastRealFps = 0;
         private volatile int _lastDroppedFrames = 0;
 
+        private volatile IAudioCaptureProvider? _activeAudioCapture = null;
+        private volatile bool _isSessionActive = false;
+        private long _totalAudioBytes = 0;
+        private long _lastRealAudioTicks = 0;
+
         public WorkerEngine(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -112,12 +117,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     IAudioCaptureProvider? audioCapture = null;
                     FfmpegProcessManager? ffmpegManager = null;
 
-                    bool isSessionActive = false;
                     bool isCaptureActive = false;
-                    long totalAudioBytes = 0;
                     long audioStartTicks = 0;
-                    long lastRealAudioTicks = 0;
-
                     byte[]? sharedLatestVideoFrame = null;
 
                     try
@@ -127,20 +128,22 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                         audioCapture = AudioCaptureFactory.Create();
                         audioCapture.Initialize();
+                        audioCapture.Start();
+
+                        _activeAudioCapture = audioCapture;
 
                         ffmpegManager = new FfmpegProcessManager(_config);
 
                         audioCapture.AudioDataAvailable += (s, data) =>
                         {
-                            if (ffmpegManager != null && ffmpegManager.IsRunning && isSessionActive)
+                            if (ffmpegManager != null && ffmpegManager.IsRunning && _isSessionActive)
                             {
                                 ffmpegManager.WriteAudioData(data);
-                                Interlocked.Add(ref totalAudioBytes, data.Length);
-                                Interlocked.Exchange(ref lastRealAudioTicks, Stopwatch.GetTimestamp());
+                                Interlocked.Add(ref _totalAudioBytes, data.Length);
+                                Interlocked.Exchange(ref _lastRealAudioTicks, Stopwatch.GetTimestamp());
                                 _networkTelemetry.TrackMediaBytes(data.Length);
                             }
                         };
-                        audioCapture.Start();
 
                         DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
                         string destinationTarget;
@@ -186,7 +189,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                         var audioHandshakeTask = ffmpegManager.CompleteAudioHandshakeAsync(localToken);
 
-                        // שחרור פריים התחלתי כדי לאפשר ל-FFmpeg לפתוח את ה-TCP Socket של השמע
                         byte[] initialFrame = new byte[screenCapture.Width * screenCapture.Height * 4];
                         _ = Task.Run(() => ffmpegManager.WriteVideoFrame(initialFrame));
 
@@ -196,12 +198,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             continue;
                         }
 
-                        // נקודת אפס אחידה ומדויקת לווידאו ולאודיו יחדיו
                         long sessionStartTicks = Stopwatch.GetTimestamp();
                         audioStartTicks = sessionStartTicks;
-                        lastRealAudioTicks = sessionStartTicks;
+                        Interlocked.Exchange(ref _lastRealAudioTicks, sessionStartTicks);
 
-                        isSessionActive = true;
+                        _isSessionActive = true;
                         isCaptureActive = true;
 
                         var captureWorkerTask = Task.Run(() =>
@@ -228,24 +229,22 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             }
                         });
 
-                        // מנגנון הזרקת שקט (Silence Injection Pacer): שומר על שעון וזמן שמע מסונכרן לזמן האמיתי
                         var audioPacerTask = Task.Run(() =>
                         {
-                            while (isSessionActive && !localToken.IsCancellationRequested)
+                            while (_isSessionActive && !localToken.IsCancellationRequested)
                             {
                                 if (audioStartTicks > 0)
                                 {
                                     double elapsedSec = Stopwatch.GetElapsedTime(audioStartTicks).TotalSeconds;
-                                    long expectedBytes = (long)(elapsedSec * 384000); // 48000 * 2 * 4 bytes
+                                    long expectedBytes = (long)(elapsedSec * 384000);
                                     expectedBytes -= (expectedBytes % 8);
 
-                                    long currentBytes = Interlocked.Read(ref totalAudioBytes);
-                                    long timeSinceLastAudioMs = (long)Stopwatch.GetElapsedTime(Interlocked.Read(ref lastRealAudioTicks)).TotalMilliseconds;
+                                    long currentBytes = Interlocked.Read(ref _totalAudioBytes);
+                                    long timeSinceLastAudioMs = (long)Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastRealAudioTicks)).TotalMilliseconds;
 
                                     if (expectedBytes > currentBytes && timeSinceLastAudioMs > 100)
                                     {
                                         long missingBytes = expectedBytes - currentBytes;
-                                        // מזריקים שקט במנות של עד 100ms בכל איטרציה למניעת הצפת השקע
                                         long bytesToSend = Math.Min(missingBytes, 38400);
                                         bytesToSend -= (bytesToSend % 8);
 
@@ -253,7 +252,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         {
                                             byte[] silence = new byte[bytesToSend];
                                             ffmpegManager.WriteAudioData(silence);
-                                            Interlocked.Add(ref totalAudioBytes, bytesToSend);
+                                            Interlocked.Add(ref _totalAudioBytes, bytesToSend);
                                             _networkTelemetry.TrackMediaBytes(bytesToSend);
                                         }
                                     }
@@ -265,7 +264,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
                         double targetFrameTimeMs = 1000.0 / _baselineFps;
 
-                        long framesProcessed = 1; // קוזז כנגד initialFrame
+                        long framesProcessed = 1;
                         int actualFpsCount = 0;
                         int duplicatedFramesCount = 0;
                         int consecutiveChokeSeconds = 0;
@@ -293,7 +292,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                     }
 #endif
 
-                                    // מנגנון ה-Pacing: דוחפים ל-FFmpeg עד 3 פריימים ברצף לשמירה על ציר זמן רציף
                                     int framesToActuallySend = Math.Min(framesToPush, 3);
 
                                     for (int i = 0; i < framesToActuallySend; i++)
@@ -315,7 +313,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         if (i > 0) duplicatedFramesCount++;
                                     }
 
-                                    // אם חל פיגור חמור מ-3 פריימים, מקדמים את המונה כדי שציר הזמן לא ישתבש מול האודיו
                                     if (framesToPush > framesToActuallySend)
                                     {
                                         int dropped = framesToPush - framesToActuallySend;
@@ -398,8 +395,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         Logger.Info("[WorkerEngine] Tearing down pipeline resources...");
                         try
                         {
-                            isSessionActive = false;
+                            _isSessionActive = false;
                             isCaptureActive = false;
+                            _activeAudioCapture = null;
 
                             audioCapture?.Stop();
                             if (audioCapture is IDisposable audioDisp) audioDisp.Dispose();
@@ -427,7 +425,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             {
                 try
                 {
-                    // תמיכה ב-NamedPipe ב-Windows ו-Linux (ב-Linux ה-CLR משתמש ב-Unix Domain Sockets)
                     using var client = new NamedPipeClientStream(".", "ITB_Agent_IPC", PipeDirection.InOut, PipeOptions.Asynchronous);
                     await client.ConnectAsync(3000, cts.Token);
 
@@ -520,6 +517,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         var hwSnap = HardwareProbe.GetTelemetrySnapshot();
                         var netSnap = _networkTelemetry.GetMetricsSnapshot();
 
+                        bool hasPlayback = _activeAudioCapture?.HasActiveLoopback ?? false;
+                        bool hasMic = _activeAudioCapture?.HasActiveMicrophone ?? false;
+                        bool hasAudioHardware = hasPlayback || hasMic;
+
+                        long lastAudioTicks = Interlocked.Read(ref _lastRealAudioTicks);
+                        bool isAudioFlowing = _isSessionActive && lastAudioTicks > 0 && Stopwatch.GetElapsedTime(lastAudioTicks).TotalMilliseconds < 1500;
+                        bool isAudioStreaming = _isStreamingRequested && (hasAudioHardware || isAudioFlowing);
+
                         var msg = new
                         {
                             SessionState = InternalSessionState.ActiveInteractive,
@@ -527,12 +532,22 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             IsStreaming = _isStreamingRequested,
                             IsOfflineMode = _isOfflineModeActive,
 
+                            HasAudio = hasAudioHardware || isAudioStreaming,
+                            HasActiveSpeakers = hasPlayback,
+                            HasActiveMicrophone = hasMic,
+                            IsAudioStreaming = isAudioStreaming,
+
                             Telemetry = _isStreamingRequested ? new
                             {
                                 ActualFps = _lastRealFps,
                                 DroppedFrames = _lastDroppedFrames,
                                 InternalCaptureFps = _internalCaptureFps,
                                 QosTier = _currentQosTier,
+
+                                HasAudio = hasAudioHardware || isAudioStreaming,
+                                HasActiveSpeakers = hasPlayback,
+                                HasActiveMicrophone = hasMic,
+                                IsAudioStreaming = isAudioStreaming,
 
                                 HostCpuPct = hwSnap.HostCpuUsagePct,
                                 ProcessCpuPct = hwSnap.ProcessCpuUsagePct,

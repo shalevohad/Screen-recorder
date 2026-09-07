@@ -49,6 +49,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("hasActiveMicrophone")]
         public bool HasActiveMicrophone { get; set; }
 
+        [JsonPropertyName("hasAudio")]
+        public bool HasAudio { get; set; }
+
+        [JsonPropertyName("isAudioStreaming")]
+        public bool IsAudioStreaming { get; set; }
+
         [JsonPropertyName("isStreaming")]
         public bool IsStreaming { get; set; }
 

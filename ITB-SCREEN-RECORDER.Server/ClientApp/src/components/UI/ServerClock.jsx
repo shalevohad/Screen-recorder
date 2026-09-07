@@ -2,9 +2,15 @@
 import './ServerClock.scss';
 
 function getTimeParts(date, timeZone, locale = 'en-US') {
+    // וידוא פורמט תקני לאזור הזמן (לדוגמה UTC / Etc/UTC)
+    let tz = (timeZone || 'UTC').trim();
+    if (tz.toUpperCase() === 'UTC') {
+        tz = 'Etc/UTC';
+    }
+
     try {
         const dtf = new Intl.DateTimeFormat(locale, {
-            timeZone: timeZone || 'UTC',
+            timeZone: tz,
             hour12: false,
             hourCycle: 'h23',
             weekday: 'long',
@@ -24,7 +30,7 @@ function getTimeParts(date, timeZone, locale = 'en-US') {
         return map;
     } catch {
         const dtf = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'UTC',
+            timeZone: 'Etc/UTC',
             hour12: false,
             hourCycle: 'h23',
             weekday: 'long',
@@ -80,9 +86,11 @@ export default function ServerClock({
         return `UP: ${m}m ${s}s`;
     };
 
+    const effectiveTimezone = timezone || 'UTC';
+
     const timeParts = useMemo(() => {
-        return getTimeParts(currentTime, timezone, locale);
-    }, [currentTime, timezone, locale]);
+        return getTimeParts(currentTime, effectiveTimezone, locale);
+    }, [currentTime, effectiveTimezone, locale]);
 
     const displayHours = timeParts.hour || '00';
     const displayMinutes = timeParts.minute || '00';
@@ -92,14 +100,13 @@ export default function ServerClock({
     const utcMinutes = String(currentTime.getUTCMinutes()).padStart(2, '0');
     const utcSeconds = String(currentTime.getUTCSeconds()).padStart(2, '0');
 
-    // בדיקה האם זמן התצוגה חופף לזמן UTC (לדוגמה כשהקונפיג מוגדר ל-UTC)
     const isUtcSame = useMemo(() => {
-        const tzUpper = (timezone || '').trim().toUpperCase();
+        const tzUpper = (effectiveTimezone || '').trim().toUpperCase();
         if (tzUpper === 'UTC' || tzUpper === 'ETC/UTC' || tzUpper === 'Z') return true;
         return displayHours === utcHours && displayMinutes === utcMinutes;
-    }, [timezone, displayHours, displayMinutes, utcHours, utcMinutes]);
+    }, [effectiveTimezone, displayHours, displayMinutes, utcHours, utcMinutes]);
 
-    const tzLabel = timeParts.timeZoneName || timezone || 'UTC';
+    const tzLabel = timeParts.timeZoneName || effectiveTimezone;
     const dayName = (timeParts.weekday || '').toUpperCase();
     const monthName = (timeParts.month || '').toUpperCase();
     const dayOfMonth = timeParts.day || '';
@@ -114,7 +121,6 @@ export default function ServerClock({
                     <span className="chrono-tz">({tzLabel})</span>
                 </div>
 
-                {/* דרישה 3: הסתרת שורת ה-UTC כשהזמן המוצג זהה ל-UTC */}
                 {!isUtcSame && (
                     <div className="chrono-sub-row">
                         <span className="chrono-utc">UTC: {utcHours}:{utcMinutes}:{utcSeconds}</span>

@@ -13,8 +13,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 {
     /// <summary>
     /// Thin wrapper around MediaMTX's runtime Control API. Used to push recording
-    /// configuration (record path/format/segment duration/retention) and to force
-    /// wall-clock-aligned segment cuts, without ever touching mediamtx.yml on disk.
+    /// configuration and force wall-clock-aligned segment cuts.
     /// </summary>
     public class MediaMtxApiClient
     {
@@ -52,7 +51,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 }
                 catch
                 {
-                    // MediaMTX API not up yet; keep polling until the deadline.
                 }
 
                 await Task.Delay(500, cancellationToken).ConfigureAwait(false);
@@ -68,11 +66,30 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 ["record"] = true,
                 ["recordPath"] = recordPath,
                 ["recordFormat"] = recordFormat,
+                ["recordPartDuration"] = "1s",
                 ["recordSegmentDuration"] = recordSegmentDuration,
                 ["recordDeleteAfter"] = recordDeleteAfter,
             };
 
             return await PatchAsync(apiPort, "/v3/config/pathdefaults/patch", payload, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task<bool> PatchPathConfigAsync(int apiPort, string pathName, string recordPath, string recordFormat, string recordSegmentDuration, string recordDeleteAfter, CancellationToken cancellationToken)
+        {
+            string encodedName = Uri.EscapeDataString(pathName);
+            await EnsurePathEntryExistsAsync(apiPort, encodedName, cancellationToken).ConfigureAwait(false);
+
+            var payload = new Dictionary<string, object>
+            {
+                ["record"] = true,
+                ["recordPath"] = recordPath,
+                ["recordFormat"] = recordFormat,
+                ["recordPartDuration"] = "1s",
+                ["recordSegmentDuration"] = recordSegmentDuration,
+                ["recordDeleteAfter"] = recordDeleteAfter,
+            };
+
+            return await PatchAsync(apiPort, $"/v3/config/paths/patch/{encodedName}", payload, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<IReadOnlyList<string>> GetActivePathNamesAsync(int apiPort, CancellationToken cancellationToken)
@@ -100,16 +117,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         public async Task<bool> RotatePathRecordingAsync(int apiPort, string pathName, CancellationToken cancellationToken)
         {
             string encodedName = Uri.EscapeDataString(pathName);
-
-            // A path that only ever matched "all_others" / pathDefaults has no explicit
-            // entry yet, and MediaMTX's PATCH endpoint only edits entries that already
-            // exist. Make sure one exists before trying to toggle it.
             await EnsurePathEntryExistsAsync(apiPort, encodedName, cancellationToken).ConfigureAwait(false);
 
             string route = $"/v3/config/paths/patch/{encodedName}";
 
-            // Toggling record off then on forces MediaMTX to close the in-progress
-            // segment and immediately open a new one, i.e. an exact-boundary cut.
             bool offOk = await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = false }, cancellationToken).ConfigureAwait(false);
             bool onOk = await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = true }, cancellationToken).ConfigureAwait(false);
             return offOk && onOk;
@@ -132,15 +143,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 };
 
                 using var addResponse = await client.SendAsync(addRequest, cancellationToken).ConfigureAwait(false);
-                if (!addResponse.IsSuccessStatusCode)
-                {
-                    string body = await addResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                    // "path already exists" just means we lost a race with another caller/tick - harmless.
-                    if (!body.Contains("already exists", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _logger.LogWarning("[MediaMTX API] POST /v3/config/paths/add/{Path} failed with {StatusCode}: {Body}", encodedName, addResponse.StatusCode, body);
-                    }
-                }
             }
             catch (Exception ex)
             {

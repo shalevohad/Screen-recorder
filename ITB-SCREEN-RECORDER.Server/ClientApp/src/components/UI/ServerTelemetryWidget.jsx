@@ -112,7 +112,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
 
     return (
         <div className="server-telemetry-widget layout-large">
-            {/* 1. CPU LOAD */}
             <div className={`telemetry-pod ${getStatusClass(cpuPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">CPU LOAD</span>
@@ -129,7 +128,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
                 </div>
             </div>
 
-            {/* 2. RAM USAGE - מציג בבירור App {appRamDisplay} כחלק נפרד מסך צריכת ה-Host */}
             <div
                 className={`telemetry-pod ${getStatusClass(hostRamPct)}`}
                 title={`Host Total: ${hostUsedRamDisplay} / ${totalRamDisplay} (${hostRamPct.toFixed(1)}%) | App: ${appRamDisplay}`}
@@ -149,7 +147,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
                 </div>
             </div>
 
-            {/* 3. NET LOAD */}
             <div className={`telemetry-pod ${getStatusClass(netUtilPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">NET LOAD</span>

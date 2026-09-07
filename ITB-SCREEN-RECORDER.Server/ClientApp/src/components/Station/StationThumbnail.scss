@@ -95,7 +95,7 @@
             align-items: center;
             gap: 6px;
             flex-shrink: 0;
-            /* סעיף 7: כפתור One-Click REC / IDLE */
+
             .one-click-rec-btn {
                 display: flex;
                 align-items: center;
@@ -213,7 +213,50 @@
             font-weight: 700;
             letter-spacing: 1px;
         }
-        /* סעיף 8: שכבת חיווי מינימליסטית על גבי הווידאו */
+
+        .tactical-audio-indicator {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8.5px;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            z-index: 6;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+            transition: all 0.2s ease;
+
+            svg {
+                flex-shrink: 0;
+            }
+
+            &.active {
+                border: 1px solid var(--c2-green-border);
+                color: var(--c2-green-light);
+                background: rgba(34, 197, 94, 0.12);
+                text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+
+                svg {
+                    filter: drop-shadow(0 0 4px var(--c2-green));
+                }
+            }
+
+            &.muted {
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                color: var(--slate-dim);
+                background: rgba(15, 23, 42, 0.7);
+            }
+        }
+
         .tactical-override-tag {
             position: absolute;
             top: 6px;
@@ -291,7 +334,7 @@
             }
         }
     }
-    /* סעיף 6: מבנה תחתון המאכלס את התראת ה-Drops ופס הבריאות */
+
     .card-minimal-footer {
         display: flex;
         flex-direction: column;

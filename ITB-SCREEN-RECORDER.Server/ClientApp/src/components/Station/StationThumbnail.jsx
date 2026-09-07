@@ -11,6 +11,10 @@ export default function StationThumbnail(props) {
         droppedFrames = 0,
         hostCpuPct = 0,
         gpuNvencPct = 0,
+        hasActiveSpeakers = false,
+        hasActiveMicrophone = false,
+        isAudioStreaming = false,
+        hasAudio = false,
         targetFps,
         videoBitrate,
         isCustomOverride = false,
@@ -32,7 +36,10 @@ export default function StationThumbnail(props) {
     const isLive = isOnline && isStreaming;
     const hasCriticalError = isOnline && (droppedFrames > 5);
 
-    // בדיקה האם הוגדר Override פרטני של FPS או Bitrate לעמדה
+    const audioHasPlayback = Boolean(hasActiveSpeakers);
+    const audioHasMic = Boolean(hasActiveMicrophone);
+    const isAudioLive = Boolean(isAudioStreaming || hasAudio || audioHasPlayback || audioHasMic);
+
     const hasCustomPolicy = Boolean(
         isCustomOverride ||
         props.hasCustomPolicy ||
@@ -61,7 +68,6 @@ export default function StationThumbnail(props) {
         onOpenFullscreen?.(props);
     };
 
-    // סעיף 7: לחיצה בודדת בראש הכרטיסייה להפעלה או עצירה מיידית
     const handleQuickToggleRec = (e) => {
         e.stopPropagation();
         if (!isOnline || isPending) return;
@@ -79,13 +85,20 @@ export default function StationThumbnail(props) {
 
     const health = computeHealthScore();
 
+    const getAudioBadgeText = () => {
+        if (!isOnline) return 'OFF';
+        if (audioHasPlayback && audioHasMic) return 'SPK + MIC';
+        if (audioHasPlayback) return 'SPK ONLY';
+        if (audioHasMic) return 'MIC ONLY';
+        return isAudioLive ? 'AUDIO ON' : 'MUTED';
+    };
+
     return (
         <div
             className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
             onClick={() => onSelectStation?.(props)}
             title="Click card background to open Station Inspector"
         >
-            {/* Header: נקי וללא Drops למניעת דחיסה והתנגשות מול ה-IP */}
             <div className="card-minimal-header">
                 <div className="station-brand">
                     <span className="station-name">{hostname}</span>
@@ -93,7 +106,6 @@ export default function StationThumbnail(props) {
                 </div>
 
                 <div className="station-header-right">
-                    {/* כפתור REC / IDLE לחיץ ישירות (One-Click) */}
                     <button
                         type="button"
                         className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isStreaming ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''}`}
@@ -165,11 +177,32 @@ export default function StationThumbnail(props) {
                     </div>
                 )}
 
-                {/* סעיף 8: שכבת Overlay מינימליסטית על הווידאו כאשר מוגדר Override */}
+                <div
+                    className={`tactical-audio-indicator ${isAudioLive ? 'active' : 'muted'}`}
+                    title={`Audio Status: ${getAudioBadgeText()} (Playback: ${audioHasPlayback ? 'Active' : 'Silent'}, Mic: ${audioHasMic ? 'Active' : 'Silent'})`}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="12" height="12">
+                        {isAudioLive ? (
+                            <>
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                            </>
+                        ) : (
+                            <>
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                <line x1="23" y1="9" x2="17" y2="15" />
+                                <line x1="17" y1="9" x2="23" y2="15" />
+                            </>
+                        )}
+                    </svg>
+                    <span>{getAudioBadgeText()}</span>
+                </div>
+
                 {hasCustomPolicy && (
                     <div
                         className="tactical-override-tag"
-                        title={`Custom Policy Active: ${targetFps ? `${targetFps} FPS` : ''} ${videoBitrate ? `| ${videoBitrate}` : ''}`}
+                        title={`Custom Policy: ${targetFps ? `${targetFps} FPS` : ''} ${videoBitrate ? `| ${videoBitrate}` : ''}`}
                     >
                         <span>MOD // {targetFps ? `${targetFps}F` : ''}{targetFps && videoBitrate ? ' • ' : ''}{videoBitrate || ''}</span>
                     </div>
@@ -214,7 +247,6 @@ export default function StationThumbnail(props) {
                 </div>
             </div>
 
-            {/* סעיף 6: אזור תחתון עם התראת Drops מעל פס הבריאות */}
             <div className="card-minimal-footer">
                 {droppedFrames > 0 && (
                     <div className={`dropped-frames-notice ${droppedFrames > 5 ? 'critical' : 'warning'}`}>

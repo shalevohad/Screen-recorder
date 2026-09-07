@@ -4,7 +4,6 @@ import StationInspectorDrawer from '../Station/StationInspectorDrawer';
 import FullscreenModal from '../Station/FullscreenModal';
 import './DashboardGrid.scss';
 
-// זיהוי עמדה תקולה: אך ורק עמדות Online פעילות שסובלות מנפילת פריימים
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
 
 export default function DashboardGrid({
@@ -152,15 +151,14 @@ export default function DashboardGrid({
         onBulkStop?.(targetHostnames);
     };
 
-    // סעיף 5: חישוב מדורג ומאוזן של זום אוטומטי המנצל מקסימום שטח מסך
     const autoOptimalZoom = useMemo(() => {
         const count = processedStations.length;
         if (count === 0) return 3;
-        if (count === 1) return 5;       // עמדה בודדת: גודל מלא (700px)
-        if (count === 2) return 4;       // 2 עמדות: גודל מורחב (570px)
-        if (count <= 6) return 3;        // 3 עד 6 עמדות: גודל סטנדרטי (450px)
-        if (count <= 12) return 2;       // 7 עד 12 עמדות: גודל קומפקטי (360px)
-        return 1;                        // מעל 12 עמדות: גודל מוקטן לריבוי עמדות (290px)
+        if (count === 1) return 5;
+        if (count === 2) return 4;
+        if (count <= 6) return 3;
+        if (count <= 12) return 2;
+        return 1;
     }, [processedStations.length]);
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
