@@ -25,7 +25,7 @@ export default function CommandCenterHeader({
                     if (data) setFetchedConfig(data);
                 })
                 .catch(() => {
-                    console.error("unable to fetch config timezone - falling to default local station clock")
+                    console.error("unable to fetch config timezone - falling to default 'Asia/Jerusalem'")
                 });
         }
     }, [propSystemConfig]);
