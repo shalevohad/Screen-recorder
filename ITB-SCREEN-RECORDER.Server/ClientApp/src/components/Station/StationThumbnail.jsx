@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import './StationThumbnail.scss';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
-import { Badge } from '../UI/Badge';
-import { getStationTacticalBadgeConfig, getDropFramesBadgeConfig } from '../../adapters/tacticalStatusAdapter';
 
 export default function StationThumbnail(props) {
     const {
@@ -13,6 +11,10 @@ export default function StationThumbnail(props) {
         droppedFrames = 0,
         hostCpuPct = 0,
         gpuNvencPct = 0,
+        targetFps,
+        videoBitrate,
+        isCustomOverride = false,
+        isPending = false,
         onToggleStream,
         onSelectStation,
         onOpenFullscreen,
@@ -28,9 +30,16 @@ export default function StationThumbnail(props) {
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
 
     const isLive = isOnline && isStreaming;
-
-    // עמדה מקבלת מסגרת אדומה קריטית אך ורק כשהיא אונליין וסובלת מנפילת פריימים חריגה
     const hasCriticalError = isOnline && (droppedFrames > 5);
+
+    // בדיקה האם הוגדר Override פרטני של FPS או Bitrate לעמדה
+    const hasCustomPolicy = Boolean(
+        isCustomOverride ||
+        props.hasCustomPolicy ||
+        props.isOverridden ||
+        (targetFps && targetFps !== 20 && targetFps !== 30) ||
+        (videoBitrate && videoBitrate !== '2500k' && videoBitrate !== '3M')
+    );
 
     useEffect(() => {
         if (!isStreaming) return;
@@ -52,6 +61,13 @@ export default function StationThumbnail(props) {
         onOpenFullscreen?.(props);
     };
 
+    // סעיף 7: לחיצה בודדת בראש הכרטיסייה להפעלה או עצירה מיידית
+    const handleQuickToggleRec = (e) => {
+        e.stopPropagation();
+        if (!isOnline || isPending) return;
+        onToggleStream?.(hostname, isStreaming);
+    };
+
     const computeHealthScore = () => {
         if (!isOnline) return 0;
         let score = 100;
@@ -62,8 +78,6 @@ export default function StationThumbnail(props) {
     };
 
     const health = computeHealthScore();
-    const statusBadge = getStationTacticalBadgeConfig(props, formatTimer(recordingSeconds));
-    const dropBadge = getDropFramesBadgeConfig(droppedFrames);
 
     return (
         <div
@@ -71,6 +85,7 @@ export default function StationThumbnail(props) {
             onClick={() => onSelectStation?.(props)}
             title="Click card background to open Station Inspector"
         >
+            {/* Header: נקי וללא Drops למניעת דחיסה והתנגשות מול ה-IP */}
             <div className="card-minimal-header">
                 <div className="station-brand">
                     <span className="station-name">{hostname}</span>
@@ -78,25 +93,27 @@ export default function StationThumbnail(props) {
                 </div>
 
                 <div className="station-header-right">
-                    <div className="station-status-cluster">
-                        <Badge
-                            variant={statusBadge.variant}
-                            pulse={statusBadge.pulse}
-                            ariaLabel={statusBadge.ariaLabel}
-                        >
-                            {statusBadge.label}
-                        </Badge>
-
-                        {dropBadge && (
-                            <Badge
-                                variant={dropBadge.variant}
-                                pulse={dropBadge.pulse}
-                                ariaLabel={dropBadge.ariaLabel}
-                            >
-                                {dropBadge.label}
-                            </Badge>
-                        )}
-                    </div>
+                    {/* כפתור REC / IDLE לחיץ ישירות (One-Click) */}
+                    <button
+                        type="button"
+                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isStreaming ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''}`}
+                        onClick={handleQuickToggleRec}
+                        disabled={!isOnline || isPending}
+                        title={
+                            !isOnline
+                                ? "Station Offline"
+                                : isPending
+                                    ? "Action in progress..."
+                                    : isStreaming
+                                        ? "Click to STOP Recording"
+                                        : "Click to START Recording"
+                        }
+                    >
+                        <span className="rec-indicator-dot" />
+                        <span className="rec-label">
+                            {!isOnline ? 'OFFLINE' : isPending ? 'WAIT...' : isStreaming ? `REC ${formatTimer(recordingSeconds)}` : 'IDLE'}
+                        </span>
+                    </button>
 
                     <button
                         className="header-action-icon-btn fullscreen-btn"
@@ -125,9 +142,6 @@ export default function StationThumbnail(props) {
                             <line x1="12" y1="8" x2="12" y2="3" />
                             <line x1="20" y1="21" x2="20" y2="16" />
                             <line x1="20" y1="12" x2="20" y2="3" />
-                            <line x1="1" y1="14" x2="7" y2="14" />
-                            <line x1="9" y1="8" x2="15" y2="8" />
-                            <line x1="17" y1="16" x2="23" y2="16" />
                         </svg>
                     </button>
                 </div>
@@ -151,10 +165,20 @@ export default function StationThumbnail(props) {
                     </div>
                 )}
 
+                {/* סעיף 8: שכבת Overlay מינימליסטית על הווידאו כאשר מוגדר Override */}
+                {hasCustomPolicy && (
+                    <div
+                        className="tactical-override-tag"
+                        title={`Custom Policy Active: ${targetFps ? `${targetFps} FPS` : ''} ${videoBitrate ? `| ${videoBitrate}` : ''}`}
+                    >
+                        <span>MOD // {targetFps ? `${targetFps}F` : ''}{targetFps && videoBitrate ? ' • ' : ''}{videoBitrate || ''}</span>
+                    </div>
+                )}
+
                 <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
                     <button
                         className={`action-btn ${isStreaming ? 'stop' : 'start'}`}
-                        onClick={onToggleStream}
+                        onClick={handleQuickToggleRec}
                         title={isStreaming ? "Stop Stream" : "Start Stream"}
                     >
                         {isStreaming ? 'STOP' : 'START'}
@@ -190,11 +214,20 @@ export default function StationThumbnail(props) {
                 </div>
             </div>
 
-            <div className="health-bar-track" title={`Station Health: ${health}%`}>
-                <div
-                    className={`health-bar-fill ${health < 50 ? 'crit' : health < 80 ? 'warn' : 'good'}`}
-                    style={{ width: `${health}%` }}
-                />
+            {/* סעיף 6: אזור תחתון עם התראת Drops מעל פס הבריאות */}
+            <div className="card-minimal-footer">
+                {droppedFrames > 0 && (
+                    <div className={`dropped-frames-notice ${droppedFrames > 5 ? 'critical' : 'warning'}`}>
+                        <span className="drop-indicator-dot" />
+                        <span className="drop-label">{droppedFrames} DROPPED FRAMES</span>
+                    </div>
+                )}
+                <div className="health-bar-track" title={`Station Health: ${health}%`}>
+                    <div
+                        className={`health-bar-fill ${health < 50 ? 'crit' : health < 80 ? 'warn' : 'good'}`}
+                        style={{ width: `${health}%` }}
+                    />
+                </div>
             </div>
         </div>
     );

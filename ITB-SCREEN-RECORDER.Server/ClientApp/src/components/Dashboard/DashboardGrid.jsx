@@ -24,7 +24,6 @@ export default function DashboardGrid({
 }) {
     const [sortAsc, setSortAsc] = useState(true);
 
-    // שמירת ה-hostname בלבד מונעת סנכרון כפול ו-cascading renders
     const [inspectedHostname, setInspectedHostname] = useState(null);
     const [fullscreenHostname, setFullscreenHostname] = useState(null);
 
@@ -153,12 +152,15 @@ export default function DashboardGrid({
         onBulkStop?.(targetHostnames);
     };
 
+    // סעיף 5: חישוב מדורג ומאוזן של זום אוטומטי המנצל מקסימום שטח מסך
     const autoOptimalZoom = useMemo(() => {
         const count = processedStations.length;
-        if (count <= 2) return 4;
-        if (count <= 4) return 3;
-        if (count <= 8) return 2;
-        return 1;
+        if (count === 0) return 3;
+        if (count === 1) return 5;       // עמדה בודדת: גודל מלא (700px)
+        if (count === 2) return 4;       // 2 עמדות: גודל מורחב (570px)
+        if (count <= 6) return 3;        // 3 עד 6 עמדות: גודל סטנדרטי (450px)
+        if (count <= 12) return 2;       // 7 עד 12 עמדות: גודל קומפקטי (360px)
+        return 1;                        // מעל 12 עמדות: גודל מוקטן לריבוי עמדות (290px)
     }, [processedStations.length]);
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
@@ -381,7 +383,11 @@ export default function DashboardGrid({
                                     <StationThumbnail
                                         {...station}
                                         isPending={actionPending[station.hostname]}
-                                        onToggleStream={() => onToggleStream(station.hostname, station.isStreaming)}
+                                        onToggleStream={(h, s) => {
+                                            const targetHost = typeof h === 'string' ? h : station.hostname;
+                                            const targetStream = typeof s === 'boolean' ? s : station.isStreaming;
+                                            onToggleStream(targetHost, targetStream);
+                                        }}
                                         onSelectStation={() => setInspectedHostname(station.hostname)}
                                         onOpenFullscreen={() => setFullscreenHostname(station.hostname)}
                                         onQuickBookmark={onQuickBookmark}

@@ -56,24 +56,24 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 10px 14px;
+        padding: 8px 12px;
         background: var(--bg-dark-well);
         border-bottom: 1px solid var(--slate-border);
-        gap: 10px;
+        gap: 8px;
 
         .station-brand {
             display: flex;
             flex-direction: column;
             align-items: flex-start;
-            gap: 3px;
+            gap: 2px;
             min-width: 0;
 
             .station-name {
                 color: var(--slate-light);
-                font-size: clamp(14px, 1.1vw, 17px);
+                font-size: clamp(13px, 1vw, 16px);
                 font-weight: 800;
                 font-family: 'JetBrains Mono', monospace;
-                letter-spacing: 0.6px;
+                letter-spacing: 0.5px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -82,10 +82,10 @@
 
             .station-ip {
                 color: var(--slate-muted);
-                font-size: clamp(11px, 0.85vw, 13px);
+                font-size: clamp(10px, 0.8vw, 12px);
                 font-weight: 700;
                 font-family: 'JetBrains Mono', monospace;
-                letter-spacing: 0.4px;
+                letter-spacing: 0.3px;
                 line-height: 1;
             }
         }
@@ -93,15 +93,78 @@
         .station-header-right {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             flex-shrink: 0;
+            /* סעיף 7: כפתור One-Click REC / IDLE */
+            .one-click-rec-btn {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                font-weight: 800;
+                cursor: pointer;
+                background: var(--bg-input);
+                border: 1px solid var(--border-subtle);
+                color: var(--slate-muted);
+                transition: all 0.18s ease;
+
+                .rec-indicator-dot {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    background-color: var(--slate-dark);
+                    flex-shrink: 0;
+                }
+
+                &.is-idle:hover {
+                    background: var(--c2-green-tint);
+                    border-color: var(--c2-green);
+                    color: var(--c2-green-light);
+
+                    .rec-indicator-dot {
+                        background-color: var(--c2-green);
+                        box-shadow: 0 0 6px var(--c2-green);
+                    }
+                }
+
+                &.is-rec {
+                    background: var(--c2-red-tint);
+                    border-color: var(--c2-red-border);
+                    color: var(--c2-red-light);
+
+                    .rec-indicator-dot {
+                        background-color: var(--c2-red);
+                        box-shadow: 0 0 6px var(--c2-red);
+                        animation: emblem-glow 1.4s infinite ease-in-out;
+                    }
+
+                    &:hover {
+                        background: rgba(239, 68, 68, 0.28);
+                        border-color: var(--c2-red);
+                        color: #fff;
+                    }
+                }
+
+                &.is-offline {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+
+                &.is-pending {
+                    opacity: 0.7;
+                    cursor: wait;
+                }
+            }
 
             .header-action-icon-btn {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                width: 30px;
-                height: 30px;
+                width: 28px;
+                height: 28px;
                 background: var(--bg-panel);
                 border: 1px solid var(--border-card);
                 border-radius: 6px;
@@ -111,8 +174,8 @@
                 transition: all 0.18s ease;
 
                 svg {
-                    width: 16px;
-                    height: 16px;
+                    width: 15px;
+                    height: 15px;
                 }
 
                 &:hover {
@@ -149,6 +212,26 @@
             font-family: 'JetBrains Mono', monospace;
             font-weight: 700;
             letter-spacing: 1px;
+        }
+        /* סעיף 8: שכבת חיווי מינימליסטית על גבי הווידאו */
+        .tactical-override-tag {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border: 1px solid var(--c2-cyan-border);
+            color: var(--c2-cyan-light);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8.5px;
+            font-weight: 800;
+            padding: 2px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.4px;
+            z-index: 5;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
         }
 
         .hover-action-bar {
@@ -208,26 +291,70 @@
             }
         }
     }
-
-    .health-bar-track {
+    /* סעיף 6: מבנה תחתון המאכלס את התראת ה-Drops ופס הבריאות */
+    .card-minimal-footer {
+        display: flex;
+        flex-direction: column;
         width: 100%;
-        height: 4px;
-        background: var(--slate-line);
+        background: var(--bg-dark-well);
 
-        .health-bar-fill {
-            height: 100%;
-            transition: width 0.3s ease;
+        .dropped-frames-notice {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 5px;
+            padding: 3px 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.3px;
 
-            &.good {
-                background: var(--c2-green);
+            .drop-indicator-dot {
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
             }
 
-            &.warn {
-                background: var(--c2-yellow);
+            &.warning {
+                color: var(--c2-yellow-light);
+                background: var(--c2-yellow-tint);
+
+                .drop-indicator-dot {
+                    background-color: var(--c2-yellow);
+                }
             }
 
-            &.crit {
-                background: var(--c2-red);
+            &.critical {
+                color: var(--c2-red-light);
+                background: var(--c2-red-tint);
+
+                .drop-indicator-dot {
+                    background-color: var(--c2-red);
+                    box-shadow: 0 0 6px var(--c2-red);
+                }
+            }
+        }
+
+        .health-bar-track {
+            width: 100%;
+            height: 4px;
+            background: var(--slate-line);
+
+            .health-bar-fill {
+                height: 100%;
+                transition: width 0.3s ease;
+
+                &.good {
+                    background: var(--c2-green);
+                }
+
+                &.warn {
+                    background: var(--c2-yellow);
+                }
+
+                &.crit {
+                    background: var(--c2-red);
+                }
             }
         }
     }
@@ -236,31 +363,40 @@
 @media (min-width: 2560px) {
     .station-tactical-card {
         .card-minimal-header {
-            padding: 14px 18px;
+            padding: 12px 16px;
 
             .station-brand {
                 .station-name {
-                    font-size: 19px;
+                    font-size: 18px;
                 }
 
                 .station-ip {
-                    font-size: 14px;
+                    font-size: 13px;
                 }
             }
 
-            .station-header-right .header-action-icon-btn {
-                width: 36px;
-                height: 36px;
+            .station-header-right {
+                .one-click-rec-btn {
+                    font-size: 11.5px;
+                    padding: 5px 10px;
+                }
 
-                svg {
-                    width: 19px;
-                    height: 19px;
+                .header-action-icon-btn {
+                    width: 32px;
+                    height: 32px;
+
+                    svg {
+                        width: 17px;
+                        height: 17px;
+                    }
                 }
             }
         }
 
-        .health-bar-track {
-            height: 6px;
+        .card-minimal-footer {
+            .health-bar-track {
+                height: 5px;
+            }
         }
     }
 }
