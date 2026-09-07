@@ -142,8 +142,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         };
                         audioCapture.Start();
 
-                        await Task.Delay(100, localToken);
-
                         DateTime calibratedTime = DateTime.UtcNow + _serverUtcOffset;
                         string destinationTarget;
 
@@ -159,7 +157,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             Directory.CreateDirectory(bufferDir);
 
                             string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
-                            destinationTarget = Path.Combine(bufferDir, $"{safeMachineName}_{calibratedTime:yyyyMMdd_HHmmss}.flv");
+                            destinationTarget = Path.Combine(bufferDir, $"{safeMachineName}_{calibratedTime:yyyyMMdd_HHmmss}Z.flv");
                             Logger.Warn($"[WorkerEngine] Operating in Isolated Buffer Mode -> {destinationTarget}");
                         }
                         else
@@ -188,6 +186,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                         var audioHandshakeTask = ffmpegManager.CompleteAudioHandshakeAsync(localToken);
 
+                        // שחרור פריים התחלתי כדי לאפשר ל-FFmpeg לפתוח את ה-TCP Socket של השמע
                         byte[] initialFrame = new byte[screenCapture.Width * screenCapture.Height * 4];
                         _ = Task.Run(() => ffmpegManager.WriteVideoFrame(initialFrame));
 
@@ -196,6 +195,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             _isStreamingRequested = false;
                             continue;
                         }
+
+                        // נקודת אפס אחידה ומדויקת לווידאו ולאודיו יחדיו
+                        long sessionStartTicks = Stopwatch.GetTimestamp();
+                        audioStartTicks = sessionStartTicks;
+                        lastRealAudioTicks = sessionStartTicks;
 
                         isSessionActive = true;
                         isCaptureActive = true;
@@ -224,6 +228,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             }
                         });
 
+                        // מנגנון הזרקת שקט (Silence Injection Pacer): שומר על שעון וזמן שמע מסונכרן לזמן האמיתי
                         var audioPacerTask = Task.Run(() =>
                         {
                             while (isSessionActive && !localToken.IsCancellationRequested)
@@ -231,37 +236,36 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 if (audioStartTicks > 0)
                                 {
                                     double elapsedSec = Stopwatch.GetElapsedTime(audioStartTicks).TotalSeconds;
-                                    long expectedBytes = (long)(elapsedSec * 384000);
+                                    long expectedBytes = (long)(elapsedSec * 384000); // 48000 * 2 * 4 bytes
                                     expectedBytes -= (expectedBytes % 8);
 
                                     long currentBytes = Interlocked.Read(ref totalAudioBytes);
                                     long timeSinceLastAudioMs = (long)Stopwatch.GetElapsedTime(Interlocked.Read(ref lastRealAudioTicks)).TotalMilliseconds;
 
-                                    if (expectedBytes > currentBytes && timeSinceLastAudioMs > 150)
+                                    if (expectedBytes > currentBytes && timeSinceLastAudioMs > 100)
                                     {
                                         long missingBytes = expectedBytes - currentBytes;
-                                        if (missingBytes > 0 && missingBytes <= 384000)
+                                        // מזריקים שקט במנות של עד 100ms בכל איטרציה למניעת הצפת השקע
+                                        long bytesToSend = Math.Min(missingBytes, 38400);
+                                        bytesToSend -= (bytesToSend % 8);
+
+                                        if (bytesToSend > 0)
                                         {
-                                            byte[] silence = new byte[missingBytes];
+                                            byte[] silence = new byte[bytesToSend];
                                             ffmpegManager.WriteAudioData(silence);
-                                            Interlocked.Add(ref totalAudioBytes, missingBytes);
-                                            _networkTelemetry.TrackMediaBytes(missingBytes);
+                                            Interlocked.Add(ref totalAudioBytes, bytesToSend);
+                                            _networkTelemetry.TrackMediaBytes(bytesToSend);
                                         }
                                     }
                                 }
-                                Thread.Sleep(50);
+                                Thread.Sleep(20);
                             }
                         });
 
                         byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
                         double targetFrameTimeMs = 1000.0 / _baselineFps;
 
-                        audioStartTicks = Stopwatch.GetTimestamp();
-                        lastRealAudioTicks = audioStartTicks;
-
-                        long sessionStartTicks = Stopwatch.GetTimestamp();
-                        long framesProcessed = 0;
-
+                        long framesProcessed = 1; // קוזז כנגד initialFrame
                         int actualFpsCount = 0;
                         int duplicatedFramesCount = 0;
                         int consecutiveChokeSeconds = 0;
@@ -289,20 +293,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                     }
 #endif
 
-                                    int actualFramesToPush = framesToPush;
+                                    // מנגנון ה-Pacing: דוחפים ל-FFmpeg עד 3 פריימים ברצף לשמירה על ציר זמן רציף
+                                    int framesToActuallySend = Math.Min(framesToPush, 3);
 
-                                    if (framesToPush > 1 && framesToPush <= 3)
-                                    {
-                                        actualFramesToPush = 1;
-                                    }
-                                    else if (framesToPush > 3)
-                                    {
-                                        actualFramesToPush = 1;
-                                        framesProcessed += (framesToPush - 1);
-                                        duplicatedFramesCount += (framesToPush - 1);
-                                    }
-
-                                    for (int i = 0; i < actualFramesToPush; i++)
+                                    for (int i = 0; i < framesToActuallySend; i++)
                                     {
                                         if (!ffmpegManager.WriteVideoFrame(renderBuffer))
                                         {
@@ -316,10 +310,17 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         }
 
                                         _networkTelemetry.TrackMediaBytes(renderBuffer.Length);
-
                                         framesProcessed++;
                                         actualFpsCount++;
                                         if (i > 0) duplicatedFramesCount++;
+                                    }
+
+                                    // אם חל פיגור חמור מ-3 פריימים, מקדמים את המונה כדי שציר הזמן לא ישתבש מול האודיו
+                                    if (framesToPush > framesToActuallySend)
+                                    {
+                                        int dropped = framesToPush - framesToActuallySend;
+                                        framesProcessed += dropped;
+                                        duplicatedFramesCount += dropped;
                                     }
                                 }
                             }
@@ -330,7 +331,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             {
                                 int totalPushed = actualFpsCount;
                                 int dropped = duplicatedFramesCount;
-                                int realFps = totalPushed - dropped;
+                                int realFps = Math.Max(0, totalPushed - dropped);
 
                                 actualFpsCount = 0;
                                 duplicatedFramesCount = 0;
@@ -352,10 +353,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                             Logger.Warn($"[AUTO-HEAL] Downscaling capture rate to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
                                             consecutiveChokeSeconds = 0;
                                         }
-                                        else
-                                        {
-                                            consecutiveChokeSeconds = 0;
-                                        }
                                     }
                                 }
                                 else if (dropped <= 3)
@@ -369,10 +366,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         {
                                             SetQosTier(_currentQosTier + 1);
                                             Logger.Info($"[AUTO-HEAL] Pipeline recovered. Upscaling capture rate to {_internalCaptureFps}FPS (Tier {_currentQosTier}).");
-                                            consecutiveStableSeconds = 0;
-                                        }
-                                        else
-                                        {
                                             consecutiveStableSeconds = 0;
                                         }
                                     }
@@ -434,6 +427,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             {
                 try
                 {
+                    // תמיכה ב-NamedPipe ב-Windows ו-Linux (ב-Linux ה-CLR משתמש ב-Unix Domain Sockets)
                     using var client = new NamedPipeClientStream(".", "ITB_Agent_IPC", PipeDirection.InOut, PipeOptions.Asynchronous);
                     await client.ConnectAsync(3000, cts.Token);
 
@@ -459,7 +453,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                     }
                                     else if (cmd.Equals("SetCaptureFps", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        // שינוי קצב לכידה ללא ריסטארט של FFmpeg
                                         if (parts.Length > 1 && int.TryParse(parts[1], out int captureFps) && captureFps >= 10 && captureFps <= 120)
                                         {
                                             _internalCaptureFps = Math.Min(captureFps, _baselineFps);

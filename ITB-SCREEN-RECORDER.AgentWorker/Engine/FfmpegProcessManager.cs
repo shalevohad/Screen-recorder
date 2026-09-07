@@ -19,7 +19,8 @@ namespace ITBRecorderAgent.Engine
         private TcpListener? _tcpListener;
         private Socket? _audioSocket;
         private readonly AppConfig _config;
-        private readonly object _writeLock = new object();
+        private readonly object _videoLock = new object();
+        private readonly object _audioLock = new object();
         private bool _isDisposed = false;
 
         public bool IsRunning
@@ -56,6 +57,7 @@ namespace ITBRecorderAgent.Engine
         {
             try
             {
+                // תמיכה בנתיבי קבצים חוצי-פלטפורמות (Windows C:\ ו-Linux /var/...)
                 if (destinationUrl.Contains(":\\") || destinationUrl.StartsWith("/"))
                 {
                     string? dir = Path.GetDirectoryName(destinationUrl);
@@ -184,11 +186,15 @@ namespace ITBRecorderAgent.Engine
             int keyintMin = effectiveFps * 2;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
-            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+            // 1. קלט וידאו: תור פנימי 1024 למניעת חסימות זמן
+            ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
+
+            // 2. קלט שמע דרך Loopback TCP: תור פנימי 1024
+            ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
+            // 3. קידוד וידאו VBR מבוסס מקודד חומרה/תוכנה עם Latency אפסי
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
                 ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
@@ -202,11 +208,16 @@ namespace ITBRecorderAgent.Engine
                 ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -video_track_timescale 90000 -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
+            // 4. כפיית קצב פריימים יציב לחלוטין (CFR) לקובץ
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
 
+            // 5. סנכרון שעון שמע לזמן־אמת ונעילה ל-PTS 0 בעזרת aresample (קריטי לסנכרון שמע/וידאו)
+            ffmpegArgs.Append($"-af \"aresample=async=1000:min_hard_comp=0.100000:first_pts=0\" ");
             ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} ");
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
-            ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
+
+            // 6. ביטול באפר השילוב של 5 שניות: max_interleave_delta מוגדר ל-100ms
+            ffmpegArgs.Append($"-max_interleave_delta 100000 -flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
 
             return ffmpegArgs.ToString();
         }
@@ -217,7 +228,7 @@ namespace ITBRecorderAgent.Engine
 
             try
             {
-                lock (_writeLock)
+                lock (_videoLock)
                 {
                     _videoStdinStream.Write(frameData, 0, frameData.Length);
                 }
@@ -235,9 +246,12 @@ namespace ITBRecorderAgent.Engine
 
             try
             {
-                if (_audioSocket.Connected)
+                lock (_audioLock)
                 {
-                    _audioSocket.Send(audioData, 0, audioData.Length, SocketFlags.None);
+                    if (_audioSocket.Connected)
+                    {
+                        _audioSocket.Send(audioData, 0, audioData.Length, SocketFlags.None);
+                    }
                 }
             }
             catch
@@ -252,15 +266,21 @@ namespace ITBRecorderAgent.Engine
 
             try
             {
-                _audioSocket?.Close();
-                _audioSocket?.Dispose();
-                _audioSocket = null;
+                lock (_audioLock)
+                {
+                    _audioSocket?.Close();
+                    _audioSocket?.Dispose();
+                    _audioSocket = null;
+                }
 
                 _tcpListener?.Stop();
                 _tcpListener = null;
 
-                _videoStdinStream?.Close();
-                _videoStdinStream = null;
+                lock (_videoLock)
+                {
+                    _videoStdinStream?.Close();
+                    _videoStdinStream = null;
+                }
 
                 if (_ffmpegProcess != null && !_ffmpegProcess.HasExited)
                 {
