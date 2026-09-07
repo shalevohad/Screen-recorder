@@ -10,17 +10,31 @@ export default function CommandCenterHeader({
     isSettingsOpen = false,
     onOpenSettings,
     isFaultFilterActive = false,
-    onToggleFaultFilter
+    onToggleFaultFilter,
+    systemConfig
 }) {
     const totalCount = stations.length;
 
-    // חישוב מדדים: התראות נספרות אך ורק עבור עמדות אונליין עם נפילת פריימים
+    // חילוץ אזור הזמן והשפה מתוך ה-SystemConfig של השרת
+    const resolvedTimezone = useMemo(() => {
+        return systemConfig?.displayTimezone
+            || systemConfig?.DisplayTimezone
+            || systemConfig?.mediaMtx?.timezone
+            || serverTelemetry?.timezone
+            || 'UTC';
+    }, [systemConfig, serverTelemetry]);
+
+    const resolvedLocale = useMemo(() => {
+        return systemConfig?.displayLocale
+            || systemConfig?.DisplayLocale
+            || 'en-US';
+    }, [systemConfig]);
+
     const agentMetrics = useMemo(() => {
         const onlineStations = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2);
         const onlineCount = onlineStations.length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
 
-        // עמדה Offline איננה תקלה מבצעית! תקלה = עמדה פעילה עם מעל 5 dropped frames
         const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
         const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
 
@@ -63,7 +77,11 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-clock-section">
-                    <ServerClock uptimeSeconds={serverTelemetry?.uptimeSeconds} />
+                    <ServerClock
+                        uptimeSeconds={serverTelemetry?.uptimeSeconds}
+                        timezone={resolvedTimezone}
+                        locale={resolvedLocale}
+                    />
                 </div>
 
                 <div className="header-actions-group">
@@ -96,12 +114,10 @@ export default function CommandCenterHeader({
                                 CONNECTED AGENTS
                             </div>
                             <div className="data-values">
-                                {/* אם אופליין לא מוסתר - מציג את כל העמדות המנוטרות (1). אם מוסתר - מציג פעילים */}
                                 <span className="count-active">
                                     {hideOffline ? activeWorkerCount : totalCount}
                                 </span>
 
-                                {/* תג HIDDEN ללא מינוס - מוצג אך ורק כשאופליין באמת מוסתר */}
                                 {hideOffline && offlineCount > 0 && (
                                     <span className="count-filtered" title={`${offlineCount} offline stations hidden from view`}>
                                         [{offlineCount} HIDDEN]
