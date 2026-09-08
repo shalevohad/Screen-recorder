@@ -38,6 +38,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         {
             using var client = CreateClient(apiPort);
             DateTime deadline = DateTime.UtcNow + timeout;
+            string lastError = "None";
+
+            _logger.LogInformation("[MediaMTX API] Probing API readiness at 127.0.0.1:{Port} (Timeout: {Timeout}s)...", apiPort, timeout.TotalSeconds);
 
             while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
             {
@@ -46,16 +49,22 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     using var response = await client.GetAsync("/v3/config/global/get", cancellationToken).ConfigureAwait(false);
                     if (response.IsSuccessStatusCode)
                     {
+                        _logger.LogInformation("[MediaMTX API] Connection established. API is READY and listening on port {Port}.", apiPort);
                         return true;
                     }
+
+                    lastError = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
                 }
-                catch
+                catch (Exception ex)
                 {
+                    lastError = ex.Message;
                 }
 
                 await Task.Delay(500, cancellationToken).ConfigureAwait(false);
             }
 
+            _logger.LogError("[MediaMTX API] CRITICAL: API failed to respond within {Timeout}s at port {Port}. Last error: {LastError}",
+                timeout.TotalSeconds, apiPort, lastError);
             return false;
         }
 
@@ -74,24 +83,6 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return await PatchAsync(apiPort, "/v3/config/pathdefaults/patch", payload, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task<bool> PatchPathConfigAsync(int apiPort, string pathName, string recordPath, string recordFormat, string recordSegmentDuration, string recordDeleteAfter, CancellationToken cancellationToken)
-        {
-            string encodedName = Uri.EscapeDataString(pathName);
-            await EnsurePathEntryExistsAsync(apiPort, encodedName, cancellationToken).ConfigureAwait(false);
-
-            var payload = new Dictionary<string, object>
-            {
-                ["record"] = true,
-                ["recordPath"] = recordPath,
-                ["recordFormat"] = recordFormat,
-                ["recordPartDuration"] = "1s",
-                ["recordSegmentDuration"] = recordSegmentDuration,
-                ["recordDeleteAfter"] = recordDeleteAfter,
-            };
-
-            return await PatchAsync(apiPort, $"/v3/config/paths/patch/{encodedName}", payload, cancellationToken).ConfigureAwait(false);
-        }
-
         public async Task<IReadOnlyList<string>> GetActivePathNamesAsync(int apiPort, CancellationToken cancellationToken)
         {
             using var client = CreateClient(apiPort);
@@ -100,16 +91,21 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 using var response = await client.GetAsync("/v3/paths/list", cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
+                    string err = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    _logger.LogWarning("[MediaMTX API] GET /v3/paths/list returned {Status}: {Body}", response.StatusCode, err);
                     return Array.Empty<string>();
                 }
 
                 var body = await response.Content.ReadFromJsonAsync<MediaMtxPathsListResponse>(cancellationToken: cancellationToken).ConfigureAwait(false);
-                return body?.Items?.Where(i => i.Ready).Select(i => i.Name).Where(n => !string.IsNullOrEmpty(n)).ToList()
-                       ?? (IReadOnlyList<string>)Array.Empty<string>();
+                var active = body?.Items?.Where(i => i.Ready).Select(i => i.Name).Where(n => !string.IsNullOrEmpty(n)).ToList()
+                             ?? new List<string>();
+
+                _logger.LogInformation("[MediaMTX API] Retrieved {Count} active streams: [{Streams}]", active.Count, string.Join(", ", active));
+                return active;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("[MediaMTX API] Failed to list active paths: {Message}", ex.Message);
+                _logger.LogError(ex, "[MediaMTX API] Failed to list active paths: {Message}", ex.Message);
                 return Array.Empty<string>();
             }
         }
@@ -117,13 +113,22 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         public async Task<bool> RotatePathRecordingAsync(int apiPort, string pathName, CancellationToken cancellationToken)
         {
             string encodedName = Uri.EscapeDataString(pathName);
+            _logger.LogInformation("[MediaMTX API] Forcing recording rotation on stream: '{Path}'", pathName);
+
             await EnsurePathEntryExistsAsync(apiPort, encodedName, cancellationToken).ConfigureAwait(false);
 
             string route = $"/v3/config/paths/patch/{encodedName}";
-
             bool offOk = await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = false }, cancellationToken).ConfigureAwait(false);
             bool onOk = await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = true }, cancellationToken).ConfigureAwait(false);
-            return offOk && onOk;
+
+            if (offOk && onOk)
+            {
+                _logger.LogInformation("[MediaMTX API] Stream '{Path}' segment rotated successfully.", pathName);
+                return true;
+            }
+
+            _logger.LogError("[MediaMTX API] Failed to rotate recording segment for stream '{Path}'. OffOk={OffOk}, OnOk={OnOk}", pathName, offOk, onOk);
+            return false;
         }
 
         private async Task EnsurePathEntryExistsAsync(int apiPort, string encodedName, CancellationToken cancellationToken)
@@ -132,10 +137,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             try
             {
                 using var getResponse = await client.GetAsync($"/v3/config/paths/get/{encodedName}", cancellationToken).ConfigureAwait(false);
-                if (getResponse.IsSuccessStatusCode)
-                {
-                    return;
-                }
+                if (getResponse.IsSuccessStatusCode) return;
 
                 var addRequest = new HttpRequestMessage(HttpMethod.Post, $"/v3/config/paths/add/{encodedName}")
                 {
@@ -143,6 +145,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 };
 
                 using var addResponse = await client.SendAsync(addRequest, cancellationToken).ConfigureAwait(false);
+                string body = await addResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+                if (!addResponse.IsSuccessStatusCode && !body.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("[MediaMTX API] POST /v3/config/paths/add/{Path} failed with {StatusCode}: {Body}", encodedName, addResponse.StatusCode, body);
+                }
             }
             catch (Exception ex)
             {
@@ -153,6 +161,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         private async Task<bool> PatchAsync(int apiPort, string route, Dictionary<string, object> payload, CancellationToken cancellationToken)
         {
             using var client = CreateClient(apiPort);
+            string jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = false });
+
+            _logger.LogInformation("[MediaMTX API REQUEST] Sending PATCH to {Route} with Payload: {Payload}", route, jsonPayload);
+
             try
             {
                 var request = new HttpRequestMessage(HttpMethod.Patch, route)
@@ -161,18 +173,28 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 };
 
                 using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
                 if (!response.IsSuccessStatusCode)
                 {
-                    string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                    _logger.LogWarning("[MediaMTX API] PATCH {Route} failed with {StatusCode}: {Body}", route, response.StatusCode, body);
+                    _logger.LogError("[MediaMTX API REJECTED] PATCH {Route} failed! StatusCode: {StatusCode} (HTTP {CodeInt}). Error Details: {Body}",
+                        route, response.StatusCode, (int)response.StatusCode, responseBody);
                     return false;
                 }
 
+                _logger.LogInformation("[MediaMTX API SUCCESS] PATCH {Route} applied successfully (HTTP {StatusCode}). Response: {Body}",
+                    route, (int)response.StatusCode, string.IsNullOrWhiteSpace(responseBody) ? "OK (empty body)" : responseBody);
+
                 return true;
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "[MediaMTX API NETWORK ERROR] Connection refused or lost while calling PATCH {Route}: {Message}", route, ex.Message);
+                return false;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("[MediaMTX API] PATCH {Route} threw: {Message}", route, ex.Message);
+                _logger.LogError(ex, "[MediaMTX API EXCEPTION] Unexpected failure during PATCH {Route}: {Message}", route, ex.Message);
                 return false;
             }
         }

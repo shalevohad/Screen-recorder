@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using ITB_SCREEN_RECORDER.Core.Ipc;
@@ -73,6 +74,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         {
             DebugHelper.ApplyConsoleVisibility();
 
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+                    Thread.CurrentThread.Priority = ThreadPriority.Highest;
+                }
+            }
+            catch { }
+
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             CancellationToken localToken = linkedCts.Token;
 
@@ -121,6 +132,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     long audioStartTicks = 0;
                     byte[]? sharedLatestVideoFrame = null;
 
+                    // ערוץ בלתי-חוסם להעברת פריימים ל-FFmpeg (Buffer של 3 פריימים סופג A/V Jitter לחלוטין)
+                    var videoChannel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(3)
+                    {
+                        FullMode = BoundedChannelFullMode.DropOldest,
+                        SingleWriter = true,
+                        SingleReader = true
+                    });
+
                     try
                     {
                         screenCapture = ScreenCaptureFactory.Create();
@@ -131,7 +150,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         audioCapture.Start();
 
                         _activeAudioCapture = audioCapture;
-
                         ffmpegManager = new FfmpegProcessManager(_config);
 
                         audioCapture.AudioDataAvailable += (s, data) =>
@@ -160,7 +178,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             Directory.CreateDirectory(bufferDir);
 
                             string safeMachineName = Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"));
-                            destinationTarget = Path.Combine(bufferDir, $"{safeMachineName}_{calibratedTime:yyyyMMdd_HHmmss}Z.flv");
+                            string utcTimestamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss-ffffff");
+                            destinationTarget = Path.Combine(bufferDir, $"{safeMachineName}_{utcTimestamp}Z.mp4");
+
                             Logger.Warn($"[WorkerEngine] Operating in Isolated Buffer Mode -> {destinationTarget}");
                         }
                         else
@@ -205,6 +225,30 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         _isSessionActive = true;
                         isCaptureActive = true;
 
+                        // 1. Thread עצמאי לכתיבה ל-FFmpeg Pipe (אינו חוסם את לולאת הפריימים לעולם)
+                        var pipeWriterTask = Task.Run(async () =>
+                        {
+                            var reader = videoChannel.Reader;
+                            while (await reader.WaitToReadAsync(localToken).ConfigureAwait(false))
+                            {
+                                while (reader.TryRead(out var frame))
+                                {
+                                    if (!ffmpegManager.WriteVideoFrame(frame))
+                                    {
+                                        if (!_isOfflineModeActive)
+                                        {
+                                            Logger.Warn("[WorkerEngine] Output pipeline closed. Switching to isolated buffer mode.");
+                                            _isOfflineModeActive = true;
+                                            _requiresImmediateRestart = true;
+                                        }
+                                        return;
+                                    }
+                                    _networkTelemetry.TrackMediaBytes(frame.Length);
+                                }
+                            }
+                        });
+
+                        // 2. Thread לכידת מסך עצמאי
                         var captureWorkerTask = Task.Run(() =>
                         {
                             long lastCaptureTicks = Stopwatch.GetTimestamp();
@@ -229,29 +273,32 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             }
                         });
 
+                        // 3. Thread הזרקת שקט (רץ רק אם יש נתק אמיתי מעל 150ms מ-WASAPI)
                         var audioPacerTask = Task.Run(() =>
                         {
+                            const int bytesPerSec = 48000 * 2 * 4;
+                            byte[] silenceBuffer = new byte[19200];
+
                             while (_isSessionActive && !localToken.IsCancellationRequested)
                             {
                                 if (audioStartTicks > 0)
                                 {
                                     double elapsedSec = Stopwatch.GetElapsedTime(audioStartTicks).TotalSeconds;
-                                    long expectedBytes = (long)(elapsedSec * 384000);
+                                    long expectedBytes = (long)(elapsedSec * bytesPerSec);
                                     expectedBytes -= (expectedBytes % 8);
 
                                     long currentBytes = Interlocked.Read(ref _totalAudioBytes);
                                     long timeSinceLastAudioMs = (long)Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastRealAudioTicks)).TotalMilliseconds;
 
-                                    if (expectedBytes > currentBytes && timeSinceLastAudioMs > 100)
+                                    if (timeSinceLastAudioMs >= 150 && expectedBytes > currentBytes)
                                     {
                                         long missingBytes = expectedBytes - currentBytes;
-                                        long bytesToSend = Math.Min(missingBytes, 38400);
+                                        int bytesToSend = (int)Math.Min(missingBytes, silenceBuffer.Length);
                                         bytesToSend -= (bytesToSend % 8);
 
-                                        if (bytesToSend > 0)
+                                        if (bytesToSend > 0 && ffmpegManager != null && ffmpegManager.IsRunning)
                                         {
-                                            byte[] silence = new byte[bytesToSend];
-                                            ffmpegManager.WriteAudioData(silence);
+                                            ffmpegManager.WriteAudioData(silenceBuffer, 0, bytesToSend);
                                             Interlocked.Add(ref _totalAudioBytes, bytesToSend);
                                             _networkTelemetry.TrackMediaBytes(bytesToSend);
                                         }
@@ -261,15 +308,23 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                             }
                         });
 
-                        byte[] renderBuffer = new byte[screenCapture.Width * screenCapture.Height * 4];
-                        double targetFrameTimeMs = 1000.0 / _baselineFps;
+                        // 4. לולאת תזמון הווידאו הראשית (Pacer) - חופשית לחלוטין מ-I/O חוסם!
+                        int frameBytesSize = screenCapture.Width * screenCapture.Height * 4;
+                        byte[][] poolBuffers = new byte[3][]
+                        {
+                            new byte[frameBytesSize],
+                            new byte[frameBytesSize],
+                            new byte[frameBytesSize]
+                        };
+                        int poolIndex = 0;
 
+                        double targetFrameTimeMs = 1000.0 / _baselineFps;
                         long framesProcessed = 1;
-                        int actualFpsCount = 0;
-                        int duplicatedFramesCount = 0;
+                        int actualPushedCount = 0;
+                        int actualDroppedCount = 0;
+
                         int consecutiveChokeSeconds = 0;
                         int consecutiveStableSeconds = 0;
-
                         long fpsStopwatchTicks = sessionStartTicks;
 
                         while (!localToken.IsCancellationRequested && _isStreamingRequested && !_requiresImmediateRestart)
@@ -284,6 +339,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                                 if (frameToEncode != null)
                                 {
+                                    // שליפת Buffer מתוך ה-Pool להעתקה מיידית (0.2ms)
+                                    byte[] renderBuffer = poolBuffers[poolIndex % 3];
+                                    poolIndex++;
+
                                     Buffer.BlockCopy(frameToEncode, 0, renderBuffer, 0, frameToEncode.Length);
 #if WINDOWS
                                     if (OperatingSystem.IsWindows())
@@ -291,58 +350,48 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         MouseCursorOverlay.DrawMouseToFrame(renderBuffer, screenCapture.Width, screenCapture.Height);
                                     }
 #endif
-
-                                    int framesToActuallySend = Math.Min(framesToPush, 3);
-
-                                    for (int i = 0; i < framesToActuallySend; i++)
+                                    // כתיבה לערוץ בלתי-חוסם
+                                    bool written = videoChannel.Writer.TryWrite(renderBuffer);
+                                    if (written)
                                     {
-                                        if (!ffmpegManager.WriteVideoFrame(renderBuffer))
-                                        {
-                                            if (!_isOfflineModeActive)
-                                            {
-                                                Logger.Warn("[WorkerEngine] Output pipeline closed. Switching to isolated buffer mode.");
-                                                _isOfflineModeActive = true;
-                                                _requiresImmediateRestart = true;
-                                            }
-                                            break;
-                                        }
-
-                                        _networkTelemetry.TrackMediaBytes(renderBuffer.Length);
                                         framesProcessed++;
-                                        actualFpsCount++;
-                                        if (i > 0) duplicatedFramesCount++;
+                                        actualPushedCount++;
+                                    }
+                                    else
+                                    {
+                                        // המאגר מלא לחלוטין (חסימה אמיתית) - ספירת Drop אמיתי
+                                        framesProcessed++;
+                                        actualDroppedCount++;
                                     }
 
-                                    if (framesToPush > framesToActuallySend)
+                                    // אם הצטבר פיגור קיצוני עקב תקיעת מערכת, מדלגים עליו מיד
+                                    if (framesToPush > 2)
                                     {
-                                        int dropped = framesToPush - framesToActuallySend;
-                                        framesProcessed += dropped;
-                                        duplicatedFramesCount += dropped;
+                                        int skipped = framesToPush - 1;
+                                        framesProcessed += skipped;
+                                        actualDroppedCount += skipped;
                                     }
                                 }
                             }
 
                             if (_requiresImmediateRestart) break;
 
+                            // מדידת טלמטריה מדויקת בכל 1000ms
                             if (Stopwatch.GetElapsedTime(fpsStopwatchTicks).TotalMilliseconds >= 1000)
                             {
-                                int totalPushed = actualFpsCount;
-                                int dropped = duplicatedFramesCount;
-                                int realFps = Math.Max(0, totalPushed - dropped);
+                                _lastRealFps = actualPushedCount;
+                                _lastDroppedFrames = actualDroppedCount;
 
-                                actualFpsCount = 0;
-                                duplicatedFramesCount = 0;
+                                actualPushedCount = 0;
+                                actualDroppedCount = 0;
                                 fpsStopwatchTicks = Stopwatch.GetTimestamp();
 
-                                _lastRealFps = realFps;
-                                _lastDroppedFrames = dropped;
-
-                                if (dropped >= (_baselineFps / 2))
+                                if (_lastDroppedFrames >= (_baselineFps / 2))
                                 {
                                     consecutiveStableSeconds = 0;
                                     consecutiveChokeSeconds++;
 
-                                    if (consecutiveChokeSeconds >= 15)
+                                    if (consecutiveChokeSeconds >= 10)
                                     {
                                         if (_currentQosTier > 0)
                                         {
@@ -352,12 +401,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                         }
                                     }
                                 }
-                                else if (dropped <= 3)
+                                else if (_lastDroppedFrames <= 1)
                                 {
                                     consecutiveChokeSeconds = 0;
                                     consecutiveStableSeconds++;
 
-                                    if (consecutiveStableSeconds >= 20)
+                                    if (consecutiveStableSeconds >= 15)
                                     {
                                         if (_currentQosTier < 3)
                                         {
@@ -382,7 +431,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                                 if (msUntilNext <= 0) break;
                                 if (msUntilNext > 2) Thread.Sleep(1);
-                                else Thread.SpinWait(500);
+                                else Thread.SpinWait(200);
                             }
                         }
                     }
@@ -395,6 +444,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                         Logger.Info("[WorkerEngine] Tearing down pipeline resources...");
                         try
                         {
+                            videoChannel.Writer.TryComplete();
                             _isSessionActive = false;
                             isCaptureActive = false;
                             _activeAudioCapture = null;

@@ -3,6 +3,7 @@ using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Server.Features.Extractor;
 using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -44,6 +45,12 @@ namespace ITB_SCREEN_RECORDER.Server
                 return;
             }
 
+            // הגדרת תקרת Kestrel (מחושב אוטומטית לפי 300MB + 20MB)
+            builder.WebHost.ConfigureKestrel(serverOptions =>
+            {
+                serverOptions.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
+            });
+
             if (OperatingSystem.IsWindows())
             {
 #pragma warning disable CA1416
@@ -83,6 +90,12 @@ namespace ITB_SCREEN_RECORDER.Server
 
             builder.Services.AddSingleton(appConfig);
 
+            // תמיכה ב-FormReader עבור Multipart
+            builder.Services.Configure<FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = BufferLimits.MaxRequestSizeBytes;
+            });
+
             builder.Services.AddOptions<SystemConfig>()
                 .Bind(builder.Configuration.GetSection("SystemConfig"))
                 .ValidateDataAnnotations()
@@ -121,7 +134,7 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddHostedService<RecordingChunkScheduler>();
             builder.Services.AddHostedService<ServerTelemetryHostService>();
 
-            //Extractor feature services
+            // Extractor feature services
             builder.Services.AddExtractorFeature(builder.Configuration);
 
             var app = builder.Build();
