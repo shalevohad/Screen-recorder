@@ -1,5 +1,4 @@
 ﻿using System;
-using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -13,57 +12,41 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Controllers
     [Route("api/v1/extractor")]
     public class ExtractorController : ControllerBase
     {
-        private readonly IStorageScannerService _storageScanner;
         private readonly IExtractorService _extractorService;
+        private readonly IStorageScannerService _storageScanner;
         private readonly ILogger<ExtractorController> _logger;
 
         public ExtractorController(
-            IStorageScannerService storageScanner,
             IExtractorService extractorService,
+            IStorageScannerService storageScanner,
             ILogger<ExtractorController> logger)
         {
-            _storageScanner = storageScanner;
             _extractorService = extractorService;
+            _storageScanner = storageScanner;
             _logger = logger;
         }
 
-        /// <summary>
-        /// שליפת רשימת שמות התחנות שקיימות עבורן הקלטות בטווח המבוקש
-        /// </summary>
         [HttpGet("recorded-hosts")]
         public async Task<IActionResult> GetRecordedHosts([FromQuery] DateTime startUtc, [FromQuery] DateTime endUtc)
         {
-            if (startUtc >= endUtc)
-            {
-                return BadRequest("startUtc must be earlier than endUtc.");
-            }
-
-            var hosts = await _storageScanner.GetRecordedHostnamesAsync(startUtc, endUtc);
+            var hosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
             return Ok(hosts);
         }
 
-        /// <summary>
-        /// הפקת סיכום מקדים: מספר מקטעים, נפח מוערך וזיהוי פערי זמן (Gaps)
-        /// </summary>
         [HttpPost("preview")]
         public async Task<IActionResult> GetExtractionPreview([FromBody] ExtractionRequestDto request)
         {
             if (request.StartTimeUtc >= request.EndTimeUtc)
             {
-                return BadRequest("StartTimeUtc must be earlier than EndTimeUtc.");
+                return BadRequest(new { error = "StartTimeUtc must be earlier than EndTimeUtc." });
             }
 
-            if (request.Hostnames == null || request.Hostnames.Count == 0)
-            {
-                return BadRequest("At least one hostname must be specified.");
-            }
-
-            var preview = await _storageScanner.BuildPreviewAsync(request.Hostnames, request.StartTimeUtc, request.EndTimeUtc);
+            var preview = await _extractorService.GetPreviewAsync(request);
             return Ok(preview);
         }
 
         [HttpPost("export")]
-        [Produces("application/octet-stream")]
+        [Produces("application/x-tar")]
         public async Task ExportArchive([FromBody] ExtractionRequestDto request)
         {
             if (request.StartTimeUtc >= request.EndTimeUtc)
@@ -85,7 +68,6 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Controllers
             Response.ContentType = "application/x-tar";
             Response.Headers.Append("Content-Disposition", $"attachment; filename=\"{archiveFileName}\"");
             Response.Headers.Append("X-Content-Type-Options", "nosniff");
-            // 💡 Transfer-Encoding הוסר – Kestrel יטפל בהזרמה אוטומטית בצורה תקינה
 
             try
             {
@@ -94,11 +76,11 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Controllers
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Export stream cancelled by client.");
+                _logger.LogInformation("Archive export stream canceled by client.");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error while streaming TAR archive");
+                _logger.LogError(ex, "Unexpected error during TAR streaming for archive {FileName}", archiveFileName);
                 if (!Response.HasStarted)
                 {
                     Response.StatusCode = StatusCodes.Status500InternalServerError;

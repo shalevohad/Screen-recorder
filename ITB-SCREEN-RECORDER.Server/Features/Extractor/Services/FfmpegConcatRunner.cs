@@ -4,18 +4,12 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
 
 namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
 {
-    public interface IFfmpegConcatRunner
-    {
-        Task ExecuteStreamCopyAsync(string concatManifestContent, Stream destinationStream, CancellationToken ct);
-        Task ExtractSingleFrameAsync(string filePath, double offsetSeconds, Stream destinationStream, CancellationToken ct);
-    }
-
     public class FfmpegConcatRunner : IFfmpegConcatRunner
     {
         private readonly string _ffmpegPath;
@@ -25,35 +19,7 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
         {
             _logger = logger;
             _ffmpegPath = ResolveFfmpegBinary(options.Value.FfmpegPath);
-            _logger.LogInformation("Extractor FFmpeg runner initialized using binary: {Path}", _ffmpegPath);
-        }
-
-        private static string ResolveFfmpegBinary(string? configuredPath)
-        {
-            string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
-
-            // 1. אם הוגדר נתיב ייעודי ספציפי
-            if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
-            {
-                return configuredPath;
-            }
-
-            // 2. איתור בתיקיית ה-Bin המבודדת של ה-Feature בפלט הריצה
-            string featureBinPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", "Bin", binaryName);
-            if (File.Exists(featureBinPath))
-            {
-                return featureBinPath;
-            }
-
-            // 3. בדיקה ישירה בשורש ספריית הריצה
-            string rootAppPath = Path.Combine(AppContext.BaseDirectory, binaryName);
-            if (File.Exists(rootAppPath))
-            {
-                return rootAppPath;
-            }
-
-            // 4. Fallback ל-PATH של מערכת ההפעלה (שימושי עבור Ubuntu ב-GitHub Actions)
-            return binaryName;
+            _logger.LogInformation("Extractor initialized FFmpeg at: {Path}", _ffmpegPath);
         }
 
         public async Task ExecuteStreamCopyAsync(string concatManifestContent, Stream destinationStream, CancellationToken ct)
@@ -66,7 +32,6 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{Guid.NewGuid():N}.txt");
             await File.WriteAllTextAsync(tempManifestPath, concatManifestContent, new UTF8Encoding(false), ct);
 
-            // תיקון הדגלים להזרמת MP4 מקוטע (fMP4) ב-pipe:1 ללא שגיאות פרסר
             string arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
                                "-c copy -avoid_negative_ts make_zero " +
                                "-movflags frag_keyframe+empty_moov " +
@@ -108,8 +73,8 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
                 if (process.ExitCode != 0)
                 {
                     string stderrOutput = await stderrTask;
-                    _logger.LogError("FFmpeg concat failed with exit code {ExitCode}. Error: {Error}", process.ExitCode, stderrOutput);
-                    throw new InvalidOperationException($"FFmpeg process exited with code {process.ExitCode}: {stderrOutput}");
+                    _logger.LogError("FFmpeg failed with exit code {ExitCode}: {Error}", process.ExitCode, stderrOutput);
+                    throw new InvalidOperationException($"FFmpeg exited with code {process.ExitCode}: {stderrOutput}");
                 }
             }
             finally
@@ -121,38 +86,28 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
             }
         }
 
-        public async Task ExtractSingleFrameAsync(string filePath, double offsetSeconds, Stream destinationStream, CancellationToken ct)
+        private static string ResolveFfmpegBinary(string? configuredPath)
         {
-            string normalizedPath = filePath.Replace('\\', '/');
-            string arguments = $"-ss {offsetSeconds:F3} -i \"{normalizedPath}\" -vframes 1 -q:v 2 -f image2 pipe:1";
+            string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
 
-            var startInfo = new ProcessStartInfo
+            if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
             {
-                FileName = _ffmpegPath,
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                return configuredPath;
+            }
 
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-
-            using var registration = ct.Register(() =>
+            string featureBinPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", "Bin", binaryName);
+            if (File.Exists(featureBinPath))
             {
-                try
-                {
-                    if (!process.HasExited)
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                }
-                catch { }
-            });
+                return featureBinPath;
+            }
 
-            await process.StandardOutput.BaseStream.CopyToAsync(destinationStream, 16384, ct);
-            await process.WaitForExitAsync(ct);
+            string rootPath = Path.Combine(AppContext.BaseDirectory, binaryName);
+            if (File.Exists(rootPath))
+            {
+                return rootPath;
+            }
+
+            return binaryName;
         }
     }
 }

@@ -1,23 +1,17 @@
-﻿using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Formats.Tar;
 using System.IO;
-using System.Text;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
 
 namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
 {
-    public interface IExtractorService
-    {
-        Task StreamTarArchiveAsync(ExtractionRequestDto request, Stream destinationStream, CancellationToken ct);
-    }
-
     public class ExtractorService : IExtractorService
     {
         private readonly IStorageScannerService _storageScanner;
@@ -45,6 +39,51 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
             _concurrencyThrottle = new SemaphoreSlim(maxConcurrency, maxConcurrency);
         }
 
+        public async Task<ExtractionPreviewResponseDto> GetPreviewAsync(ExtractionRequestDto request)
+        {
+            var preview = new ExtractionPreviewResponseDto
+            {
+                TotalDuration = request.EndTimeUtc - request.StartTimeUtc
+            };
+
+            foreach (var hostname in request.Hostnames)
+            {
+                var chunks = await _storageScanner.GetChunksForStationAsync(hostname, request.StartTimeUtc, request.EndTimeUtc);
+                var gaps = new List<TimeGapDto>();
+
+                for (int i = 0; i < chunks.Count - 1; i++)
+                {
+                    var current = chunks[i];
+                    var next = chunks[i + 1];
+
+                    if (next.StartUtc - current.EndUtc > TimeSpan.FromSeconds(5))
+                    {
+                        gaps.Add(new TimeGapDto
+                        {
+                            ExpectedUtc = current.EndUtc,
+                            ActualNextStartUtc = next.StartUtc
+                        });
+                    }
+                }
+
+                long totalBytes = chunks.Sum(c => c.FileSizeBytes);
+                preview.Stations.Add(new StationCoverageDto
+                {
+                    Hostname = hostname,
+                    ChunkCount = chunks.Count,
+                    TotalSizeBytes = totalBytes,
+                    HasTimeGaps = gaps.Count > 0,
+                    Gaps = gaps
+                });
+
+                preview.TotalChunkCount += chunks.Count;
+                preview.EstimatedTotalSizeBytes += totalBytes;
+            }
+
+            preview.TotalHostCount = preview.Stations.Count;
+            return preview;
+        }
+
         public async Task StreamTarArchiveAsync(ExtractionRequestDto request, Stream destinationStream, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -56,10 +95,8 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
                 RangeEndUtc = request.EndTimeUtc
             };
 
-            // שימוש בפורמט Pax (POSIX.1-2001) - תאימות מלאה ל-Linux ול-Windows
             await using var tarWriter = new TarWriter(destinationStream, TarEntryFormat.Pax, leaveOpen: true);
 
-            // 1. עיבוד כל תחנה: חיתוך, איחוד וכתיבה ל-TAR
             foreach (var hostname in request.Hostnames)
             {
                 ct.ThrowIfCancellationRequested();
@@ -79,7 +116,6 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
                 {
                     string concatManifest = _storageScanner.BuildConcatManifest(chunks, request.StartTimeUtc, request.EndTimeUtc);
 
-                    // הזרמת ה-fMP4 לקובץ זמני ייעודי ללא DeleteOnClose למניעת נעילות
                     await using (var spoolStream = new FileStream(
                         tempSpoolFile,
                         FileMode.Create,
@@ -92,13 +128,12 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
 
                         if (spoolStream.Length == 0)
                         {
-                            _logger.LogWarning("Concatenated video stream for host {Host} is empty (0 bytes). Skipping entry.", hostname);
+                            _logger.LogWarning("Concatenated video stream for host {Host} is empty. Skipping entry.", hostname);
                             continue;
                         }
 
                         spoolStream.Position = 0;
 
-                        // כתיבת הרשומה ל-TAR (קריאת האורך מבוצעת ישירות מה-FileStream)
                         var entry = new PaxTarEntry(TarEntryType.RegularFile, videoEntryName)
                         {
                             DataStream = spoolStream
@@ -120,21 +155,13 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
                 {
                     _concurrencyThrottle.Release();
 
-                    try
+                    if (File.Exists(tempSpoolFile))
                     {
-                        if (File.Exists(tempSpoolFile))
-                        {
-                            File.Delete(tempSpoolFile);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to clean up temporary spool file {File}", tempSpoolFile);
+                        try { File.Delete(tempSpoolFile); } catch { }
                     }
                 }
             }
 
-            // 2. הזרקת session.json לשורש הארכיון
             byte[] manifestBytes = JsonSerializer.SerializeToUtf8Bytes(sessionManifest, JsonOptions);
             await using var manifestMemoryStream = new MemoryStream(manifestBytes);
 

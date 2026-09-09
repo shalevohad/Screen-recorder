@@ -46,7 +46,6 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Models
         public long FileSizeBytes { get; set; }
     }
 
-    // מבנה קובץ session.json המוזרק לשורש ארכיון ה-TAR לסנכרון עתידי
     public class SessionManifest
     {
         public string SessionId { get; set; } = Guid.NewGuid().ToString("N");

@@ -1,6 +1,5 @@
 ﻿using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor;
 using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Features;
@@ -133,9 +132,6 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
             builder.Services.AddHostedService<RecordingChunkScheduler>();
             builder.Services.AddHostedService<ServerTelemetryHostService>();
-
-            // Extractor feature services
-            builder.Services.AddExtractorFeature(builder.Configuration);
 
             var app = builder.Build();
 

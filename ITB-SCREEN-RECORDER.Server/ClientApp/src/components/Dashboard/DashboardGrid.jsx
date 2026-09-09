@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import StationThumbnail from '../Station/StationThumbnail';
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
 import FullscreenModal from '../Station/FullscreenModal';
+import DynamicIcon from '../UI/DynamicIcon';
+import RemoteWidgetHost from '../UI/RemoteWidgetHost';
 import './DashboardGrid.scss';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
@@ -25,6 +27,46 @@ export default function DashboardGrid({
 
     const [inspectedHostname, setInspectedHostname] = useState(null);
     const [fullscreenHostname, setFullscreenHostname] = useState(null);
+
+    // תמיכה בפיצ'רים דינמיים מבוססי Plugins (Extractor וכו')
+    const [availableFeatures, setAvailableFeatures] = useState([]);
+    const [openFeatureIds, setOpenFeatureIds] = useState(() => {
+        try {
+            const saved = localStorage.getItem('itb_dashboard_open_features');
+            return saved ? JSON.parse(saved) : [];
+        } catch {
+            return [];
+        }
+    });
+    const [focusedWidgetHost, setFocusedWidgetHost] = useState(null);
+
+    useEffect(() => {
+        fetch('/api/v1/features/active')
+            .then(res => res.ok ? res.json() : [])
+            .then(data => setAvailableFeatures(Array.isArray(data) ? data : []))
+            .catch(() => setAvailableFeatures([]));
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('itb_dashboard_open_features', JSON.stringify(openFeatureIds));
+    }, [openFeatureIds]);
+
+    const toggleFeature = (id) => {
+        setOpenFeatureIds(prev =>
+            prev.includes(id) ? prev.filter(fId => fId !== id) : [...prev, id]
+        );
+    };
+
+    const handleFeatureQuickExport = (hostname) => {
+        const extractorFeat = availableFeatures.find(f => f.id === 'extractor-slicer');
+        if (extractorFeat) {
+            setFocusedWidgetHost(hostname);
+            if (!openFeatureIds.includes(extractorFeat.id)) {
+                setOpenFeatureIds(prev => [...prev, extractorFeat.id]);
+            }
+        }
+        onQuickExport?.(hostname);
+    };
 
     const inspectedStation = useMemo(() => {
         return stations.find(s => s.hostname === inspectedHostname) || null;
@@ -152,14 +194,14 @@ export default function DashboardGrid({
     };
 
     const autoOptimalZoom = useMemo(() => {
-        const count = processedStations.length;
+        const count = processedStations.length + openFeatureIds.length;
         if (count === 0) return 3;
         if (count === 1) return 5;
         if (count === 2) return 4;
         if (count <= 6) return 3;
         if (count <= 12) return 2;
         return 1;
-    }, [processedStations.length]);
+    }, [processedStations.length, openFeatureIds.length]);
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
 
@@ -194,6 +236,8 @@ export default function DashboardGrid({
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
+
+    const activeFeaturesToRender = availableFeatures.filter(f => openFeatureIds.includes(f.id));
 
     return (
         <div className="dashboard-layout-wrapper" dir={direction}>
@@ -296,6 +340,27 @@ export default function DashboardGrid({
                             )}
                         </svg>
                     </button>
+
+                    {/* לחצני Features שזוהו דינמית מהשרת */}
+                    {availableFeatures.length > 0 && (
+                        <>
+                            <div className="dock-divider"></div>
+                            {availableFeatures.map((feat) => {
+                                const isOpen = openFeatureIds.includes(feat.id);
+                                return (
+                                    <button
+                                        key={feat.id}
+                                        className={`dock-icon-btn tactical-btn-feature ${isOpen ? 'is-engaged' : ''}`}
+                                        onClick={() => toggleFeature(feat.id)}
+                                        title={isOpen ? `Close ${feat.title}` : `Open ${feat.title}`}
+                                        style={isOpen ? { color: '#38bdf8', borderColor: '#38bdf8' } : {}}
+                                    >
+                                        <DynamicIcon name={feat.iconName} size={20} />
+                                    </button>
+                                );
+                            })}
+                        </>
+                    )}
                 </aside>
 
                 <main className="dashboard-main-area">
@@ -352,7 +417,7 @@ export default function DashboardGrid({
                         </div>
                     </div>
 
-                    {processedStations.length === 0 ? (
+                    {processedStations.length === 0 && activeFeaturesToRender.length === 0 ? (
                         <div className="stations-empty-state-glass">
                             <div className="connection-pulse-container">
                                 <div className="pulse-dot-amber"></div>
@@ -376,6 +441,24 @@ export default function DashboardGrid({
                             className="stations-grid-wrapper tight-grid"
                             style={{ '--station-card-width': cardWidthMap[effectiveZoom] }}
                         >
+                            {/* רינדור ווידג'טים של תוספים ישירות לגריד התחנות */}
+                            {activeFeaturesToRender.map((feat) => (
+                                <div
+                                    key={feat.id}
+                                    className="station-wrapper-cell feature-tile-slot"
+                                    style={{ minHeight: '380px', position: 'relative' }}
+                                >
+                                    <RemoteWidgetHost
+                                        scriptUrl={feat.scriptUrl}
+                                        widgetProps={{
+                                            activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
+                                            defaultWindowHours: 24,
+                                            onClose: () => toggleFeature(feat.id)
+                                        }}
+                                    />
+                                </div>
+                            ))}
+
                             {processedStations.map((station) => (
                                 <div key={station.hostname} className="station-wrapper-cell">
                                     <StationThumbnail
@@ -390,13 +473,30 @@ export default function DashboardGrid({
                                         onOpenFullscreen={() => setFullscreenHostname(station.hostname)}
                                         onQuickBookmark={onQuickBookmark}
                                         onQuickPlayback={onQuickPlayback}
-                                        onQuickExport={onQuickExport}
+                                        onQuickExport={handleFeatureQuickExport}
                                     />
                                 </div>
                             ))}
                         </div>
                     ) : (
                         <div className="stations-dense-container">
+                            {activeFeaturesToRender.length > 0 && (
+                                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                                    {activeFeaturesToRender.map((feat) => (
+                                        <div key={feat.id} style={{ flex: '1 1 450px', minHeight: '380px' }}>
+                                            <RemoteWidgetHost
+                                                scriptUrl={feat.scriptUrl}
+                                                widgetProps={{
+                                                    activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
+                                                    defaultWindowHours: 24,
+                                                    onClose: () => toggleFeature(feat.id)
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             <table className="stations-dense-table">
                                 <thead>
                                     <tr>
@@ -539,7 +639,7 @@ export default function DashboardGrid({
                 onToggleStream={onToggleStream}
                 onQuickBookmark={onQuickBookmark}
                 onQuickPlayback={onQuickPlayback}
-                onQuickExport={onQuickExport}
+                onQuickExport={handleFeatureQuickExport}
                 onToggleFullscreen={() => {
                     setFullscreenHostname(inspectedHostname);
                     setInspectedHostname(null);
@@ -556,7 +656,7 @@ export default function DashboardGrid({
                     onToggleStream={onToggleStream}
                     onQuickBookmark={onQuickBookmark}
                     onQuickPlayback={onQuickPlayback}
-                    onQuickExport={onQuickExport}
+                    onQuickExport={handleFeatureQuickExport}
                     onOpenInspector={() => {
                         setInspectedHostname(fullscreenHostname);
                         setFullscreenHostname(null);
