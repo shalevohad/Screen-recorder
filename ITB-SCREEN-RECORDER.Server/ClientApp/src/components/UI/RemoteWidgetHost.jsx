@@ -22,11 +22,12 @@ export default function RemoteWidgetHost({
     const [loadState, setLoadState] = useState({ loading: true, error: null });
     const [currentUrl, setCurrentUrl] = useState(scriptUrl);
 
-    // איפוס ה-State ברינדור במקרה שה-URL משתנה (דפוס מומלץ רשמית על ידי React)
     if (currentUrl !== scriptUrl) {
         setCurrentUrl(scriptUrl);
         setLoadState({ loading: true, error: null });
     }
+
+    const serializedProps = JSON.stringify(widgetProps);
 
     useEffect(() => {
         if (!scriptUrl) return;
@@ -34,7 +35,6 @@ export default function RemoteWidgetHost({
         let isMounted = true;
         let cleanupFn = null;
 
-        // הזרקה דינמית של קובץ ה-CSS של המודול
         const linkId = 'extractor-widget-style';
         if (!document.getElementById(linkId)) {
             const link = document.createElement('link');
@@ -44,13 +44,15 @@ export default function RemoteWidgetHost({
             document.head.appendChild(link);
         }
 
+        const parsedProps = JSON.parse(serializedProps);
+
         import(/* @vite-ignore */ scriptUrl)
             .then((mod) => {
                 if (!isMounted) return;
                 setLoadState({ loading: false, error: null });
 
                 if (typeof mod.mount === 'function' && containerRef.current) {
-                    cleanupFn = mod.mount(containerRef.current, widgetProps);
+                    cleanupFn = mod.mount(containerRef.current, parsedProps);
                 } else {
                     throw new Error('Module does not export a mount() function.');
                 }
@@ -67,10 +69,14 @@ export default function RemoteWidgetHost({
         return () => {
             isMounted = false;
             if (typeof cleanupFn === 'function') {
-                try { cleanupFn(); } catch { }
+                try {
+                    cleanupFn();
+                } catch (err) {
+                    console.error('[RemoteWidgetHost] Cleanup error:', err);
+                }
             }
         };
-    }, [scriptUrl, JSON.stringify(widgetProps)]);
+    }, [scriptUrl, serializedProps]);
 
     if (loadState.error) {
         return (
