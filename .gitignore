@@ -39,3 +39,4 @@ mediamtx.exe
 /ITB-SCREEN-RECORDER.AgentWorker/Properties/PublishProfiles/FolderProfile.pubxml
 /ITB-SCREEN-RECORDER.AgentService/Properties/PublishProfiles/FolderProfile.pubxml
 /ITB-SCREEN-RECORDER.Server/Features/Extractor/wwwroot
+/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/wwwroot
