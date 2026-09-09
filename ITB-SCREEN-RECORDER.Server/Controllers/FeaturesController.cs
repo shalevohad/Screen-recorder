@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
-using ITB_SCREEN_RECORDER.Server.Core.Plugins;
+using ITB_SCREEN_RECORDER.Core.Plugins;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {

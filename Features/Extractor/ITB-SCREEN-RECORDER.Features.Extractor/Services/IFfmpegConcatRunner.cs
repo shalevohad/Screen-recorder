@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
+namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     public interface IFfmpegConcatRunner
     {

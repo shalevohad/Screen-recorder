@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 18
-VisualStudioVersion = 18.9.12112.369
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37516.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITB-SCREEN-RECORDER.Core", "ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj", "{441F18A3-6412-4A88-880F-374768D70EB0}"
 EndProject
@@ -14,6 +14,12 @@ EndProject
 Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "ITB-SCREEN-RECORDER.Installer", "ITB-SCREEN-RECORDER.Installer\ITB-SCREEN-RECORDER.Installer.wixproj", "{EA3DD20A-8AE6-82BA-42DA-4981A897409D}"
 EndProject
 Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "ITB-SCREEN-RECORDER.Server.Installer", "ITB-SCREEN-RECORDER.Server.Installer\ITB-SCREEN-RECORDER.Server.Installer.wixproj", "{0DFF8FD8-42F5-991B-FA3A-B05E14D46DC5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Features", "Features", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Extractor", "Extractor", "{F498A96B-2E6D-4320-A3AD-9548224C6470}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ITB-SCREEN-RECORDER.Features.Extractor", "Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj", "{083A141F-0A57-BBBC-6316-684CB0D4B41A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -71,9 +77,21 @@ Global
 		{0DFF8FD8-42F5-991B-FA3A-B05E14D46DC5}.Release|Any CPU.Build.0 = Release|x64
 		{0DFF8FD8-42F5-991B-FA3A-B05E14D46DC5}.Release|x64.ActiveCfg = Release|x64
 		{0DFF8FD8-42F5-991B-FA3A-B05E14D46DC5}.Release|x64.Build.0 = Release|x64
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Debug|x64.Build.0 = Debug|Any CPU
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Release|x64.ActiveCfg = Release|Any CPU
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F498A96B-2E6D-4320-A3AD-9548224C6470} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{083A141F-0A57-BBBC-6316-684CB0D4B41A} = {F498A96B-2E6D-4320-A3AD-9548224C6470}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {D3D04413-A3EA-409E-9CB9-A7D8CE909380}

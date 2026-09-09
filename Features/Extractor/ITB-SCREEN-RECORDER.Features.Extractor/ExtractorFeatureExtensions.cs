@@ -1,9 +1,11 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System;
+using System.IO;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor
+namespace ITB_SCREEN_RECORDER.Features.Extractor
 {
     public static class ExtractorFeatureExtensions
     {

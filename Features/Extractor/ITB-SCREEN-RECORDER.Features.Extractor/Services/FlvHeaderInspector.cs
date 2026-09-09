@@ -3,7 +3,7 @@ using System.IO;
 using System.Text;
 using System.Globalization;
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
+namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     public record VideoMetadataResult(DateTime StartUtc, TimeSpan Duration)
     {

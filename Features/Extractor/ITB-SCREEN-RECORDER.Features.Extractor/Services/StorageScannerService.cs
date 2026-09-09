@@ -8,9 +8,9 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
+namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     public class StorageScannerService : IStorageScannerService
     {

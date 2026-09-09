@@ -3,10 +3,10 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Controllers
+namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
 {
     [ApiController]
     [Route("api/v1/extractor")]

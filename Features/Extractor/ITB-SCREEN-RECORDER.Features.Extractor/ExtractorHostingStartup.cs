@@ -6,14 +6,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
-using ITB_SCREEN_RECORDER.Server.Core.Plugins;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
-[assembly: HostingStartup(typeof(ExtractorHostingStartup))]
+[assembly: HostingStartup(typeof(ITB_SCREEN_RECORDER.Features.Extractor.ExtractorHostingStartup))]
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor
+namespace ITB_SCREEN_RECORDER.Features.Extractor
 {
     public class ExtractorHostingStartup : IHostingStartup
     {
@@ -42,7 +41,14 @@ namespace ITB_SCREEN_RECORDER.Server.Features.Extractor
         {
             return app =>
             {
-                string featureWwwroot = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", "wwwroot");
+                string asmLocation = typeof(ExtractorStartupFilter).Assembly.Location;
+                string baseDir = Path.GetDirectoryName(asmLocation) ?? AppContext.BaseDirectory;
+                string featureWwwroot = Path.Combine(baseDir, "wwwroot");
+
+                if (!Directory.Exists(featureWwwroot))
+                {
+                    featureWwwroot = Path.Combine(baseDir, "Features", "Extractor", "wwwroot");
+                }
 
                 if (Directory.Exists(featureWwwroot))
                 {

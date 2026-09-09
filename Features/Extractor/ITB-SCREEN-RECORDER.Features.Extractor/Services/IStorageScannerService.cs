@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using ITB_SCREEN_RECORDER.Server.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Services
+namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     public interface IStorageScannerService
     {

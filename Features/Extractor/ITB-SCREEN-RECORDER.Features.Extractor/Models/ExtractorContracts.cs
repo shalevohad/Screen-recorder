@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Models
+namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 {
     public class ExtractionRequestDto
     {

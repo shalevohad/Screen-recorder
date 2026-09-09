@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Features.Extractor.Models
+﻿namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 {
     public class ExtractorOptions
     {

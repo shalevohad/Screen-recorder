@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Core.Plugins
+﻿namespace ITB_SCREEN_RECORDER.Core.Plugins
 {
     public interface IFeatureModule
     {
