@@ -181,22 +181,23 @@ namespace ITBRecorderAgent.Engine
             }
             string bufferSizeStr = normalizedBitrate;
 
-            int gopSize = effectiveFps * 2;
-            int keyintMin = effectiveFps * 2;
+            // נעילת GOP מדויקת לשנייה אחת עבור שידור WebRTC/RTMP חי ללא שיהוי
+            int gopSize = effectiveFps;
+            int keyintMin = effectiveFps;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            // 1. קלט וידאו דרך צינור הקלט (Stdin) עם תור של 1024
+            // 1. קלט וידאו דרך צינור הקלט (Stdin)
             ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
 
-            // 2. קלט שמע דרך Loopback TCP עם תור של 1024
+            // 2. קלט שמע דרך Loopback TCP
             ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // 3. קידוד וידאו VBR מבוקר חומרה
+            // 3. קידוד וידאו - הזרקת IDR כפוי לכל שנייה (קריטי לקליטת WebRTC לאחר ריענון)
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
@@ -207,14 +208,14 @@ namespace ITBRecorderAgent.Engine
                 ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            // 4. אכיפת CFR מלא, GOP סגור ומניעת חסימות תור מיזוג בעת פערי זמנים
-            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
+            // 4. כפיית Keyframe כל שנייה (n_forced*1)
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*1)\" -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
 
-            // 5. סנכרון רציף של אודיו ומניעת חסימות מיזוג A/V
+            // 5. סנכרון רציף של אודיו
             ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
 
-            // 6. פלט: FLV חי ללא delta חוסם, או fMP4 מרושת לאופליין
+            // 6. פלט
             bool isRtmp = destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase);
             if (isRtmp)
             {

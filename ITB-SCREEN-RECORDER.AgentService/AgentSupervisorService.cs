@@ -34,6 +34,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private AgentStreamPolicy _currentPolicy;
 
         private bool _isWorkerStreaming;
+        private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private StreamWriter? _workerCommandWriter;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
@@ -50,6 +51,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private class IpcMessageDto
         {
             public bool IsStreaming { get; set; }
+            public bool IsRecording { get; set; }
+            public DateTime? RecordingStartedAtUtc { get; set; }
             public bool IsOfflineMode { get; set; }
             public bool HasAudio { get; set; }
             public bool HasActiveSpeakers { get; set; }
@@ -242,6 +245,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 if (status != null)
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
+                                    _workerRecordingStartedAtUtc = status.RecordingStartedAtUtc;
                                     _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
 
@@ -303,6 +307,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     Status = isStreaming ? AgentStatus.Streaming : (isWorkerAlive ? AgentStatus.Standby : AgentStatus.Offline),
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
+                    IsRecording = isStreaming,
+                    RecordingStartedAtUtc = isStreaming ? _workerRecordingStartedAtUtc : null,
+                    AutoStartRecordingOnLaunch = _config.AutoStartRecordingOnLaunch,
                     IsScreenCapturing = isStreaming,
 
                     HasActiveSpeakers = _lastWorkerHasActiveSpeakers,
@@ -404,6 +411,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 }
                             }
 
+                            // פקודות שליטה מפורשות מהשרת
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
                                 await SendCommandToWorkerAsync("Stop");

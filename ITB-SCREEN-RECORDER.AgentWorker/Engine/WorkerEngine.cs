@@ -36,6 +36,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private int _baselineFps;
         private string _videoBitrate;
 
+        // חותמת זמן קבועה של תחילת ההקלטה
+        private DateTime? _sessionStartTimeUtc = null;
+
         private VideoPipeline? _videoPipe;
         private AudioPacer? _audioPacer;
         private IAudioCaptureProvider? _audioCapture;
@@ -57,8 +60,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 Logger.Info($"[WORKER:IPC] START_COMMAND received -> Dest: '{dest}', ServerOffsetTicks: {offset.Ticks}, Fps: {fps}, Bitrate: {bitrate}");
                 if (!string.IsNullOrWhiteSpace(dest)) _targetRtmp = dest;
                 _serverUtcOffset = offset;
-                _baselineFps = fps;
-                _videoBitrate = bitrate;
+                _baselineFps = fps > 0 ? fps : _baselineFps;
+                _videoBitrate = !string.IsNullOrWhiteSpace(bitrate) ? bitrate : _videoBitrate;
+
+                if (!_isStreaming)
+                {
+                    _sessionStartTimeUtc = DateTime.UtcNow;
+                }
+
                 _isStreaming = true;
                 if (_permission.CurrentCount == 0) _permission.Release();
             };
@@ -67,11 +76,18 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             {
                 Logger.Info("[WORKER:IPC] STOP_COMMAND received from supervisor. Pausing transmission.");
                 _isStreaming = false;
+                _sessionStartTimeUtc = null;
             };
 
-            _ipc.RestartRequested += () =>
+            // תיקון: קליטה והחלה מיידית של שינויי FPS ו-Bitrate על-חם
+            _ipc.RestartRequested += (dest, offset, fps, bitrate) =>
             {
-                Logger.Info("[WORKER:IPC] RESTART_COMMAND received from supervisor. Forcing pipeline recreation.");
+                Logger.Info($"[WORKER:IPC] RESTART_COMMAND received -> Dest: '{dest}', Fps: {fps}, Bitrate: {bitrate}");
+                if (!string.IsNullOrWhiteSpace(dest)) _targetRtmp = dest;
+                _serverUtcOffset = offset;
+                _baselineFps = fps > 0 ? fps : _baselineFps;
+                _videoBitrate = !string.IsNullOrWhiteSpace(bitrate) ? bitrate : _videoBitrate;
+
                 _isStreaming = true;
                 _requiresRestart = true;
                 if (_permission.CurrentCount == 0) _permission.Release();
@@ -174,7 +190,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _audioPacer = new AudioPacer();
 
             bool sessionActive = true;
-            byte[]? latestFrame = null;
+
+            // אתחול פריים בסיס ריק למניעת הזנות Null לצינור הווידאו
+            byte[]? latestFrame = new byte[screen.Width * screen.Height * 4];
 
             audio.AudioDataAvailable += (s, data) =>
             {
@@ -196,6 +214,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             {
                 Logger.Error("[WORKER:LIFECYCLE] FFmpeg failed to launch. Aborting session.");
                 _isStreaming = false;
+                _sessionStartTimeUtc = null;
                 return;
             }
 
@@ -206,6 +225,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             {
                 Logger.Error("[WORKER:LIFECYCLE] TCP loopback audio handshake timed out. Halting session.");
                 _isStreaming = false;
+                _sessionStartTimeUtc = null;
                 return;
             }
 
@@ -225,30 +245,45 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 bytes => _netTelemetry.TrackMediaBytes(bytes),
                 ct);
 
-            // 2. Thread לכידת מסך
+            // 2. Thread לכידת מסך - תיקון מלא לכשל ה-Timeout של DXGI!
             var captureTask = Task.Run(async () =>
             {
                 Logger.Info("[WORKER:LIFECYCLE] Screen capture sampling thread started.");
                 long lastTicks = Stopwatch.GetTimestamp();
-                int fails = 0;
+                int consecutiveHardErrors = 0;
+
                 while (sessionActive && !ct.IsCancellationRequested)
                 {
                     if (Stopwatch.GetElapsedTime(lastTicks).TotalMilliseconds >= (1000.0 / _videoPipe.InternalCaptureFps))
                     {
-                        if (screen.TryCaptureFrame(out byte[]? f) && f != null)
+                        try
                         {
-                            Interlocked.Exchange(ref latestFrame, f);
-                            fails = 0;
+                            if (screen.TryCaptureFrame(out byte[]? f) && f != null)
+                            {
+                                Interlocked.Exchange(ref latestFrame, f);
+                                consecutiveHardErrors = 0;
+                            }
+                            // במקרה של Timeout (המסך לא השתנה), משמרים את הפריים הקודם ללא השבתת ה-Thread!
                         }
-                        else if (++fails >= 30)
+                        catch (Exception ex)
                         {
-                            Logger.Warn("[WORKER:LIFECYCLE] 30 consecutive capture failures detected. Delegating to SessionGuard...");
-                            await guard.MonitorUntilRestoredAsync(ct).ConfigureAwait(false);
-                            return;
+                            consecutiveHardErrors++;
+                            Logger.Warn($"[WORKER:LIFECYCLE] Capture device error ({consecutiveHardErrors}/30): {ex.Message}");
+
+                            if (consecutiveHardErrors >= 30)
+                            {
+                                Logger.Warn("[WORKER:LIFECYCLE] 30 consecutive fatal capture failures. Requesting SessionGuard restoration...");
+                                await guard.MonitorUntilRestoredAsync(ct).ConfigureAwait(false);
+                                consecutiveHardErrors = 0;
+                            }
                         }
+
                         lastTicks = Stopwatch.GetTimestamp();
                     }
-                    else Thread.Sleep(1);
+                    else
+                    {
+                        Thread.Sleep(1);
+                    }
                 }
             }, ct);
 
@@ -303,6 +338,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 SessionState = InternalSessionState.ActiveInteractive,
                 CurrentFps = _baselineFps,
                 IsStreaming = _isStreaming,
+                IsRecording = _isStreaming,
+                RecordingStartedAtUtc = _isStreaming ? _sessionStartTimeUtc : null,
                 IsOfflineMode = _isOffline,
                 HasAudio = flowing,
                 Telemetry = _isStreaming ? new

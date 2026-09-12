@@ -11,7 +11,8 @@ namespace ITBRecorderAgent.Engine
     {
         public event Action<string, TimeSpan, int, string>? StartRequested;
         public event Action? StopRequested;
-        public event Action? RestartRequested;
+        // תיקון קריטי: העברת הפרמטרים המעודכנים באירוע ה-Restart
+        public event Action<string, TimeSpan, int, string>? RestartRequested;
         public event Action<int>? CaptureFpsRequested;
         public event Action? ServerDisconnected;
         public event Action? ServerConnected;
@@ -91,7 +92,8 @@ namespace ITBRecorderAgent.Engine
                 }
                 else
                 {
-                    RestartRequested?.Invoke();
+                    // תיקון: העברת הפרמטרים החדשים כדי שיתעדכנו בצינור ה-FFmpeg
+                    RestartRequested?.Invoke(dest, offset, targetFps, bitrate);
                 }
             }
         }
