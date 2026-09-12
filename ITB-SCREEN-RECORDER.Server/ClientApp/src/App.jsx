@@ -8,12 +8,11 @@ import './App.scss';
 export default function App() {
     const [stations, setStations] = useState([]);
     const [serverTelemetry, setServerTelemetry] = useState(null);
+    const [systemConfig, setSystemConfig] = useState(null);
     const [actionPending, setActionPending] = useState({});
 
-    // סנכרון גלובלי של סינון Offline ומצב בידוד תקלות
     const [hideOffline, setHideOffline] = useState(true);
     const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
-
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
@@ -31,22 +30,50 @@ export default function App() {
         }
     }, [apiBaseUrl]);
 
+    const fetchSystemConfig = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/settings`);
+            if (res.ok) {
+                const data = await res.json();
+                setSystemConfig(data);
+                return;
+            }
+            const altRes = await fetch(`${apiBaseUrl}/api/system/config`);
+            if (altRes.ok) {
+                const data = await altRes.json();
+                setSystemConfig(data);
+            }
+        } catch (err) {
+            console.error('[App] Failed to fetch system config:', err);
+        }
+    }, [apiBaseUrl]);
+
     useEffect(() => {
         let isMounted = true;
 
-        const loadInitialStations = async () => {
+        const loadInitialData = async () => {
             try {
-                const res = await fetch(`${apiBaseUrl}/api/agents`);
-                if (res.ok && isMounted) {
-                    const data = await res.json();
-                    setStations(data);
+                const [agentsRes, cfgRes] = await Promise.allSettled([
+                    fetch(`${apiBaseUrl}/api/agents`),
+                    fetch(`${apiBaseUrl}/api/settings`)
+                ]);
+
+                if (isMounted) {
+                    if (agentsRes.status === 'fulfilled' && agentsRes.value.ok) {
+                        const data = await agentsRes.value.json();
+                        setStations(data);
+                    }
+                    if (cfgRes.status === 'fulfilled' && cfgRes.value.ok) {
+                        const cfg = await cfgRes.value.json();
+                        setSystemConfig(cfg);
+                    }
                 }
             } catch (err) {
-                console.error('[App] Failed to fetch agents:', err);
+                console.error('[App] Failed to load initial data:', err);
             }
         };
 
-        loadInitialStations();
+        loadInitialData();
 
         return () => {
             isMounted = false;
@@ -97,7 +124,8 @@ export default function App() {
 
     const handleSettingsSaved = useCallback(async () => {
         await fetchStations();
-    }, [fetchStations]);
+        await fetchSystemConfig();
+    }, [fetchStations, fetchSystemConfig]);
 
     const handleToggleStream = async (hostname, isCurrentlyStreaming) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
@@ -173,6 +201,7 @@ export default function App() {
             <CommandCenterHeader
                 stations={sortedStations}
                 serverTelemetry={serverTelemetry}
+                systemConfig={systemConfig}
                 isSettingsOpen={isSettingsOpen}
                 onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
                 hideOffline={hideOffline}

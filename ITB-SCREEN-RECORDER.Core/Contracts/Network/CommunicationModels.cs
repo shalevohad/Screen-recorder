@@ -3,7 +3,14 @@ using System.Text.Json.Serialization;
 
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 {
-    public enum AgentStatus { Offline = 0, Standby = 1, Streaming = 2, Error = 3 }
+    public enum AgentStatus
+    {
+        Offline = 0,
+        Standby = 1,
+        Streaming = 2,
+        Recording = 2, // תאימות כפולה
+        Error = 3
+    }
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum ServerCommand { Standby = 0, StartStream = 1, StopStream = 2 }
@@ -49,8 +56,25 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("hasActiveMicrophone")]
         public bool HasActiveMicrophone { get; set; }
 
+        [JsonPropertyName("hasAudio")]
+        public bool HasAudio { get; set; }
+
+        [JsonPropertyName("isAudioStreaming")]
+        public bool IsAudioStreaming { get; set; }
+
         [JsonPropertyName("isStreaming")]
         public bool IsStreaming { get; set; }
+
+        // חיווי הקלטה רשמי
+        [JsonPropertyName("isRecording")]
+        public bool IsRecording { get; set; }
+
+        // חותמת זמן UTC לתחילת ההקלטה (אינה מתאפסת בריענון)
+        [JsonPropertyName("recordingStartedAtUtc")]
+        public DateTime? RecordingStartedAtUtc { get; set; }
+
+        [JsonPropertyName("autoStartRecordingOnLaunch")]
+        public bool AutoStartRecordingOnLaunch { get; set; }
 
         [JsonPropertyName("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;

@@ -1,10 +1,63 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import './ServerClock.scss';
 
-export default function ServerClock({ uptimeSeconds: serverUptime = 0 }) {
+function getTimeParts(date, timeZone, locale = 'en-US') {
+    // וידוא פורמט תקני לאזור הזמן (לדוגמה UTC / Etc/UTC)
+    let tz = (timeZone || 'UTC').trim();
+    if (tz.toUpperCase() === 'UTC') {
+        tz = 'Etc/UTC';
+    }
+
+    try {
+        const dtf = new Intl.DateTimeFormat(locale, {
+            timeZone: tz,
+            hour12: false,
+            hourCycle: 'h23',
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            timeZoneName: 'shortOffset'
+        });
+        const parts = dtf.formatToParts(date);
+        const map = {};
+        for (const p of parts) {
+            map[p.type] = p.value;
+        }
+        return map;
+    } catch {
+        const dtf = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Etc/UTC',
+            hour12: false,
+            hourCycle: 'h23',
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            timeZoneName: 'shortOffset'
+        });
+        const parts = dtf.formatToParts(date);
+        const map = {};
+        for (const p of parts) {
+            map[p.type] = p.value;
+        }
+        return map;
+    }
+}
+
+export default function ServerClock({
+    uptimeSeconds: serverUptime = 0,
+    timezone = 'UTC',
+    locale = 'en-US'
+}) {
     const [currentTime, setCurrentTime] = useState(new Date());
 
-    // סנכרון Prop-to-State ישיר בזמן רינדור ללא useEffect וללא cascading renders
     const [prevServerUptime, setPrevServerUptime] = useState(serverUptime);
     const [elapsedUptime, setElapsedUptime] = useState(serverUptime);
 
@@ -13,7 +66,6 @@ export default function ServerClock({ uptimeSeconds: serverUptime = 0 }) {
         setElapsedUptime(serverUptime);
     }
 
-    // קידום השעון וה-Uptime בכל שנייה
     useEffect(() => {
         const timer = setInterval(() => {
             setCurrentTime(new Date());
@@ -34,36 +86,47 @@ export default function ServerClock({ uptimeSeconds: serverUptime = 0 }) {
         return `UP: ${m}m ${s}s`;
     };
 
-    const getTimezoneOffset = () => {
-        const offset = -currentTime.getTimezoneOffset() / 60;
-        const sign = offset >= 0 ? '+' : '-';
-        return `GMT${sign}${Math.abs(offset)}`;
-    };
+    const effectiveTimezone = timezone || 'UTC';
 
-    const localHours = String(currentTime.getHours()).padStart(2, '0');
-    const localMinutes = String(currentTime.getMinutes()).padStart(2, '0');
-    const localSeconds = String(currentTime.getSeconds()).padStart(2, '0');
+    const timeParts = useMemo(() => {
+        return getTimeParts(currentTime, effectiveTimezone, locale);
+    }, [currentTime, effectiveTimezone, locale]);
+
+    const displayHours = timeParts.hour || '00';
+    const displayMinutes = timeParts.minute || '00';
+    const displaySeconds = timeParts.second || '00';
 
     const utcHours = String(currentTime.getUTCHours()).padStart(2, '0');
     const utcMinutes = String(currentTime.getUTCMinutes()).padStart(2, '0');
     const utcSeconds = String(currentTime.getUTCSeconds()).padStart(2, '0');
 
-    const dayName = currentTime.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
-    const monthName = currentTime.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
-    const dayOfMonth = currentTime.getDate();
-    const year = currentTime.getFullYear();
+    const isUtcSame = useMemo(() => {
+        const tzUpper = (effectiveTimezone || '').trim().toUpperCase();
+        if (tzUpper === 'UTC' || tzUpper === 'ETC/UTC' || tzUpper === 'Z') return true;
+        return displayHours === utcHours && displayMinutes === utcMinutes;
+    }, [effectiveTimezone, displayHours, displayMinutes, utcHours, utcMinutes]);
+
+    const tzLabel = timeParts.timeZoneName || effectiveTimezone;
+    const dayName = (timeParts.weekday || '').toUpperCase();
+    const monthName = (timeParts.month || '').toUpperCase();
+    const dayOfMonth = timeParts.day || '';
+    const year = timeParts.year || '';
 
     return (
         <div className="noc-clock-panel">
             <div className="clock-col chrono-col">
                 <div className="chrono-main-row">
-                    <span className="chrono-digits">{localHours}:{localMinutes}:</span>
-                    <span className="chrono-seconds">{localSeconds}</span>
-                    <span className="chrono-tz">({getTimezoneOffset()})</span>
+                    <span className="chrono-digits">{displayHours}:{displayMinutes}:</span>
+                    <span className="chrono-seconds">{displaySeconds}</span>
+                    <span className="chrono-tz">({tzLabel})</span>
                 </div>
-                <div className="chrono-sub-row">
-                    <span className="chrono-utc">UTC: {utcHours}:{utcMinutes}:{utcSeconds}</span>
-                </div>
+
+                {!isUtcSame && (
+                    <div className="chrono-sub-row">
+                        <span className="chrono-utc">UTC: {utcHours}:{utcMinutes}:{utcSeconds}</span>
+                    </div>
+                )}
+
                 <div className="chrono-uptime-row">
                     <span className="chrono-uptime">{formatUptime(elapsedUptime)}</span>
                 </div>

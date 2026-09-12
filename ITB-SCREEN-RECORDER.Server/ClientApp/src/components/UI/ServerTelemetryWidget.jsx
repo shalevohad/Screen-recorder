@@ -41,7 +41,9 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
     const appRamMb = serverTelemetry?.appRamMb ?? serverTelemetry?.processRamMb ?? 0;
     const hostTotalRamMb = serverTelemetry?.hostTotalRamMb ?? 131072;
     const appRamDisplay = appRamMb >= 1024 ? `${(appRamMb / 1024).toFixed(1)}G` : `${Math.round(appRamMb)}M`;
-    const totalRamDisplay = `${Math.round(hostTotalRamMb / 1024)}G`;
+    const totalRamGb = Math.round(hostTotalRamMb / 1024);
+    const totalRamDisplay = `${totalRamGb}G`;
+    const hostUsedRamDisplay = `${((hostRamPct / 100) * totalRamGb).toFixed(1)}G`;
 
     const netTxMbps = serverTelemetry?.nicTotalTxMbps ?? 0;
     const netRxMbps = serverTelemetry?.nicTotalRxMbps ?? 0;
@@ -50,9 +52,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
     const linkSpeedMbps = serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000;
     const netUtilPct = serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100);
 
-    // 💡 שימוש ב-useState לאתחול חד-פעמי, כאשר העדכון מתבצע בצורה נקייה 
-    // או שמירת היסטוריה מבוססת מדדים ישירים ללא פגיעה ב-lifecycle.
-    // מכיוון ש-serverTelemetry מתעדכן מבחוץ, ניתן לשמור את ההיסטוריה ב-ref או להשתמש בטכניקה הבאה:
     const [history, setHistory] = useState({
         cpu: [cpuPct],
         ram: [hostRamPct],
@@ -62,7 +61,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
         lastNet: netUtilPct
     });
 
-    // עדכון מבוסס ערך נוכחי ללא קריאת setState סינכרונית אסורה מחוץ לאירוע
     let cpuHistory = history.cpu;
     let ramHistory = history.ram;
     let netHistory = history.net;
@@ -72,7 +70,6 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
         ramHistory = [...history.ram, hostRamPct].slice(-historyPoints);
         netHistory = [...history.net, netUtilPct].slice(-historyPoints);
 
-        // עדכון סטייט בטוח בלחיזור הרינדור הבא
         setHistory({
             cpu: cpuHistory,
             ram: ramHistory,
@@ -131,10 +128,13 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
                 </div>
             </div>
 
-            <div className={`telemetry-pod ${getStatusClass(hostRamPct)}`}>
+            <div
+                className={`telemetry-pod ${getStatusClass(hostRamPct)}`}
+                title={`Host Total: ${hostUsedRamDisplay} / ${totalRamDisplay} (${hostRamPct.toFixed(1)}%) | App: ${appRamDisplay}`}
+            >
                 <div className="pod-header">
                     <span className="pod-title">RAM USAGE</span>
-                    <span className="pod-sub">{appRamDisplay} / {totalRamDisplay}</span>
+                    <span className="pod-sub">App {appRamDisplay}</span>
                 </div>
                 <div className="pod-content-row">
                     <span className="pod-val">{hostRamPct.toFixed(1)}%</span>

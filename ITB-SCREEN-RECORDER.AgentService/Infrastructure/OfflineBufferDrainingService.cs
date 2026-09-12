@@ -7,20 +7,19 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
-using ITB_SCREEN_RECORDER.Core.Configuration; // 💡 תוספת עבור AppConfig
+using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
 {
     public class OfflineBufferDrainingService : BackgroundService
     {
         private readonly ILogger<OfflineBufferDrainingService> _logger;
-        private readonly string _bufferPath; // 💡 משתנה דינמי
+        private readonly string _bufferPath;
         private readonly HttpClient _httpClient;
-        private readonly string _uploadUrl = "http://127.0.0.1:5090/api/sync/buffer";
+        private readonly string _uploadUrl;
 
         public static BufferCommand CurrentCommand { get; set; } = BufferCommand.WAIT;
 
-        // 💡 הזרקת AppConfig לבנאי
         public OfflineBufferDrainingService(ILogger<OfflineBufferDrainingService> logger, AppConfig config)
         {
             _logger = logger;
@@ -29,15 +28,27 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 Timeout = TimeSpan.FromMinutes(10)
             };
 
-            // 💡 שליפת הנתיב מהקונפיגורציה או שימוש בברירת מחדל
             _bufferPath = string.IsNullOrWhiteSpace(config.LocalBufferPath)
                 ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
                 : config.LocalBufferPath;
+
+            // גזירת כתובת השרת מהקונפיגורציה או ממשתנה סביבה במקום כתובת קשיחה
+            string serverBase = !string.IsNullOrWhiteSpace(config.DashboardApiUrl)
+                ? config.DashboardApiUrl.TrimEnd('/')
+                : (Environment.GetEnvironmentVariable("ITB_SERVER_IP") ?? "http://127.0.0.1:5090");
+
+            if (!serverBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !serverBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                serverBase = $"http://{serverBase}";
+            }
+
+            _uploadUrl = $"{serverBase}/api/v1/agent/upload-buffer";
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("OfflineBufferDrainingService started. Buffer path: {Path}", _bufferPath);
+            _logger.LogInformation("OfflineBufferDrainingService started. Buffer path: {Path}, Target Endpoint: {Url}", _bufferPath, _uploadUrl);
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -65,8 +76,11 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
         {
             if (!Directory.Exists(_bufferPath)) return;
 
-            var files = new DirectoryInfo(_bufferPath).GetFiles("*.flv")
-                .Where(f => (DateTime.Now - f.LastWriteTime).TotalMinutes > 1)
+            // איתור קבצי mp4 ו-flv שסיימו להיכתב (עברו לפחות 15 שניות מסיום הכתיבה)
+            var files = new DirectoryInfo(_bufferPath).GetFiles()
+                .Where(f => (f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
+                             f.Extension.Equals(".flv", StringComparison.OrdinalIgnoreCase)) &&
+                            (DateTime.Now - f.LastWriteTime).TotalSeconds > 15)
                 .OrderBy(f => f.CreationTime)
                 .ToList();
 
@@ -116,7 +130,10 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
         private void DiscardAllFiles()
         {
             if (!Directory.Exists(_bufferPath)) return;
-            var files = new DirectoryInfo(_bufferPath).GetFiles("*.flv");
+            var files = new DirectoryInfo(_bufferPath).GetFiles()
+                .Where(f => f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
+                            f.Extension.Equals(".flv", StringComparison.OrdinalIgnoreCase));
+
             foreach (var file in files)
             {
                 try
@@ -128,14 +145,17 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
             }
         }
 
-        // 💡 הפונקציה הסטטית כעת דורשת שיעבירו לה את הנתיב מבחוץ
         public static (int Count, long SizeMb) GetBufferStats(string bufferPath)
         {
             try
             {
                 if (!Directory.Exists(bufferPath)) return (0, 0);
 
-                var files = new DirectoryInfo(bufferPath).GetFiles("*.flv");
+                var files = new DirectoryInfo(bufferPath).GetFiles()
+                    .Where(f => f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
+                                f.Extension.Equals(".flv", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
                 long bytes = files.Sum(f => f.Length);
                 return (files.Length, bytes / (1024 * 1024));
             }

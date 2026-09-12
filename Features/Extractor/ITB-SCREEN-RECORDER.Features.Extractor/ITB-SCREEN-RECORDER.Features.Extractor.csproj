@@ -1,0 +1,55 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<RootNamespace>ITB_SCREEN_RECORDER.Features.Extractor</RootNamespace>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<!-- תלות יחידה בליבה - 3 רמות אחורה לשורש ה-Solution -->
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+	</ItemGroup>
+
+	<!-- קימפול ה-Widget בכל Build -->
+	<Target Name="CompileExtractorFrontend" BeforeTargets="Build" Condition="Exists('Client\package.json')">
+		<Message Importance="high" Text="[ITB EXTRACTOR PLUGIN] Building Client Widget..." />
+		<Exec Command="npm install" WorkingDirectory="Client" Condition="!Exists('Client\node_modules')" />
+		<Exec Command="npm run build" WorkingDirectory="Client" ContinueOnError="false" />
+	</Target>
+
+	<!-- הכללת תוצרי ה-Web וה-Bin בפלט ה-Build וה-Publish -->
+	<ItemGroup>
+		<None Update="wwwroot\**">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<Visible>true</Visible>
+		</None>
+		<None Update="Bin\**">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<Visible>true</Visible>
+		</None>
+	</ItemGroup>
+
+	<!-- העתקה אוטומטית של ה-DLL והנכסים לשרת בסיום בנייה (3 רמות אחורה) -->
+	<Target Name="CopyToDevServer" AfterTargets="Build" Condition="Exists('..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0')">
+		<ItemGroup>
+			<PluginOutputFiles Include="$(TargetDir)**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(PluginOutputFiles)"
+		      DestinationFolder="..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0\Features\Extractor\%(RecursiveDir)"
+		      SkipUnchangedFiles="true" />
+	</Target>
+
+</Project>

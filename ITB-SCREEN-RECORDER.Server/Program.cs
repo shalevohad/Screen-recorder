@@ -1,15 +1,23 @@
-﻿using System;
-using System.IO;
-using System.Threading;
+﻿using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ITB_SCREEN_RECORDER.Server.Services;
-using ITB_SCREEN_RECORDER.Core.Configuration;
-using ITB_SCREEN_RECORDER.Core.Common;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
+using System.Threading;
 
 namespace ITB_SCREEN_RECORDER.Server
 {
@@ -20,6 +28,23 @@ namespace ITB_SCREEN_RECORDER.Server
         public static void Main(string[] args)
         {
             Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+
+            // ניקוי משתנה הסביבה למניעת קריסות של מנוע ה-HostingStartup בעת הרצה עם F5
+            Environment.SetEnvironmentVariable("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", null);
+
+            // 1. פותר אסמבליז שמטעין ישירות לתוך ה-AssemblyLoadContext הראשי
+            AssemblyLoadContext.Default.Resolving += (context, assemblyName) =>
+            {
+                var loadedAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
+                if (loadedAssembly != null) return loadedAssembly;
+
+                var featuresDir = Path.Combine(AppContext.BaseDirectory, "Features");
+                if (!Directory.Exists(featuresDir)) return null;
+
+                var matchedDll = Directory.GetFiles(featuresDir, $"{assemblyName.Name}.dll", SearchOption.AllDirectories).FirstOrDefault();
+                return matchedDll != null ? context.LoadFromAssemblyPath(matchedDll) : null;
+            };
 
             var builder = WebApplication.CreateBuilder(args);
             builder.Logging.ClearProviders();
@@ -39,9 +64,51 @@ namespace ITB_SCREEN_RECORDER.Server
             using var serverMutex = new Mutex(true, MutexName, out bool createdNew);
             if (!createdNew)
             {
-                Logger.Error("[CRITICAL] Another instance of ITB-SCREEN-RECORDER Server is already running. Shutting down.");
+                var conflictMsg = "[CRITICAL] Another instance of ITB-SCREEN-RECORDER Server is already running. Shutting down.";
+                Console.WriteLine(conflictMsg);
+                Logger.Error(conflictMsg);
                 return;
             }
+
+            // 2. זיהוי, טעינה ואתחול של כל מודול פיצ'ר שנמצא בתיקיית Features
+            var loadedFeatureAssemblies = new List<Assembly>();
+            var featuresBaseDir = Path.Combine(AppContext.BaseDirectory, "Features");
+            if (Directory.Exists(featuresBaseDir))
+            {
+                var featureDlls = Directory.GetFiles(featuresBaseDir, "ITB-SCREEN-RECORDER.Features.*.dll", SearchOption.AllDirectories);
+                foreach (var dllPath in featureDlls)
+                {
+                    try
+                    {
+                        var asm = AssemblyLoadContext.Default.LoadFromAssemblyPath(dllPath);
+                        loadedFeatureAssemblies.Add(asm);
+
+                        Type[] types;
+                        try { types = asm.GetTypes(); }
+                        catch (ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t != null).ToArray()!; }
+
+                        var startupTypes = types.Where(t => typeof(IHostingStartup).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+                        foreach (var startupType in startupTypes)
+                        {
+                            var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
+                            startup.Configure(builder.WebHost);
+                            Logger.AlwaysInfo($"[SERVER] Successfully activated modular feature startup: {startupType.FullName} ({asm.GetName().Name})");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        var errorMsg = $"[SERVER] Failed to load modular feature from '{dllPath}': {ex.Message}";
+                        Console.WriteLine(errorMsg);
+                        Logger.Error(errorMsg);
+                    }
+                }
+            }
+
+            // הגדרת תקרת Kestrel (מחושב אוטומטית לפי 300MB + 20MB)
+            builder.WebHost.ConfigureKestrel(serverOptions =>
+            {
+                serverOptions.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
+            });
 
             if (OperatingSystem.IsWindows())
             {
@@ -82,23 +149,53 @@ namespace ITB_SCREEN_RECORDER.Server
 
             builder.Services.AddSingleton(appConfig);
 
+            // תמיכה ב-FormReader עבור Multipart
+            builder.Services.Configure<FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = BufferLimits.MaxRequestSizeBytes;
+            });
+
+            // קשירת הגדרות השרת הראשי
             builder.Services.AddOptions<SystemConfig>()
                 .Bind(builder.Configuration.GetSection("SystemConfig"))
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
 
-            builder.Services.AddControllers()
+            // 💡 מדיניות CORS מאובטחת המותאמת ל-SignalR ולדפדפני רשת
+            builder.Services.AddCors(options =>
+            {
+                options.AddDefaultPolicy(policy =>
+                {
+                    policy.SetIsOriginAllowed(_ => true)
+                          .AllowAnyMethod()
+                          .AllowAnyHeader()
+                          .AllowCredentials();
+                });
+            });
+
+            // רישום קונטרולרים ושילוב האסמבליז של הפיצ'רים למערכת הניתוב
+            var mvcBuilder = builder.Services.AddControllers()
                 .AddJsonOptions(options =>
                 {
                     options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
                     options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
                 });
+
+            foreach (var featureAsm in loadedFeatureAssemblies)
+            {
+                mvcBuilder.AddApplicationPart(featureAsm);
+            }
+
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
+            // שירותי טלמטריה ומצב
             builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
             builder.Services.AddSingleton<OfflineSyncManager>();
             builder.Services.AddSingleton<TelemetryBroadcastService>();
+
+            // 💡 שירות ניהול Tabs מותאמים אישית (FPS, Bitrate ושיוך תחנות)
+            builder.Services.AddSingleton<CustomTabsService>();
 
             builder.Services.AddSignalR(options => {
                 options.EnableDetailedErrors = true;
@@ -132,10 +229,17 @@ namespace ITB_SCREEN_RECORDER.Server
             app.UseStaticFiles();
 
             app.UseRouting();
+
+            // 💡 הפעלת CORS מיד לאחר ה-Routing ולפני ה-Authorization
+            app.UseCors();
+
             app.UseAuthorization();
 
             app.MapHub<TelemetryHub>("/hubs/telemetry");
             app.MapControllers();
+
+            // 💡 Fallback ל-SPA עבור רענון דף חלק ללא 404
+            app.MapFallbackToFile("index.html");
 
             Logger.AlwaysInfo("[SERVER] ITB-SCREEN-RECORDER Middleware initialized successfully.");
 

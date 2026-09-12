@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import ServerClock from './ServerClock';
 import ServerTelemetryWidget from './ServerTelemetryWidget';
 import './CommandCenterHeader.scss';
@@ -10,17 +10,46 @@ export default function CommandCenterHeader({
     isSettingsOpen = false,
     onOpenSettings,
     isFaultFilterActive = false,
-    onToggleFaultFilter
+    onToggleFaultFilter,
+    systemConfig: propSystemConfig
 }) {
     const totalCount = stations.length;
+    const [fetchedConfig, setFetchedConfig] = useState(null);
 
-    // חישוב מדדים: התראות נספרות אך ורק עבור עמדות אונליין עם נפילת פריימים
+    // שליפה אוטומטית של הקונפיגורציה מהשרת במידה ולא הועברה בפרופס
+    useEffect(() => {
+        if (!propSystemConfig) {
+            fetch('/api/system/config') // או הנתיב המדויק אצלך לטעינת הקונפיגורציה
+                .then(res => res.json())
+                .then(data => {
+                    if (data) setFetchedConfig(data);
+                })
+                .catch(() => {
+                    console.error("unable to fetch config timezone - falling to default 'Asia/Jerusalem'")
+                });
+        }
+    }, [propSystemConfig]);
+
+    const activeConfig = propSystemConfig || fetchedConfig;
+
+    const resolvedTimezone = useMemo(() => {
+        return activeConfig?.DisplayTimezone
+            || activeConfig?.displayTimezone
+            || serverTelemetry?.displayTimezone
+            || 'Asia/Jerusalem'; // ברירת מחדל מעודכנת לישראל
+    }, [activeConfig, serverTelemetry]);
+
+    const resolvedLocale = useMemo(() => {
+        return activeConfig?.DisplayLocale
+            || activeConfig?.displayLocale
+            || 'en-US';
+    }, [activeConfig]);
+
     const agentMetrics = useMemo(() => {
         const onlineStations = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2);
         const onlineCount = onlineStations.length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
 
-        // עמדה Offline איננה תקלה מבצעית! תקלה = עמדה פעילה עם מעל 5 dropped frames
         const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
         const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
 
@@ -63,7 +92,11 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-clock-section">
-                    <ServerClock uptimeSeconds={serverTelemetry?.uptimeSeconds} />
+                    <ServerClock
+                        uptimeSeconds={serverTelemetry?.uptimeSeconds}
+                        timezone={resolvedTimezone}
+                        locale={resolvedLocale}
+                    />
                 </div>
 
                 <div className="header-actions-group">
@@ -96,12 +129,10 @@ export default function CommandCenterHeader({
                                 CONNECTED AGENTS
                             </div>
                             <div className="data-values">
-                                {/* אם אופליין לא מוסתר - מציג את כל העמדות המנוטרות (1). אם מוסתר - מציג פעילים */}
                                 <span className="count-active">
                                     {hideOffline ? activeWorkerCount : totalCount}
                                 </span>
 
-                                {/* תג HIDDEN ללא מינוס - מוצג אך ורק כשאופליין באמת מוסתר */}
                                 {hideOffline && offlineCount > 0 && (
                                     <span className="count-filtered" title={`${offlineCount} offline stations hidden from view`}>
                                         [{offlineCount} HIDDEN]

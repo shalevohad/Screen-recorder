@@ -15,6 +15,13 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Range(500, 60000)]
         public int DashboardRefreshRateMs { get; set; }
 
+        public string DisplayTimezone { get; set; } = "UTC";
+
+        public string DisplayLocale { get; set; } = "en-US";
+
+        // 💡 הגדרות תצוגת הדשבורד (זמני Snapshot ומכסת סטרים חי)
+        public DashboardSettings Dashboard { get; set; } = new DashboardSettings();
+
         [Required]
         public MediaMtxSettings MediaMtx { get; set; } = null!;
 
@@ -29,8 +36,16 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public string DefaultVideoBitrate { get; set; } = "2500K";
 
         [Required]
-        [Range(15, 60, ErrorMessage = "DefaultTargetFps must be between 15 and 60.")]
-        public int DefaultTargetFps { get; set; } = 30;
+        [Range(10, 60, ErrorMessage = "DefaultTargetFps must be between 10 and 60.")]
+        public int DefaultTargetFps { get; set; } = 20;
+    }
+
+    public class DashboardSettings
+    {
+        public int SnapshotMinDelayMs { get; set; } = 1500;
+        public int SnapshotMaxDelayMs { get; set; } = 4500;
+        public int SnapshotBufferMarginPx { get; set; } = 250;
+        public int MaxConcurrentLiveStreams { get; set; } = 9;
     }
 
     public class MediaMtxSettings
@@ -47,10 +62,6 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Range(1024, 65535)]
         public int HlsPort { get; set; }
 
-        /// <summary>
-        /// אזור הזמן שכפוי על תהליך MediaMTX (קובע את שמות הקבצים וה-creation_time ב-Header)
-        /// ברירת מחדל: UTC.
-        /// </summary>
         public string Timezone { get; set; } = "UTC";
     }
 
@@ -71,9 +82,6 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Required(ErrorMessage = "ChunkEventLogPath is required in appsettings.json")]
         public string ChunkEventLogPath { get; set; } = string.Empty;
 
-        /// <summary>
-        /// פורמט הקלטת המדיה ב-MediaMTX (fmp4 או mpegts). ברירת מחדל: fmp4.
-        /// </summary>
         public string RecordFormat { get; set; } = "fmp4";
     }
 
