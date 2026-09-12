@@ -155,10 +155,23 @@ namespace ITB_SCREEN_RECORDER.Server
                 options.MultipartBodyLengthLimit = BufferLimits.MaxRequestSizeBytes;
             });
 
+            // קשירת הגדרות השרת הראשי
             builder.Services.AddOptions<SystemConfig>()
                 .Bind(builder.Configuration.GetSection("SystemConfig"))
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
+
+            // 💡 מדיניות CORS מאובטחת המותאמת ל-SignalR ולדפדפני רשת
+            builder.Services.AddCors(options =>
+            {
+                options.AddDefaultPolicy(policy =>
+                {
+                    policy.SetIsOriginAllowed(_ => true)
+                          .AllowAnyMethod()
+                          .AllowAnyHeader()
+                          .AllowCredentials();
+                });
+            });
 
             // רישום קונטרולרים ושילוב האסמבליז של הפיצ'רים למערכת הניתוב
             var mvcBuilder = builder.Services.AddControllers()
@@ -176,9 +189,13 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
+            // שירותי טלמטריה ומצב
             builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
             builder.Services.AddSingleton<OfflineSyncManager>();
             builder.Services.AddSingleton<TelemetryBroadcastService>();
+
+            // 💡 שירות ניהול Tabs מותאמים אישית (FPS, Bitrate ושיוך תחנות)
+            builder.Services.AddSingleton<CustomTabsService>();
 
             builder.Services.AddSignalR(options => {
                 options.EnableDetailedErrors = true;
@@ -212,10 +229,17 @@ namespace ITB_SCREEN_RECORDER.Server
             app.UseStaticFiles();
 
             app.UseRouting();
+
+            // 💡 הפעלת CORS מיד לאחר ה-Routing ולפני ה-Authorization
+            app.UseCors();
+
             app.UseAuthorization();
 
             app.MapHub<TelemetryHub>("/hubs/telemetry");
             app.MapControllers();
+
+            // 💡 Fallback ל-SPA עבור רענון דף חלק ללא 404
+            app.MapFallbackToFile("index.html");
 
             Logger.AlwaysInfo("[SERVER] ITB-SCREEN-RECORDER Middleware initialized successfully.");
 

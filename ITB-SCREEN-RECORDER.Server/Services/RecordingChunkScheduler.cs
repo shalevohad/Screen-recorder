@@ -8,11 +8,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-/// <summary>
-/// Wakes up at every wall-clock multiple of Storage.ChunkIntervalMinutes and forces
-/// MediaMTX to cut a new recording segment for every currently-streaming station, so chunk
-/// boundaries land exactly on the clock regardless of when each station started streaming.
-/// </summary>
 public class RecordingChunkScheduler : BackgroundService
 {
     private readonly IOptionsMonitor<SystemConfig> _configMonitor;
@@ -20,6 +15,7 @@ public class RecordingChunkScheduler : BackgroundService
     private readonly MediaMtxApiClient _apiClient;
     private readonly EventLogger _eventLogger;
     private readonly ILogger<RecordingChunkScheduler> _logger;
+    private readonly IDisposable? _configChangeSubscription;
 
     private string? _lastAppliedRoot;
     private string? _lastAppliedTimezone;
@@ -36,11 +32,28 @@ public class RecordingChunkScheduler : BackgroundService
         _apiClient = apiClient;
         _eventLogger = eventLogger;
         _logger = logger;
+
+        // תיקון סעיף 9: האזנה לעדכון נתיבי אחסון בזמן אמת ללא צורך באיתחול שירות
+        _configChangeSubscription = _configMonitor.OnChange(async newConfig =>
+        {
+            _logger.LogInformation("[CHUNK SCHEDULER] Live configuration change detected. Applying to MediaMTX immediately...");
+            try
+            {
+                await ApplyMediaMtxStorageConfigAsync(newConfig, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[CHUNK SCHEDULER] Failed to apply live storage configuration update to MediaMTX.");
+            }
+        });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("[CHUNK SCHEDULER] Recording chunk scheduler starting...");
+
+        // החלת תצורה ראשונית על MediaMTX
+        await ApplyMediaMtxStorageConfigAsync(_configMonitor.CurrentValue, stoppingToken).ConfigureAwait(false);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -73,41 +86,46 @@ public class RecordingChunkScheduler : BackgroundService
         }
     }
 
+    private async Task ApplyMediaMtxStorageConfigAsync(SystemConfig config, CancellationToken ct)
+    {
+        string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
+        string currentTimezone = config.MediaMtx?.Timezone ?? "UTC";
+
+        string recordPath = _storageResolver.BuildRecordPath(root, config);
+        string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
+            ? "fmp4"
+            : config.Storage.RecordFormat.Trim().ToLowerInvariant();
+
+        string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
+        string retentionHours = $"{config.Storage.RetentionDays * 24}h";
+
+        bool applied = await _apiClient.PatchPathDefaultsAsync(
+            config.MediaMtx.ApiPort,
+            recordPath,
+            recordFormat,
+            chunkDuration,
+            retentionHours,
+            ct).ConfigureAwait(false);
+
+        if (applied)
+        {
+            _lastAppliedRoot = root;
+            _lastAppliedTimezone = currentTimezone;
+            _logger.LogInformation("[CHUNK SCHEDULER] MediaMTX patched live: Root='{Root}', Path='{RecordPath}', Format='{Format}', Chunk='{Chunk}'",
+                root, recordPath, recordFormat, chunkDuration);
+        }
+    }
+
     private async Task OnBoundaryReachedAsync(CancellationToken stoppingToken)
     {
         SystemConfig config = _configMonitor.CurrentValue;
 
+        // וידוא שהגדרות האחסון מסונכרנות לפני חיתוך
+        await ApplyMediaMtxStorageConfigAsync(config, stoppingToken).ConfigureAwait(false);
+
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
-        string currentTimezone = config.MediaMtx?.Timezone ?? "UTC";
-
-        // עדכון הגדרות הנתיב אם השתנה ה-Storage Root או אזור הזמן המוגדר
-        if (root != _lastAppliedRoot || !string.Equals(currentTimezone, _lastAppliedTimezone, StringComparison.OrdinalIgnoreCase))
-        {
-            string recordPath = _storageResolver.BuildRecordPath(root, config);
-            string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
-                ? "fmp4"
-                : config.Storage.RecordFormat.Trim().ToLowerInvariant();
-
-            string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
-            string retentionHours = $"{config.Storage.RetentionDays * 24}h";
-
-            bool applied = await _apiClient.PatchPathDefaultsAsync(
-                config.MediaMtx.ApiPort,
-                recordPath,
-                recordFormat,
-                chunkDuration,
-                retentionHours,
-                stoppingToken).ConfigureAwait(false);
-
-            if (applied)
-            {
-                _lastAppliedRoot = root;
-                _lastAppliedTimezone = currentTimezone;
-                _logger.LogInformation("[CHUNK SCHEDULER] Applied recording root '{Root}' (Path: '{RecordPath}', TZ: '{Timezone}') to MediaMTX.", root, recordPath, currentTimezone);
-            }
-        }
-
         var activePaths = await _apiClient.GetActivePathNamesAsync(config.MediaMtx.ApiPort, stoppingToken).ConfigureAwait(false);
+
         foreach (string path in activePaths)
         {
             bool rotated = await _apiClient.RotatePathRecordingAsync(config.MediaMtx.ApiPort, path, stoppingToken).ConfigureAwait(false);
@@ -125,5 +143,11 @@ public class RecordingChunkScheduler : BackgroundService
         int minutesSinceMidnight = nowUtc.Hour * 60 + nowUtc.Minute;
         int currentBucketStart = minutesSinceMidnight - (minutesSinceMidnight % intervalMinutes);
         return nowUtc.Date.AddMinutes(currentBucketStart + intervalMinutes);
+    }
+
+    public override void Dispose()
+    {
+        _configChangeSubscription?.Dispose();
+        base.Dispose();
     }
 }
