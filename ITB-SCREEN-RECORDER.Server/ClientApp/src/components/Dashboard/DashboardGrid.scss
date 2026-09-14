@@ -1,36 +1,49 @@
+/* רקע המערכת החיצוני: חלק (ללא קווים) וכהה */
 html, body, #root {
-    background-color: var(--bg-void) !important;
+    background-color: #04060a !important;
+    background-image: none !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
-    min-height: 100% !important;
-    height: auto !important;
-    overflow-y: auto !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.itb-command-center-app {
+    background: transparent !important;
+    background-image: none !important;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .dashboard-layout-wrapper {
     display: flex;
     flex-direction: column;
+    flex: 1;
     width: calc(100% - 32px);
     margin: 16px auto 0 auto;
     position: relative;
     box-sizing: border-box;
-    padding-bottom: 5rem;
+    padding-bottom: 64px;
+    overflow: hidden;
 
     .dashboard-content-container {
         display: flex;
         flex-direction: row;
-        align-items: flex-start;
+        align-items: stretch;
+        flex: 1;
         width: 100%;
         gap: 20px;
         position: relative;
         box-sizing: border-box;
+        overflow: hidden;
     }
 
     .dashboard-vertical-dock.tactical-c2-dock {
-        position: sticky;
-        top: 86px;
-        z-index: 50;
         width: 50px !important;
         min-width: 50px !important;
         max-width: 50px !important;
@@ -48,6 +61,7 @@ html, body, #root {
         padding: 8px 5px;
         box-shadow: var(--shadow-dock);
         user-select: none;
+        align-self: flex-start;
 
         .dock-divider {
             width: 22px;
@@ -200,7 +214,30 @@ html, body, #root {
         flex-direction: column;
         align-items: flex-start;
         width: 100%;
-        /* באנר בידוד תקלות טקטי */
+        overflow: hidden;
+        /* 💡 ה"דף" הפנימי עם הגלילה */
+        .tab-pane-content-wrapper {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-panel, #0f172a);
+            background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 24px 24px;
+            background-position: center top;
+            /* 💡 מסגרת מלאה מכל 4 הכיוונים המטפלת בבעיית השפיצים העליונים */
+            border: 1px solid var(--c2-blue-border, #1e3a8a);
+            border-radius: 10px;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            z-index: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-bottom: 60px;
+        }
+
         .tactical-fault-isolation-banner {
             display: flex;
             align-items: center;
@@ -265,7 +302,7 @@ html, body, #root {
 
         .fleet-search-shelf {
             position: sticky;
-            top: 86px;
+            top: 0;
             z-index: 45;
             width: 100%;
             box-sizing: border-box;
@@ -397,7 +434,6 @@ html, body, #root {
         align-items: flex-start;
         align-content: flex-start;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        flex: 1;
 
         .station-wrapper-cell {
             width: var(--station-card-width, 450px);
@@ -414,7 +450,6 @@ html, body, #root {
         background: var(--bg-dark-well);
         border: 1px solid var(--border-subtle);
         border-radius: 8px;
-        overflow-x: auto;
         box-shadow: var(--shadow-card);
 
         .stations-dense-table {
@@ -617,7 +652,7 @@ html, body, #root {
         width: 100%;
         max-width: 540px;
         min-height: 240px;
-        margin: 2vh 0 0 0;
+        margin: 2vh auto 0 auto;
         background: linear-gradient(180deg, var(--bg-card-from) 0%, var(--bg-card-to) 100%);
         border: 1px solid var(--border-subtle);
         backdrop-filter: blur(12px);

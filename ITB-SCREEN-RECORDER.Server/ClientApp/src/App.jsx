@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/UI/CommandCenterHeader';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
@@ -127,12 +127,16 @@ export default function App() {
         await fetchSystemConfig();
     }, [fetchStations, fetchSystemConfig]);
 
-    const handleToggleStream = async (hostname, isCurrentlyStreaming) => {
+    const handleToggleStream = async (hostname, isCurrentlyStreaming, policy = {}) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
         const targetEnable = !isCurrentlyStreaming;
 
+        const queryParams = new URLSearchParams({ enable: targetEnable });
+        if (targetEnable && policy.bitrate) queryParams.append('bitrate', policy.bitrate);
+        if (targetEnable && policy.fps) queryParams.append('fps', policy.fps);
+
         try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/command/${hostname}?enable=${targetEnable}`, {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/command/${hostname}?${queryParams.toString()}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -152,14 +156,16 @@ export default function App() {
         }
     };
 
-    const handleBulkStart = async (targetHostnames = []) => {
+    const handleBulkStart = async (targetHostnames = [], policy = {}) => {
         try {
             const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     enable: true,
-                    hostnames: targetHostnames.length > 0 ? targetHostnames : null
+                    hostnames: targetHostnames.length > 0 ? targetHostnames : null,
+                    bitrate: policy.bitrate || null,
+                    fps: policy.fps || null
                 })
             });
 
@@ -216,6 +222,9 @@ export default function App() {
                 onToggleStream={handleToggleStream}
                 onBulkStart={handleBulkStart}
                 onBulkStop={handleBulkStop}
+                onUpdateStationSettings={setStations}
+                systemConfig={systemConfig}              /* 💡 הזרקת הקונפיגורציה */
+                onSystemConfigUpdate={setSystemConfig}   /* 💡 הזרקת פונקציית העדכון */
                 direction="ltr"
                 hideOffline={hideOffline}
                 onToggleHideOffline={() => setHideOffline(prev => !prev)}

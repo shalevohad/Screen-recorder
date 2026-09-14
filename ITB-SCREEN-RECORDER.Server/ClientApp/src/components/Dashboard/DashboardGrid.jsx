@@ -4,6 +4,7 @@ import StationInspectorDrawer from '../Station/StationInspectorDrawer';
 import FullscreenModal from '../Station/FullscreenModal';
 import DynamicIcon from '../UI/DynamicIcon';
 import RemoteWidgetHost from '../UI/RemoteWidgetHost';
+import FleetTabs from '../UI/FleetTabs';
 import './DashboardGrid.scss';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
@@ -17,6 +18,9 @@ export default function DashboardGrid({
     onQuickBookmark,
     onQuickPlayback,
     onQuickExport,
+    onUpdateStationSettings,
+    systemConfig,
+    onSystemConfigUpdate,
     direction = 'ltr',
     hideOffline = true,
     onToggleHideOffline,
@@ -24,11 +28,41 @@ export default function DashboardGrid({
     onExitFaultFilter
 }) {
     const [sortAsc, setSortAsc] = useState(true);
-
     const [inspectedHostname, setInspectedHostname] = useState(null);
     const [fullscreenHostname, setFullscreenHostname] = useState(null);
 
-    // תמיכה בפיצ'רים דינמיים מבוססי Plugins (Extractor וכו')
+    // 💡 ניהול הטאב הפעיל מרוכז כאן במקום ב-FleetTabs
+    const [activeTabId, setActiveTabId] = useState('ALL');
+
+    // 💡 משיכת הטאבים השמורים בקונפיגורציה
+    const fleetTabsList = useMemo(() => {
+        return systemConfig?.dashboard?.fleetTabs || [];
+    }, [systemConfig]);
+
+    const activeFleetTabConfig = useMemo(() => {
+        return fleetTabsList.find(t => t.id === activeTabId) || null;
+    }, [fleetTabsList, activeTabId]);
+
+    // סינון תחנות לפי טאב נוכחי (לשימוש רק אם הטאב הוא לא פיצ'ר)
+    const tabFilteredStations = useMemo(() => {
+        if (activeTabId === 'ALL') {
+            return stations;
+        }
+        if (!activeFleetTabConfig) return stations;
+
+        return stations.filter(station => {
+            const matchesNames = activeFleetTabConfig.assignedHostnames?.some(h =>
+                h.toLowerCase() === station.hostname?.toLowerCase() ||
+                h.toLowerCase() === station.displayName?.toLowerCase()
+            );
+            const matchesOu = activeFleetTabConfig.assignedOus?.some(ou =>
+                station.ou?.toLowerCase().includes(ou.toLowerCase()) ||
+                station.group?.toLowerCase().includes(ou.toLowerCase())
+            );
+            return matchesNames || matchesOu;
+        });
+    }, [stations, activeTabId, activeFleetTabConfig]);
+
     const [availableFeatures, setAvailableFeatures] = useState([]);
     const [openFeatureIds, setOpenFeatureIds] = useState(() => {
         try {
@@ -51,11 +85,44 @@ export default function DashboardGrid({
         localStorage.setItem('itb_dashboard_open_features', JSON.stringify(openFeatureIds));
     }, [openFeatureIds]);
 
-    const toggleFeature = (id) => {
-        setOpenFeatureIds(prev =>
-            prev.includes(id) ? prev.filter(fId => fId !== id) : [...prev, id]
-        );
+    // 💡 ניתוב חכם של הפיצ'רים מהתפריט הצדדי
+    const handleToggleFeature = (feat) => {
+        const isOpen = openFeatureIds.includes(feat.id);
+
+        if (isOpen) {
+            setOpenFeatureIds(prev => prev.filter(id => id !== feat.id));
+            if (activeTabId === feat.id) {
+                setActiveTabId('ALL');
+            }
+        } else {
+            setOpenFeatureIds(prev => [...prev, feat.id]);
+            // אם זה טאב, מעבירים אליו את הפוקוס
+            if (feat.displayMode === 'tab' || !feat.displayMode) {
+                setActiveTabId(feat.id);
+            } else if (feat.displayMode === 'fullscreen') {
+                // לוגיקת פולסקרין בעתיד
+            }
+        }
     };
+
+    const handleCloseFeature = (featureId) => {
+        setOpenFeatureIds(prev => prev.filter(id => id !== featureId));
+        if (activeTabId === featureId) {
+            setActiveTabId('ALL');
+        }
+    };
+
+    // חיתוך הפיצ'רים לסוגי התצוגה שלהם
+    const openFeatureTabs = useMemo(() => {
+        return availableFeatures.filter(f => openFeatureIds.includes(f.id) && (f.displayMode === 'tab' || !f.displayMode));
+    }, [availableFeatures, openFeatureIds]);
+
+    const activeInlineFeatures = useMemo(() => {
+        return availableFeatures.filter(f => openFeatureIds.includes(f.id) && f.displayMode === 'inline');
+    }, [availableFeatures, openFeatureIds]);
+
+    // בודק אם הטאב הנוכחי הוא למעשה פיצ'ר
+    const activeFeatureObject = openFeatureTabs.find(f => f.id === activeTabId);
 
     const handleFeatureQuickExport = (hostname) => {
         const extractorFeat = availableFeatures.find(f => f.id === 'extractor-slicer');
@@ -63,6 +130,9 @@ export default function DashboardGrid({
             setFocusedWidgetHost(hostname);
             if (!openFeatureIds.includes(extractorFeat.id)) {
                 setOpenFeatureIds(prev => [...prev, extractorFeat.id]);
+            }
+            if (extractorFeat.displayMode === 'tab' || !extractorFeat.displayMode) {
+                setActiveTabId(extractorFeat.id);
             }
         }
         onQuickExport?.(hostname);
@@ -128,8 +198,8 @@ export default function DashboardGrid({
     }, [isSearchOpen]);
 
     const faultyStationsCount = useMemo(() => {
-        return stations.filter(isStationFaulty).length;
-    }, [stations]);
+        return tabFilteredStations.filter(isStationFaulty).length;
+    }, [tabFilteredStations]);
 
     useEffect(() => {
         if (isFaultFilterActive && faultyStationsCount === 0) {
@@ -138,7 +208,7 @@ export default function DashboardGrid({
     }, [isFaultFilterActive, faultyStationsCount, onExitFaultFilter]);
 
     const processedStations = useMemo(() => {
-        let list = [...stations];
+        let list = [...tabFilteredStations];
 
         if (isFaultFilterActive) {
             list = list.filter(isStationFaulty);
@@ -162,8 +232,16 @@ export default function DashboardGrid({
             return sortAsc ? comp : -comp;
         });
 
+        if (activeFleetTabConfig) {
+            list = list.map(station => ({
+                ...station,
+                effectiveBitrate: station.customBitrate || activeFleetTabConfig.defaultBitrate || station.bitrate,
+                effectiveFps: station.customFps || activeFleetTabConfig.defaultFps || station.fps
+            }));
+        }
+
         return list;
-    }, [stations, isFaultFilterActive, hideOffline, searchQuery, sortAsc]);
+    }, [tabFilteredStations, isFaultFilterActive, hideOffline, searchQuery, sortAsc, activeFleetTabConfig]);
 
     const canSort = processedStations.length > 1;
 
@@ -182,7 +260,11 @@ export default function DashboardGrid({
         const targetHostnames = processedStations
             .filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming)
             .map(s => s.hostname);
-        onBulkStart?.(targetHostnames);
+
+        onBulkStart?.(targetHostnames, {
+            bitrate: activeFleetTabConfig?.defaultBitrate || null,
+            fps: activeFleetTabConfig?.defaultFps || null
+        });
     };
 
     const handleFilteredBulkStop = () => {
@@ -193,40 +275,43 @@ export default function DashboardGrid({
         onBulkStop?.(targetHostnames);
     };
 
+    const handlePolicyApplication = ({ tabData, overrideCustomSettings }) => {
+        if (!overrideCustomSettings) return;
+
+        onUpdateStationSettings?.(prev => prev.map(st => {
+            const matchesName = tabData.assignedHostnames?.includes(st.hostname);
+            const matchesOu = tabData.assignedOus?.some(ou =>
+                st.ou?.toLowerCase().includes(ou.toLowerCase()) ||
+                st.group?.toLowerCase().includes(ou.toLowerCase())
+            );
+
+            if (matchesName || matchesOu) {
+                return {
+                    ...st,
+                    customBitrate: tabData.defaultBitrate,
+                    customFps: tabData.defaultFps
+                };
+            }
+            return st;
+        }));
+    };
+
     const autoOptimalZoom = useMemo(() => {
-        const count = processedStations.length + openFeatureIds.length;
+        const count = processedStations.length + activeInlineFeatures.length;
         if (count === 0) return 3;
         if (count === 1) return 5;
         if (count === 2) return 4;
         if (count <= 6) return 3;
         if (count <= 12) return 2;
         return 1;
-    }, [processedStations.length, openFeatureIds.length]);
+    }, [processedStations.length, activeInlineFeatures.length]);
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
+    const cardWidthMap = { 1: '290px', 2: '360px', 3: '450px', 4: '570px', 5: '700px' };
 
-    const cardWidthMap = {
-        1: '290px',
-        2: '360px',
-        3: '450px',
-        4: '570px',
-        5: '700px'
-    };
-
-    const handleZoomOut = () => {
-        setIsAutoZoom(false);
-        setManualZoom(prev => Math.max(prev - 1, 1));
-    };
-
-    const handleZoomIn = () => {
-        setIsAutoZoom(false);
-        setManualZoom(prev => Math.min(prev + 1, 5));
-    };
-
-    const handleSliderChange = (e) => {
-        setIsAutoZoom(false);
-        setManualZoom(Number(e.target.value));
-    };
+    const handleZoomOut = () => { setIsAutoZoom(false); setManualZoom(prev => Math.max(prev - 1, 1)); };
+    const handleZoomIn = () => { setIsAutoZoom(false); setManualZoom(prev => Math.min(prev + 1, 5)); };
+    const handleSliderChange = (e) => { setIsAutoZoom(false); setManualZoom(Number(e.target.value)); };
 
     const handleClearFilter = () => {
         setSearchQuery('');
@@ -236,8 +321,6 @@ export default function DashboardGrid({
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
-
-    const activeFeaturesToRender = availableFeatures.filter(f => openFeatureIds.includes(f.id));
 
     return (
         <div className="dashboard-layout-wrapper" dir={direction}>
@@ -341,7 +424,6 @@ export default function DashboardGrid({
                         </svg>
                     </button>
 
-                    {/* לחצני Features שזוהו דינמית מהשרת */}
                     {availableFeatures.length > 0 && (
                         <>
                             <div className="dock-divider"></div>
@@ -351,7 +433,7 @@ export default function DashboardGrid({
                                     <button
                                         key={feat.id}
                                         className={`dock-icon-btn tactical-btn-feature ${isOpen ? 'is-engaged' : ''}`}
-                                        onClick={() => toggleFeature(feat.id)}
+                                        onClick={() => handleToggleFeature(feat)}
                                         title={isOpen ? `Close ${feat.title}` : `Open ${feat.title}`}
                                         style={isOpen ? { color: '#38bdf8', borderColor: '#38bdf8' } : {}}
                                     >
@@ -364,232 +446,267 @@ export default function DashboardGrid({
                 </aside>
 
                 <main className="dashboard-main-area">
-                    {isFaultFilterActive && (
-                        <div className="tactical-fault-isolation-banner">
-                            <div className="isolation-info">
-                                <span className="pulse-alert-dot" />
-                                <span className="isolation-title">FAULT ISOLATION MODE</span>
-                                <span className="isolation-desc">
-                                    Displaying {processedStations.length} station{processedStations.length === 1 ? '' : 's'} with critical issues. Automatically reverts once resolved.
-                                </span>
-                            </div>
-                            <button
-                                type="button"
-                                className="btn-exit-isolation"
-                                onClick={onExitFaultFilter}
-                                title="Exit fault isolation mode"
-                            >
-                                ✕ Exit Filter
-                            </button>
-                        </div>
-                    )}
+                    {/* 💡 העברת השליטה על הטאבים ל-FleetTabs */}
+                    <FleetTabs
+                        activeTabId={activeTabId}
+                        onTabChange={setActiveTabId}
+                        allStations={stations}
+                        onApplyPolicyToStations={handlePolicyApplication}
+                        systemConfig={systemConfig}
+                        onSystemConfigUpdate={onSystemConfigUpdate}
+                        openFeatureTabs={openFeatureTabs}
+                        onCloseFeature={handleCloseFeature}
+                    />
 
-                    <div className={`fleet-search-shelf ${isSearchOpen ? 'is-open' : ''}`}>
-                        <div className="search-shelf-inner">
-                            <div className="search-input-field">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="14" height="14">
-                                    <circle cx="11" cy="11" r="8" />
-                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                                </svg>
-                                <input
-                                    ref={searchInputRef}
-                                    type="text"
-                                    placeholder="FILTER FLEET BY HOSTNAME OR IP..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Escape' && handleClearFilter()}
+                    <div className="tab-pane-content-wrapper">
+
+                        {/* 💡 ראוטינג: תצוגת פיצ'ר או גריד התחנות */}
+                        {activeFeatureObject ? (
+                            <div className="feature-stealth-container" style={{ width: '100%', height: '100%' }}>
+                                <RemoteWidgetHost
+                                    scriptUrl={activeFeatureObject.scriptUrl}
+                                    widgetProps={{
+                                        activeHost: focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP',
+                                        defaultWindowHours: 24,
+                                        onClose: () => handleCloseFeature(activeFeatureObject.id)
+                                    }}
                                 />
-                                {searchQuery && (
-                                    <button className="clear-btn" onClick={handleClearFilter}>✕</button>
-                                )}
                             </div>
-
-                            <div className="search-actions-group">
-                                {searchQuery && (
-                                    <button className="reset-filter-link" onClick={handleClearFilter}>
-                                        RESET FILTER
-                                    </button>
-                                )}
-                                <div className="search-stats-badge">
-                                    SHOWING {processedStations.length} OF {stations.length} AGENTS
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {processedStations.length === 0 && activeFeaturesToRender.length === 0 ? (
-                        <div className="stations-empty-state-glass">
-                            <div className="connection-pulse-container">
-                                <div className="pulse-dot-amber"></div>
-                                <div className="pulse-ring"></div>
-                            </div>
-                            <span className="empty-state-text">
-                                {isFaultFilterActive
-                                    ? "ALL AGENTS HEALTH NOMINAL"
-                                    : searchQuery
-                                        ? "NO AGENTS MATCH SEARCH QUERY"
-                                        : "NO AGENTS CONNECTED / FILTERED OUT"}
-                            </span>
-                            {searchQuery && (
-                                <button className="clear-filter-action-btn" onClick={handleClearFilter}>
-                                    CLEAR FILTER
-                                </button>
-                            )}
-                        </div>
-                    ) : viewMode === 'grid' ? (
-                        <div
-                            className="stations-grid-wrapper tight-grid"
-                            style={{ '--station-card-width': cardWidthMap[effectiveZoom] }}
-                        >
-                            {/* רינדור ווידג'טים של תוספים ישירות לגריד התחנות */}
-                            {activeFeaturesToRender.map((feat) => (
-                                <div
-                                    key={feat.id}
-                                    className="station-wrapper-cell feature-tile-slot"
-                                    style={{ minHeight: '380px', position: 'relative' }}
-                                >
-                                    <RemoteWidgetHost
-                                        scriptUrl={feat.scriptUrl}
-                                        widgetProps={{
-                                            activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
-                                            defaultWindowHours: 24,
-                                            onClose: () => toggleFeature(feat.id)
-                                        }}
-                                    />
-                                </div>
-                            ))}
-
-                            {processedStations.map((station) => (
-                                <div key={station.hostname} className="station-wrapper-cell">
-                                    <StationThumbnail
-                                        {...station}
-                                        isPending={actionPending[station.hostname]}
-                                        onToggleStream={(h, s) => {
-                                            const targetHost = typeof h === 'string' ? h : station.hostname;
-                                            const targetStream = typeof s === 'boolean' ? s : station.isStreaming;
-                                            onToggleStream(targetHost, targetStream);
-                                        }}
-                                        onSelectStation={() => setInspectedHostname(station.hostname)}
-                                        onOpenFullscreen={() => setFullscreenHostname(station.hostname)}
-                                        onQuickBookmark={onQuickBookmark}
-                                        onQuickPlayback={onQuickPlayback}
-                                        onQuickExport={handleFeatureQuickExport}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="stations-dense-container">
-                            {activeFeaturesToRender.length > 0 && (
-                                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                                    {activeFeaturesToRender.map((feat) => (
-                                        <div key={feat.id} style={{ flex: '1 1 450px', minHeight: '380px' }}>
-                                            <RemoteWidgetHost
-                                                scriptUrl={feat.scriptUrl}
-                                                widgetProps={{
-                                                    activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
-                                                    defaultWindowHours: 24,
-                                                    onClose: () => toggleFeature(feat.id)
-                                                }}
-                                            />
+                        ) : (
+                            <>
+                                {isFaultFilterActive && (
+                                    <div className="tactical-fault-isolation-banner">
+                                        <div className="isolation-info">
+                                            <span className="pulse-alert-dot" />
+                                            <span className="isolation-title">FAULT ISOLATION MODE</span>
+                                            <span className="isolation-desc">
+                                                Displaying {processedStations.length} station{processedStations.length === 1 ? '' : 's'} with critical issues. Automatically reverts once resolved.
+                                            </span>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+                                        <button
+                                            type="button"
+                                            className="btn-exit-isolation"
+                                            onClick={onExitFaultFilter}
+                                            title="Exit fault isolation mode"
+                                        >
+                                            ✕ Exit Filter
+                                        </button>
+                                    </div>
+                                )}
 
-                            <table className="stations-dense-table">
-                                <thead>
-                                    <tr>
-                                        <th>STATUS</th>
-                                        <th>HOSTNAME</th>
-                                        <th>IP ADDRESS</th>
-                                        <th>STREAM</th>
-                                        <th>FPS / DROPS</th>
-                                        <th>HOST CPU</th>
-                                        <th>QUICK ACTIONS</th>
-                                        <th>INSPECT</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {processedStations.map((s) => {
-                                        const isRec = s.isStreaming;
-                                        const hasDrops = s.droppedFrames > 0;
-                                        return (
-                                            <tr
-                                                key={s.hostname}
-                                                className={`dense-row ${!s.isOnline ? 'is-offline' : ''} ${hasDrops ? 'has-crit' : ''}`}
-                                                onClick={() => setInspectedHostname(s.hostname)}
-                                                onDoubleClick={() => setFullscreenHostname(s.hostname)}
-                                                title="Click to inspect, double-click for Fullscreen"
+                                <div className={`fleet-search-shelf ${isSearchOpen ? 'is-open' : ''}`}>
+                                    <div className="search-shelf-inner">
+                                        <div className="search-input-field">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="14" height="14">
+                                                <circle cx="11" cy="11" r="8" />
+                                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                            </svg>
+                                            <input
+                                                ref={searchInputRef}
+                                                type="text"
+                                                placeholder="FILTER FLEET BY HOSTNAME OR IP..."
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Escape' && handleClearFilter()}
+                                            />
+                                            {searchQuery && (
+                                                <button className="clear-btn" onClick={handleClearFilter}>✕</button>
+                                            )}
+                                        </div>
+
+                                        <div className="search-actions-group">
+                                            {searchQuery && (
+                                                <button className="reset-filter-link" onClick={handleClearFilter}>
+                                                    RESET FILTER
+                                                </button>
+                                            )}
+                                            <div className="search-stats-badge">
+                                                SHOWING {processedStations.length} OF {stations.length} AGENTS
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {processedStations.length === 0 && activeInlineFeatures.length === 0 ? (
+                                    <div className="stations-empty-state-glass">
+                                        <div className="connection-pulse-container">
+                                            <div className="pulse-dot-amber"></div>
+                                            <div className="pulse-ring"></div>
+                                        </div>
+                                        <span className="empty-state-text">
+                                            {isFaultFilterActive
+                                                ? "ALL AGENTS HEALTH NOMINAL"
+                                                : searchQuery
+                                                    ? "NO AGENTS MATCH SEARCH QUERY"
+                                                    : "NO AGENTS CONNECTED / FILTERED OUT"}
+                                        </span>
+                                        {searchQuery && (
+                                            <button className="clear-filter-action-btn" onClick={handleClearFilter}>
+                                                CLEAR FILTER
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : viewMode === 'grid' ? (
+                                    <div
+                                        className="stations-grid-wrapper tight-grid"
+                                        style={{ '--station-card-width': cardWidthMap[effectiveZoom] }}
+                                    >
+                                        {activeInlineFeatures.map((feat) => (
+                                            <div
+                                                key={feat.id}
+                                                className="station-wrapper-cell feature-tile-slot"
+                                                style={{ minHeight: '380px', position: 'relative' }}
                                             >
-                                                <td>
-                                                    <span className={`dense-beacon ${s.isOnline ? 'online' : 'offline'}`} />
-                                                </td>
-                                                <td className="dense-hostname">{s.hostname}</td>
-                                                <td className="dense-ip">{s.ipAddress || 'N/A'}</td>
-                                                <td>
-                                                    {isRec ? (
-                                                        <span className="dense-badge rec">REC</span>
-                                                    ) : (
-                                                        <span className="dense-badge idle">IDLE</span>
-                                                    )}
-                                                </td>
-                                                <td className="dense-metric">
-                                                    {s.actualFps || 0} FPS
-                                                    {hasDrops && <span className="dense-drop-tag">({s.droppedFrames} D)</span>}
-                                                </td>
-                                                <td className="dense-metric">{s.hostCpuPct || 0}%</td>
-                                                <td className="dense-actions-cell" onClick={(e) => e.stopPropagation()}>
-                                                    <button
-                                                        className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
-                                                        onClick={() => onToggleStream(s.hostname, isRec)}
-                                                    >
-                                                        {isRec ? 'STOP' : 'START'}
-                                                    </button>
-                                                    <button
-                                                        className="dense-act-btn full"
-                                                        onClick={() => setFullscreenHostname(s.hostname)}
-                                                        title="Open Station in Fullscreen View"
-                                                    >
-                                                        FULL
-                                                    </button>
-                                                    <button
-                                                        className="dense-act-btn icon"
-                                                        onClick={() => onQuickBookmark?.(s.hostname)}
-                                                        title="Bookmark"
-                                                    >
-                                                        BM
-                                                    </button>
-                                                    <button
-                                                        className="dense-act-btn icon"
-                                                        onClick={() => onQuickPlayback?.(s.hostname)}
-                                                        title="Playback"
-                                                    >
-                                                        PLAY
-                                                    </button>
-                                                </td>
-                                                <td className="dense-inspect-cell">
-                                                    <button
-                                                        className="dense-inspect-btn"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setInspectedHostname(s.hostname);
-                                                        }}
-                                                    >
-                                                        INSPECT ↗
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                                                <RemoteWidgetHost
+                                                    scriptUrl={feat.scriptUrl}
+                                                    widgetProps={{
+                                                        activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
+                                                        defaultWindowHours: 24,
+                                                        onClose: () => handleCloseFeature(feat.id)
+                                                    }}
+                                                />
+                                            </div>
+                                        ))}
+
+                                        {processedStations.map((station) => (
+                                            <div key={station.hostname} className="station-wrapper-cell">
+                                                <StationThumbnail
+                                                    {...station}
+                                                    bitrate={station.effectiveBitrate || station.bitrate}
+                                                    fps={station.effectiveFps || station.fps}
+                                                    isPending={actionPending[station.hostname]}
+                                                    onToggleStream={(h, s) => {
+                                                        const targetHost = typeof h === 'string' ? h : station.hostname;
+                                                        const targetStream = typeof s === 'boolean' ? s : station.isStreaming;
+                                                        onToggleStream(targetHost, targetStream, {
+                                                            bitrate: station.effectiveBitrate,
+                                                            fps: station.effectiveFps
+                                                        });
+                                                    }}
+                                                    onSelectStation={() => setInspectedHostname(station.hostname)}
+                                                    onOpenFullscreen={() => setFullscreenHostname(station.hostname)}
+                                                    onQuickBookmark={onQuickBookmark}
+                                                    onQuickPlayback={onQuickPlayback}
+                                                    onQuickExport={handleFeatureQuickExport}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="stations-dense-container">
+                                        {activeInlineFeatures.length > 0 && (
+                                            <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                                                {activeInlineFeatures.map((feat) => (
+                                                    <div key={feat.id} style={{ flex: '1 1 450px', minHeight: '380px' }}>
+                                                        <RemoteWidgetHost
+                                                            scriptUrl={feat.scriptUrl}
+                                                            widgetProps={{
+                                                                activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
+                                                                defaultWindowHours: 24,
+                                                                onClose: () => handleCloseFeature(feat.id)
+                                                            }}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <table className="stations-dense-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>STATUS</th>
+                                                    <th>HOSTNAME</th>
+                                                    <th>IP ADDRESS</th>
+                                                    <th>STREAM</th>
+                                                    <th>FPS / DROPS</th>
+                                                    <th>HOST CPU</th>
+                                                    <th>QUICK ACTIONS</th>
+                                                    <th>INSPECT</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {processedStations.map((s) => {
+                                                    const isRec = s.isStreaming;
+                                                    const hasDrops = s.droppedFrames > 0;
+                                                    return (
+                                                        <tr
+                                                            key={s.hostname}
+                                                            className={`dense-row ${!s.isOnline ? 'is-offline' : ''} ${hasDrops ? 'has-crit' : ''}`}
+                                                            onClick={() => setInspectedHostname(s.hostname)}
+                                                            onDoubleClick={() => setFullscreenHostname(s.hostname)}
+                                                            title="Click to inspect, double-click for Fullscreen"
+                                                        >
+                                                            <td>
+                                                                <span className={`dense-beacon ${s.isOnline ? 'online' : 'offline'}`} />
+                                                            </td>
+                                                            <td className="dense-hostname">{s.hostname}</td>
+                                                            <td className="dense-ip">{s.ipAddress || 'N/A'}</td>
+                                                            <td>
+                                                                {isRec ? <span className="dense-badge rec">REC</span> : <span className="dense-badge idle">IDLE</span>}
+                                                            </td>
+                                                            <td className="dense-metric">
+                                                                {s.effectiveFps || s.actualFps || 0} FPS
+                                                                {hasDrops && <span className="dense-drop-tag">({s.droppedFrames} D)</span>}
+                                                            </td>
+                                                            <td className="dense-metric">{s.hostCpuPct || 0}%</td>
+                                                            <td className="dense-actions-cell" onClick={(e) => e.stopPropagation()}>
+                                                                <button
+                                                                    className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
+                                                                    onClick={() => onToggleStream(s.hostname, isRec, {
+                                                                        bitrate: s.effectiveBitrate,
+                                                                        fps: s.effectiveFps
+                                                                    })}
+                                                                >
+                                                                    {isRec ? 'STOP' : 'START'}
+                                                                </button>
+                                                                <button
+                                                                    className="dense-act-btn full"
+                                                                    onClick={() => setFullscreenHostname(s.hostname)}
+                                                                    title="Open Station in Fullscreen View"
+                                                                >
+                                                                    FULL
+                                                                </button>
+                                                                <button
+                                                                    className="dense-act-btn icon"
+                                                                    onClick={() => onQuickBookmark?.(s.hostname)}
+                                                                    title="Bookmark"
+                                                                >
+                                                                    BM
+                                                                </button>
+                                                                <button
+                                                                    className="dense-act-btn icon"
+                                                                    onClick={() => onQuickPlayback?.(s.hostname)}
+                                                                    title="Playback"
+                                                                >
+                                                                    PLAY
+                                                                </button>
+                                                            </td>
+                                                            <td className="dense-inspect-cell">
+                                                                <button
+                                                                    className="dense-inspect-btn"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setInspectedHostname(s.hostname);
+                                                                    }}
+                                                                >
+                                                                    INSPECT ↗
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </main>
             </div>
 
-            {viewMode === 'grid' && (
+            {/* 💡 כפתורי הזום יוצגו רק כשאנחנו בטאב גריד רגיל */}
+            {!activeFeatureObject && viewMode === 'grid' && (
                 <div className="noc-footer-zoom-pill">
                     <button
                         className={`zoom-auto-btn ${isAutoZoom ? 'is-active' : ''}`}
