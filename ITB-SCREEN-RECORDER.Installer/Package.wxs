@@ -9,25 +9,41 @@
 			 Scope="perMachine"
 			 Compressed="yes">
 
+		<!-- הסרת הגרסה הקודמת במלואה לפני כתיבת קבצים חדשים למניעת נעילות והתנגשויות -->
 		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed."
 					  AllowSameVersionUpgrades="yes"
-					  Schedule="afterInstallInitialize" />
+					  Schedule="afterInstallValidate" />
 
 		<!-- ביטול Restart Manager להתקנות שקטות (Zero-Touch) -->
 		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
-		<!-- 1. חיסול שירותים ותהליכים רצים -->
-		<CustomAction Id="KillAgentServiceProc" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentService.exe /T" Execute="immediate" Return="ignore" />
-		<CustomAction Id="KillAgentWorker" Directory="System64Folder" ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentWorker.exe /T" Execute="immediate" Return="ignore" />
+		<!-- 1. סגירה שקטה מובנית דרך UtilExtension לתהליכי ה-Agent -->
+		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentService.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
+		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentWorker.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 
-		<!-- 2. אריזת הנתונים לתוך ה-ID של הפעולה הבאה (Immediate) -->
+		<!-- 2. חיסול תהליכים כפוי בהרשאות מורמות (SYSTEM) למניעת Access Denied מול שירותים ותהליכי רקע -->
+		<CustomAction Id="KillAgentServiceProcElevated"
+					  Directory="System64Folder"
+					  ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentService.exe /T"
+					  Execute="deferred"
+					  Impersonate="no"
+					  Return="ignore" />
+
+		<CustomAction Id="KillAgentWorkerElevated"
+					  Directory="System64Folder"
+					  ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentWorker.exe /T"
+					  Execute="deferred"
+					  Impersonate="no"
+					  Return="ignore" />
+
+		<!-- 3. אריזת הנתונים לתוך ה-ID של הפעולה הבאה (Immediate) -->
 		<CustomAction Id="SetJsonDataArgs"
 					  Property="UpdateAgentJson"
 					  Value="[INSTALLFOLDER]|[SERVER_IP]"
 					  Execute="immediate" />
 
-		<!-- 3. ריצת הסקריפט: עוקף את ה"אכילה" של הסוגריים המרובעים ב-MSI -->
+		<!-- 4. ריצת הסקריפט לעדכון appsettings.json -->
 		<CustomAction Id="UpdateAgentJson"
 					  Directory="System64Folder"
 					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $log='C:\Windows\Temp\itb-agent.log'; 'START' | Out-File $log; $d='[UpdateAgentJson]'; $arr=$d.Split('|'); $cleanDir=$arr[0].TrimEnd('\'); $p=Join-Path $cleanDir 'appsettings.json'; $ip=$arr[1]; 'Target File: '+$p+' | IP: '+$ip | Out-File $log -Append; if(-not(Test-Path $p)){ 'File Not Found' | Out-File $log -Append; exit 0 }; $h=if($ip.Contains(':')){$ip.Split(':')[0]}else{$ip}; $c=Get-Content $p -Raw; $q=[\[]char[\]]34; $c=$c -replace ('(?i)'+$q+'DashboardApiUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'DashboardApiUrl'+$q+': '+$q+'http://'+$h+':5090/api/v1/agent/telemetry'+$q); $c=$c -replace ('(?i)'+$q+'RtmpServerBaseUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'RtmpServerBaseUrl'+$q+': '+$q+'rtmp://'+$h+':19350/live/'+$q); $c | Set-Content $p -Encoding UTF8; 'SUCCESS' | Out-File $log -Append; exit 0 } catch { 'ERR: '+$_.Exception.Message | Out-File $log -Append; exit 0 }&quot;"
@@ -36,14 +52,13 @@
 					  Return="ignore" />
 
 		<InstallExecuteSequence>
-			<Custom Action="KillAgentServiceProc" Before="InstallValidate" />
-			<Custom Action="KillAgentWorker" Before="InstallValidate" />
+			<!-- עצירת תהליכים מורמת לפני עצירת השירותים ומחיקת קבצים ישנים -->
+			<Custom Action="KillAgentServiceProcElevated" Before="StopServices" />
+			<Custom Action="KillAgentWorkerElevated" Before="StopServices" />
 
-			<!-- הזרקת הנתונים למערכת רגע לפני יצירת תסריט ההתקנה -->
-			<Custom Action="SetJsonDataArgs" Before="InstallInitialize" Condition="NOT WIX_UPGRADE_DETECTED" />
-
-			<!-- הרצת הסקריפט רק לאחר שהקבצים הועתקו, שנייה לפני הדלקת השירות -->
-			<Custom Action="UpdateAgentJson" Before="StartServices" Condition="NOT WIX_UPGRADE_DETECTED" />
+			<!-- עדכון ה-JSON ירוץ בהתקנה נקייה בלבד (לא בשדרוג ולא בעת הסרה) -->
+			<Custom Action="SetJsonDataArgs" Before="InstallInitialize" Condition="(NOT Installed) AND (NOT WIX_UPGRADE_DETECTED) AND (NOT REMOVE=&quot;ALL&quot;)" />
+			<Custom Action="UpdateAgentJson" Before="StartServices" Condition="(NOT Installed) AND (NOT WIX_UPGRADE_DETECTED) AND (NOT REMOVE=&quot;ALL&quot;)" />
 		</InstallExecuteSequence>
 
 		<!-- ממשק המשתמש -->
@@ -86,8 +101,20 @@
 		<ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
 			<Component Id="ServiceExecutable" Bitness="always64" Guid="A21E3D4C-5B6A-7F8E-9D0C-1B2A3F4E5D6C">
 				<File Id="ServiceExe" Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe" KeyPath="yes" />
-				<ServiceInstall Id="ServiceInstaller" Type="ownProcess" Name="ITB_AgentService" DisplayName="ITB Screen Recorder Supervisor Service" Description="Supervises interactive screen recording sessions." Start="auto" Account="LocalSystem" ErrorControl="normal" />
-				<ServiceControl Id="ServiceController" Name="ITB_AgentService" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+				<ServiceInstall Id="ServiceInstaller"
+								Type="ownProcess"
+								Name="ITB_AgentService"
+								DisplayName="ITB Screen Recorder Supervisor Service"
+								Description="Supervises interactive screen recording sessions."
+								Start="auto"
+								Account="LocalSystem"
+								ErrorControl="normal" />
+				<ServiceControl Id="ServiceController"
+								Name="ITB_AgentService"
+								Start="install"
+								Stop="both"
+								Remove="uninstall"
+								Wait="yes" />
 			</Component>
 
 			<Component Id="FfmpegLicenseDeclaration" Bitness="always64" Guid="D89A5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F99">

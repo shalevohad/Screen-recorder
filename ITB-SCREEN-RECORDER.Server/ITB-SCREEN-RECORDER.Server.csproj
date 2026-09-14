@@ -6,6 +6,12 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RootNamespace>ITB_SCREEN_RECORDER.Server</RootNamespace>
 		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+
+		<!-- הגדרות Self-Contained כקבצים פתוחים עבור השרת בלבד -->
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>true</SelfContained>
+		<PublishSingleFile>false</PublishSingleFile>
+		<EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -63,15 +69,15 @@
 		<ExtractorProjectPath>..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj</ExtractorProjectPath>
 	</PropertyGroup>
 
-	<!-- שחזור ובניית ה-Extractor בנפרד ללא נעילת RuntimeIdentifier -->
+	<!-- שחזור ובניית ה-Extractor כ-Class Library רגיל ללא SelfContained -->
 	<Target Name="BuildExtractorFeature" BeforeTargets="BeforeBuild" Condition="Exists('$(ExtractorProjectPath)')">
 		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling Extractor module ($(Configuration))..." />
 		<MSBuild Projects="$(ExtractorProjectPath)"
 		         Targets="Restore;Build"
-		         Properties="Configuration=$(Configuration);RuntimeIdentifier=" />
+		         Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" />
 	</Target>
 
-	<!-- העתקת קבצים ל-bin בסיום Build רגיל של השרת -->
+	<!-- העתקת תוצרי ה-Extractor לתיקיית היעד -->
 	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Condition="Exists('$(ExtractorProjectPath)')">
 		<ItemGroup>
 			<ExtractorOutputFiles Include="..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\bin\$(Configuration)\net8.0\**\*.*" />
@@ -81,7 +87,7 @@
 		      SkipUnchangedFiles="true" />
 	</Target>
 
-	<!-- שילוב תוצרי ה-Extractor ב-Publish באמצעות Pipeline ה-WebTools הרשמי -->
+	<!-- אריזת הפיצ'ר לתוך תיקיית ה-Publish תחת Features\Extractor -->
 	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="Exists('$(ExtractorProjectPath)')">
 		<ItemGroup>
 			<_ExtractorFilesToPublish Include="..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\bin\$(Configuration)\net8.0\**\*.*" />
