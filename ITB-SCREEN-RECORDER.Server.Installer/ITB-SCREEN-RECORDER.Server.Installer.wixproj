@@ -7,7 +7,7 @@
 		<!-- נרמול גרסה ל-3 מקטעים תקניים -->
 		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
 		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
-		<RawVersion Condition="'$(RawVersion)' == ''">1.0.24</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.25</RawVersion>
 
 		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
 		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
