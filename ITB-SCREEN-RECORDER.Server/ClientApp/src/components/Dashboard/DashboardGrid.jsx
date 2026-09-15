@@ -22,9 +22,10 @@ export default function DashboardGrid(props) {
         isFaultFilterActive, onExitFaultFilter
     } = props;
 
-    const cardWidthMap = { 1: '290px', 2: '360px', 3: '450px', 4: '570px', 5: '700px' };
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const dynamicWebrtcBaseUrl = `http://${serverHost}:${import.meta.env?.VITE_WEBRTC_PORT || '8889'}`;
+
+    const isFeatureMode = Boolean(logic.activeFeatureObject);
 
     return (
         <div className="dashboard-layout-wrapper" dir={direction}>
@@ -32,18 +33,96 @@ export default function DashboardGrid(props) {
 
                 <DashboardDock
                     isSearchOpen={logic.isSearchOpen} setIsSearchOpen={logic.setIsSearchOpen}
+                    hasActiveFilter={logic.hasActiveFilter}
                     viewMode={logic.viewMode} setViewMode={logic.setViewMode}
                     canStartAny={logic.canStartAny} handleFilteredBulkStart={logic.handleFilteredBulkStart}
                     canStopAny={logic.canStopAny} handleFilteredBulkStop={logic.handleFilteredBulkStop}
                     hideOffline={hideOffline} onToggleHideOffline={onToggleHideOffline}
                     sortAsc={logic.sortAsc} setSortAsc={logic.setSortAsc} canSort={logic.canSort}
                     availableFeatures={logic.availableFeatures} openFeatureIds={logic.openFeatureIds} handleToggleFeature={logic.handleToggleFeature}
-
-                    // 💡 השורה שהתווספה: מודיעה לסרגל הצד שפיצ'ר תפס את המסך
-                    isFeatureActive={!!logic.activeFeatureObject}
+                    isFeatureActive={isFeatureMode}
                 />
 
                 <main className="dashboard-main-area">
+                    {/* באנר תקלות קריטיות */}
+                    {!isFeatureMode && isFaultFilterActive && (
+                        <div className="tactical-fault-isolation-banner">
+                            <div className="isolation-info">
+                                <span className="pulse-alert-dot" />
+                                <span className="isolation-title">FAULT ISOLATION MODE</span>
+                                <span className="isolation-desc">Displaying {logic.processedStations.length} station(s) with critical issues.</span>
+                            </div>
+                            <button className="btn-exit-isolation" onClick={onExitFaultFilter}>✕ Exit Filter</button>
+                        </div>
+                    )}
+
+                    {/* פס סינון טקטי אלגנטי - מודרני, קומפקטי ומרוכז */}
+                    {!isFeatureMode && !logic.isSearchOpen && logic.hasActiveFilter && (
+                        <div className="tactical-active-filter-banner">
+                            <div className="banner-left-cluster">
+                                <div className="filter-status-indicator">
+                                    <span className="pulse-amber-dot" />
+                                    <span className="filter-status-title">FILTER ACTIVE</span>
+                                </div>
+
+                                <div className="banner-v-divider" />
+
+                                <div className="filter-tags-group">
+                                    {logic.searchQuery && (
+                                        <span className="tactical-filter-pill">
+                                            QUERY: <strong>"{logic.searchQuery}"</strong>
+                                        </span>
+                                    )}
+                                    {logic.currentTabFilter !== 'ALL' && (
+                                        <span className="tactical-filter-pill">
+                                            STATUS: <strong>{logic.currentTabFilter}</strong>
+                                        </span>
+                                    )}
+                                </div>
+
+                                <span className="filter-match-count">
+                                    MATCHED: <strong>{logic.processedStations.length}</strong> / {stations.length}
+                                </span>
+
+                                <button
+                                    type="button"
+                                    className="btn-pill-reset"
+                                    onClick={logic.handleResetAllFilters}
+                                    title="Clear all filters & restore full fleet"
+                                >
+                                    ✕ CLEAR
+                                </button>
+                            </div>
+
+                            <div className="banner-right-cluster">
+                                <button
+                                    type="button"
+                                    className="btn-modify-filters"
+                                    onClick={() => logic.setIsSearchOpen(true)}
+                                    title="Open Search & Filter Shelf"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                    </svg>
+                                    <span>MOD FILTERS</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* סרגל חיפוש וסינון */}
+                    <SearchShelf
+                        isSearchOpen={!isFeatureMode && logic.isSearchOpen}
+                        searchInputRef={logic.searchInputRef}
+                        searchQuery={logic.searchQuery}
+                        setSearchQuery={logic.setSearchQuery}
+                        handleClearFilter={logic.handleClearFilter}
+                        currentTabFilter={logic.currentTabFilter}
+                        setFilterForTab={logic.setFilterForTab}
+                        resultCount={logic.processedStations.length}
+                    />
+
+                    {/* שורת הלשוניות */}
                     <FleetTabs
                         activeTabId={logic.activeTabId} onTabChange={logic.setActiveTabId}
                         allStations={stations} onApplyPolicyToStations={logic.handlePolicyApplication}
@@ -51,8 +130,9 @@ export default function DashboardGrid(props) {
                         openFeatureTabs={logic.openFeatureTabs} onCloseFeature={logic.handleCloseFeature}
                     />
 
-                    <div className={`tab-pane-content-wrapper ${logic.activeFeatureObject ? 'feature-active-pane' : ''}`}>
-                        {logic.activeFeatureObject ? (
+                    {/* שטח התוכן של הגריד */}
+                    <div className={`tab-pane-content-wrapper ${isFeatureMode ? 'feature-active-pane' : ''}`}>
+                        {isFeatureMode ? (
                             <div className="feature-stealth-container" style={{ width: '100%', height: '100%' }}>
                                 <RemoteWidgetHost
                                     scriptUrl={logic.activeFeatureObject.scriptUrl}
@@ -65,28 +145,6 @@ export default function DashboardGrid(props) {
                             </div>
                         ) : (
                             <>
-                                {isFaultFilterActive && (
-                                    <div className="tactical-fault-isolation-banner">
-                                        <div className="isolation-info">
-                                            <span className="pulse-alert-dot" />
-                                            <span className="isolation-title">FAULT ISOLATION MODE</span>
-                                            <span className="isolation-desc">Displaying {logic.processedStations.length} station(s) with critical issues.</span>
-                                        </div>
-                                        <button className="btn-exit-isolation" onClick={onExitFaultFilter}>✕ Exit Filter</button>
-                                    </div>
-                                )}
-
-                                <SearchShelf
-                                    isSearchOpen={logic.isSearchOpen}
-                                    searchInputRef={logic.searchInputRef}
-                                    searchQuery={logic.searchQuery}
-                                    setSearchQuery={logic.setSearchQuery}
-                                    handleClearFilter={logic.handleClearFilter}
-                                    currentTabFilter={logic.currentTabFilter}
-                                    setFilterForTab={logic.setFilterForTab}
-                                    resultCount={logic.processedStations.length}
-                                />
-
                                 {logic.processedStations.length === 0 && logic.activeInlineFeatures.length === 0 ? (
                                     <div className="stations-empty-state-glass">
                                         <div className="connection-pulse-container">
@@ -97,7 +155,7 @@ export default function DashboardGrid(props) {
                                             {isFaultFilterActive ? "ALL AGENTS HEALTH NOMINAL" : (logic.searchQuery || logic.currentTabFilter !== 'ALL') ? "NO AGENTS MATCH CURRENT FILTERS" : "NO AGENTS CONNECTED TO THIS TAB"}
                                         </span>
                                         {(logic.searchQuery || logic.currentTabFilter !== 'ALL') && (
-                                            <button className="clear-filter-action-btn" onClick={() => { logic.setSearchQuery(''); logic.setFilterForTab('ALL'); }}>CLEAR FILTERS</button>
+                                            <button className="clear-filter-action-btn" onClick={logic.handleResetAllFilters}>CLEAR FILTERS</button>
                                         )}
                                     </div>
                                 ) : logic.viewMode === 'grid' ? (
@@ -143,7 +201,7 @@ export default function DashboardGrid(props) {
                 </main>
             </div>
 
-            {!logic.activeFeatureObject && logic.viewMode === 'grid' && (
+            {!isFeatureMode && logic.viewMode === 'grid' && (
                 <div className="noc-footer-zoom-pill">
                     <button className={`zoom-auto-btn ${logic.isAutoZoom ? 'is-active' : ''}`} onClick={() => logic.setIsAutoZoom(p => !p)}>AUTO</button>
                     <div className="zoom-pill-divider"></div>

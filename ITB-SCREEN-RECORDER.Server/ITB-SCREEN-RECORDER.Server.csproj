@@ -22,6 +22,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Remove="ClientApp\src\components\UI\CommandCenterHeader.jsx~RF168a55cf.TMP" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Content Include="ClientApp\public\css\tailwind.min.css" />
 	</ItemGroup>
 

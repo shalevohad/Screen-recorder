@@ -30,45 +30,49 @@
         .brand-logo-section {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
             flex-shrink: 0;
 
             .tactical-emblem {
                 position: relative;
-                width: 36px;
-                height: 36px;
+                width: 80px;
+                height: 80px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                background: var(--c2-green-tint);
-                border: 1px solid var(--c2-green-border);
-                border-radius: 8px;
-                color: var(--c2-green-light);
+                /* הוסרו לחלוטין כל הגדרות הרקע, המסגרת, וה-box-shadow! */
+                /* הקונטיינר עכשיו שקוף לחלוטין ומשתלב בול ברקע של האתר */
 
-                svg {
-                    width: 18px;
-                    height: 18px;
-                    filter: drop-shadow(0 0 6px var(--c2-green-border));
+                img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                    /* צללית שחורה עדינה כדי להפריד קלות את הלוגו אם יש קווים דקים */
+                    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+                    position: relative;
+                    z-index: 10;
                 }
-
+                /* במקום מסגרת זוהרת - יצרנו כתם אור עגול ורדיאלי שמתפוגג ברכות מאחורי הלוגו */
                 .emblem-core-pulse {
                     position: absolute;
-                    inset: -2px;
-                    border: 1px solid var(--c2-green-border);
-                    border-radius: 10px;
-                    animation: emblem-glow 3s infinite ease-in-out;
+                    inset: -10px; /* מתרחב מעט מחוץ לגבולות הלוגו */
+                    border-radius: 50%; /* מבטיח שאין שום צורה ריבועית */
+                    /* כתם אור תכלת עדין שמתפוגג לשקוף (Radial Gradient) */
+                    background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, transparent 70%);
+                    z-index: -1;
+                    animation: emblem-ambient-glow 4s infinite ease-in-out;
                 }
             }
 
             .brand-text-group {
                 display: flex;
                 flex-direction: column;
-                gap: 2px;
+                gap: 4px;
 
                 .brand-title-row {
                     display: flex;
                     align-items: center;
-                    gap: 5px;
+                    gap: 6px;
                     font-family: 'Inter', system-ui, sans-serif;
 
                     .brand-name {
@@ -76,14 +80,14 @@
                         color: transparent;
                         -webkit-background-clip: text;
                         font-weight: 900;
-                        font-size: 1.25rem;
+                        font-size: 1.4rem;
                         letter-spacing: 0.5px;
                     }
 
                     .brand-main {
                         color: var(--slate-light);
                         font-weight: 800;
-                        font-size: 1.25rem;
+                        font-size: 1.4rem;
                         letter-spacing: 0.8px;
                         white-space: nowrap;
                     }
@@ -92,11 +96,23 @@
                 .brand-subtitle {
                     color: var(--slate-dark);
                     font-family: monospace;
-                    font-size: 0.65rem;
+                    font-size: 0.7rem;
                     font-weight: 600;
-                    letter-spacing: 1px;
+                    letter-spacing: 1.5px;
                     white-space: nowrap;
                 }
+            }
+        }
+
+        @keyframes emblem-ambient-glow {
+            0%, 100% {
+                opacity: 0.3;
+                transform: scale(0.9);
+            }
+
+            50% {
+                opacity: 0.8;
+                transform: scale(1.1);
             }
         }
 

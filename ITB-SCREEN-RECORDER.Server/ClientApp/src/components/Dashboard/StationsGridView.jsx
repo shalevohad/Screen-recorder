@@ -17,10 +17,11 @@ export default function StationsGridView({
     onQuickPlayback,
     handleFeatureQuickExport
 }) {
-    const cardWidthMap = { 1: '290px', 2: '360px', 3: '450px', 4: '570px', 5: '700px' };
-
     return (
-        <div className="stations-grid-wrapper tight-grid" style={{ '--station-card-width': cardWidthMap[effectiveZoom] }}>
+        <div
+            className="stations-grid-wrapper tight-grid"
+            style={{ '--station-card-width': `var(--zoom-card-w-${effectiveZoom})` }}
+        >
             {activeInlineFeatures.map((feat) => (
                 <div key={feat.id} className="station-wrapper-cell feature-tile-slot" style={{ minHeight: '380px', position: 'relative' }}>
                     <RemoteWidgetHost
@@ -41,6 +42,7 @@ export default function StationsGridView({
                         bitrate={station.effectiveBitrate || station.bitrate}
                         fps={station.effectiveFps || station.fps}
                         isPending={actionPending[station.hostname]}
+                        canFullscreen={station.isStreaming}
                         onToggleStream={(h, s) => {
                             const targetHost = typeof h === 'string' ? h : station.hostname;
                             const targetStream = typeof s === 'boolean' ? s : station.isStreaming;
@@ -50,7 +52,7 @@ export default function StationsGridView({
                             });
                         }}
                         onSelectStation={() => setInspectedHostname(station.hostname)}
-                        onOpenFullscreen={() => setFullscreenHostname(station.hostname)}
+                        onOpenFullscreen={station.isStreaming ? () => setFullscreenHostname(station.hostname) : undefined}
                         onQuickBookmark={onQuickBookmark}
                         onQuickPlayback={onQuickPlayback}
                         onQuickExport={handleFeatureQuickExport}

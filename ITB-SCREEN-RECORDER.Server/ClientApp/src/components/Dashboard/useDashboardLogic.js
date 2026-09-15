@@ -2,6 +2,13 @@
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
 
+// שליפת משתני CSS גלובליים המוגדרים ב-SCSS
+const getCssPixelValue = (varName, fallback) => {
+    if (typeof window === 'undefined') return fallback;
+    const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    return val ? parseFloat(val) : fallback;
+};
+
 export function useDashboardLogic({
     stations = [],
     systemConfig,
@@ -110,6 +117,18 @@ export function useDashboardLogic({
 
     const searchInputRef = useRef(null);
 
+    const hasActiveFilter = useMemo(() => {
+        return Boolean(searchQuery.trim() || (currentTabFilter && currentTabFilter !== 'ALL'));
+    }, [searchQuery, currentTabFilter]);
+
+    const handleClearFilter = () => { setSearchQuery(''); searchInputRef.current?.focus(); };
+    const setFilterForTab = (val) => setTabFilters(p => ({ ...p, [activeTabId]: val }));
+    const handleResetAllFilters = () => {
+        setSearchQuery('');
+        setFilterForTab('ALL');
+        searchInputRef.current?.focus();
+    };
+
     const [manualZoom, setManualZoom] = useState(() => {
         const savedZoom = localStorage.getItem('itb_dashboard_zoom');
         return savedZoom ? Number(savedZoom) : 3;
@@ -192,26 +211,76 @@ export function useDashboardLogic({
         }));
     };
 
+    // מעקב מידות קונטיינר דרך ResizeObserver
+    const [containerSize, setContainerSize] = useState({
+        width: typeof window !== 'undefined' ? window.innerWidth - 100 : 1400,
+        height: typeof window !== 'undefined' ? window.innerHeight - 240 : 700
+    });
+
+    useEffect(() => {
+        const updateSize = () => {
+            const el = document.querySelector('.tab-pane-content-wrapper');
+            if (el) {
+                setContainerSize({ width: el.clientWidth, height: el.clientHeight });
+            } else if (typeof window !== 'undefined') {
+                setContainerSize({ width: window.innerWidth - 100, height: window.innerHeight - 240 });
+            }
+        };
+
+        updateSize();
+        window.addEventListener('resize', updateSize);
+
+        let ro = null;
+        const el = document.querySelector('.tab-pane-content-wrapper');
+        if (el && typeof ResizeObserver !== 'undefined') {
+            ro = new ResizeObserver(() => updateSize());
+            ro.observe(el);
+        }
+
+        return () => {
+            window.removeEventListener('resize', updateSize);
+            if (ro) ro.disconnect();
+        };
+    }, []);
+
+    // חישוב זום אוטומטי המבוסס על שטח ה-Pane הזמין בלבד
     const autoOptimalZoom = useMemo(() => {
         const count = paginatedStations.length + activeInlineFeatures.length;
         if (count === 0) return 3;
-        if (count === 1) return 5;
-        if (count <= 4) return 4;
-        if (count <= 9) return 3;
-        if (count <= 16) return 2;
+
+        const pane = typeof document !== 'undefined' ? document.querySelector('.tab-pane-content-wrapper') : null;
+        const padY = pane ? (parseFloat(getComputedStyle(pane).paddingTop) + parseFloat(getComputedStyle(pane).paddingBottom)) : 52;
+        const padX = pane ? (parseFloat(getComputedStyle(pane).paddingLeft) + parseFloat(getComputedStyle(pane).paddingRight)) : 32;
+
+        const availW = Math.max(300, (pane ? pane.clientWidth : containerSize.width) - padX);
+        // גובה זמין נטו (ללא צורך בקיזוז ידני, מכיוון שהסרגלים יושבים מחוץ ל-Pane)
+        const availH = Math.max(160, (pane ? pane.clientHeight : containerSize.height) - padY - 8);
+
+        const cardWidths = { 5: 700, 4: 570, 3: 450, 2: 360, 1: 290 };
+
+        for (let z = 5; z >= 1; z--) {
+            const w = getCssPixelValue(`--zoom-card-w-${z}`, cardWidths[z]);
+            const cardH = Math.round(w * (9 / 16) + 82);
+
+            const cols = Math.max(1, Math.floor((availW + 20) / (w + 20)));
+            const rows = Math.ceil(count / cols);
+            const neededH = (rows * cardH) + ((rows - 1) * 20);
+
+            if (neededH <= availH || z === 1) {
+                return z;
+            }
+        }
+
         return 1;
-    }, [paginatedStations.length, activeInlineFeatures.length]);
+    }, [paginatedStations.length, activeInlineFeatures.length, containerSize]);
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
 
     const handleZoomOut = () => { setIsAutoZoom(false); setManualZoom(p => Math.max(p - 1, 1)); };
     const handleZoomIn = () => { setIsAutoZoom(false); setManualZoom(p => Math.min(p + 1, 5)); };
     const handleSliderChange = (e) => { setIsAutoZoom(false); setManualZoom(Number(e.target.value)); };
-    const handleClearFilter = () => { setSearchQuery(''); searchInputRef.current?.focus(); };
-    const setFilterForTab = (val) => setTabFilters(p => ({ ...p, [activeTabId]: val }));
 
     return {
-        // State & Toggles
         sortAsc, setSortAsc,
         inspectedHostname, setInspectedHostname,
         fullscreenHostname, setFullscreenHostname,
@@ -221,19 +290,17 @@ export function useDashboardLogic({
         viewMode, setViewMode,
         isSearchOpen, setIsSearchOpen,
         searchQuery, setSearchQuery, searchInputRef, handleClearFilter,
+        hasActiveFilter, handleResetAllFilters,
         isAutoZoom, setIsAutoZoom, effectiveZoom,
 
-        // Data Arrays
         availableFeatures, openFeatureIds,
         focusedWidgetHost,
         processedStations, paginatedStations,
         openFeatureTabs, activeInlineFeatures, activeFeatureObject,
         inspectedStation, fullscreenStation,
 
-        // Computations
         canSort, canStartAny, canStopAny,
 
-        // Handlers
         handleToggleFeature, handleCloseFeature, handleFeatureQuickExport,
         handleZoomOut, handleZoomIn, handleSliderChange,
         handleFilteredBulkStart, handleFilteredBulkStop, handlePolicyApplication

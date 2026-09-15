@@ -1,3 +1,11 @@
+:root {
+    --zoom-card-w-1: 290px;
+    --zoom-card-w-2: 360px;
+    --zoom-card-w-3: 450px;
+    --zoom-card-w-4: 570px;
+    --zoom-card-w-5: 700px;
+}
+
 .stations-grid-wrapper.tight-grid {
     display: flex;
     flex-wrap: wrap;
@@ -10,7 +18,7 @@
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 
     .station-wrapper-cell {
-        width: var(--station-card-width, 450px);
+        width: var(--station-card-width, var(--zoom-card-w-3));
         max-width: 100%;
         flex-shrink: 0;
         flex-grow: 0;

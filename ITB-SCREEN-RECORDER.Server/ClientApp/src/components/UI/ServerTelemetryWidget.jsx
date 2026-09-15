@@ -31,6 +31,16 @@ function SparklineChart({ data, color, limit = 40 }) {
     );
 }
 
+// חישוב אחוז ויזואלי לוגריתמי/טקטי שמשקף כל שינוי - מ-1K ועד 1G
+const calcTacticalBarPct = (rateKbps, maxLinkKbps = 1000000) => {
+    if (!rateKbps || rateKbps <= 0) return 0;
+    const maxLog = Math.log10(Math.max(1000, maxLinkKbps));
+    const curLog = Math.log10(Math.max(1, rateKbps));
+    const pct = (curLog / maxLog) * 100;
+    // החזרת רוחב עם מינימום של 6% כאשר יש תעבורה כדי שהפס והמסגרת ייראו חיים ופועמים
+    return Math.min(100, Math.max(6, Math.round(pct)));
+};
+
 export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0 }) {
     const historyPoints = 40;
 
@@ -53,10 +63,12 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     const linkSpeedMbps = serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000;
     const netUtilPct = serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100);
 
-    // 💡 חישוב אחוזים דינמיים עבור הפסי התקדמות המינימליסטיים (הנחת מקסימום של 5000Kbps לתעבורת C2)
-    const txPct = Math.min(100, (netTxMbps / (linkSpeedMbps || 1)) * 100);
-    const rxPct = Math.min(100, (netRxMbps / (linkSpeedMbps || 1)) * 100);
-    const c2Pct = Math.min(100, (c2Kbps / 5000) * 100);
+    // חישוב אחוזים דינמיים שגדלים וקטנים בזמן אמת לפי גודל התעבורה
+    const linkSpeedKbps = (linkSpeedMbps || 1000) * 1000;
+    const txPct = calcTacticalBarPct(netTxMbps * 1000, linkSpeedKbps);
+    const rxPct = calcTacticalBarPct(netRxMbps * 1000, linkSpeedKbps);
+    const netPct = calcTacticalBarPct(totalNetMbps * 1000, linkSpeedKbps);
+    const c2Pct = calcTacticalBarPct(c2Kbps, 5000); // תקשורת C2 מנוהלת בסקאלה של 5Mbps מקסימום
 
     const [history, setHistory] = useState({
         cpu: [cpuPct],
@@ -161,38 +173,36 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 <div className="pod-content-row">
                     <span className="pod-val">{netUtilPct.toFixed(1)}%</span>
 
-                    {/* 💡 פסי ההתקדמות המינימליסטיים */}
                     <div className="net-stats-grid">
-                        <div className="net-stat-col">
-                            <div className="net-stat-bar-container">
-                                <div className="ns-bar-fill" style={{ width: `${txPct}%` }}></div>
-                                <div className="ns-content">
-                                    <span className="ns-lbl">TX</span>
-                                    <span className="ns-val">{formatCurrentRate(netTxMbps)}</span>
-                                </div>
-                            </div>
-                            <div className="net-stat-bar-container">
-                                <div className="ns-bar-fill" style={{ width: `${rxPct}%` }}></div>
-                                <div className="ns-content">
-                                    <span className="ns-lbl">RX</span>
-                                    <span className="ns-val">{formatCurrentRate(netRxMbps)}</span>
-                                </div>
+                        <div className="net-stat-bar-container" title={`TX Rate: ${formatCurrentRate(netTxMbps)}`}>
+                            <div className="ns-bar-fill" style={{ width: `${txPct}%` }}></div>
+                            <div className="ns-content">
+                                <span className="ns-lbl">TX</span>
+                                <span className="ns-val">{formatCurrentRate(netTxMbps)}</span>
                             </div>
                         </div>
-                        <div className="net-stat-col">
-                            <div className="net-stat-bar-container">
-                                <div className="ns-bar-fill" style={{ width: `${netUtilPct}%` }}></div>
-                                <div className="ns-content">
-                                    <span className="ns-lbl">NET</span>
-                                    <span className="ns-val">{formatCurrentRate(totalNetMbps)}</span>
-                                </div>
+
+                        <div className="net-stat-bar-container" title={`Total Net Rate: ${formatCurrentRate(totalNetMbps)}`}>
+                            <div className="ns-bar-fill" style={{ width: `${netPct}%` }}></div>
+                            <div className="ns-content">
+                                <span className="ns-lbl">NET</span>
+                                <span className="ns-val">{formatCurrentRate(totalNetMbps)}</span>
                             </div>
-                            <div className="net-stat-bar-container">
-                                <div className="ns-bar-fill" style={{ width: `${c2Pct}%` }}></div>
-                                <div className="ns-content">
-                                    <span className="ns-lbl">C2</span>
-                                    <span className="ns-val">{c2Display}</span>
-                                </div>
+                        </div>
+
+                        <div className="net-stat-bar-container" title={`RX Rate: ${formatCurrentRate(netRxMbps)}`}>
+                            <div className="ns-bar-fill" style={{ width: `${rxPct}%` }}></div>
+                            <div className="ns-content">
+                                <span className="ns-lbl">RX</span>
+                                <span className="ns-val">{formatCurrentRate(netRxMbps)}</span>
+                            </div>
+                        </div>
+
+                        <div className="net-stat-bar-container" title={`C2 Telemetry Rate: ${c2Display}`}>
+                            <div className="ns-bar-fill" style={{ width: `${c2Pct}%` }}></div>
+                            <div className="ns-content">
+                                <span className="ns-lbl">C2</span>
+                                <span className="ns-val">{c2Display}</span>
                             </div>
                         </div>
                     </div>

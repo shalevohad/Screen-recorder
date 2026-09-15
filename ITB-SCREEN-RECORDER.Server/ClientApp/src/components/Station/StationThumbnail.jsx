@@ -65,7 +65,17 @@ export default function StationThumbnail(props) {
 
     const triggerFullscreenModal = (e) => {
         e?.stopPropagation?.();
+        if (!isLive) return;
         onOpenFullscreen?.(props);
+    };
+
+    const handleViewportClick = (e) => {
+        e.stopPropagation();
+        if (isLive) {
+            triggerFullscreenModal(e);
+        } else {
+            onSelectStation?.(props);
+        }
     };
 
     const handleQuickToggleRec = (e) => {
@@ -97,7 +107,7 @@ export default function StationThumbnail(props) {
         <div
             className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
             onClick={() => onSelectStation?.(props)}
-            title="Click card background to open Station Inspector"
+            title="Click card to open Station Inspector"
         >
             <div className="card-minimal-header">
                 <div className="station-brand">
@@ -122,9 +132,11 @@ export default function StationThumbnail(props) {
                     </button>
 
                     <button
-                        className="header-action-icon-btn fullscreen-btn"
+                        type="button"
+                        className={`header-action-icon-btn fullscreen-btn ${!isLive ? 'disabled' : ''}`}
                         onClick={triggerFullscreenModal}
-                        title="Open Fullscreen Theater Mode"
+                        disabled={!isLive}
+                        title={isLive ? "Open Fullscreen Theater Mode" : "Fullscreen unavailable (Standby / Offline)"}
                         aria-label="Toggle Fullscreen"
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -133,6 +145,7 @@ export default function StationThumbnail(props) {
                     </button>
 
                     <button
+                        type="button"
                         className="header-action-icon-btn inspect-drawer-trigger"
                         onClick={(e) => {
                             e.stopPropagation();
@@ -155,8 +168,8 @@ export default function StationThumbnail(props) {
 
             <div
                 className="card-screen-viewport"
-                onClick={triggerFullscreenModal}
-                title="Click video to open Fullscreen Theater"
+                onClick={handleViewportClick}
+                title={isLive ? "Click video to open Fullscreen Theater" : "Click screen to open Station Inspector"}
             >
                 {isLive ? (
                     <div className="webrtc-container" style={{ pointerEvents: 'none' }}>
@@ -204,6 +217,7 @@ export default function StationThumbnail(props) {
 
                 <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
                     <button
+                        type="button"
                         className={`action-btn ${isStreaming ? 'stop' : 'start'}`}
                         onClick={handleQuickToggleRec}
                         title={isStreaming ? "Stop Stream" : "Start Stream"}
@@ -211,13 +225,16 @@ export default function StationThumbnail(props) {
                         {isStreaming ? 'STOP' : 'START'}
                     </button>
                     <button
-                        className="action-btn"
+                        type="button"
+                        className={`action-btn ${!isLive ? 'disabled' : ''}`}
                         onClick={triggerFullscreenModal}
-                        title="Fullscreen Theater Mode"
+                        disabled={!isLive}
+                        title={isLive ? "Fullscreen Theater Mode" : "Fullscreen unavailable"}
                     >
                         FULL
                     </button>
                     <button
+                        type="button"
                         className="action-btn"
                         onClick={() => onQuickBookmark?.(hostname)}
                         title="Add Bookmark"
@@ -225,6 +242,7 @@ export default function StationThumbnail(props) {
                         BM
                     </button>
                     <button
+                        type="button"
                         className="action-btn"
                         onClick={() => onQuickPlayback?.(hostname)}
                         title="Open Playback"
@@ -232,6 +250,7 @@ export default function StationThumbnail(props) {
                         PLAY
                     </button>
                     <button
+                        type="button"
                         className="action-btn"
                         onClick={() => onQuickExport?.(hostname)}
                         title="Export Clip"

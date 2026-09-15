@@ -28,7 +28,7 @@ html, body, #root {
     position: relative;
     box-sizing: border-box;
     padding-bottom: 64px;
-    overflow: hidden;
+    overflow: visible;
 
     .dashboard-content-container {
         display: flex;
@@ -39,7 +39,8 @@ html, body, #root {
         gap: 20px;
         position: relative;
         box-sizing: border-box;
-        overflow: hidden;
+        /* מבוטל ה-overflow: hidden כדי לאפשר לצל של החלון להיראות */
+        overflow: visible;
     }
 
     .dashboard-main-area {
@@ -49,73 +50,23 @@ html, body, #root {
         flex-direction: column;
         align-items: flex-start;
         width: 100%;
-        overflow: hidden;
-
-        &.feature-theme-active {
-            --c2-blue-border: var(--feature-theme-border) !important;
-            --c2-blue: var(--feature-theme-base) !important;
-            --c2-blue-light: var(--feature-theme-light) !important;
-            --c2-blue-tint: var(--feature-theme-tint) !important;
-            --bg-panel: var(--feature-theme-bg) !important;
-            --bg-surface-elevated: var(--feature-theme-bg) !important;
-
-            > *:first-child {
-                .active, button[class*="active"] {
-                    border-color: var(--feature-theme-border) !important;
-                    background-color: var(--feature-theme-bg) !important;
-                    border-bottom-color: var(--feature-theme-bg) !important;
-                    color: var(--feature-theme-light) !important;
-                    z-index: 10 !important;
-                }
-
-                button:not(.active):not([class*="active"]) {
-                    border-bottom-color: var(--feature-theme-border) !important;
-                }
-            }
-        }
-
-        .tab-pane-content-wrapper {
-            flex: 1;
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            background-color: var(--bg-panel, #0f172a);
-            background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-            background-size: 24px 24px;
-            background-position: center top;
-            border: 1px solid var(--c2-blue-border, #1e3a8a);
-            border-radius: 10px;
-            padding: 20px;
-            box-sizing: border-box;
-            position: relative;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-            z-index: 1;
-            overflow-y: auto;
-            overflow-x: hidden;
-            padding-bottom: 60px;
-            transition: all 0.3s ease;
-
-            &.feature-active-pane {
-                border-color: var(--feature-theme-border) !important;
-                box-shadow: 0 4px 30px var(--feature-theme-tint) !important;
-                background-color: var(--feature-theme-bg) !important;
-                background-image: linear-gradient(var(--feature-theme-grid-lines) 1px, transparent 1px), linear-gradient(90deg, var(--feature-theme-grid-lines) 1px, transparent 1px) !important;
-            }
-        }
+        /* מבוטל ה-overflow: hidden כדי שהצל של ה-TAB לא ייחתך */
+        overflow: visible;
 
         .tactical-fault-isolation-banner {
             display: flex;
             align-items: center;
             justify-content: space-between;
             width: 100%;
-            margin-bottom: 16px;
+            flex-shrink: 0;
+            margin-bottom: 8px;
             padding: 8px 14px;
             background: rgba(239, 68, 68, 0.12);
             border: 1.5px solid rgba(239, 68, 68, 0.55);
             border-radius: 8px;
             box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
             box-sizing: border-box;
-            animation: bannerSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: bannerSlideIn 0.2s ease forwards;
 
             .isolation-info {
                 display: flex;
@@ -164,6 +115,184 @@ html, body, #root {
                 }
             }
         }
+
+        .tactical-active-filter-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            height: 32px;
+            min-height: 32px;
+            flex-shrink: 0;
+            margin-bottom: 8px;
+            padding: 0 10px 0 12px;
+            box-sizing: border-box;
+            background: linear-gradient(90deg, rgba(245, 158, 11, 0.08) 0%, rgba(15, 23, 42, 0.85) 15%, rgba(15, 23, 42, 0.95) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-left: 3px solid #f59e0b;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+            animation: bannerSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+            .banner-left-cluster {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-family: 'JetBrains Mono', monospace;
+
+                .filter-status-indicator {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+
+                    .pulse-amber-dot {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 50%;
+                        background: #f59e0b;
+                        box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
+                        animation: radar-pulse 1.8s infinite ease-out;
+                    }
+
+                    .filter-status-title {
+                        color: #f59e0b;
+                        font-weight: 800;
+                        font-size: 10px;
+                        letter-spacing: 0.8px;
+                    }
+                }
+
+                .banner-v-divider {
+                    width: 1px;
+                    height: 14px;
+                    background: rgba(255, 255, 255, 0.12);
+                }
+
+                .filter-tags-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+
+                    .tactical-filter-pill {
+                        background: rgba(0, 0, 0, 0.45);
+                        border: 1px solid rgba(245, 158, 11, 0.35);
+                        color: #94a3b8;
+                        padding: 1px 8px;
+                        border-radius: 4px;
+                        font-size: 10px;
+                        letter-spacing: 0.3px;
+
+                        strong {
+                            color: #f1f5f9;
+                            font-weight: 700;
+                        }
+                    }
+                }
+
+                .filter-match-count {
+                    color: var(--slate-dark, #64748b);
+                    font-size: 10px;
+                    letter-spacing: 0.3px;
+
+                    strong {
+                        color: var(--c2-blue-light, #38bdf8);
+                    }
+                }
+
+                .btn-pill-reset {
+                    background: rgba(239, 68, 68, 0.14);
+                    border: 1px solid rgba(239, 68, 68, 0.45);
+                    color: #fca5a5;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 9.5px;
+                    font-weight: 800;
+                    padding: 2px 7px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    letter-spacing: 0.4px;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        background: #ef4444;
+                        color: #ffffff;
+                        border-color: #ef4444;
+                        box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+                    }
+                }
+            }
+
+            .banner-right-cluster {
+                display: flex;
+                align-items: center;
+
+                .btn-modify-filters {
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    background: var(--bg-input, rgba(17, 24, 39, 0.6));
+                    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+                    color: var(--slate-muted, #94a3b8);
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 9.5px;
+                    font-weight: 700;
+                    padding: 3px 8px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    svg {
+                        width: 11px;
+                        height: 11px;
+                    }
+
+                    &:hover {
+                        background: var(--c2-blue-deep, rgba(30, 58, 138, 0.4));
+                        border-color: var(--c2-blue, #3b82f6);
+                        color: var(--c2-blue-light, #38bdf8);
+                    }
+                }
+            }
+        }
+
+        &.feature-theme-active {
+            --c2-blue-border: var(--feature-theme-border) !important;
+            --c2-blue: var(--feature-theme-base) !important;
+            --c2-blue-light: var(--feature-theme-light) !important;
+            --c2-blue-tint: var(--feature-theme-tint) !important;
+            --bg-panel: var(--feature-theme-bg) !important;
+            --bg-surface-elevated: var(--feature-theme-bg) !important;
+        }
+        /* חלון ה-TAB הפתוח: הצללה תלת-ממדית מודגשת עם הילת C2 תכולה בולטת */
+        .tab-pane-content-wrapper {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-panel, #0f172a);
+            background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 24px 24px;
+            background-position: center top;
+            border: 1.5px solid var(--c2-blue-border, #1e3a8a);
+            border-radius: 10px;
+            padding: 16px 16px 36px 16px;
+            box-sizing: border-box;
+            position: relative;
+            /* הצללה תלת-ממדית רב-שכבתית בעלת ניגודיות גבוהה מול הרקע הכהה */
+            box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.18), 0 18px 45px rgba(0, 0, 0, 0.95), 0 0 35px rgba(6, 182, 212, 0.22), 0 0 60px rgba(30, 58, 138, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            z-index: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+            &.feature-active-pane {
+                border-color: var(--feature-theme-border) !important;
+                box-shadow: 0 0 0 1px var(--feature-theme-border), 0 18px 45px rgba(0, 0, 0, 0.95), 0 0 45px var(--feature-theme-tint) !important;
+                background-color: var(--feature-theme-bg) !important;
+                background-image: linear-gradient(var(--feature-theme-grid-lines) 1px, transparent 1px), linear-gradient(90deg, var(--feature-theme-grid-lines) 1px, transparent 1px) !important;
+            }
+        }
     }
 
     .dashboard-pagination-bar {
@@ -171,8 +300,8 @@ html, body, #root {
         justify-content: center;
         align-items: center;
         gap: 20px;
-        margin-top: 30px;
-        padding-top: 20px;
+        margin-top: 24px;
+        padding-top: 16px;
         border-top: 1px dashed var(--border-subtle);
 
         button {
@@ -222,7 +351,7 @@ html, body, #root {
         width: 100%;
         max-width: 540px;
         min-height: 240px;
-        margin: 2vh auto 0 auto;
+        margin: 4vh auto 0 auto;
         background: linear-gradient(180deg, var(--bg-card-from) 0%, var(--bg-card-to) 100%);
         border: 1px solid var(--border-subtle);
         backdrop-filter: blur(12px);
@@ -282,7 +411,7 @@ html, body, #root {
             }
         }
     }
-
+    /* גלולת הזום: הילת ריחוף תלת-ממדית קבועה עם עומק מוגדר */
     .noc-footer-zoom-pill {
         position: fixed;
         bottom: 1.25rem;
@@ -291,23 +420,26 @@ html, body, #root {
         display: flex;
         align-items: center;
         gap: 8px;
-        background-color: var(--bg-panel);
-        backdrop-filter: blur(12px);
-        border: 1px solid var(--c2-blue-border);
+        background-color: rgba(13, 20, 36, 0.95);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1.5px solid rgba(56, 189, 248, 0.35);
         border-radius: 9999px;
-        padding: 4px 14px;
-        opacity: 0.6;
+        padding: 5px 16px;
+        opacity: 0.95;
         transform-origin: center bottom;
         transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
         z-index: 100;
         user-select: none;
+        /* צל ריחוף תלת-ממדי קבוע */
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(6, 182, 212, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 
         &:hover {
             transform: translateX(-50%) scale(1);
             opacity: 1;
             background-color: var(--bg-surface-elevated);
             border-color: var(--c2-blue);
-            box-shadow: var(--glow-blue);
+            box-shadow: 0 16px 36px rgba(0, 0, 0, 0.95), 0 0 30px rgba(56, 189, 248, 0.5), var(--glow-blue);
         }
 
         .zoom-auto-btn {

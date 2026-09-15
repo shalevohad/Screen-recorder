@@ -39,8 +39,8 @@ export default function StationsDenseView({
                             key={s.hostname}
                             className={`dense-row-card ${!s.isOnline ? 'is-offline' : ''} ${hasDrops ? 'has-crit' : ''}`}
                             onClick={() => setInspectedHostname(s.hostname)}
-                            onDoubleClick={() => setFullscreenHostname(s.hostname)}
-                            title="Click to inspect, double-click for Fullscreen"
+                            onDoubleClick={() => isRec && setFullscreenHostname(s.hostname)}
+                            title={isRec ? "Click to inspect, double-click for Fullscreen" : "Click to inspect"}
                         >
                             <div className="dense-col status-col">
                                 <span className={`dense-beacon ${s.isOnline ? 'online' : 'offline'}`} />
@@ -59,6 +59,7 @@ export default function StationsDenseView({
                             </div>
                             <div className="dense-col actions" onClick={(e) => e.stopPropagation()}>
                                 <button
+                                    type="button"
                                     className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
                                     onClick={() => onToggleStream(s.hostname, isRec, {
                                         bitrate: s.effectiveBitrate,
@@ -68,13 +69,16 @@ export default function StationsDenseView({
                                     {isRec ? 'STOP' : 'START'}
                                 </button>
                                 <button
-                                    className="dense-act-btn full"
-                                    onClick={() => setFullscreenHostname(s.hostname)}
-                                    title="Open Station in Fullscreen View"
+                                    type="button"
+                                    className={`dense-act-btn full ${!isRec ? 'disabled' : ''}`}
+                                    onClick={() => isRec && setFullscreenHostname(s.hostname)}
+                                    disabled={!isRec}
+                                    title={isRec ? "Open Station in Fullscreen View" : "Fullscreen unavailable while idle or offline"}
                                 >
                                     FULL
                                 </button>
                                 <button
+                                    type="button"
                                     className="dense-act-btn icon"
                                     onClick={() => setInspectedHostname(s.hostname)}
                                     title="Inspect"

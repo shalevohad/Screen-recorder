@@ -3,6 +3,7 @@ import './DashboardDock.scss';
 
 export default function DashboardDock({
     isSearchOpen, setIsSearchOpen,
+    hasActiveFilter,
     viewMode, setViewMode,
     canStartAny, handleFilteredBulkStart,
     canStopAny, handleFilteredBulkStop,
@@ -13,16 +14,19 @@ export default function DashboardDock({
 }) {
     return (
         <aside className="dashboard-vertical-dock tactical-c2-dock">
-            {/* 💡 הוחלף לאייקון פילטר (משפך) וכן עודכנו טקסט ההסבר */}
             <button
-                className={`dock-icon-btn tactical-btn-search ${isSearchOpen ? 'is-engaged' : ''} ${isFeatureActive ? 'disabled' : ''}`}
+                className={`dock-icon-btn tactical-btn-search ${isSearchOpen ? 'is-engaged' : ''} ${hasActiveFilter ? 'has-active-filter' : ''} ${isFeatureActive ? 'disabled' : ''}`}
                 onClick={() => setIsSearchOpen(p => !p)}
                 disabled={isFeatureActive}
-                title={isFeatureActive ? "Filters unavailable in Feature Mode" : isSearchOpen ? "Hide filters & search" : "Show filters & search"}
+                title={isFeatureActive ? "Filters unavailable in Feature Mode" : hasActiveFilter ? "Filter Active - Click to view/hide shelf" : isSearchOpen ? "Hide filters & search" : "Show filters & search"}
             >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                     <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
                 </svg>
+
+                {!isSearchOpen && hasActiveFilter && (
+                    <span className="filter-dock-alert-dot" />
+                )}
             </button>
 
             <button

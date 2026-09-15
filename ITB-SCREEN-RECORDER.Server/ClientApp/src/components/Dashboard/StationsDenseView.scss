@@ -142,7 +142,7 @@
                     cursor: pointer;
                     transition: all 0.15s ease;
 
-                    &:hover {
+                    &:hover:not(:disabled) {
                         background: var(--c2-cyan);
                         color: #000;
                     }
@@ -172,10 +172,20 @@
                         color: var(--c2-cyan-light);
                         font-weight: 800;
 
-                        &:hover {
+                        &:hover:not(:disabled) {
                             background: var(--c2-cyan);
                             color: #000;
                             box-shadow: var(--glow-cyan);
+                        }
+
+                        &:disabled,
+                        &.disabled {
+                            opacity: 0.25 !important;
+                            cursor: not-allowed !important;
+                            pointer-events: none !important;
+                            border-color: var(--border-subtle) !important;
+                            color: var(--slate-dark) !important;
+                            box-shadow: none !important;
                         }
                     }
 

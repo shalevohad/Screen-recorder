@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect } from 'react';
-import RangeSlider from './RangeSlider';
+import TabConfigModal from './TabConfigModal';
 import './FleetTabs.scss';
 
 export default function FleetTabs({
@@ -21,6 +21,37 @@ export default function FleetTabs({
 
     const overflowContainerRef = useRef(null);
     const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+
+    // 💡 ניהול עריכת שם בלחיצה כפולה (Inline Rename)
+    const [renamingTabId, setRenamingTabId] = useState(null);
+    const [renamingTabName, setRenamingTabName] = useState('');
+    const renameInputRef = useRef(null);
+
+    useEffect(() => {
+        if (renamingTabId && renameInputRef.current) {
+            renameInputRef.current.focus();
+            renameInputRef.current.select();
+        }
+    }, [renamingTabId]);
+
+    const handleStartRename = (e, tab) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setRenamingTabId(tab.id);
+        setRenamingTabName(tab.name || '');
+    };
+
+    const handleCommitRename = (tabId) => {
+        if (!renamingTabId) return;
+        const trimmed = renamingTabName.trim();
+        if (trimmed) {
+            const updatedTabs = fleetTabsList.map(t =>
+                t.id === tabId ? { ...t, name: trimmed } : t
+            );
+            saveTabsToBackend(updatedTabs);
+        }
+        setRenamingTabId(null);
+    };
 
     useEffect(() => {
         const handleClickOutside = (e) => {
@@ -135,28 +166,60 @@ export default function FleetTabs({
             <div className="tabs-navigation-container">
                 <div className="active-tabs-cluster left-cluster">
                     <button
+                        type="button"
                         className={`fleet-tab-pill ${activeTabId === 'ALL' ? 'active' : ''}`}
                         onClick={() => onTabChange('ALL')}
                     >
                         ALL ({allStations.length})
                     </button>
 
-                    {fleetTabsList.map(tab => (
-                        <div key={tab.id} className={`fleet-tab-wrapper ${activeTabId === tab.id ? 'active' : ''}`}>
-                            <button className="fleet-tab-pill" onClick={() => onTabChange(tab.id)}>
-                                {tab.name}
-                            </button>
-                            <button
-                                className="tab-edit-gear"
-                                onClick={(e) => { e.stopPropagation(); setEditingTab(tab); setIsTabConfigOpen(true); }}
-                                title="Configure Tab"
+                    {fleetTabsList.map(tab => {
+                        const isEditing = renamingTabId === tab.id;
+                        return (
+                            <div
+                                key={tab.id}
+                                className={`fleet-tab-wrapper ${activeTabId === tab.id ? 'active' : ''}`}
+                                onDoubleClick={(e) => handleStartRename(e, tab)}
+                                title="Click to select, Double-click to rename"
                             >
-                                ⚙
-                            </button>
-                        </div>
-                    ))}
+                                {isEditing ? (
+                                    <input
+                                        ref={renameInputRef}
+                                        type="text"
+                                        className="inline-tab-rename-input"
+                                        value={renamingTabName}
+                                        onChange={(e) => setRenamingTabName(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleCommitRename(tab.id);
+                                            if (e.key === 'Escape') setRenamingTabId(null);
+                                        }}
+                                        onBlur={() => handleCommitRename(tab.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="fleet-tab-pill"
+                                        onClick={() => onTabChange(tab.id)}
+                                    >
+                                        {tab.name}
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    className="tab-edit-gear"
+                                    onClick={(e) => { e.stopPropagation(); setEditingTab(tab); setIsTabConfigOpen(true); }}
+                                    title="Configure Tab"
+                                >
+                                    ⚙
+                                </button>
+                            </div>
+                        );
+                    })}
 
                     <button
+                        type="button"
                         className="fleet-tab-add-btn"
                         onClick={(e) => { e.preventDefault(); setEditingTab(null); setIsTabConfigOpen(true); }}
                         title="Create new tab"
@@ -168,11 +231,12 @@ export default function FleetTabs({
                 <div className="active-tabs-cluster right-cluster">
                     {visibleFeatureTabs.map(feat => (
                         <div key={feat.id} className={`fleet-tab-wrapper feature-tab ${activeTabId === feat.id ? 'active' : ''}`}>
-                            <button className="fleet-tab-pill feature" onClick={() => onTabChange(feat.id)}>
+                            <button type="button" className="fleet-tab-pill feature" onClick={() => onTabChange(feat.id)}>
                                 <span className="feature-dot" />
                                 {feat.title.toUpperCase()}
                             </button>
                             <button
+                                type="button"
                                 className="tab-close-btn"
                                 onClick={(e) => { e.stopPropagation(); onCloseFeature(feat.id); }}
                                 title="Close Feature"
@@ -185,6 +249,7 @@ export default function FleetTabs({
                     {hasOverflow && (
                         <div className="windows-overflow-dropdown-wrapper" ref={overflowContainerRef}>
                             <button
+                                type="button"
                                 className={`windows-overflow-btn ${overflowFeatureTabs.some(f => f.id === activeTabId) ? 'active' : ''}`}
                                 onClick={() => setIsOverflowOpen(p => !p)}
                                 title="More open features"
@@ -205,6 +270,7 @@ export default function FleetTabs({
                                             <span className="feature-dot" />
                                             <span className="feat-title">{feat.title.toUpperCase()}</span>
                                             <button
+                                                type="button"
                                                 className="menu-item-close"
                                                 onClick={(e) => { e.stopPropagation(); onCloseFeature(feat.id); }}
                                             >
@@ -245,120 +311,6 @@ export default function FleetTabs({
                     onCancel={() => { setPendingTabSave(null); setConflictStations([]); }}
                 />
             )}
-        </div>
-    );
-}
-
-function TabConfigModal({ initialData, allStations, onSave, onDelete, onClose }) {
-    const [name, setName] = useState(initialData?.name || '');
-    const [assignedHostnames, setAssignedHostnames] = useState(initialData?.assignedHostnames || []);
-    const [adSettings, setAdSettings] = useState({ isEnabled: false, availableOus: [], loading: true });
-    const [assignedOus, setAssignedOus] = useState(initialData?.assignedOus || []);
-
-    const [enableBitrate, setEnableBitrate] = useState(!!initialData?.defaultBitrate);
-    const [defaultBitrate, setDefaultBitrate] = useState(initialData?.defaultBitrate || 2500);
-
-    const [enableFps, setEnableFps] = useState(!!initialData?.defaultFps);
-    const [defaultFps, setDefaultFps] = useState(initialData?.defaultFps || 30);
-
-    useEffect(() => {
-        fetch('/api/settings')
-            .then(res => res.ok ? res.json() : {})
-            .then(data => {
-                const isActive = data?.activeDirectory?.enabled || data?.adSettings?.enabled;
-                const ousList = data?.activeDirectory?.ouList || data?.adSettings?.ous || [];
-                if (isActive) {
-                    setAdSettings({ isEnabled: true, availableOus: ousList, loading: false });
-                } else {
-                    setAdSettings({ isEnabled: true, availableOus: ['TelAviv-HQ', 'Operations', 'North-Branch', 'South-Branch', 'DevOps'], loading: false });
-                }
-            })
-            .catch(() => setAdSettings({ isEnabled: false, availableOus: [], loading: false }));
-    }, []);
-
-    const handleToggleHost = (hostname) => {
-        setAssignedHostnames(prev => prev.includes(hostname) ? prev.filter(h => h !== hostname) : [...prev, hostname]);
-    };
-
-    const handleToggleOu = (ou) => {
-        setAssignedOus(prev => prev.includes(ou) ? prev.filter(o => o !== ou) : [...prev, ou]);
-    };
-
-    const handleFormSubmit = (e) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-        onSave({
-            id: initialData?.id,
-            name: name.trim(),
-            assignedHostnames,
-            assignedOus,
-            defaultBitrate: enableBitrate ? Number(defaultBitrate) : null,
-            defaultFps: enableFps ? Number(defaultFps) : null
-        });
-    };
-
-    return (
-        <div className="tab-config-modal-backdrop">
-            <div className="tab-config-modal-card">
-                <h3>{initialData ? 'Configure Fleet Tab' : 'Create New Fleet Tab'}</h3>
-                <form onSubmit={handleFormSubmit}>
-                    <div className="form-group">
-                        <label>Tab Name:</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Command Center, North Branch" required />
-                    </div>
-                    <div className="config-section">
-                        <div className="section-title">Batch Stream Policy</div>
-                        <div className="form-row">
-                            <div className="form-group slider-group-wrapper">
-                                <div className="toggle-header"><label><input type="checkbox" checked={enableBitrate} onChange={e => setEnableBitrate(e.target.checked)} /> Override Default Bitrate</label></div>
-                                <RangeSlider label="Bitrate Limit" value={defaultBitrate} min={500} max={10000} step={100} unit="k" disabled={!enableBitrate} onChange={setDefaultBitrate} />
-                            </div>
-                            <div className="form-group slider-group-wrapper">
-                                <div className="toggle-header"><label><input type="checkbox" checked={enableFps} onChange={e => setEnableFps(e.target.checked)} /> Override Default FPS</label></div>
-                                <RangeSlider label="FPS Limit" value={defaultFps} min={10} max={60} step={5} unit=" fps" disabled={!enableFps} onChange={setDefaultFps} />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="config-section">
-                        <div className="section-title">Tab Assignment Logic</div>
-                        {adSettings.loading ? <div className="form-group"><span className="loading-text">Fetching AD config...</span></div> : adSettings.isEnabled ? (
-                            <div className="form-group">
-                                <label>Assign by Active Directory OUs:</label>
-                                <div className="stations-checklist-box">
-                                    {adSettings.availableOus.map(ou => {
-                                        const isSelected = assignedOus.includes(ou);
-                                        return (
-                                            <div key={ou} className={`check-item ${isSelected ? 'selected' : ''}`} onClick={() => handleToggleOu(ou)}>
-                                                <input type="checkbox" checked={isSelected} readOnly /><span>{ou}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ) : null}
-                        <div className="form-group">
-                            <label>Or Select Stations Explicitly:</label>
-                            <div className="stations-checklist-box">
-                                {allStations.map(st => {
-                                    const isSelected = assignedHostnames.includes(st.hostname);
-                                    return (
-                                        <div key={st.hostname} className={`check-item ${isSelected ? 'selected' : ''}`} onClick={() => handleToggleHost(st.hostname)}>
-                                            <input type="checkbox" checked={isSelected} readOnly /><span>{st.displayName || st.hostname}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="modal-actions">
-                        {initialData && <button type="button" className="btn-delete" onClick={() => onDelete(initialData.id)}>Delete Tab</button>}
-                        <div className="right-actions">
-                            <button type="button" className="btn-cancel" onClick={onClose}>Cancel</button>
-                            <button type="submit" className="btn-save">Save Tab</button>
-                        </div>
-                    </div>
-                </form>
-            </div>
         </div>
     );
 }

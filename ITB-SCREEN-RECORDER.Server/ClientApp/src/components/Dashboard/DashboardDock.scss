@@ -48,12 +48,31 @@
             transition: all 0.2s ease;
         }
 
-        &.tactical-btn-search:hover:not(.is-engaged) {
-            background: var(--c2-blue-deep);
-            border-color: var(--c2-blue-border);
-            color: var(--c2-blue);
-            box-shadow: var(--glow-blue);
-            transform: translateY(-1px);
+        .filter-dock-alert-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 6px;
+            height: 6px;
+            background-color: var(--c2-yellow, #f59e0b);
+            border-radius: 50%;
+            box-shadow: 0 0 6px var(--c2-yellow, #f59e0b);
+            animation: radar-pulse 1.8s infinite ease-out;
+        }
+
+        &.tactical-btn-search {
+            &.has-active-filter:not(.is-engaged) {
+                border-color: rgba(245, 158, 11, 0.6);
+                color: var(--c2-yellow-light, #fef3c7);
+            }
+
+            &:hover:not(.is-engaged) {
+                background: var(--c2-blue-deep);
+                border-color: var(--c2-blue-border);
+                color: var(--c2-blue);
+                box-shadow: var(--glow-blue);
+                transform: translateY(-1px);
+            }
         }
 
         &.tactical-btn-viewmode:hover:not(.is-engaged),

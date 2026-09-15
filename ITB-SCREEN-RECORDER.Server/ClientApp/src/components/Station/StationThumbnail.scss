@@ -34,7 +34,7 @@
     }
 
     &:has(.card-screen-viewport:hover) {
-        .header-action-icon-btn.fullscreen-btn {
+        .header-action-icon-btn.fullscreen-btn:not(:disabled) {
             background: var(--c2-cyan-tint) !important;
             border-color: var(--c2-cyan) !important;
             color: var(--c2-cyan-light) !important;
@@ -197,12 +197,24 @@
                     height: 15px;
                 }
 
-                &:hover {
+                &:hover:not(:disabled) {
                     background: var(--c2-cyan-tint) !important;
                     border-color: var(--c2-cyan) !important;
                     color: var(--c2-cyan-light) !important;
                     box-shadow: var(--glow-cyan);
                     transform: translateY(-1px);
+                }
+
+                &:disabled,
+                &.disabled {
+                    opacity: 0.25 !important;
+                    cursor: not-allowed !important;
+                    pointer-events: none !important;
+                    border-color: var(--border-subtle) !important;
+                    background: transparent !important;
+                    color: var(--slate-dark) !important;
+                    box-shadow: none !important;
+                    transform: none !important;
                 }
             }
         }
@@ -323,17 +335,27 @@
                 padding: 5px 10px;
                 cursor: pointer;
 
-                &:hover {
+                &:hover:not(:disabled) {
                     background: var(--c2-cyan);
                     color: var(--bg-void);
                     border-color: var(--c2-cyan);
+                }
+
+                &:disabled,
+                &.disabled {
+                    opacity: 0.25 !important;
+                    cursor: not-allowed !important;
+                    pointer-events: none !important;
+                    border-color: var(--border-subtle) !important;
+                    background: var(--bg-input) !important;
+                    color: var(--slate-dark) !important;
                 }
 
                 &.stop {
                     border-color: var(--c2-red);
                     color: var(--c2-red-light);
 
-                    &:hover {
+                    &:hover:not(:disabled) {
                         background: var(--c2-red);
                         color: #fff;
                     }
@@ -343,7 +365,7 @@
                     border-color: var(--c2-green);
                     color: var(--c2-green-light);
 
-                    &:hover {
+                    &:hover:not(:disabled) {
                         background: var(--c2-green);
                         color: #000;
                     }
