@@ -65,38 +65,58 @@
 		<Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
 	</Target>
 
+	<!-- ========================================== -->
+	<!-- הגדרות נתיבים עבור הפיצ'רים המודולריים -->
+	<!-- ========================================== -->
 	<PropertyGroup>
 		<ExtractorProjectPath>..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj</ExtractorProjectPath>
+		<ExtractorAdvancedProjectPath>..\Features\ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced.csproj</ExtractorAdvancedProjectPath>
 	</PropertyGroup>
 
-	<!-- שחזור ובניית ה-Extractor כ-Class Library רגיל ללא SelfContained -->
-	<Target Name="BuildExtractorFeature" BeforeTargets="BeforeBuild" Condition="Exists('$(ExtractorProjectPath)')">
-		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling Extractor module ($(Configuration))..." />
-		<MSBuild Projects="$(ExtractorProjectPath)"
-		         Targets="Restore;Build"
-		         Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" />
+	<!-- שחזור ובניית הפיצ'רים (ללא צימוד קשיח לשרת) -->
+	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild">
+		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling Extractor module ($(Configuration))..." Condition="Exists('$(ExtractorProjectPath)')" />
+		<MSBuild Projects="$(ExtractorProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" Condition="Exists('$(ExtractorProjectPath)')" />
+
+		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling ExtractorAdvanced module ($(Configuration))..." Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
+		<MSBuild Projects="$(ExtractorAdvancedProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
 	</Target>
 
-	<!-- העתקת תוצרי ה-Extractor לתיקיית היעד -->
-	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Condition="Exists('$(ExtractorProjectPath)')">
-		<ItemGroup>
+	<!-- העתקת תוצרי הפיצ'רים לתיקיית היעד (Debug/Release) -->
+	<Target Name="StageFeaturesToOutput" AfterTargets="Build">
+		<!-- Extractor Base -->
+		<ItemGroup Condition="Exists('$(ExtractorProjectPath)')">
 			<ExtractorOutputFiles Include="..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\bin\$(Configuration)\net8.0\**\*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(ExtractorOutputFiles)"
-		      DestinationFolder="$(TargetDir)Features\Extractor\%(RecursiveDir)"
-		      SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(ExtractorOutputFiles)" DestinationFolder="$(TargetDir)Features\Extractor\%(RecursiveDir)" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorProjectPath)')" />
+
+		<!-- Extractor Advanced -->
+		<ItemGroup Condition="Exists('$(ExtractorAdvancedProjectPath)')">
+			<ExtractorAdvancedOutputFiles Include="..\Features\ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced\bin\$(Configuration)\net8.0\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(ExtractorAdvancedOutputFiles)" DestinationFolder="$(TargetDir)Features\ExtractorAdvanced\%(RecursiveDir)" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
 	</Target>
 
-	<!-- אריזת הפיצ'ר לתוך תיקיית ה-Publish תחת Features\Extractor -->
-	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="Exists('$(ExtractorProjectPath)')">
-		<ItemGroup>
+	<!-- אריזת הפיצ'רים לתוך תהליך ה-Publish -->
+	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish">
+		<!-- Extractor Base -->
+		<ItemGroup Condition="Exists('$(ExtractorProjectPath)')">
 			<_ExtractorFilesToPublish Include="..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\bin\$(Configuration)\net8.0\**\*.*" />
 			<ResolvedFileToPublish Include="@(_ExtractorFilesToPublish)">
 				<RelativePath>Features\Extractor\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
 				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 			</ResolvedFileToPublish>
 		</ItemGroup>
-		<Message Importance="high" Text="[ITB PUBLISH] Bundling @(_ExtractorFilesToPublish->Count()) Extractor files into publish payload..." />
+
+		<!-- Extractor Advanced -->
+		<ItemGroup Condition="Exists('$(ExtractorAdvancedProjectPath)')">
+			<_ExtractorAdvancedFilesToPublish Include="..\Features\ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced\bin\$(Configuration)\net8.0\**\*.*" />
+			<ResolvedFileToPublish Include="@(_ExtractorAdvancedFilesToPublish)">
+				<RelativePath>Features\ExtractorAdvanced\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			</ResolvedFileToPublish>
+		</ItemGroup>
+		<Message Importance="high" Text="[ITB PUBLISH] Bundling Feature modules into publish payload..." />
 	</Target>
 
 </Project>

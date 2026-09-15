@@ -9,6 +9,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     {
         Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc);
         Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc);
-        string BuildConcatManifest(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc);
+        Task<string> BuildConcatManifestAsync(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc);
     }
 }

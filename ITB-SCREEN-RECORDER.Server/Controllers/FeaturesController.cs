@@ -2,6 +2,7 @@
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Core.Common;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
@@ -31,7 +32,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     f.DefaultHeight,
                     f.MinWidth,
                     f.MinHeight
-                });
+                }).ToList();
+
+            Logger.AlwaysInfo($"[API] /features/active requested. Returning {activeFeatures.Count} feature(s): {string.Join(", ", activeFeatures.Select(f => f.Id))}");
 
             return Ok(activeFeatures);
         }

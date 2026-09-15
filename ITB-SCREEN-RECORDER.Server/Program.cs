@@ -78,26 +78,45 @@ namespace ITB_SCREEN_RECORDER.Server
                 var featureDlls = Directory.GetFiles(featuresBaseDir, "ITB-SCREEN-RECORDER.Features.*.dll", SearchOption.AllDirectories);
                 foreach (var dllPath in featureDlls)
                 {
+                    var fileName = Path.GetFileName(dllPath);
                     try
                     {
                         var asm = AssemblyLoadContext.Default.LoadFromAssemblyPath(dllPath);
                         loadedFeatureAssemblies.Add(asm);
 
                         Type[] types;
-                        try { types = asm.GetTypes(); }
-                        catch (ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t != null).ToArray()!; }
-
-                        var startupTypes = types.Where(t => typeof(IHostingStartup).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
-                        foreach (var startupType in startupTypes)
+                        try
                         {
-                            var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
-                            startup.Configure(builder.WebHost);
-                            Logger.AlwaysInfo($"[SERVER] Successfully activated modular feature startup: {startupType.FullName} ({asm.GetName().Name})");
+                            types = asm.GetTypes();
+                        }
+                        catch (ReflectionTypeLoadException ex)
+                        {
+                            types = ex.Types.Where(t => t != null).ToArray()!;
+                            foreach (var loaderEx in ex.LoaderExceptions.Where(e => e != null))
+                            {
+                                Logger.Error($"[PLUGIN-LOADER] LoaderException in '{fileName}': {loaderEx!.Message}");
+                            }
+                        }
+
+                        var startupTypes = types.Where(t => typeof(IHostingStartup).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract).ToList();
+
+                        if (startupTypes.Count == 0)
+                        {
+                            Logger.Warn($"[PLUGIN-LOADER] WARNING: '{fileName}' was loaded, but NO class implements IHostingStartup! No services or IFeatureModule registered.");
+                        }
+                        else
+                        {
+                            foreach (var startupType in startupTypes)
+                            {
+                                var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
+                                startup.Configure(builder.WebHost);
+                                Logger.AlwaysInfo($"[PLUGIN-LOADER] Successfully activated startup: {startupType.FullName} ({asm.GetName().Name})");
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        var errorMsg = $"[SERVER] Failed to load modular feature from '{dllPath}': {ex.Message}";
+                        var errorMsg = $"[PLUGIN-LOADER] CRITICAL: Failed to load modular feature from '{dllPath}': {ex.Message}";
                         Console.WriteLine(errorMsg);
                         Logger.Error(errorMsg);
                     }
@@ -218,6 +237,23 @@ namespace ITB_SCREEN_RECORDER.Server
             builder.Services.AddHostedService<ServerTelemetryHostService>();
 
             var app = builder.Build();
+
+            // דיאגנוסטיקה: אימות מודולים רשומים ב-DI
+            using (var scope = app.Services.CreateScope())
+            {
+                var registeredFeatures = scope.ServiceProvider.GetServices<IFeatureModule>().ToList();
+                Logger.AlwaysInfo($"[PLUGIN-LOADER] Total registered IFeatureModules in DI: {registeredFeatures.Count}");
+
+                foreach (var feat in registeredFeatures)
+                {
+                    Logger.AlwaysInfo($"[PLUGIN-LOADER] -> Active Module: Id='{feat.Id}', Title='{feat.Title}', Script='{feat.ScriptUrl}', Enabled={feat.IsEnabled}");
+                }
+
+                if (registeredFeatures.Count == 0)
+                {
+                    Logger.Warn("[PLUGIN-LOADER] WARNING: Zero IFeatureModules registered! /api/v1/features/active will be empty.");
+                }
+            }
 
             if (app.Environment.IsDevelopment())
             {

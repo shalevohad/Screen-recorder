@@ -1,4 +1,7 @@
-﻿import { defineConfig } from 'vite';
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/vite.config.js
+// ==========================================
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -17,8 +20,8 @@ export default defineConfig({
     build: {
         lib: {
             entry: resolve(currentDir, 'src/index.js'),
-            name: 'ExtractorWidget',
-            fileName: () => 'extractor.widget.js',
+            name: 'ExtractorAdvancedWidget',
+            fileName: () => 'extractor-advanced.widget.js',
             formats: ['es']
         },
         outDir: resolve(currentDir, '../wwwroot'),
@@ -28,7 +31,7 @@ export default defineConfig({
             external: [],
             output: {
                 // שומר על ייחודיות קובץ העיצוב למניעת דריסות בין הפיצ'רים
-                assetFileNames: 'style.css'
+                assetFileNames: 'extractor-advanced.style.[ext]'
             }
         }
     }

@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: Features/Extractor/Services/StorageScannerService.cs
+// ==========================================
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -16,14 +19,21 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     {
         private readonly ExtractorOptions _options;
         private readonly ILogger<StorageScannerService> _logger;
+        private readonly IDummyVideoGenerator _dummyGenerator; // <-- השדה החדש
+
         private static readonly Regex ChunkFileNameRegex = new(
-            @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})\.mp4$",
+            @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})\.(mp4|flv)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        public StorageScannerService(IOptions<ExtractorOptions> options, ILogger<StorageScannerService> logger)
+        // <-- עדכון ה-Constructor כדי שיזריק את ה-IDummyVideoGenerator
+        public StorageScannerService(
+            IOptions<ExtractorOptions> options,
+            ILogger<StorageScannerService> logger,
+            IDummyVideoGenerator dummyGenerator)
         {
             _options = options.Value;
             _logger = logger;
+            _dummyGenerator = dummyGenerator; // <-- ההשמה
         }
 
         public Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
@@ -95,33 +105,86 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return Task.FromResult(sortedUniqueChunks);
         }
 
-        public string BuildConcatManifest(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc)
+        public async Task<string> BuildConcatManifestAsync(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc)
         {
             var sb = new StringBuilder();
             sb.AppendLine("ffconcat version 1.0");
 
-            for (int i = 0; i < chunks.Count; i++)
+            if (chunks.Count == 0) return sb.ToString();
+
+            // 1. בדיקה מהירה האם יש פערים כלשהם בחלון הזמן המבוקש
+            bool requiresPadding = false;
+            DateTime currentCheckUtc = rangeStartUtc;
+            foreach (var chunk in chunks)
             {
-                var chunk = chunks[i];
+                if (chunk.StartUtc > currentCheckUtc.AddSeconds(1)) // Gap לפני הקובץ
+                {
+                    requiresPadding = true;
+                    break;
+                }
+                currentCheckUtc = chunk.EndUtc > currentCheckUtc ? chunk.EndUtc : currentCheckUtc;
+            }
+            if (currentCheckUtc < rangeEndUtc.AddSeconds(-1)) requiresPadding = true; // Gap בסוף הטווח
+
+            // 2. משיכת ה-Dummy רק אם יש צורך ממשי
+            string? dummyPath = null;
+            if (requiresPadding)
+            {
+                // קח את הקובץ הראשון התקין כדוגמית לדגימת רזולוציה
+                string sampleFile = chunks.First().FullPath;
+                dummyPath = await _dummyGenerator.GetOrGenerateDummyVideoAsync(sampleFile);
+                dummyPath = dummyPath.Replace('\\', '/');
+            }
+
+            // 3. בניית המניפסט עם השלמת הפערים (אם קיימים)
+            DateTime currentTimelineUtc = rangeStartUtc;
+
+            foreach (var chunk in chunks)
+            {
+                if (chunk.EndUtc <= currentTimelineUtc) continue;
+
+                // מילוי Gap לפני הקובץ הנוכחי
+                if (chunk.StartUtc > currentTimelineUtc)
+                {
+                    TimeSpan gap = chunk.StartUtc - currentTimelineUtc;
+                    if (gap.TotalSeconds > 0.5 && dummyPath != null)
+                    {
+                        sb.AppendLine($"file '{dummyPath}'");
+                        sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "duration {0:F3}", gap.TotalSeconds));
+                    }
+                    currentTimelineUtc = chunk.StartUtc;
+                }
+
                 string normalizedPath = chunk.FullPath.Replace('\\', '/');
                 sb.AppendLine($"file '{normalizedPath}'");
 
-                if (i == 0 && rangeStartUtc > chunk.StartUtc)
+                if (chunk.StartUtc < rangeStartUtc)
                 {
                     double inPoint = (rangeStartUtc - chunk.StartUtc).TotalSeconds;
-                    if (inPoint > 0)
-                    {
-                        sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "inpoint {0:F3}", inPoint));
-                    }
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "inpoint {0:F3}", inPoint));
                 }
 
-                if (i == chunks.Count - 1 && rangeEndUtc < chunk.EndUtc)
+                if (chunk.EndUtc > rangeEndUtc)
                 {
                     double outPoint = (rangeEndUtc - chunk.StartUtc).TotalSeconds;
-                    if (outPoint > 0)
-                    {
-                        sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "outpoint {0:F3}", outPoint));
-                    }
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "outpoint {0:F3}", outPoint));
+                    currentTimelineUtc = rangeEndUtc;
+                    break;
+                }
+                else
+                {
+                    currentTimelineUtc = chunk.EndUtc;
+                }
+            }
+
+            // מילוי Gap בסוף הטווח
+            if (currentTimelineUtc < rangeEndUtc)
+            {
+                TimeSpan finalGap = rangeEndUtc - currentTimelineUtc;
+                if (finalGap.TotalSeconds > 0.5 && dummyPath != null)
+                {
+                    sb.AppendLine($"file '{dummyPath}'");
+                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "duration {0:F3}", finalGap.TotalSeconds));
                 }
             }
 

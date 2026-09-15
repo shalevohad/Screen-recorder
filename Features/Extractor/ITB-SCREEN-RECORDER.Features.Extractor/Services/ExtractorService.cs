@@ -114,7 +114,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 await _concurrencyThrottle.WaitAsync(ct);
                 try
                 {
-                    string concatManifest = _storageScanner.BuildConcatManifest(chunks, request.StartTimeUtc, request.EndTimeUtc);
+                    string concatManifest = await _storageScanner.BuildConcatManifestAsync(chunks, request.StartTimeUtc, request.EndTimeUtc);
 
                     await using (var spoolStream = new FileStream(
                         tempSpoolFile,

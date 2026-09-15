@@ -1,3 +1,6 @@
+﻿// ==========================================
+// File: Client/src/ExtractorTile.scss
+// ==========================================
 .extractor-tile {
     display: flex;
     flex-direction: column;
@@ -59,6 +62,20 @@
         gap: 12px;
         overflow-y: auto;
 
+        .no-hosts-banner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 14px;
+            background-color: rgba(234, 179, 8, 0.1);
+            border: 1px dashed rgba(234, 179, 8, 0.4);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #fde047;
+            font-weight: 500;
+        }
+
         .filter-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -87,6 +104,91 @@
                     &:focus {
                         outline: none;
                         border-color: var(--accent-cyan, #38bdf8);
+                    }
+                }
+            }
+        }
+        // --- אזור בחירת התחנות הדינמי ---
+        .hosts-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background-color: var(--bg-surface, #1e293b);
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color, #334155);
+
+            .section-label {
+                font-size: 0.65rem;
+                color: var(--text-dim, #64748b);
+                text-transform: uppercase;
+                font-weight: 600;
+            }
+
+            .hosts-list {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                max-height: 120px;
+                overflow-y: auto;
+
+                .host-card {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    background-color: var(--bg-input, #0f172a);
+                    padding: 6px 10px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(51, 65, 85, 0.5);
+                    cursor: pointer;
+                    user-select: none;
+                    transition: all 0.2s ease;
+
+                    &:hover {
+                        border-color: var(--accent-cyan, #38bdf8);
+                    }
+
+                    &.selected {
+                        background-color: rgba(56, 189, 248, 0.05);
+                        border-color: rgba(56, 189, 248, 0.3);
+                    }
+
+                    .host-info {
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+
+                        .host-name {
+                            font-size: 0.75rem;
+                            font-family: monospace;
+                            color: var(--text-primary, #f8fafc);
+                            font-weight: 600;
+                        }
+
+                        input[type="checkbox"] {
+                            accent-color: var(--accent-cyan, #38bdf8);
+                            cursor: pointer;
+                        }
+                    }
+
+                    .status-pill {
+                        font-size: 0.65rem;
+                        font-weight: 700;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        text-transform: uppercase;
+
+                        &.ok {
+                            background-color: rgba(16, 185, 129, 0.15);
+                            color: #6ee7b7;
+                            border: 1px solid rgba(16, 185, 129, 0.3);
+                        }
+
+                        &.warn {
+                            background-color: rgba(244, 63, 94, 0.15);
+                            color: #fda4af;
+                            border: 1px solid rgba(244, 63, 94, 0.3);
+                        }
                     }
                 }
             }
