@@ -177,7 +177,17 @@ export function useDashboardLogic({
         return list;
     }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, activeFleetTabConfig]);
 
-    useEffect(() => { setCurrentPage(1); }, [searchQuery, tabFilters, activeTabId, viewMode, hideOffline]);
+    const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
+    if (
+        prevFilters.searchQuery !== searchQuery ||
+        prevFilters.tabFilters !== tabFilters ||
+        prevFilters.activeTabId !== activeTabId ||
+        prevFilters.viewMode !== viewMode ||
+        prevFilters.hideOffline !== hideOffline
+    ) {
+        setPrevFilters({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
+        setCurrentPage(1);
+    }
 
     const totalPages = Math.ceil(processedStations.length / itemsPerPage) || 1;
     const paginatedStations = useMemo(() => {

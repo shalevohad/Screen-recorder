@@ -22,16 +22,13 @@
 		<DefineConstants>ServerDir=$(ServerStaging);FeaturesDir=$(FeaturesStaging);Version=$(Version)</DefineConstants>
 
 		<SuppressIces>ICE61</SuppressIces>
-
-		<!-- איתור פרויקט ה-Extractor בדיסק -->
-		<ExtractorProj Condition="Exists('$(MSBuildProjectDirectory)\..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj')">$(MSBuildProjectDirectory)\..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj</ExtractorProj>
-		<ExtractorProj Condition="'$(ExtractorProj)' == '' and Exists('$(MSBuildProjectDirectory)\..\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj')">$(MSBuildProjectDirectory)\..\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj</ExtractorProj>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\LICENSE-MEDIAMTX.txt" />
 		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\mediamtx.yml" />
 		<Content Include="UpdateSettings.ps1" />
+		<Content Include="PublishFeatures.ps1" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -46,27 +43,26 @@
 	</ItemGroup>
 
 	<Target Name="PrepareAndGenerateFeaturesBeforeBuild" BeforeTargets="BeforeBuild">
-		<Message Importance="high" Text="=== [1/4] Preparing Clean Staging Folders ===" />
+		<Message Importance="high" Text="=== [1/3] Preparing Clean Staging Folders ===" />
 		<RemoveDir Directories="$(StagingRoot)" ContinueOnError="true" />
 		<MakeDir Directories="$(ServerStaging)" />
-		<MakeDir Directories="$(FeaturesStaging)\Extractor" />
+		<MakeDir Directories="$(FeaturesStaging)" />
 
-		<Message Importance="high" Text="=== [2/4] Publishing Central Server ===" />
+		<Message Importance="high" Text="=== [2/3] Publishing Central Server &amp; Auto-Discovering All Features ===" />
 		<Exec Command="dotnet publish &quot;$(MSBuildProjectDirectory)\..\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(ServerStaging)&quot;" />
 
-		<!-- 💡 פעולת הסניטציה: מחיקה אגרסיבית של קבצי פיתוח שהסתננו לפלט השרת -->
-		<Message Importance="high" Text="=== [Sanitize] Removing stray Features from Server output ===" />
+		<!-- סניטציה: מחיקת קבצי פיתוח שהסתננו לפלט השרת -->
 		<RemoveDir Directories="$(ServerStaging)\Features" ContinueOnError="true" />
 
-		<Message Importance="high" Text="=== [3/4] Publishing Extractor Plugin ===" />
-		<Exec Command="dotnet publish &quot;$(ExtractorProj)&quot; -c $(Configuration) -r win-x64 --no-self-contained -o &quot;$(FeaturesStaging)\Extractor&quot;" Condition="'$(ExtractorProj)' != '' and Exists('$(ExtractorProj)')" />
+		<!-- 💡 הפעלת סקריפט הפרסום החיצוני בצורה נקייה -->
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\PublishFeatures.ps1&quot; -FeaturesRoot &quot;$(MSBuildProjectDirectory)\..\Features&quot; -StagingDir &quot;$(FeaturesStaging)&quot; -Configuration &quot;$(Configuration)&quot;" />
 
 		<ItemGroup>
 			<StrayCoreFiles Include="$(FeaturesStaging)\**\ITB-SCREEN-RECORDER.Core.*" />
 		</ItemGroup>
 		<Delete Files="@(StrayCoreFiles)" ContinueOnError="true" />
 
-		<Message Importance="high" Text="=== [4/4] Launching Feature Selection GUI ===" />
+		<Message Importance="high" Text="=== [3/3] Launching Interactive Feature Selection Engine ===" />
 		<Exec Command="powershell.exe -Sta -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\SelectFeatures.ps1&quot; -FeaturesDir &quot;$(FeaturesStaging)&quot; -OutputFile &quot;$(MSBuildProjectDirectory)\GeneratedFeatures.wxs&quot;" />
 	</Target>
 

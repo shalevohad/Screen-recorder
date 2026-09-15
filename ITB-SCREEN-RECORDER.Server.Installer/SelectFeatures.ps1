@@ -152,8 +152,8 @@ if (-not $isCI -and $discoveredFeatures.Count -gt 0) {
     $btnOk.Text = "Build MSI"
     $btnOk.Font = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Bold)
     $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $btnOk.BackColor = [System.Drawing.Color]::FromArgb(14, 116, 144)
-    $btnOk.ForeColor = [System.Drawing.Color]::Black
+    $btnOk.BackColor = [System.Drawing.Color]::FromArgb(16, 185, 129) # רקע ירוק מודרני
+    $btnOk.ForeColor = [System.Drawing.Color]::White                 # טקסט לבן
     $form.AcceptButton = $btnOk
     $form.Controls.Add($btnOk)
 

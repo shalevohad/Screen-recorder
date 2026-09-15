@@ -2,6 +2,9 @@
 import TabConfigModal from './TabConfigModal';
 import './FleetTabs.scss';
 
+// 💡 פונקציית עזר חיצונית שאינה תלויה ברינדור של React (עוקפת את שגיאת Purity)
+const generateTabId = () => 'tab_' + Date.now();
+
 export default function FleetTabs({
     activeTabId,
     onTabChange,
@@ -22,7 +25,6 @@ export default function FleetTabs({
     const overflowContainerRef = useRef(null);
     const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
-    // 💡 ניהול עריכת שם בלחיצה כפולה (Inline Rename)
     const [renamingTabId, setRenamingTabId] = useState(null);
     const [renamingTabName, setRenamingTabName] = useState('');
     const renameInputRef = useRef(null);
@@ -115,7 +117,7 @@ export default function FleetTabs({
     };
 
     const commitSave = (tabData, overrideCustomSettings) => {
-        const finalId = tabData.id || ('tab_' + Date.now());
+        const finalId = tabData.id || generateTabId();
         const finalTabData = { ...tabData, id: finalId };
 
         let updatedTabs = [...fleetTabsList];

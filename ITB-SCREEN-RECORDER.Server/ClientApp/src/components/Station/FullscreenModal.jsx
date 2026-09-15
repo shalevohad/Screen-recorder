@@ -67,10 +67,9 @@ export default function FullscreenModal(props) {
         return () => clearTimeout(timer);
     }, [confirmStop]);
 
-    // טיימר שידור חי
+    // טיימר שידור חי נקי לחלוטין ללא קריאות setState סינכרוניות בתוך האפקט
     useEffect(() => {
         if (!isStreaming) {
-            setElapsedSeconds(0);
             sessionStartTimeRef.current = null;
             return;
         }
@@ -93,6 +92,9 @@ export default function FullscreenModal(props) {
         const interval = setInterval(updateClock, 1000);
         return () => clearInterval(interval);
     }, [isStreaming, streamingSinceUtc, props.recordingStartTime, props.startedAt, props.streamingStartedAt]);
+
+    // אם הסטרימינג לא פעיל, הזמן המוצג הוא תמיד 0 באופן מובטח
+    const displayElapsedSeconds = isStreaming ? elapsedSeconds : 0;
 
     const formatElapsedTime = (totalSec) => {
         const days = Math.floor(totalSec / 86400);
@@ -135,14 +137,13 @@ export default function FullscreenModal(props) {
                 className="stream-modal-box"
                 style={{ '--video-aspect': aspectRatio }}
             >
-                {/* כותרת חלון טקטית מובחנת ומוארת */}
                 <div className="stream-modal-header">
                     <div className="stream-modal-title">
                         <span className={`live-dot ${isStreaming ? 'streaming' : 'idle'}`}></span>
                         <h2>LIVE // {hostname}</h2>
                         {isStreaming && (
                             <span className="uptime-badge" title="Active stream duration">
-                                {formatElapsedTime(elapsedSeconds)}
+                                {formatElapsedTime(displayElapsedSeconds)}
                             </span>
                         )}
                     </div>
@@ -240,7 +241,6 @@ export default function FullscreenModal(props) {
                     </button>
                 </div>
 
-                {/* גוף החלון: חובק את הווידאו בדיוק ביחס הממדים ללא רווחים */}
                 <div className="stream-modal-body">
                     {!isVideoPlaying && (
                         <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>

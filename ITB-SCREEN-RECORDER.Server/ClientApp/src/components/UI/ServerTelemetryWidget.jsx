@@ -31,13 +31,11 @@ function SparklineChart({ data, color, limit = 40 }) {
     );
 }
 
-// חישוב אחוז ויזואלי לוגריתמי/טקטי שמשקף כל שינוי - מ-1K ועד 1G
 const calcTacticalBarPct = (rateKbps, maxLinkKbps = 1000000) => {
     if (!rateKbps || rateKbps <= 0) return 0;
     const maxLog = Math.log10(Math.max(1000, maxLinkKbps));
     const curLog = Math.log10(Math.max(1, rateKbps));
     const pct = (curLog / maxLog) * 100;
-    // החזרת רוחב עם מינימום של 6% כאשר יש תעבורה כדי שהפס והמסגרת ייראו חיים ופועמים
     return Math.min(100, Math.max(6, Math.round(pct)));
 };
 
@@ -63,12 +61,11 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     const linkSpeedMbps = serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000;
     const netUtilPct = serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100);
 
-    // חישוב אחוזים דינמיים שגדלים וקטנים בזמן אמת לפי גודל התעבורה
     const linkSpeedKbps = (linkSpeedMbps || 1000) * 1000;
     const txPct = calcTacticalBarPct(netTxMbps * 1000, linkSpeedKbps);
     const rxPct = calcTacticalBarPct(netRxMbps * 1000, linkSpeedKbps);
     const netPct = calcTacticalBarPct(totalNetMbps * 1000, linkSpeedKbps);
-    const c2Pct = calcTacticalBarPct(c2Kbps, 5000); // תקשורת C2 מנוהלת בסקאלה של 5Mbps מקסימום
+    const c2Pct = calcTacticalBarPct(c2Kbps, 5000);
 
     const [history, setHistory] = useState({
         cpu: [cpuPct],
@@ -79,15 +76,13 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
         lastNet: netUtilPct
     });
 
-    let cpuHistory = history.cpu;
-    let ramHistory = history.ram;
-    let netHistory = history.net;
+    const isMetricsChanged = cpuPct !== history.lastCpu || hostRamPct !== history.lastRam || netUtilPct !== history.lastNet;
 
-    if (cpuPct !== history.lastCpu || hostRamPct !== history.lastRam || netUtilPct !== history.lastNet) {
-        cpuHistory = [...history.cpu, cpuPct].slice(-historyPoints);
-        ramHistory = [...history.ram, hostRamPct].slice(-historyPoints);
-        netHistory = [...history.net, netUtilPct].slice(-historyPoints);
+    const cpuHistory = isMetricsChanged ? [...history.cpu, cpuPct].slice(-historyPoints) : history.cpu;
+    const ramHistory = isMetricsChanged ? [...history.ram, hostRamPct].slice(-historyPoints) : history.ram;
+    const netHistory = isMetricsChanged ? [...history.net, netUtilPct].slice(-historyPoints) : history.net;
 
+    if (isMetricsChanged) {
         setHistory({
             cpu: cpuHistory,
             ram: ramHistory,

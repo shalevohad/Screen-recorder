@@ -1,4 +1,3 @@
-import React from 'react';
 import './RangeSlider.scss';
 
 export default function RangeSlider({

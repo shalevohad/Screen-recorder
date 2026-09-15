@@ -10,9 +10,9 @@
 			 Compressed="yes"
 			 Codepage="65001">
 
-		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder Server is already installed."
-					  AllowSameVersionUpgrades="yes"
-					  Schedule="afterInstallValidate" />
+		<MajorUpgrade DowngradeErrorMessage="A newer version is already installed."
+              AllowSameVersionUpgrades="yes"
+              Schedule="afterInstallValidate" />
 
 		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
