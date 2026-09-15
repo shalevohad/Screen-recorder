@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<!-- שינוי מ-None ל-Library פותר את שגיאת CS2019 -->
+		<OutputType>Library</OutputType>
+		<Version Condition="'$(Version)' == ''">1.0.25</Version>
+		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..'))</SolutionRoot>
+		<LinuxRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..'))</LinuxRoot>
+
+		<StagingDir>$(SolutionRoot)\Publish\Staging\server_linux</StagingDir>
+		<FinalOutputDir>$(SolutionRoot)\Publish\Server\linux</FinalOutputDir>
+		<OutputRunFile>$(FinalOutputDir)\ITB-ScreenRecorder-Server-Setup-$(Version).run</OutputRunFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="installer-header.sh" />
+		<None Include="setup.sh" />
+		<None Include="Containerfile" />
+		<None Include="itb-server.container" />
+	</ItemGroup>
+
+	<Target Name="BuildLinuxServerPackage" AfterTargets="Build">
+		<Message Importance="high" Text="=== [1/4] Preparing Clean Server Staging ===" />
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+		<MakeDir Directories="$(StagingDir)\server" />
+		<MakeDir Directories="$(StagingDir)\features" />
+
+		<Message Importance="high" Text="=== [2/4] Publishing Central Server (linux-x64) ===" />
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)\server&quot;" />
+		<RemoveDir Directories="$(StagingDir)\server\Features" ContinueOnError="true" />
+
+		<Message Importance="high" Text="=== [3/4] Publishing Modular Features (linux-x64) ===" />
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionRoot)\Installers\Windows\ITB-SCREEN-RECORDER.Server.Installer\PublishFeatures.ps1&quot; -FeaturesRoot &quot;$(SolutionRoot)\Features&quot; -StagingDir &quot;$(StagingDir)\features&quot; -Configuration &quot;$(Configuration)&quot;" />
+
+		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="Containerfile" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="itb-server.container" DestinationFolder="$(StagingDir)" />
+
+		<Message Importance="high" Text="=== [4/4] Packing Containerized Server .run Installer ===" />
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(LinuxRoot)\BuildRunPackage.ps1&quot; -PayloadDir &quot;$(StagingDir)&quot; -HeaderScript &quot;$(MSBuildProjectDirectory)\installer-header.sh&quot; -OutputFile &quot;$(OutputRunFile)&quot;" />
+
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+	</Target>
+</Project>

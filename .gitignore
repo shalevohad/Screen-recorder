@@ -42,3 +42,4 @@ mediamtx.exe
 /Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/wwwroot
 /Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/wwwroot
 /ITB-SCREEN-RECORDER.Server.Installer/GeneratedFeatures.wxs
+/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Tools/Win/ffprobe.exe

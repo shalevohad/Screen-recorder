@@ -47,10 +47,6 @@
 		</Content>
 	</ItemGroup>
 	<ItemGroup>
-	  <Folder Include="Tools\Linux\" />
-	  <Folder Include="Tools\Win\" />
-	</ItemGroup>
-	<ItemGroup>
 		<!-- עבור Windows -->
 		<None Update="Tools\Windows\**" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
 			<Link>%(Filename)%(Extension)</Link>

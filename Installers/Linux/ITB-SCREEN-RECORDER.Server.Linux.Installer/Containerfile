@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble AS base
+WORKDIR /app
+
+# חשיפת פורטי השירות
+EXPOSE 5090 19350 8888 9997
+
+# העתקת בינארי השרת והרכיבים
+COPY server/ /app/
+COPY features/ /app/Features/
+
+# מתן הרשאות הרצה
+RUN chmod +x /app/ITB-SCREEN-RECORDER.Server && \
+    if [ -f /app/mediamtx ]; then chmod +x /app/mediamtx; fi
+
+# נקודת כניסה
+ENTRYPOINT ["/app/ITB-SCREEN-RECORDER.Server"]

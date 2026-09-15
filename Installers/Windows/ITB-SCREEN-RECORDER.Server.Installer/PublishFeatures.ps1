@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$FeaturesRoot,
     [Parameter(Mandatory=$true)][string]$StagingDir,
-    [Parameter(Mandatory=$true)][string]$Configuration
+    [Parameter(Mandatory=$true)][string]$Configuration,
+    [string]$Runtime = 'win-x64'
 )
 
 if (Test-Path $FeaturesRoot) {
@@ -10,8 +11,8 @@ if (Test-Path $FeaturesRoot) {
         $proj = Get-ChildItem -Path $d.FullName -Filter '*.csproj' -Recurse | Select-Object -First 1
         if ($proj) {
             $out = Join-Path $StagingDir $d.Name
-            Write-Host "==> Staging Feature: $($d.Name)"
-            dotnet publish $proj.FullName -c $Configuration -r win-x64 --no-self-contained -o $out
+            Write-Host "==> Staging Feature: $($d.Name) ($Runtime)"
+            dotnet publish $proj.FullName -c $Configuration -r $Runtime --no-self-contained -o $out
         }
     }
 }

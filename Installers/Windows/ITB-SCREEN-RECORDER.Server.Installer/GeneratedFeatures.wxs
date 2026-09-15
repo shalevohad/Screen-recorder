@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <FeatureGroup Id="DynamicModularFeatures">
+      <Feature Id="Feature_Extractor" Title="Session Slicer (Extractor Feature)" Description="Enables time-range video slicing, FFmpeg concatenation, and TAR archiving export." Level="1" Display="expand" AllowAbsent="yes" InstallDefault="local" TypicalDefault="install">
+        <ComponentGroupRef Id="FeatureGroup_Extractor" />
+      </Feature>
+      <Feature Id="Feature_ExtractorAdvanced" Title="Extractor Advanced NLE Studio" Description="Frame-accurate non-linear editing studio, extending the base Extractor timeline." Level="1" Display="expand" AllowAbsent="yes" InstallDefault="local" TypicalDefault="install">
+        <ComponentGroupRef Id="FeatureGroup_ExtractorAdvanced" />
+      </Feature>
+    </FeatureGroup>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Directory Id="FeaturesBaseFolder" Name="Features">
+        <Directory Id="Dir_Extractor" Name="Extractor" />
+        <Directory Id="Dir_ExtractorAdvanced" Name="ExtractorAdvanced" />
+      </Directory>
+    </DirectoryRef>
+    <ComponentGroup Id="FeatureGroup_Extractor" Directory="Dir_Extractor">
+      <Files Include="$(var.FeaturesDir)\Extractor\**" />
+    </ComponentGroup>
+    <ComponentGroup Id="FeatureGroup_ExtractorAdvanced" Directory="Dir_ExtractorAdvanced">
+      <Files Include="$(var.FeaturesDir)\ExtractorAdvanced\**" />
+    </ComponentGroup>
+  </Fragment>
+</Wix>

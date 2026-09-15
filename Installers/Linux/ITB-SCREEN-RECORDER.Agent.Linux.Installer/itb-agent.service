@@ -1,0 +1,17 @@
+[Unit]
+Description=ITB Screen Recorder Agent Service
+After=network.target remote-fs.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/itb-screen-recorder/agent/service
+ExecStart=/opt/itb-screen-recorder/agent/service/ITB-SCREEN-RECORDER.AgentService
+Restart=always
+RestartSec=5
+KillMode=process
+User=root
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
