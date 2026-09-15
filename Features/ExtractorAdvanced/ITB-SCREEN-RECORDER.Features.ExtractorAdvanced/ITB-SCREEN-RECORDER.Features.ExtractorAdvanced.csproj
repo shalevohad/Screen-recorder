@@ -49,6 +49,10 @@
 			<Private>false</Private>
 			<ExcludeAssets>runtime</ExcludeAssets>
 		</ProjectReference>
+		<ProjectReference Include="..\..\Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
 	</ItemGroup>
 
 	<!-- העתקה אוטומטית של ה-DLL והנכסים לשרת הפיתוח בסיום ה-Build -->
