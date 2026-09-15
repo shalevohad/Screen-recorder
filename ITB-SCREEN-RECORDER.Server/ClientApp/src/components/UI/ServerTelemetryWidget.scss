@@ -1,4 +1,4 @@
-.server-telemetry-widget.layout-large {
+﻿.server-telemetry-widget.layout-large {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -88,6 +88,76 @@
             }
         }
 
+        &.net-pod {
+            width: auto;
+            min-width: 190px;
+
+            .pod-content-row {
+                gap: 12px;
+            }
+            /* 💡 פסי ההתקדמות המינימליסטיים החדשים */
+            .net-stats-grid {
+                display: flex;
+                gap: 8px;
+                border-left: 1px solid rgba(255, 255, 255, 0.1);
+                padding-left: 8px;
+                flex: 1;
+
+                .net-stat-col {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    flex: 1;
+
+                    .net-stat-bar-container {
+                        position: relative;
+                        width: 100%;
+                        height: 16px;
+                        background: var(--bg-dark-well);
+                        border-radius: 4px;
+                        overflow: hidden;
+                        border: 1px solid var(--border-subtle);
+                        box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+
+                        .ns-bar-fill {
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            bottom: 0;
+                            background: linear-gradient(90deg, rgba(6, 182, 212, 0.15) 0%, rgba(6, 182, 212, 0.5) 100%);
+                            border-right: 1px solid var(--c2-cyan);
+                            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                        }
+
+                        .ns-content {
+                            position: absolute;
+                            inset: 0;
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            padding: 0 6px;
+                            line-height: 1;
+                            z-index: 2;
+
+                            .ns-lbl {
+                                color: var(--slate-muted);
+                                font-size: 8.5px;
+                                font-weight: 700;
+                                letter-spacing: 0.5px;
+                            }
+
+                            .ns-val {
+                                color: #ffffff;
+                                font-size: 9.5px;
+                                font-weight: 800;
+                                text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         &.ok {
             .pod-val {
                 color: var(--c2-green);
@@ -98,9 +168,9 @@
                 background-color: var(--c2-green);
             }
 
-                .pod-bar.net-bar {
-                    background-color: var(--c2-blue);
-                }
+            .pod-bar.net-bar {
+                background-color: var(--c2-blue);
+            }
         }
 
         &.warn {

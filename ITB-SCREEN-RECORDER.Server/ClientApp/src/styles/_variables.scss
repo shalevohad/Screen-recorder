@@ -59,7 +59,15 @@
     --shadow-card: 0 16px 36px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(59, 130, 246, 0.2);
     --shadow-tooltip: 0 12px 28px rgba(0, 0, 0, 0.9);
     --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.5);
+    /* גיבויי עבר */
     --c2-amber: #f59e0b;
     --c2-amber-light: #fbbf24;
     --c2-amber-tint: rgba(245, 158, 11, 0.15);
+    /* 6. צבעי פיצ'רים (Feature Theme) */
+    --feature-theme-base: #eab308;
+    --feature-theme-light: #fef08a;
+    --feature-theme-border: rgba(234, 179, 8, 0.6);
+    --feature-theme-tint: rgba(234, 179, 8, 0.15);
+    --feature-theme-bg: rgba(20, 24, 12, 0.95);
+    --feature-theme-grid-lines: rgba(234, 179, 8, 0.04);
 }

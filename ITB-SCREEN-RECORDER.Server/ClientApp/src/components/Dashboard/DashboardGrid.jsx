@@ -1,474 +1,65 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
-import StationThumbnail from '../Station/StationThumbnail';
+import { useDashboardLogic } from './useDashboardLogic';
+
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
 import FullscreenModal from '../Station/FullscreenModal';
-import DynamicIcon from '../UI/DynamicIcon';
 import RemoteWidgetHost from '../UI/RemoteWidgetHost';
 import FleetTabs from '../UI/FleetTabs';
+
+import DashboardDock from './DashboardDock';
+import SearchShelf from './SearchShelf';
+import StationsGridView from './StationsGridView';
+import StationsDenseView from './StationsDenseView';
+
 import './DashboardGrid.scss';
 
-const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
+export default function DashboardGrid(props) {
+    const logic = useDashboardLogic(props);
 
-export default function DashboardGrid({
-    stations = [],
-    actionPending = {},
-    onToggleStream,
-    onBulkStart,
-    onBulkStop,
-    onQuickBookmark,
-    onQuickPlayback,
-    onQuickExport,
-    onUpdateStationSettings,
-    systemConfig,
-    onSystemConfigUpdate,
-    direction = 'ltr',
-    hideOffline = true,
-    onToggleHideOffline,
-    isFaultFilterActive = false,
-    onExitFaultFilter
-}) {
-    const [sortAsc, setSortAsc] = useState(true);
-    const [inspectedHostname, setInspectedHostname] = useState(null);
-    const [fullscreenHostname, setFullscreenHostname] = useState(null);
+    const {
+        stations, actionPending, onToggleStream,
+        onQuickBookmark, onQuickPlayback, systemConfig, onSystemConfigUpdate,
+        direction, hideOffline, onToggleHideOffline,
+        isFaultFilterActive, onExitFaultFilter
+    } = props;
 
-    // 💡 ניהול הטאב הפעיל מרוכז כאן במקום ב-FleetTabs
-    const [activeTabId, setActiveTabId] = useState('ALL');
-
-    // 💡 משיכת הטאבים השמורים בקונפיגורציה
-    const fleetTabsList = useMemo(() => {
-        return systemConfig?.dashboard?.fleetTabs || [];
-    }, [systemConfig]);
-
-    const activeFleetTabConfig = useMemo(() => {
-        return fleetTabsList.find(t => t.id === activeTabId) || null;
-    }, [fleetTabsList, activeTabId]);
-
-    // סינון תחנות לפי טאב נוכחי (לשימוש רק אם הטאב הוא לא פיצ'ר)
-    const tabFilteredStations = useMemo(() => {
-        if (activeTabId === 'ALL') {
-            return stations;
-        }
-        if (!activeFleetTabConfig) return stations;
-
-        return stations.filter(station => {
-            const matchesNames = activeFleetTabConfig.assignedHostnames?.some(h =>
-                h.toLowerCase() === station.hostname?.toLowerCase() ||
-                h.toLowerCase() === station.displayName?.toLowerCase()
-            );
-            const matchesOu = activeFleetTabConfig.assignedOus?.some(ou =>
-                station.ou?.toLowerCase().includes(ou.toLowerCase()) ||
-                station.group?.toLowerCase().includes(ou.toLowerCase())
-            );
-            return matchesNames || matchesOu;
-        });
-    }, [stations, activeTabId, activeFleetTabConfig]);
-
-    const [availableFeatures, setAvailableFeatures] = useState([]);
-    const [openFeatureIds, setOpenFeatureIds] = useState(() => {
-        try {
-            const saved = localStorage.getItem('itb_dashboard_open_features');
-            return saved ? JSON.parse(saved) : [];
-        } catch {
-            return [];
-        }
-    });
-    const [focusedWidgetHost, setFocusedWidgetHost] = useState(null);
-
-    useEffect(() => {
-        fetch('/api/v1/features/active')
-            .then(res => res.ok ? res.json() : [])
-            .then(data => setAvailableFeatures(Array.isArray(data) ? data : []))
-            .catch(() => setAvailableFeatures([]));
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('itb_dashboard_open_features', JSON.stringify(openFeatureIds));
-    }, [openFeatureIds]);
-
-    // 💡 ניתוב חכם של הפיצ'רים מהתפריט הצדדי
-    const handleToggleFeature = (feat) => {
-        const isOpen = openFeatureIds.includes(feat.id);
-
-        if (isOpen) {
-            setOpenFeatureIds(prev => prev.filter(id => id !== feat.id));
-            if (activeTabId === feat.id) {
-                setActiveTabId('ALL');
-            }
-        } else {
-            setOpenFeatureIds(prev => [...prev, feat.id]);
-            // אם זה טאב, מעבירים אליו את הפוקוס
-            if (feat.displayMode === 'tab' || !feat.displayMode) {
-                setActiveTabId(feat.id);
-            } else if (feat.displayMode === 'fullscreen') {
-                // לוגיקת פולסקרין בעתיד
-            }
-        }
-    };
-
-    const handleCloseFeature = (featureId) => {
-        setOpenFeatureIds(prev => prev.filter(id => id !== featureId));
-        if (activeTabId === featureId) {
-            setActiveTabId('ALL');
-        }
-    };
-
-    // חיתוך הפיצ'רים לסוגי התצוגה שלהם
-    const openFeatureTabs = useMemo(() => {
-        return availableFeatures.filter(f => openFeatureIds.includes(f.id) && (f.displayMode === 'tab' || !f.displayMode));
-    }, [availableFeatures, openFeatureIds]);
-
-    const activeInlineFeatures = useMemo(() => {
-        return availableFeatures.filter(f => openFeatureIds.includes(f.id) && f.displayMode === 'inline');
-    }, [availableFeatures, openFeatureIds]);
-
-    // בודק אם הטאב הנוכחי הוא למעשה פיצ'ר
-    const activeFeatureObject = openFeatureTabs.find(f => f.id === activeTabId);
-
-    const handleFeatureQuickExport = (hostname) => {
-        const extractorFeat = availableFeatures.find(f => f.id === 'extractor-slicer');
-        if (extractorFeat) {
-            setFocusedWidgetHost(hostname);
-            if (!openFeatureIds.includes(extractorFeat.id)) {
-                setOpenFeatureIds(prev => [...prev, extractorFeat.id]);
-            }
-            if (extractorFeat.displayMode === 'tab' || !extractorFeat.displayMode) {
-                setActiveTabId(extractorFeat.id);
-            }
-        }
-        onQuickExport?.(hostname);
-    };
-
-    const inspectedStation = useMemo(() => {
-        return stations.find(s => s.hostname === inspectedHostname) || null;
-    }, [stations, inspectedHostname]);
-
-    const fullscreenStation = useMemo(() => {
-        return stations.find(s => s.hostname === fullscreenHostname) || null;
-    }, [stations, fullscreenHostname]);
-
-    const [viewMode, setViewMode] = useState(() => {
-        return localStorage.getItem('itb_dashboard_view_mode') || 'grid';
-    });
-
-    useEffect(() => {
-        localStorage.setItem('itb_dashboard_view_mode', viewMode);
-    }, [viewMode]);
-
-    const [isSearchOpen, setIsSearchOpen] = useState(() => {
-        const saved = localStorage.getItem('itb_dashboard_search_open');
-        return saved !== null ? JSON.parse(saved) : false;
-    });
-
-    const [searchQuery, setSearchQuery] = useState(() => {
-        return localStorage.getItem('itb_dashboard_search_query') || '';
-    });
-
-    useEffect(() => {
-        localStorage.setItem('itb_dashboard_search_open', JSON.stringify(isSearchOpen));
-    }, [isSearchOpen]);
-
-    useEffect(() => {
-        localStorage.setItem('itb_dashboard_search_query', searchQuery);
-    }, [searchQuery]);
-
-    const searchInputRef = useRef(null);
-
-    const [manualZoom, setManualZoom] = useState(() => {
-        const savedZoom = localStorage.getItem('itb_dashboard_zoom');
-        return savedZoom ? Number(savedZoom) : 3;
-    });
-
-    const [isAutoZoom, setIsAutoZoom] = useState(() => {
-        const savedAuto = localStorage.getItem('itb_dashboard_auto_zoom');
-        return savedAuto !== null ? JSON.parse(savedAuto) : true;
-    });
-
-    useEffect(() => {
-        localStorage.setItem('itb_dashboard_zoom', manualZoom);
-    }, [manualZoom]);
-
-    useEffect(() => {
-        localStorage.setItem('itb_dashboard_auto_zoom', JSON.stringify(isAutoZoom));
-    }, [isAutoZoom]);
-
-    useEffect(() => {
-        if (isSearchOpen && searchInputRef.current) {
-            searchInputRef.current.focus();
-        }
-    }, [isSearchOpen]);
-
-    const faultyStationsCount = useMemo(() => {
-        return tabFilteredStations.filter(isStationFaulty).length;
-    }, [tabFilteredStations]);
-
-    useEffect(() => {
-        if (isFaultFilterActive && faultyStationsCount === 0) {
-            onExitFaultFilter?.();
-        }
-    }, [isFaultFilterActive, faultyStationsCount, onExitFaultFilter]);
-
-    const processedStations = useMemo(() => {
-        let list = [...tabFilteredStations];
-
-        if (isFaultFilterActive) {
-            list = list.filter(isStationFaulty);
-        } else if (hideOffline) {
-            list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
-        }
-
-        if (searchQuery.trim()) {
-            const q = searchQuery.trim().toLowerCase();
-            list = list.filter(s =>
-                (s.hostname && s.hostname.toLowerCase().includes(q)) ||
-                (s.displayName && s.displayName.toLowerCase().includes(q)) ||
-                (s.ipAddress && s.ipAddress.includes(q))
-            );
-        }
-
-        list.sort((a, b) => {
-            const nameA = (a.displayName || a.hostname || '').toLowerCase();
-            const nameB = (b.displayName || b.hostname || '').toLowerCase();
-            const comp = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
-            return sortAsc ? comp : -comp;
-        });
-
-        if (activeFleetTabConfig) {
-            list = list.map(station => ({
-                ...station,
-                effectiveBitrate: station.customBitrate || activeFleetTabConfig.defaultBitrate || station.bitrate,
-                effectiveFps: station.customFps || activeFleetTabConfig.defaultFps || station.fps
-            }));
-        }
-
-        return list;
-    }, [tabFilteredStations, isFaultFilterActive, hideOffline, searchQuery, sortAsc, activeFleetTabConfig]);
-
-    const canSort = processedStations.length > 1;
-
-    const canStartAny = useMemo(() => {
-        return processedStations.some(s =>
-            (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming
-        );
-    }, [processedStations]);
-
-    const canStopAny = useMemo(() => {
-        return processedStations.some(s => s.isStreaming);
-    }, [processedStations]);
-
-    const handleFilteredBulkStart = () => {
-        if (!canStartAny) return;
-        const targetHostnames = processedStations
-            .filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming)
-            .map(s => s.hostname);
-
-        onBulkStart?.(targetHostnames, {
-            bitrate: activeFleetTabConfig?.defaultBitrate || null,
-            fps: activeFleetTabConfig?.defaultFps || null
-        });
-    };
-
-    const handleFilteredBulkStop = () => {
-        if (!canStopAny) return;
-        const targetHostnames = processedStations
-            .filter(s => s.isStreaming)
-            .map(s => s.hostname);
-        onBulkStop?.(targetHostnames);
-    };
-
-    const handlePolicyApplication = ({ tabData, overrideCustomSettings }) => {
-        if (!overrideCustomSettings) return;
-
-        onUpdateStationSettings?.(prev => prev.map(st => {
-            const matchesName = tabData.assignedHostnames?.includes(st.hostname);
-            const matchesOu = tabData.assignedOus?.some(ou =>
-                st.ou?.toLowerCase().includes(ou.toLowerCase()) ||
-                st.group?.toLowerCase().includes(ou.toLowerCase())
-            );
-
-            if (matchesName || matchesOu) {
-                return {
-                    ...st,
-                    customBitrate: tabData.defaultBitrate,
-                    customFps: tabData.defaultFps
-                };
-            }
-            return st;
-        }));
-    };
-
-    const autoOptimalZoom = useMemo(() => {
-        const count = processedStations.length + activeInlineFeatures.length;
-        if (count === 0) return 3;
-        if (count === 1) return 5;
-        if (count === 2) return 4;
-        if (count <= 6) return 3;
-        if (count <= 12) return 2;
-        return 1;
-    }, [processedStations.length, activeInlineFeatures.length]);
-
-    const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
     const cardWidthMap = { 1: '290px', 2: '360px', 3: '450px', 4: '570px', 5: '700px' };
-
-    const handleZoomOut = () => { setIsAutoZoom(false); setManualZoom(prev => Math.max(prev - 1, 1)); };
-    const handleZoomIn = () => { setIsAutoZoom(false); setManualZoom(prev => Math.min(prev + 1, 5)); };
-    const handleSliderChange = (e) => { setIsAutoZoom(false); setManualZoom(Number(e.target.value)); };
-
-    const handleClearFilter = () => {
-        setSearchQuery('');
-        if (searchInputRef.current) searchInputRef.current.focus();
-    };
-
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
-    const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
+    const dynamicWebrtcBaseUrl = `http://${serverHost}:${import.meta.env?.VITE_WEBRTC_PORT || '8889'}`;
 
     return (
         <div className="dashboard-layout-wrapper" dir={direction}>
             <div className="dashboard-content-container">
-                <aside className="dashboard-vertical-dock tactical-c2-dock">
-                    <button
-                        className={`dock-icon-btn tactical-btn-search ${isSearchOpen ? 'is-engaged' : ''}`}
-                        onClick={() => setIsSearchOpen(p => !p)}
-                        title={isSearchOpen ? "Hide search shelf" : "Show search shelf"}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                            <circle cx="11" cy="11" r="7.5" />
-                            <line x1="21" y1="21" x2="16.5" y2="16.5" />
-                        </svg>
-                    </button>
 
-                    <button
-                        className={`dock-icon-btn tactical-btn-viewmode ${viewMode === 'dense' ? 'is-engaged' : ''}`}
-                        onClick={() => setViewMode(v => v === 'grid' ? 'dense' : 'grid')}
-                        title={viewMode === 'grid' ? "Switch to Dense List View" : "Switch to Visual Grid View"}
-                    >
-                        {viewMode === 'grid' ? (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                                <line x1="4" y1="6" x2="20" y2="6" />
-                                <line x1="4" y1="12" x2="20" y2="12" />
-                                <line x1="4" y1="18" x2="20" y2="18" />
-                            </svg>
-                        ) : (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                                <rect x="3" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="3" width="7" height="7" rx="1" />
-                                <rect x="14" y="14" width="7" height="7" rx="1" />
-                                <rect x="3" y="14" width="7" height="7" rx="1" />
-                            </svg>
-                        )}
-                    </button>
+                <DashboardDock
+                    isSearchOpen={logic.isSearchOpen} setIsSearchOpen={logic.setIsSearchOpen}
+                    viewMode={logic.viewMode} setViewMode={logic.setViewMode}
+                    canStartAny={logic.canStartAny} handleFilteredBulkStart={logic.handleFilteredBulkStart}
+                    canStopAny={logic.canStopAny} handleFilteredBulkStop={logic.handleFilteredBulkStop}
+                    hideOffline={hideOffline} onToggleHideOffline={onToggleHideOffline}
+                    sortAsc={logic.sortAsc} setSortAsc={logic.setSortAsc} canSort={logic.canSort}
+                    availableFeatures={logic.availableFeatures} openFeatureIds={logic.openFeatureIds} handleToggleFeature={logic.handleToggleFeature}
 
-                    <div className="dock-divider"></div>
-
-                    <button
-                        className={`dock-icon-btn tactical-btn-start ${canStartAny ? 'is-actionable' : 'disabled'}`}
-                        onClick={canStartAny ? handleFilteredBulkStart : undefined}
-                        disabled={!canStartAny}
-                        title={canStartAny ? `Start streaming on filtered agents` : "No idle filtered agents"}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                            <polygon points="6 3 20 12 6 21 6 3" />
-                            <line x1="20" y1="4" x2="20" y2="20" strokeWidth="3" />
-                            <circle cx="11" cy="12" r="2.2" fill="currentColor" />
-                        </svg>
-                    </button>
-
-                    <button
-                        className={`dock-icon-btn tactical-btn-stop ${canStopAny ? 'is-actionable' : 'disabled'}`}
-                        onClick={canStopAny ? handleFilteredBulkStop : undefined}
-                        disabled={!canStopAny}
-                        title={canStopAny ? `Stop active filtered streams` : "No active streams"}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                            <rect x="4" y="4" width="16" height="16" rx="2" />
-                            <line x1="9" y1="9" x2="15" y2="15" strokeWidth="3" />
-                            <line x1="15" y1="9" x2="9" y2="15" strokeWidth="3" />
-                        </svg>
-                    </button>
-
-                    <div className="dock-divider"></div>
-
-                    <button
-                        className={`dock-icon-btn tactical-btn-filter ${hideOffline ? 'is-engaged' : ''}`}
-                        onClick={onToggleHideOffline}
-                        title={hideOffline ? "Filter: Active only" : "Filter: All stations"}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                            <circle cx="12" cy="12" r="9.5" />
-                            <path d="M12 2.5a9.5 9.5 0 0 1 9.5 9.5" strokeWidth="3.2" />
-                            <line x1="12" y1="12" x2="18.5" y2="5.5" strokeWidth="2.6" />
-                            <circle cx="12" cy="12" r="2.2" fill="currentColor" />
-                            {hideOffline && <circle cx="16" cy="8" r="1.8" fill="currentColor" />}
-                        </svg>
-                    </button>
-
-                    <button
-                        className={`dock-icon-btn tactical-btn-sort ${!sortAsc ? 'is-reversed' : ''} ${!canSort ? 'disabled' : ''}`}
-                        onClick={canSort ? () => setSortAsc(p => !p) : undefined}
-                        disabled={!canSort}
-                        title={sortAsc ? "Sort: A to Z" : "Sort: Z to A"}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                            <path d="M3 6h7M3 12h5M3 18h3" />
-                            {sortAsc ? (
-                                <>
-                                    <path d="M17 18V6" strokeWidth="3" />
-                                    <path d="M13 10l4-4 4 4" strokeWidth="2.6" />
-                                </>
-                            ) : (
-                                <>
-                                    <path d="M17 6v12" strokeWidth="3" />
-                                    <path d="M13 14l4 4 4-4" strokeWidth="2.6" />
-                                </>
-                            )}
-                        </svg>
-                    </button>
-
-                    {availableFeatures.length > 0 && (
-                        <>
-                            <div className="dock-divider"></div>
-                            {availableFeatures.map((feat) => {
-                                const isOpen = openFeatureIds.includes(feat.id);
-                                return (
-                                    <button
-                                        key={feat.id}
-                                        className={`dock-icon-btn tactical-btn-feature ${isOpen ? 'is-engaged' : ''}`}
-                                        onClick={() => handleToggleFeature(feat)}
-                                        title={isOpen ? `Close ${feat.title}` : `Open ${feat.title}`}
-                                        style={isOpen ? { color: '#38bdf8', borderColor: '#38bdf8' } : {}}
-                                    >
-                                        <DynamicIcon name={feat.iconName} size={20} />
-                                    </button>
-                                );
-                            })}
-                        </>
-                    )}
-                </aside>
+                    // 💡 השורה שהתווספה: מודיעה לסרגל הצד שפיצ'ר תפס את המסך
+                    isFeatureActive={!!logic.activeFeatureObject}
+                />
 
                 <main className="dashboard-main-area">
-                    {/* 💡 העברת השליטה על הטאבים ל-FleetTabs */}
                     <FleetTabs
-                        activeTabId={activeTabId}
-                        onTabChange={setActiveTabId}
-                        allStations={stations}
-                        onApplyPolicyToStations={handlePolicyApplication}
-                        systemConfig={systemConfig}
-                        onSystemConfigUpdate={onSystemConfigUpdate}
-                        openFeatureTabs={openFeatureTabs}
-                        onCloseFeature={handleCloseFeature}
+                        activeTabId={logic.activeTabId} onTabChange={logic.setActiveTabId}
+                        allStations={stations} onApplyPolicyToStations={logic.handlePolicyApplication}
+                        systemConfig={systemConfig} onSystemConfigUpdate={onSystemConfigUpdate}
+                        openFeatureTabs={logic.openFeatureTabs} onCloseFeature={logic.handleCloseFeature}
                     />
 
-                    <div className="tab-pane-content-wrapper">
-
-                        {/* 💡 ראוטינג: תצוגת פיצ'ר או גריד התחנות */}
-                        {activeFeatureObject ? (
+                    <div className={`tab-pane-content-wrapper ${logic.activeFeatureObject ? 'feature-active-pane' : ''}`}>
+                        {logic.activeFeatureObject ? (
                             <div className="feature-stealth-container" style={{ width: '100%', height: '100%' }}>
                                 <RemoteWidgetHost
-                                    scriptUrl={activeFeatureObject.scriptUrl}
+                                    scriptUrl={logic.activeFeatureObject.scriptUrl}
                                     widgetProps={{
-                                        activeHost: focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP',
+                                        activeHost: logic.focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP',
                                         defaultWindowHours: 24,
-                                        onClose: () => handleCloseFeature(activeFeatureObject.id)
+                                        onClose: () => logic.handleCloseFeature(logic.activeFeatureObject.id)
                                     }}
                                 />
                             </div>
@@ -479,224 +70,71 @@ export default function DashboardGrid({
                                         <div className="isolation-info">
                                             <span className="pulse-alert-dot" />
                                             <span className="isolation-title">FAULT ISOLATION MODE</span>
-                                            <span className="isolation-desc">
-                                                Displaying {processedStations.length} station{processedStations.length === 1 ? '' : 's'} with critical issues. Automatically reverts once resolved.
-                                            </span>
+                                            <span className="isolation-desc">Displaying {logic.processedStations.length} station(s) with critical issues.</span>
                                         </div>
-                                        <button
-                                            type="button"
-                                            className="btn-exit-isolation"
-                                            onClick={onExitFaultFilter}
-                                            title="Exit fault isolation mode"
-                                        >
-                                            ✕ Exit Filter
-                                        </button>
+                                        <button className="btn-exit-isolation" onClick={onExitFaultFilter}>✕ Exit Filter</button>
                                     </div>
                                 )}
 
-                                <div className={`fleet-search-shelf ${isSearchOpen ? 'is-open' : ''}`}>
-                                    <div className="search-shelf-inner">
-                                        <div className="search-input-field">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="14" height="14">
-                                                <circle cx="11" cy="11" r="8" />
-                                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                                            </svg>
-                                            <input
-                                                ref={searchInputRef}
-                                                type="text"
-                                                placeholder="FILTER FLEET BY HOSTNAME OR IP..."
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                onKeyDown={(e) => e.key === 'Escape' && handleClearFilter()}
-                                            />
-                                            {searchQuery && (
-                                                <button className="clear-btn" onClick={handleClearFilter}>✕</button>
-                                            )}
-                                        </div>
+                                <SearchShelf
+                                    isSearchOpen={logic.isSearchOpen}
+                                    searchInputRef={logic.searchInputRef}
+                                    searchQuery={logic.searchQuery}
+                                    setSearchQuery={logic.setSearchQuery}
+                                    handleClearFilter={logic.handleClearFilter}
+                                    currentTabFilter={logic.currentTabFilter}
+                                    setFilterForTab={logic.setFilterForTab}
+                                    resultCount={logic.processedStations.length}
+                                />
 
-                                        <div className="search-actions-group">
-                                            {searchQuery && (
-                                                <button className="reset-filter-link" onClick={handleClearFilter}>
-                                                    RESET FILTER
-                                                </button>
-                                            )}
-                                            <div className="search-stats-badge">
-                                                SHOWING {processedStations.length} OF {stations.length} AGENTS
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {processedStations.length === 0 && activeInlineFeatures.length === 0 ? (
+                                {logic.processedStations.length === 0 && logic.activeInlineFeatures.length === 0 ? (
                                     <div className="stations-empty-state-glass">
                                         <div className="connection-pulse-container">
                                             <div className="pulse-dot-amber"></div>
                                             <div className="pulse-ring"></div>
                                         </div>
                                         <span className="empty-state-text">
-                                            {isFaultFilterActive
-                                                ? "ALL AGENTS HEALTH NOMINAL"
-                                                : searchQuery
-                                                    ? "NO AGENTS MATCH SEARCH QUERY"
-                                                    : "NO AGENTS CONNECTED / FILTERED OUT"}
+                                            {isFaultFilterActive ? "ALL AGENTS HEALTH NOMINAL" : (logic.searchQuery || logic.currentTabFilter !== 'ALL') ? "NO AGENTS MATCH CURRENT FILTERS" : "NO AGENTS CONNECTED TO THIS TAB"}
                                         </span>
-                                        {searchQuery && (
-                                            <button className="clear-filter-action-btn" onClick={handleClearFilter}>
-                                                CLEAR FILTER
-                                            </button>
+                                        {(logic.searchQuery || logic.currentTabFilter !== 'ALL') && (
+                                            <button className="clear-filter-action-btn" onClick={() => { logic.setSearchQuery(''); logic.setFilterForTab('ALL'); }}>CLEAR FILTERS</button>
                                         )}
                                     </div>
-                                ) : viewMode === 'grid' ? (
-                                    <div
-                                        className="stations-grid-wrapper tight-grid"
-                                        style={{ '--station-card-width': cardWidthMap[effectiveZoom] }}
-                                    >
-                                        {activeInlineFeatures.map((feat) => (
-                                            <div
-                                                key={feat.id}
-                                                className="station-wrapper-cell feature-tile-slot"
-                                                style={{ minHeight: '380px', position: 'relative' }}
-                                            >
-                                                <RemoteWidgetHost
-                                                    scriptUrl={feat.scriptUrl}
-                                                    widgetProps={{
-                                                        activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
-                                                        defaultWindowHours: 24,
-                                                        onClose: () => handleCloseFeature(feat.id)
-                                                    }}
-                                                />
-                                            </div>
-                                        ))}
-
-                                        {processedStations.map((station) => (
-                                            <div key={station.hostname} className="station-wrapper-cell">
-                                                <StationThumbnail
-                                                    {...station}
-                                                    bitrate={station.effectiveBitrate || station.bitrate}
-                                                    fps={station.effectiveFps || station.fps}
-                                                    isPending={actionPending[station.hostname]}
-                                                    onToggleStream={(h, s) => {
-                                                        const targetHost = typeof h === 'string' ? h : station.hostname;
-                                                        const targetStream = typeof s === 'boolean' ? s : station.isStreaming;
-                                                        onToggleStream(targetHost, targetStream, {
-                                                            bitrate: station.effectiveBitrate,
-                                                            fps: station.effectiveFps
-                                                        });
-                                                    }}
-                                                    onSelectStation={() => setInspectedHostname(station.hostname)}
-                                                    onOpenFullscreen={() => setFullscreenHostname(station.hostname)}
-                                                    onQuickBookmark={onQuickBookmark}
-                                                    onQuickPlayback={onQuickPlayback}
-                                                    onQuickExport={handleFeatureQuickExport}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
+                                ) : logic.viewMode === 'grid' ? (
+                                    <StationsGridView
+                                        paginatedStations={logic.paginatedStations}
+                                        activeInlineFeatures={logic.activeInlineFeatures}
+                                        focusedWidgetHost={logic.focusedWidgetHost}
+                                        inspectedHostname={logic.inspectedHostname}
+                                        handleCloseFeature={logic.handleCloseFeature}
+                                        effectiveZoom={logic.effectiveZoom}
+                                        actionPending={actionPending}
+                                        onToggleStream={onToggleStream}
+                                        setInspectedHostname={logic.setInspectedHostname}
+                                        setFullscreenHostname={logic.setFullscreenHostname}
+                                        onQuickBookmark={onQuickBookmark}
+                                        onQuickPlayback={onQuickPlayback}
+                                        handleFeatureQuickExport={logic.handleFeatureQuickExport}
+                                    />
                                 ) : (
-                                    <div className="stations-dense-container">
-                                        {activeInlineFeatures.length > 0 && (
-                                            <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                                                {activeInlineFeatures.map((feat) => (
-                                                    <div key={feat.id} style={{ flex: '1 1 450px', minHeight: '380px' }}>
-                                                        <RemoteWidgetHost
-                                                            scriptUrl={feat.scriptUrl}
-                                                            widgetProps={{
-                                                                activeHost: focusedWidgetHost || inspectedHostname || stations[0]?.hostname || 'OHAD-DESKTOP',
-                                                                defaultWindowHours: 24,
-                                                                onClose: () => handleCloseFeature(feat.id)
-                                                            }}
-                                                        />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                    <StationsDenseView
+                                        paginatedStations={logic.paginatedStations}
+                                        activeInlineFeatures={logic.activeInlineFeatures}
+                                        focusedWidgetHost={logic.focusedWidgetHost}
+                                        inspectedHostname={logic.inspectedHostname}
+                                        handleCloseFeature={logic.handleCloseFeature}
+                                        actionPending={actionPending}
+                                        onToggleStream={onToggleStream}
+                                        setInspectedHostname={logic.setInspectedHostname}
+                                        setFullscreenHostname={logic.setFullscreenHostname}
+                                    />
+                                )}
 
-                                        <table className="stations-dense-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>STATUS</th>
-                                                    <th>HOSTNAME</th>
-                                                    <th>IP ADDRESS</th>
-                                                    <th>STREAM</th>
-                                                    <th>FPS / DROPS</th>
-                                                    <th>HOST CPU</th>
-                                                    <th>QUICK ACTIONS</th>
-                                                    <th>INSPECT</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {processedStations.map((s) => {
-                                                    const isRec = s.isStreaming;
-                                                    const hasDrops = s.droppedFrames > 0;
-                                                    return (
-                                                        <tr
-                                                            key={s.hostname}
-                                                            className={`dense-row ${!s.isOnline ? 'is-offline' : ''} ${hasDrops ? 'has-crit' : ''}`}
-                                                            onClick={() => setInspectedHostname(s.hostname)}
-                                                            onDoubleClick={() => setFullscreenHostname(s.hostname)}
-                                                            title="Click to inspect, double-click for Fullscreen"
-                                                        >
-                                                            <td>
-                                                                <span className={`dense-beacon ${s.isOnline ? 'online' : 'offline'}`} />
-                                                            </td>
-                                                            <td className="dense-hostname">{s.hostname}</td>
-                                                            <td className="dense-ip">{s.ipAddress || 'N/A'}</td>
-                                                            <td>
-                                                                {isRec ? <span className="dense-badge rec">REC</span> : <span className="dense-badge idle">IDLE</span>}
-                                                            </td>
-                                                            <td className="dense-metric">
-                                                                {s.effectiveFps || s.actualFps || 0} FPS
-                                                                {hasDrops && <span className="dense-drop-tag">({s.droppedFrames} D)</span>}
-                                                            </td>
-                                                            <td className="dense-metric">{s.hostCpuPct || 0}%</td>
-                                                            <td className="dense-actions-cell" onClick={(e) => e.stopPropagation()}>
-                                                                <button
-                                                                    className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
-                                                                    onClick={() => onToggleStream(s.hostname, isRec, {
-                                                                        bitrate: s.effectiveBitrate,
-                                                                        fps: s.effectiveFps
-                                                                    })}
-                                                                >
-                                                                    {isRec ? 'STOP' : 'START'}
-                                                                </button>
-                                                                <button
-                                                                    className="dense-act-btn full"
-                                                                    onClick={() => setFullscreenHostname(s.hostname)}
-                                                                    title="Open Station in Fullscreen View"
-                                                                >
-                                                                    FULL
-                                                                </button>
-                                                                <button
-                                                                    className="dense-act-btn icon"
-                                                                    onClick={() => onQuickBookmark?.(s.hostname)}
-                                                                    title="Bookmark"
-                                                                >
-                                                                    BM
-                                                                </button>
-                                                                <button
-                                                                    className="dense-act-btn icon"
-                                                                    onClick={() => onQuickPlayback?.(s.hostname)}
-                                                                    title="Playback"
-                                                                >
-                                                                    PLAY
-                                                                </button>
-                                                            </td>
-                                                            <td className="dense-inspect-cell">
-                                                                <button
-                                                                    className="dense-inspect-btn"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setInspectedHostname(s.hostname);
-                                                                    }}
-                                                                >
-                                                                    INSPECT ↗
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
+                                {logic.totalPages > 1 && (
+                                    <div className="dashboard-pagination-bar">
+                                        <button disabled={logic.currentPage === 1} onClick={() => logic.setCurrentPage(p => p - 1)}>◀ PREV</button>
+                                        <span className="page-indicator">PAGE {logic.currentPage} OF {logic.totalPages}</span>
+                                        <button disabled={logic.currentPage === logic.totalPages} onClick={() => logic.setCurrentPage(p => p + 1)}>NEXT ▶</button>
                                     </div>
                                 )}
                             </>
@@ -705,79 +143,43 @@ export default function DashboardGrid({
                 </main>
             </div>
 
-            {/* 💡 כפתורי הזום יוצגו רק כשאנחנו בטאב גריד רגיל */}
-            {!activeFeatureObject && viewMode === 'grid' && (
+            {!logic.activeFeatureObject && logic.viewMode === 'grid' && (
                 <div className="noc-footer-zoom-pill">
-                    <button
-                        className={`zoom-auto-btn ${isAutoZoom ? 'is-active' : ''}`}
-                        onClick={() => setIsAutoZoom(p => !p)}
-                        title={isAutoZoom ? "Auto zoom active" : "Enable Auto Zoom"}
-                    >
-                        AUTO
-                    </button>
+                    <button className={`zoom-auto-btn ${logic.isAutoZoom ? 'is-active' : ''}`} onClick={() => logic.setIsAutoZoom(p => !p)}>AUTO</button>
                     <div className="zoom-pill-divider"></div>
-                    <button
-                        onClick={handleZoomOut}
-                        disabled={effectiveZoom === 1}
-                        className="zoom-btn"
-                        title="Zoom Out (-)"
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
+                    <button onClick={logic.handleZoomOut} disabled={logic.effectiveZoom === 1} className="zoom-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     </button>
-                    <input
-                        type="range"
-                        min="1"
-                        max="5"
-                        step="1"
-                        value={effectiveZoom}
-                        onChange={handleSliderChange}
-                        className="zoom-slider"
-                    />
-                    <button
-                        onClick={handleZoomIn}
-                        disabled={effectiveZoom === 5}
-                        className="zoom-btn"
-                        title="Zoom In (+)"
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
+                    <input type="range" min="1" max="5" step="1" value={logic.effectiveZoom} onChange={logic.handleSliderChange} className="zoom-slider" />
+                    <button onClick={logic.handleZoomIn} disabled={logic.effectiveZoom === 5} className="zoom-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     </button>
-                    <span className="zoom-level-badge">{effectiveZoom}</span>
+                    <span className="zoom-level-badge">{logic.effectiveZoom}</span>
                 </div>
             )}
 
             <StationInspectorDrawer
-                station={inspectedStation}
-                onClose={() => setInspectedHostname(null)}
+                station={logic.inspectedStation}
+                onClose={() => logic.setInspectedHostname(null)}
                 onToggleStream={onToggleStream}
                 onQuickBookmark={onQuickBookmark}
                 onQuickPlayback={onQuickPlayback}
-                onQuickExport={handleFeatureQuickExport}
-                onToggleFullscreen={() => {
-                    setFullscreenHostname(inspectedHostname);
-                    setInspectedHostname(null);
-                }}
+                onQuickExport={logic.handleFeatureQuickExport}
+                onToggleFullscreen={() => { logic.setFullscreenHostname(logic.inspectedHostname); logic.setInspectedHostname(null); }}
             />
 
-            {fullscreenStation && (
+            {logic.fullscreenStation && (
                 <FullscreenModal
-                    {...fullscreenStation}
-                    hostname={fullscreenStation.hostname}
-                    isStreaming={fullscreenStation.isStreaming}
+                    {...logic.fullscreenStation}
+                    hostname={logic.fullscreenStation.hostname}
+                    isStreaming={logic.fullscreenStation.isStreaming}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                    onClose={() => setFullscreenHostname(null)}
+                    onClose={() => logic.setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
                     onQuickBookmark={onQuickBookmark}
                     onQuickPlayback={onQuickPlayback}
-                    onQuickExport={handleFeatureQuickExport}
-                    onOpenInspector={() => {
-                        setInspectedHostname(fullscreenHostname);
-                        setFullscreenHostname(null);
-                    }}
+                    onQuickExport={logic.handleFeatureQuickExport}
+                    onOpenInspector={() => { logic.setInspectedHostname(logic.fullscreenHostname); logic.setFullscreenHostname(null); }}
                 />
             )}
         </div>

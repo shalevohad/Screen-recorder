@@ -111,20 +111,14 @@ export default function StationThumbnail(props) {
                         className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isStreaming ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''}`}
                         onClick={handleQuickToggleRec}
                         disabled={!isOnline || isPending}
-                        title={
-                            !isOnline
-                                ? "Station Offline"
-                                : isPending
-                                    ? "Action in progress..."
-                                    : isStreaming
-                                        ? "Click to STOP Recording"
-                                        : "Click to START Recording"
-                        }
                     >
                         <span className="rec-indicator-dot" />
-                        <span className="rec-label">
-                            {!isOnline ? 'OFFLINE' : isPending ? 'WAIT...' : isStreaming ? `REC ${formatTimer(recordingSeconds)}` : 'IDLE'}
-                        </span>
+                        <div className="rec-text-wrapper">
+                            <span className="rec-state">
+                                {!isOnline ? 'OFFLINE' : isPending ? 'WAIT' : isStreaming ? 'REC' : 'IDLE'}
+                            </span>
+                            {isStreaming && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
+                        </div>
                     </button>
 
                     <button
@@ -179,7 +173,7 @@ export default function StationThumbnail(props) {
 
                 <div
                     className={`tactical-audio-indicator ${isAudioLive ? 'active' : 'muted'}`}
-                    title={`Audio Status: ${getAudioBadgeText()} (Playback: ${audioHasPlayback ? 'Active' : 'Silent'}, Mic: ${audioHasMic ? 'Active' : 'Silent'})`}
+                    title={`Audio Status: ${getAudioBadgeText()}`}
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="12" height="12">
                         {isAudioLive ? (
@@ -251,7 +245,7 @@ export default function StationThumbnail(props) {
                 {droppedFrames > 0 && (
                     <div className={`dropped-frames-notice ${droppedFrames > 5 ? 'critical' : 'warning'}`}>
                         <span className="drop-indicator-dot" />
-                        <span className="drop-label">{droppedFrames} DROPPED FRAMES</span>
+                        <span className="drop-label">{droppedFrames} DROPS</span>
                     </div>
                 )}
                 <div className="health-bar-track" title={`Station Health: ${health}%`}>

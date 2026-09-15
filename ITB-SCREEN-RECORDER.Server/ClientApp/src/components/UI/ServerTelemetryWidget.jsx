@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import './ServerTelemetryWidget.scss';
 
 function SparklineChart({ data, color, limit = 40 }) {
@@ -31,7 +31,7 @@ function SparklineChart({ data, color, limit = 40 }) {
     );
 }
 
-export default function ServerTelemetryWidget({ serverTelemetry }) {
+export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0 }) {
     const historyPoints = 40;
 
     const cpuPct = serverTelemetry?.cpuUsagePct ?? serverTelemetry?.hostCpuUsagePct ?? 0;
@@ -48,9 +48,15 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
     const netTxMbps = serverTelemetry?.nicTotalTxMbps ?? 0;
     const netRxMbps = serverTelemetry?.nicTotalRxMbps ?? 0;
     const totalNetMbps = netTxMbps + netRxMbps;
+    const c2Kbps = serverTelemetry?.telemetryTxKbps ?? fleetC2Kbps;
 
     const linkSpeedMbps = serverTelemetry?.linkSpeedMbps ?? serverTelemetry?.nicLinkSpeedMbps ?? 1000;
     const netUtilPct = serverTelemetry?.nicUtilizationPct ?? serverTelemetry?.appLineUtilizationPct ?? Math.min(100, (totalNetMbps / (linkSpeedMbps || 1)) * 100);
+
+    // 💡 חישוב אחוזים דינמיים עבור הפסי התקדמות המינימליסטיים (הנחת מקסימום של 5000Kbps לתעבורת C2)
+    const txPct = Math.min(100, (netTxMbps / (linkSpeedMbps || 1)) * 100);
+    const rxPct = Math.min(100, (netRxMbps / (linkSpeedMbps || 1)) * 100);
+    const c2Pct = Math.min(100, (c2Kbps / 5000) * 100);
 
     const [history, setHistory] = useState({
         cpu: [cpuPct],
@@ -95,8 +101,8 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
         return `${Math.round(mbps)}M`;
     };
 
-    const currentRateDisplay = formatCurrentRate(totalNetMbps);
     const linkCapacityDisplay = formatLinkSpeed(linkSpeedMbps);
+    const c2Display = c2Kbps >= 1000 ? `${(c2Kbps / 1000).toFixed(1)}M` : `${Math.round(c2Kbps)}K`;
 
     const getStatusClass = (pct) => {
         if (pct >= 85) return 'crit';
@@ -147,15 +153,48 @@ export default function ServerTelemetryWidget({ serverTelemetry }) {
                 </div>
             </div>
 
-            <div className={`telemetry-pod ${getStatusClass(netUtilPct)}`}>
+            <div className={`telemetry-pod net-pod ${getStatusClass(netUtilPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">NET LOAD</span>
-                    <span className="pod-sub">{currentRateDisplay} / {linkCapacityDisplay}</span>
+                    <span className="pod-sub">{linkCapacityDisplay} MAX</span>
                 </div>
                 <div className="pod-content-row">
                     <span className="pod-val">{netUtilPct.toFixed(1)}%</span>
-                    <div className="pod-graph-slot">
-                        <SparklineChart data={netHistory} color={netUtilPct > 70 ? getGraphColor(netUtilPct) : 'var(--c2-blue)'} limit={historyPoints} />
+
+                    {/* 💡 פסי ההתקדמות המינימליסטיים */}
+                    <div className="net-stats-grid">
+                        <div className="net-stat-col">
+                            <div className="net-stat-bar-container">
+                                <div className="ns-bar-fill" style={{ width: `${txPct}%` }}></div>
+                                <div className="ns-content">
+                                    <span className="ns-lbl">TX</span>
+                                    <span className="ns-val">{formatCurrentRate(netTxMbps)}</span>
+                                </div>
+                            </div>
+                            <div className="net-stat-bar-container">
+                                <div className="ns-bar-fill" style={{ width: `${rxPct}%` }}></div>
+                                <div className="ns-content">
+                                    <span className="ns-lbl">RX</span>
+                                    <span className="ns-val">{formatCurrentRate(netRxMbps)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="net-stat-col">
+                            <div className="net-stat-bar-container">
+                                <div className="ns-bar-fill" style={{ width: `${netUtilPct}%` }}></div>
+                                <div className="ns-content">
+                                    <span className="ns-lbl">NET</span>
+                                    <span className="ns-val">{formatCurrentRate(totalNetMbps)}</span>
+                                </div>
+                            </div>
+                            <div className="net-stat-bar-container">
+                                <div className="ns-bar-fill" style={{ width: `${c2Pct}%` }}></div>
+                                <div className="ns-content">
+                                    <span className="ns-lbl">C2</span>
+                                    <span className="ns-val">{c2Display}</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="pod-track">

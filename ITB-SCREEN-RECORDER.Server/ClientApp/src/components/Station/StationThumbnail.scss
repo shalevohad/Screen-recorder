@@ -9,6 +9,7 @@
     cursor: pointer;
     box-shadow: var(--shadow-card);
     transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    animation: slideInFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 
     &:hover {
         border-color: var(--border-card-hover);
@@ -119,6 +120,20 @@
                     flex-shrink: 0;
                 }
 
+                .rec-text-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    line-height: 1.1;
+                    gap: 1px;
+
+                    .rec-time {
+                        color: var(--slate-light);
+                        font-size: 8px;
+                        font-weight: 600;
+                    }
+                }
+
                 &.is-idle:hover {
                     background: var(--c2-green-tint);
                     border-color: var(--c2-green);
@@ -139,6 +154,10 @@
                         background-color: var(--c2-red);
                         box-shadow: 0 0 6px var(--c2-red);
                         animation: emblem-glow 1.4s infinite ease-in-out;
+                    }
+
+                    .rec-time {
+                        color: var(--c2-red-light);
                     }
 
                     &:hover {
@@ -221,9 +240,9 @@
             display: flex;
             align-items: center;
             gap: 4px;
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            background: rgba(11, 15, 25, 0.92);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             border-radius: 4px;
             padding: 2px 6px;
             font-family: 'JetBrains Mono', monospace;
@@ -232,7 +251,8 @@
             letter-spacing: 0.3px;
             z-index: 6;
             pointer-events: none;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
             transition: all 0.2s ease;
 
             svg {
@@ -240,10 +260,8 @@
             }
 
             &.active {
-                border: 1px solid var(--c2-green-border);
+                border: 1px solid var(--c2-green);
                 color: var(--c2-green-light);
-                background: rgba(34, 197, 94, 0.12);
-                text-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
 
                 svg {
                     filter: drop-shadow(0 0 4px var(--c2-green));
@@ -251,9 +269,8 @@
             }
 
             &.muted {
-                border: 1px solid rgba(148, 163, 184, 0.2);
-                color: var(--slate-dim);
-                background: rgba(15, 23, 42, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                color: #e2e8f0;
             }
         }
 
@@ -344,9 +361,9 @@
         .dropped-frames-notice {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: center;
             gap: 5px;
-            padding: 3px 10px;
+            padding: 4px 10px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
             font-weight: 800;
@@ -400,6 +417,18 @@
                 }
             }
         }
+    }
+}
+
+@keyframes slideInFade {
+    0% {
+        opacity: 0;
+        transform: scale(0.96) translateY(10px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
     }
 }
 

@@ -16,10 +16,9 @@ export default function CommandCenterHeader({
     const totalCount = stations.length;
     const [fetchedConfig, setFetchedConfig] = useState(null);
 
-    // שליפה אוטומטית של הקונפיגורציה מהשרת במידה ולא הועברה בפרופס
     useEffect(() => {
         if (!propSystemConfig) {
-            fetch('/api/system/config') // או הנתיב המדויק אצלך לטעינת הקונפיגורציה
+            fetch('/api/system/config')
                 .then(res => res.json())
                 .then(data => {
                     if (data) setFetchedConfig(data);
@@ -36,7 +35,7 @@ export default function CommandCenterHeader({
         return activeConfig?.DisplayTimezone
             || activeConfig?.displayTimezone
             || serverTelemetry?.displayTimezone
-            || 'Asia/Jerusalem'; // ברירת מחדל מעודכנת לישראל
+            || 'Asia/Jerusalem';
     }, [activeConfig, serverTelemetry]);
 
     const resolvedLocale = useMemo(() => {
@@ -51,9 +50,12 @@ export default function CommandCenterHeader({
         const streamingCount = stations.filter(s => s.isStreaming).length;
 
         const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
-        const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
 
-        return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps };
+        const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
+        // 💡 אגרגציה של רוחב הפס של ממשק ה-C2 מכלל התחנות
+        const aggregateC2Kbps = stations.reduce((acc, s) => acc + (s.telemetryTxKbps || 0), 0);
+
+        return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps };
     }, [stations]);
 
     const activeWorkerCount = stations.filter(s =>
@@ -216,7 +218,11 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-telemetry-wrapper">
-                    <ServerTelemetryWidget serverTelemetry={serverTelemetry} />
+                    {/* 💡 העברת מדד ה-C2 לווידג'ט */}
+                    <ServerTelemetryWidget
+                        serverTelemetry={serverTelemetry}
+                        fleetC2Kbps={agentMetrics.aggregateC2Kbps}
+                    />
                 </div>
             </div>
         </header>
