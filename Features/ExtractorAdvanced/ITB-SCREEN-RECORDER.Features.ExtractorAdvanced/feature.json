@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Frame-accurate non-linear editing studio, extending the base Extractor timeline.",
   "author": "ITB",
+  "defaultSelected": false,
   "entryPoint": "wwwroot/extractor-advanced.widget.js",
   "dependencies": [],
   "apiRoutes": [

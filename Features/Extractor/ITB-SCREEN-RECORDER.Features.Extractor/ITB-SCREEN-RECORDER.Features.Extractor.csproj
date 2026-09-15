@@ -40,16 +40,32 @@
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 			<Visible>true</Visible>
 		</None>
-		<None Update="Bin\**">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			<Visible>true</Visible>
-		</None>
 		<!-- הגדרה כ-Content עם Always מבטיחה שקובץ המניפסט יועתק ישירות לתיקיית ה-Publish -->
 		<Content Include="feature.json">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</Content>
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="Tools\Linux\" />
+	  <Folder Include="Tools\Win\" />
+	</ItemGroup>
+	<ItemGroup>
+		<!-- עבור Windows -->
+		<None Update="Tools\Windows\**" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+			<Link>%(Filename)%(Extension)</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<Visible>true</Visible>
+		</None>
+
+		<!-- עבור Linux -->
+		<None Update="Tools/Linux/**" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+			<Link>%(Filename)</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<Visible>true</Visible>
+		</None>
 	</ItemGroup>
 
 	<!-- העתקה אוטומטית של ה-DLL והנכסים לסביבת פיתוח מקומית בסיום בנייה -->
@@ -57,9 +73,7 @@
 		<ItemGroup>
 			<PluginOutputFiles Include="$(TargetDir)**\*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(PluginOutputFiles)"
-		      DestinationFolder="..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0\Features\Extractor\%(RecursiveDir)"
-		      SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(PluginOutputFiles)" DestinationFolder="..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0\Features\Extractor\%(RecursiveDir)" SkipUnchangedFiles="true" />
 	</Target>
 
 </Project>
