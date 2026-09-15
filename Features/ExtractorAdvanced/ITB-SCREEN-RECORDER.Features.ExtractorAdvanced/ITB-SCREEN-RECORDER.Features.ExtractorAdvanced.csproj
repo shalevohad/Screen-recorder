@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<RootNamespace>ITB_SCREEN_RECORDER.Features.ExtractorAdvanced</RootNamespace>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+
+		<!-- מניעת Self-Contained עבור תוסף מודולרי והבטחת נתיב פלט אחיד -->
+		<SelfContained>false</SelfContained>
+		<AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<!-- תלות בפרויקט ה-Basic ותלות בליבה -->
+
+	<!-- קימפול ה-Widget של ה-Advanced בכל Build (מריץ Vite אוטומטית) -->
+	<Target Name="CompileAdvancedFrontend" BeforeTargets="Build" Condition="Exists('Client\package.json')">
+		<Message Importance="high" Text="[ITB EXTRACTOR ADVANCED] Building Client Widget..." />
+		<Exec Command="npm install" WorkingDirectory="Client" Condition="!Exists('Client\node_modules')" />
+		<Exec Command="npm run build" WorkingDirectory="Client" ContinueOnError="false" />
+	</Target>
+
+	<!-- הכללת תוצרי ה-Web והמניפסט בפלט ה-Build וה-Publish -->
+	<ItemGroup>
+		<None Update="wwwroot\**">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<Visible>true</Visible>
+		</None>
+		<Content Include="feature.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</Content>
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="Client\src\" />
+	  <Folder Include="Services\" />
+	  <Folder Include="wwwroot\" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+	</ItemGroup>
+
+	<!-- העתקה אוטומטית של ה-DLL והנכסים לשרת הפיתוח בסיום ה-Build -->
+	<Target Name="CopyToDevServer" AfterTargets="Build" Condition="Exists('..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0')">
+		<ItemGroup>
+			<PluginOutputFiles Include="$(TargetDir)**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(PluginOutputFiles)" DestinationFolder="..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0\Features\ExtractorAdvanced\%(RecursiveDir)" SkipUnchangedFiles="true" />
+	</Target>
+
+</Project>

@@ -34,10 +34,16 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private AgentStreamPolicy _currentPolicy;
 
         private bool _isWorkerStreaming;
+        private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private StreamWriter? _workerCommandWriter;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
         private IpcTelemetryDto? _lastTelemetry = null;
+
+        private bool _lastWorkerHasAudio = false;
+        private bool _lastWorkerHasActiveSpeakers = false;
+        private bool _lastWorkerHasActiveMicrophone = false;
+        private bool _lastWorkerIsAudioStreaming = false;
 
         private long _lastTelemetryPayloadSizeBytes = 0;
         private DateTime _lastTelemetrySendTime = DateTime.UtcNow;
@@ -45,7 +51,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private class IpcMessageDto
         {
             public bool IsStreaming { get; set; }
+            public bool IsRecording { get; set; }
+            public DateTime? RecordingStartedAtUtc { get; set; }
             public bool IsOfflineMode { get; set; }
+            public bool HasAudio { get; set; }
+            public bool HasActiveSpeakers { get; set; }
+            public bool HasActiveMicrophone { get; set; }
+            public bool IsAudioStreaming { get; set; }
             public IpcTelemetryDto? Telemetry { get; set; }
         }
 
@@ -55,6 +67,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public int DroppedFrames { get; set; }
             public int InternalCaptureFps { get; set; }
             public int QosTier { get; set; }
+            public bool HasAudio { get; set; }
+            public bool HasActiveSpeakers { get; set; }
+            public bool HasActiveMicrophone { get; set; }
+            public bool IsAudioStreaming { get; set; }
             public double HostCpuPct { get; set; }
             public double ProcessCpuPct { get; set; }
             public double ProcessRamMb { get; set; }
@@ -229,8 +245,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 if (status != null)
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
+                                    _workerRecordingStartedAtUtc = status.RecordingStartedAtUtc;
                                     _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
+
+                                    _lastWorkerHasAudio = status.HasAudio || (status.Telemetry?.HasAudio ?? false);
+                                    _lastWorkerHasActiveSpeakers = status.HasActiveSpeakers || (status.Telemetry?.HasActiveSpeakers ?? false);
+                                    _lastWorkerHasActiveMicrophone = status.HasActiveMicrophone || (status.Telemetry?.HasActiveMicrophone ?? false);
+                                    _lastWorkerIsAudioStreaming = status.IsAudioStreaming || (status.Telemetry?.IsAudioStreaming ?? false);
                                 }
                             }
                             catch (Exception ex)
@@ -285,9 +307,16 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     Status = isStreaming ? AgentStatus.Streaming : (isWorkerAlive ? AgentStatus.Standby : AgentStatus.Offline),
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
+                    IsRecording = isStreaming,
+                    RecordingStartedAtUtc = isStreaming ? _workerRecordingStartedAtUtc : null,
+                    AutoStartRecordingOnLaunch = _config.AutoStartRecordingOnLaunch,
                     IsScreenCapturing = isStreaming,
-                    HasActiveSpeakers = true,
-                    HasActiveMicrophone = true,
+
+                    HasActiveSpeakers = _lastWorkerHasActiveSpeakers,
+                    HasActiveMicrophone = _lastWorkerHasActiveMicrophone,
+                    HasAudio = isStreaming ? _lastWorkerHasAudio : (_lastWorkerHasActiveSpeakers || _lastWorkerHasActiveMicrophone),
+                    IsAudioStreaming = isStreaming && _lastWorkerIsAudioStreaming,
+
                     ClientTimestamp = DateTime.UtcNow,
                     Timestamp = DateTime.UtcNow,
 
@@ -366,7 +395,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                                     if (isStreaming)
                                     {
-                                        // בדיקה האם ניתן להימנע מריסטארט: רק FPS השתנה וערכו נמוך או שווה לקצב המקורי
                                         if (!bitrateChanged && !urlChanged && fpsChanged && newFps <= oldFps)
                                         {
                                             _logger.LogInformation("Applying lower capture FPS ({NewFps}) on the fly without pipeline restart.", newFps);
@@ -374,7 +402,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                         }
                                         else
                                         {
-                                            // שינוי Bitrate, שינוי כתובת יעד או העלאת FPS מחייבים ריסטארט מהיר
                                             _logger.LogInformation("Pipeline restart required for policy update (BitrateChanged: {B}, UrlChanged: {U}, FpsChanged: {F}).",
                                                 bitrateChanged, urlChanged, fpsChanged);
                                             string dest = GetEffectiveRtmpDestination();
@@ -384,6 +411,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 }
                             }
 
+                            // פקודות שליטה מפורשות מהשרת
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
                                 await SendCommandToWorkerAsync("Stop");

@@ -497,10 +497,23 @@
                             flex-shrink: 0;
                         }
 
-                        &:hover {
+                        &:hover:not(:disabled) {
                             background: var(--c2-cyan-tint);
                             border-color: var(--c2-cyan);
                             color: var(--c2-cyan-light);
+                        }
+
+                        &:disabled,
+                        &.disabled {
+                            opacity: 0.25 !important;
+                            cursor: not-allowed !important;
+                            pointer-events: none !important;
+                            border-color: var(--border-subtle) !important;
+                            color: var(--slate-dark) !important;
+
+                            svg {
+                                color: var(--slate-dark) !important;
+                            }
                         }
                     }
                 }

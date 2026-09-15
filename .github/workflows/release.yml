@@ -14,17 +14,56 @@ on:
         default: ''
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest
-    
-    permissions:
-      contents: write
-
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+      tag: ${{ steps.get_version.outputs.TAG }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Determine Release Version (SemVer 3-parts)
+      id: get_version
+      run: |
+        CUSTOM_VER="${{ github.event.inputs.custom_version }}"
+        REF_NAME="${{ github.ref_name }}"
+        REF_TYPE="${{ github.ref_type }}"
+
+        if [ -n "$CUSTOM_VER" ]; then
+            VERSION="${CUSTOM_VER#v}"
+            TAG="v$VERSION"
+        elif [ "$REF_TYPE" = "tag" ]; then
+            TAG="$REF_NAME"
+            VERSION="${REF_NAME#v}"
+        else
+            LATEST_TAG=$(git tag -l "v*" --sort=-v:refname | head -n 1)
+
+            if [ -z "$LATEST_TAG" ]; then
+                VERSION="1.0.1"
+            else
+                RAW_VERSION="${LATEST_TAG#v}"
+                IFS='.' read -r major minor patch <<< "$RAW_VERSION"
+                patch=$((patch + 1))
+                VERSION="$major.$minor.$patch"
+            fi
+            TAG="v$VERSION"
+        fi
+
+        echo "Calculated Version: $VERSION"
+        echo "Calculated Tag: $TAG"
+
+        echo "VERSION=$VERSION" >> $github_output
+        echo "TAG=$TAG" >> $github_output
+
+  build-windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
     - name: Setup .NET SDK (8.0.x)
       uses: actions/setup-dotnet@v4
@@ -34,11 +73,14 @@ jobs:
     - name: Shutdown .NET Build Server
       run: dotnet build-server shutdown
 
-    - name: Download FFmpeg for AgentWorker (Windows with Retry)
+    - name: Download FFmpeg & FFprobe for Windows (With Retry)
       shell: pwsh
       run: |
-        $ffmpegDir = "ITB-SCREEN-RECORDER.AgentWorker"
-        New-Item -ItemType Directory -Force -Path $ffmpegDir
+        $toolsDir = "Tools/Windows"
+        New-Item -ItemType Directory -Force -Path $toolsDir
+        $agentDir = "ITB-SCREEN-RECORDER.AgentWorker"
+        New-Item -ItemType Directory -Force -Path $agentDir
+        
         $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         $zipPath = "ffmpeg.zip"
         
@@ -48,96 +90,118 @@ jobs:
 
         while ($attempt -lt $maxAttempts -and -not $success) {
             $attempt++
-            Write-Host "Attempt $attempt of $maxAttempts to download FFmpeg..."
             try {
                 Invoke-WebRequest -Uri $url -OutFile $zipPath -ErrorAction Stop
                 $success = $true
-                Write-Host "Download successful!"
             } catch {
-                Write-Warning "Download failed: $_"
-                if ($attempt -lt $maxAttempts) {
-                    Write-Host "Waiting 10 seconds before retrying..."
-                    Start-Sleep -Seconds 10
-                }
+                if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 10 }
             }
         }
+        if (-not $success) { throw "Failed to download FFmpeg." }
 
-        if (-not $success) {
-            throw "Failed to download FFmpeg after $maxAttempts attempts."
-        }
-
-        Write-Host "Extracting FFmpeg..."
         Expand-Archive -Path $zipPath -DestinationPath "ffmpeg_extracted" -Force
-        $exe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
-        if ($exe) {
-            Copy-Item $exe.FullName -Destination "$ffmpegDir\ffmpeg.exe"
-            Write-Host "FFmpeg placed successfully in $ffmpegDir"
-        } else {
-            throw "Could not find ffmpeg.exe in downloaded archive"
-        }
+        $ffmpegExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+        $ffprobeExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
+
+        Copy-Item $ffmpegExe.FullName -Destination "$toolsDir\ffmpeg.exe"
+        Copy-Item $ffmpegExe.FullName -Destination "$agentDir\ffmpeg.exe"
+        Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe"
+        Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe"
 
     - name: Restore NuGet dependencies
       run: dotnet restore
 
-    - name: Determine Release Version (SemVer 3-parts)
-      id: get_version
-      shell: pwsh
+    - name: Build Windows Installers (MSI)
       run: |
-        $customVer = "${{ github.event.inputs.custom_version }}"
-        $refName = "${{ github.ref_name }}"
+        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
 
-        if ($customVer -ne "") {
-            $version = $customVer.TrimStart('v')
-            $tagName = "v$version"
-        } elseif ("${{ github.ref_type }}" -eq "tag") {
-            $tagName = $refName
-            $version = $refName.TrimStart('v')
-        } else {
-            # שליפת ה-Tag האחרון מ-Git
-            $latestTag = git tag -l "v*" --sort=-v:refname | Select-Object -First 1
-
-            if (-not $latestTag) {
-                $version = "1.0.1"
-            } else {
-                $rawVersion = $latestTag.TrimStart('v')
-                $parts = [System.Collections.Generic.List[string]]($rawVersion.Split('.'))
-
-                # חיתוך ל-3 ספרות (Major.Minor.Patch)
-                if ($parts.Count -gt 3) {
-                    $parts = $parts[0..2]
-                }
-                while ($parts.Count -lt 3) {
-                    $parts.Add("0")
-                }
-
-                # קידום הספרה השלישית (Patch)
-                $parts[2] = ([int]$parts[2] + 1).ToString()
-                $version = $parts -join '.'
-            }
-            $tagName = "v$version"
-        }
-
-        Write-Host "Calculated Version: $version"
-        Write-Host "Calculated Tag: $tagName"
-
-        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-        echo "TAG=$tagName" >> $env:GITHUB_OUTPUT
-
-    - name: Build Solution and Generate MSI Installers (Release)
-      run: |
-        dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.VERSION }}
-        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.VERSION }}
-        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ steps.get_version.outputs.VERSION }}
-
-    - name: Create GitHub Release and Upload Artifacts
-      uses: softprops/action-gh-release@v1
+    - name: Upload Windows Artifacts
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: ${{ steps.get_version.outputs.TAG }}
-        name: Release ${{ steps.get_version.outputs.TAG }}
-        draft: false
-        prerelease: false
-        files: |
+        name: windows-msi-artifacts
+        path: |
           ITB-SCREEN-RECORDER.Installer/bin/x64/Release/*.msi
           ITB-SCREEN-RECORDER.Server.Installer/bin/x64/Release/*.msi
+
+  build-linux:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET SDK (8.0.x)
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Download FFmpeg & FFprobe for Linux
+      run: |
+        TOOLS_DIR="Tools/Linux"
+        AGENT_DIR="ITB-SCREEN-RECORDER.AgentWorker"
+        mkdir -p "$TOOLS_DIR"
+        mkdir -p "$AGENT_DIR"
+        
+        curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
+        tar -xf ffmpeg.tar.xz
+        EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-amd64-static")
+        
+        cp "$EXTRACTED_DIR/ffmpeg" "$TOOLS_DIR/ffmpeg"
+        cp "$EXTracted_DIR/ffprobe" "$TOOLS_DIR/ffprobe"
+        chmod +x "$TOOLS_DIR/ffmpeg" "$TOOLS_DIR/ffprobe"
+        
+        cp "$EXTRACTED_DIR/ffmpeg" "$AGENT_DIR/ffmpeg"
+        cp "$EXTRACTED_DIR/ffprobe" "$AGENT_DIR/ffprobe"
+        chmod +x "$AGENT_DIR/ffmpeg" "$AGENT_DIR/ffprobe"
+
+    - name: Restore NuGet dependencies
+      run: dotnet restore
+
+    - name: Publish Linux Binaries (Self-Contained)
+      run: |
+        # Publish Server for Linux
+        dotnet publish ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj -c Release -r linux-x64 --self-contained true -o publish/linux/server -p:Version=${{ needs.version.outputs.version }}
+        
+        # Publish Agent Worker & Service for Linux
+        dotnet publish ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj -c Release -r linux-x64 --self-contained true -o publish/linux/agent-worker -p:Version=${{ needs.version.outputs.version }}
+        dotnet publish ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj -c Release -r linux-x64 --self-contained true -o publish/linux/agent-service -p:Version=${{ needs.version.outputs.version }}
+
+    - name: Package Linux Binaries into Tarballs
+      run: |
+        mkdir -p dist/linux
+        tar -czf dist/linux/itb-screen-recorder-server-linux-x64.tar.gz -C publish/linux/server .
+        tar -czf dist/linux/itb-screen-recorder-agent-linux-x64.tar.gz -C publish/linux/agent-worker .
+
+    - name: Upload Linux Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-tarball-artifacts
+        path: dist/linux/*.tar.gz
+
+  github-release:
+    needs: [version, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: all-artifacts
+        merge-by: true
+
+    - name: Create GitHub Release and Upload All Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.version.outputs.tag }}
+        name: Release ${{ needs.version.outputs.tag }}
+        draft: false
+        prerelease: false
+        files: all-artifacts/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

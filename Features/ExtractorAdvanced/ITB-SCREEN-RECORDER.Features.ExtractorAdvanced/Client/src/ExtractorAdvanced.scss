@@ -1,0 +1,16 @@
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/ExtractorAdvanced.scss
+// ==========================================
+.extractor-advanced-studio {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    background-color: var(--bg-secondary, #111827);
+    border: 1px solid var(--border-color, #334155);
+    border-radius: 8px;
+    overflow: hidden;
+    box-sizing: border-box;
+    font-family: inherit;
+    color: var(--text-primary, #f8fafc);
+}

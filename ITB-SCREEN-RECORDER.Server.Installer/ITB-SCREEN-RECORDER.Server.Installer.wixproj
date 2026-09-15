@@ -4,40 +4,77 @@
 		<Platform>x64</Platform>
 		<Platforms>x64</Platforms>
 
-		<!-- אם הועברה גרסה מבחוץ (למשל מ-GitHub Actions), נשתמש בה. אחרת ניקח את ברירת המחדל -->
-		<Version Condition="'$(ProductVersion)' != ''">$(ProductVersion)</Version>
-		<Version Condition="'$(Version)' == ''">1.0.22.1</Version>
-		
+		<!-- נרמול גרסה ל-3 מקטעים תקניים -->
+		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.25</RawVersion>
+
+		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
+		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
+
 		<OutputName>ITB-ScreenRecorder-Server-Setup-$(Version)</OutputName>
 
-		<StagingDir Condition="'$(StagingDir)' == ''">..\Publish\Staging\server</StagingDir>
-		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">..\Publish\Server\windows</FinalOutputDir>
+		<StagingRoot Condition="'$(StagingRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Publish\Staging'))</StagingRoot>
+		<ServerStaging>$(StagingRoot)\server_root</ServerStaging>
+		<FeaturesStaging>$(StagingRoot)\features_root</FeaturesStaging>
+		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Publish\Server\windows'))</FinalOutputDir>
 
-		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
+		<DefineConstants>ServerDir=$(ServerStaging);FeaturesDir=$(FeaturesStaging);Version=$(Version)</DefineConstants>
+
+		<SuppressIces>ICE61</SuppressIces>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\LICENSE-MEDIAMTX.txt" />
 		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\mediamtx.yml" />
+		<Content Include="UpdateSettings.ps1" />
+		<Content Include="PublishFeatures.ps1" />
 	</ItemGroup>
+
 	<ItemGroup>
 		<None Include="License.rtf" />
+		<None Include="SelectFeatures.ps1" />
+		<Compile Remove="GeneratedFeatures.wxs" />
 	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="WixToolset.Util.wixext" Version="5.0.0" />
 		<PackageReference Include="WixToolset.UI.wixext" Version="5.0.0" />
 	</ItemGroup>
 
-	<Target Name="PublishDependenciesBeforeBuild" BeforeTargets="BeforeBuild">
-		<Message Importance="high" Text="=== [1/3] Publishing Server Components to Staging ($(StagingDir)) ===" />
-		<Exec Command="dotnet publish &quot;..\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(StagingDir)&quot;" />
+	<Target Name="PrepareAndGenerateFeaturesBeforeBuild" BeforeTargets="BeforeBuild">
+		<Message Importance="high" Text="=== [1/3] Preparing Clean Staging Folders ===" />
+		<RemoveDir Directories="$(StagingRoot)" ContinueOnError="true" />
+		<MakeDir Directories="$(ServerStaging)" />
+		<MakeDir Directories="$(FeaturesStaging)" />
+
+		<Message Importance="high" Text="=== [2/3] Publishing Central Server &amp; Auto-Discovering All Features ===" />
+		<Exec Command="dotnet publish &quot;$(MSBuildProjectDirectory)\..\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(ServerStaging)&quot;" />
+
+		<!-- סניטציה: מחיקת קבצי פיתוח שהסתננו לפלט השרת -->
+		<RemoveDir Directories="$(ServerStaging)\Features" ContinueOnError="true" />
+
+		<!-- 💡 הפעלת סקריפט הפרסום החיצוני בצורה נקייה -->
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\PublishFeatures.ps1&quot; -FeaturesRoot &quot;$(MSBuildProjectDirectory)\..\Features&quot; -StagingDir &quot;$(FeaturesStaging)&quot; -Configuration &quot;$(Configuration)&quot;" />
+
+		<ItemGroup>
+			<StrayCoreFiles Include="$(FeaturesStaging)\**\ITB-SCREEN-RECORDER.Core.*" />
+		</ItemGroup>
+		<Delete Files="@(StrayCoreFiles)" ContinueOnError="true" />
+
+		<Message Importance="high" Text="=== [3/3] Launching Interactive Feature Selection Engine ===" />
+		<Exec Command="powershell.exe -Sta -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\SelectFeatures.ps1&quot; -FeaturesDir &quot;$(FeaturesStaging)&quot; -OutputFile &quot;$(MSBuildProjectDirectory)\GeneratedFeatures.wxs&quot;" />
 	</Target>
 
 	<Target Name="FinalizeDistributionPackage" AfterTargets="Build">
-		<Message Importance="high" Text="=== [2/3] Moving Server MSI to Distribution Folder ($(FinalOutputDir)) ===" />
+		<Message Importance="high" Text="=== Moving Final MSI to Distribution Folder ($(FinalOutputDir)) ===" />
 		<MakeDir Directories="$(FinalOutputDir)" />
 		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FinalOutputDir)" SkipUnchangedFiles="false" />
-		<Message Importance="high" Text="=== [3/3] Cleaning up temporary Staging files ===" />
-		<RemoveDir Directories="$(StagingDir)" />
+		<RemoveDir Directories="$(StagingRoot)" ContinueOnError="true" />
+	</Target>
+
+	<Target Name="CleanStagingOnProjectClean" AfterTargets="Clean">
+		<RemoveDir Directories="$(StagingRoot)" ContinueOnError="true" />
+		<Delete Files="$(MSBuildProjectDirectory)\GeneratedFeatures.wxs" ContinueOnError="true" />
 	</Target>
 </Project>

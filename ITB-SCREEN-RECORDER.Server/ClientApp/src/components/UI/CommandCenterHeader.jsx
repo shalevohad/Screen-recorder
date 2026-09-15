@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import ServerClock from './ServerClock';
 import ServerTelemetryWidget from './ServerTelemetryWidget';
 import './CommandCenterHeader.scss';
@@ -10,21 +10,52 @@ export default function CommandCenterHeader({
     isSettingsOpen = false,
     onOpenSettings,
     isFaultFilterActive = false,
-    onToggleFaultFilter
+    onToggleFaultFilter,
+    systemConfig: propSystemConfig
 }) {
     const totalCount = stations.length;
+    const [fetchedConfig, setFetchedConfig] = useState(null);
 
-    // חישוב מדדים: התראות נספרות אך ורק עבור עמדות אונליין עם נפילת פריימים
+    useEffect(() => {
+        if (!propSystemConfig) {
+            fetch('/api/system/config')
+                .then(res => res.json())
+                .then(data => {
+                    if (data) setFetchedConfig(data);
+                })
+                .catch(() => {
+                    console.error("unable to fetch config timezone - falling to default 'Asia/Jerusalem'")
+                });
+        }
+    }, [propSystemConfig]);
+
+    const activeConfig = propSystemConfig || fetchedConfig;
+
+    const resolvedTimezone = useMemo(() => {
+        return activeConfig?.DisplayTimezone
+            || activeConfig?.displayTimezone
+            || serverTelemetry?.displayTimezone
+            || 'Asia/Jerusalem';
+    }, [activeConfig, serverTelemetry]);
+
+    const resolvedLocale = useMemo(() => {
+        return activeConfig?.DisplayLocale
+            || activeConfig?.displayLocale
+            || 'en-US';
+    }, [activeConfig]);
+
     const agentMetrics = useMemo(() => {
         const onlineStations = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2);
         const onlineCount = onlineStations.length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
 
-        // עמדה Offline איננה תקלה מבצעית! תקלה = עמדה פעילה עם מעל 5 dropped frames
         const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
-        const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
 
-        return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps };
+        const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
+        // 💡 אגרגציה של רוחב הפס של ממשק ה-C2 מכלל התחנות
+        const aggregateC2Kbps = stations.reduce((acc, s) => acc + (s.telemetryTxKbps || 0), 0);
+
+        return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps };
     }, [stations]);
 
     const activeWorkerCount = stations.filter(s =>
@@ -46,11 +77,11 @@ export default function CommandCenterHeader({
             <div className="top-row-main">
                 <div className="brand-logo-section">
                     <div className="tactical-emblem">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                            <polyline points="2 17 12 22 22 17" />
-                            <polyline points="2 12 12 17 22 12" />
-                        </svg>
+                        <img
+                            src="/images/LogoDark2.png"
+                            alt="ITB Logo Dark"
+                            className="relative z-10"
+                        />
                         <div className="emblem-core-pulse"></div>
                     </div>
                     <div className="brand-text-group">
@@ -63,7 +94,11 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-clock-section">
-                    <ServerClock uptimeSeconds={serverTelemetry?.uptimeSeconds} />
+                    <ServerClock
+                        uptimeSeconds={serverTelemetry?.uptimeSeconds}
+                        timezone={resolvedTimezone}
+                        locale={resolvedLocale}
+                    />
                 </div>
 
                 <div className="header-actions-group">
@@ -96,12 +131,10 @@ export default function CommandCenterHeader({
                                 CONNECTED AGENTS
                             </div>
                             <div className="data-values">
-                                {/* אם אופליין לא מוסתר - מציג את כל העמדות המנוטרות (1). אם מוסתר - מציג פעילים */}
                                 <span className="count-active">
                                     {hideOffline ? activeWorkerCount : totalCount}
                                 </span>
 
-                                {/* תג HIDDEN ללא מינוס - מוצג אך ורק כשאופליין באמת מוסתר */}
                                 {hideOffline && offlineCount > 0 && (
                                     <span className="count-filtered" title={`${offlineCount} offline stations hidden from view`}>
                                         [{offlineCount} HIDDEN]
@@ -185,7 +218,11 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-telemetry-wrapper">
-                    <ServerTelemetryWidget serverTelemetry={serverTelemetry} />
+                    {/* 💡 העברת מדד ה-C2 לווידג'ט */}
+                    <ServerTelemetryWidget
+                        serverTelemetry={serverTelemetry}
+                        fleetC2Kbps={agentMetrics.aggregateC2Kbps}
+                    />
                 </div>
             </div>
         </header>

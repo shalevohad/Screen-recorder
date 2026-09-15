@@ -1,0 +1,5 @@
+{
+  "title": "Session Slicer (Extractor Feature)",
+  "description": "Enables time-range video slicing, FFmpeg concatenation, and TAR archiving export.",
+  "defaultSelected": true
+}

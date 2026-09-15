@@ -4,9 +4,13 @@
 		<Platform>x64</Platform>
 		<Platforms>x64</Platforms>
 
-		<!-- אם הועברה גרסה מבחוץ (למשל מ-GitHub Actions), נשתמש בה. אחרת ניקח את ברירת המחדל -->
-		<Version Condition="'$(ProductVersion)' != ''">$(ProductVersion)</Version>
-		<Version Condition="'$(Version)' == ''">1.0.22.1</Version>
+		<!-- נרמול גרסה ל-3 מקטעים בלבד (Major.Minor.Build) הנדרשים ע"י תקן Windows Installer -->
+		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.25</RawVersion>
+
+		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
+		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
 
 		<!-- הזרקת הגרסה לשם הקובץ הסופי -->
 		<OutputName>ITB-ScreenRecorder-Agent-Setup-$(Version)</OutputName>
