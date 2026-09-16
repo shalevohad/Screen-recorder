@@ -25,9 +25,6 @@
 
 	<ItemGroup>
 		<None Remove="ClientApp/src/components/UI/CommandCenterHeader.jsx~RF168a55cf.TMP" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<Content Include="ClientApp/public/css/tailwind.min.css" />
 	</ItemGroup>
 
@@ -46,38 +43,20 @@
 		<Folder Include="ClientApp/src/components/Settings/styles/" />
 		<Folder Include="ClientApp/src/components/Settings/tabs/" />
 		<Folder Include="ClientApp/src/styles/" />
-		<Folder Include="MediaMTX/" />
 		<Folder Include="wwwroot/css/" />
 	</ItemGroup>
 
-	<!-- ========================================== -->
-	<!-- ניהול בינאריים וקונפיגורציה של MediaMTX      -->
-	<!-- ========================================== -->
+	<!-- ======================================================== -->
+	<!-- העתקה פיזית מלאה של כל תכולת MediaMTX לתיקיית הפלט     -->
+	<!-- ======================================================== -->
 	<ItemGroup>
-		<!-- קובץ ההגדרות והרישיון מועתקים תמיד בכל מערכת הפעלה -->
-		<None Update="MediaMTX/mediamtx.yml">
+		<None Include="MediaMTX\**">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
-		<None Update="MediaMTX/LICENSE-MEDIAMTX.txt" Condition="Exists('MediaMTX/LICENSE-MEDIAMTX.txt')">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-		</None>
-	</ItemGroup>
-
-	<!-- Windows: העתקת mediamtx.exe בלבד -->
-	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
-		<None Update="MediaMTX/mediamtx.exe">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-		</None>
-	</ItemGroup>
-
-	<!-- Linux: העתקת mediamtx (קובץ ELF ללא סיומת) בלבד -->
-	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
-		<None Update="MediaMTX/mediamtx">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		<None Update="MediaMTX\mediamtx.yml">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
 
@@ -99,42 +78,42 @@
 		<ExtractorAdvancedProjectPath>../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced.csproj</ExtractorAdvancedProjectPath>
 	</PropertyGroup>
 
-	<!-- שחזור ובניית הפיצ'רים מקומית (תוך הורשת יעד הריצה של השרת) -->
+	<!-- שחזור ובניית הפיצ'רים מקומית -->
 	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild">
-		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling Extractor module ($(Configuration) - $(RuntimeIdentifier))..." Condition="Exists('$(ExtractorProjectPath)')" />
-		<MSBuild Projects="$(ExtractorProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false" Condition="Exists('$(ExtractorProjectPath)')" />
+		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling Extractor module ($(Configuration))..." Condition="Exists('$(ExtractorProjectPath)')" />
+		<MSBuild Projects="$(ExtractorProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="Exists('$(ExtractorProjectPath)')" />
 
-		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling ExtractorAdvanced module ($(Configuration) - $(RuntimeIdentifier))..." Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
-		<MSBuild Projects="$(ExtractorAdvancedProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
+		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling ExtractorAdvanced module ($(Configuration))..." Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
+		<MSBuild Projects="$(ExtractorAdvancedProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
 	</Target>
 
-	<!-- העתקת תוצרי הפיצ'רים לתיקיית היעד המקומית ב-Build -->
+	<!-- העתקה שטחית (*.*) בלבד למניעת שכפול מקונן של תיקיות win-x64/ ושגיאות Assembly כפולות -->
 	<Target Name="StageFeaturesToOutput" AfterTargets="Build">
 		<ItemGroup Condition="Exists('$(ExtractorProjectPath)')">
-			<ExtractorOutputFiles Include="../Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/bin/$(Configuration)/net8.0/**/*.*" />
+			<ExtractorOutputFiles Include="../Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/bin/$(Configuration)/net8.0/*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(ExtractorOutputFiles)" DestinationFolder="$(TargetDir)Features/Extractor/%(RecursiveDir)" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorProjectPath)')" />
+		<Copy SourceFiles="@(ExtractorOutputFiles)" DestinationFolder="$(TargetDir)Features/Extractor" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorProjectPath)')" />
 
 		<ItemGroup Condition="Exists('$(ExtractorAdvancedProjectPath)')">
-			<ExtractorAdvancedOutputFiles Include="../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/bin/$(Configuration)/net8.0/**/*.*" />
+			<ExtractorAdvancedOutputFiles Include="../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/bin/$(Configuration)/net8.0/*.*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(ExtractorAdvancedOutputFiles)" DestinationFolder="$(TargetDir)Features/ExtractorAdvanced/%(RecursiveDir)" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
+		<Copy SourceFiles="@(ExtractorAdvancedOutputFiles)" DestinationFolder="$(TargetDir)Features/ExtractorAdvanced" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
 	</Target>
 
-	<!-- אריזת הפיצ'רים לתוך Publish עבור Windows בלבד (בלינוקס ה-Installer דואג לפרסום ייעודי) -->
+	<!-- אריזת הפיצ'רים לתוך Publish עבור Windows בלבד -->
 	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
 		<ItemGroup Condition="Exists('$(ExtractorProjectPath)')">
-			<_ExtractorFilesToPublish Include="../Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/bin/$(Configuration)/net8.0/**/*.*" />
+			<_ExtractorFilesToPublish Include="../Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/bin/$(Configuration)/net8.0/*.*" />
 			<ResolvedFileToPublish Include="@(_ExtractorFilesToPublish)">
-				<RelativePath>Features/Extractor/%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+				<RelativePath>Features/Extractor/%(FileName)%(Extension)</RelativePath>
 				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 			</ResolvedFileToPublish>
 		</ItemGroup>
 
 		<ItemGroup Condition="Exists('$(ExtractorAdvancedProjectPath)')">
-			<_ExtractorAdvancedFilesToPublish Include="../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/bin/$(Configuration)/net8.0/**/*.*" />
+			<_ExtractorAdvancedFilesToPublish Include="../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/bin/$(Configuration)/net8.0/*.*" />
 			<ResolvedFileToPublish Include="@(_ExtractorAdvancedFilesToPublish)">
-				<RelativePath>Features/ExtractorAdvanced/%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+				<RelativePath>Features/ExtractorAdvanced/%(FileName)%(Extension)</RelativePath>
 				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 			</ResolvedFileToPublish>
 		</ItemGroup>

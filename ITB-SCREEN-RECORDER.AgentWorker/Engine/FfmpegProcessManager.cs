@@ -67,7 +67,7 @@ namespace ITBRecorderAgent.Engine
                     }
                 }
 
-                var ffmpegPath = _config.GetResolvedFFmpegPath();
+                string ffmpegPath = AppConfig.GetResolvedFFmpegPath();
 
                 // התאמת נתיב דינמית והרשאות ריצה בסביבת Linux
                 if (OperatingSystem.IsLinux())

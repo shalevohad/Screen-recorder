@@ -18,6 +18,11 @@
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- מטמיע את המניפסט ישירות לתוך ה-DLL מקומפל -->
+		<EmbeddedResource Include="feature.json" />
+	</ItemGroup>
+
 	<!-- תלות בליבה - שימוש ב-Private=false למניעת שכפול ה-DLL של Core בתיקיית הפיצ'ר -->
 	<ItemGroup>
 		<ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj">
@@ -67,6 +72,9 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="Tools\Linux\" />
 	</ItemGroup>
 
 	<!-- העתקה אוטומטית של ה-DLL והנכסים לסביבת פיתוח מקומית בסיום בנייה -->

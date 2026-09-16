@@ -2,19 +2,20 @@
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor
 {
-    public class ExtractorModule : IFeatureModule
+    public class ExtractorModule : FeatureModuleBase
     {
-        public string Id => "extractor-slicer";
-        public string Title => "Session Slicer";
-        public string IconName => "Film";
-        public string ScriptUrl => "/extractor/extractor.widget.js";
+        // המאפיינים Id, Title, ו-SupersedesIds נשאבים כעת אוטומטית 
+        // מקובץ ה-feature.json המוטמע ב-DLL דרך מחלקת הבסיס.
 
-        public int DefaultWidth => 4;
-        public int DefaultHeight => 6;
+        public override string IconName => "Film";
+        public override string ScriptUrl => "/extractor/extractor.widget.js";
 
-        public int MinWidth => 3;
-        public int MinHeight => 4;
+        public override int DefaultWidth => 4;
+        public override int DefaultHeight => 6;
 
-        public bool IsEnabled => true;
+        public override int MinWidth => 3;
+        public override int MinHeight => 4;
+
+        // הערה: IsEnabled כבר מוגדר כ-true ב-FeatureModuleBase, לכן אין חובה לדרוס אותו כאן.
     }
 }

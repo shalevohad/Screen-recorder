@@ -67,7 +67,7 @@ jobs:
 
         # 2. הורדת MediaMTX עבור Windows
         Write-Host "Downloading MediaMTX for Windows..."
-        $mediamtxUrl = "https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_windows_amd64.zip"
+        $mediamtxUrl = "https://github.com/bluenviron/mediamtx/releases/download/v1.21.0/mediamtx_v1.21.0_windows_amd64.zip"
         $mediamtxZip = "mediamtx_win.zip"
         Invoke-WebRequest -Uri $mediamtxUrl -OutFile $mediamtxZip
         Expand-Archive -Path $mediamtxZip -DestinationPath "mediamtx_win_extracted" -Force
@@ -97,7 +97,7 @@ jobs:
 
         # 2. הורדת MediaMTX ללינוקס
         echo "Downloading MediaMTX for Linux..."
-        curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
+        curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.21.0/mediamtx_v1.21.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
         tar -xzf mediamtx_linux.tar.gz mediamtx
         cp mediamtx "$TOOLS_DIR/mediamtx"
         chmod +x "$TOOLS_DIR/mediamtx"

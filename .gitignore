@@ -47,3 +47,6 @@ mediamtx.exe
 /Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Tools/Linux/ffprobe
 /ITB-SCREEN-RECORDER.AgentWorker/Tools/Linux/ffmpeg
 /ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx
+/ITB-SCREEN-RECORDER.AgentWorker/Tools/Linux/ffprobe
+/ITB-SCREEN-RECORDER.AgentWorker/Tools/Win/ffprobe.exe
+/ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.exe

@@ -1,4 +1,6 @@
-﻿namespace ITB_SCREEN_RECORDER.Core.Plugins
+﻿using System;
+
+namespace ITB_SCREEN_RECORDER.Core.Plugins
 {
     public interface IFeatureModule
     {
@@ -11,5 +13,9 @@
         int MinWidth { get; }
         int MinHeight { get; }
         bool IsEnabled { get; }
+
+        // 💡 היכולת החדשה: כל פיצ'ר יכול להצהיר את מי הוא דורס. 
+        // ברירת המחדל היא מערך ריק (לא דורס אף אחד).
+        string[] SupersedesIds => Array.Empty<string>();
     }
 }

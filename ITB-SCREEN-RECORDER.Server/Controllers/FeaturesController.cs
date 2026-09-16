@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using ITB_SCREEN_RECORDER.Core.Plugins;
@@ -20,8 +21,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         [HttpGet("active")]
         public IActionResult GetActiveFeatures()
         {
+            // שימוש ב-StringComparer.OrdinalIgnoreCase כדי שהזיהוי יעבוד זהה בלינוקס ובווינדוס
+            var supersededIds = _features
+                .SelectMany(f => f.SupersedesIds)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var activeFeatures = _features
                 .Where(f => f.IsEnabled)
+                .Where(f => !supersededIds.Contains(f.Id))
                 .Select(f => new
                 {
                     f.Id,
@@ -31,10 +38,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     f.DefaultWidth,
                     f.DefaultHeight,
                     f.MinWidth,
-                    f.MinHeight
+                    f.MinHeight,
+                    Supersedes = f.SupersedesIds
                 }).ToList();
 
-            Logger.AlwaysInfo($"[API] /features/active requested. Returning {activeFeatures.Count} feature(s): {string.Join(", ", activeFeatures.Select(f => f.Id))}");
+            if (supersededIds.Any())
+            {
+                Logger.AlwaysInfo($"[API] Plugin Override Chain resolved. Suppressed legacy features: {string.Join(", ", supersededIds)}");
+            }
 
             return Ok(activeFeatures);
         }

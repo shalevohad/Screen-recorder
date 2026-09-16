@@ -40,6 +40,6 @@
 		<Message Importance="high" Text="=== [5/5] Packing Native Systemd Server .run Installer ===" />
 		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)\BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)\installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />
 
-		<!-- <RemoveDir Directories="$(StagingDir)" ContinueOnError="true" /> -->
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 	</Target>
 </Project>

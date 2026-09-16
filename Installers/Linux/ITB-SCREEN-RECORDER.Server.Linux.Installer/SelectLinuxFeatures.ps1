@@ -4,7 +4,7 @@
 
 $isCI = ($env:CI -eq 'true' -or $env:TF_BUILD -eq 'True' -or $env:GITHUB_ACTIONS -eq 'true')
 
-# 1. סריקת הפיצ'רים ופענוח המניפסטים שלהם דינמית
+# 1. סריקת הפיצ'רים ופענוח המניפסטים (כולל ID ו-Supersedes)
 $discoveredFeatures = @()
 if (Test-Path $FeaturesDir) {
     $dirs = Get-ChildItem -Path $FeaturesDir -Directory
@@ -16,32 +16,37 @@ if (Test-Path $FeaturesDir) {
             if ($found) { $manifestPath = $found.FullName }
         }
 
+        $id = $d.Name
         $title = $d.Name
         $description = "Modular feature plugin: $($d.Name)"
         $defaultSelected = $true
+        $supersedes = @()
 
         if (Test-Path $manifestPath) {
             try {
                 $raw = Get-Content -Path $manifestPath -Raw -Encoding UTF8
                 $json = $raw | ConvertFrom-Json
-                if ($json.title) { $title = $json.title }
-                elseif ($json.name) { $title = $json.name }
+                if ($json.id) { $id = $json.id }
+                if ($json.title) { $title = $json.title } elseif ($json.name) { $title = $json.name }
                 if ($json.description) { $description = $json.description }
                 if ($null -ne $json.defaultSelected) { $defaultSelected = [bool]$json.defaultSelected }
+                if ($null -ne $json.supersedes) { $supersedes = $json.supersedes }
             } catch {}
         }
 
         $discoveredFeatures += [PSCustomObject]@{
+            Id              = $id
             DirName         = $d.Name
             FullPath        = $d.FullName
             Title           = $title
             Description     = $description
             IsSelected      = $defaultSelected
+            Supersedes      = $supersedes
         }
     }
 }
 
-# 2. הצגת ממשק בחירה אינטראקטיבי (WinForms בדיוק כמו בווינדוס) אם אינו ב-CI
+# 2. הצגת ממשק בחירה אינטראקטיבי
 if (-not $isCI -and $discoveredFeatures.Count -gt 0) {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -74,7 +79,7 @@ if (-not $isCI -and $discoveredFeatures.Count -gt 0) {
     $lblSubtitle.Size = New-Object System.Drawing.Size(525, 28)
     $lblSubtitle.Font = New-Object System.Drawing.Font("Segoe UI", 8.75)
     $lblSubtitle.ForeColor = [System.Drawing.Color]::FromArgb(107, 114, 128)
-    $lblSubtitle.Text = "Unchecked features will be completely purged from the Linux payload (Stealth Mode)."
+    $lblSubtitle.Text = "Unchecked/Superseded features will be completely purged from the Linux payload."
     $headerPanel.Controls.Add($lblSubtitle)
 
     $scrollPanel = New-Object System.Windows.Forms.Panel
@@ -91,6 +96,41 @@ if (-not $isCI -and $discoveredFeatures.Count -gt 0) {
     $scrollPanel.Controls.Add($flow)
 
     $checkboxMap = @{}
+    $labelMap = @{}
+    $script:isUpdating = $false
+
+    # פונקציית הלוגיקה החכמה שמחשבת אילו פיצ'רים הוחלפו
+    $evaluateSupersedes = {
+        if ($script:isUpdating) { return }
+        $script:isUpdating = $true
+
+        # איסוף ה-IDs שנדרסים על ידי פיצ'רים שכרגע מסומנים
+        $supIds = @()
+        foreach ($f in $discoveredFeatures) {
+            if ($checkboxMap[$f.DirName].Checked -and $f.Supersedes) {
+                $supIds += $f.Supersedes
+            }
+        }
+
+        # עדכון הממשק החזותי (נעילה או שחרור)
+        foreach ($f in $discoveredFeatures) {
+            $chk = $checkboxMap[$f.DirName]
+            $lblTitle = $labelMap[$f.DirName]
+
+            if ($supIds -contains $f.Id) {
+                $chk.Checked = $false
+                $chk.Enabled = $false
+                $lblTitle.Text = "$($f.Title) (Superseded)"
+                $lblTitle.ForeColor = [System.Drawing.Color]::DarkRed
+            } else {
+                $chk.Enabled = $true
+                $lblTitle.Text = $f.Title
+                $lblTitle.ForeColor = [System.Drawing.Color]::Black
+            }
+        }
+
+        $script:isUpdating = $false
+    }
 
     foreach ($feat in $discoveredFeatures) {
         $card = New-Object System.Windows.Forms.Panel
@@ -104,6 +144,7 @@ if (-not $isCI -and $discoveredFeatures.Count -gt 0) {
         $chk.Location = New-Object System.Drawing.Point(14, 14)
         $chk.Size = New-Object System.Drawing.Size(18, 18)
         $chk.Checked = $feat.IsSelected
+        $chk.Add_CheckedChanged($evaluateSupersedes)
         $card.Controls.Add($chk)
 
         $cardTitle = New-Object System.Windows.Forms.Label
@@ -121,27 +162,34 @@ if (-not $isCI -and $discoveredFeatures.Count -gt 0) {
         $cardDesc.Text = $feat.Description
         $card.Controls.Add($cardDesc)
 
-        $toggleHandler = { param($sender, $e) $chk.Checked = -not $chk.Checked }
+        $toggleHandler = { 
+            param($sender, $e) 
+            if ($chk.Enabled) { $chk.Checked = -not $chk.Checked } 
+        }
         $card.Add_Click($toggleHandler)
         $cardTitle.Add_Click($toggleHandler)
         $cardDesc.Add_Click($toggleHandler)
 
         $checkboxMap[$feat.DirName] = $chk
+        $labelMap[$feat.DirName] = $cardTitle
         $flow.Controls.Add($card)
     }
+
+    # הפעלה ראשונית של חישוב הדריסות
+    & $evaluateSupersedes
 
     $btnSelectAll = New-Object System.Windows.Forms.Button
     $btnSelectAll.Location = New-Object System.Drawing.Point(20, 460)
     $btnSelectAll.Size = New-Object System.Drawing.Size(90, 30)
     $btnSelectAll.Text = "Select All"
-    $btnSelectAll.Add_Click({ foreach ($c in $checkboxMap.Values) { $c.Checked = $true } })
+    $btnSelectAll.Add_Click({ foreach ($c in $checkboxMap.Values) { if ($c.Enabled) { $c.Checked = $true } } })
     $form.Controls.Add($btnSelectAll)
 
     $btnClearAll = New-Object System.Windows.Forms.Button
     $btnClearAll.Location = New-Object System.Drawing.Point(118, 460)
     $btnClearAll.Size = New-Object System.Drawing.Size(90, 30)
     $btnClearAll.Text = "Clear All"
-    $btnClearAll.Add_Click({ foreach ($c in $checkboxMap.Values) { $c.Checked = $false } })
+    $btnClearAll.Add_Click({ foreach ($c in $checkboxMap.Values) { if ($c.Enabled) { $c.Checked = $false } } })
     $form.Controls.Add($btnClearAll)
 
     $btnOk = New-Object System.Windows.Forms.Button
@@ -162,6 +210,15 @@ if (-not $isCI -and $discoveredFeatures.Count -gt 0) {
 
     foreach ($feat in $discoveredFeatures) {
         $feat.IsSelected = $checkboxMap[$feat.DirName].Checked
+    }
+} else {
+    # CI/CD: חישוב דריסות ללא ממשק משתמש
+    $supIds = @()
+    foreach ($f in $discoveredFeatures | Where-Object { $_.IsSelected }) {
+        if ($f.Supersedes) { $supIds += $f.Supersedes }
+    }
+    foreach ($f in $discoveredFeatures) {
+        if ($supIds -contains $f.Id) { $f.IsSelected = $false }
     }
 }
 

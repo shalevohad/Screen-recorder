@@ -1,13 +1,12 @@
 {
-  "id": "extractor-advanced",
-  "name": "Extractor Advanced NLE Studio",
+  "id": "extractor-advanced-studio",
+  "name": "Advanced Studio",
   "version": "1.0.0",
   "description": "Frame-accurate non-linear editing studio, extending the base Extractor timeline.",
   "author": "ITB",
   "defaultSelected": false,
-  "entryPoint": "wwwroot/extractor-advanced.widget.js",
   "dependencies": [],
-  "apiRoutes": [
-    "api/v1/extractor-advanced"
+  "supersedes": [
+    "extractor-slicer"
   ]
 }

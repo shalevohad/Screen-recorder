@@ -18,6 +18,11 @@
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- מטמיע את המניפסט ישירות לתוך ה-DLL מקומפל -->
+		<EmbeddedResource Include="feature.json" />
+	</ItemGroup>
+
 	<!-- תלות בפרויקט ה-Basic ותלות בליבה -->
 
 	<!-- קימפול ה-Widget של ה-Advanced בכל Build (מריץ Vite אוטומטית) -->

@@ -9,20 +9,21 @@
 		<RootNamespace>ITB_SCREEN_RECORDER.AgentWorker</RootNamespace>
 		<DebugType>none</DebugType>
 		<DebugSymbols>false</DebugSymbols>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="System.Text.Json" Version="8.0.5" />
-		<PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
 	</ItemGroup>
 
-	<!-- הגדרת WINDOWS מותנית ב-RuntimeIdentifier של היעד כדי לאפשר קרוס-קומפילציה נקייה מ-Windows ל-Linux -->
+	<!-- הגדרת WINDOWS מותנית ב-RuntimeIdentifier של היעד לקרוס-קומפילציה נקייה -->
 	<PropertyGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
 		<DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
 	</PropertyGroup>
 
-	<!-- תלויות ספציפיות ל-Windows (מוחרגות בפרסום ל-linux-x64) -->
+	<!-- תלויות ספציפיות ל-Windows (מוחרגות בבנייה ל-Linux) -->
 	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
 		<PackageReference Include="NAudio.Core" Version="2.3.0" />
 		<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
 		<PackageReference Include="System.Drawing.Common" Version="8.0.10" />
@@ -34,33 +35,78 @@
 		<ProjectReference Include="..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
 	</ItemGroup>
 
+	<!-- סנכרון קובץ הקונפיגורציה הן לפלט ה-Build והן לפלט ה-Publish -->
 	<ItemGroup>
 		<None Include="..\ITB-SCREEN-RECORDER.Core\appsettings.json">
 			<Link>appsettings.json</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-	</ItemGroup>
-
-	<!-- ========================================== -->
-	<!-- ניהול בינאריים של FFmpeg לפי מערכת הפעלה     -->
-	<!-- ========================================== -->
-
-	<!-- Windows: העתקת ffmpeg.exe מ-Tools/Win לשורש הפלט -->
-	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
-		<None Update="Tools\Win\**">
-			<TargetPath>%(Filename)%(Extension)</TargetPath>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
 
-	<!-- Linux: העתקת ffmpeg מ-Tools/Linux לשורש הפלט -->
-	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
-		<None Update="Tools/Linux/**">
-			<TargetPath>%(Filename)%(Extension)</TargetPath>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-		</None>
-	</ItemGroup>
+	<!-- ======================================================== -->
+	<!-- 1. הזרקת FFmpeg לתהליך ה-Publish הרשמי (ResolvedFile)     -->
+	<!-- ======================================================== -->
+	<Target Name="AddFfmpegToPublishFiles" BeforeTargets="PrepareForPublish;ComputeFilesToPublish">
+		<PropertyGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+			<_FfmpegToPublish Condition="Exists('$(MSBuildProjectDirectory)\..\Tools\Win\ffmpeg.exe')">$(MSBuildProjectDirectory)\..\Tools\Win\ffmpeg.exe</_FfmpegToPublish>
+			<_FfmpegToPublish Condition="'$(_FfmpegToPublish)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Win\ffmpeg.exe')">$(MSBuildProjectDirectory)\Tools\Win\ffmpeg.exe</_FfmpegToPublish>
+			<_PublishBinaryName>ffmpeg.exe</_PublishBinaryName>
+		</PropertyGroup>
+
+		<PropertyGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+			<_FfmpegToPublish Condition="Exists('$(MSBuildProjectDirectory)\..\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\..\Tools\Linux\ffmpeg</_FfmpegToPublish>
+			<_FfmpegToPublish Condition="'$(_FfmpegToPublish)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg</_FfmpegToPublish>
+			<_PublishBinaryName>ffmpeg</_PublishBinaryName>
+		</PropertyGroup>
+
+		<ItemGroup Condition="'$(_FfmpegToPublish)' != ''">
+			<ResolvedFileToPublish Include="$(_FfmpegToPublish)">
+				<RelativePath>$(_PublishBinaryName)</RelativePath>
+				<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			</ResolvedFileToPublish>
+		</ItemGroup>
+		<Message Importance="high" Text="[ITB PUBLISH] Bundling $(_PublishBinaryName) into publish payload from: '$(_FfmpegToPublish)'" Condition="'$(_FfmpegToPublish)' != ''" />
+	</Target>
+
+	<!-- ======================================================== -->
+	<!-- 2. העתקה פיזית ודאית בסיום Publish (Direct Fallback)      -->
+	<!-- ======================================================== -->
+	<Target Name="EnsureFfmpegInPublishDir" AfterTargets="Publish">
+		<PropertyGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+			<_DirectPublishFfmpeg Condition="Exists('$(MSBuildProjectDirectory)\..\Tools\Win\ffmpeg.exe')">$(MSBuildProjectDirectory)\..\Tools\Win\ffmpeg.exe</_DirectPublishFfmpeg>
+			<_DirectPublishFfmpeg Condition="'$(_DirectPublishFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Win\ffmpeg.exe')">$(MSBuildProjectDirectory)\Tools\Win\ffmpeg.exe</_DirectPublishFfmpeg>
+		</PropertyGroup>
+
+		<PropertyGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+			<_DirectPublishFfmpeg Condition="Exists('$(MSBuildProjectDirectory)\..\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\..\Tools\Linux\ffmpeg</_DirectPublishFfmpeg>
+			<_DirectPublishFfmpeg Condition="'$(_DirectPublishFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg</_DirectPublishFfmpeg>
+		</PropertyGroup>
+
+		<Copy SourceFiles="$(_DirectPublishFfmpeg)"
+		      DestinationFolder="$(PublishDir)"
+		      SkipUnchangedFiles="false"
+		      Condition="'$(_DirectPublishFfmpeg)' != '' And Exists('$(_DirectPublishFfmpeg)')" />
+	</Target>
+
+	<!-- ======================================================== -->
+	<!-- 3. העתקה פיזית לתיקיית הפלט בזמן Build (לריצה ב-VS)       -->
+	<!-- ======================================================== -->
+	<Target Name="EnsureFfmpegInOutputDir" AfterTargets="Build">
+		<PropertyGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+			<_DirectBuildFfmpeg Condition="Exists('$(MSBuildProjectDirectory)\..\Tools\Win\ffmpeg.exe')">$(MSBuildProjectDirectory)\..\Tools\Win\ffmpeg.exe</_DirectBuildFfmpeg>
+			<_DirectBuildFfmpeg Condition="'$(_DirectBuildFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Win\ffmpeg.exe')">$(MSBuildProjectDirectory)\Tools\Win\ffmpeg.exe</_DirectBuildFfmpeg>
+		</PropertyGroup>
+
+		<PropertyGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+			<_DirectBuildFfmpeg Condition="Exists('$(MSBuildProjectDirectory)\..\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\..\Tools\Linux\ffmpeg</_DirectBuildFfmpeg>
+			<_DirectBuildFfmpeg Condition="'$(_DirectBuildFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg</_DirectBuildFfmpeg>
+		</PropertyGroup>
+
+		<Copy SourceFiles="$(_DirectBuildFfmpeg)"
+		      DestinationFolder="$(TargetDir)"
+		      SkipUnchangedFiles="true"
+		      Condition="'$(_DirectBuildFfmpeg)' != '' And Exists('$(_DirectBuildFfmpeg)')" />
+	</Target>
 
 </Project>

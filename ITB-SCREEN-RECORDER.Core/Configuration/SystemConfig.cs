@@ -51,16 +51,37 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
     public class MediaMtxSettings
     {
         [Required(ErrorMessage = "MediaMtx ExecutablePath is required in appsettings.json")]
-        public string ExecutablePath { get; set; } = string.Empty;
+        public string ExecutablePath { get; set; } = "MediaMTX\\mediamtx.exe";
 
         [Range(1024, 65535)]
-        public int RtmpPort { get; set; }
+        public int RtmpPort { get; set; } = 19350;
 
         [Range(1024, 65535)]
-        public int ApiPort { get; set; }
+        public int ApiPort { get; set; } = 9997;
 
         [Range(1024, 65535)]
-        public int HlsPort { get; set; }
+        public int HlsPort { get; set; } = 8888;
+
+        [Range(1024, 65535)]
+        public int PlaybackPort { get; set; } = 9996;
+
+        [Range(1024, 65535)]
+        public int MetricsPort { get; set; } = 9998;
+
+        [Range(1024, 65535)]
+        public int PprofPort { get; set; } = 9999;
+
+        public bool EnableMetrics { get; set; } = true;
+
+        public bool EnablePprof { get; set; } = true;
+
+        public bool EnablePlayback { get; set; } = true;
+
+        public bool HlsAlwaysRemux { get; set; } = true;
+
+        public string HlsVariant { get; set; } = "fmp4";
+
+        public string HlsSegmentDuration { get; set; } = "2s";
 
         public string Timezone { get; set; } = "UTC";
     }

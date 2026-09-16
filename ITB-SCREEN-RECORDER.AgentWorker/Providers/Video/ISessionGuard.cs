@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.Versioning;
 using ITB_SCREEN_RECORDER.Core.Common;
-using ITBRecorderAgent.Providers.Video; // עבור ScreenCaptureFactory
+using ITBRecorderAgent.Providers.Video;
 
 namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
 {
@@ -16,17 +16,17 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
     {
         public static ISessionGuard Create(Action onSessionRestored)
         {
+#if WINDOWS
             if (OperatingSystem.IsWindows())
             {
                 return new WindowsDesktopSessionGuard(onSessionRestored);
             }
-
+#endif
             return new LinuxDesktopSessionGuard(onSessionRestored);
         }
     }
 
-    // ה-Attribute הזה מסביר לקומפיילר שהמחלקה מיועדת לווינדוס בלבד,
-    // ולכן הוא לא יזרוק אזהרות על שימוש ב-SystemEvents בתוך לינוקס.
+#if WINDOWS
     [SupportedOSPlatform("windows")]
     internal sealed class WindowsDesktopSessionGuard : ISessionGuard
     {
@@ -91,6 +91,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
             }
         }
     }
+#endif
 
     internal sealed class LinuxDesktopSessionGuard : ISessionGuard
     {

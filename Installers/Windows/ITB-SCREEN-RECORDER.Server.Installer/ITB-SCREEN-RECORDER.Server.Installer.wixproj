@@ -22,7 +22,7 @@
 		<FeaturesStaging>$(StagingRoot)\features_root</FeaturesStaging>
 		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Server\windows</FinalOutputDir>
 
-		<!-- הזרקת SolutionDir לשימוש בטוח בתוך קובץ ה-WXS -->
+		<!-- הזרקת משתנים לשימוש בתוך קובצי ה-WXS -->
 		<DefineConstants>ServerDir=$(ServerStaging);FeaturesDir=$(FeaturesStaging);Version=$(Version);RepoRoot=$(SolutionRoot)</DefineConstants>
 
 		<SuppressIces>ICE61</SuppressIces>
@@ -38,7 +38,6 @@
 	<ItemGroup>
 		<None Include="License.rtf" />
 		<None Include="SelectFeatures.ps1" />
-		<Compile Remove="GeneratedFeatures.wxs" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -46,20 +45,19 @@
 		<PackageReference Include="WixToolset.UI.wixext" Version="5.0.0" />
 	</ItemGroup>
 
-	<Target Name="PrepareAndGenerateFeaturesBeforeBuild" BeforeTargets="BeforeBuild">
+	<Target Name="PrepareAndGenerateFeaturesBeforeBuild" BeforeTargets="BeforeBuild;BeforeCompile">
 		<Message Importance="high" Text="=== [1/3] Preparing Clean Staging Folders ===" />
 		<RemoveDir Directories="$(StagingRoot)" ContinueOnError="true" />
 		<MakeDir Directories="$(ServerStaging)" />
 		<MakeDir Directories="$(FeaturesStaging)" />
+		<MakeDir Directories="$(IntermediateOutputPath)" />
 
 		<Message Importance="high" Text="=== [2/3] Publishing Central Server &amp; Auto-Discovering All Features ===" />
-		<!-- נתיב מתוקן לפרויקט השרת -->
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(ServerStaging)&quot;" />
 
 		<!-- סניטציה: מחיקת קבצי פיתוח שהסתננו לפלט השרת -->
 		<RemoveDir Directories="$(ServerStaging)\Features" ContinueOnError="true" />
 
-		<!-- נתיב מתוקן לתיקיית Features בשורש הפתרון -->
 		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\PublishFeatures.ps1&quot; -FeaturesRoot &quot;$(SolutionRoot)\Features&quot; -StagingDir &quot;$(FeaturesStaging)&quot; -Configuration &quot;$(Configuration)&quot;" />
 
 		<ItemGroup>
@@ -68,7 +66,13 @@
 		<Delete Files="@(StrayCoreFiles)" ContinueOnError="true" />
 
 		<Message Importance="high" Text="=== [3/3] Launching Interactive Feature Selection Engine ===" />
-		<Exec Command="powershell.exe -Sta -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\SelectFeatures.ps1&quot; -FeaturesDir &quot;$(FeaturesStaging)&quot; -OutputFile &quot;$(MSBuildProjectDirectory)\GeneratedFeatures.wxs&quot;" />
+		<!-- יצירת הקובץ ישירות בתוך תיקיית obj כדי למנוע סריקה כפולה בשורש הפרויקט -->
+		<Exec Command="powershell.exe -Sta -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\SelectFeatures.ps1&quot; -FeaturesDir &quot;$(FeaturesStaging)&quot; -OutputFile &quot;$(IntermediateOutputPath)GeneratedFeatures.wxs&quot;" />
+
+		<!-- הזרקה בלעדית של הקובץ שנוצר ב-obj לקומפילציה -->
+		<ItemGroup>
+			<Compile Include="$(IntermediateOutputPath)GeneratedFeatures.wxs" />
+		</ItemGroup>
 	</Target>
 
 	<Target Name="FinalizeDistributionPackage" AfterTargets="Build">
@@ -80,6 +84,6 @@
 
 	<Target Name="CleanStagingOnProjectClean" AfterTargets="Clean">
 		<RemoveDir Directories="$(StagingRoot)" ContinueOnError="true" />
-		<Delete Files="$(MSBuildProjectDirectory)\GeneratedFeatures.wxs" ContinueOnError="true" />
+		<Delete Files="$(IntermediateOutputPath)GeneratedFeatures.wxs" ContinueOnError="true" />
 	</Target>
 </Project>
