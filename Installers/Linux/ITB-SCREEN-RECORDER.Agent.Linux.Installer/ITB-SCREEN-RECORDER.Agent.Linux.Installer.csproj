@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
-		<!-- שינוי מ-None ל-Library פותר את שגיאת CS2019 -->
 		<OutputType>Library</OutputType>
 		<Version Condition="'$(Version)' == ''">1.0.25</Version>
 		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..'))</SolutionRoot>
@@ -23,19 +22,17 @@
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 		<MakeDir Directories="$(StagingDir)\service" />
 		<MakeDir Directories="$(StagingDir)\worker" />
-		<MakeDir Directories="$(StagingDir)\packages" />
 
 		<Message Importance="high" Text="=== [2/4] Publishing AgentService &amp; AgentWorker (linux-x64) ===" />
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)\ITB-SCREEN-RECORDER.AgentService\ITB-SCREEN-RECORDER.AgentService.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)\service&quot;" />
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)\ITB-SCREEN-RECORDER.AgentWorker\ITB-SCREEN-RECORDER.AgentWorker.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)\worker&quot;" />
 
-		<Message Importance="high" Text="=== [3/4] Staging Setup Scripts &amp; Bundled FFmpeg RPM ===" />
+		<Message Importance="high" Text="=== [3/4] Staging Setup Scripts ===" />
 		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
 		<Copy SourceFiles="itb-agent.service" DestinationFolder="$(StagingDir)" />
-		<Copy SourceFiles="$(LinuxRoot)\Dependencies\ffmpeg.rpm" DestinationFolder="$(StagingDir)\packages" Condition="Exists('$(LinuxRoot)\Dependencies\ffmpeg.rpm')" />
 
 		<Message Importance="high" Text="=== [4/4] Packing Self-Extracting .run Installer ===" />
-		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(LinuxRoot)\BuildRunPackage.ps1&quot; -PayloadDir &quot;$(StagingDir)&quot; -HeaderScript &quot;$(MSBuildProjectDirectory)\installer-header.sh&quot; -OutputFile &quot;$(OutputRunFile)&quot;" />
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)\BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)\installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />
 
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 	</Target>

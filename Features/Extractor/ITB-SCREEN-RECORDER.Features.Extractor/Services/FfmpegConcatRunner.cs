@@ -18,7 +18,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         public FfmpegConcatRunner(IOptions<ExtractorOptions> options, ILogger<FfmpegConcatRunner> logger)
         {
             _logger = logger;
-            _ffmpegPath = ResolveFfmpegBinary(options.Value.FfmpegPath);
+            _ffmpegPath = ResolveFfmpegBinary(options.Value.FfmpegPath, _logger);
             _logger.LogInformation("Extractor initialized FFmpeg at: {Path}", _ffmpegPath);
         }
 
@@ -86,28 +86,74 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
         }
 
-        private static string ResolveFfmpegBinary(string? configuredPath)
+        private static string ResolveFfmpegBinary(string? configuredPath, ILogger logger)
         {
             string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
 
+            // 1. נתיב שהוגדר במפורש בקונפיגורציה
             if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
             {
+                EnsureLinuxExecutablePermissions(configuredPath, logger);
                 return configuredPath;
             }
 
+            // 2. בדיקה בשורש תיקיית הפיצ'ר (לפי ה-Link ב-csproj)
+            string featureRootPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", binaryName);
+            if (File.Exists(featureRootPath))
+            {
+                EnsureLinuxExecutablePermissions(featureRootPath, logger);
+                return featureRootPath;
+            }
+
+            // 3. בדיקה בתיקיית Bin תחת הפיצ'ר
             string featureBinPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", "Bin", binaryName);
             if (File.Exists(featureBinPath))
             {
+                EnsureLinuxExecutablePermissions(featureBinPath, logger);
                 return featureBinPath;
             }
 
-            string rootPath = Path.Combine(AppContext.BaseDirectory, binaryName);
-            if (File.Exists(rootPath))
+            // 4. בדיקה בשורש השרת
+            string serverRootPath = Path.Combine(AppContext.BaseDirectory, binaryName);
+            if (File.Exists(serverRootPath))
             {
-                return rootPath;
+                EnsureLinuxExecutablePermissions(serverRootPath, logger);
+                return serverRootPath;
             }
 
+            // 5. בדיקה בנתיבי המערכת הסטנדרטיים של לינוקס (סביבת Podman)
+            if (OperatingSystem.IsLinux())
+            {
+                string[] standardPaths = ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"];
+                foreach (var path in standardPaths)
+                {
+                    if (File.Exists(path))
+                        return path;
+                }
+            }
+
+            // ברירת מחדל: הסתמכות על ה-PATH
             return binaryName;
+        }
+
+        private static void EnsureLinuxExecutablePermissions(string filePath, ILogger logger)
+        {
+            if (!OperatingSystem.IsLinux() || !File.Exists(filePath))
+                return;
+
+            try
+            {
+                File.SetUnixFileMode(filePath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+                logger.LogInformation("Applied Linux execution permissions (0755) to: {Path}", filePath);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Failed to set Unix permissions on {Path}: {Message}", filePath, ex.Message);
+            }
         }
     }
 }

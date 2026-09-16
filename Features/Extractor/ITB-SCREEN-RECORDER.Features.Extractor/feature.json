@@ -1,5 +1,15 @@
 {
   "title": "Session Slicer (Extractor Feature)",
   "description": "Enables time-range video slicing, FFmpeg concatenation, and TAR archiving export.",
-  "defaultSelected": true
+  "defaultSelected": true,
+  "requireTools": [
+    {
+      "name": "ffmpeg",
+      "destination": "."
+    },
+    {
+      "name": "ffprobe",
+      "destination": "."
+    }
+  ]
 }

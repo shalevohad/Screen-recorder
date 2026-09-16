@@ -27,16 +27,17 @@ jobs:
     - name: Shutdown .NET Build Server (Prevent File Locking)
       run: dotnet build-server shutdown
 
-    - name: Download FFmpeg & FFprobe for Windows (With Retry)
+    - name: Download FFmpeg & MediaMTX for Windows (With Retry)
       if: startsWith(matrix.os, 'windows')
       shell: pwsh
       run: |
-        $toolsDir = "Tools/Windows"
+        $toolsDir = "Tools/Win"
         New-Item -ItemType Directory -Force -Path $toolsDir
         $agentDir = "ITB-SCREEN-RECORDER.AgentWorker"
         New-Item -ItemType Directory -Force -Path $agentDir
         
-        $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        # 1. הורדת FFmpeg
+        $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         $zipPath = "ffmpeg.zip"
         
         $maxAttempts = 5
@@ -45,45 +46,34 @@ jobs:
 
         while ($attempt -lt $maxAttempts -and -not $success) {
             $attempt++
-            Write-Host "Attempt $attempt of $maxAttempts to download FFmpeg/FFprobe..."
+            Write-Host "Attempt $attempt of $maxAttempts to download FFmpeg..."
             try {
-                Invoke-WebRequest -Uri $url -OutFile $zipPath -ErrorAction Stop
+                Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zipPath -ErrorAction Stop
                 $success = $true
-                Write-Host "Download successful!"
             } catch {
-                Write-Warning "Download failed: $_"
-                if ($attempt -lt $maxAttempts) {
-                    Write-Host "Waiting 10 seconds before retrying..."
-                    Start-Sleep -Seconds 10
-                }
+                if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 10 }
             }
         }
+        if (-not $success) { throw "Failed to download FFmpeg." }
 
-        if (-not $success) {
-            throw "Failed to download FFmpeg after $maxAttempts attempts."
-        }
-
-        Write-Host "Extracting FFmpeg & FFprobe..."
         Expand-Archive -Path $zipPath -DestinationPath "ffmpeg_extracted" -Force
-        
         $ffmpegExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
         $ffprobeExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
 
-        if ($ffmpegExe) {
-            Copy-Item $ffmpegExe.FullName -Destination "$toolsDir\ffmpeg.exe"
-            Copy-Item $ffmpegExe.FullName -Destination "$agentDir\ffmpeg.exe"
-        } else {
-            throw "Could not find ffmpeg.exe in downloaded archive"
-        }
+        Copy-Item $ffmpegExe.FullName -Destination "$toolsDir\ffmpeg.exe"
+        Copy-Item $ffmpegExe.FullName -Destination "$agentDir\ffmpeg.exe"
+        Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe"
+        Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe"
 
-        if ($ffprobeExe) {
-            Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe"
-            Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe"
-        } else {
-            throw "Could not find ffprobe.exe in downloaded archive"
-        }
+        # 2. הורדת MediaMTX עבור Windows
+        Write-Host "Downloading MediaMTX for Windows..."
+        $mediamtxUrl = "https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_windows_amd64.zip"
+        $mediamtxZip = "mediamtx_win.zip"
+        Invoke-WebRequest -Uri $mediamtxUrl -OutFile $mediamtxZip
+        Expand-Archive -Path $mediamtxZip -DestinationPath "mediamtx_win_extracted" -Force
+        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$toolsDir\mediamtx.exe"
 
-    - name: Download FFmpeg & FFprobe for Linux
+    - name: Download FFmpeg & MediaMTX for Linux
       if: startsWith(matrix.os, 'ubuntu')
       run: |
         TOOLS_DIR="Tools/Linux"
@@ -91,6 +81,7 @@ jobs:
         mkdir -p "$TOOLS_DIR"
         mkdir -p "$AGENT_DIR"
         
+        # 1. הורדת FFmpeg ללינוקס
         echo "Downloading FFmpeg static build for Linux..."
         curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
         tar -xf ffmpeg.tar.xz
@@ -103,8 +94,15 @@ jobs:
         cp "$EXTRACTED_DIR/ffmpeg" "$AGENT_DIR/ffmpeg"
         cp "$EXTRACTED_DIR/ffprobe" "$AGENT_DIR/ffprobe"
         chmod +x "$AGENT_DIR/ffmpeg" "$AGENT_DIR/ffprobe"
+
+        # 2. הורדת MediaMTX ללינוקס
+        echo "Downloading MediaMTX for Linux..."
+        curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
+        tar -xzf mediamtx_linux.tar.gz mediamtx
+        cp mediamtx "$TOOLS_DIR/mediamtx"
+        chmod +x "$TOOLS_DIR/mediamtx"
         
-        echo "FFmpeg and FFprobe placed successfully for Linux."
+        echo "FFmpeg, FFprobe and MediaMTX placed successfully for Linux."
 
     - name: Restore NuGet dependencies
       run: dotnet restore
@@ -116,8 +114,8 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
-        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release
-        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release
 
     - name: Build Solution (Release Configuration - Linux)
       if: startsWith(matrix.os, 'ubuntu')

@@ -111,10 +111,12 @@ namespace ITBRecorderAgent.Engine
 
                         Buffer.BlockCopy(raw, 0, buffer, 0, raw.Length);
 
+#if WINDOWS
                         if (OperatingSystem.IsWindows())
                         {
                             MouseCursorOverlay.DrawMouseToFrame(buffer, width, height);
                         }
+#endif
 
                         if (_channel.Writer.TryWrite(buffer))
                         {
