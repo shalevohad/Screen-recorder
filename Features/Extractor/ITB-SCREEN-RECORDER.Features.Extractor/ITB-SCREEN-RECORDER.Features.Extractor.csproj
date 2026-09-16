@@ -46,25 +46,26 @@
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</Content>
 	</ItemGroup>
-	<ItemGroup>
-	  <Folder Include="Tools\Linux\" />
-	  <Folder Include="Tools\Win\" />
-	</ItemGroup>
-	<ItemGroup>
-		<!-- עבור Windows -->
-		<None Update="Tools\Windows\**" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-			<Link>%(Filename)%(Extension)</Link>
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			<Visible>true</Visible>
-		</None>
 
-		<!-- עבור Linux -->
-		<None Update="Tools/Linux/**" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
-			<Link>%(Filename)</Link>
+	<!-- ========================================== -->
+	<!-- ניהול בינאריים לפי מערכת ההפעלה של היעד      -->
+	<!-- ========================================== -->
+
+	<!-- עבור Windows: העתקת הכלים מתיקיית Tools/Win לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<None Update="Tools\Win\**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			<Visible>true</Visible>
+		</None>
+	</ItemGroup>
+
+	<!-- עבור Linux: העתקת הכלים מתיקיית Tools/Linux לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<None Update="Tools/Linux/**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
 

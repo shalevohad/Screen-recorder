@@ -35,20 +35,29 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("[MediaMTX Supervisor] Service starting...");
+            _logger.LogInformation("[MediaMTX Supervisor] Service starting on {OS}...",
+                OperatingSystem.IsWindows() ? "Windows" : "Linux");
 
             CleanupOrphanedMediaMtxProcesses();
             await Task.Delay(1000, stoppingToken);
 
             string baseDir = AppContext.BaseDirectory;
-            string mtxFolder = Path.Combine(baseDir, "MediaMTX");
-            string mtxExePath = Path.Combine(mtxFolder, "mediamtx.exe");
 
-            if (!File.Exists(mtxExePath))
+            // 1. קביעה דינמית של שם הבינארי לפי מערכת ההפעלה
+            string binaryName = OperatingSystem.IsWindows() ? "mediamtx.exe" : "mediamtx";
+
+            // 2. איתור הנתיב - בדיקה קודם בתיקיית המשנה MediaMTX ואז בשורש
+            string mtxFolder = Path.Combine(baseDir, "MediaMTX");
+            string mtxBinaryPath = Path.Combine(mtxFolder, binaryName);
+
+            if (!File.Exists(mtxBinaryPath))
             {
                 mtxFolder = baseDir;
-                mtxExePath = Path.Combine(baseDir, "mediamtx.exe");
+                mtxBinaryPath = Path.Combine(baseDir, binaryName);
             }
+
+            // 3. בלינוקס: וידוא הרשאות ביצוע לקובץ (Execution Flag)
+            EnsureExecutablePermissions(mtxBinaryPath);
 
             using var changeListener = _configMonitor.OnChange(async updatedConfig =>
             {
@@ -69,9 +78,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 {
                     if (_mtxProcess == null || _mtxProcess.HasExited)
                     {
-                        if (!File.Exists(mtxExePath))
+                        if (!File.Exists(mtxBinaryPath))
                         {
-                            _logger.LogError("[CRITICAL] mediamtx.exe not found at path: {Path}", mtxExePath);
+                            _logger.LogError("[CRITICAL] MediaMTX binary '{Binary}' not found at path: {Path}", binaryName, mtxBinaryPath);
                             await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
                             continue;
                         }
@@ -79,20 +88,32 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                         CleanupOrphanedMediaMtxProcesses();
                         await Task.Delay(1000, stoppingToken);
 
+                        // איתור קובץ mediamtx.yml
                         string ymlPath = Path.Combine(mtxFolder, "mediamtx.yml");
+                        if (!File.Exists(ymlPath))
+                        {
+                            ymlPath = Path.Combine(baseDir, "mediamtx.yml");
+                        }
+
                         PatchMediaMtxYaml(ymlPath, _configMonitor.CurrentValue);
 
-                        _logger.LogInformation("[MediaMTX Supervisor] Launching MediaMTX binary: {Path}", mtxExePath);
+                        _logger.LogInformation("[MediaMTX Supervisor] Launching MediaMTX binary: {Path}", mtxBinaryPath);
 
                         var startInfo = new ProcessStartInfo
                         {
-                            FileName = mtxExePath,
+                            FileName = mtxBinaryPath,
                             WorkingDirectory = mtxFolder,
                             UseShellExecute = false,
                             RedirectStandardOutput = true,
                             RedirectStandardError = true,
                             CreateNoWindow = true
                         };
+
+                        // העברת נתיב הקונפיגורציה במפורש כארגומנט אם הקובץ קיים
+                        if (File.Exists(ymlPath))
+                        {
+                            startInfo.Arguments = $"\"{ymlPath}\"";
+                        }
 
                         _mtxProcess = new Process { StartInfo = startInfo };
 
@@ -134,6 +155,27 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 {
                     break;
                 }
+            }
+        }
+
+        private void EnsureExecutablePermissions(string filePath)
+        {
+            // בדיקה ישירה שמשקיטה לחלוטין את מנתח הקוד (Roslyn CA1416)
+            if (!OperatingSystem.IsLinux() || !File.Exists(filePath))
+                return;
+
+            try
+            {
+                File.SetUnixFileMode(filePath,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+                _logger.LogInformation("[MediaMTX Supervisor] Verified Linux execution permissions for: {Path}", filePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("[MediaMTX Supervisor] Could not set Unix permissions on {Path}: {Message}", filePath, ex.Message);
             }
         }
 

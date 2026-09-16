@@ -7,17 +7,22 @@
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<RootNamespace>ITB_SCREEN_RECORDER.AgentWorker</RootNamespace>
+		<DebugType>none</DebugType>
+		<DebugSymbols>false</DebugSymbols>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="System.Text.Json" Version="8.0.5" />
+		<PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />
 	</ItemGroup>
 
-	<PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+	<!-- הגדרת WINDOWS מותנית ב-RuntimeIdentifier של היעד כדי לאפשר קרוס-קומפילציה נקייה מ-Windows ל-Linux -->
+	<PropertyGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
 		<DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
 	</PropertyGroup>
 
-	<ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+	<!-- תלויות ספציפיות ל-Windows (מוחרגות בפרסום ל-linux-x64) -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
 		<PackageReference Include="NAudio.Core" Version="2.3.0" />
 		<PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
 		<PackageReference Include="System.Drawing.Common" Version="8.0.10" />
@@ -36,17 +41,25 @@
 		</None>
 	</ItemGroup>
 
-	<ItemGroup>
-		<!-- בווינדוס מעתיקים ffmpeg.exe -->
-		<None Update="ffmpeg.exe" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Link>ffmpeg.exe</Link>
-		</None>
+	<!-- ========================================== -->
+	<!-- ניהול בינאריים של FFmpeg לפי מערכת הפעלה     -->
+	<!-- ========================================== -->
 
-		<!-- בלינוקס מעתיקים ffmpeg ללא סיומת -->
-		<None Update="ffmpeg" Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+	<!-- Windows: העתקת ffmpeg.exe מ-Tools/Win לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<None Update="Tools\Win\**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Link>ffmpeg</Link>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- Linux: העתקת ffmpeg מ-Tools/Linux לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<None Update="Tools/Linux/**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
 

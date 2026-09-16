@@ -1,4 +1,6 @@
-﻿using ITB_SCREEN_RECORDER.Core.Diagnostics;
+﻿using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -7,8 +9,6 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using ITB_SCREEN_RECORDER.Core.Common;
-using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITBRecorderAgent.Engine
 {
@@ -66,7 +66,47 @@ namespace ITBRecorderAgent.Engine
                         Logger.Info($"[ENGINE] Created local buffer directory: {dir}");
                     }
                 }
+
                 var ffmpegPath = _config.GetResolvedFFmpegPath();
+
+                // התאמת נתיב דינמית והרשאות ריצה בסביבת Linux
+                if (OperatingSystem.IsLinux())
+                {
+                    // 1. הגנה מפני קונפיגורציה שגויה (קובץ appsettings.json שהועתק מווינדוס)
+                    if (ffmpegPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string fallbackPath = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+                        Logger.Warn($"[FFMPEG] Configuration specifies a Windows executable ('{ffmpegPath}') but agent is running on Linux. Overriding to local binary: {fallbackPath}");
+                        ffmpegPath = fallbackPath;
+                    }
+
+                    // 2. אם עדיין לא מצאנו קובץ, ניסיון אחרון בתיקייה המקומית
+                    if (!File.Exists(ffmpegPath))
+                    {
+                        var localCandidate = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+                        if (File.Exists(localCandidate))
+                        {
+                            ffmpegPath = localCandidate;
+                        }
+                    }
+
+                    // 3. אכיפת הרשאות הרצה (0755) על הבינארי הסטטי כדי למנוע שגיאות Permission Denied
+                    if (File.Exists(ffmpegPath))
+                    {
+                        try
+                        {
+                            File.SetUnixFileMode(ffmpegPath,
+                                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                        }
+                        catch (Exception pEx)
+                        {
+                            Logger.Warn($"[FFMPEG] Could not apply chmod to '{ffmpegPath}': {pEx.Message}");
+                        }
+                    }
+                }
+
                 Logger.Info($"[FFMPEG] Resolved FFmpeg path: {ffmpegPath}");
 
                 string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
@@ -194,14 +234,15 @@ namespace ITBRecorderAgent.Engine
 
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // 3. קידוד וידאו - הזרקת IDR כפוי לכל שנייה (קריטי לקליטת WebRTC לאחר ריענון)
+            // 3. קידוד וידאו - הזרקת IDR כפוי לכל שנייה
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
                 ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-init_hw_device d3d11va -c:v h264_qsv -preset veryfast -global_quality 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
+                string hwDevice = OperatingSystem.IsWindows() ? "-init_hw_device d3d11va " : "-init_hw_device vaapi ";
+                ffmpegArgs.Append($"{hwDevice}-c:v h264_qsv -preset veryfast -global_quality 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {

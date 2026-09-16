@@ -55,8 +55,8 @@ jobs:
         echo "Calculated Version: $VERSION"
         echo "Calculated Tag: $TAG"
 
-        echo "VERSION=$VERSION" >> $github_output
-        echo "TAG=$TAG" >> $github_output
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
   build-windows:
     needs: version
@@ -117,16 +117,16 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
         dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
         dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
-        dotnet build ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
-        dotnet build ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
 
     - name: Upload Windows Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: windows-msi-artifacts
         path: |
-          ITB-SCREEN-RECORDER.Installer/bin/x64/Release/*.msi
-          ITB-SCREEN-RECORDER.Server.Installer/bin/x64/Release/*.msi
+          Installers/Windows/ITB-SCREEN-RECORDER.Installer/bin/x64/Release/*.msi
+          Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/bin/x64/Release/*.msi
 
   build-linux:
     needs: version
@@ -152,7 +152,7 @@ jobs:
         EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-amd64-static")
         
         cp "$EXTRACTED_DIR/ffmpeg" "$TOOLS_DIR/ffmpeg"
-        cp "$EXTracted_DIR/ffprobe" "$TOOLS_DIR/ffprobe"
+        cp "$EXTRACTED_DIR/ffprobe" "$TOOLS_DIR/ffprobe"
         chmod +x "$TOOLS_DIR/ffmpeg" "$TOOLS_DIR/ffprobe"
         
         cp "$EXTRACTED_DIR/ffmpeg" "$AGENT_DIR/ffmpeg"
@@ -162,26 +162,21 @@ jobs:
     - name: Restore NuGet dependencies
       run: dotnet restore
 
-    - name: Publish Linux Binaries (Self-Contained)
+    - name: Publish Linux Binaries & Installers (.run)
       run: |
-        # Publish Server for Linux
-        dotnet publish ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj -c Release -r linux-x64 --self-contained true -o publish/linux/server -p:Version=${{ needs.version.outputs.version }}
+        # פריסה ובניית מתקין השרת ללינוקס
+        dotnet build Installers/Linux/ITB-SCREEN-RECORDER.Server.Linux.Installer/ITB-SCREEN-RECORDER.Server.Linux.Installer.csproj -c Release -p:Version=${{ needs.version.outputs.version }}
         
-        # Publish Agent Worker & Service for Linux
-        dotnet publish ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj -c Release -r linux-x64 --self-contained true -o publish/linux/agent-worker -p:Version=${{ needs.version.outputs.version }}
-        dotnet publish ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj -c Release -r linux-x64 --self-contained true -o publish/linux/agent-service -p:Version=${{ needs.version.outputs.version }}
+        # פריסה ובניית מתקין ה-Agent ללינוקס
+        dotnet build Installers/Linux/ITB-SCREEN-RECORDER.Agent.Linux.Installer/ITB-SCREEN-RECORDER.Agent.Linux.Installer.csproj -c Release -p:Version=${{ needs.version.outputs.version }}
 
-    - name: Package Linux Binaries into Tarballs
-      run: |
-        mkdir -p dist/linux
-        tar -czf dist/linux/itb-screen-recorder-server-linux-x64.tar.gz -C publish/linux/server .
-        tar -czf dist/linux/itb-screen-recorder-agent-linux-x64.tar.gz -C publish/linux/agent-worker .
-
-    - name: Upload Linux Artifacts
+    - name: Upload Linux Artifacts (.run packages)
       uses: actions/upload-artifact@v4
       with:
-        name: linux-tarball-artifacts
-        path: dist/linux/*.tar.gz
+        name: linux-run-artifacts
+        path: |
+          Publish/Server/linux/*.run
+          Publish/Agent/linux/*.run
 
   github-release:
     needs: [version, build-windows, build-linux]

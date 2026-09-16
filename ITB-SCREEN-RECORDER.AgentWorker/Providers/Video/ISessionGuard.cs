@@ -3,9 +3,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.Versioning;
 using ITB_SCREEN_RECORDER.Core.Common;
-using ITBRecorderAgent.Providers.Video;
+using ITBRecorderAgent.Providers.Video; // עבור ScreenCaptureFactory
 
-namespace ITBRecorderAgent.Providers.Video
+namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
 {
     public interface ISessionGuard : IDisposable
     {
@@ -25,6 +25,8 @@ namespace ITBRecorderAgent.Providers.Video
         }
     }
 
+    // ה-Attribute הזה מסביר לקומפיילר שהמחלקה מיועדת לווינדוס בלבד,
+    // ולכן הוא לא יזרוק אזהרות על שימוש ב-SystemEvents בתוך לינוקס.
     [SupportedOSPlatform("windows")]
     internal sealed class WindowsDesktopSessionGuard : ISessionGuard
     {

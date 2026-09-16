@@ -6,6 +6,7 @@ using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITBRecorderAgent.Engine;
 using ITBRecorderAgent.Providers.Audio;
 using ITBRecorderAgent.Providers.Video;
+using ITB_SCREEN_RECORDER.AgentWorker.Providers.Video; // הוסף כדי לפתור את שגיאת CS0246
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -135,6 +136,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
             }
 
+            // עדכון הקריאה כדי להשתמש ב-Factory Pattern החדש במקום מחלקה ישירה
             using var guard = SessionGuardFactory.Create(() =>
             {
                 if (_isStreaming)

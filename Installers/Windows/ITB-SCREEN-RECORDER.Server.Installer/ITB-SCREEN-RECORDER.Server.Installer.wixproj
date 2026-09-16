@@ -4,6 +4,9 @@
 		<Platform>x64</Platform>
 		<Platforms>x64</Platforms>
 
+		<!-- עוגן מדויק לשורש הפתרון: 3 רמות מעלה מ-Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer -->
+		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..'))</SolutionRoot>
+
 		<!-- נרמול גרסה ל-3 מקטעים תקניים -->
 		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
 		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
@@ -14,19 +17,20 @@
 
 		<OutputName>ITB-ScreenRecorder-Server-Setup-$(Version)</OutputName>
 
-		<StagingRoot Condition="'$(StagingRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Publish\Staging'))</StagingRoot>
+		<StagingRoot Condition="'$(StagingRoot)' == ''">$(SolutionRoot)\Publish\Staging</StagingRoot>
 		<ServerStaging>$(StagingRoot)\server_root</ServerStaging>
 		<FeaturesStaging>$(StagingRoot)\features_root</FeaturesStaging>
-		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Publish\Server\windows'))</FinalOutputDir>
+		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Server\windows</FinalOutputDir>
 
-		<DefineConstants>ServerDir=$(ServerStaging);FeaturesDir=$(FeaturesStaging);Version=$(Version)</DefineConstants>
+		<!-- הזרקת SolutionDir לשימוש בטוח בתוך קובץ ה-WXS -->
+		<DefineConstants>ServerDir=$(ServerStaging);FeaturesDir=$(FeaturesStaging);Version=$(Version);RepoRoot=$(SolutionRoot)</DefineConstants>
 
 		<SuppressIces>ICE61</SuppressIces>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\LICENSE-MEDIAMTX.txt" />
-		<Content Include="..\ITB-SCREEN-RECORDER.Server\MediaMTX\mediamtx.yml" />
+		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\MediaMTX\LICENSE-MEDIAMTX.txt" Link="LICENSE-MEDIAMTX.txt" />
+		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\MediaMTX\mediamtx.yml" Link="mediamtx.yml" />
 		<Content Include="UpdateSettings.ps1" />
 		<Content Include="PublishFeatures.ps1" />
 	</ItemGroup>
@@ -49,13 +53,14 @@
 		<MakeDir Directories="$(FeaturesStaging)" />
 
 		<Message Importance="high" Text="=== [2/3] Publishing Central Server &amp; Auto-Discovering All Features ===" />
-		<Exec Command="dotnet publish &quot;$(MSBuildProjectDirectory)\..\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(ServerStaging)&quot;" />
+		<!-- נתיב מתוקן לפרויקט השרת -->
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(ServerStaging)&quot;" />
 
 		<!-- סניטציה: מחיקת קבצי פיתוח שהסתננו לפלט השרת -->
 		<RemoveDir Directories="$(ServerStaging)\Features" ContinueOnError="true" />
 
-		<!-- 💡 הפעלת סקריפט הפרסום החיצוני בצורה נקייה -->
-		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\PublishFeatures.ps1&quot; -FeaturesRoot &quot;$(MSBuildProjectDirectory)\..\Features&quot; -StagingDir &quot;$(FeaturesStaging)&quot; -Configuration &quot;$(Configuration)&quot;" />
+		<!-- נתיב מתוקן לתיקיית Features בשורש הפתרון -->
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\PublishFeatures.ps1&quot; -FeaturesRoot &quot;$(SolutionRoot)\Features&quot; -StagingDir &quot;$(FeaturesStaging)&quot; -Configuration &quot;$(Configuration)&quot;" />
 
 		<ItemGroup>
 			<StrayCoreFiles Include="$(FeaturesStaging)\**\ITB-SCREEN-RECORDER.Core.*" />

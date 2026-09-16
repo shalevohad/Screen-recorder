@@ -9,20 +9,18 @@
 			 Scope="perMachine"
 			 Compressed="yes">
 
-		<!-- הסרת הגרסה הקודמת במלואה לפני כתיבת קבצים חדשים למניעת נעילות והתנגשויות -->
 		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Screen Recorder is already installed."
 					  AllowSameVersionUpgrades="yes"
 					  Schedule="afterInstallValidate" />
 
-		<!-- ביטול Restart Manager להתקנות שקטות (Zero-Touch) -->
 		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
-		<!-- 1. סגירה שקטה מובנית דרך UtilExtension לתהליכי ה-Agent -->
+		<!-- 1. סגירה שקטה של התהליכים -->
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentService.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentWorker.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 
-		<!-- 2. חיסול תהליכים כפוי בהרשאות מורמות (SYSTEM) למניעת Access Denied מול שירותים ותהליכי רקע -->
+		<!-- 2. עצירת תהליכים מורמת לפני עדכון קבצים -->
 		<CustomAction Id="KillAgentServiceProcElevated"
 					  Directory="System64Folder"
 					  ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentService.exe /T"
@@ -37,26 +35,23 @@
 					  Impersonate="no"
 					  Return="ignore" />
 
-		<!-- 3. אריזת הנתונים לתוך ה-ID של הפעולה הבאה (Immediate) -->
+		<!-- 3. הכנת ארגומנטים לעדכון ה-JSON -->
 		<CustomAction Id="SetJsonDataArgs"
 					  Property="UpdateAgentJson"
 					  Value="[INSTALLFOLDER]|[SERVER_IP]"
 					  Execute="immediate" />
 
-		<!-- 4. ריצת הסקריפט לעדכון appsettings.json -->
+		<!-- 4. הפעלת סקריפט ה-PowerShell החיצוני (פותר לחלוטין את שגיאת String Overflow ICE03) -->
 		<CustomAction Id="UpdateAgentJson"
 					  Directory="System64Folder"
-					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;try { $log='C:\Windows\Temp\itb-agent.log'; 'START' | Out-File $log; $d='[UpdateAgentJson]'; $arr=$d.Split('|'); $cleanDir=$arr[0].TrimEnd('\'); $p=Join-Path $cleanDir 'appsettings.json'; $ip=$arr[1]; 'Target File: '+$p+' | IP: '+$ip | Out-File $log -Append; if(-not(Test-Path $p)){ 'File Not Found' | Out-File $log -Append; exit 0 }; $h=if($ip.Contains(':')){$ip.Split(':')[0]}else{$ip}; $c=Get-Content $p -Raw; $q=[\[]char[\]]34; $c=$c -replace ('(?i)'+$q+'DashboardApiUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'DashboardApiUrl'+$q+': '+$q+'http://'+$h+':5090/api/v1/agent/telemetry'+$q); $c=$c -replace ('(?i)'+$q+'RtmpServerBaseUrl'+$q+'\s*:\s*'+$q+'.*?'+$q),($q+'RtmpServerBaseUrl'+$q+': '+$q+'rtmp://'+$h+':19350/live/'+$q); $c | Set-Content $p -Encoding UTF8; 'SUCCESS' | Out-File $log -Append; exit 0 } catch { 'ERR: '+$_.Exception.Message | Out-File $log -Append; exit 0 }&quot;"
+					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -File &quot;[INSTALLFOLDER]UpdateAgentSettings.ps1&quot; &quot;[UpdateAgentJson]&quot;"
 					  Execute="deferred"
 					  Impersonate="no"
 					  Return="ignore" />
 
 		<InstallExecuteSequence>
-			<!-- עצירת תהליכים מורמת לפני עצירת השירותים ומחיקת קבצים ישנים -->
 			<Custom Action="KillAgentServiceProcElevated" Before="StopServices" />
 			<Custom Action="KillAgentWorkerElevated" Before="StopServices" />
-
-			<!-- עדכון ה-JSON ירוץ בהתקנה נקייה בלבד (לא בשדרוג ולא בעת הסרה) -->
 			<Custom Action="SetJsonDataArgs" Before="InstallInitialize" Condition="(NOT Installed) AND (NOT WIX_UPGRADE_DETECTED) AND (NOT REMOVE=&quot;ALL&quot;)" />
 			<Custom Action="UpdateAgentJson" Before="StartServices" Condition="(NOT Installed) AND (NOT WIX_UPGRADE_DETECTED) AND (NOT REMOVE=&quot;ALL&quot;)" />
 		</InstallExecuteSequence>
@@ -119,6 +114,10 @@
 
 			<Component Id="FfmpegLicenseDeclaration" Bitness="always64" Guid="D89A5F6A-7B8C-9D0E-1F2A-3B4C5D6E7F99">
 				<File Id="FfmpegLicenseTxt" Source="LICENSE-FFMPEG.txt" KeyPath="yes" />
+			</Component>
+
+			<Component Id="UpdateAgentSettingsScriptComp" Bitness="always64" Guid="B82D7C1E-4A5F-6D7E-8F9A-0B1C2D3E4F5A">
+				<File Id="UpdateAgentSettingsScriptFile" Source="UpdateAgentSettings.ps1" KeyPath="yes" />
 			</Component>
 
 			<Files Include="$(var.PublishDir)\**">
