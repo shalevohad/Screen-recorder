@@ -13,7 +13,7 @@
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.10" />
 		<!-- חבילת האבטחה לניהול הרשאות Named Pipes בסביבת Windows -->
-		<PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
+		<PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" Condition="'$(OS)' == 'Windows_NT' Or $([MSBuild]::IsOSPlatform('Windows'))" />
 	</ItemGroup>
 
 	<ItemGroup>
