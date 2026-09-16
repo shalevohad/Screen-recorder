@@ -73,14 +73,15 @@ jobs:
     - name: Shutdown .NET Build Server
       run: dotnet build-server shutdown
 
-    - name: Download FFmpeg & FFprobe for Windows (With Retry)
+    - name: Download FFmpeg, FFprobe & MediaMTX for Windows (With Retry)
       shell: pwsh
       run: |
-        $toolsDir = "Tools/Windows"
+        $toolsDir = "Tools/Win"
         New-Item -ItemType Directory -Force -Path $toolsDir
         $agentDir = "ITB-SCREEN-RECORDER.AgentWorker"
         New-Item -ItemType Directory -Force -Path $agentDir
         
+        # 1. הורדת FFmpeg & FFprobe
         $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         $zipPath = "ffmpeg.zip"
         
@@ -108,8 +109,16 @@ jobs:
         Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe"
         Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe"
 
+        # 2. הורדת MediaMTX עבור Windows
+        Write-Host "Downloading MediaMTX for Windows..."
+        $mediamtxUrl = "https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_windows_amd64.zip"
+        $mediamtxZip = "mediamtx_win.zip"
+        Invoke-WebRequest -Uri $mediamtxUrl -OutFile $mediamtxZip
+        Expand-Archive -Path $mediamtxZip -DestinationPath "mediamtx_win_extracted" -Force
+        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$toolsDir\mediamtx.exe"
+
     - name: Restore NuGet dependencies
-      run: dotnet restore
+      run: dotnet restore ITB-Screen-Recorder.sln
 
     - name: Build Windows Installers (MSI)
       run: |
@@ -140,13 +149,14 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
-    - name: Download FFmpeg & FFprobe for Linux
+    - name: Download FFmpeg, FFprobe & MediaMTX for Linux
       run: |
         TOOLS_DIR="Tools/Linux"
         AGENT_DIR="ITB-SCREEN-RECORDER.AgentWorker"
         mkdir -p "$TOOLS_DIR"
         mkdir -p "$AGENT_DIR"
         
+        # 1. FFmpeg & FFprobe
         curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
         tar -xf ffmpeg.tar.xz
         EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-amd64-static")
@@ -159,8 +169,14 @@ jobs:
         cp "$EXTRACTED_DIR/ffprobe" "$AGENT_DIR/ffprobe"
         chmod +x "$AGENT_DIR/ffmpeg" "$AGENT_DIR/ffprobe"
 
+        # 2. MediaMTX ללינוקס
+        curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
+        tar -xzf mediamtx_linux.tar.gz mediamtx
+        cp mediamtx "$TOOLS_DIR/mediamtx"
+        chmod +x "$TOOLS_DIR/mediamtx"
+
     - name: Restore NuGet dependencies
-      run: dotnet restore
+      run: dotnet restore ITB-Screen-Recorder.sln
 
     - name: Publish Linux Binaries & Installers (.run)
       run: |
