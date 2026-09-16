@@ -105,7 +105,7 @@ jobs:
         echo "FFmpeg, FFprobe and MediaMTX placed successfully for Linux."
 
     - name: Restore NuGet dependencies
-      run: dotnet restore ITB-SCREEN-RECORDER.sln
+      run: dotnet restore ITB-Screen-Recorder.sln
 
     - name: Build Solution (Release Configuration - Windows)
       if: startsWith(matrix.os, 'windows')
@@ -126,4 +126,4 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
 
     - name: Run .NET Automated Tests
-      run: dotnet test ITB-SCREEN-RECORDER.sln --no-build --configuration Release --verbosity normal
+      run: dotnet test ITB-Screen-Recorder.sln --no-build --configuration Release --verbosity normal
