@@ -24,10 +24,10 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Restore NuGet packages
-      run: dotnet restore ITB-SCREEN-RECORDER.sln
+      run: dotnet restore ITB-Screen-Recorder.sln
 
     - name: Scan .NET packages for known vulnerabilities
-      run: dotnet list ITB-SCREEN-RECORDER.sln package --vulnerable
+      run: dotnet list ITB-Screen-Recorder.sln package --vulnerable
 
 # --- סריקת חולשות עבור כלל סביבות ה-Frontend (NPM) ---
     - name: Use Node.js 20.x
@@ -67,3 +67,14 @@ jobs:
             echo "::warning:: Directory $dir not found, skipping."
           fi
         done
+```[cite: 15]
+
+---
+
+### הודעת Commit מומלצת:
+
+```git
+fix(ci): correct solution file name casing in security-scan.yml
+
+- Update dependency security architecture workflow to reference 'ITB-Screen-Recorder.sln' with exact casing.
+- Prevent MSBuild MSB1009 file not found errors during scheduled and PR security scans on Ubuntu runners.
