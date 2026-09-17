@@ -9,9 +9,17 @@ import { dirname, resolve } from 'node:path';
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+        react({
+            include: '**/*.{jsx,js}',
+        })
+    ],
+    esbuild: {
+        loader: 'jsx',
+        include: /src\/.*\.[jt]sx?$/,
+        exclude: []
+    },
     define: {
-        // מונע קריסה של React בדפדפן על משתנה process
         'process.env.NODE_ENV': JSON.stringify('production')
     },
     resolve: {
@@ -27,10 +35,8 @@ export default defineConfig({
         outDir: resolve(currentDir, '../wwwroot'),
         emptyOutDir: true,
         rollupOptions: {
-            // מערך ריק מבטיח ש-React ו-ReactDOM נארזים במלואם לתוך הקובץ
             external: [],
             output: {
-                // שומר על ייחודיות קובץ העיצוב למניעת דריסות בין הפיצ'רים
                 assetFileNames: 'extractor-advanced.style.[ext]'
             }
         }

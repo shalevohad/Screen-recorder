@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { formatTimelineClock, formatDuration } from '../../utils/timeFormat';
+﻿import React, { useState, useRef, useEffect } from 'react';
+import { formatTimelineClock, formatDuration } from '../../utils/timeFormat.js';
 import './TransportBar.scss';
 
 export default function TransportBar({
@@ -12,10 +12,9 @@ export default function TransportBar({
     setOutPointMs,
     activeStationId,
     isPlaying,
-    setIsPlaying,
-    onExport
+    setIsPlaying
 }) {
-    const [editingMarker, setEditingMarker] = useState(null); // 'IN' | 'OUT' | null
+    const [editingMarker, setEditingMarker] = useState(null);
     const [tempTimeText, setTempTimeText] = useState('');
     const editInputRef = useRef(null);
 
@@ -72,6 +71,7 @@ export default function TransportBar({
 
     return (
         <div className="viewport-transport-bar">
+            {/* קפסולת הזמנים IN / OUT / DUR */}
             <div className="cut-readouts">
                 <span>
                     IN:{' '}
@@ -86,11 +86,7 @@ export default function TransportBar({
                             onKeyDown={handleEditKeyDown}
                         />
                     ) : (
-                        <span
-                            className="cut-val editable"
-                            onClick={() => handleStartEdit('IN')}
-                            title="Click to edit IN time"
-                        >
+                        <span className="cut-val editable" onClick={() => handleStartEdit('IN')} title="Click to edit IN time">
                             {formatTimelineClock(baseEpochMs + inPointMs, timeMode)}
                         </span>
                     )}
@@ -111,11 +107,7 @@ export default function TransportBar({
                             onKeyDown={handleEditKeyDown}
                         />
                     ) : (
-                        <span
-                            className="cut-val editable"
-                            onClick={() => handleStartEdit('OUT')}
-                            title="Click to edit OUT time"
-                        >
+                        <span className="cut-val editable" onClick={() => handleStartEdit('OUT')} title="Click to edit OUT time">
                             {formatTimelineClock(baseEpochMs + outPointMs, timeMode)}
                         </span>
                     )}
@@ -141,44 +133,18 @@ export default function TransportBar({
 
                 {activeStationId && (
                     <div className="volume-control-widget">
-                        <button
-                            type="button"
-                            className="btn-volume-icon"
-                            onClick={() => setIsMuted(!isMuted)}
-                            title={isMuted ? "Unmute" : "Mute"}
-                        >
+                        <button type="button" className="btn-volume-icon" onClick={() => setIsMuted(!isMuted)}>
                             {isMuted || volume === 0 ? (
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                    <line x1="17" y1="9" x2="23" y2="15" strokeWidth="2" strokeLinecap="round" />
-                                    <line x1="23" y1="9" x2="17" y2="15" strokeWidth="2" strokeLinecap="round" />
-                                </svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><line x1="17" y1="9" x2="23" y2="15" strokeWidth="2" strokeLinecap="round" /><line x1="23" y1="9" x2="17" y2="15" strokeWidth="2" strokeLinecap="round" /></svg>
                             ) : (
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                </svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
                             )}
                         </button>
-                        <input
-                            type="range"
-                            min="0"
-                            max="100"
-                            value={isMuted ? 0 : volume}
-                            onChange={(e) => {
-                                setVolume(Number(e.target.value));
-                                if (isMuted) setIsMuted(false);
-                            }}
-                            className="volume-slider"
-                            title={`Volume: ${isMuted ? 0 : volume}%`}
-                        />
+                        <input type="range" min="0" max="100" value={isMuted ? 0 : volume} onChange={(e) => { setVolume(Number(e.target.value)); if (isMuted) setIsMuted(false); }} className="volume-slider" />
                         <span className="volume-text">{isMuted ? '0%' : `${volume}%`}</span>
                     </div>
                 )}
             </div>
-
-            <button type="button" onClick={onExport} className="btn-action-export">
-                Export Smart Cut
-            </button>
         </div>
     );
 }

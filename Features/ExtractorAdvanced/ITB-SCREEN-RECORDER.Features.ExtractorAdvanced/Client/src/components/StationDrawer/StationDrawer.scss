@@ -1,39 +1,57 @@
 ﻿// Client/src/components/StationDrawer/StationDrawer.scss
 
 .station-drawer-panel {
-    grid-column: 2;
     height: 100%;
-    background-color: #0b1325;
-    border-left: 1px solid #182847;
-    transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    background-color: #070d1a; /* גוון רקע כהה מעט שונה ובולט לטובה */
+    border-left: 1px solid #1e3a8a;
+    border-top-left-radius: 12px; /* פינות מעוגלות רכות */
+    border-bottom-left-radius: 12px; /* פינות מעוגלות רכות */
+    transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     box-sizing: border-box;
+    flex-shrink: 0;
 
     &.is-closed {
-        width: 38px !important;
-        min-width: 38px !important;
-        max-width: 38px !important;
-        background-color: #080f1e;
+        width: 38px;
+        min-width: 38px;
+        background-color: #050914;
+        cursor: pointer;
+        border-top-left-radius: 0;
+        border-bottom-left-radius: 0;
+
+        &:hover {
+            background-color: #0b1325;
+
+            .icon {
+                stroke: #fff;
+            }
+        }
     }
 
     &.is-open {
-        width: 280px !important;
-        min-width: 280px !important;
-        max-width: 280px !important;
-        box-shadow: -8px 0 24px rgba(0, 0, 0, 0.75);
+        width: 320px;
+        min-width: 320px;
+        box-shadow: -15px 0 40px rgba(0, 0, 0, 0.85);
+    }
+
+    &.is-full-width {
+        width: 100%;
+        min-width: 100%;
+        border-left: none;
+        border-radius: 0;
     }
 
     .drawer-header {
-        height: 38px;
+        height: 44px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0 10px;
+        padding: 0 16px;
         border-bottom: 1px solid #182847;
-        cursor: pointer;
-        background-color: #0d172e;
+        background-color: #0a1326;
+        border-top-left-radius: 12px;
         flex-shrink: 0;
 
         .header-title {
@@ -59,7 +77,8 @@
             border: none;
             color: #64748b;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 14px;
+            padding: 4px;
 
             &:hover {
                 color: #fff;
@@ -69,10 +88,10 @@
 
     .drawer-body {
         flex: 1;
-        padding: 10px;
+        padding: 16px;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 12px;
         overflow: hidden;
 
         .search-bar {
@@ -81,26 +100,27 @@
 
             input {
                 flex: 1;
-                background-color: #060b17;
-                border: 1px solid #182847;
-                border-radius: 4px;
-                padding: 5px 8px;
+                background-color: #040813;
+                border: 1px solid #1e3a8a;
+                border-radius: 8px;
+                padding: 8px 12px;
                 color: #fff;
-                font-size: 11px;
+                font-size: 12px;
                 outline: none;
 
                 &:focus {
                     border-color: #00e5ff;
+                    box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
                 }
             }
 
             .btn-sort {
-                background-color: #16223b;
-                border: 1px solid #182847;
+                background-color: #121f3d;
+                border: 1px solid #1e3a8a;
                 color: #94a3b8;
-                border-radius: 4px;
-                padding: 0 6px;
-                font-size: 10px;
+                border-radius: 8px;
+                padding: 0 12px;
+                font-size: 11px;
                 font-weight: 600;
                 cursor: pointer;
 
@@ -110,67 +130,105 @@
             }
         }
 
+        .full-width-hint {
+            color: #00e5ff;
+            font-size: 12.5px;
+            font-weight: 600;
+            padding: 8px 0;
+            text-align: center;
+        }
+
         .station-list {
             flex: 1;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 8px;
+            padding-right: 4px;
+
+            &.grid-view {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+                grid-auto-rows: min-content;
+                gap: 10px;
+            }
 
             .station-row {
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
-                padding: 6px 8px;
-                background-color: #0e182f;
-                border: 1px solid #1a2846;
-                border-radius: 4px;
+                padding: 10px 14px;
+                background-color: #0b1428;
+                border: 1px solid #192b50;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.15s;
 
-                &.active {
-                    background-color: #16274a;
-                    border-color: rgba(255, 255, 255, 0.4);
+                &:hover {
+                    background-color: #142345;
+                    border-color: #00e5ff;
+                }
+
+                &.selected {
+                    background-color: rgba(0, 229, 255, 0.12);
+                    border-color: #00e5ff;
+
+                    .hostname {
+                        color: #fff;
+                        font-weight: 600;
+                    }
                 }
 
                 .checkbox-wrap {
                     display: flex;
                     align-items: center;
-                    gap: 6px;
-                    cursor: pointer;
-                    overflow: hidden;
+                    gap: 10px;
+                    width: 100%;
 
                     input {
                         accent-color: #00e5ff;
                         cursor: pointer;
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 4px;
                     }
 
                     .hostname {
-                        font-size: 11px;
+                        font-size: 12.5px;
                         color: #cbd5e1;
                         white-space: nowrap;
                         text-overflow: ellipsis;
                         overflow: hidden;
                     }
                 }
+            }
+        }
 
-                .btn-preview {
-                    font-size: 9px;
-                    font-weight: 800;
-                    padding: 2px 6px;
-                    border-radius: 3px;
-                    border: none;
-                    cursor: pointer;
-                    background-color: #213256;
-                    color: #94a3b8;
+        .drawer-footer {
+            margin-top: auto;
+            padding-top: 12px;
+            border-top: 1px solid #182847;
 
-                    &.viewing {
-                        background-color: #00e676;
-                        color: #020617;
-                    }
+            .btn-apply-changes {
+                width: 100%;
+                background-color: #00e5ff;
+                color: #020617;
+                border: none;
+                padding: 10px;
+                border-radius: 8px;
+                font-weight: 700;
+                font-size: 13px;
+                cursor: pointer;
+                transition: background 0.15s;
 
-                    &:hover:not(.viewing) {
-                        background-color: #2c4270;
-                        color: #fff;
-                    }
+                &:hover:not(:disabled) {
+                    background-color: #00b8cc;
+                    box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+                }
+
+                &:disabled {
+                    background-color: #162441;
+                    color: #475569;
+                    cursor: not-allowed;
                 }
             }
         }

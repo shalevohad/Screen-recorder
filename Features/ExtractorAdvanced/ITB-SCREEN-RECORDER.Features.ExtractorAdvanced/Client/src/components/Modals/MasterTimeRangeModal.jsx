@@ -5,10 +5,14 @@ import './MasterTimeRangeModal.scss';
 export default function MasterTimeRangeModal({ isOpen, onClose, currentRange, onApplyRange }) {
     if (!isOpen || typeof document === 'undefined') return null;
 
-    const [startDate, setStartDate] = useState(currentRange.start.slice(0, 10));
-    const [startTime, setStartTime] = useState(currentRange.start.slice(11, 19) || '11:00:00');
-    const [endDate, setEndDate] = useState(currentRange.end.slice(0, 10));
-    const [endTime, setEndTime] = useState(currentRange.end.slice(11, 19) || '12:00:00');
+    // שימוש בפורמט בטוח (עם T) כדי למנוע NaN
+    const safeStart = currentRange.start.includes('T') ? currentRange.start : currentRange.start.replace(' ', 'T');
+    const safeEnd = currentRange.end.includes('T') ? currentRange.end : currentRange.end.replace(' ', 'T');
+
+    const [startDate, setStartDate] = useState(safeStart.slice(0, 10));
+    const [startTime, setStartTime] = useState(safeStart.slice(11, 19) || '11:00:00');
+    const [endDate, setEndDate] = useState(safeEnd.slice(0, 10));
+    const [endTime, setEndTime] = useState(safeEnd.slice(11, 19) || '12:00:00');
 
     const handlePreset = (minutes) => {
         const now = new Date();
@@ -25,10 +29,11 @@ export default function MasterTimeRangeModal({ isOpen, onClose, currentRange, on
     };
 
     const handleApply = () => {
-        const fullStart = `${startDate} ${startTime}`;
-        const fullEnd = `${endDate} ${endTime}`;
-        const startMs = new Date(fullStart.replace(' ', 'T')).getTime();
-        const endMs = new Date(fullEnd.replace(' ', 'T')).getTime();
+        // שומרים על פורמט ISO תקני עם T
+        const fullStart = `${startDate}T${startTime}`;
+        const fullEnd = `${endDate}T${endTime}`;
+        const startMs = new Date(fullStart).getTime();
+        const endMs = new Date(fullEnd).getTime();
         const diffMs = Math.max(60000, endMs - startMs);
 
         onApplyRange({
@@ -55,7 +60,6 @@ export default function MasterTimeRangeModal({ isOpen, onClose, currentRange, on
                     <button className="btn-close-modal" onClick={onClose} title="Close (Esc)">✕</button>
                 </div>
 
-                {/* כפתורי Preset מהירים ומעוצבים */}
                 <div className="presets-toolbar">
                     <button className="preset-chip" onClick={() => handlePreset(15)} title="Set scope to the last 15 minutes of live operations">
                         <span className="dot" />
@@ -75,7 +79,6 @@ export default function MasterTimeRangeModal({ isOpen, onClose, currentRange, on
                     </button>
                 </div>
 
-                {/* בחירת תאריך ושעה מלאים להתחלה ולסיום */}
                 <div className="datetime-selection-grid">
                     <div className="scope-col">
                         <div className="col-heading">START POINT (FROM)</div>

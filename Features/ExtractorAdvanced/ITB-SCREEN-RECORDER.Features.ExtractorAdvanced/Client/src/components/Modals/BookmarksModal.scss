@@ -1,0 +1,164 @@
+.bookmarks-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(4, 9, 20, 0.8);
+    backdrop-filter: blur(3px);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .bookmarks-modal-container {
+        width: 500px;
+        max-width: 90vw;
+        background-color: #0b1426;
+        border: 1px solid #1c3054;
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background-color: #080e1a;
+            border-bottom: 1px solid #162441;
+
+            h3 {
+                margin: 0;
+                color: #fff;
+                font-size: 16px;
+            }
+
+            .close-btn {
+                background: none;
+                border: none;
+                color: #94a3b8;
+                cursor: pointer;
+                font-size: 16px;
+
+                &:hover {
+                    color: #fff;
+                }
+            }
+        }
+
+        .modal-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+
+            .save-bookmark-form {
+                display: flex;
+                gap: 10px;
+
+                input {
+                    flex: 1;
+                    background: #080e1a;
+                    border: 1px solid #1c3054;
+                    color: #fff;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    outline: none;
+
+                    &:focus {
+                        border-color: #00e5ff;
+                    }
+                }
+
+                button {
+                    background: #00e5ff;
+                    color: #000;
+                    border: none;
+                    padding: 0 16px;
+                    border-radius: 4px;
+                    font-weight: 700;
+                    font-size: 12px;
+                    cursor: pointer;
+
+                    &:hover:not(:disabled) {
+                        background: #00b8cc;
+                    }
+
+                    &:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                    }
+                }
+            }
+
+            .bookmarks-list {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                max-height: 300px;
+                overflow-y: auto;
+
+                h4 {
+                    margin: 0 0 5px 0;
+                    color: #94a3b8;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                }
+
+                .no-bookmarks {
+                    color: #64748b;
+                    font-size: 13px;
+                    text-align: center;
+                    margin: 20px 0;
+                }
+
+                .bookmark-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    background: #0d172e;
+                    border: 1px solid #162441;
+                    padding: 10px 14px;
+                    border-radius: 6px;
+
+                    .bm-info {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 2px;
+                        overflow: hidden;
+
+                        .bm-title {
+                            color: #fff;
+                            font-size: 13px;
+                            font-weight: 600;
+                        }
+
+                        .bm-meta {
+                            color: #94a3b8;
+                            font-size: 11px;
+                        }
+                    }
+
+                    .load-bm-btn {
+                        background: rgba(0, 229, 255, 0.1);
+                        border: 1px solid #00e5ff;
+                        color: #00e5ff;
+                        padding: 5px 10px;
+                        border-radius: 4px;
+                        font-size: 11px;
+                        cursor: pointer;
+
+                        &:hover {
+                            background: #00e5ff;
+                            color: #000;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

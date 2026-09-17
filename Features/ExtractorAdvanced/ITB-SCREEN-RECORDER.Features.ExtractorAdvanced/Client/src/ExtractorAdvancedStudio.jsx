@@ -1,137 +1,220 @@
-﻿import React, { useState, useMemo } from 'react';
-import TopScopeBar from './components/TopScopeBar/TopScopeBar';
-import MulticamViewport from './components/Viewport/MulticamViewport';
-import TransportBar from './components/TransportBar/TransportBar';
-import TimelineBoard from './components/Timeline/TimelineBoard';
-import StationDrawer from './components/StationDrawer/StationDrawer';
-import MasterTimeRangeModal from './components/Modals/MasterTimeRangeModal';
+﻿import React, { useState, useMemo, useEffect } from 'react';
+import TopScopeBar from './components/TopScopeBar/TopScopeBar.jsx';
+import MulticamViewport from './components/Viewport/MulticamViewport.jsx';
+import TransportBar from './components/TransportBar/TransportBar.jsx';
+import TimelineBoard from './components/Timeline/TimelineBoard.jsx';
+import StationDrawer from './components/StationDrawer/StationDrawer.jsx';
+import MasterTimeRangeModal from './components/Modals/MasterTimeRangeModal.jsx';
+import BookmarksModal from './components/Modals/BookmarksModal.jsx';
 import './ExtractorAdvancedStudio.scss';
 
-const MOCK_STATIONS = [
-    { id: 'st-1', hostname: 'PC-01 (Main Operator)' },
-    { id: 'st-2', hostname: 'PC-02 (Secondary Radar)' },
-    { id: 'st-3', hostname: 'PC-03 (East Watchtower)' },
-    { id: 'st-4', hostname: 'CCTV-Gate-North' }
-];
+const pad = (n) => String(n).padStart(2, '0');
+const formatStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+const generateDefaultTimeRange = () => {
+    const now = new Date();
+    const fourHoursAgo = new Date(now.getTime() - (4 * 60 * 60 * 1000));
+    return {
+        start: formatStr(fourHoursAgo),
+        end: formatStr(now),
+        durationMs: 14400000
+    };
+};
+
+const parseSafeEpoch = (dateStr) => {
+    if (!dateStr) return new Date().getTime();
+    const safeStr = dateStr.replace(' ', 'T');
+    const ms = new Date(safeStr).getTime();
+    return isNaN(ms) ? new Date().getTime() : ms;
+};
 
 export default function ExtractorAdvancedStudio() {
-    const [timeRange, setTimeRange] = useState({
-        start: '2026-09-17 10:27:31',
-        end: '2026-09-17 14:27:31',
-        durationMs: 14400000
-    });
+    const [timeRange, setTimeRange] = useState(generateDefaultTimeRange);
+    const [timeMode, setTimeMode] = useState('LOCAL');
 
-    const [timeMode, setTimeMode] = useState('LOCAL'); // 'LOCAL' | 'UTC'
+    const baseEpochMs = useMemo(() => parseSafeEpoch(timeRange.start), [timeRange.start]);
 
-    const baseEpochMs = useMemo(() => {
-        return new Date(timeRange.start.replace(' ', 'T')).getTime();
-    }, [timeRange.start]);
+    const [allStations, setAllStations] = useState([]);
+    const [selectedStationIds, setSelectedStationIds] = useState([]);
+    const [activeStationId, setActiveStationId] = useState(null);
 
     const [isRangeModalOpen, setIsRangeModalOpen] = useState(false);
+    const [isBookmarksModalOpen, setIsBookmarksModalOpen] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(1);
-    const [playheadMs, setPlayheadMs] = useState(1800000);
-    const [inPointMs, setInPointMs] = useState(1551000);
-    const [outPointMs, setOutPointMs] = useState(3351000);
-    const [isPlaying, setIsPlaying] = useState(false);
 
-    const [allStations] = useState(MOCK_STATIONS);
-    const [selectedStationIds, setSelectedStationIds] = useState(['st-2', 'st-3', 'st-4']);
-    const [activeStationId, setActiveStationId] = useState(null);
+    const [playheadMs, setPlayheadMs] = useState(7200000);
+    const [inPointMs, setInPointMs] = useState(0);
+    const [outPointMs, setOutPointMs] = useState(14400000);
+
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [isWorkspaceActive, setIsWorkspaceActive] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+    const isInitialSetup = !isWorkspaceActive;
+    const forceDrawerOpen = isDrawerOpen || isInitialSetup;
+
+    useEffect(() => {
+        const fetchStations = async () => {
+            if (isNaN(baseEpochMs)) return;
+            const endEpochMs = baseEpochMs + timeRange.durationMs;
+            try {
+                const response = await fetch(`/api/v1/extractor-advanced/stations?startEpoch=${baseEpochMs}&endEpoch=${endEpochMs}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setAllStations(data);
+                }
+            } catch (error) {
+                console.error('[Studio] Failed to fetch stations:', error);
+            }
+        };
+        fetchStations();
+    }, [baseEpochMs, timeRange.durationMs]);
 
     const activeStation = allStations.find(s => s.id === activeStationId);
     const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
 
-    const handleExportSmartCut = () => {
+    const handleLoadBookmark = (bm) => {
+        const startMs = parseSafeEpoch(bm.startTime);
+        const endMs = parseSafeEpoch(bm.endTime);
+        const durationMs = Math.max(0, endMs - startMs);
+
+        setTimeRange({ start: bm.startTime, end: bm.endTime, durationMs: durationMs > 0 ? durationMs : 14400000 });
+        setPlayheadMs(bm.playheadMs ?? 0);
+        setInPointMs(bm.inPointMs ?? 0);
+        setOutPointMs(bm.outPointMs ?? durationMs);
+
+        if (bm.stationIds && bm.stationIds.length > 0) {
+            setSelectedStationIds(bm.stationIds);
+            setActiveStationId(bm.stationIds[0]);
+        }
+
+        setIsWorkspaceActive(true);
+        setIsDrawerOpen(false);
+    };
+
+    const handleExportSmartCut = async () => {
+        const targetStation = activeStationId || (timelineStations[0] ? timelineStations[0].id : null);
+        if (!targetStation) return alert('No station selected for export.');
+
         const payload = {
-            stationId: activeStationId || (timelineStations[0] ? timelineStations[0].id : null),
+            stationId: targetStation,
             inEpochMs: baseEpochMs + inPointMs,
-            outEpochMs: baseEpochMs + outPointMs,
-            durationMs: Math.max(0, outPointMs - inPointMs)
+            outEpochMs: baseEpochMs + outPointMs
         };
-        console.log('[SMART-CUT] Exporting cut range (UTC Epoch Absolute):', payload);
+
+        try {
+            const response = await fetch('/api/v1/extractor-advanced/export-cut', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error(`Status: ${response.status}`);
+            const result = await response.json();
+            alert(`Export Successful!\nSaved to: ${result.filePath}`);
+        } catch (error) {
+            console.error('[Studio] Export Error:', error);
+            alert('Export failed. Check console.');
+        }
     };
 
     return (
         <div className="extractor-advanced-studio">
             <div className="studio-workspace-area">
-                {/* 1. סרגל זמן ומתגים עליון */}
                 <TopScopeBar
                     timeRange={timeRange}
                     baseEpochMs={baseEpochMs}
                     timeMode={timeMode}
                     setTimeMode={setTimeMode}
                     activeStationId={activeStationId}
+                    selectedStationCount={selectedStationIds.length}
                     onResetActiveStation={() => setActiveStationId(null)}
                     onOpenRangeModal={() => setIsRangeModalOpen(true)}
+                    onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
+                    onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
                 />
 
-                {/* 2. אזור התצוגה המרכזי (רב-ערוצי או בודד) */}
-                <div className="studio-main-viewport-container">
-                    <MulticamViewport
-                        activeStation={activeStation}
-                        timelineStations={timelineStations}
-                        onSelectActiveStation={(id) => setActiveStationId(id)}
-                        baseEpochMs={baseEpochMs}
-                        playheadMs={playheadMs}
-                        timeMode={timeMode}
-                    />
+                <div className="studio-lower-body" style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
 
-                    {/* 3. סרגל ה-Transport: עריכת IN/OUT, שליטה בניגון ו-Export */}
-                    <TransportBar
-                        baseEpochMs={baseEpochMs}
-                        timeMode={timeMode}
-                        totalDurationMs={timeRange.durationMs}
-                        inPointMs={inPointMs}
-                        setInPointMs={setInPointMs}
-                        outPointMs={outPointMs}
-                        setOutPointMs={setOutPointMs}
-                        activeStationId={activeStationId}
-                        isPlaying={isPlaying}
-                        setIsPlaying={setIsPlaying}
-                        onExport={handleExportSmartCut}
-                    />
-                </div>
+                    <div className="studio-left-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+                        <div className="studio-main-viewport-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            <MulticamViewport
+                                activeStation={activeStation}
+                                timelineStations={timelineStations}
+                                onSelectActiveStation={(id) => setActiveStationId(id)}
+                                baseEpochMs={baseEpochMs}
+                                playheadMs={playheadMs}
+                                timeMode={timeMode}
+                            />
+                            <TransportBar
+                                baseEpochMs={baseEpochMs}
+                                timeMode={timeMode}
+                                totalDurationMs={timeRange.durationMs}
+                                inPointMs={inPointMs}
+                                setInPointMs={setInPointMs}
+                                outPointMs={outPointMs}
+                                setOutPointMs={setOutPointMs}
+                                activeStationId={activeStationId}
+                                isPlaying={isPlaying}
+                                setIsPlaying={setIsPlaying}
+                            />
+                        </div>
 
-                {/* 4. ציר הזמן התחתון */}
-                <div className="studio-bottom-timeline">
-                    <TimelineBoard
-                        stations={timelineStations}
-                        activeStationId={activeStationId}
-                        onSelectActiveStation={(id) => setActiveStationId(id === activeStationId ? null : id)}
-                        baseEpochMs={baseEpochMs}
-                        timeMode={timeMode}
-                        totalDurationMs={timeRange.durationMs}
-                        zoomLevel={zoomLevel}
-                        onZoomChange={setZoomLevel}
-                        onZoomReset={() => setZoomLevel(1)}
-                        playheadMs={playheadMs}
-                        setPlayheadMs={setPlayheadMs}
-                        inPointMs={inPointMs}
-                        setInPointMs={setInPointMs}
-                        outPointMs={outPointMs}
-                        setOutPointMs={setOutPointMs}
+                        <div className="studio-bottom-timeline" style={{ flexShrink: 0}}>
+                            <TimelineBoard
+                                stations={timelineStations}
+                                activeStationId={activeStationId}
+                                onSelectActiveStation={(id) => setActiveStationId(id === activeStationId ? null : id)}
+                                baseEpochMs={baseEpochMs}
+                                timeMode={timeMode}
+                                totalDurationMs={timeRange.durationMs}
+                                zoomLevel={zoomLevel}
+                                onZoomChange={setZoomLevel}
+                                onZoomReset={() => setZoomLevel(1)}
+                                playheadMs={playheadMs}
+                                setPlayheadMs={setPlayheadMs}
+                                inPointMs={inPointMs}
+                                setInPointMs={setInPointMs}
+                                outPointMs={outPointMs}
+                                setOutPointMs={setOutPointMs}
+                                onExport={handleExportSmartCut}
+                            />
+                        </div>
+                    </div>
+
+                    <StationDrawer
+                        isOpen={forceDrawerOpen}
+                        onToggle={() => setIsDrawerOpen(!isDrawerOpen)}
+                        onClose={() => setIsDrawerOpen(false)}
+                        allStations={allStations}
+                        selectedStationIds={selectedStationIds}
+                        onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                        isInitialSetup={isInitialSetup}
+                        onApply={() => {
+                            setIsWorkspaceActive(true);
+                            setIsDrawerOpen(false);
+                        }}
+                        onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     />
                 </div>
             </div>
 
-            {/* מגירת תחנות */}
-            <StationDrawer
-                isOpen={isDrawerOpen}
-                onToggle={() => setIsDrawerOpen(!isDrawerOpen)}
-                allStations={allStations}
-                selectedStationIds={selectedStationIds}
-                onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
-                activeStationId={activeStationId}
-                onSetActiveStation={(id) => setActiveStationId(id === activeStationId ? null : id)}
-            />
-
-            {/* מודאל שינוי טווח זמנים */}
             <MasterTimeRangeModal
                 isOpen={isRangeModalOpen}
                 onClose={() => setIsRangeModalOpen(false)}
                 currentRange={timeRange}
-                onApplyRange={setTimeRange}
+                onApplyRange={(newRange) => {
+                    setTimeRange(newRange);
+                    setInPointMs(0);
+                    setOutPointMs(newRange.durationMs);
+                    setPlayheadMs(Math.floor(newRange.durationMs / 2));
+                }}
+            />
+
+            <BookmarksModal
+                isOpen={isBookmarksModalOpen}
+                onClose={() => setIsBookmarksModalOpen(false)}
+                currentState={{ timeRange, playheadMs, inPointMs, outPointMs, selectedStationIds }}
+                onLoadBookmark={handleLoadBookmark}
             />
         </div>
     );

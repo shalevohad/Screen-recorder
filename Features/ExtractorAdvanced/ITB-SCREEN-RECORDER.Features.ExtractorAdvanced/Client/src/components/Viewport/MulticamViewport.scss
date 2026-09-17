@@ -1,13 +1,17 @@
-﻿.multicam-viewport-root {
-    flex: 1;
+﻿// Client/src/components/Viewport/MulticamViewport.scss
+
+.multicam-viewport-root {
+    flex: 1 1 0;
     min-height: 0;
+    width: 100%;
     background: transparent;
     display: flex;
     flex-direction: column;
-    overflow: hidden; // חוסם לחלוטין גלילה ב-Viewport
+    overflow: hidden;
 
     .single-focus-feed {
-        flex: 1;
+        flex: 1 1 0;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -27,129 +31,118 @@
             color: #fff;
         }
     }
-    /* גריד דינמי שמתאים את גודל הכרטיסים אוטומטית לכמות התחנות כדי למנוע גלילה לחלוטין */
+
     .multicam-tactical-grid {
-        flex: 1;
+        flex: 1 1 0;
         min-height: 0;
+        width: 100%;
         padding: 10px;
-        overflow: hidden;
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
+        box-sizing: border-box;
+        display: grid;
+        gap: 12px;
         align-items: center;
-        align-content: center;
-        gap: 10px;
+        justify-items: center;
 
-        .camera-card {
-            aspect-ratio: 16 / 9;
-            background-color: rgba(8, 16, 33, 0.85);
-            border: 1px solid #182847;
-            border-radius: 4px;
+        .camera-card-cell {
+            container-type: size;
+            width: 100%;
+            height: 100%;
             display: flex;
-            flex-direction: column;
-            cursor: pointer;
-            box-sizing: border-box;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            align-items: center;
+            justify-content: center;
+            min-width: 0;
+            min-height: 0;
 
-            &:hover {
-                border-color: #00e5ff;
-                box-shadow: 0 0 12px rgba(0, 229, 255, 0.2);
-            }
-
-            .card-topbar {
-                height: 24px;
-                background-color: #0d172e;
-                border-bottom: 1px solid #162441;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 0 10px;
-                flex-shrink: 0;
-
-                .station-meta {
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-
-                    .status-pulse {
-                        width: 6px;
-                        height: 6px;
-                        border-radius: 50%;
-                        background-color: #00e676;
-                    }
-
-                    .station-name {
-                        font-size: 11px;
-                        font-weight: 700;
-                        color: #e2e8f0;
-                    }
-                }
-
-                .focus-hover-badge {
-                    font-size: 9px;
-                    color: #00e5ff;
-                }
-            }
-
-            .card-feed-placeholder {
-                flex: 1;
+            .camera-card {
+                aspect-ratio: 16 / 9;
+                width: 100cqw;
+                max-width: calc(100cqh * (16 / 9));
+                max-height: 100cqh;
+                background-color: rgba(8, 16, 33, 0.85);
+                /* מסגרת בצבע טקטי-חי (טורקיז/כחול עמוק) שמוציא את המערכת מהחיוורון */
+                border: 1px solid #0284c7;
+                border-radius: 10px;
                 display: flex;
                 flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                position: relative;
+                cursor: pointer;
+                box-sizing: border-box;
+                overflow: hidden;
+                box-shadow: 0 4px 16px rgba(2, 132, 199, 0.15);
+                transition: border-color 0.15s ease, box-shadow 0.15s ease;
 
-                .tactical-crosshair {
-                    width: 20px;
-                    height: 20px;
-                    border-top: 1px solid #1c3054;
-                    border-bottom: 1px solid #1c3054;
-                    margin-bottom: 6px;
+                &:hover {
+                    border-color: #00e5ff;
+                    box-shadow: 0 6px 24px rgba(0, 229, 255, 0.35);
                 }
 
-                .fetch-indicator {
-                    font-size: 10px;
-                    font-family: inherit;
-                    color: #00e5ff;
-                    background: rgba(0, 229, 255, 0.1);
-                    padding: 2px 8px;
-                    border-radius: 3px;
-                    border: 1px solid rgba(0, 229, 255, 0.2);
+                .card-topbar {
+                    height: 26px;
+                    background-color: #0a1326;
+                    border-bottom: 1px solid #0284c7;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 0 12px;
+                    flex-shrink: 0;
+
+                    .station-meta {
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+
+                        .status-pulse {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 50%;
+                            background-color: #00e676;
+                            box-shadow: 0 0 6px #00e676;
+                        }
+
+                        .station-name {
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #f8fafc;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }
+                    }
+
+                    .focus-hover-badge {
+                        font-size: 9px;
+                        color: #00e5ff;
+                        font-weight: 700;
+                    }
+                }
+
+                .card-feed-placeholder {
+                    flex: 1 1 0;
+                    min-height: 0;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    position: relative;
+
+                    .tactical-crosshair {
+                        width: 20px;
+                        height: 20px;
+                        border-top: 1px solid #0284c7;
+                        border-bottom: 1px solid #0284c7;
+                        margin-bottom: 6px;
+                    }
+
+                    .fetch-indicator {
+                        font-size: 10px;
+                        font-family: inherit;
+                        color: #00e5ff;
+                        background: rgba(0, 229, 255, 0.12);
+                        padding: 3px 10px;
+                        border-radius: 6px;
+                        border: 1px solid rgba(0, 229, 255, 0.3);
+                    }
                 }
             }
-        }
-        /* 1 תחנה: תופסת את רוב המסחור בשמירה על 16:9 */
-        &[data-count="1"] .camera-card {
-            flex: 0 1 75%;
-            max-height: calc(100% - 12px);
-        }
-        /* 2 תחנות: שתיים זו לצד זו */
-        &[data-count="2"] .camera-card {
-            flex: 0 1 calc(50% - 10px);
-            max-width: calc(50% - 10px);
-            max-height: calc(100% - 12px);
-        }
-        /* 3 או 4 תחנות: גריד של 2x2 מושלם */
-        &[data-count="3"] .camera-card,
-        &[data-count="4"] .camera-card {
-            flex: 0 1 calc(50% - 10px);
-            max-width: calc(50% - 10px);
-            max-height: calc(50% - 10px);
-        }
-        /* 5 עד 6 תחנות: 3 בשורה (עד שתי שורות) */
-        &[data-count="5"] .camera-card,
-        &[data-count="6"] .camera-card {
-            flex: 0 1 calc(33.333% - 10px);
-            max-width: calc(33.333% - 10px);
-            max-height: calc(50% - 10px);
-        }
-        /* 7 עד 9 תחנות: 3 בשורה במבנה 3x3 קומפקטי */
-        &[data-count="7"] .camera-card,
-        &[data-count="8"] .camera-card,
-        &[data-count="9"] .camera-card {
-            flex: 0 1 calc(33.333% - 10px);
-            max-width: calc(33.333% - 10px);
-            max-height: calc(33.333% - 10px);
         }
     }
 }

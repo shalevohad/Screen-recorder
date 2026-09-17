@@ -24,7 +24,7 @@ export default function Playhead({
     outPointMs = 3600000,
     onStartDrag
 }) {
-    // חישוב מיקום יחסי באחוזים ביחס לחלון הנצפה (Viewport)
+    // חישוב אחוזים למיקום הסמנים
     const toPercent = (ms) => {
         if (!viewportDurationMs || viewportDurationMs <= 0) return '0%';
         const offset = ms - viewportStartMs;
@@ -34,57 +34,59 @@ export default function Playhead({
     const inPercent = ((inPointMs - viewportStartMs) / viewportDurationMs) * 100;
     const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;
 
-    // חיתוך גבולות התצוגה של רצועת החיתוך כך שלא תחרוג מחוץ ל-Viewport
     const visibleRangeLeft = Math.max(0, inPercent);
     const visibleRangeRight = Math.min(100, outPercent);
     const visibleRangeWidth = Math.max(0, visibleRangeRight - visibleRangeLeft);
 
     const handleMouseDown = (type) => (e) => {
         e.preventDefault();
-        e.stopPropagation(); // מונע מאירוע הגרירה של הקו להפעיל את גרירת השטח שמתחתיו
+        e.stopPropagation();
         if (typeof onStartDrag === 'function') {
             onStartDrag(type, e);
         }
     };
 
+    // אלגוריתם היפוך חכם:
+    // ברירת המחדל היא שהסמנים מצביעים החוצה כדי לא להסתיר את תוכן החיתוך.
+    // אבל אם גוררים אותם לקצה הקיצוני של המסך, הם מתהפכים פנימה כדי לא להעלם.
+    const flipIn = inPercent < 1.5;
+    const flipOut = outPercent > 98.5;
+
     return (
         <div className="playhead-overlay-pane">
-            {/* רצועת השטח שבין IN ל-OUT - גרירה של כל החיתוך כמקשה אחת */}
+
             {visibleRangeWidth > 0 && (
                 <div
                     className="draggable-cut-band"
-                    style={{
-                        left: `${visibleRangeLeft}%`,
-                        width: `${visibleRangeWidth}%`
-                    }}
+                    style={{ left: `${visibleRangeLeft}%`, width: `${visibleRangeWidth}%` }}
                     onMouseDown={handleMouseDown('range')}
                     title="Drag body to move entire cut range"
                 />
             )}
 
-            {/* סמן קו IN נפרד עם Hitbox מורחב ו-z-index עליון */}
+            {/* סמן IN */}
             <div
-                className="marker in-marker"
+                className={`marker in-marker ${flipIn ? 'flipped' : ''}`}
                 style={{ left: toPercent(inPointMs) }}
                 onMouseDown={handleMouseDown('in')}
                 title="Drag IN Point"
             >
-                <div className="handle-badge">[ IN</div>
+                <div className="handle-badge"></div>
                 <div className="marker-core-line" />
             </div>
 
-            {/* סמן קו OUT נפרד עם Hitbox מורחב ו-z-index עליון */}
+            {/* סמן OUT */}
             <div
-                className="marker out-marker"
+                className={`marker out-marker ${flipOut ? 'flipped' : ''}`}
                 style={{ left: toPercent(outPointMs) }}
                 onMouseDown={handleMouseDown('out')}
                 title="Drag OUT Point"
             >
-                <div className="handle-badge">OUT ]</div>
+                <div className="handle-badge"></div>
                 <div className="marker-core-line" />
             </div>
 
-            {/* מחט ה-Playhead הראשית המציגה שעת אמת לפי timeMode */}
+            {/* מחט Playhead */}
             <div
                 className="playhead-needle"
                 style={{ left: toPercent(playheadMs) }}

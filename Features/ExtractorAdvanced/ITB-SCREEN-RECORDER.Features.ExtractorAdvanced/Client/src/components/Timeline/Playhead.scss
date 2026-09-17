@@ -1,15 +1,18 @@
-﻿.playhead-overlay-pane {
+﻿// Client/src/components/Timeline/Playhead.scss
+
+.playhead-overlay-pane {
     position: absolute;
-    top: 0;
+    top: 28px;
     bottom: 0;
     left: 150px;
-    right: 0;
+    right: 49px; /* רוחב כפתור ה-Export (44px) + הרווח החדש (5px) כך שהסמן נעצר בשלמותו */
     pointer-events: none;
     z-index: 40;
+    overflow: hidden;
 
     .draggable-cut-band {
         position: absolute;
-        top: 0;
+        top: 30px;
         bottom: 0;
         background: rgba(0, 229, 255, 0.08);
         border-top: 1px dashed rgba(0, 229, 255, 0.5);
@@ -23,10 +26,10 @@
             background: rgba(0, 229, 255, 0.16);
         }
     }
-    /* קווי IN ו-OUT עם ידיות חיצוניות לחלוטין לטווח החיתוך */
+
     .marker {
         position: absolute;
-        top: 0;
+        top: 30px;
         bottom: 0;
         width: 14px;
         margin-left: -7px;
@@ -58,19 +61,36 @@
             justify-content: center;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
             user-select: none;
+            transition: all 0.15s ease-out;
         }
-        /* ידית ה-IN ממוקמת משמאל לקו (חיצונית לחיתוך) */
-        &.in-marker .handle-badge {
-            right: 7px;
-            border-radius: 3px 0 0 3px;
+
+        &.in-marker {
+            .handle-badge {
+                right: 7px;
+                border-radius: 3px 0 0 3px;
+            }
+
+            &.flipped .handle-badge {
+                right: auto;
+                left: 7px;
+                border-radius: 0 3px 3px 0;
+            }
         }
-        /* ידית ה-OUT ממוקמת מימין לקו (חיצונית לחיתוך) */
-        &.out-marker .handle-badge {
-            left: 7px;
-            border-radius: 0 3px 3px 0;
+
+        &.out-marker {
+            .handle-badge {
+                left: 7px;
+                border-radius: 0 3px 3px 0;
+            }
+
+            &.flipped .handle-badge {
+                left: auto;
+                right: 7px;
+                border-radius: 3px 0 0 3px;
+            }
         }
     }
-    /* מחט ה-Playhead - שעה קטנה וממוקמת מעט נמוך יותר */
+
     .playhead-needle {
         position: absolute;
         top: 0;
@@ -93,27 +113,19 @@
 
         .head-badge {
             position: absolute;
-            top: 15px; /* ממוקם נמוך יותר */
+            top: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
             background-color: #f43f5e;
             color: #fff;
-            font-size: 8.5px; /* שעה קומפקטית ומדויקת */
+            font-size: 9px;
             font-weight: 800;
-            padding: 1px 4px;
+            padding: 0 5px;
             border-radius: 2px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
             white-space: nowrap;
             user-select: none;
-
-            &::after {
-                content: '';
-                position: absolute;
-                bottom: -3px;
-                left: 50%;
-                transform: translateX(-50%);
-                border-left: 3px solid transparent;
-                border-right: 3px solid transparent;
-                border-top: 3px solid #f43f5e;
-            }
         }
     }
 }

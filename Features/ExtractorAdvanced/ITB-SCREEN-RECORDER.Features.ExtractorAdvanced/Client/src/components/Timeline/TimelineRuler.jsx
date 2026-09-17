@@ -1,7 +1,7 @@
 ﻿import React, { useRef, useMemo } from 'react';
+import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './TimelineRuler.scss';
 
-// חישוב מדרגות זמנים עגולות בהתאם לאורך החלון הנצפה
 function getOptimalStepSeconds(durationSec) {
     if (durationSec <= 15) return { major: 5, minor: 1 };
     if (durationSec <= 30) return { major: 10, minor: 2 };
@@ -15,19 +15,6 @@ function getOptimalStepSeconds(durationSec) {
     return { major: 1800, minor: 600 };
 }
 
-// המרת Epoch Ms למחרוזת שעה מפורמטת בהתאם ל-LOCAL / UTC
-const formatTimelineClock = (epochMs, mode = 'LOCAL') => {
-    if (!epochMs || isNaN(epochMs)) return '--:--:--';
-    const d = new Date(epochMs);
-    const pad = (n) => String(n).padStart(2, '0');
-
-    if (mode === 'UTC') {
-        return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-    }
-
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
-
 export default function TimelineRuler({
     baseEpochMs = 0,
     timeMode = 'LOCAL',
@@ -35,17 +22,16 @@ export default function TimelineRuler({
     viewportDurationMs = 3600000,
     hoverMs,
     onHoverChange,
-    onSeek
+    onSeek,
+    inPointMs = 0,
+    outPointMs = 0
 }) {
     const rulerRef = useRef(null);
     const durationSec = Math.max(1, Math.floor(viewportDurationMs / 1000));
-
-    // נקודת הזמן האבסולוטית באפוק שבה מתחיל החלון הנצפה
     const viewportStartEpoch = baseEpochMs + viewportStartMs;
 
     const { major, minor } = useMemo(() => getOptimalStepSeconds(durationSec), [durationSec]);
 
-    // חישוב שנתות שננעלות על שעות ודקות עגולות בשעון האמיתי
     const ticks = useMemo(() => {
         const result = [];
         const startSec = Math.floor(viewportStartEpoch / 1000);
@@ -58,11 +44,7 @@ export default function TimelineRuler({
             const percent = ((currentEpoch - viewportStartEpoch) / viewportDurationMs) * 100;
 
             if (percent >= 0 && percent <= 100) {
-                result.push({
-                    epochMs: currentEpoch,
-                    isMajor,
-                    percent
-                });
+                result.push({ epochMs: currentEpoch, isMajor, percent });
             }
         }
         return result;
@@ -82,36 +64,27 @@ export default function TimelineRuler({
         onSeek(viewportStartMs + (offsetX / rect.width) * viewportDurationMs);
     };
 
+    const inPercent = ((inPointMs - viewportStartMs) / viewportDurationMs) * 100;
+    const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;
+
     return (
-        <div
-            ref={rulerRef}
-            className="timeline-ruler"
-            onMouseMove={handleMouseMove}
-            onMouseLeave={() => onHoverChange(null)}
-            onClick={handleClick}
-        >
-            {/* רינדור שנתות הזמן */}
+        <div ref={rulerRef} className="timeline-ruler" onMouseMove={handleMouseMove} onMouseLeave={() => onHoverChange(null)} onClick={handleClick}>
             {ticks.map(({ epochMs, isMajor, percent }) => (
-                <div
-                    key={epochMs}
-                    className={`tick-anchor ${isMajor ? 'major' : 'minor'}`}
-                    style={{ left: `${percent}%` }}
-                >
-                    {isMajor && (
-                        <span className="tick-label">
-                            {formatTimelineClock(epochMs, timeMode)}
-                        </span>
-                    )}
+                <div key={epochMs} className={`tick-anchor ${isMajor ? 'major' : 'minor'}`} style={{ left: `${percent}%` }}>
+                    {isMajor && <span className="tick-label">{formatTimelineClock(epochMs, timeMode)}</span>}
                     <div className="tick-line" />
                 </div>
             ))}
 
-            {/* אינדיקטור ריחוף עם תגית זמן אמיתית */}
+            {inPercent >= 0 && inPercent <= 100 && (
+                <div className="ruler-cut-marker in" style={{ left: `${inPercent}%` }} />
+            )}
+            {outPercent >= 0 && outPercent <= 100 && (
+                <div className="ruler-cut-marker out" style={{ left: `${outPercent}%` }} />
+            )}
+
             {hoverMs !== null && hoverMs >= viewportStartMs && hoverMs <= viewportStartMs + viewportDurationMs && (
-                <div
-                    className="ruler-hover-badge"
-                    style={{ left: `${((hoverMs - viewportStartMs) / viewportDurationMs) * 100}%` }}
-                >
+                <div className="ruler-hover-badge" style={{ left: `${((hoverMs - viewportStartMs) / viewportDurationMs) * 100}%` }}>
                     <span>{formatTimelineClock(baseEpochMs + hoverMs, timeMode)}</span>
                     <div className="hover-line" />
                 </div>
