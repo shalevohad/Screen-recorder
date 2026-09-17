@@ -12,6 +12,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     public class FeaturesController : ControllerBase
     {
         private readonly IEnumerable<IFeatureModule> _features;
+        // הוספנו דגל סטטי שיוודא שהלוג יודפס רק פעם אחת לאורך חיי הריצה של השרת
+        private static bool _hasLoggedOverride = false;
 
         public FeaturesController(IEnumerable<IFeatureModule> features)
         {
@@ -42,9 +44,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     Supersedes = f.SupersedesIds
                 }).ToList();
 
-            if (supersededIds.Any())
+            if (supersededIds.Any() && !_hasLoggedOverride)
             {
                 Logger.AlwaysInfo($"[API] Plugin Override Chain resolved. Suppressed legacy features: {string.Join(", ", supersededIds)}");
+                _hasLoggedOverride = true; // נועלים את ההדפסה לפעמים הבאות
             }
 
             return Ok(activeFeatures);

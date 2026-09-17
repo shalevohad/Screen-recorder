@@ -35,8 +35,8 @@
 	<!-- הכללת תוצרי ה-Web והמניפסט בפלט ה-Build וה-Publish -->
 	<ItemGroup>
 		<None Update="wwwroot\**">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 			<Visible>true</Visible>
 		</None>
 		<Content Include="feature.json">
@@ -45,8 +45,14 @@
 		</Content>
 	</ItemGroup>
 	<ItemGroup>
-	  <Folder Include="Client\src\" />
-	  <Folder Include="Services\" />
+	  <Folder Include="Client\src\components\Modals\" />
+	  <Folder Include="Client\src\components\TransportBar\" />
+	  <Folder Include="Client\src\components\Viewport\" />
+	  <Folder Include="Client\src\components\TopScopeBar\" />
+	  <Folder Include="Client\src\components\StationDrawer\" />
+	  <Folder Include="Client\src\components\Timeline\" />
+	  <Folder Include="Client\src\hooks\" />
+	  <Folder Include="Client\src\utils\" />
 	  <Folder Include="wwwroot\" />
 	</ItemGroup>
 	<ItemGroup>

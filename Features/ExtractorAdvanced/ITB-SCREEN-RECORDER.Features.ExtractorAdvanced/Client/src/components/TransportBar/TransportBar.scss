@@ -1,0 +1,170 @@
+.viewport-transport-bar {
+    height: 42px;
+    background-color: #080f20;
+    border-top: 1px solid #182847;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    .cut-readouts {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: #64748b;
+        background-color: #0c162d;
+        border: 1px solid #1b2e54;
+        padding: 3px 10px;
+        border-radius: 4px;
+
+        .cut-val {
+            color: #00e5ff;
+            font-weight: bold;
+
+            &.editable {
+                cursor: pointer;
+                border-bottom: 1px dashed rgba(0, 229, 255, 0.5);
+                padding: 0 2px;
+                transition: all 0.12s ease;
+
+                &:hover {
+                    color: #fff;
+                    background-color: rgba(0, 229, 255, 0.15);
+                    border-bottom-color: #00e5ff;
+                }
+            }
+        }
+
+        .inline-time-input {
+            width: 72px;
+            background: #040813;
+            border: 1px solid #00e5ff;
+            border-radius: 3px;
+            color: #00e5ff;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 1px 4px;
+            outline: none;
+            box-shadow: 0 0 6px rgba(0, 229, 255, 0.3);
+        }
+
+        .cut-duration {
+            color: #00e676;
+            font-weight: 700;
+            margin-left: 4px;
+        }
+    }
+
+    .playback-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        .btn-round-playback {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00f0ff 0%, #0088ff 100%);
+            color: #020617;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+
+            svg {
+                width: 14px;
+                height: 14px;
+                fill: #020617;
+            }
+
+            &.disabled {
+                background: #182642;
+                color: #475569;
+                cursor: not-allowed;
+                box-shadow: none;
+
+                svg {
+                    fill: #475569;
+                }
+            }
+        }
+
+        .volume-control-widget {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background-color: #0c162d;
+            border: 1px solid #1b2e54;
+            padding: 2px 10px;
+            border-radius: 20px;
+
+            .btn-volume-icon {
+                background: none;
+                border: none;
+                color: #64748b;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                padding: 0;
+
+                svg {
+                    width: 15px;
+                    height: 15px;
+                    stroke: #64748b;
+                    transition: stroke 0.15s ease;
+                }
+
+                &:hover svg {
+                    stroke: #00e5ff;
+                }
+            }
+
+            .volume-slider {
+                width: 70px;
+                height: 4px;
+                appearance: none;
+                background: #182642;
+                border-radius: 2px;
+                outline: none;
+                cursor: pointer;
+
+                &::-webkit-slider-thumb {
+                    appearance: none;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    background: #00e5ff;
+                    box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
+                    cursor: pointer;
+                }
+            }
+
+            .volume-text {
+                font-size: 10px;
+                color: #94a3b8;
+                font-weight: 700;
+                width: 28px;
+                text-align: right;
+            }
+        }
+    }
+
+    .btn-action-export {
+        background-color: #00e676;
+        color: #020617;
+        font-size: 11px;
+        font-weight: 800;
+        padding: 6px 14px;
+        border-radius: 4px;
+        border: none;
+        cursor: pointer;
+
+        &:hover {
+            background-color: #1bf587;
+        }
+    }
+}

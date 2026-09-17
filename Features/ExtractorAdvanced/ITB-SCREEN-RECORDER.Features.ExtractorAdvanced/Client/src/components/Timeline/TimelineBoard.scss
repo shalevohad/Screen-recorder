@@ -1,0 +1,137 @@
+﻿.timeline-board-root {
+    position: relative;
+    width: 100%;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    /* סרגל Minimap עליון */
+    .timeline-overview-strip {
+        height: 22px;
+        background: #080f20;
+        border-bottom: 1px solid #142340;
+        display: flex;
+        align-items: center;
+
+        .overview-sidebar-label {
+            width: 150px;
+            padding-left: 12px;
+            font-size: 9px;
+            font-weight: 800;
+            color: #64748b;
+            letter-spacing: 0.08em;
+            flex-shrink: 0;
+            border-right: 1px solid #142340;
+        }
+
+        .overview-track-canvas {
+            position: relative;
+            flex: 1;
+            height: 10px;
+            background: #040813;
+            border: 1px solid #182a4d;
+            border-radius: 2px;
+            margin: 0 10px;
+            overflow: hidden;
+            cursor: pointer;
+
+            .minimap-cut-highlight {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                background: rgba(0, 229, 255, 0.2);
+                border-left: 1px solid #00e5ff;
+                border-right: 1px solid #00e5ff;
+            }
+
+            .minimap-viewport-box {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                background: rgba(255, 255, 255, 0.15);
+                border: 1px solid rgba(255, 255, 255, 0.8);
+                box-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
+                border-radius: 2px;
+            }
+
+            .minimap-needle {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 2px;
+                background: #f43f5e;
+            }
+        }
+
+        .timeline-zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding-right: 10px;
+
+            .btn-zoom {
+                width: 18px;
+                height: 16px;
+                background: #101c36;
+                border: 1px solid #1c3057;
+                color: #cbd5e1;
+                border-radius: 2px;
+                font-size: 11px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+
+                &:hover {
+                    background: #1a2d57;
+                    color: #fff;
+                }
+            }
+
+            .zoom-value {
+                font-size: 10px;
+                color: #00e5ff;
+                font-weight: 700;
+                width: 24px;
+                text-align: center;
+            }
+
+            .btn-fit {
+                background: #101c36;
+                border: 1px solid #1c3057;
+                color: #00e676;
+                font-size: 9px;
+                font-weight: 800;
+                padding: 1px 5px;
+                border-radius: 2px;
+                cursor: pointer;
+
+                &:hover {
+                    background: #1a2d57;
+                    color: #fff;
+                }
+            }
+        }
+    }
+
+    .ruler-container-offset {
+        padding-left: 150px;
+    }
+
+    .tracks-scroll-area {
+        max-height: 220px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
+
+        &::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background-color: #182847;
+            border-radius: 2px;
+        }
+    }
+}

@@ -1,0 +1,178 @@
+﻿// Client/src/components/StationDrawer/StationDrawer.scss
+
+.station-drawer-panel {
+    grid-column: 2;
+    height: 100%;
+    background-color: #0b1325;
+    border-left: 1px solid #182847;
+    transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+
+    &.is-closed {
+        width: 38px !important;
+        min-width: 38px !important;
+        max-width: 38px !important;
+        background-color: #080f1e;
+    }
+
+    &.is-open {
+        width: 280px !important;
+        min-width: 280px !important;
+        max-width: 280px !important;
+        box-shadow: -8px 0 24px rgba(0, 0, 0, 0.75);
+    }
+
+    .drawer-header {
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px;
+        border-bottom: 1px solid #182847;
+        cursor: pointer;
+        background-color: #0d172e;
+        flex-shrink: 0;
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #94a3b8;
+
+            .icon {
+                width: 16px;
+                height: 16px;
+                stroke: #00e5ff;
+                flex-shrink: 0;
+            }
+        }
+
+        .btn-close {
+            background: none;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 12px;
+
+            &:hover {
+                color: #fff;
+            }
+        }
+    }
+
+    .drawer-body {
+        flex: 1;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow: hidden;
+
+        .search-bar {
+            display: flex;
+            gap: 6px;
+
+            input {
+                flex: 1;
+                background-color: #060b17;
+                border: 1px solid #182847;
+                border-radius: 4px;
+                padding: 5px 8px;
+                color: #fff;
+                font-size: 11px;
+                outline: none;
+
+                &:focus {
+                    border-color: #00e5ff;
+                }
+            }
+
+            .btn-sort {
+                background-color: #16223b;
+                border: 1px solid #182847;
+                color: #94a3b8;
+                border-radius: 4px;
+                padding: 0 6px;
+                font-size: 10px;
+                font-weight: 600;
+                cursor: pointer;
+
+                &:hover {
+                    color: #fff;
+                }
+            }
+        }
+
+        .station-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+
+            .station-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 6px 8px;
+                background-color: #0e182f;
+                border: 1px solid #1a2846;
+                border-radius: 4px;
+
+                &.active {
+                    background-color: #16274a;
+                    border-color: rgba(255, 255, 255, 0.4);
+                }
+
+                .checkbox-wrap {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    cursor: pointer;
+                    overflow: hidden;
+
+                    input {
+                        accent-color: #00e5ff;
+                        cursor: pointer;
+                    }
+
+                    .hostname {
+                        font-size: 11px;
+                        color: #cbd5e1;
+                        white-space: nowrap;
+                        text-overflow: ellipsis;
+                        overflow: hidden;
+                    }
+                }
+
+                .btn-preview {
+                    font-size: 9px;
+                    font-weight: 800;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    border: none;
+                    cursor: pointer;
+                    background-color: #213256;
+                    color: #94a3b8;
+
+                    &.viewing {
+                        background-color: #00e676;
+                        color: #020617;
+                    }
+
+                    &:hover:not(.viewing) {
+                        background-color: #2c4270;
+                        color: #fff;
+                    }
+                }
+            }
+        }
+    }
+}

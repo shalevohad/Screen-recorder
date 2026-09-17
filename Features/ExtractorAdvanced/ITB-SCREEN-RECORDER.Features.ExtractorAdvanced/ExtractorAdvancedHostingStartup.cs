@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 [assembly: HostingStartup(typeof(ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.ExtractorAdvancedHostingStartup))]
 
@@ -20,6 +21,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
             {
                 // רישום המודול של הסטודיו המתקדם
                 services.AddSingleton<IFeatureModule, ExtractorAdvancedModule>();
+
+                // רישום מנוע העריכה המתקדם (Spritesheet ו-Smart Trimming)
+                services.AddSingleton<AdvancedExtractorService>();
 
                 // רישום קונטרולרים אם יהיו כאלה בפרויקט ה-Advanced
                 services.AddControllers()

@@ -1,16 +1,26 @@
-// ==========================================
-// File: Features/ExtractorAdvanced/Client/src/ExtractorAdvanced.scss
-// ==========================================
+﻿// Client/src/ExtractorAdvanced.scss
+
+:root {
+    --adv-bg-base: var(--bg-primary, #060a14);
+    --adv-bg-surface: var(--bg-secondary, #0b1325);
+    --adv-border: var(--border-color, #182847);
+    --adv-accent-cyan: var(--color-primary, #00e5ff);
+    --adv-accent-green: var(--color-success, #00e676);
+    --adv-accent-rose: #f43f5e;
+    --adv-text: var(--text-primary, #f8fafc);
+    --adv-text-muted: var(--text-secondary, #64748b);
+}
+
 .extractor-advanced-studio {
-    display: flex;
-    flex-direction: column;
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    grid-template-rows: 100% !important;
     height: 100%;
     width: 100%;
-    background-color: var(--bg-secondary, #111827);
-    border: 1px solid var(--border-color, #334155);
-    border-radius: 8px;
+    background-color: #060a14;
+    color: #f8fafc;
     overflow: hidden;
+    user-select: none;
     box-sizing: border-box;
-    font-family: inherit;
-    color: var(--text-primary, #f8fafc);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }

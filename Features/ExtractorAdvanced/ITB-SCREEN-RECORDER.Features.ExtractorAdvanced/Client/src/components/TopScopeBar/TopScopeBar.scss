@@ -1,0 +1,126 @@
+.studio-top-scope-bar {
+    height: 38px;
+    background-color: #091124;
+    border-bottom: 1px solid #182847;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    .scope-info-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .scope-tag {
+            font-size: 10px;
+            font-weight: 800;
+            color: #00e5ff;
+            letter-spacing: 0.12em;
+        }
+
+        .scope-time-badge.clickable {
+            background-color: #0e1a36;
+            border: 1px solid #20345e;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: all 0.15s ease;
+
+            &:hover {
+                border-color: #00e5ff;
+                background-color: #14254d;
+            }
+
+            .total-duration {
+                color: #00e676;
+                margin-left: 8px;
+                font-weight: 700;
+            }
+        }
+
+        .btn-scope-icon {
+            width: 26px;
+            height: 26px;
+            background-color: #142345;
+            border: 1px solid #223766;
+            color: #00e5ff;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+
+            svg {
+                width: 14px;
+                height: 14px;
+            }
+
+            &:hover {
+                background-color: #1e3569;
+                border-color: #00e5ff;
+            }
+        }
+
+        .time-mode-toggle-group {
+            display: flex;
+            align-items: center;
+            background-color: #0c162d;
+            border: 1px solid #1f335c;
+            border-radius: 4px;
+            padding: 2px;
+            margin-left: 6px;
+            gap: 2px;
+
+            .btn-mode-icon {
+                width: 24px;
+                height: 22px;
+                background: transparent;
+                border: none;
+                color: #64748b;
+                border-radius: 3px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                svg {
+                    width: 14px;
+                    height: 14px;
+                }
+
+                &:hover {
+                    color: #cbd5e1;
+                    background-color: rgba(255, 255, 255, 0.05);
+                }
+
+                &.active {
+                    background-color: #00e5ff;
+                    color: #020617;
+                    box-shadow: 0 0 8px rgba(0, 229, 255, 0.4);
+
+                    svg {
+                        stroke: #020617;
+                    }
+                }
+            }
+        }
+    }
+
+    .btn-grid-return {
+        background-color: #172a50;
+        border: 1px solid #2e4d8c;
+        color: #fff;
+        font-size: 11px;
+        padding: 4px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+
+        &:hover {
+            background-color: #203b70;
+        }
+    }
+}

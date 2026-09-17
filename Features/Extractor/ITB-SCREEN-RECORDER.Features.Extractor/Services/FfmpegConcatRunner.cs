@@ -22,7 +22,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             _logger.LogInformation("Extractor initialized FFmpeg at: {Path}", _ffmpegPath);
         }
 
-        public async Task ExecuteStreamCopyAsync(string concatManifestContent, Stream destinationStream, CancellationToken ct)
+        public virtual async Task ExecuteStreamCopyAsync(string concatManifestContent, Stream destinationStream, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(concatManifestContent))
             {

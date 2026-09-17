@@ -9,31 +9,54 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     public class StorageScannerService : IStorageScannerService
     {
+        private readonly StorageSettings _storageSettings;
         private readonly ExtractorOptions _options;
         private readonly ILogger<StorageScannerService> _logger;
-        private readonly IDummyVideoGenerator _dummyGenerator; // <-- השדה החדש
+        private readonly IDummyVideoGenerator _dummyGenerator;
 
         private static readonly Regex ChunkFileNameRegex = new(
             @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})\.(mp4|flv)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // <-- עדכון ה-Constructor כדי שיזריק את ה-IDummyVideoGenerator
         public StorageScannerService(
+            IConfiguration configuration,
+            IOptions<SystemConfig> systemConfig,
             IOptions<ExtractorOptions> options,
             ILogger<StorageScannerService> logger,
             IDummyVideoGenerator dummyGenerator)
         {
             _options = options.Value;
             _logger = logger;
-            _dummyGenerator = dummyGenerator; // <-- ההשמה
+            _dummyGenerator = dummyGenerator;
+
+            // קריאת נתיבי האחסון ישירות מ-SystemConfig:Storage עם גיבוי ל-IConfiguration
+            string netAppPath = systemConfig.Value?.Storage?.NetAppUncPath;
+            if (string.IsNullOrWhiteSpace(netAppPath))
+            {
+                netAppPath = configuration["SystemConfig:Storage:NetAppUncPath"] ?? @"\\NetAppStorage\CaptureRecordings";
+            }
+
+            string fallbackPath = systemConfig.Value?.Storage?.LocalFallbackPath;
+            if (string.IsNullOrWhiteSpace(fallbackPath))
+            {
+                fallbackPath = configuration["SystemConfig:Storage:LocalFallbackPath"] ?? @"C:\ProgramData\ITB-SCREEN-RECORDER\Recordings";
+            }
+
+            _storageSettings = new StorageSettings
+            {
+                NetAppUncPath = netAppPath,
+                LocalFallbackPath = fallbackPath
+            };
         }
 
         public Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
@@ -130,7 +153,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             string? dummyPath = null;
             if (requiresPadding)
             {
-                // קח את הקובץ הראשון התקין כדוגמית לדגימת רזולוציה
                 string sampleFile = chunks.First().FullPath;
                 dummyPath = await _dummyGenerator.GetOrGenerateDummyVideoAsync(sampleFile);
                 dummyPath = dummyPath.Replace('\\', '/');
@@ -194,13 +216,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         private IEnumerable<string> ResolveActiveStorageRoots()
         {
             var roots = new List<string>();
-            if (!string.IsNullOrWhiteSpace(_options.PrimaryStoragePath) && Directory.Exists(_options.PrimaryStoragePath))
+            if (!string.IsNullOrWhiteSpace(_storageSettings.NetAppUncPath) && Directory.Exists(_storageSettings.NetAppUncPath))
             {
-                roots.Add(_options.PrimaryStoragePath);
+                roots.Add(_storageSettings.NetAppUncPath);
             }
-            if (!string.IsNullOrWhiteSpace(_options.LocalFallbackPath) && Directory.Exists(_options.LocalFallbackPath))
+            if (!string.IsNullOrWhiteSpace(_storageSettings.LocalFallbackPath) && Directory.Exists(_storageSettings.LocalFallbackPath))
             {
-                roots.Add(_options.LocalFallbackPath);
+                roots.Add(_storageSettings.LocalFallbackPath);
             }
             return roots;
         }

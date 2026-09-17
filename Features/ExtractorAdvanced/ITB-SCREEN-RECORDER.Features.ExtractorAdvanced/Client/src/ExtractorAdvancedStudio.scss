@@ -1,0 +1,35 @@
+﻿.extractor-advanced-studio {
+    display: grid !important;
+    grid-template-columns: 1fr auto !important;
+    grid-template-rows: 100% !important;
+    height: 100%;
+    width: 100%;
+    background: transparent !important;
+    color: #f8fafc;
+    overflow: hidden;
+    user-select: none;
+    box-sizing: border-box;
+
+    .studio-workspace-area {
+        grid-column: 1;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-width: 0;
+        background: transparent;
+
+        .studio-main-viewport-container {
+            flex: 1;
+            min-height: 0;
+            background: transparent;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .studio-bottom-timeline {
+            flex-shrink: 0;
+            background: transparent;
+            border-top: 1px solid #182847;
+        }
+    }
+}

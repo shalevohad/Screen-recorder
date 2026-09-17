@@ -16,6 +16,11 @@
 		<EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
 	</PropertyGroup>
 
+	<!-- הוסף בתוך ה-PropertyGroup הראשי של Debug -->
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+		<DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<Compile Remove="Features/**" />
 		<Content Remove="Features/**" />
@@ -70,54 +75,97 @@
 		<Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
 	</Target>
 
-	<!-- ========================================== -->
-	<!-- הגדרות נתיבים עבור הפיצ'רים המודולריים     -->
-	<!-- ========================================== -->
-	<PropertyGroup>
-		<ExtractorProjectPath>../Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/ITB-SCREEN-RECORDER.Features.Extractor.csproj</ExtractorProjectPath>
-		<ExtractorAdvancedProjectPath>../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced.csproj</ExtractorAdvancedProjectPath>
-	</PropertyGroup>
+	<!-- ========================================================== -->
+	<!-- מערכת צללים (Stealth) לאיתור, בנייה והפצה דינמית           -->
+	<!-- ========================================================== -->
 
-	<!-- שחזור ובניית הפיצ'רים מקומית -->
+	<!-- 1. איסוף אוטומטי של כל פרויקט פיצ'ר קיים ללא שיום מפורש -->
+	<ItemGroup>
+		<FeatureProjects Include="$(MSBuildProjectDirectory)/../Features/*/*/*.csproj" />
+		<!-- מורה ל-Visual Studio FastUpToDateCheck לבדוק שינויים בכל תיקיית הפיצ'רים -->
+		<UpToDateCheckInput Include="$(MSBuildProjectDirectory)/../Features/**/*.*" />
+	</ItemGroup>
+
+	<!-- 2. שחזור ובנייה שקטה של הפיצ'רים לפני בניית השרת -->
 	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild">
-		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling Extractor module ($(Configuration))..." Condition="Exists('$(ExtractorProjectPath)')" />
-		<MSBuild Projects="$(ExtractorProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="Exists('$(ExtractorProjectPath)')" />
-
-		<Message Importance="high" Text="[ITB BUILD] Restoring and compiling ExtractorAdvanced module ($(Configuration))..." Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
-		<MSBuild Projects="$(ExtractorAdvancedProjectPath)" Targets="Restore;Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
+		<Message Importance="high" Text="[ITB BUILD] Compiling internal Feature modules ($(Configuration))..." Condition="'@(FeatureProjects)' != ''" />
+		<MSBuild Projects="@(FeatureProjects)" Targets="Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="'@(FeatureProjects)' != ''" />
 	</Target>
 
-	<!-- העתקה שטחית (*.*) בלבד למניעת שכפול מקונן של תיקיות win-x64/ ושגיאות Assembly כפולות -->
-	<Target Name="StageFeaturesToOutput" AfterTargets="Build">
-		<ItemGroup Condition="Exists('$(ExtractorProjectPath)')">
-			<ExtractorOutputFiles Include="../Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/bin/$(Configuration)/net8.0/*.*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(ExtractorOutputFiles)" DestinationFolder="$(TargetDir)Features/Extractor" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorProjectPath)')" />
-
-		<ItemGroup Condition="Exists('$(ExtractorAdvancedProjectPath)')">
-			<ExtractorAdvancedOutputFiles Include="../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/bin/$(Configuration)/net8.0/*.*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(ExtractorAdvancedOutputFiles)" DestinationFolder="$(TargetDir)Features/ExtractorAdvanced" SkipUnchangedFiles="true" Condition="Exists('$(ExtractorAdvancedProjectPath)')" />
+	<!-- 3. העתקת תוצרים ל-Debug (F5) - דריסה מלאה ללא דילוג על קבצים קיימים -->
+	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Condition="'@(FeatureProjects)' != ''">
+		<MSBuild Projects="$(MSBuildProjectFile)"
+		         Targets="_StageSingleFeature"
+		         Properties="_ProjPath=%(FeatureProjects.FullPath)" />
 	</Target>
 
-	<!-- אריזת הפיצ'רים לתוך Publish עבור Windows בלבד -->
-	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
-		<ItemGroup Condition="Exists('$(ExtractorProjectPath)')">
-			<_ExtractorFilesToPublish Include="../Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/bin/$(Configuration)/net8.0/*.*" />
-			<ResolvedFileToPublish Include="@(_ExtractorFilesToPublish)">
-				<RelativePath>Features/Extractor/%(FileName)%(Extension)</RelativePath>
-				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			</ResolvedFileToPublish>
+	<Target Name="_StageSingleFeature">
+		<PropertyGroup>
+			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
+			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
+			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
+
+			<_DestStandard>$(TargetDir)Features\$(_FeatureName)</_DestStandard>
+			<_DestWinX64>$(TargetDir)win-x64\Features\$(_FeatureName)</_DestWinX64>
+		</PropertyGroup>
+
+		<ItemGroup>
+			<_Artifacts Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
 		</ItemGroup>
 
-		<ItemGroup Condition="Exists('$(ExtractorAdvancedProjectPath)')">
-			<_ExtractorAdvancedFilesToPublish Include="../Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/bin/$(Configuration)/net8.0/*.*" />
-			<ResolvedFileToPublish Include="@(_ExtractorAdvancedFilesToPublish)">
-				<RelativePath>Features/ExtractorAdvanced/%(FileName)%(Extension)</RelativePath>
+		<!-- SkipUnchangedFiles="false" מבטיח דריסה ועדכון של קובצי JS, CSS ו-DLL בכל הרצה -->
+		<Copy SourceFiles="@(_Artifacts)"
+		      DestinationFolder="$(_DestStandard)\%(RecursiveDir)"
+		      SkipUnchangedFiles="false"
+		      OverwriteReadOnlyFiles="true" />
+
+		<Copy SourceFiles="@(_Artifacts)"
+		      DestinationFolder="$(_DestWinX64)\%(RecursiveDir)"
+		      SkipUnchangedFiles="false"
+		      OverwriteReadOnlyFiles="true"
+		      Condition="Exists('$(TargetDir)win-x64') Or '$(RuntimeIdentifier)' == 'win-x64'" />
+	</Target>
+
+	<!-- 4. אריזה דינמית ל-Publish -->
+	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="('$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))) And '@(FeatureProjects)' != ''">
+		<MSBuild Projects="$(MSBuildProjectFile)"
+		         Targets="_GetFeaturePublishFiles"
+		         Properties="_ProjPath=%(FeatureProjects.FullPath)">
+			<Output TaskParameter="TargetOutputs" ItemName="ResolvedFileToPublish" />
+		</MSBuild>
+		<Message Importance="high" Text="[ITB PUBLISH] Bundling dynamically resolved modules into publish payload..." />
+	</Target>
+
+	<Target Name="_GetFeaturePublishFiles" Returns="@(_FeatureFilesToPublish)">
+		<PropertyGroup>
+			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
+			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
+			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
+		</PropertyGroup>
+
+		<ItemGroup>
+			<_RawFiles Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
+			<_FeatureFilesToPublish Include="@(_RawFiles)">
+				<RelativePath>Features\$(_FeatureName)\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
 				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			</ResolvedFileToPublish>
+			</_FeatureFilesToPublish>
 		</ItemGroup>
-		<Message Importance="high" Text="[ITB PUBLISH] Bundling Feature modules into Windows publish payload..." />
+	</Target>
+
+	<Target Name="_GetFeaturePublishFiles" Returns="@(_FeatureFilesToPublish)">
+		<PropertyGroup>
+			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
+			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
+			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
+		</PropertyGroup>
+
+		<ItemGroup>
+			<_RawFiles Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
+			<_FeatureFilesToPublish Include="@(_RawFiles)">
+				<RelativePath>Features\$(_FeatureName)\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			</_FeatureFilesToPublish>
+		</ItemGroup>
 	</Target>
 
 </Project>

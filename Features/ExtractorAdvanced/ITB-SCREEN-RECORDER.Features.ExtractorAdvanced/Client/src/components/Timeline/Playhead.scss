@@ -1,0 +1,119 @@
+﻿.playhead-overlay-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 150px;
+    right: 0;
+    pointer-events: none;
+    z-index: 40;
+
+    .draggable-cut-band {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: rgba(0, 229, 255, 0.08);
+        border-top: 1px dashed rgba(0, 229, 255, 0.5);
+        border-bottom: 1px dashed rgba(0, 229, 255, 0.5);
+        pointer-events: auto;
+        cursor: grab;
+        z-index: 20;
+
+        &:active {
+            cursor: grabbing;
+            background: rgba(0, 229, 255, 0.16);
+        }
+    }
+    /* קווי IN ו-OUT עם ידיות חיצוניות לחלוטין לטווח החיתוך */
+    .marker {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 14px;
+        margin-left: -7px;
+        pointer-events: auto;
+        cursor: ew-resize;
+        z-index: 35;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        .marker-core-line {
+            width: 2px;
+            height: 100%;
+            background-color: #00e5ff;
+            box-shadow: 0 0 8px rgba(0, 229, 255, 0.7);
+        }
+
+        .handle-badge {
+            position: absolute;
+            top: 0;
+            height: 18px;
+            padding: 0 6px;
+            background-color: #00e5ff;
+            color: #020617;
+            font-size: 9px;
+            font-weight: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+            user-select: none;
+        }
+        /* ידית ה-IN ממוקמת משמאל לקו (חיצונית לחיתוך) */
+        &.in-marker .handle-badge {
+            right: 7px;
+            border-radius: 3px 0 0 3px;
+        }
+        /* ידית ה-OUT ממוקמת מימין לקו (חיצונית לחיתוך) */
+        &.out-marker .handle-badge {
+            left: 7px;
+            border-radius: 0 3px 3px 0;
+        }
+    }
+    /* מחט ה-Playhead - שעה קטנה וממוקמת מעט נמוך יותר */
+    .playhead-needle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 16px;
+        margin-left: -8px;
+        pointer-events: auto;
+        cursor: ew-resize;
+        z-index: 45;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        .needle-core-line {
+            width: 2px;
+            height: 100%;
+            background-color: #f43f5e;
+            box-shadow: 0 0 10px rgba(244, 63, 94, 0.9);
+        }
+
+        .head-badge {
+            position: absolute;
+            top: 15px; /* ממוקם נמוך יותר */
+            background-color: #f43f5e;
+            color: #fff;
+            font-size: 8.5px; /* שעה קומפקטית ומדויקת */
+            font-weight: 800;
+            padding: 1px 4px;
+            border-radius: 2px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+            white-space: nowrap;
+            user-select: none;
+
+            &::after {
+                content: '';
+                position: absolute;
+                bottom: -3px;
+                left: 50%;
+                transform: translateX(-50%);
+                border-left: 3px solid transparent;
+                border-right: 3px solid transparent;
+                border-top: 3px solid #f43f5e;
+            }
+        }
+    }
+}
