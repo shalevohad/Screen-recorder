@@ -92,6 +92,14 @@
             transform: translateY(-1px);
         }
 
+        &.tactical-btn-feature:hover:not(.is-engaged) {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: rgba(56, 189, 248, 0.5);
+            color: var(--c2-blue-light, #38bdf8);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+            transform: translateY(-1px);
+        }
+
         &.tactical-btn-start {
             &.is-actionable {
                 background: var(--c2-green-tint);
@@ -156,6 +164,13 @@
                 background: var(--c2-yellow-tint) !important;
                 color: var(--c2-yellow-light) !important;
                 box-shadow: var(--glow-yellow) !important;
+            }
+
+            &.tactical-btn-feature {
+                border-color: var(--c2-blue-light, #38bdf8) !important;
+                background: rgba(56, 189, 248, 0.2) !important;
+                color: var(--c2-blue-light, #38bdf8) !important;
+                box-shadow: 0 0 12px rgba(56, 189, 248, 0.4) !important;
             }
         }
 

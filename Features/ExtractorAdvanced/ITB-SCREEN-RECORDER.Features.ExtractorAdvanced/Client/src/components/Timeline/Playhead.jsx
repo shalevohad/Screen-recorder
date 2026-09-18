@@ -24,7 +24,6 @@ export default function Playhead({
     outPointMs = 3600000,
     onStartDrag
 }) {
-    // חישוב אחוזים למיקום הסמנים
     const toPercent = (ms) => {
         if (!viewportDurationMs || viewportDurationMs <= 0) return '0%';
         const offset = ms - viewportStartMs;
@@ -33,6 +32,11 @@ export default function Playhead({
 
     const inPercent = ((inPointMs - viewportStartMs) / viewportDurationMs) * 100;
     const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;
+    const rawPlayheadPercent = ((playheadMs - viewportStartMs) / viewportDurationMs) * 100;
+
+    // סעיף 1: זיהוי האם ה-Playhead נמצא פיזית בתוך חלון ה-Viewport הנוכחי
+    const isPlayheadInViewport = rawPlayheadPercent >= -0.2 && rawPlayheadPercent <= 100.2;
+    const displayPlayheadPercent = Math.max(0, Math.min(100, rawPlayheadPercent));
 
     const visibleRangeLeft = Math.max(0, inPercent);
     const visibleRangeRight = Math.min(100, outPercent);
@@ -46,11 +50,15 @@ export default function Playhead({
         }
     };
 
-    // אלגוריתם היפוך חכם:
-    // ברירת המחדל היא שהסמנים מצביעים החוצה כדי לא להסתיר את תוכן החיתוך.
-    // אבל אם גוררים אותם לקצה הקיצוני של המסך, הם מתהפכים פנימה כדי לא להעלם.
+    // מנגנון היפוך סמני חיתוך בקצוות
     const flipIn = inPercent < 1.5;
     const flipOut = outPercent > 98.5;
+    const isInAtEdge = inPercent <= 0.2 && inPercent >= -0.2;
+    const isOutAtEdge = outPercent >= 99.8 && outPercent <= 100.2;
+
+    // מנגנון יישור חכם לתגית ה-Playhead בקצוות ה-Viewport
+    const isPlayheadNearLeft = rawPlayheadPercent >= -0.2 && rawPlayheadPercent < 4.5;
+    const isPlayheadNearRight = rawPlayheadPercent > 95.5 && rawPlayheadPercent <= 100.2;
 
     return (
         <div className="playhead-overlay-pane">
@@ -66,7 +74,7 @@ export default function Playhead({
 
             {/* סמן IN */}
             <div
-                className={`marker in-marker ${flipIn ? 'flipped' : ''}`}
+                className={`marker in-marker ${flipIn ? 'flipped' : ''} ${isInAtEdge ? 'at-edge' : ''}`}
                 style={{ left: toPercent(inPointMs) }}
                 onMouseDown={handleMouseDown('in')}
                 title="Drag IN Point"
@@ -77,7 +85,7 @@ export default function Playhead({
 
             {/* סמן OUT */}
             <div
-                className={`marker out-marker ${flipOut ? 'flipped' : ''}`}
+                className={`marker out-marker ${flipOut ? 'flipped' : ''} ${isOutAtEdge ? 'at-edge' : ''}`}
                 style={{ left: toPercent(outPointMs) }}
                 onMouseDown={handleMouseDown('out')}
                 title="Drag OUT Point"
@@ -86,18 +94,20 @@ export default function Playhead({
                 <div className="marker-core-line" />
             </div>
 
-            {/* מחט Playhead */}
-            <div
-                className="playhead-needle"
-                style={{ left: toPercent(playheadMs) }}
-                onMouseDown={handleMouseDown('playhead')}
-                title="Drag Playhead (Snaps to IN / OUT)"
-            >
-                <div className="head-badge">
-                    {formatTimelineClock(baseEpochMs + playheadMs, timeMode)}
+            {/* מחט Playhead - מוצגת רק כשהיא בתחום ה-Viewport הנוכחי */}
+            {isPlayheadInViewport && (
+                <div
+                    className="playhead-needle"
+                    style={{ left: `${displayPlayheadPercent}%` }}
+                    onMouseDown={handleMouseDown('playhead')}
+                    title="Drag Playhead (Snaps to IN / OUT)"
+                >
+                    <div className={`head-badge ${isPlayheadNearLeft ? 'edge-left' : ''} ${isPlayheadNearRight ? 'edge-right' : ''}`}>
+                        {formatTimelineClock(baseEpochMs + playheadMs, timeMode)}
+                    </div>
+                    <div className="needle-core-line" />
                 </div>
-                <div className="needle-core-line" />
-            </div>
+            )}
         </div>
     );
 }

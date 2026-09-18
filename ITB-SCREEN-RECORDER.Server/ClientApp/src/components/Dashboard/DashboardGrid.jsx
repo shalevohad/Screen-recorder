@@ -27,6 +27,11 @@ export default function DashboardGrid(props) {
 
     const isFeatureMode = Boolean(logic.activeFeatureObject);
 
+    const handleCloseFeatureWithReset = (featId) => {
+        window.dispatchEvent(new CustomEvent('extractor:clear-session'));
+        logic.handleCloseFeature(featId);
+    };
+
     return (
         <div className="dashboard-layout-wrapper" dir={direction}>
             <div className="dashboard-content-container">
@@ -44,7 +49,6 @@ export default function DashboardGrid(props) {
                 />
 
                 <main className="dashboard-main-area">
-                    {/* באנר תקלות קריטיות */}
                     {!isFeatureMode && isFaultFilterActive && (
                         <div className="tactical-fault-isolation-banner">
                             <div className="isolation-info">
@@ -56,7 +60,6 @@ export default function DashboardGrid(props) {
                         </div>
                     )}
 
-                    {/* פס סינון טקטי אלגנטי - מודרני, קומפקטי ומרוכז */}
                     {!isFeatureMode && !logic.isSearchOpen && logic.hasActiveFilter && (
                         <div className="tactical-active-filter-banner">
                             <div className="banner-left-cluster">
@@ -110,7 +113,6 @@ export default function DashboardGrid(props) {
                         </div>
                     )}
 
-                    {/* סרגל חיפוש וסינון */}
                     <SearchShelf
                         isSearchOpen={!isFeatureMode && logic.isSearchOpen}
                         searchInputRef={logic.searchInputRef}
@@ -122,24 +124,22 @@ export default function DashboardGrid(props) {
                         resultCount={logic.processedStations.length}
                     />
 
-                    {/* שורת הלשוניות */}
                     <FleetTabs
                         activeTabId={logic.activeTabId} onTabChange={logic.setActiveTabId}
                         allStations={stations} onApplyPolicyToStations={logic.handlePolicyApplication}
                         systemConfig={systemConfig} onSystemConfigUpdate={onSystemConfigUpdate}
-                        openFeatureTabs={logic.openFeatureTabs} onCloseFeature={logic.handleCloseFeature}
+                        openFeatureTabs={logic.openFeatureTabs} onCloseFeature={handleCloseFeatureWithReset}
                     />
 
-                    {/* שטח התוכן של הגריד */}
                     <div className={`tab-pane-content-wrapper ${isFeatureMode ? 'feature-active-pane' : ''}`}>
                         {isFeatureMode ? (
-                            <div className="feature-stealth-container" style={{ width: '100%', height: '100%' }}>
+                            <div className="feature-stealth-container">
                                 <RemoteWidgetHost
                                     scriptUrl={logic.activeFeatureObject.scriptUrl}
                                     widgetProps={{
                                         activeHost: logic.focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP',
                                         defaultWindowHours: 24,
-                                        onClose: () => logic.handleCloseFeature(logic.activeFeatureObject.id)
+                                        onClose: () => handleCloseFeatureWithReset(logic.activeFeatureObject.id)
                                     }}
                                 />
                             </div>

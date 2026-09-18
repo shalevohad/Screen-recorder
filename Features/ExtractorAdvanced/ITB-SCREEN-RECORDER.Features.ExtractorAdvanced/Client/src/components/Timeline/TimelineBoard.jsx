@@ -1,8 +1,11 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+﻿// Client/src/components/Timeline/TimelineBoard.jsx
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import TimelineRuler from './TimelineRuler.jsx';
 import TimelineTrack from './TimelineTrack.jsx';
 import Playhead from './Playhead.jsx';
-import { formatTimelineClock } from '../../utils/timeFormat.js';
+import SessionClockBadge from './SessionClockBadge.jsx';
+import TimelineMinimap from './TimelineMinimap.jsx';
+import TimelineContextMenu from './TimelineContextMenu.jsx';
 import './TimelineBoard.scss';
 
 export default function TimelineBoard({
@@ -31,9 +34,20 @@ export default function TimelineBoard({
 
     const trackAreaRef = useRef(null);
     const minimapRef = useRef(null);
+    const hasInitializedPlayheadRef = useRef(false);
 
     const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
     const viewportDurationMs = totalDurationMs / zoomLevel;
+
+    // סעיף 2: בטעינה ראשונה אם ה-Playhead אינו מוגדר או עומד על 0, הוא מיושר מיד לנקודת ה-IN
+    useEffect(() => {
+        if (!hasInitializedPlayheadRef.current && setPlayheadMs) {
+            if (playheadMs === 0 || playheadMs === null || playheadMs === undefined) {
+                setPlayheadMs(inPointMs);
+                hasInitializedPlayheadRef.current = true;
+            }
+        }
+    }, [inPointMs, playheadMs, setPlayheadMs]);
 
     useEffect(() => {
         setViewportStartMs(prev => Math.max(0, Math.min(prev, totalDurationMs - viewportDurationMs)));
@@ -43,7 +57,7 @@ export default function TimelineBoard({
         if (!trackAreaRef.current) return viewportStartMs;
         const rect = trackAreaRef.current.getBoundingClientRect();
         const contentLeft = rect.left + 150;
-        const contentWidth = rect.width - 150 - 46; // פינוי מקום לכפתור ה-Export האנכי מצד ימין
+        const contentWidth = rect.width - 150 - 49;
         if (contentWidth <= 0) return viewportStartMs;
 
         const offsetX = Math.max(0, Math.min(clientX - contentLeft, contentWidth));
@@ -53,7 +67,7 @@ export default function TimelineBoard({
 
     const handleFitCut = () => {
         const cutDur = Math.max(2000, outPointMs - inPointMs);
-        const targetZoom = Math.max(1, Math.min(maxDynamicZoom, totalDurationMs / cutDur * 0.85));
+        const targetZoom = Math.max(1, Math.min(maxDynamicZoom, (totalDurationMs / cutDur) * 0.85));
         const center = (inPointMs + outPointMs) / 2;
         const newVpDur = totalDurationMs / targetZoom;
         const newStart = Math.max(0, Math.min(center - newVpDur / 2, totalDurationMs - newVpDur));
@@ -99,7 +113,7 @@ export default function TimelineBoard({
     const handleContextMenu = (e) => {
         e.preventDefault();
         const rect = trackAreaRef.current?.getBoundingClientRect();
-        if (!rect || e.clientX - rect.left < 150) return;
+        if (!rect || e.clientX - rect.left < 150 || e.clientX > rect.right - 49) return;
 
         const targetMs = getMsFromClientX(e.clientX);
         setContextMenu({
@@ -191,16 +205,13 @@ export default function TimelineBoard({
                 if (Math.abs(target - inPointMs) <= snapThreshold) { target = inPointMs; }
                 else if (Math.abs(target - outPointMs) <= snapThreshold) { target = outPointMs; }
                 setPlayheadMs(Math.max(0, Math.min(totalDurationMs, target)));
-            }
-            else if (draggingTarget === 'in') {
+            } else if (draggingTarget === 'in') {
                 const maxIn = outPointMs - 1000;
                 setInPointMs(Math.max(0, Math.min(currentMs, maxIn)));
-            }
-            else if (draggingTarget === 'out') {
+            } else if (draggingTarget === 'out') {
                 const minOut = inPointMs + 1000;
                 setOutPointMs(Math.min(totalDurationMs, Math.max(currentMs, minOut)));
-            }
-            else if (draggingTarget === 'range' && dragStartInfo) {
+            } else if (draggingTarget === 'range' && dragStartInfo) {
                 const deltaMs = currentMs - getMsFromClientX(dragStartInfo.startX);
                 const rangeDuration = dragStartInfo.initialOut - dragStartInfo.initialIn;
                 let newIn = dragStartInfo.initialIn + deltaMs;
@@ -233,64 +244,57 @@ export default function TimelineBoard({
         };
     }, [draggingTarget, dragStartInfo, getMsFromClientX, inPointMs, outPointMs, playheadMs, totalDurationMs, viewportDurationMs, setPlayheadMs, setInPointMs, setOutPointMs]);
 
-    const inPercent = Math.max(0, Math.min(100, (inPointMs / totalDurationMs) * 100));
-    const outPercent = Math.max(0, Math.min(100, (outPointMs / totalDurationMs) * 100));
-    const cutWidthPercent = outPercent - inPercent;
-
-    const vpStartPercent = Math.max(0, Math.min(100, (viewportStartMs / totalDurationMs) * 100));
-    const vpWidthPercent = Math.max(0, Math.min(100 - vpStartPercent, (viewportDurationMs / totalDurationMs) * 100));
-
     return (
         <div ref={trackAreaRef} className="timeline-board-root" onContextMenu={handleContextMenu}>
-            <div className="timeline-overview-strip">
-                {/* אזור הריבוע הפנוי במקום SESSION MAP: הצגת שעון דיגיטלי מודרני לזמני IN/OUT */}
-                <div className="overview-digital-clock-label">
-                    <span className="clock-item"><span className="lbl">IN</span> {formatTimelineClock(baseEpochMs + inPointMs, timeMode)}</span>
-                    <span className="divider">/</span>
-                    <span className="clock-item"><span className="lbl">OUT</span> {formatTimelineClock(baseEpochMs + outPointMs, timeMode)}</span>
+
+            {/* סיפון עליון מאוחד: השעון משמאל משתרע על מלוא הגובה */}
+            <div className="timeline-top-deck">
+                <div className="timeline-badge-slot">
+                    <SessionClockBadge
+                        baseEpochMs={baseEpochMs}
+                        timeMode={timeMode}
+                        totalDurationMs={totalDurationMs}
+                        inPointMs={inPointMs}
+                        setInPointMs={setInPointMs}
+                        outPointMs={outPointMs}
+                        setOutPointMs={setOutPointMs}
+                    />
                 </div>
 
-                <div ref={minimapRef} className="overview-track-canvas" onMouseDown={(e) => handleStartDrag('minimap-viewport', e)}>
-                    <div className="minimap-viewport-box" style={{ left: `${vpStartPercent}%`, width: `${vpWidthPercent}%` }}>
-                        {zoomLevel > 1 && vpWidthPercent > 12 && (
-                            <>
-                                <span className="minimap-time-text left">{formatTimelineClock(baseEpochMs + viewportStartMs, timeMode)}</span>
-                                <span className="minimap-time-text right">{formatTimelineClock(baseEpochMs + viewportStartMs + viewportDurationMs, timeMode)}</span>
-                            </>
-                        )}
+                <div className="timeline-meters-track">
+                    <div className="timeline-overview-strip">
+                        <TimelineMinimap
+                            minimapRef={minimapRef}
+                            baseEpochMs={baseEpochMs}
+                            timeMode={timeMode}
+                            totalDurationMs={totalDurationMs}
+                            viewportStartMs={viewportStartMs}
+                            viewportDurationMs={viewportDurationMs}
+                            zoomLevel={zoomLevel}
+                            inPointMs={inPointMs}
+                            outPointMs={outPointMs}
+                            playheadMs={playheadMs}
+                            onStartDragMinimap={handleStartDrag}
+                            onFitCut={handleFitCut}
+                            onResetZoom={handleResetZoom}
+                        />
                     </div>
 
-                    <div className="minimap-cut-highlight" style={{ left: `${inPercent}%`, width: `${cutWidthPercent}%` }}>
-                        {cutWidthPercent > 12 && (
-                            <>
-                                <span className="minimap-time-text left">{formatTimelineClock(baseEpochMs + inPointMs, timeMode)}</span>
-                                <span className="minimap-time-text right">{formatTimelineClock(baseEpochMs + outPointMs, timeMode)}</span>
-                            </>
-                        )}
+                    <div className="ruler-container-offset">
+                        <TimelineRuler
+                            baseEpochMs={baseEpochMs}
+                            timeMode={timeMode}
+                            viewportStartMs={viewportStartMs}
+                            viewportDurationMs={viewportDurationMs}
+                            totalDurationMs={totalDurationMs}
+                            hoverMs={hoverMs}
+                            onHoverChange={setHoverMs}
+                            onSeek={(seekMs) => setPlayheadMs && setPlayheadMs(seekMs)}
+                            inPointMs={inPointMs}
+                            outPointMs={outPointMs}
+                        />
                     </div>
-
-                    <div className="minimap-needle" style={{ left: `${(playheadMs / totalDurationMs) * 100}%` }} />
                 </div>
-
-                <div className="timeline-zoom-controls">
-                    <button onClick={handleFitCut} className="btn-zoom-action" title="Fit cut region to center viewport">FIT</button>
-                    <button onClick={handleResetZoom} className="btn-zoom-action reset" title="Reset zoom to full session">RESET</button>
-                </div>
-            </div>
-
-            <div className="ruler-container-offset">
-                <TimelineRuler
-                    baseEpochMs={baseEpochMs}
-                    timeMode={timeMode}
-                    viewportStartMs={viewportStartMs}
-                    viewportDurationMs={viewportDurationMs}
-                    totalDurationMs={totalDurationMs}
-                    hoverMs={hoverMs}
-                    onHoverChange={setHoverMs}
-                    onSeek={(seekMs) => setPlayheadMs && setPlayheadMs(seekMs)}
-                    inPointMs={inPointMs}
-                    outPointMs={outPointMs}
-                />
             </div>
 
             <div className="tracks-with-export-layout">
@@ -310,7 +314,6 @@ export default function TimelineBoard({
                     ))}
                 </div>
 
-                {/* כפתור ה-Export האנכי הבולט בצד ימין */}
                 <button
                     type="button"
                     onClick={onExport}
@@ -346,29 +349,12 @@ export default function TimelineBoard({
                 onStartDrag={handleStartDrag}
             />
 
-            {contextMenu && (
-                <div
-                    className="timeline-context-menu"
-                    style={{ top: contextMenu.y, left: contextMenu.x }}
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="menu-header">
-                        TIMELINE @ {formatTimelineClock(baseEpochMs + contextMenu.targetMs, timeMode)}
-                    </div>
-                    <button onClick={() => handleMenuAction('playhead')}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                        Move Playhead Here
-                    </button>
-                    <button onClick={() => handleMenuAction('in')}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6v12M10 6l6 6-6 6" /></svg>
-                        Set Cut IN Marker ([)
-                    </button>
-                    <button onClick={() => handleMenuAction('out')}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6v12M14 6l-6 6 6 6" /></svg>
-                        Set Cut OUT Marker (])
-                    </button>
-                </div>
-            )}
+            <TimelineContextMenu
+                contextMenu={contextMenu}
+                baseEpochMs={baseEpochMs}
+                timeMode={timeMode}
+                onAction={handleMenuAction}
+            />
         </div>
     );
 }

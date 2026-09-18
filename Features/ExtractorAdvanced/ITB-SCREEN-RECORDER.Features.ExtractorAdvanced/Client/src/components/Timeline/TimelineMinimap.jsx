@@ -1,59 +1,120 @@
-﻿import React from 'react';
+﻿// Client/src/components/Timeline/TimelineMinimap.jsx
+import React from 'react';
+import { formatTimelineClock } from '../../utils/timeFormat.js';
+import './TimelineMinimap.scss';
 
 export default function TimelineMinimap({
-    durationMs,
-    zoomLevel,
-    onZoomIn,
-    onZoomOut,
-    onZoomReset,
-    inPointMs,
-    outPointMs,
-    playheadMs
+    minimapRef,
+    baseEpochMs = 0,
+    timeMode = 'LOCAL',
+    totalDurationMs = 3600000,
+    viewportStartMs = 0,
+    viewportDurationMs = 3600000,
+    zoomLevel = 1,
+    inPointMs = 0,
+    outPointMs = 3600000,
+    playheadMs = 0,
+    onStartDragMinimap,
+    onFitCut,
+    onResetZoom
 }) {
-    const toPercent = (ms) => `${Math.max(0, Math.min((ms / durationMs) * 100, 100))}%`;
+    // חישובי מיקומים באחוזים מתוך כלל הסשן
+    const inPercent = Math.max(0, Math.min(100, (inPointMs / totalDurationMs) * 100));
+    const outPercent = Math.max(0, Math.min(100, (outPointMs / totalDurationMs) * 100));
+    const cutWidthPercent = Math.max(0, outPercent - inPercent);
+
+    const vpStartPercent = Math.max(0, Math.min(100, (viewportStartMs / totalDurationMs) * 100));
+    const vpWidthPercent = Math.max(0, Math.min(100 - vpStartPercent, (viewportDurationMs / totalDurationMs) * 100));
+    const vpEndPercent = vpStartPercent + vpWidthPercent;
+
+    const isZoomed = zoomLevel > 1.05;
+
+    // רוחב תגית ממוצע דורש כ-7% מרוחב המיני-מפה כדי למנוע התנגשות
+    const COLLISION_THRESHOLD = 7;
+
+    // 1. תגיות חיתוך (IN / OUT) - העדיפות הראשית למשתמש
+    const canFitCutTags = cutWidthPercent >= 10;
+    const canFitBothCutTags = cutWidthPercent >= 16;
+
+    const showCutIn = canFitCutTags;
+    const showCutOut = canFitBothCutTags;
+
+    // 2. תגיות Viewport (זמני החלון המוגדל) - מוצגות רק אם אינן דורסות את תגיות החיתוך
+    const isVpStartColliding = showCutIn && Math.abs(vpStartPercent - inPercent) < COLLISION_THRESHOLD;
+    const showVpStart = isZoomed && vpWidthPercent >= 12 && !isVpStartColliding;
+
+    const isVpEndColliding = showCutOut && Math.abs(vpEndPercent - outPercent) < COLLISION_THRESHOLD;
+    const showVpEnd = isZoomed && vpWidthPercent >= 12 && !isVpEndColliding;
 
     return (
-        <div className="flex items-center h-5 bg-[#050812] border-b border-[#1e293b] px-3 select-none text-[10px]">
-            {/* כפתורי זום */}
-            <div className="flex items-center gap-1 shrink-0 mr-3 border-r border-[#1e293b] pr-2">
-                <button
-                    onClick={onZoomOut}
-                    className="w-4 h-4 bg-[#111c33] hover:bg-[#1a2b4f] text-[#94a3b8] hover:text-white rounded flex items-center justify-center font-bold"
-                    title="Zoom Out"
+        <>
+            <div
+                ref={minimapRef}
+                className="overview-track-canvas"
+                onMouseDown={(e) => onStartDragMinimap && onStartDragMinimap('minimap-viewport', e)}
+            >
+                {/* 1. מקטע החיתוך (Cut Highlight) */}
+                <div
+                    className="minimap-cut-highlight"
+                    style={{ left: `${inPercent}%`, width: `${cutWidthPercent}%` }}
                 >
-                    -
-                </button>
-                <span className="text-[#64748b] font-mono px-1">{zoomLevel}x</span>
-                <button
-                    onClick={onZoomIn}
-                    className="w-4 h-4 bg-[#111c33] hover:bg-[#1a2b4f] text-[#94a3b8] hover:text-white rounded flex items-center justify-center font-bold"
-                    title="Zoom In"
+                    {showCutIn && (
+                        <span className="minimap-time-tag cut-in-tag">
+                            {formatTimelineClock(baseEpochMs + inPointMs, timeMode)}
+                        </span>
+                    )}
+
+                    {showCutOut && (
+                        <span className="minimap-time-tag cut-out-tag">
+                            {formatTimelineClock(baseEpochMs + outPointMs, timeMode)}
+                        </span>
+                    )}
+                </div>
+
+                {/* 2. חלון ה-Viewport המוזז */}
+                <div
+                    className="minimap-viewport-box"
+                    style={{ left: `${vpStartPercent}%`, width: `${vpWidthPercent}%` }}
                 >
-                    +
-                </button>
+                    {showVpStart && (
+                        <span className="minimap-time-tag viewport-tag left">
+                            {formatTimelineClock(baseEpochMs + viewportStartMs, timeMode)}
+                        </span>
+                    )}
+
+                    {showVpEnd && (
+                        <span className="minimap-time-tag viewport-tag right">
+                            {formatTimelineClock(baseEpochMs + viewportStartMs + viewportDurationMs, timeMode)}
+                        </span>
+                    )}
+                </div>
+
+                {/* 3. מחט המיקום (Playhead Needle) */}
+                <div
+                    className="minimap-needle"
+                    style={{ left: `${(playheadMs / totalDurationMs) * 100}%` }}
+                />
+            </div>
+
+            {/* כפתורי הזום */}
+            <div className="timeline-zoom-controls">
                 <button
-                    onClick={onZoomReset}
-                    className="px-1.5 h-4 bg-[#111c33] hover:bg-[#1a2b4f] text-[#64748b] hover:text-[#00e5ff] rounded text-[9px] font-mono"
-                    title="Reset Zoom (Fit)"
+                    type="button"
+                    onClick={onFitCut}
+                    className="btn-zoom-action fit"
+                    title="Fit cut region to center viewport"
                 >
                     FIT
                 </button>
+                <button
+                    type="button"
+                    onClick={onResetZoom}
+                    className="btn-zoom-action reset"
+                    title="Reset zoom to full session"
+                >
+                    RESET
+                </button>
             </div>
-
-            {/* רצועת ה-Minimap הכללית */}
-            <div className="relative flex-1 h-2 bg-[#0a1020] rounded-sm overflow-hidden border border-[#1a2744]">
-                {/* תחום ה-Cut IN / OUT */}
-                <div
-                    className="absolute top-0 bottom-0 bg-[#00e5ff]/25 border-l border-r border-[#00e5ff]"
-                    style={{ left: toPercent(inPointMs), width: `${((outPointMs - inPointMs) / durationMs) * 100}%` }}
-                />
-
-                {/* סמן ה-Playhead במפה */}
-                <div
-                    className="absolute top-0 bottom-0 w-[2px] bg-[#f43f5e]"
-                    style={{ left: toPercent(playheadMs) }}
-                />
-            </div>
-        </div>
+        </>
     );
 }

@@ -2,17 +2,17 @@
 
 .playhead-overlay-pane {
     position: absolute;
-    top: 28px;
+    top: 40px; /* מתחיל בגובה הרולר */
     bottom: 0;
     left: 150px;
-    right: 49px; /* רוחב כפתור ה-Export (44px) + הרווח החדש (5px) כך שהסמן נעצר בשלמותו */
+    right: 49px; /* 44px כפתור Export + 5px רווח */
     pointer-events: none;
     z-index: 40;
     overflow: hidden;
 
     .draggable-cut-band {
         position: absolute;
-        top: 30px;
+        top: 28px; /* מתחיל מתחת לרולר בראש המסלולים */
         bottom: 0;
         background: rgba(0, 229, 255, 0.08);
         border-top: 1px dashed rgba(0, 229, 255, 0.5);
@@ -29,7 +29,7 @@
 
     .marker {
         position: absolute;
-        top: 30px;
+        top: 28px;
         bottom: 0;
         width: 14px;
         margin-left: -7px;
@@ -75,6 +75,22 @@
                 left: 7px;
                 border-radius: 0 3px 3px 0;
             }
+
+            &.at-edge {
+                left: 0% !important;
+                margin-left: 0 !important;
+
+                .marker-core-line {
+                    margin-left: 0;
+                    margin-right: auto;
+                }
+
+                .handle-badge {
+                    left: 2px;
+                    right: auto;
+                    border-radius: 0 3px 3px 0;
+                }
+            }
         }
 
         &.out-marker {
@@ -87,6 +103,22 @@
                 left: auto;
                 right: 7px;
                 border-radius: 3px 0 0 3px;
+            }
+
+            &.at-edge {
+                left: 100% !important;
+                margin-left: -14px !important;
+
+                .marker-core-line {
+                    margin-left: auto;
+                    margin-right: 0;
+                }
+
+                .handle-badge {
+                    left: auto;
+                    right: 2px;
+                    border-radius: 3px 0 0 3px;
+                }
             }
         }
     }
@@ -110,22 +142,38 @@
             background-color: #f43f5e;
             box-shadow: 0 0 10px rgba(244, 63, 94, 0.9);
         }
-
+        /* סעיף 2: התגית ממוקמת ב-top: 24px - מתחת לשורת המספרים של הרולר */
         .head-badge {
             position: absolute;
-            top: 14px;
-            height: 14px;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            height: 16px;
             display: flex;
             align-items: center;
+            justify-content: center;
             background-color: #f43f5e;
-            color: #fff;
+            color: #ffffff;
+            font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
             font-weight: 800;
             padding: 0 5px;
-            border-radius: 2px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+            border-radius: 3px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.8), 0 0 8px rgba(244, 63, 94, 0.4);
             white-space: nowrap;
             user-select: none;
+            z-index: 50;
+
+            &.edge-left {
+                left: 0;
+                transform: translateX(0);
+            }
+
+            &.edge-right {
+                left: auto;
+                right: 0;
+                transform: translateX(0);
+            }
         }
     }
 }

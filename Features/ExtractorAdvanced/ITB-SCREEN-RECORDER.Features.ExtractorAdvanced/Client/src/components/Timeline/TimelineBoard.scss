@@ -8,234 +8,47 @@
     flex-direction: column;
     overflow: hidden;
     user-select: none;
-
-    .timeline-context-menu {
-        position: fixed;
-        z-index: 99999;
-        background: #0b1426;
-        border: 1px solid #1c3054;
-        border-radius: 8px;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-        padding: 6px;
-        width: 190px;
+    /* הסיפון העליון: איחוד השעון המוגדל מול שורות המיני-מפה וה-Ruler */
+    .timeline-top-deck {
         display: flex;
-        flex-direction: column;
-        gap: 2px;
-        animation: menuFadeIn 0.12s ease-out;
+        width: 100%;
+        margin-bottom: 4px;
+        box-sizing: border-box;
 
-        .menu-header {
-            font-size: 9.5px;
-            font-weight: 800;
-            color: #64748b;
-            padding: 6px 10px;
-            border-bottom: 1px solid #162441;
-            margin-bottom: 4px;
-            letter-spacing: 0.05em;
-        }
-
-        button {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: transparent;
-            border: none;
-            color: #cbd5e1;
-            padding: 8px 10px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            text-align: left;
-            width: 100%;
-            transition: all 0.12s;
-
-            svg { width: 13px; height: 13px; stroke: #00e5ff; }
-
-            &:hover {
-                background: #16274a;
-                color: #fff;
-                svg { stroke: #fff; }
-            }
-        }
-    }
-
-    @keyframes menuFadeIn {
-        from { opacity: 0; transform: translateY(-4px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    .timeline-overview-strip {
-        height: 36px;
-        background: transparent;
-        border-bottom: 1px solid rgba(20, 35, 64, 0.4);
-        display: flex;
-        align-items: center;
-
-        /* עיצוב הרצועה הירוקה השמאלית עם IN ו-OUT אנכיים ועיגול Duration */
-        .overview-vertical-cut-badge {
+        .timeline-badge-slot {
             width: 150px;
-            height: 100%;
-            background: rgba(0, 230, 118, 0.1);
-            border: 1px solid rgba(0, 230, 118, 0.4);
-            border-radius: 6px;
-            padding: 2px 6px;
+            min-width: 150px;
+            max-width: 150px;
             flex-shrink: 0;
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-
-            .cut-line-stack {
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-
-                .line-item {
-                    display: flex;
-                    align-items: center;
-                    gap: 4px;
-                    font-size: 9.5px;
-                    font-family: monospace;
-                    font-weight: bold;
-
-                    .lbl { color: #00e676; font-size: 8.5px; }
-                    .val {
-                        color: #fff;
-                        &.clickable {
-                            cursor: pointer;
-                            border-bottom: 1px dashed rgba(0, 229, 255, 0.6);
-                            &:hover { color: #00e5ff; }
-                        }
-                    }
-
-                    .inline-time-input {
-                        width: 65px;
-                        background: #040813;
-                        border: 1px solid #00e5ff;
-                        border-radius: 3px;
-                        color: #00e5ff;
-                        font-size: 9.5px;
-                        font-family: monospace;
-                        padding: 0 2px;
-                        outline: none;
-                    }
-                }
-            }
-
-            /* עיגול ה-Duration הירוק */
-            .duration-circle-badge {
-                width: 36px;
-                height: 36px;
-                border-radius: 50%;
-                background: #00e676;
-                color: #020617;
-                font-size: 7.5px;
-                font-weight: 900;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                text-align: center;
-                box-shadow: 0 0 8px rgba(0, 230, 118, 0.5);
-                padding: 2px;
-                line-height: 1;
-            }
+            padding-right: 8px;
+            box-sizing: border-box;
         }
 
-        .overview-track-canvas {
-            position: relative;
+        .timeline-meters-track {
             flex: 1;
-            height: 22px;
-            background: rgba(4, 8, 19, 0.5);
-            border: 1px solid #1c3054;
-            border-radius: 6px;
-            margin: 0 16px;
-            cursor: pointer;
-            overflow: hidden;
-
-            .minimap-cut-highlight {
-                position: absolute;
-                top: 0;
-                bottom: 0;
-                background: rgba(0, 229, 255, 0.22);
-                border-left: 1px solid #00e5ff;
-                border-right: 1px solid #00e5ff;
-                border-radius: 4px;
-                z-index: 2;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 0 4px;
-            }
-
-            .minimap-viewport-box {
-                position: absolute;
-                top: 0;
-                bottom: 0;
-                background: rgba(255, 255, 255, 0.14);
-                border: 1px solid rgba(255, 255, 255, 0.85);
-                box-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
-                border-radius: 4px;
-                z-index: 3;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 0 4px;
-            }
-
-            .minimap-time-text {
-                font-size: 8px;
-                font-weight: 800;
-                color: #fff;
-                background: rgba(2, 6, 23, 0.7);
-                padding: 1px 3px;
-                border-radius: 2px;
-                pointer-events: none;
-                white-space: nowrap;
-            }
-
-            .minimap-needle {
-                position: absolute;
-                top: 0;
-                bottom: 0;
-                width: 2px;
-                background: #f43f5e;
-                z-index: 4;
-            }
-        }
-
-        .timeline-zoom-controls {
+            min-width: 0;
             display: flex;
-            align-items: center;
+            flex-direction: column;
             gap: 6px;
-            padding-right: 16px;
 
-            .btn-zoom-action {
-                background: rgba(16, 28, 54, 0.8);
-                border: 1px solid #1c3057;
-                color: #00e676;
-                font-size: 10px;
-                font-weight: 800;
-                padding: 4px 10px;
-                border-radius: 6px;
-                cursor: pointer;
-                transition: background 0.15s;
+            .timeline-overview-strip {
+                height: 34px;
+                background: transparent;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                display: flex;
+                align-items: center;
+                box-sizing: border-box;
+            }
 
-                &:hover {
-                    background: #1a2d57;
-                    color: #fff;
-                    border-color: #00e5ff;
-                }
-
-                &.reset {
-                    color: #38bdf8;
-                }
+            .ruler-container-offset {
+                width: 100%;
+                height: 30px; /* גובה מרווח המאפשר הפרדה מלאה בין שורת המספרים לתגית התחתונה */
+                box-sizing: border-box;
+                padding-left: 0;
+                padding-right: 49px;
             }
         }
-    }
-
-    /* התאמת שוליים לפי רוחב כפתור ה-Export (44px) + רווח מוגדר של 5px */
-    .ruler-container-offset {
-        padding-left: 150px;
-        padding-right: 49px; 
     }
 
     .tracks-with-export-layout {
@@ -243,7 +56,8 @@
         width: 100%;
         position: relative;
         background: transparent;
-        gap: 5px; /* מרווח מדויק של 5 פיקסלים בין ה-Tracklines לכפתור ה-Export */
+        gap: 5px;
+        box-sizing: border-box;
 
         .tracks-scroll-area {
             flex: 1;
@@ -254,11 +68,16 @@
             background: transparent;
             min-width: 0;
 
-            &::-webkit-scrollbar { width: 5px; }
-            &::-webkit-scrollbar-thumb { background-color: #182847; border-radius: 2px; }
+            &::-webkit-scrollbar {
+                width: 5px;
+            }
+
+            &::-webkit-scrollbar-thumb {
+                background-color: #182847;
+                border-radius: 2px;
+            }
         }
 
-        /* כפתור ה-Export האנכי בצד ימין */
         .btn-vertical-export-action {
             width: 44px;
             flex-shrink: 0;

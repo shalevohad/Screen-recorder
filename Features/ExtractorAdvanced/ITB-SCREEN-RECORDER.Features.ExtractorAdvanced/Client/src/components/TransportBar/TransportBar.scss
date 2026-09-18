@@ -2,62 +2,12 @@
 
 .viewport-transport-bar {
     height: 44px;
-    background-color: transparent; /* שקוף לחלוטין */
-    border-top: none; /* ללא מסגרת עליונה */
+    background-color: transparent;
+    border-top: none;
     padding: 0 16px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-
-    .cut-readouts {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 11px;
-        color: #64748b;
-        background-color: #0c162d;
-        border: 1px solid #1b2e54;
-        padding: 4px 12px;
-        border-radius: 6px; /* פינות מעוגלות לקופסת הזמנים */
-
-        .cut-val {
-            color: #00e5ff;
-            font-weight: bold;
-
-            &.editable {
-                cursor: pointer;
-                border-bottom: 1px dashed rgba(0, 229, 255, 0.5);
-                padding: 0 2px;
-                transition: all 0.12s ease;
-
-                &:hover {
-                    color: #fff;
-                    background-color: rgba(0, 229, 255, 0.15);
-                    border-bottom-color: #00e5ff;
-                }
-            }
-        }
-
-        .inline-time-input {
-            width: 72px;
-            background: #040813;
-            border: 1px solid #00e5ff;
-            border-radius: 4px;
-            color: #00e5ff;
-            font-family: inherit;
-            font-size: 11px;
-            font-weight: bold;
-            padding: 2px 6px;
-            outline: none;
-            box-shadow: 0 0 6px rgba(0, 229, 255, 0.3);
-        }
-
-        .cut-duration {
-            color: #00e676;
-            font-weight: 700;
-            margin-left: 4px;
-        }
-    }
+    justify-content: center;
 
     .playback-controls {
         display: flex;
@@ -152,33 +102,6 @@
                 width: 28px;
                 text-align: right;
             }
-        }
-    }
-
-    .btn-action-export {
-        background-color: #00e676;
-        color: #020617;
-        width: auto;
-        height: 32px;
-        padding: 0 12px;
-        gap: 6px;
-        border-radius: 6px; /* כפתור Export מעוגל ורך */
-        border: none;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.15s;
-
-        svg {
-            width: 15px;
-            height: 15px;
-            stroke: #020617;
-        }
-
-        &:hover {
-            background-color: #1bf587;
-            box-shadow: 0 0 10px rgba(0, 230, 118, 0.4);
         }
     }
 }

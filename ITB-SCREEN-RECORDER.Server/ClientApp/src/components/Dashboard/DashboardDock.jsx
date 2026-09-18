@@ -12,6 +12,13 @@ export default function DashboardDock({
     availableFeatures, openFeatureIds, handleToggleFeature,
     isFeatureActive
 }) {
+    const onFeatureClick = (feat, isOpen) => {
+        if (isOpen) {
+            window.dispatchEvent(new CustomEvent('extractor:clear-session'));
+        }
+        handleToggleFeature(feat);
+    };
+
     return (
         <aside className="dashboard-vertical-dock tactical-c2-dock">
             <button
@@ -127,9 +134,8 @@ export default function DashboardDock({
                             <button
                                 key={feat.id}
                                 className={`dock-icon-btn tactical-btn-feature ${isOpen ? 'is-engaged' : ''}`}
-                                onClick={() => handleToggleFeature(feat)}
+                                onClick={() => onFeatureClick(feat, isOpen)}
                                 title={isOpen ? `Close ${feat.title}` : `Open ${feat.title}`}
-                                style={isOpen ? { color: '#38bdf8', borderColor: '#38bdf8' } : {}}
                             >
                                 <DynamicIcon name={feat.iconName} size={20} />
                             </button>
