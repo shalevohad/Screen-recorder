@@ -1,6 +1,7 @@
 ﻿namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -34,24 +35,13 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("MediaMTX Supervisor Service starting...");
+        _logger.LogInformation("[MediaMTX Supervisor] Service starting on {OS}...",
+            OperatingSystem.IsWindows() ? "Windows" : "Linux");
 
-        // 1. ניקוי אקטיבי של תהליכים יתומים מיד עם עליית השרת
         CleanupOrphanedMediaMtxProcesses();
         await Task.Delay(1000, stoppingToken);
 
-        string baseDir = AppContext.BaseDirectory;
-        string mtxFolder = Path.Combine(baseDir, "MediaMTX");
-        string mtxExePath = Path.Combine(mtxFolder, "mediamtx.exe");
-
-        if (!File.Exists(mtxExePath))
-        {
-            mtxFolder = baseDir;
-            mtxExePath = Path.Combine(baseDir, "mediamtx.exe");
-        }
-
-        // האזנה לשינויי קונפיגורציה בזמן אמת (Hot-Reload) ללא צורך באיתחול השרת
-        using var changeListener = _configMonitor.OnChange(async updatedConfig =>
+        using var changeListener = _configMonitor.OnChange(async _ =>
         {
             try
             {
@@ -70,26 +60,47 @@ public class MediaMtxSupervisorWorker : BackgroundService
             {
                 if (_mtxProcess == null || _mtxProcess.HasExited)
                 {
-                    if (!File.Exists(mtxExePath))
+                    var currentConfig = _configMonitor.CurrentValue;
+                    string mtxBinaryPath = ResolveMediaMtxBinaryPath(currentConfig.MediaMtx.ExecutablePath);
+
+                    if (!File.Exists(mtxBinaryPath))
                     {
-                        _logger.LogError("[CRITICAL] mediamtx.exe not found at path: {Path}", mtxExePath);
+                        _logger.LogError("[CRITICAL] MediaMTX binary not found at resolved path: {Path}", mtxBinaryPath);
                         await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
                         continue;
                     }
 
-                    // 2. הבטחת שטח נקי וסגירת פורטים תפוסים לפני כל הרמה
+                    EnsureExecutablePermissions(mtxBinaryPath);
                     CleanupOrphanedMediaMtxProcesses();
                     await Task.Delay(1000, stoppingToken);
 
-                    // עדכון פורטים מדויק בקובץ mediamtx.yml ללא פגיעה בשאר ההגדרות
+                    string mtxFolder = Path.GetDirectoryName(mtxBinaryPath) ?? AppContext.BaseDirectory;
                     string ymlPath = Path.Combine(mtxFolder, "mediamtx.yml");
-                    PatchMediaMtxYaml(ymlPath, _configMonitor.CurrentValue);
+                    if (!File.Exists(ymlPath))
+                    {
+                        ymlPath = Path.Combine(AppContext.BaseDirectory, "mediamtx.yml");
+                    }
 
-                    _logger.LogInformation("Launching MediaMTX from: {Path}", mtxExePath);
+                    // סנכרון אוטומטי של קובץ ה-YAML הנקי מתיקיית המקור בפיתוח לדריסת כל קובץ פגום ב-bin
+                    string devSourceYml = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "MediaMTX", "mediamtx.yml"));
+                    if (File.Exists(devSourceYml) && File.Exists(ymlPath) && !string.Equals(Path.GetFullPath(devSourceYml), Path.GetFullPath(ymlPath), StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            File.Copy(devSourceYml, ymlPath, overwrite: true);
+                            _logger.LogInformation("[MediaMTX Supervisor] Synchronized clean mediamtx.yml from project source.");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("[MediaMTX Supervisor] Could not auto-sync mediamtx.yml: {Message}", ex.Message);
+                        }
+                    }
+
+                    _logger.LogInformation("[MediaMTX Supervisor] Launching MediaMTX: {Path}", mtxBinaryPath);
 
                     var startInfo = new ProcessStartInfo
                     {
-                        FileName = mtxExePath,
+                        FileName = mtxBinaryPath,
                         WorkingDirectory = mtxFolder,
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
@@ -97,38 +108,81 @@ public class MediaMtxSupervisorWorker : BackgroundService
                         CreateNoWindow = true
                     };
 
-                    // שליפת אזור הזמן מתוך הקונפיגורציה (ברירת מחדל: UTC)
-                    string targetTz = string.IsNullOrWhiteSpace(_configMonitor.CurrentValue.MediaMtx.Timezone)
+                    if (File.Exists(ymlPath))
+                    {
+                        startInfo.Arguments = $"\"{ymlPath}\"";
+                    }
+
+                    // 1. Control API
+                    startInfo.Environment["MTX_API"] = "yes";
+                    startInfo.Environment["MTX_APIADDRESS"] = $"127.0.0.1:{currentConfig.MediaMtx.ApiPort}";
+                    startInfo.Environment["MTX_APIALLOWORIGINS"] = "[\"*\"]";
+
+                    // 2. Metrics Server
+                    startInfo.Environment["MTX_METRICS"] = currentConfig.MediaMtx.EnableMetrics ? "yes" : "no";
+                    startInfo.Environment["MTX_METRICSADDRESS"] = $":{currentConfig.MediaMtx.MetricsPort}";
+                    startInfo.Environment["MTX_METRICSALLOWORIGINS"] = "[\"*\"]";
+
+                    // 3. PPROF Profiling Server
+                    startInfo.Environment["MTX_PPROF"] = currentConfig.MediaMtx.EnablePprof ? "yes" : "no";
+                    startInfo.Environment["MTX_PPROFADDRESS"] = $":{currentConfig.MediaMtx.PprofPort}";
+
+                    // 4. Playback Server
+                    startInfo.Environment["MTX_PLAYBACK"] = currentConfig.MediaMtx.EnablePlayback ? "yes" : "no";
+                    startInfo.Environment["MTX_PLAYBACKADDRESS"] = $":{currentConfig.MediaMtx.PlaybackPort}";
+                    startInfo.Environment["MTX_PLAYBACKALLOWORIGINS"] = "[\"*\"]";
+
+                    // 5. RTMP Ingest Server
+                    startInfo.Environment["MTX_RTMP"] = "yes";
+                    startInfo.Environment["MTX_RTMPADDRESS"] = $":{currentConfig.MediaMtx.RtmpPort}";
+
+                    // 6. HLS Server
+                    startInfo.Environment["MTX_HLS"] = "yes";
+                    startInfo.Environment["MTX_HLSADDRESS"] = $":{currentConfig.MediaMtx.HlsPort}";
+                    startInfo.Environment["MTX_HLSALWAYSREMUX"] = currentConfig.MediaMtx.HlsAlwaysRemux ? "yes" : "no";
+                    startInfo.Environment["MTX_HLSVARIANT"] = currentConfig.MediaMtx.HlsVariant;
+                    startInfo.Environment["MTX_HLSSEGMENTDURATION"] = currentConfig.MediaMtx.HlsSegmentDuration;
+
+                    // 7. Timezone
+                    startInfo.Environment["TZ"] = string.IsNullOrWhiteSpace(currentConfig.MediaMtx.Timezone)
                         ? "UTC"
-                        : _configMonitor.CurrentValue.MediaMtx.Timezone;
+                        : currentConfig.MediaMtx.Timezone;
 
-                    // כפיית אזור הזמן הנבחר על מנוע ה-Go של MediaMTX
-                    startInfo.EnvironmentVariables["TZ"] = targetTz;
+                    _mtxProcess = new Process
+                    {
+                        StartInfo = startInfo,
+                        EnableRaisingEvents = true
+                    };
 
-                    _logger.LogInformation("Configuring MediaMTX environment with TZ={Timezone}", targetTz);
-
-                    _mtxProcess = new Process { StartInfo = startInfo };
-
-                    // הזרמת לוגים של MediaMTX ישירות ל-ILogger של השרת
                     _mtxProcess.OutputDataReceived += (sender, args) =>
                     {
-                        if (!string.IsNullOrEmpty(args.Data))
-                            _logger.LogInformation("[MediaMTX Content]: {Log}", args.Data);
+                        if (string.IsNullOrEmpty(args.Data)) return;
+
+                        if (args.Data.Contains("ERR") || args.Data.Contains("fatal") || args.Data.Contains("panic"))
+                            _logger.LogError("[MediaMTX Core ERROR]: {Log}", args.Data);
+                        else if (args.Data.Contains("WAR"))
+                            _logger.LogWarning("[MediaMTX Core WARN]: {Log}", args.Data);
+                        else
+                            _logger.LogInformation("[MediaMTX Core]: {Log}", args.Data);
                     };
 
                     _mtxProcess.ErrorDataReceived += (sender, args) =>
                     {
                         if (!string.IsNullOrEmpty(args.Data))
-                            _logger.LogError("[MediaMTX Error Stream]: {Log}", args.Data);
+                            _logger.LogError("[MediaMTX Core STDERR]: {Log}", args.Data);
+                    };
+
+                    _mtxProcess.Exited += (sender, args) =>
+                    {
+                        _logger.LogWarning("[MediaMTX Supervisor] Process exited with exit code: {ExitCode}", _mtxProcess?.ExitCode);
                     };
 
                     _mtxProcess.Start();
                     _mtxProcess.BeginOutputReadLine();
                     _mtxProcess.BeginErrorReadLine();
 
-                    _logger.LogInformation("MediaMTX started successfully with PID: {Pid} (TZ: {Tz})", _mtxProcess.Id, targetTz);
+                    _logger.LogInformation("[MediaMTX Supervisor] MediaMTX started successfully (PID: {Pid})", _mtxProcess.Id);
 
-                    // הזרקת הגדרות ההקלטה דרך ה-API מיד כשהשרת זמין
                     _ = Task.Run(() => ApplyRecordingConfigAsync(stoppingToken), stoppingToken);
                 }
             }
@@ -138,7 +192,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to start or monitor MediaMTX process.");
+                _logger.LogError(ex, "[MediaMTX Supervisor] Error in supervisor monitoring loop.");
             }
 
             try
@@ -152,50 +206,65 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
     }
 
-    private void PatchMediaMtxYaml(string ymlPath, SystemConfig config)
+    private string ResolveMediaMtxBinaryPath(string configuredPath)
     {
-        if (!File.Exists(ymlPath))
+        string baseDir = AppContext.BaseDirectory;
+        string defaultBinaryName = OperatingSystem.IsWindows() ? "mediamtx.exe" : "mediamtx";
+
+        if (!string.IsNullOrWhiteSpace(configuredPath))
         {
-            _logger.LogWarning("[MediaMTX] Cannot patch {Path} because the file does not exist.", ymlPath);
+            string normalized = configuredPath
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
+
+            // בלינוקס - הסרת סיומת .exe אם נרשמה ב-appsettings.json
+            if (!OperatingSystem.IsWindows() && normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[..^4];
+            }
+
+            string candidate = Path.IsPathRooted(normalized)
+                ? normalized
+                : Path.Combine(baseDir, normalized);
+
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        // גיבוי לתיקיית המשנה MediaMTX
+        string fallbackMtx = Path.Combine(baseDir, "MediaMTX", defaultBinaryName);
+        if (File.Exists(fallbackMtx)) return fallbackMtx;
+
+        // גיבוי לשורש הריצה
+        string fallbackRoot = Path.Combine(baseDir, defaultBinaryName);
+        if (File.Exists(fallbackRoot)) return fallbackRoot;
+
+        // גיבוי לסביבת פיתוח (Debug / VS)
+        string devFallback = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "MediaMTX", defaultBinaryName));
+        if (File.Exists(devFallback)) return devFallback;
+
+        return fallbackMtx;
+    }
+
+    private void EnsureExecutablePermissions(string filePath)
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists(filePath))
             return;
-        }
 
-        var lines = File.ReadAllLines(ymlPath);
-        bool isModified = false;
-
-        for (int i = 0; i < lines.Length; i++)
+        try
         {
-            string line = lines[i];
+            File.SetUnixFileMode(filePath,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
 
-            if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith("#"))
-                continue;
-
-            if (line.StartsWith("api:"))
-            {
-                lines[i] = "api: yes";
-                isModified = true;
-            }
-            else if (line.StartsWith("apiAddress:"))
-            {
-                lines[i] = $"apiAddress: 127.0.0.1:{config.MediaMtx.ApiPort}";
-                isModified = true;
-            }
-            else if (line.StartsWith("hlsAddress:"))
-            {
-                lines[i] = $"hlsAddress: :{config.MediaMtx.HlsPort}";
-                isModified = true;
-            }
-            else if (line.StartsWith("rtmpAddress:"))
-            {
-                lines[i] = $"rtmpAddress: :{config.MediaMtx.RtmpPort}";
-                isModified = true;
-            }
+            _logger.LogInformation("[MediaMTX Supervisor] Verified Linux execution permissions for: {Path}", filePath);
         }
-
-        if (isModified)
+        catch (Exception ex)
         {
-            File.WriteAllLines(ymlPath, lines);
-            _logger.LogInformation("[MediaMTX] Successfully patched mediamtx.yml with current ports from appsettings.json.");
+            _logger.LogWarning("[MediaMTX Supervisor] Could not set Unix permissions on {Path}: {Message}", filePath, ex.Message);
         }
     }
 
@@ -204,31 +273,47 @@ public class MediaMtxSupervisorWorker : BackgroundService
         SystemConfig config = _configMonitor.CurrentValue;
         int apiPort = config.MediaMtx.ApiPort;
 
-        bool ready = await _apiClient.WaitUntilReadyAsync(apiPort, TimeSpan.FromSeconds(15), stoppingToken).ConfigureAwait(false);
-        if (!ready)
-        {
-            _logger.LogError("[CRITICAL] MediaMTX API did not become ready in time. Recording settings were not applied.");
-            return;
-        }
-
+        _logger.LogInformation("[STORAGE RESOLVER] Resolving active recording directory...");
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
 
-        // סיומת Z תקנית עבור UTC, או מבנה שעה נקי לכל אזור זמן אחר
-        string targetTz = string.IsNullOrWhiteSpace(config.MediaMtx.Timezone) ? "UTC" : config.MediaMtx.Timezone;
-        bool isUtc = string.Equals(targetTz, "UTC", StringComparison.OrdinalIgnoreCase);
-        string timeFormat = isUtc ? "%Y%m%dT%H%M%SZ" : "%Y%m%dT%H%M%S";
+        _logger.LogInformation("[STORAGE RESOLVER] Resolved target storage root: '{Root}'", cleanRoot);
 
-        // תבנית שמירה ישירה: ללא ספריית live, שמירה ישירה תחת מזהה העמדה (%path)
-        string recordPath = $"{cleanRoot}/%path/{timeFormat}";
+        try
+        {
+            if (!Directory.Exists(root))
+            {
+                _logger.LogWarning("[STORAGE] Target directory '{Path}' does not exist. Creating...", root);
+                Directory.CreateDirectory(root);
+            }
 
+            string testFile = Path.Combine(root, $".write_test_{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(testFile, "probe");
+            File.Delete(testFile);
+            _logger.LogInformation("[STORAGE] Write permission test to '{Path}' PASSED.", root);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[STORAGE CRITICAL] Write permission test to folder '{Path}' FAILED! MediaMTX will fail to write files!", root);
+        }
+
+        bool ready = await _apiClient.WaitUntilReadyAsync(apiPort, TimeSpan.FromSeconds(15), stoppingToken).ConfigureAwait(false);
+        if (!ready)
+        {
+            _logger.LogError("[CRITICAL] MediaMTX API did not become ready in time at port {Port}. Aborting configuration injection.", apiPort);
+            return;
+        }
+
+        string recordPath = $"{cleanRoot}/%path/%Y-%m-%d_%H-%M-%S-%f";
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
         string retentionHours = $"{config.Storage.RetentionDays * 24}h";
 
-        // שליפת פורמט ההקלטה מתוך הקונפיגורציה (fmp4 כברירת מחדל)
         string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
             ? "fmp4"
             : config.Storage.RecordFormat.Trim().ToLowerInvariant();
+
+        _logger.LogInformation("[INJECTING CONFIG] Pushing recording parameters -> RecordPath: '{Path}', Format: '{Format}', SegmentDuration: '{Chunk}', Retention: '{Retention}'",
+            recordPath, recordFormat, chunkDuration, retentionHours);
 
         bool applied = await _apiClient.PatchPathDefaultsAsync(
             apiPort,
@@ -240,12 +325,11 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
         if (applied)
         {
-            _logger.LogInformation("[STORAGE] Recording configuration applied -> Root: '{Root}', Path: '{RecordPath}', Format: '{Format}', Chunk: {Interval}, Retention: {Retention}",
-                cleanRoot, recordPath, recordFormat, chunkDuration, retentionHours);
+            _logger.LogInformation("[STORAGE CONFIGURED] Successfully applied recording parameters to MediaMTX via API.");
         }
         else
         {
-            _logger.LogError("[CRITICAL] Failed to apply recording configuration to MediaMTX via API.");
+            _logger.LogError("[CRITICAL] Failed to apply recording configuration to MediaMTX via API. See previous error logs for details.");
         }
     }
 
@@ -254,11 +338,9 @@ public class MediaMtxSupervisorWorker : BackgroundService
         try
         {
             var orphanedProcesses = Process.GetProcessesByName("mediamtx");
-
             if (orphanedProcesses.Any())
             {
-                _logger.LogWarning("[MediaMTX Supervisor] Found {Count} orphaned mediamtx processes. Terminating them actively...", orphanedProcesses.Length);
-
+                _logger.LogWarning("[MediaMTX Supervisor] Found {Count} running mediamtx processes. Terminating...", orphanedProcesses.Length);
                 foreach (var proc in orphanedProcesses)
                 {
                     try
@@ -268,19 +350,16 @@ public class MediaMtxSupervisorWorker : BackgroundService
                             int pid = proc.Id;
                             proc.Kill(entireProcessTree: true);
                             proc.WaitForExit(2000);
-                            _logger.LogInformation("[MediaMTX Supervisor] Successfully terminated orphaned process PID: {Pid}", pid);
+                            _logger.LogInformation("[MediaMTX Supervisor] Terminated process PID: {Pid}", pid);
                         }
                     }
                     catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
                     {
-                        _logger.LogWarning("[MediaMTX Supervisor] Insufficient permissions to terminate process {Pid} (Access Denied).", proc.Id);
-                    }
-                    catch (InvalidOperationException)
-                    {
+                        _logger.LogWarning("[MediaMTX Supervisor] Access denied killing process {Pid}.", proc.Id);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning("[MediaMTX Supervisor] Failed to kill process {Pid}: {Message}", proc.Id, ex.Message);
+                        _logger.LogWarning("[MediaMTX Supervisor] Failed to kill PID {Pid}: {Message}", proc.Id, ex.Message);
                     }
                     finally
                     {
@@ -291,37 +370,22 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError("[MediaMTX Supervisor] Error occurred during process sanitization: {Message}", ex.Message);
+            _logger.LogError(ex, "[MediaMTX Supervisor] Error during process cleanup.");
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Server shutting down. Terminating MediaMTX process...");
-
+        _logger.LogInformation("[MediaMTX Supervisor] Shutting down. Terminating MediaMTX process...");
         try
         {
             if (_mtxProcess != null && !_mtxProcess.HasExited)
             {
-                try
-                {
-                    _mtxProcess.Kill(entireProcessTree: true);
-                    _mtxProcess.WaitForExit(3000);
-                    _logger.LogInformation("MediaMTX process terminated successfully.");
-                }
-                catch (Win32Exception ex) when (ex.NativeErrorCode == 5)
-                {
-                    _logger.LogWarning("[MediaMTX Supervisor] Access denied when attempting to terminate MediaMTX on shutdown.");
-                }
-                catch (InvalidOperationException)
-                {
-                }
+                _mtxProcess.Kill(entireProcessTree: true);
+                _mtxProcess.WaitForExit(3000);
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error occurred while terminating MediaMTX process.");
-        }
+        catch { }
         finally
         {
             _mtxProcess?.Dispose();

@@ -1,0 +1,68 @@
+.timeline-context-menu {
+    position: fixed;
+    z-index: 99999;
+    background: #0b1426;
+    border: 1px solid #1c3054;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    padding: 6px;
+    width: 190px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    animation: menuFadeIn 0.12s ease-out;
+
+    .menu-header {
+        font-size: 9.5px;
+        font-weight: 800;
+        color: #64748b;
+        padding: 6px 10px;
+        border-bottom: 1px solid #162441;
+        margin-bottom: 4px;
+        letter-spacing: 0.05em;
+    }
+
+    button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: transparent;
+        border: none;
+        color: #cbd5e1;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+        transition: all 0.12s;
+
+        svg {
+            width: 13px;
+            height: 13px;
+            stroke: #00e5ff;
+        }
+
+        &:hover {
+            background: #16274a;
+            color: #fff;
+
+            svg {
+                stroke: #fff;
+            }
+        }
+    }
+}
+
+@keyframes menuFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

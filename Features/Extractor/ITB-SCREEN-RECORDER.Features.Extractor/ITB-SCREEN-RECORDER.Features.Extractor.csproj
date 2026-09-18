@@ -1,0 +1,88 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<RootNamespace>ITB_SCREEN_RECORDER.Features.Extractor</RootNamespace>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+
+		<!-- מניעת Self-Contained עבור תוסף מודולרי והבטחת נתיב פלט אחיד -->
+		<SelfContained>false</SelfContained>
+		<AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- מטמיע את המניפסט ישירות לתוך ה-DLL מקומפל -->
+		<EmbeddedResource Include="feature.json" />
+	</ItemGroup>
+
+	<!-- תלות בליבה - שימוש ב-Private=false למניעת שכפול ה-DLL של Core בתיקיית הפיצ'ר -->
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+	</ItemGroup>
+
+	<!-- קימפול ה-Widget בכל Build -->
+	<Target Name="CompileExtractorFrontend" BeforeTargets="Build" Condition="Exists('Client\package.json')">
+		<Message Importance="high" Text="[ITB EXTRACTOR PLUGIN] Building Client Widget..." />
+		<Exec Command="npm install" WorkingDirectory="Client" Condition="!Exists('Client\node_modules')" />
+		<Exec Command="npm run build" WorkingDirectory="Client" ContinueOnError="false" />
+	</Target>
+
+	<!-- הכללת תוצרי ה-Web, ה-Bin והמניפסט בפלט ה-Build וה-Publish -->
+	<ItemGroup>
+		<None Update="wwwroot\**">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<Visible>true</Visible>
+		</None>
+		<!-- הגדרה כ-Content עם Always מבטיחה שקובץ המניפסט יועתק ישירות לתיקיית ה-Publish -->
+		<Content Include="feature.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</Content>
+	</ItemGroup>
+
+	<!-- ========================================== -->
+	<!-- ניהול בינאריים לפי מערכת ההפעלה של היעד      -->
+	<!-- ========================================== -->
+
+	<!-- עבור Windows: העתקת הכלים מתיקיית Tools/Win לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<None Update="Tools\Win\**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- עבור Linux: העתקת הכלים מתיקיית Tools/Linux לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<None Update="Tools/Linux/**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+	<ItemGroup>
+	  <Folder Include="Tools\Linux\" />
+	</ItemGroup>
+
+	<!-- העתקה אוטומטית של ה-DLL והנכסים לסביבת פיתוח מקומית בסיום בנייה -->
+	<Target Name="CopyToDevServer" AfterTargets="Build" Condition="Exists('..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0')">
+		<ItemGroup>
+			<PluginOutputFiles Include="$(TargetDir)**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(PluginOutputFiles)" DestinationFolder="..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0\Features\Extractor\%(RecursiveDir)" SkipUnchangedFiles="true" />
+	</Target>
+
+</Project>

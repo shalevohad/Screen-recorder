@@ -1,0 +1,201 @@
+﻿// Client/src/components/Timeline/TimelineBoard.scss
+
+.timeline-board-root {
+    position: relative;
+    width: 100%;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    overflow: hidden;
+    user-select: none;
+
+    .timeline-top-deck {
+        display: flex;
+        width: 100%;
+        margin-bottom: 4px;
+        box-sizing: border-box;
+
+        .timeline-badge-slot {
+            width: 150px;
+            min-width: 150px;
+            max-width: 150px;
+            flex-shrink: 0;
+            display: flex;
+            padding-right: 8px;
+            box-sizing: border-box;
+        }
+
+        .timeline-meters-track {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+
+            .timeline-overview-strip {
+                height: 34px;
+                background: transparent;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                display: flex;
+                align-items: center;
+                box-sizing: border-box;
+            }
+
+            .ruler-container-offset {
+                width: 100%;
+                height: 26px;
+                box-sizing: border-box;
+                padding-left: 30px;
+                padding-right: 54px;
+            }
+        }
+    }
+}
+
+/* =========================================================
+   מבנה הערוצים וכפתור ה-Export (קינון SCSS נקי וגובה חכם)
+   ========================================================= */
+
+// בתוך TimelineBoard.scss (החלף רק את החלק הזה)
+
+/* =========================================================
+   מבנה הערוצים וכפתור ה-Export (קינון נקי ועיצוב Soft Modern)
+   ========================================================= */
+
+.tracks-with-export-layout {
+    display: block !important;
+    position: relative !important;
+    width: 100% !important;
+    background: transparent !important;
+    padding-right: 58px !important; /* פינוי מקום לכפתור (48 רוחב + 10 רווח) */
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    /* אזור הגלילה של המסלולים */
+    .tracks-scroll-area {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: auto !important;
+        max-height: 240px !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        position: relative !important;
+        background: transparent !important;
+        box-sizing: border-box !important;
+
+        &::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background-color: rgba(148, 163, 184, 0.2);
+            border-radius: 9999px; /* כדורי רך */
+        }
+    }
+    /* כפתור ה-Export האנכי בעיצוב Tactile Softness החדש */
+    button.btn-vertical-export-action {
+        position: absolute !important;
+        right: 8px !important; /* ריווח נקי מהקצה */
+        top: 0 !important;
+        bottom: 0 !important;
+        width: 48px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        /* פינות עגולות חלקות בסגנון iOS */
+        border-radius: 12px !important;
+        outline: none !important;
+        /* מסגרת זכוכית עדינה וצל רך */
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        cursor: pointer !important;
+        box-sizing: border-box !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        /* רקע Slate חצי שקוף ויוקרתי */
+        background: rgba(30, 41, 59, 0.6) !important;
+        backdrop-filter: blur(8px) !important;
+        color: #94a3b8 !important;
+        container-type: size !important;
+
+        .export-icon-top {
+            margin-bottom: 12px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: margin 0.3s ease !important;
+            background: rgba(15, 23, 42, 0.4) !important;
+            width: 32px !important;
+            height: 32px !important;
+            border-radius: 50% !important; /* אייקון בתוך עיגול */
+
+            svg {
+                width: 16px !important;
+                height: 16px !important;
+                transition: transform 0.3s ease, filter 0.3s ease !important;
+                stroke: currentColor !important;
+            }
+        }
+
+        .vertical-label {
+            writing-mode: vertical-rl !important;
+            transform: rotate(180deg) !important;
+            font-family: var(--font-ui, sans-serif) !important;
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            letter-spacing: 2px !important;
+            white-space: nowrap !important;
+            text-transform: uppercase !important;
+            transition: opacity 0.2s ease !important;
+        }
+        /* הסתרה חכמה לגובה נמוך */
+        @container (max-height: 160px) {
+            .vertical-label {
+                display: none !important;
+            }
+
+            .export-icon-top {
+                margin-bottom: 0 !important;
+            }
+        }
+        /* מצב פעיל (יש טווח חיתוך) - תאורת אווירה רכה */
+        &.active {
+            background: rgba(6, 182, 212, 0.15) !important;
+            border-color: rgba(6, 182, 212, 0.4) !important;
+            color: #00e5ff !important;
+            box-shadow: 0 8px 25px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+
+            .export-icon-top {
+                background: rgba(6, 182, 212, 0.25) !important;
+            }
+
+            &:hover {
+                background: #06b6d4 !important;
+                color: #0F172A !important;
+                box-shadow: 0 10px 30px rgba(6, 182, 212, 0.4) !important;
+
+                .export-icon-top {
+                    background: transparent !important;
+                }
+
+                    .export-icon-top svg {
+                        transform: translateY(-2px) !important;
+                    }
+            }
+        }
+        /* מצב כבוי */
+        &.disabled {
+            background: rgba(15, 23, 42, 0.4) !important;
+            border-color: rgba(148, 163, 184, 0.05) !important;
+            color: rgba(100, 116, 139, 0.5) !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+
+            .export-icon-top {
+                background: transparent !important;
+            }
+        }
+    }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "extractor-slicer",
+  "name": "Session Slicer (Extractor Feature)",
+  "version": "1.0.0",
+  "description": "Enables time-range video slicing, FFmpeg concatenation, and TAR archiving export.",
+  "author": "ITB",
+  "defaultSelected": true,
+  "entryPoint": "wwwroot/extractor.widget.js",
+  "dependencies": [],
+  "apiRoutes": [],
+  "supersedes": [],
+  "requireTools": [
+    {
+      "name": "ffmpeg",
+      "destination": "."
+    },
+    {
+      "name": "ffprobe",
+      "destination": "."
+    }
+  ]
+}

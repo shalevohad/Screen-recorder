@@ -1,0 +1,269 @@
+﻿// Client/src/components/Viewport/MulticamViewport.scss
+
+.multicam-viewport-root {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    &.solo {
+        padding: 16px;
+        align-items: center;
+        justify-content: center;
+
+        .camera-card-cell {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    }
+
+    .multicam-tactical-grid {
+        flex: 1 1 0;
+        min-height: 0;
+        width: 100%;
+        padding: 16px;
+        box-sizing: border-box;
+        display: grid;
+        gap: 16px; /* מרווח אלגנטי מעט גדול יותר */
+        align-items: center;
+        justify-items: center;
+    }
+
+    .camera-card-cell {
+        container-type: size;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+        min-height: 0;
+
+        .camera-card {
+            aspect-ratio: 16 / 9;
+            width: 100cqw;
+            max-width: calc(100cqh * (16 / 9));
+            max-height: 100cqh;
+            /* רקע ופינות רכות - Soft Geometry */
+            background-color: rgba(21, 31, 50, 0.85); /* surface-card משודרג */
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px; /* rounded-lg לפי אפיון */
+
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            box-sizing: border-box;
+            overflow: hidden;
+            /* צל מרחף אלגנטי */
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+
+            &:hover {
+                border-color: rgba(6, 182, 212, 0.45); /* var(--border-accent-cyan) */
+                box-shadow: 0 0 24px rgba(6, 182, 212, 0.25), 0 10px 30px rgba(0, 0, 0, 0.6);
+                transform: translateY(-2px);
+            }
+            /* סטטוסים לפי אפיון ה-UX */
+            &.live .status-pulse {
+                background-color: #10B981; /* Emerald-500 */
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+            }
+
+            &.alert .status-pulse {
+                background-color: #F43F5E; /* Rose-500 */
+                box-shadow: 0 0 8px rgba(244, 63, 94, 0.6);
+                animation: pulse-alert 1.5s infinite;
+            }
+
+            &.offline .status-pulse {
+                background-color: #475569; /* Slate-600 */
+            }
+
+            .card-topbar {
+                height: 36px;
+                /* גרדיאנט שחור עדין בחלק העליון לקריאות הטקסט */
+                background: linear-gradient(180deg, rgba(9, 13, 20, 0.85) 0%, rgba(9, 13, 20, 0) 100%);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 14px;
+                flex-shrink: 0;
+                z-index: 10;
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+
+                .station-meta {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+
+                    .status-pulse {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 50%;
+                    }
+
+                    .station-name {
+                        font-family: var(--font-ui, sans-serif);
+                        font-size: 11.5px;
+                        font-weight: 800;
+                        color: #F8FAFC;
+                        letter-spacing: 0.5px;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+                    }
+                }
+                /* כפתור Solo Focus מינימליסטי מבוסס אייקון עגול */
+                .btn-solo-focus-icon {
+                    background: rgba(6, 182, 212, 0.1);
+                    border: 1px solid rgba(6, 182, 212, 0.25);
+                    border-radius: 50%;
+                    width: 24px;
+                    height: 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #06B6D4;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    backdrop-filter: blur(4px);
+
+                    svg {
+                        width: 12px;
+                        height: 12px;
+                        stroke: currentColor;
+                    }
+
+                    &:hover {
+                        background: rgba(6, 182, 212, 0.25);
+                        color: #22D3EE;
+                        box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+                        transform: scale(1.05);
+                    }
+                }
+            }
+
+            .card-feed-body {
+                flex: 1;
+                width: 100%;
+                background: radial-gradient(circle at center, rgba(15, 23, 42, 0.5) 0%, rgba(9, 13, 20, 0.9) 100%);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+
+                &.blurred-offline {
+                    background: rgba(15, 23, 42, 0.95);
+                    backdrop-filter: blur(12px);
+                }
+
+                .offline-state-overlay {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 12px;
+                    color: #64748B;
+
+                    svg {
+                        width: 28px;
+                        height: 28px;
+                        stroke-width: 2;
+                        opacity: 0.6;
+                    }
+
+                    span {
+                        font-family: var(--font-mono, monospace);
+                        font-size: 11px;
+                        font-weight: 800;
+                        letter-spacing: 1.5px;
+                    }
+                }
+
+                .tactical-crosshair-center {
+                    width: 30px;
+                    height: 30px;
+                    border-top: 1px solid rgba(6, 182, 212, 0.2);
+                    border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+                }
+            }
+            /* שכבת המידע התחתונה המרחפת */
+            .card-bottom-overlay {
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: linear-gradient(to top, rgba(9, 13, 20, 0.9) 0%, transparent 100%);
+                display: flex;
+                align-items: flex-end;
+                justify-content: space-between;
+                padding: 0 12px 12px 12px;
+                pointer-events: none;
+
+                .overlay-pill {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    background: rgba(15, 23, 42, 0.75);
+                    backdrop-filter: blur(8px);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 9999px;
+                    padding: 4px 12px;
+                    font-family: var(--font-mono, monospace);
+                    font-size: 10px;
+                    font-weight: 800;
+                    color: #F8FAFC;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+                    &.timestamp {
+                        color: #06B6D4;
+                        border-color: rgba(6, 182, 212, 0.3);
+                        background: rgba(15, 23, 42, 0.85);
+
+                        svg {
+                            width: 12px;
+                            height: 12px;
+                            stroke: currentColor;
+                            margin-bottom: 1px;
+                        }
+                    }
+
+                    &.metrics {
+                        color: #94A3B8;
+
+                        .divider {
+                            width: 1px;
+                            height: 10px;
+                            background: rgba(255, 255, 255, 0.15);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@keyframes pulse-alert {
+    0% {
+        box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.6);
+    }
+
+    70% {
+        box-shadow: 0 0 0 8px rgba(244, 63, 94, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+    }
+}

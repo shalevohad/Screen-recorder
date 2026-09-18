@@ -4,54 +4,58 @@ import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
 import './FullscreenModal.scss';
 
-export default function FullscreenModal({
-    hostname,
-    webrtcBaseUrl,
-    actualFps = 0,
-    targetFps = 30,
-    droppedFrames = 0,
-    hostCpuPct = 0,
-    appCpuPct = 0,
-    hostRamPct = 0,
-    appRamMb = 0,
-    gpuNvencPct = 0,
-    gpu3dPct = 0,
-    mediaTxMbps = 0,
-    telemetryTxKbps = 0,
-    streamingSinceUtc,
-    isStreaming = false,
-    onToggleStream,
-    onQuickBookmark,
-    onQuickPlayback,
-    onQuickExport,
-    onOpenInspector,
-    onClose
-}) {
+export default function FullscreenModal(props) {
+    const {
+        hostname,
+        webrtcBaseUrl,
+        actualFps = 0,
+        targetFps = 30,
+        droppedFrames = 0,
+        hostCpuPct = 0,
+        appCpuPct = 0,
+        hostRamPct = 0,
+        appRamMb = 0,
+        gpuNvencPct = 0,
+        gpu3dPct = 0,
+        mediaTxMbps = 0,
+        telemetryTxKbps = 0,
+        streamingSinceUtc,
+        isStreaming = false,
+        onToggleStream,
+        onOpenInspector,
+        onClose
+    } = props;
+
     const modalBoxRef = useRef(null);
+    const sessionStartTimeRef = useRef(null);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const [confirmStop, setConfirmStop] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-    const [elapsedTimeStr, setElapsedTimeStr] = useState(() => {
-        if (!streamingSinceUtc) return '00:00:00';
-        const start = new Date(streamingSinceUtc).getTime();
-        const now = Date.now();
-        let diffSec = Math.max(0, Math.floor((now - start) / 1000));
+    // יחס מסך דינמי שמתאים את עצמו לרזולוציית התחנה (ברירת מחדל 16:9)
+    const [aspectRatio, setAspectRatio] = useState(16 / 9);
 
-        const days = Math.floor(diffSec / 86400);
-        diffSec %= 86400;
-        const hours = Math.floor(diffSec / 3600);
-        diffSec %= 3600;
-        const minutes = Math.floor(diffSec / 60);
-        const seconds = diffSec % 60;
+    // זיהוי רזולוציית הווידאו בפועל והתאמת גבולות החלון אליה ללא פסים
+    useEffect(() => {
+        const checkVideoDimensions = () => {
+            if (!modalBoxRef.current) return;
+            const videoEl = modalBoxRef.current.querySelector('video');
+            if (videoEl && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+                const streamRatio = videoEl.videoWidth / videoEl.videoHeight;
+                if (Math.abs(streamRatio - aspectRatio) > 0.01) {
+                    setAspectRatio(streamRatio);
+                }
+            }
+        };
 
-        const pad = (n) => String(n).padStart(2, '0');
-        if (days > 0) return `${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-    });
+        const interval = setInterval(checkVideoDimensions, 500);
+        return () => clearInterval(interval);
+    }, [aspectRatio]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') onClose?.();
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
@@ -63,36 +67,51 @@ export default function FullscreenModal({
         return () => clearTimeout(timer);
     }, [confirmStop]);
 
+    // טיימר שידור חי נקי לחלוטין ללא קריאות setState סינכרוניות בתוך האפקט
     useEffect(() => {
-        if (!streamingSinceUtc) return;
+        if (!isStreaming) {
+            sessionStartTimeRef.current = null;
+            return;
+        }
 
-        const updateTimer = () => {
-            const start = new Date(streamingSinceUtc).getTime();
-            const now = Date.now();
-            let diffSec = Math.max(0, Math.floor((now - start) / 1000));
+        const rawStart = streamingSinceUtc || props.recordingStartTime || props.startedAt || props.streamingStartedAt;
+        const parsedStart = rawStart ? new Date(rawStart).getTime() : null;
+        const hasValidDate = parsedStart && !isNaN(parsedStart) && parsedStart > 0;
 
-            const days = Math.floor(diffSec / 86400);
-            diffSec %= 86400;
-            const hours = Math.floor(diffSec / 3600);
-            diffSec %= 3600;
-            const minutes = Math.floor(diffSec / 60);
-            const seconds = diffSec % 60;
+        if (!hasValidDate && !sessionStartTimeRef.current) {
+            sessionStartTimeRef.current = Date.now();
+        }
 
-            const pad = (n) => String(n).padStart(2, '0');
-            if (days > 0) {
-                setElapsedTimeStr(`${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
-            } else {
-                setElapsedTimeStr(`${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
-            }
+        const updateClock = () => {
+            const startTimestamp = hasValidDate ? parsedStart : sessionStartTimeRef.current;
+            const diff = Math.max(0, Math.floor((Date.now() - startTimestamp) / 1000));
+            setElapsedSeconds(diff);
         };
 
-        const interval = setInterval(updateTimer, 1000);
+        updateClock();
+        const interval = setInterval(updateClock, 1000);
         return () => clearInterval(interval);
-    }, [streamingSinceUtc]);
+    }, [isStreaming, streamingSinceUtc, props.recordingStartTime, props.startedAt, props.streamingStartedAt]);
+
+    // אם הסטרימינג לא פעיל, הזמן המוצג הוא תמיד 0 באופן מובטח
+    const displayElapsedSeconds = isStreaming ? elapsedSeconds : 0;
+
+    const formatElapsedTime = (totalSec) => {
+        const days = Math.floor(totalSec / 86400);
+        let rem = totalSec % 86400;
+        const hours = Math.floor(rem / 3600);
+        rem %= 3600;
+        const minutes = Math.floor(rem / 60);
+        const seconds = rem % 60;
+
+        const pad = (n) => String(n).padStart(2, '0');
+        if (days > 0) return `${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    };
 
     const handleBackdropClick = (e) => {
         if (modalBoxRef.current && !modalBoxRef.current.contains(e.target)) {
-            onClose();
+            onClose?.();
         }
     };
 
@@ -113,14 +132,18 @@ export default function FullscreenModal({
 
     const modalContent = (
         <div className="stream-modal-backdrop" onClick={handleBackdropClick}>
-            <div ref={modalBoxRef} className="stream-modal-box">
+            <div
+                ref={modalBoxRef}
+                className="stream-modal-box"
+                style={{ '--video-aspect': aspectRatio }}
+            >
                 <div className="stream-modal-header">
                     <div className="stream-modal-title">
                         <span className={`live-dot ${isStreaming ? 'streaming' : 'idle'}`}></span>
                         <h2>LIVE // {hostname}</h2>
                         {isStreaming && (
-                            <span className="uptime-badge" title="Active stream session duration">
-                                {elapsedTimeStr}
+                            <span className="uptime-badge" title="Active stream duration">
+                                {formatElapsedTime(displayElapsedSeconds)}
                             </span>
                         )}
                     </div>
@@ -161,6 +184,7 @@ export default function FullscreenModal({
                     <div className="modal-actions-cluster">
                         {!isStreaming ? (
                             <button
+                                type="button"
                                 className="act-pill-btn start"
                                 onClick={() => onToggleStream?.(hostname, false)}
                                 title="Start Stream"
@@ -169,6 +193,7 @@ export default function FullscreenModal({
                             </button>
                         ) : !confirmStop ? (
                             <button
+                                type="button"
                                 className="act-pill-btn stop"
                                 onClick={() => setConfirmStop(true)}
                                 title="Stop Stream"
@@ -179,6 +204,7 @@ export default function FullscreenModal({
                             <div className="safe-stop-confirm">
                                 <span>STOP?</span>
                                 <button
+                                    type="button"
                                     className="confirm-btn yes"
                                     onClick={() => {
                                         onToggleStream?.(hostname, true);
@@ -188,6 +214,7 @@ export default function FullscreenModal({
                                     YES
                                 </button>
                                 <button
+                                    type="button"
                                     className="confirm-btn no"
                                     onClick={() => setConfirmStop(false)}
                                 >
@@ -197,33 +224,10 @@ export default function FullscreenModal({
                         )}
 
                         <button
-                            className="act-pill-btn"
-                            onClick={() => onQuickBookmark?.(hostname)}
-                            title="Add Bookmark"
-                        >
-                            BM
-                        </button>
-
-                        <button
-                            className="act-pill-btn"
-                            onClick={() => onQuickPlayback?.(hostname)}
-                            title="Open Playback"
-                        >
-                            PLAY
-                        </button>
-
-                        <button
-                            className="act-pill-btn"
-                            onClick={() => onQuickExport?.(hostname)}
-                            title="Export Video Segment"
-                        >
-                            EXP
-                        </button>
-
-                        <button
+                            type="button"
                             className="act-pill-btn inspect"
                             onClick={() => {
-                                onClose();
+                                onClose?.();
                                 onOpenInspector?.();
                             }}
                             title="Open Station Inspector Drawer"
@@ -232,7 +236,7 @@ export default function FullscreenModal({
                         </button>
                     </div>
 
-                    <button onClick={onClose} className="stream-modal-close-btn" title="Close (ESC)">
+                    <button type="button" onClick={onClose} className="stream-modal-close-btn" title="Close Fullscreen (ESC)">
                         ✕
                     </button>
                 </div>
@@ -250,9 +254,36 @@ export default function FullscreenModal({
                     <WebRTCPlayer
                         streamPath={`live/${hostname}`}
                         webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                        showControls={true}
+                        showControls={false}
+                        isMuted={isMuted}
                         onPlaying={() => setIsVideoPlaying(true)}
                     />
+
+                    <div className="fullscreen-audio-corner">
+                        <button
+                            type="button"
+                            className={`audio-floating-btn ${isMuted ? 'muted' : 'active'}`}
+                            onClick={() => setIsMuted(p => !p)}
+                            title={isMuted ? "Unmute Audio" : "Mute Audio"}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13">
+                                {isMuted ? (
+                                    <>
+                                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                        <line x1="23" y1="9" x2="17" y2="15" />
+                                        <line x1="17" y1="9" x2="23" y2="15" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                                    </>
+                                )}
+                            </svg>
+                            <span>{isMuted ? 'MUTED' : 'LIVE AUDIO'}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

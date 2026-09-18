@@ -1,4 +1,6 @@
-﻿using ITB_SCREEN_RECORDER.Core.Diagnostics;
+﻿using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -7,8 +9,6 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using ITB_SCREEN_RECORDER.Core.Common;
-using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITBRecorderAgent.Engine
 {
@@ -19,7 +19,8 @@ namespace ITBRecorderAgent.Engine
         private TcpListener? _tcpListener;
         private Socket? _audioSocket;
         private readonly AppConfig _config;
-        private readonly object _writeLock = new object();
+        private readonly object _videoLock = new object();
+        private readonly object _audioLock = new object();
         private bool _isDisposed = false;
 
         public bool IsRunning
@@ -65,7 +66,47 @@ namespace ITBRecorderAgent.Engine
                         Logger.Info($"[ENGINE] Created local buffer directory: {dir}");
                     }
                 }
-                var ffmpegPath = _config.GetResolvedFFmpegPath();
+
+                string ffmpegPath = AppConfig.GetResolvedFFmpegPath();
+
+                // התאמת נתיב דינמית והרשאות ריצה בסביבת Linux
+                if (OperatingSystem.IsLinux())
+                {
+                    // 1. הגנה מפני קונפיגורציה שגויה (קובץ appsettings.json שהועתק מווינדוס)
+                    if (ffmpegPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string fallbackPath = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+                        Logger.Warn($"[FFMPEG] Configuration specifies a Windows executable ('{ffmpegPath}') but agent is running on Linux. Overriding to local binary: {fallbackPath}");
+                        ffmpegPath = fallbackPath;
+                    }
+
+                    // 2. אם עדיין לא מצאנו קובץ, ניסיון אחרון בתיקייה המקומית
+                    if (!File.Exists(ffmpegPath))
+                    {
+                        var localCandidate = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+                        if (File.Exists(localCandidate))
+                        {
+                            ffmpegPath = localCandidate;
+                        }
+                    }
+
+                    // 3. אכיפת הרשאות הרצה (0755) על הבינארי הסטטי כדי למנוע שגיאות Permission Denied
+                    if (File.Exists(ffmpegPath))
+                    {
+                        try
+                        {
+                            File.SetUnixFileMode(ffmpegPath,
+                                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                        }
+                        catch (Exception pEx)
+                        {
+                            Logger.Warn($"[FFMPEG] Could not apply chmod to '{ffmpegPath}': {pEx.Message}");
+                        }
+                    }
+                }
+
                 Logger.Info($"[FFMPEG] Resolved FFmpeg path: {ffmpegPath}");
 
                 string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
@@ -180,33 +221,51 @@ namespace ITBRecorderAgent.Engine
             }
             string bufferSizeStr = normalizedBitrate;
 
-            int gopSize = effectiveFps * 2;
-            int keyintMin = effectiveFps * 2;
+            // נעילת GOP מדויקת לשנייה אחת עבור שידור WebRTC/RTMP חי ללא שיהוי
+            int gopSize = effectiveFps;
+            int keyintMin = effectiveFps;
             string utcTimestampIso = calibratedStartTime.ToString("o");
 
-            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
-            ffmpegArgs.Append($"-analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+            // 1. קלט וידאו דרך צינור הקלט (Stdin)
+            ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
+
+            // 2. קלט שמע דרך Loopback TCP
+            ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
 
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
+            // 3. קידוד וידאו - הזרקת IDR כפוי לכל שנייה
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 ");
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-init_hw_device d3d11va -c:v h264_qsv -preset veryfast -global_quality 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
+                string hwDevice = OperatingSystem.IsWindows() ? "-init_hw_device d3d11va " : "-init_hw_device vaapi ";
+                ffmpegArgs.Append($"{hwDevice}-c:v h264_qsv -preset veryfast -global_quality 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
-                ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 22 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
+                ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*2)\" -video_track_timescale 90000 -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
+            // 4. כפיית Keyframe כל שנייה (n_forced*1)
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*1)\" -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
 
-            ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} ");
+            // 5. סנכרון רציף של אודיו
+            ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
             ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
-            ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
+
+            // 6. פלט
+            bool isRtmp = destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase);
+            if (isRtmp)
+            {
+                ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
+            }
+            else
+            {
+                ffmpegArgs.Append($"-movflags +frag_keyframe+empty_moov+default_base_moof -y -f mp4 \"{destinationUrl}\"");
+            }
 
             return ffmpegArgs.ToString();
         }
@@ -217,7 +276,7 @@ namespace ITBRecorderAgent.Engine
 
             try
             {
-                lock (_writeLock)
+                lock (_videoLock)
                 {
                     _videoStdinStream.Write(frameData, 0, frameData.Length);
                 }
@@ -231,13 +290,21 @@ namespace ITBRecorderAgent.Engine
 
         public void WriteAudioData(byte[] audioData)
         {
+            WriteAudioData(audioData, 0, audioData.Length);
+        }
+
+        public void WriteAudioData(byte[] audioData, int offset, int count)
+        {
             if (_isDisposed || !IsRunning || _audioSocket == null) return;
 
             try
             {
-                if (_audioSocket.Connected)
+                lock (_audioLock)
                 {
-                    _audioSocket.Send(audioData, 0, audioData.Length, SocketFlags.None);
+                    if (_audioSocket.Connected)
+                    {
+                        _audioSocket.Send(audioData, offset, count, SocketFlags.None);
+                    }
                 }
             }
             catch
@@ -252,15 +319,21 @@ namespace ITBRecorderAgent.Engine
 
             try
             {
-                _audioSocket?.Close();
-                _audioSocket?.Dispose();
-                _audioSocket = null;
+                lock (_audioLock)
+                {
+                    _audioSocket?.Close();
+                    _audioSocket?.Dispose();
+                    _audioSocket = null;
+                }
 
                 _tcpListener?.Stop();
                 _tcpListener = null;
 
-                _videoStdinStream?.Close();
-                _videoStdinStream = null;
+                lock (_videoLock)
+                {
+                    _videoStdinStream?.Close();
+                    _videoStdinStream = null;
+                }
 
                 if (_ffmpegProcess != null && !_ffmpegProcess.HasExited)
                 {

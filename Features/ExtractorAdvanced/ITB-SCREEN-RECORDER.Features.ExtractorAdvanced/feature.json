@@ -1,0 +1,12 @@
+{
+  "id": "extractor-advanced-studio",
+  "name": "Advanced Studio",
+  "version": "1.0.0",
+  "description": "Frame-accurate non-linear editing studio, extending the base Extractor timeline.",
+  "author": "ITB",
+  "defaultSelected": false,
+  "dependencies": [],
+  "supersedes": [
+    "extractor-slicer"
+  ]
+}

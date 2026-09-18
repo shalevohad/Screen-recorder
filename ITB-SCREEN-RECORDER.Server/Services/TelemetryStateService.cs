@@ -21,13 +21,21 @@ namespace ITB_SCREEN_RECORDER.Server.Services
     {
         private readonly ConcurrentDictionary<string, bool> _agentDesiredStates = new();
         private readonly ConcurrentDictionary<string, AgentTelemetryReport> _latestReports = new();
-        private readonly SystemConfig _systemConfig;
+        private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly StationOverridesService _overridesService;
+        private readonly CustomTabsService _tabsService;
+        private readonly OfflineSyncManager _syncManager;
 
-        public TelemetryStateService(IOptions<SystemConfig> systemConfig, StationOverridesService overridesService)
+        public TelemetryStateService(
+            IOptionsMonitor<SystemConfig> configMonitor,
+            StationOverridesService overridesService,
+            CustomTabsService tabsService,
+            OfflineSyncManager syncManager)
         {
-            _systemConfig = systemConfig.Value;
+            _configMonitor = configMonitor;
             _overridesService = overridesService;
+            _tabsService = tabsService;
+            _syncManager = syncManager;
         }
 
         public async Task<AgentHeartbeatResponse> ProcessHeartbeatAsync(AgentTelemetryReport report, string requestHost = null)
@@ -38,9 +46,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             }
 
             string key = report.Hostname.ToUpperInvariant();
-            _latestReports[key] = report;
 
-            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsStreaming || report.IsScreenCapturing || true);
+            // תיקון סעיף 4: כיבוד הגדרת AutoStartRecordingOnLaunch ומניעת הקלטה כפויה
+            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsStreaming || report.AutoStartRecordingOnLaunch);
 
             bool desiredStreamState = _agentDesiredStates[key];
 
@@ -50,17 +58,43 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 commandToSend = desiredStreamState ? ServerCommand.StartStream : ServerCommand.StopStream;
             }
 
+            // תיקון סעיף REC Timer: שימור חותמת זמן ההקלטה המקורית ומניעת איפוסה בריענונים
+            if (report.IsStreaming)
+            {
+                if (!report.RecordingStartedAtUtc.HasValue)
+                {
+                    if (_latestReports.TryGetValue(key, out var prev) && prev.RecordingStartedAtUtc.HasValue)
+                    {
+                        report.RecordingStartedAtUtc = prev.RecordingStartedAtUtc;
+                    }
+                    else
+                    {
+                        report.RecordingStartedAtUtc = DateTime.UtcNow;
+                    }
+                }
+            }
+            else
+            {
+                report.RecordingStartedAtUtc = null;
+            }
+
+            _latestReports[key] = report;
+
             string hostToUse = !string.IsNullOrWhiteSpace(requestHost) ? requestHost : "128.200.3.10";
 
-            // הפקת הפוליסה המותאמת אישית (כולל בדיקת Overrides לעמדה)
+            // מדרג מדיניות (Overrides -> Tab Settings -> Global Defaults)
             var currentPolicy = await GetAgentPolicyAsync(report.Hostname, hostToUse);
+
+            // ניהול תור העלאת באפרים מאופליין
+            var bufferAction = _syncManager.GetSyncCommand(report.Hostname, report.OfflineFilesTotalSizeMb);
 
             return new AgentHeartbeatResponse
             {
                 ShouldStream = desiredStreamState,
                 Command = commandToSend,
                 ServerUtcTime = DateTime.UtcNow,
-                Policy = currentPolicy
+                Policy = currentPolicy,
+                OfflineBufferAction = bufferAction
             };
         }
 
@@ -69,6 +103,18 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             if (string.IsNullOrWhiteSpace(hostname)) return;
             string key = hostname.ToUpperInvariant();
             _agentDesiredStates[key] = shouldStream;
+
+            if (_latestReports.TryGetValue(key, out var report))
+            {
+                if (shouldStream && !report.RecordingStartedAtUtc.HasValue)
+                {
+                    report.RecordingStartedAtUtc = DateTime.UtcNow;
+                }
+                else if (!shouldStream)
+                {
+                    report.RecordingStartedAtUtc = null;
+                }
+            }
         }
 
         public IEnumerable<AgentTelemetryReport> GetAllAgents()
@@ -78,34 +124,46 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
         public async Task<AgentStreamPolicy> GetAgentPolicyAsync(string hostname, string requestHost)
         {
-            int rtmpPort = _systemConfig.MediaMtx?.RtmpPort > 0 ? _systemConfig.MediaMtx.RtmpPort : 19350;
+            var config = _configMonitor.CurrentValue;
+            int rtmpPort = config.MediaMtx?.RtmpPort > 0 ? config.MediaMtx.RtmpPort : 19350;
 
-            // ברירות מחדל גלובליות מתוך ה-SystemConfig
-            int fps = _systemConfig.DefaultTargetFps;
-            if (fps < 10) fps = 10;
-            if (fps > 60) fps = 60;
+            // 1. ברירות מחדל גלובליות דינמיות מתוך SystemConfig (מתעדכן בלייב)
+            int fps = config.DefaultTargetFps >= 10 && config.DefaultTargetFps <= 60 ? config.DefaultTargetFps : 20;
+            string bitrate = !string.IsNullOrWhiteSpace(config.DefaultVideoBitrate) ? config.DefaultVideoBitrate : "3000k";
 
-            string bitrate = _systemConfig.DefaultVideoBitrate ?? "3000k";
-
-            // אם נשלח מספר טהור ללא אות (למשל 5000), מוסיפים 'k' עבור FFmpeg
-            if (int.TryParse(bitrate, out int numericBitrate))
+            // 2. בדיקת מדיניות לפי Tab (אם העמדה משויכת ל-Tab ייעודי)
+            var allTabs = await _tabsService.GetAllTabsAsync();
+            var assignedTab = allTabs.FirstOrDefault(t => !t.IsDefault && t.Hostnames.Contains(hostname, StringComparer.OrdinalIgnoreCase));
+            if (assignedTab != null)
             {
-                bitrate = $"{numericBitrate}k";
+                if (assignedTab.TargetFps.HasValue && assignedTab.TargetFps.Value >= 10 && assignedTab.TargetFps.Value <= 60)
+                {
+                    fps = assignedTab.TargetFps.Value;
+                }
+                if (assignedTab.TargetBitrateKbps.HasValue && assignedTab.TargetBitrateKbps.Value >= 500)
+                {
+                    bitrate = $"{assignedTab.TargetBitrateKbps.Value}k";
+                }
             }
 
-            // בדיקה האם יש הגדרות מיוחדות (Overrides) לעמדה זו בקובץ ה-stations-config.json
+            // 3. דריסה פרטנית לתחנה (העדיפות הגבוהה ביותר)
             var overrides = await _overridesService.GetAllAsync();
             if (overrides.TryGetValue(hostname, out var stationConfig))
             {
                 if (!string.IsNullOrEmpty(stationConfig.VideoBitrate))
                 {
-                    bitrate = stationConfig.VideoBitrate.ToUpper();
+                    bitrate = stationConfig.VideoBitrate.ToUpperInvariant();
                 }
 
                 if (stationConfig.TargetFps.HasValue && stationConfig.TargetFps.Value >= 10 && stationConfig.TargetFps.Value <= 60)
                 {
                     fps = stationConfig.TargetFps.Value;
                 }
+            }
+
+            if (int.TryParse(bitrate, out int numericBitrate))
+            {
+                bitrate = $"{numericBitrate}k";
             }
 
             return new AgentStreamPolicy
