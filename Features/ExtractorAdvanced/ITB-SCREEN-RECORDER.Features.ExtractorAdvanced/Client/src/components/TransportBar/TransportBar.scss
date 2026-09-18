@@ -1,106 +1,202 @@
 // Client/src/components/TransportBar/TransportBar.scss
 
-.viewport-transport-bar {
-    height: 44px;
-    background-color: transparent;
-    border-top: none;
-    padding: 0 16px;
+.transport-bar-container {
+    width: 100%;
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
+    padding: 4px 0; /* צומצם משמעותית כדי לשבת בצמוד וברכות בין הנגנים לטיים-ליין */
+    margin-bottom: 2px;
+    user-select: none;
+    box-sizing: border-box;
 
-    .playback-controls {
+    .unified-transport-capsule {
         display: flex;
         align-items: center;
-        gap: 12px;
+        justify-content: space-between;
+        gap: 16px;
+        /* קפסולה נמוכה, דקה ואלגנטית יותר */
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 9999px;
+        padding: 4px 12px; /* ריפוד דק במיוחד */
 
-        .btn-round-playback {
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #00f0ff 0%, #0088ff 100%);
-            color: #020617;
-            border: none;
+        box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+        .transport-side-cluster {
             display: flex;
             align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+            min-width: 100px;
 
-            svg {
-                width: 14px;
-                height: 14px;
-                fill: #020617;
+            &.right {
+                justify-content: flex-end;
             }
 
-            &.disabled {
-                background: #182642;
-                color: #475569;
-                cursor: not-allowed;
-                box-shadow: none;
+            .speed-selector-btn {
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #94a3b8;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10.5px;
+                font-weight: 700;
+                padding: 3px 8px;
+                border-radius: 9999px;
+                cursor: pointer;
+                transition: all 0.2s ease;
 
-                svg {
-                    fill: #475569;
+                &:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    color: #f8fafc;
+                    border-color: rgba(255, 255, 255, 0.15);
                 }
+
+                &.active {
+                    color: #06b6d4;
+                    border-color: rgba(6, 182, 212, 0.3);
+                    background: rgba(6, 182, 212, 0.1);
+                    box-shadow: 0 0 10px rgba(6, 182, 212, 0.15);
+                }
+            }
+
+            .volume-widget {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: rgba(0, 0, 0, 0.2);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                padding: 4px 10px;
+                border-radius: 9999px;
+
+                .btn-volume {
+                    background: none;
+                    border: none;
+                    color: #94a3b8;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    padding: 0;
+
+                    svg {
+                        width: 14px;
+                        height: 14px;
+                        stroke: #94a3b8;
+                        transition: stroke 0.2s ease;
+                    }
+
+                    &:hover svg {
+                        stroke: #06b6d4;
+                    }
+                }
+
+                .volume-slider {
+                    width: 60px;
+                    height: 3px;
+                    appearance: none;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 9999px;
+                    outline: none;
+                    cursor: pointer;
+
+                    &::-webkit-slider-thumb {
+                        appearance: none;
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 50%;
+                        background: #06b6d4;
+                        box-shadow: 0 0 6px rgba(6, 182, 212, 0.6);
+                        cursor: pointer;
+                    }
+                }
+            }
+
+            .volume-widget-placeholder {
+                width: 90px;
             }
         }
 
-        .volume-control-widget {
+        .transport-center-cluster {
             display: flex;
             align-items: center;
-            gap: 8px;
-            background-color: #0c162d;
-            border: 1px solid #1b2e54;
-            padding: 3px 12px;
-            border-radius: 20px;
-
-            .btn-volume-icon {
-                background: none;
-                border: none;
-                color: #64748b;
-                cursor: pointer;
+            gap: 8px; /* מרווח קומפקטי בין הכפתורים */
+            /* פקדי צעד (Step) מוקטנים ואלגנטיים */
+            .ctrl-btn {
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background: transparent;
+                border: 1px solid transparent;
+                color: #94a3b8;
                 display: flex;
                 align-items: center;
-                padding: 0;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s ease;
 
                 svg {
                     width: 15px;
                     height: 15px;
-                    stroke: #64748b;
-                    transition: stroke 0.15s ease;
                 }
 
-                &:hover svg {
-                    stroke: #00e5ff;
+                &.minor svg {
+                    width: 13px;
+                    height: 13px;
+                }
+
+                &:hover:not(:disabled) {
+                    background: rgba(255, 255, 255, 0.06);
+                    color: #f8fafc;
+                }
+
+                &:disabled {
+                    opacity: 0.3;
+                    cursor: not-allowed;
                 }
             }
-
-            .volume-slider {
-                width: 70px;
-                height: 4px;
-                appearance: none;
-                background: #182642;
-                border-radius: 2px;
-                outline: none;
+            /* כפתור ה-Play הגיבור המוקטן ל-38x38 (במקום 48px) */
+            .play-pause-master-btn {
+                width: 38px;
+                height: 38px;
+                border-radius: 50%;
+                background: #06b6d4;
+                color: #090D14;
+                border: none;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 cursor: pointer;
+                box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
-                &::-webkit-slider-thumb {
-                    appearance: none;
-                    width: 10px;
-                    height: 10px;
-                    border-radius: 50%;
-                    background: #00e5ff;
-                    box-shadow: 0 0 6px rgba(0, 229, 255, 0.6);
-                    cursor: pointer;
+                svg {
+                    width: 16px;
+                    height: 16px;
                 }
-            }
 
-            .volume-text {
-                font-size: 10px;
-                color: #94a3b8;
-                font-weight: 700;
-                width: 28px;
-                text-align: right;
+                &:hover:not(.disabled) {
+                    background: #22D3EE;
+                    box-shadow: 0 0 18px rgba(6, 182, 212, 0.6);
+                    transform: scale(1.05);
+                }
+
+                &.is-playing {
+                    background: rgba(6, 182, 212, 0.15);
+                    border: 1.5px solid #06b6d4;
+                    color: #06b6d4;
+                    box-shadow: inset 0 0 10px rgba(6, 182, 212, 0.25), 0 0 10px rgba(6, 182, 212, 0.2);
+
+                    &:hover {
+                        background: rgba(6, 182, 212, 0.25);
+                    }
+                }
+
+                &.disabled {
+                    background: rgba(15, 23, 42, 0.5);
+                    color: #64748b;
+                    box-shadow: none;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    cursor: not-allowed;
+                }
             }
         }
     }

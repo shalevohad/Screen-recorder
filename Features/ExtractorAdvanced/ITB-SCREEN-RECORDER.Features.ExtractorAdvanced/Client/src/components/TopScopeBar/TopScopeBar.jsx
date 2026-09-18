@@ -1,4 +1,5 @@
-﻿import React, { useMemo } from 'react';
+﻿// Client/src/components/TopScopeBar/TopScopeBar.jsx
+import React, { useMemo } from 'react';
 import './TopScopeBar.scss';
 
 export default function TopScopeBar({
@@ -9,7 +10,8 @@ export default function TopScopeBar({
     activeStationId,
     onResetActiveStation,
     onOpenRangeModal,
-    onOpenBookmarksModal
+    onOpenBookmarksModal,
+    onToggleDrawer
 }) {
     const formattedScopeRange = useMemo(() => {
         const startEpoch = baseEpochMs;
@@ -34,23 +36,19 @@ export default function TopScopeBar({
 
     return (
         <div className="studio-top-scope-bar">
+            {/* גלולת המיתוג השמאלית הוסרה בהתאם לבקשה */}
+
             <div className="scope-info-group">
-                <span className="scope-tag">MISSION SCOPE:</span>
+                <span className="scope-tag">MISSION SCOPE</span>
 
                 <div
                     className="scope-time-badge clickable"
                     onClick={onOpenRangeModal}
                     title="Click to modify mission time window"
                 >
-                    <span>{formattedScopeRange}</span>
+                    <span className="time-string">{formattedScopeRange}</span>
                     <span className="total-duration">({Math.floor(timeRange.durationMs / 60000)}m Total)</span>
                 </div>
-
-                <button type="button" onClick={onOpenRangeModal} className="btn-scope-icon" title="Change Time Window">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                </button>
 
                 <div className="time-mode-toggle-group">
                     <button
@@ -60,8 +58,8 @@ export default function TopScopeBar({
                         title="Workstation Local Time (e.g. IDT / GMT+3)"
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <circle cx="12" cy="12" r="9" strokeWidth="2" />
-                            <polyline points="12 7 12 12 15 15" strokeWidth="2" strokeLinecap="round" />
+                            <circle cx="12" cy="12" r="9" strokeWidth="2.5" />
+                            <polyline points="12 7 12 12 15 15" strokeWidth="2.5" strokeLinecap="round" />
                         </svg>
                     </button>
                     <button
@@ -71,16 +69,21 @@ export default function TopScopeBar({
                         title="Coordinated Universal Time / Military Zulu (UTC)"
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <circle cx="12" cy="12" r="10" strokeWidth="2" />
-                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" strokeWidth="2" />
-                            <line x1="2" y1="12" x2="22" y2="12" strokeWidth="2" />
+                            <circle cx="12" cy="12" r="10" strokeWidth="2.5" />
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" strokeWidth="2.5" />
+                            <line x1="2" y1="12" x2="22" y2="12" strokeWidth="2.5" />
                         </svg>
                     </button>
                 </div>
             </div>
 
-            {/* אזור פעולות צד ימין: כפתור Bookmarks גדול ובולט + חזרה לגריד */}
             <div className="scope-view-actions">
+                {activeStationId && (
+                    <button type="button" onClick={onResetActiveStation} className="btn-grid-return">
+                        ⊞ Back to Grid
+                    </button>
+                )}
+
                 <button
                     type="button"
                     onClick={onOpenBookmarksModal}
@@ -88,16 +91,21 @@ export default function TopScopeBar({
                     title="Investigation Bookmarks & Cases"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                     </svg>
                     <span>BOOKMARKS</span>
                 </button>
 
-                {activeStationId && (
-                    <button type="button" onClick={onResetActiveStation} className="btn-grid-return">
-                        ⊞ Back to Multicam Grid
-                    </button>
-                )}
+                <button
+                    type="button"
+                    onClick={onToggleDrawer}
+                    className="btn-toggle-drawer"
+                    title="Toggle Station Pool"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
             </div>
         </div>
     );

@@ -1,4 +1,5 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+﻿// Client/src/components/Extractor/ExtractorAdvancedStudio.jsx
+import React, { useState, useMemo, useEffect } from 'react';
 import TopScopeBar from './components/TopScopeBar/TopScopeBar.jsx';
 import MulticamViewport from './components/Viewport/MulticamViewport.jsx';
 import TransportBar from './components/TransportBar/TransportBar.jsx';
@@ -63,10 +64,21 @@ export default function ExtractorAdvancedStudio() {
     const [playheadMs, setPlayheadMs] = useState(() => cached?.playheadMs ?? (cached?.inPointMs ?? bufferMs));
 
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isWorkspaceActive, setIsWorkspaceActive] = useState(() => cached?.isWorkspaceActive ?? false);
+
+    // תיקון קריטי: מניעת מסך ריק והגדרת סשן פעיל אוטומטית אם יש תחנות נבחרות
+    const [isWorkspaceActive, setIsWorkspaceActive] = useState(() => {
+        return cached?.isWorkspaceActive || (cached?.selectedStationIds && cached.selectedStationIds.length > 0) || false;
+    });
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    const isInitialSetup = !isWorkspaceActive;
+    // וידוא שהסשן נשאר פעיל בכל בחירת תחנה
+    useEffect(() => {
+        if (selectedStationIds.length > 0 && !isWorkspaceActive) {
+            setIsWorkspaceActive(true);
+        }
+    }, [selectedStationIds, isWorkspaceActive]);
+
+    const isInitialSetup = !isWorkspaceActive && selectedStationIds.length === 0;
     const forceDrawerOpen = isDrawerOpen || isInitialSetup;
 
     // שמירה שוטפת לזיכרון עבור מעבר טאבים
@@ -135,7 +147,6 @@ export default function ExtractorAdvancedStudio() {
         const targetStation = activeStationId || (timelineStations[0] ? timelineStations[0].id : null);
         if (!targetStation) return alert('No station selected for export.');
 
-        // חישוב Epoch אבסולוטי מדויק לייצוא
         const payload = {
             stationId: targetStation,
             inEpochMs: timelineBaseEpochMs + inPointMs,
@@ -160,14 +171,12 @@ export default function ExtractorAdvancedStudio() {
     return (
         <div className="extractor-advanced-studio">
             <div className="studio-workspace-area">
-                {/* סרגל עליון: מציג את זמני המשימה הנקיים (ללא ה-Buffer) */}
                 <TopScopeBar
                     timeRange={timeRange}
                     baseEpochMs={baseEpochMs}
                     timeMode={timeMode}
                     setTimeMode={setTimeMode}
                     activeStationId={activeStationId}
-                    selectedStationCount={selectedStationIds.length}
                     onResetActiveStation={() => setActiveStationId(null)}
                     onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
@@ -175,52 +184,53 @@ export default function ExtractorAdvancedStudio() {
                 />
 
                 <div className="studio-lower-body">
-                    <div className="studio-left-content">
-                        <div className="studio-main-viewport-container">
-                            <MulticamViewport
-                                activeStation={activeStation}
-                                timelineStations={timelineStations}
-                                onSelectActiveStation={(id) => setActiveStationId(id)}
-                                baseEpochMs={timelineBaseEpochMs}
-                                playheadMs={playheadMs}
-                                timeMode={timeMode}
-                            />
-                            <TransportBar
-                                baseEpochMs={timelineBaseEpochMs}
-                                timeMode={timeMode}
-                                totalDurationMs={totalTimelineDurationMs}
-                                inPointMs={inPointMs}
-                                setInPointMs={setInPointMs}
-                                outPointMs={outPointMs}
-                                setOutPointMs={setOutPointMs}
-                                activeStationId={activeStationId}
-                                isPlaying={isPlaying}
-                                setIsPlaying={setIsPlaying}
-                            />
-                        </div>
+                    {!isInitialSetup && (
+                        <div className="studio-left-content">
+                            <div className="studio-main-viewport-container">
+                                <MulticamViewport
+                                    activeStation={activeStation}
+                                    timelineStations={timelineStations}
+                                    onSelectActiveStation={(id) => setActiveStationId(id)}
+                                    baseEpochMs={timelineBaseEpochMs}
+                                    playheadMs={playheadMs}
+                                    timeMode={timeMode}
+                                />
+                                <TransportBar
+                                    baseEpochMs={timelineBaseEpochMs}
+                                    timeMode={timeMode}
+                                    totalDurationMs={totalTimelineDurationMs}
+                                    inPointMs={inPointMs}
+                                    setInPointMs={setInPointMs}
+                                    outPointMs={outPointMs}
+                                    setOutPointMs={setOutPointMs}
+                                    activeStationId={activeStationId}
+                                    isPlaying={isPlaying}
+                                    setIsPlaying={setIsPlaying}
+                                />
+                            </div>
 
-                        <div className="studio-bottom-timeline">
-                            {/* ציר הזמן מקבל את הטווח המורחב עם ה-Buffer */}
-                            <TimelineBoard
-                                stations={timelineStations}
-                                activeStationId={activeStationId}
-                                onSelectActiveStation={(id) => setActiveStationId(id === activeStationId ? null : id)}
-                                baseEpochMs={timelineBaseEpochMs}
-                                timeMode={timeMode}
-                                totalDurationMs={totalTimelineDurationMs}
-                                zoomLevel={zoomLevel}
-                                onZoomChange={setZoomLevel}
-                                onZoomReset={() => setZoomLevel(1)}
-                                playheadMs={playheadMs}
-                                setPlayheadMs={setPlayheadMs}
-                                inPointMs={inPointMs}
-                                setInPointMs={setInPointMs}
-                                outPointMs={outPointMs}
-                                setOutPointMs={setOutPointMs}
-                                onExport={handleExportSmartCut}
-                            />
+                            <div className="studio-bottom-timeline">
+                                <TimelineBoard
+                                    stations={timelineStations}
+                                    activeStationId={activeStationId}
+                                    onSelectActiveStation={(id) => setActiveStationId(id === activeStationId ? null : id)}
+                                    baseEpochMs={timelineBaseEpochMs}
+                                    timeMode={timeMode}
+                                    totalDurationMs={totalTimelineDurationMs}
+                                    zoomLevel={zoomLevel}
+                                    onZoomChange={setZoomLevel}
+                                    onZoomReset={() => setZoomLevel(1)}
+                                    playheadMs={playheadMs}
+                                    setPlayheadMs={setPlayheadMs}
+                                    inPointMs={inPointMs}
+                                    setInPointMs={setInPointMs}
+                                    outPointMs={outPointMs}
+                                    setOutPointMs={setOutPointMs}
+                                    onExport={handleExportSmartCut}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <StationDrawer
                         isOpen={forceDrawerOpen}
@@ -229,6 +239,7 @@ export default function ExtractorAdvancedStudio() {
                         allStations={allStations}
                         selectedStationIds={selectedStationIds}
                         onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                        onUpdateSelections={setSelectedStationIds}
                         isInitialSetup={isInitialSetup}
                         onApply={() => {
                             setIsWorkspaceActive(true);

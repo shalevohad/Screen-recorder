@@ -1,3 +1,4 @@
+// Client/src/components/Dashboard/DashboardGrid.jsx
 import { useDashboardLogic } from './useDashboardLogic';
 
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
@@ -33,7 +34,7 @@ export default function DashboardGrid(props) {
     };
 
     return (
-        <div className="dashboard-layout-wrapper" dir={direction}>
+        <div className={`dashboard-layout-wrapper ${isFeatureMode ? 'is-feature-mode' : ''}`} dir={direction}>
             <div className="dashboard-content-container">
 
                 <DashboardDock

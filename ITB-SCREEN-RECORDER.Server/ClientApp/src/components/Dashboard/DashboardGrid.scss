@@ -1,3 +1,4 @@
+// Client/src/components/Dashboard/DashboardGrid.scss
 html, body, #root {
     background-color: #04060a !important;
     background-image: none !important;
@@ -29,6 +30,10 @@ html, body, #root {
     box-sizing: border-box;
     padding-bottom: 64px;
     overflow: visible;
+
+    &.is-feature-mode {
+        padding-bottom: 16px;
+    }
 
     .dashboard-content-container {
         display: flex;
@@ -296,6 +301,7 @@ html, body, #root {
             }
 
             &.feature-active-pane {
+                padding: 16px !important;
                 border-color: var(--feature-theme-border) !important;
                 box-shadow: 0 0 0 1px var(--feature-theme-border), 0 18px 45px rgba(0, 0, 0, 0.95), 0 0 45px var(--feature-theme-tint) !important;
                 background-color: var(--feature-theme-bg) !important;

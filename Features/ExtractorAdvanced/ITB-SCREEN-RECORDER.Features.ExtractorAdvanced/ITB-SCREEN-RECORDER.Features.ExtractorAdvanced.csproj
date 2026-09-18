@@ -15,6 +15,12 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Compile Remove="Agents\**" />
+	  <EmbeddedResource Remove="Agents\**" />
+	  <None Remove="Agents\**" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 

@@ -6,9 +6,10 @@
     background: transparent;
     display: flex;
     flex-direction: column;
+    flex: 0 0 auto;
     overflow: hidden;
     user-select: none;
-    /* הסיפון העליון: איחוד השעון המוגדל מול שורות המיני-מפה וה-Ruler */
+
     .timeline-top-deck {
         display: flex;
         width: 100%;
@@ -43,83 +44,157 @@
 
             .ruler-container-offset {
                 width: 100%;
-                height: 30px; /* גובה מרווח המאפשר הפרדה מלאה בין שורת המספרים לתגית התחתונה */
+                height: 26px;
                 box-sizing: border-box;
-                padding-left: 0;
-                padding-right: 49px;
+                padding-left: 30px;
+                padding-right: 54px;
             }
         }
     }
+}
 
-    .tracks-with-export-layout {
-        display: flex;
-        width: 100%;
-        position: relative;
-        background: transparent;
-        gap: 5px;
-        box-sizing: border-box;
+/* =========================================================
+   מבנה הערוצים וכפתור ה-Export (קינון SCSS נקי וגובה חכם)
+   ========================================================= */
 
-        .tracks-scroll-area {
-            flex: 1;
-            max-height: 220px;
-            overflow-y: auto;
-            overflow-x: hidden;
-            position: relative;
-            background: transparent;
-            min-width: 0;
+// בתוך TimelineBoard.scss (החלף רק את החלק הזה)
 
-            &::-webkit-scrollbar {
-                width: 5px;
-            }
+/* =========================================================
+   מבנה הערוצים וכפתור ה-Export (קינון נקי ועיצוב Soft Modern)
+   ========================================================= */
 
-            &::-webkit-scrollbar-thumb {
-                background-color: #182847;
-                border-radius: 2px;
+.tracks-with-export-layout {
+    display: block !important;
+    position: relative !important;
+    width: 100% !important;
+    background: transparent !important;
+    padding-right: 58px !important; /* פינוי מקום לכפתור (48 רוחב + 10 רווח) */
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    /* אזור הגלילה של המסלולים */
+    .tracks-scroll-area {
+        width: 100% !important;
+        min-width: 0 !important;
+        height: auto !important;
+        max-height: 240px !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        position: relative !important;
+        background: transparent !important;
+        box-sizing: border-box !important;
+
+        &::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background-color: rgba(148, 163, 184, 0.2);
+            border-radius: 9999px; /* כדורי רך */
+        }
+    }
+    /* כפתור ה-Export האנכי בעיצוב Tactile Softness החדש */
+    button.btn-vertical-export-action {
+        position: absolute !important;
+        right: 8px !important; /* ריווח נקי מהקצה */
+        top: 0 !important;
+        bottom: 0 !important;
+        width: 48px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        /* פינות עגולות חלקות בסגנון iOS */
+        border-radius: 12px !important;
+        outline: none !important;
+        /* מסגרת זכוכית עדינה וצל רך */
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+        cursor: pointer !important;
+        box-sizing: border-box !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        /* רקע Slate חצי שקוף ויוקרתי */
+        background: rgba(30, 41, 59, 0.6) !important;
+        backdrop-filter: blur(8px) !important;
+        color: #94a3b8 !important;
+        container-type: size !important;
+
+        .export-icon-top {
+            margin-bottom: 12px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: margin 0.3s ease !important;
+            background: rgba(15, 23, 42, 0.4) !important;
+            width: 32px !important;
+            height: 32px !important;
+            border-radius: 50% !important; /* אייקון בתוך עיגול */
+
+            svg {
+                width: 16px !important;
+                height: 16px !important;
+                transition: transform 0.3s ease, filter 0.3s ease !important;
+                stroke: currentColor !important;
             }
         }
 
-        .btn-vertical-export-action {
-            width: 44px;
-            flex-shrink: 0;
-            background-color: #00e676;
-            color: #020617;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 8px 0;
-            transition: all 0.15s ease;
-
-            .export-icon-stack {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 4px;
-
-                svg {
-                    width: 16px;
-                    height: 16px;
-                    stroke: #020617;
-                }
+        .vertical-label {
+            writing-mode: vertical-rl !important;
+            transform: rotate(180deg) !important;
+            font-family: var(--font-ui, sans-serif) !important;
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            letter-spacing: 2px !important;
+            white-space: nowrap !important;
+            text-transform: uppercase !important;
+            transition: opacity 0.2s ease !important;
+        }
+        /* הסתרה חכמה לגובה נמוך */
+        @container (max-height: 160px) {
+            .vertical-label {
+                display: none !important;
             }
 
-            .vertical-label {
-                writing-mode: vertical-rl;
-                transform: rotate(180deg);
-                font-size: 9px;
-                font-weight: 900;
-                letter-spacing: 0.08em;
-                color: #020617;
-                white-space: nowrap;
+            .export-icon-top {
+                margin-bottom: 0 !important;
+            }
+        }
+        /* מצב פעיל (יש טווח חיתוך) - תאורת אווירה רכה */
+        &.active {
+            background: rgba(6, 182, 212, 0.15) !important;
+            border-color: rgba(6, 182, 212, 0.4) !important;
+            color: #00e5ff !important;
+            box-shadow: 0 8px 25px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+
+            .export-icon-top {
+                background: rgba(6, 182, 212, 0.25) !important;
             }
 
             &:hover {
-                background-color: #1bf587;
-                box-shadow: 0 0 12px rgba(0, 230, 118, 0.4);
+                background: #06b6d4 !important;
+                color: #0F172A !important;
+                box-shadow: 0 10px 30px rgba(6, 182, 212, 0.4) !important;
+
+                .export-icon-top {
+                    background: transparent !important;
+                }
+
+                    .export-icon-top svg {
+                        transform: translateY(-2px) !important;
+                    }
+            }
+        }
+        /* מצב כבוי */
+        &.disabled {
+            background: rgba(15, 23, 42, 0.4) !important;
+            border-color: rgba(148, 163, 184, 0.05) !important;
+            color: rgba(100, 116, 139, 0.5) !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+
+            .export-icon-top {
+                background: transparent !important;
             }
         }
     }

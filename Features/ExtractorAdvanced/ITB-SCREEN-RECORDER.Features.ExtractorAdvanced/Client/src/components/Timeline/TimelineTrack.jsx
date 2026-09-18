@@ -1,4 +1,5 @@
-﻿import React, { useMemo } from 'react';
+﻿// Client/src/components/Timeline/TimelineTrack.jsx
+import React, { useMemo } from 'react';
 import './TimelineTrack.scss';
 
 export default function TimelineTrack({
@@ -18,21 +19,22 @@ export default function TimelineTrack({
         if (!baseEpochMs) return '';
         const startIso = new Date(baseEpochMs + viewportStartMs).toISOString();
         const endIso = new Date(baseEpochMs + viewportStartMs + viewportDurationMs).toISOString();
-        const encodedHost = encodeURIComponent(station.hostname);
+        const encodedHost = encodeURIComponent(station.hostname || station.name || '');
         return `/api/v1/extractor-advanced/spritesheet?hostname=${encodedHost}&startUtc=${startIso}&endUtc=${endIso}&frameCount=12&tileWidth=160&tileHeight=90`;
-    }, [station.hostname, baseEpochMs, viewportStartMs, viewportDurationMs]);
+    }, [station, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
     const mockGaps = useMemo(() => {
         const gaps = [];
-        if (station.hostname.includes('01') || station.hostname.includes('Main')) {
+        const host = station.hostname || station.name || '';
+        if (host.includes('01') || host.includes('Main')) {
             gaps.push({ startMs: 3600000, endMs: 5400000 });
         }
-        if (station.hostname.includes('03') || station.hostname.includes('East')) {
+        if (host.includes('03') || host.includes('East')) {
             gaps.push({ startMs: 7200000, endMs: 8200000 });
             gaps.push({ startMs: 10800000, endMs: 12600000 });
         }
         return gaps;
-    }, [station.hostname]);
+    }, [station]);
 
     const renderGaps = (isPresenceView) => {
         return mockGaps.map((gap, i) => {
@@ -42,7 +44,7 @@ export default function TimelineTrack({
 
             if (widthPct > 0 && leftPct < 100 && rightPct > 0) {
                 if (isPresenceView) {
-                    return <div key={i} className="bar-seg gap" style={{ position: 'absolute', left: `${leftPct}%`, width: `${widthPct}%` }} />;
+                    return <div key={i} className="bar-seg gap" style={{ left: `${leftPct}%`, width: `${widthPct}%` }} />;
                 } else {
                     return <div key={i} className="filmstrip-gap-mask" style={{ left: `${leftPct}%`, width: `${widthPct}%` }} title="Recording Gap" />;
                 }
@@ -51,6 +53,8 @@ export default function TimelineTrack({
         });
     };
 
+    const stationName = station.hostname || station.name;
+
     return (
         <div
             onClick={onSelect}
@@ -58,7 +62,9 @@ export default function TimelineTrack({
         >
             <div className="track-sidebar">
                 <div className={`status-indicator ${isActive ? 'online' : 'idle'}`} />
-                <span className="station-label">{station.hostname}</span>
+                <span className="station-label" title={stationName}>
+                    {stationName}
+                </span>
             </div>
 
             <div className="track-canvas">
@@ -66,30 +72,27 @@ export default function TimelineTrack({
                     <div
                         className="filmstrip-view"
                         style={{
-                            backgroundImage: spritesheetUrl ? `url('${spritesheetUrl}')` : 'none',
-                            backgroundSize: '100% 100%',
-                            backgroundRepeat: 'no-repeat',
-                            position: 'relative',
-                            paddingBottom: 8
+                            /* תיקון השגיאה: שימוש ב-spritesheetUrl הנכון */
+                            backgroundImage: spritesheetUrl ? `url('${spritesheetUrl}')` : 'none'
                         }}
                     >
                         {Array.from({ length: 8 }).map((_, i) => (
-                            <div key={i} className="frame-thumb" style={{ background: 'transparent', borderColor: 'rgba(32, 51, 87, 0.4)' }}>
-                                <span style={{ opacity: 0.5 }}>FR {i + 1}</span>
+                            <div key={i} className="frame-thumb">
+                                <span>FR {i + 1}</span>
                             </div>
                         ))}
 
                         {renderGaps(false)}
 
-                        <div className="active-presence-bar" style={{ position: 'absolute', bottom: 2, left: 6, right: 6, height: 4, background: '#040710', borderRadius: 2, overflow: 'hidden' }}>
-                            <div className="bar-seg has-data" style={{ width: '100%', height: '100%', position: 'absolute', left: 0, background: '#00e676' }} />
+                        <div className="active-presence-bar">
+                            <div className="bar-seg has-data full-width" />
                             {renderGaps(true)}
                         </div>
                     </div>
                 ) : (
                     <div className="presence-view">
-                        <div className="presence-bar" style={{ position: 'relative' }}>
-                            <div className="bar-seg has-data" style={{ width: '100%', position: 'absolute', left: 0 }} />
+                        <div className="presence-bar">
+                            <div className="bar-seg has-data full-width" />
                             {renderGaps(true)}
                         </div>
                     </div>

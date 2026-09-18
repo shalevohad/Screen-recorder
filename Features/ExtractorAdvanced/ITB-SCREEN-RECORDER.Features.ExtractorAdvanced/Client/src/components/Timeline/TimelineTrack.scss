@@ -4,56 +4,68 @@
     display: flex;
     width: 100%;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 6px;
+    border-radius: 8px; /* Soft Geometry: rounded-md */
+    overflow: hidden;
 
     &.active-track {
-        height: 50px;
-        background-color: #0c152a;
+        height: 52px;
+        background-color: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 
         .track-sidebar {
-            background-color: #121f3d;
-            border-left: 3px solid #fff;
+            background-color: rgba(30, 41, 59, 0.5);
+            border-left: 3px solid #06B6D4; /* Accent Cyan */
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
 
             .station-label {
-                color: #ffffff;
+                color: #F8FAFC;
                 font-weight: 700;
-                font-size: 11px;
             }
 
             .status-indicator.online {
-                background-color: #00e676;
-                box-shadow: 0 0 8px #00e676;
+                background-color: #10B981; /* Emerald-500 */
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
             }
         }
     }
 
     &.collapsed-track {
-        height: 26px;
+        height: 28px; /* עודכן ל-28px לפי האפיון */
+        background-color: rgba(15, 23, 42, 0.4);
+        border: 1px solid transparent;
 
         &:hover {
-            background-color: #0a1122;
+            background-color: rgba(30, 41, 59, 0.6);
+            border-color: rgba(255, 255, 255, 0.05);
         }
 
         .track-sidebar {
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            border-left: 3px solid transparent;
 
             .station-label {
-                color: #cbd5e1;
-                font-size: 11px;
+                color: #94A3B8;
+                font-weight: 500;
             }
 
             .status-indicator.idle {
-                background-color: #384f73;
+                background-color: #475569; /* Slate-600 */
             }
         }
     }
 
     .track-sidebar {
-        width: 150px;
+        width: 180px; /* מורחב למניעת חיתוך טקסט */
+        min-width: 180px;
         flex-shrink: 0;
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 0 10px;
+        gap: 10px;
+        padding: 0 12px;
+        box-sizing: border-box;
 
         .status-indicator {
             width: 6px;
@@ -66,6 +78,8 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            font-size: 11.5px;
+            font-family: var(--font-ui, sans-serif);
         }
     }
 
@@ -76,16 +90,23 @@
         overflow: hidden;
 
         .bar-seg {
+            position: absolute;
             height: 100%;
-            border-radius: 2px;
+            border-radius: 4px; /* עיגול פנימי של הקפסולות */
+
+            &.full-width {
+                width: 100%;
+                left: 0;
+            }
 
             &.has-data {
-                background-color: #00e676;
+                background-color: #10B981; /* Emerald-500: תקין */
             }
 
             &.gap {
-                background-color: #f43f5e;
-                opacity: 0.85;
+                background-color: #F43F5E; /* Rose-500: תקלה/חוסר */
+                /* Pattern אלכסוני לנגישות עיוורי צבעים (WCAG) */
+                background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0, 0, 0, 0.25) 4px, rgba(0, 0, 0, 0.25) 8px);
             }
         }
 
@@ -94,31 +115,44 @@
             inset: 0;
             display: flex;
             gap: 4px;
-            padding: 4px 6px;
-            background: #091224;
+            padding: 4px 6px 12px 6px;
+            background-color: rgba(9, 13, 20, 0.6);
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
 
             .frame-thumb {
                 flex: 1;
                 height: 100%;
-                background-color: #13203b;
-                border: 1px solid #203357;
-                border-radius: 4px; /* פרימיימים מעוגלים ברכות */
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 6px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 font-size: 9px;
-                color: #64748b;
+                color: #64748B;
             }
 
             .filmstrip-gap-mask {
                 position: absolute;
                 top: 0;
                 bottom: 0;
-                background: repeating-linear-gradient(45deg, #040710, #040710 10px, #142038 10px, #142038 20px);
-                opacity: 0.9;
-                border-left: 1px solid #f43f5e;
-                border-right: 1px solid #f43f5e;
+                background-color: rgba(244, 63, 94, 0.15);
+                background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(244, 63, 94, 0.2) 10px, rgba(244, 63, 94, 0.2) 20px);
+                border-left: 1px solid rgba(244, 63, 94, 0.5);
+                border-right: 1px solid rgba(244, 63, 94, 0.5);
                 z-index: 5;
+            }
+
+            .active-presence-bar {
+                position: absolute;
+                bottom: 4px;
+                left: 6px;
+                right: 6px;
+                height: 4px;
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 4px;
+                overflow: hidden;
             }
         }
 
@@ -131,11 +165,12 @@
 
             .presence-bar {
                 width: 100%;
-                height: 6px; /* מעט עבה יותר ונעים לעין */
-                background-color: #040710;
-                border-radius: 3px; /* פינות מעוגלות לפס הנוכחות */
+                height: 12px; /* מעט עבה יותר ובולט */
+                background-color: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+                border: 1px solid rgba(255, 255, 255, 0.04);
+                position: relative;
                 overflow: hidden;
-                display: flex;
             }
         }
 
@@ -143,8 +178,9 @@
             position: absolute;
             top: 0;
             bottom: 0;
-            background-color: rgba(3, 7, 18, 0.45);
-            backdrop-filter: grayscale(80%) brightness(60%);
+            background-color: rgba(15, 23, 42, 0.5);
+            /* אפקט זכוכית מעומעמת מודרני במקום אטימות פשוטה */
+            backdrop-filter: grayscale(40%) blur(1px);
             pointer-events: none;
             z-index: 10;
 

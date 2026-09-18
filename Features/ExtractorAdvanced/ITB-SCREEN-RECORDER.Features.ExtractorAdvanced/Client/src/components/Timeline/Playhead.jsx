@@ -1,7 +1,7 @@
-﻿import React from 'react';
+﻿// Client/src/components/Timeline/Playhead.jsx
+import React from 'react';
 import './Playhead.scss';
 
-// המרת Epoch Ms למחרוזת שעה בהתאם למצב השעון (LOCAL מול UTC)
 const formatTimelineClock = (epochMs, mode = 'LOCAL') => {
     if (!epochMs || isNaN(epochMs)) return '--:--:--';
     const d = new Date(epochMs);
@@ -34,7 +34,6 @@ export default function Playhead({
     const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;
     const rawPlayheadPercent = ((playheadMs - viewportStartMs) / viewportDurationMs) * 100;
 
-    // סעיף 1: זיהוי האם ה-Playhead נמצא פיזית בתוך חלון ה-Viewport הנוכחי
     const isPlayheadInViewport = rawPlayheadPercent >= -0.2 && rawPlayheadPercent <= 100.2;
     const displayPlayheadPercent = Math.max(0, Math.min(100, rawPlayheadPercent));
 
@@ -50,13 +49,11 @@ export default function Playhead({
         }
     };
 
-    // מנגנון היפוך סמני חיתוך בקצוות
     const flipIn = inPercent < 1.5;
     const flipOut = outPercent > 98.5;
     const isInAtEdge = inPercent <= 0.2 && inPercent >= -0.2;
     const isOutAtEdge = outPercent >= 99.8 && outPercent <= 100.2;
 
-    // מנגנון יישור חכם לתגית ה-Playhead בקצוות ה-Viewport
     const isPlayheadNearLeft = rawPlayheadPercent >= -0.2 && rawPlayheadPercent < 4.5;
     const isPlayheadNearRight = rawPlayheadPercent > 95.5 && rawPlayheadPercent <= 100.2;
 
@@ -79,7 +76,7 @@ export default function Playhead({
                 onMouseDown={handleMouseDown('in')}
                 title="Drag IN Point"
             >
-                <div className="handle-badge"></div>
+                <div className="handle-badge">IN</div>
                 <div className="marker-core-line" />
             </div>
 
@@ -90,22 +87,24 @@ export default function Playhead({
                 onMouseDown={handleMouseDown('out')}
                 title="Drag OUT Point"
             >
-                <div className="handle-badge"></div>
+                <div className="handle-badge">OUT</div>
                 <div className="marker-core-line" />
             </div>
 
-            {/* מחט Playhead - מוצגת רק כשהיא בתחום ה-Viewport הנוכחי */}
+            {/* מחט Playhead */}
             {isPlayheadInViewport && (
                 <div
                     className="playhead-needle"
                     style={{ left: `${displayPlayheadPercent}%` }}
                     onMouseDown={handleMouseDown('playhead')}
-                    title="Drag Playhead (Snaps to IN / OUT)"
+                    title="Drag Playhead"
                 >
                     <div className={`head-badge ${isPlayheadNearLeft ? 'edge-left' : ''} ${isPlayheadNearRight ? 'edge-right' : ''}`}>
                         {formatTimelineClock(baseEpochMs + playheadMs, timeMode)}
                     </div>
                     <div className="needle-core-line" />
+                    {/* ידית אחיזה תחתונה מעוגלת */}
+                    <div className="bottom-handle-node" />
                 </div>
             )}
         </div>
