@@ -11,7 +11,8 @@ export default function TopScopeBar({
     onResetActiveStation,
     onOpenRangeModal,
     onOpenBookmarksModal,
-    onToggleDrawer
+    onToggleDrawer,
+    isInitialSetup = false // הגנת React: קבלת סטטוס האתחול
 }) {
     const formattedScopeRange = useMemo(() => {
         const startEpoch = baseEpochMs;
@@ -36,8 +37,6 @@ export default function TopScopeBar({
 
     return (
         <div className="studio-top-scope-bar">
-            {/* גלולת המיתוג השמאלית הוסרה בהתאם לבקשה */}
-
             <div className="scope-info-group">
                 <span className="scope-tag">MISSION SCOPE</span>
 
@@ -70,7 +69,7 @@ export default function TopScopeBar({
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                             <circle cx="12" cy="12" r="10" strokeWidth="2.5" />
-                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" strokeWidth="2.5" />
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z" strokeWidth="2.5" />
                             <line x1="2" y1="12" x2="22" y2="12" strokeWidth="2.5" />
                         </svg>
                     </button>
@@ -88,7 +87,7 @@ export default function TopScopeBar({
                     type="button"
                     onClick={onOpenBookmarksModal}
                     className="btn-bookmarks-prominent"
-                    title="Investigation Bookmarks & Cases"
+                    title="Session Bookmarks & Events"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
@@ -96,16 +95,19 @@ export default function TopScopeBar({
                     <span>BOOKMARKS</span>
                 </button>
 
-                <button
-                    type="button"
-                    onClick={onToggleDrawer}
-                    className="btn-toggle-drawer"
-                    title="Toggle Station Pool"
-                >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                </button>
+                {/* הגנת React: מוצג אך ורק בסביבת עבודה פעילה ולא במהלך אתחול/בחירת תחנות ראשונית */}
+                {!isInitialSetup && (
+                    <button
+                        type="button"
+                        onClick={onToggleDrawer}
+                        className="btn-toggle-drawer"
+                        title="Toggle Station Pool"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                )}
             </div>
         </div>
     );

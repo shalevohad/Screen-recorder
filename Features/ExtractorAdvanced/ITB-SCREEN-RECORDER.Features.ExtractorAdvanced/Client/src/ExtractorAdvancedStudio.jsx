@@ -1,5 +1,5 @@
 ﻿// Client/src/components/Extractor/ExtractorAdvancedStudio.jsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import TopScopeBar from './components/TopScopeBar/TopScopeBar.jsx';
 import MulticamViewport from './components/Viewport/MulticamViewport.jsx';
 import TransportBar from './components/TransportBar/TransportBar.jsx';
@@ -26,16 +26,17 @@ const generateDefaultTimeRange = () => {
 
 const parseSafeEpoch = (dateStr) => {
     if (!dateStr) return new Date().getTime();
-    const safeStr = dateStr.replace(' ', 'T');
+    const safeStr = String(dateStr).replace(' ', 'T');
     const ms = new Date(safeStr).getTime();
     return isNaN(ms) ? new Date().getTime() : ms;
 };
 
 export default function ExtractorAdvancedStudio() {
-    const cached = getStudioSessionCache();
+    // 1. טעינת סנאפשוט יציב וחד-פעמי מהזיכרון המקומי
+    const cached = useMemo(() => getStudioSessionCache() || {}, []);
 
-    const [timeRange, setTimeRange] = useState(() => cached?.timeRange || generateDefaultTimeRange());
-    const [timeMode, setTimeMode] = useState(() => cached?.timeMode || 'LOCAL');
+    const [timeRange, setTimeRange] = useState(cached.timeRange || generateDefaultTimeRange());
+    const [timeMode, setTimeMode] = useState(cached.timeMode || 'LOCAL');
 
     const baseEpochMs = useMemo(() => parseSafeEpoch(timeRange.start), [timeRange.start]);
     const bufferMs = useMemo(() => Math.max(60000, Math.round(timeRange.durationMs * 0.05)), [timeRange.durationMs]);
@@ -43,58 +44,32 @@ export default function ExtractorAdvancedStudio() {
     const timelineBaseEpochMs = useMemo(() => baseEpochMs - bufferMs, [baseEpochMs, bufferMs]);
     const totalTimelineDurationMs = useMemo(() => timeRange.durationMs + (2 * bufferMs), [timeRange.durationMs, bufferMs]);
 
-    const [allStations, setAllStations] = useState(() => cached?.allStations || []);
-    const [selectedStationIds, setSelectedStationIds] = useState(() => cached?.selectedStationIds || []);
-    const [activeStationId, setActiveStationId] = useState(() => cached?.activeStationId || null);
+    const [allStations, setAllStations] = useState(cached.allStations || []);
+    const [recordingSegments, setRecordingSegments] = useState({});
+    const [isLoadingStations, setIsLoadingStations] = useState(false);
+
+    // 2. אתחול כל המצבים ישירות לערכים המדויקים שהיו שמורים לפני הריענון (F5)
+    const [selectedStationIds, setSelectedStationIds] = useState(cached.selectedStationIds || []);
+    const [activeStationId, setActiveStationId] = useState(cached.activeStationId || null);
     const [spotlightStationId, setSpotlightStationId] = useState(null);
 
     const [isRangeModalOpen, setIsRangeModalOpen] = useState(false);
     const [isBookmarksModalOpen, setIsBookmarksModalOpen] = useState(false);
-    const [zoomLevel, setZoomLevel] = useState(() => cached?.zoomLevel || 1);
+    const [zoomLevel, setZoomLevel] = useState(cached.zoomLevel || 1);
 
-    const [inPointMs, setInPointMs] = useState(() => cached?.inPointMs ?? bufferMs);
-    const [outPointMs, setOutPointMs] = useState(() => cached?.outPointMs ?? (bufferMs + timeRange.durationMs));
-    const [playheadMs, setPlayheadMs] = useState(() => cached?.playheadMs ?? (cached?.inPointMs ?? bufferMs));
+    const [inPointMs, setInPointMs] = useState(cached.inPointMs ?? bufferMs);
+    const [outPointMs, setOutPointMs] = useState(cached.outPointMs ?? (bufferMs + timeRange.durationMs));
+    const [playheadMs, setPlayheadMs] = useState(cached.playheadMs ?? (cached.inPointMs ?? bufferMs));
 
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isWorkspaceActive, setIsWorkspaceActive] = useState(() => {
-        return cached?.isWorkspaceActive && cached?.selectedStationIds?.length > 0;
-    });
+    const [isWorkspaceActive, setIsWorkspaceActive] = useState(
+        Boolean(cached.isWorkspaceActive && cached.selectedStationIds?.length > 0)
+    );
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // מנגנון סינכרון וטיהור מקרי קצה (Edge Case Sanitizer)
-    useEffect(() => {
-        // מקרה קצה 1: אין תחנות בכלל במערכת
-        if (allStations.length === 0) {
-            if (selectedStationIds.length > 0) setSelectedStationIds([]);
-            if (activeStationId) setActiveStationId(null);
-            if (spotlightStationId) setSpotlightStationId(null);
-            if (isWorkspaceActive) setIsWorkspaceActive(false);
-            return;
-        }
-
-        // מקרה קצה 2: בוטלו כל התחנות שנבחרו
-        if (selectedStationIds.length === 0) {
-            if (isWorkspaceActive) setIsWorkspaceActive(false);
-            if (activeStationId) setActiveStationId(null);
-            if (spotlightStationId) setSpotlightStationId(null);
-            return;
-        }
-
-        // מקרה קצה 3: תחנת ה-Spot הנוכחית הוסרה מרשימת הנבחרות
-        if (activeStationId && !selectedStationIds.includes(activeStationId)) {
-            setActiveStationId(null); // חזרה נקייה לתצוגת כל התחנות
-        }
-
-        // מקרה קצה 4: תחנת ה-Spotlight במסך מלא הוסרה
-        if (spotlightStationId && !selectedStationIds.includes(spotlightStationId)) {
-            setSpotlightStationId(selectedStationIds[0] || null);
-        }
-    }, [allStations.length, selectedStationIds, activeStationId, spotlightStationId, isWorkspaceActive]);
-
-    const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
-    const forceDrawerOpen = isDrawerOpen || isInitialSetup;
-
+    // =========================================================================
+    // שמירה מתמשכת ל-Storage - מופעלת בכל שינוי בלי לדרוס וללא עיכובים
+    // =========================================================================
     useEffect(() => {
         saveStudioSessionCache({
             timeRange,
@@ -110,35 +85,102 @@ export default function ExtractorAdvancedStudio() {
         });
     }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, isWorkspaceActive, allStations]);
 
-    useEffect(() => {
-        const fetchStations = async () => {
-            if (isNaN(timelineBaseEpochMs)) return;
-            const endEpochMs = timelineBaseEpochMs + totalTimelineDurationMs;
-            try {
-                const response = await fetch(`/api/v1/extractor-advanced/stations?startEpoch=${timelineBaseEpochMs}&endEpoch=${endEpochMs}`);
-                if (response.ok) {
-                    const contentType = response.headers.get("content-type");
-                    if (contentType && contentType.includes("application/json")) {
-                        const data = await response.json();
-                        setAllStations(data);
-                        return;
-                    }
+    // =========================================================================
+    // שליפה דינמית של תחנות פעילות (ללא מחיקה אגרסיבית של בחירות)
+    // =========================================================================
+    const fetchActiveStationsForTimeScope = useCallback(async () => {
+        if (isNaN(timelineBaseEpochMs)) return;
+        const endEpochMs = timelineBaseEpochMs + totalTimelineDurationMs;
+
+        setIsLoadingStations(true);
+        try {
+            const queryParams = new URLSearchParams({
+                startEpoch: String(timelineBaseEpochMs),
+                endEpoch: String(endEpochMs),
+                startTime: timeRange.start,
+                endTime: timeRange.end,
+                timeMode: timeMode
+            });
+
+            const res = await fetch(`/api/v1/extractor-advanced/stations?${queryParams.toString()}`);
+            if (res.ok) {
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    const data = await res.json();
+                    const rawList = Array.isArray(data) ? data : (data.stations || data.items || []);
+
+                    const normalized = rawList.map(item => ({
+                        id: String(item.id || item.stationId || item.agentId || item.hostname),
+                        hostname: item.hostname || item.displayName || item.name || 'Station',
+                        displayName: item.displayName || item.hostname || item.name,
+                        isOnline: item.isOnline !== undefined ? item.isOnline : true,
+                        recordingsCount: item.recordingsCount || 0
+                    }));
+
+                    setAllStations(normalized);
                 }
-                // נתוני ברירת מחדל לסביבת פיתוח
-                setAllStations([
-                    { id: '1', hostname: 'PC-01 (Main Operator)' },
-                    { id: '2', hostname: 'PC-02 (Secondary Radar)' },
-                    { id: '3', hostname: 'PC-03 (East Watchtower)' },
-                    { id: '4', hostname: 'CCTV-Gate-North' }
-                ]);
+            }
+        } catch (err) {
+            console.warn('[Studio] Failed fetching active stations for scope:', err);
+        } finally {
+            setIsLoadingStations(false);
+        }
+    }, [timelineBaseEpochMs, totalTimelineDurationMs, timeRange.start, timeRange.end, timeMode]);
+
+    useEffect(() => {
+        fetchActiveStationsForTimeScope();
+    }, [fetchActiveStationsForTimeScope]);
+
+    // =========================================================================
+    // שליפת מקטעי הקלטות (Segments) מהשרת
+    // =========================================================================
+    const stationIdsKey = useMemo(() => allStations.map(s => s.id).sort().join(','), [allStations]);
+
+    useEffect(() => {
+        if (!stationIdsKey || isNaN(timelineBaseEpochMs)) {
+            setRecordingSegments({});
+            return;
+        }
+
+        let isMounted = true;
+        const fetchSegments = async () => {
+            try {
+                const endEpochMs = timelineBaseEpochMs + totalTimelineDurationMs;
+                const res = await fetch(`/api/v1/extractor/timeline-segments?stations=${stationIdsKey}&startEpoch=${timelineBaseEpochMs}&endEpoch=${endEpochMs}`);
+                if (res.ok && isMounted) {
+                    const data = await res.json();
+                    setRecordingSegments(data || {});
+                }
             } catch {
-                setAllStations([]);
+                if (isMounted) setRecordingSegments({});
             }
         };
-        fetchStations();
-    }, [timelineBaseEpochMs, totalTimelineDurationMs]);
+
+        fetchSegments();
+        return () => { isMounted = false; };
+    }, [stationIdsKey, timelineBaseEpochMs, totalTimelineDurationMs]);
+
+    // =========================================================================
+    // סניטייזר רך - רק מנקה עמדות ממוקדות אם בוטל הסימון שלהן
+    // =========================================================================
+    useEffect(() => {
+        if (activeStationId && !selectedStationIds.includes(activeStationId)) {
+            setActiveStationId(null);
+        }
+        if (spotlightStationId && !selectedStationIds.includes(spotlightStationId)) {
+            setSpotlightStationId(selectedStationIds[0] || null);
+        }
+        if (selectedStationIds.length === 0 && isWorkspaceActive) {
+            setIsWorkspaceActive(false);
+        }
+    }, [selectedStationIds, activeStationId, spotlightStationId, isWorkspaceActive]);
+
+    const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
+    const forceDrawerOpen = isDrawerOpen || isInitialSetup;
 
     const activeStation = allStations.find(s => s.id === activeStationId);
+
+    // מגן על ה-UI: ירנדר רק תחנות שנבחרו ועדיין קיימות ברשימת התחנות החיות
     const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
     const spotlightStation = allStations.find(s => s.id === spotlightStationId);
 
@@ -231,6 +273,7 @@ export default function ExtractorAdvancedStudio() {
                     onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
                     onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
+                    isInitialSetup={isInitialSetup}
                 />
 
                 <div className="studio-lower-body">
@@ -279,6 +322,7 @@ export default function ExtractorAdvancedStudio() {
                                     outPointMs={outPointMs}
                                     setOutPointMs={setOutPointMs}
                                     onExport={handleExportSmartCut}
+                                    recordingSegments={recordingSegments}
                                 />
                             </div>
                         </div>
@@ -293,6 +337,10 @@ export default function ExtractorAdvancedStudio() {
                         onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
                         onUpdateSelections={setSelectedStationIds}
                         isInitialSetup={isInitialSetup}
+                        isLoadingStations={isLoadingStations}
+                        recordingSegments={recordingSegments}
+                        baseEpochMs={baseEpochMs}
+                        durationMs={timeRange.durationMs}
                         onApply={() => {
                             if (selectedStationIds.length > 0) {
                                 setIsWorkspaceActive(true);

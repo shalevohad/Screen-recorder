@@ -13,6 +13,12 @@
     border-radius: inherit;
     overflow: hidden !important;
     isolation: isolate;
+    /* הגנת SCSS: כאשר המגירה תופסת את כל המסך, נעלים הרמטית את כפתור פתיחת המגירה */
+    &:has(.station-drawer-panel.is-full-width) {
+        .btn-toggle-drawer {
+            display: none !important;
+        }
+    }
 
     .studio-workspace-area {
         flex: 1 1 0;

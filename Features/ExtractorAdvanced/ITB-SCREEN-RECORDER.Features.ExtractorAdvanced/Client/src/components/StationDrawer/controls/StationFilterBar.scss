@@ -1,0 +1,328 @@
+// Client/src/components/StationDrawer/controls/StationFilterBar.scss
+
+.station-filter-bar-root {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+
+    .search-bar-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .search-input-wrap {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            background: rgba(10, 15, 29, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 0 8px;
+            height: 30px;
+
+            .search-icon {
+                width: 13px;
+                height: 13px;
+                stroke: #64748b;
+                margin-right: 6px;
+                flex-shrink: 0;
+            }
+
+            input {
+                width: 100%;
+                background: transparent;
+                border: none;
+                color: #f8fafc;
+                font-size: 11px;
+                outline: none;
+
+                &::placeholder {
+                    color: #475569;
+                }
+            }
+        }
+
+        .btn-filter-toggle {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.18s;
+
+            svg {
+                width: 13px;
+                height: 13px;
+            }
+
+            &:hover, &.open {
+                background: rgba(6, 182, 212, 0.15);
+                border-color: #06b6d4;
+                color: #22d3ee;
+            }
+
+            .active-dot {
+                position: absolute;
+                top: 5px;
+                right: 5px;
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background: #06b6d4;
+                box-shadow: 0 0 4px #06b6d4;
+            }
+        }
+
+        .view-mode-toggle-group {
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            padding: 1px;
+            gap: 1px;
+
+            .btn-view-mode {
+                background: transparent;
+                border: none;
+                color: #64748b;
+                width: 22px;
+                height: 20px;
+                border-radius: 3px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.15s;
+
+                svg {
+                    width: 12px;
+                    height: 12px;
+                }
+
+                &:hover {
+                    color: #cbd5e1;
+                }
+
+                &.active {
+                    background: rgba(6, 182, 212, 0.25);
+                    color: #22d3ee;
+                }
+            }
+        }
+
+        .btn-sort {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+            font-size: 9px;
+            font-weight: 800;
+            padding: 0 8px;
+            height: 30px;
+            border-radius: 6px;
+            cursor: pointer;
+
+            &:hover {
+                color: #fff;
+            }
+        }
+    }
+    /* בחירת טאב קומפקטית במצב מגירה צרה */
+    .drawer-tabs-dropdown-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        padding: 4px 8px;
+
+        .dropdown-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8.5px;
+            font-weight: 800;
+            color: #64748b;
+        }
+
+        .tab-select-native {
+            flex: 1;
+            background: rgba(10, 15, 29, 0.9);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 4px;
+            color: #22d3ee;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .compact-bulk-btns {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+
+            .btn-bulk-text {
+                background: transparent;
+                border: none;
+                color: #06b6d4;
+                font-size: 9.5px;
+                font-weight: 800;
+                cursor: pointer;
+                padding: 0;
+
+                &:hover {
+                    color: #22d3ee;
+                }
+
+                &.clear {
+                    color: #94a3b8;
+
+                    &:hover {
+                        color: #f43f5e;
+                    }
+                }
+            }
+
+            .div {
+                color: #334155;
+                font-size: 9px;
+            }
+        }
+    }
+    /* רצועת טאבים מלאה במסך רחב */
+    .tabs-filter-strip {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .tabs-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            .strip-label {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 8.5px;
+                font-weight: 800;
+                color: #64748b;
+            }
+        }
+
+        .tabs-scroll-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            overflow-x: auto;
+
+            .btn-tab-filter {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                background: rgba(15, 23, 42, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 5px;
+                padding: 3px 8px;
+                color: #94a3b8;
+                font-size: 10px;
+                font-weight: 700;
+                cursor: pointer;
+                white-space: nowrap;
+
+                .tab-count-pill {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 8.5px;
+                    background: rgba(0, 0, 0, 0.35);
+                    padding: 1px 4px;
+                    border-radius: 9999px;
+                }
+
+                &.active {
+                    background: rgba(6, 182, 212, 0.2);
+                    border-color: #06b6d4;
+                    color: #22d3ee;
+                }
+            }
+        }
+    }
+
+    .filter-controls-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        &.is-collapsed-tray {
+            background: rgba(10, 15, 29, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 6px;
+            padding: 5px 8px;
+        }
+
+        .filter-pills-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+
+            .filter-pill {
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 9999px;
+                color: #64748b;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 2px 7px;
+                cursor: pointer;
+
+                &:hover {
+                    color: #f8fafc;
+                }
+
+                &.active {
+                    background: rgba(255, 255, 255, 0.08);
+                    border-color: rgba(255, 255, 255, 0.2);
+                    color: #f8fafc;
+                }
+            }
+        }
+
+        .bulk-actions-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+
+            .btn-bulk {
+                background: transparent;
+                border: none;
+                color: #06b6d4;
+                font-size: 10px;
+                font-weight: 800;
+                cursor: pointer;
+                padding: 0;
+
+                &.clear-btn {
+                    color: #94a3b8;
+
+                    &:hover {
+                        color: #f43f5e;
+                    }
+                }
+            }
+
+            .divider {
+                width: 1px;
+                height: 10px;
+                background: rgba(255, 255, 255, 0.1);
+            }
+        }
+    }
+}

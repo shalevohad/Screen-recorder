@@ -24,7 +24,8 @@ export default function TimelineBoard({
     setInPointMs,
     outPointMs = 3600000,
     setOutPointMs,
-    onExport
+    onExport,
+    recordingSegments = {}
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [viewportStartMs, setViewportStartMs] = useState(0);
@@ -137,7 +138,6 @@ export default function TimelineBoard({
         const rect = trackAreaRef.current?.getBoundingClientRect();
         if (!rect) return;
 
-        // מניעת פתיחה על סרגל התחנות משמאל (< 180px) ועל כפתור הייצוא מימין (> rect.right - 58px)
         if (e.clientX - rect.left < 180 || e.clientX > rect.right - 58) return;
 
         const targetMs = getMsFromClientX(e.clientX);
@@ -270,7 +270,6 @@ export default function TimelineBoard({
         };
     }, [draggingTarget, dragStartInfo, getMsFromClientX, inPointMs, outPointMs, playheadMs, totalDurationMs, viewportDurationMs, setPlayheadMs, setInPointMs, setOutPointMs]);
 
-    // ולידציה הכוללת נוכחות ערוצים פעילים
     const isRangeValid = stations.length > 0 && Math.abs(outPointMs - inPointMs) >= 1000;
 
     return (
@@ -342,6 +341,8 @@ export default function TimelineBoard({
                                 inPointMs={inPointMs}
                                 outPointMs={outPointMs}
                                 baseEpochMs={baseEpochMs}
+                                segments={recordingSegments[station.id] || station.segments || []}
+                                recordingSegments={recordingSegments}
                             />
                         ))
                     ) : (
