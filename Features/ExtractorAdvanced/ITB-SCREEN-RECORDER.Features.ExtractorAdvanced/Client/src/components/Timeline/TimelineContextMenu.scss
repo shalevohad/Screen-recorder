@@ -1,68 +1,122 @@
+// Client/src/components/Timeline/TimelineContextMenu.scss
+
 .timeline-context-menu {
     position: fixed;
-    z-index: 99999;
-    background: #0b1426;
-    border: 1px solid #1c3054;
-    border-radius: 8px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+    z-index: 100000; /* יושב מעל כל שכבות המערכת */
+    background: rgba(15, 23, 42, 0.94);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(6, 182, 212, 0.2);
     padding: 6px;
-    width: 190px;
+    width: 210px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    animation: menuFadeIn 0.12s ease-out;
+    gap: 4px;
+    animation: menuSoftAppear 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+    user-select: none;
+    box-sizing: border-box;
 
     .menu-header {
-        font-size: 9.5px;
-        font-weight: 800;
-        color: #64748b;
-        padding: 6px 10px;
-        border-bottom: 1px solid #162441;
-        margin-bottom: 4px;
-        letter-spacing: 0.05em;
-    }
-
-    button {
         display: flex;
         align-items: center;
-        gap: 8px;
-        background: transparent;
-        border: none;
-        color: #cbd5e1;
-        padding: 8px 10px;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        text-align: left;
-        width: 100%;
-        transition: all 0.12s;
+        justify-content: space-between;
+        padding: 6px 10px 8px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        margin-bottom: 2px;
 
-        svg {
-            width: 13px;
-            height: 13px;
-            stroke: #00e5ff;
+        .header-tag {
+            font-size: 9px;
+            font-weight: 800;
+            color: #64748b;
+            letter-spacing: 0.1em;
         }
 
-        &:hover {
-            background: #16274a;
-            color: #fff;
+        .time-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 700;
+            color: #06b6d4;
+        }
+    }
+
+    .menu-items {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+
+        button {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: transparent;
+            border: none;
+            color: #e2e8f0;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 11.5px;
+            font-weight: 600;
+            font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, sans-serif);
+            cursor: pointer;
+            text-align: left;
+            width: 100%;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            box-sizing: border-box;
 
             svg {
-                stroke: #fff;
+                width: 14px;
+                height: 14px;
+                stroke: #94a3b8;
+                flex-shrink: 0;
+                transition: stroke 0.15s;
+            }
+
+            span {
+                flex: 1;
+            }
+
+            .shortcut-pill {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                font-weight: 700;
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #94a3b8;
+                padding: 1px 6px;
+                border-radius: 4px;
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+            }
+
+            &:hover {
+                background: rgba(6, 182, 212, 0.14);
+                color: #f8fafc;
+
+                svg {
+                    stroke: #06b6d4;
+                    fill: none;
+                }
+
+                .shortcut-pill {
+                    border-color: rgba(6, 182, 212, 0.4);
+                    color: #06b6d4;
+                }
+            }
+
+            &:active {
+                transform: scale(0.98);
             }
         }
     }
 }
 
-@keyframes menuFadeIn {
+@keyframes menuSoftAppear {
     from {
         opacity: 0;
-        transform: translateY(-4px);
+        transform: scale(0.95) translateY(-4px);
     }
 
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: scale(1) translateY(0);
     }
 }

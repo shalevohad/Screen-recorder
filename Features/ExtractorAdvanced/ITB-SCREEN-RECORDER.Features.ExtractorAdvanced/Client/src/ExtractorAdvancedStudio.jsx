@@ -7,6 +7,7 @@ import TimelineBoard from './components/Timeline/TimelineBoard.jsx';
 import StationDrawer from './components/StationDrawer/StationDrawer.jsx';
 import MasterTimeRangeModal from './components/Modals/MasterTimeRangeModal.jsx';
 import BookmarksModal from './components/Modals/BookmarksModal.jsx';
+import SoloSpotlightModal from './components/Modals/SoloSpotlightModal.jsx';
 import { getStudioSessionCache, saveStudioSessionCache } from './studioSessionStore.js';
 import './ExtractorAdvancedStudio.scss';
 
@@ -33,55 +34,67 @@ const parseSafeEpoch = (dateStr) => {
 export default function ExtractorAdvancedStudio() {
     const cached = getStudioSessionCache();
 
-    // 1. הגדרות המשימה (Mission Scope)
     const [timeRange, setTimeRange] = useState(() => cached?.timeRange || generateDefaultTimeRange());
     const [timeMode, setTimeMode] = useState(() => cached?.timeMode || 'LOCAL');
 
     const baseEpochMs = useMemo(() => parseSafeEpoch(timeRange.start), [timeRange.start]);
+    const bufferMs = useMemo(() => Math.max(60000, Math.round(timeRange.durationMs * 0.05)), [timeRange.durationMs]);
 
-    // 2. חישוב Buffer של 5% (לפחות 60 שניות) למתן גמישות בקצוות הציר
-    const bufferMs = useMemo(() => {
-        return Math.max(60000, Math.round(timeRange.durationMs * 0.05));
-    }, [timeRange.durationMs]);
-
-    // תחילת הציר ומשכו הכולל בתוספת ה-Buffer
     const timelineBaseEpochMs = useMemo(() => baseEpochMs - bufferMs, [baseEpochMs, bufferMs]);
     const totalTimelineDurationMs = useMemo(() => timeRange.durationMs + (2 * bufferMs), [timeRange.durationMs, bufferMs]);
 
-    const [allStations, setAllStations] = useState([]);
+    const [allStations, setAllStations] = useState(() => cached?.allStations || []);
     const [selectedStationIds, setSelectedStationIds] = useState(() => cached?.selectedStationIds || []);
     const [activeStationId, setActiveStationId] = useState(() => cached?.activeStationId || null);
+    const [spotlightStationId, setSpotlightStationId] = useState(null);
 
     const [isRangeModalOpen, setIsRangeModalOpen] = useState(false);
     const [isBookmarksModalOpen, setIsBookmarksModalOpen] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(() => cached?.zoomLevel || 1);
 
-    // 3. ברירת מחדל: IN ו-OUT נקבעים בדיוק על זמני המשימה (בתוך ה-Buffer)
     const [inPointMs, setInPointMs] = useState(() => cached?.inPointMs ?? bufferMs);
     const [outPointMs, setOutPointMs] = useState(() => cached?.outPointMs ?? (bufferMs + timeRange.durationMs));
-
-    // Playhead מתחיל בדיוק בסמן ה-IN
     const [playheadMs, setPlayheadMs] = useState(() => cached?.playheadMs ?? (cached?.inPointMs ?? bufferMs));
 
     const [isPlaying, setIsPlaying] = useState(false);
-
-    // תיקון קריטי: מניעת מסך ריק והגדרת סשן פעיל אוטומטית אם יש תחנות נבחרות
     const [isWorkspaceActive, setIsWorkspaceActive] = useState(() => {
-        return cached?.isWorkspaceActive || (cached?.selectedStationIds && cached.selectedStationIds.length > 0) || false;
+        return cached?.isWorkspaceActive && cached?.selectedStationIds?.length > 0;
     });
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // וידוא שהסשן נשאר פעיל בכל בחירת תחנה
+    // מנגנון סינכרון וטיהור מקרי קצה (Edge Case Sanitizer)
     useEffect(() => {
-        if (selectedStationIds.length > 0 && !isWorkspaceActive) {
-            setIsWorkspaceActive(true);
+        // מקרה קצה 1: אין תחנות בכלל במערכת
+        if (allStations.length === 0) {
+            if (selectedStationIds.length > 0) setSelectedStationIds([]);
+            if (activeStationId) setActiveStationId(null);
+            if (spotlightStationId) setSpotlightStationId(null);
+            if (isWorkspaceActive) setIsWorkspaceActive(false);
+            return;
         }
-    }, [selectedStationIds, isWorkspaceActive]);
 
-    const isInitialSetup = !isWorkspaceActive && selectedStationIds.length === 0;
+        // מקרה קצה 2: בוטלו כל התחנות שנבחרו
+        if (selectedStationIds.length === 0) {
+            if (isWorkspaceActive) setIsWorkspaceActive(false);
+            if (activeStationId) setActiveStationId(null);
+            if (spotlightStationId) setSpotlightStationId(null);
+            return;
+        }
+
+        // מקרה קצה 3: תחנת ה-Spot הנוכחית הוסרה מרשימת הנבחרות
+        if (activeStationId && !selectedStationIds.includes(activeStationId)) {
+            setActiveStationId(null); // חזרה נקייה לתצוגת כל התחנות
+        }
+
+        // מקרה קצה 4: תחנת ה-Spotlight במסך מלא הוסרה
+        if (spotlightStationId && !selectedStationIds.includes(spotlightStationId)) {
+            setSpotlightStationId(selectedStationIds[0] || null);
+        }
+    }, [allStations.length, selectedStationIds, activeStationId, spotlightStationId, isWorkspaceActive]);
+
+    const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
     const forceDrawerOpen = isDrawerOpen || isInitialSetup;
 
-    // שמירה שוטפת לזיכרון עבור מעבר טאבים
     useEffect(() => {
         saveStudioSessionCache({
             timeRange,
@@ -92,11 +105,11 @@ export default function ExtractorAdvancedStudio() {
             selectedStationIds,
             activeStationId,
             zoomLevel,
-            isWorkspaceActive
+            isWorkspaceActive,
+            allStations
         });
-    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, isWorkspaceActive]);
+    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, isWorkspaceActive, allStations]);
 
-    // טעינת תחנות תוך כיסוי חלון ה-Buffer המלא
     useEffect(() => {
         const fetchStations = async () => {
             if (isNaN(timelineBaseEpochMs)) return;
@@ -104,11 +117,22 @@ export default function ExtractorAdvancedStudio() {
             try {
                 const response = await fetch(`/api/v1/extractor-advanced/stations?startEpoch=${timelineBaseEpochMs}&endEpoch=${endEpochMs}`);
                 if (response.ok) {
-                    const data = await response.json();
-                    setAllStations(data);
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.includes("application/json")) {
+                        const data = await response.json();
+                        setAllStations(data);
+                        return;
+                    }
                 }
-            } catch (error) {
-                console.error('[Studio] Failed to fetch stations:', error);
+                // נתוני ברירת מחדל לסביבת פיתוח
+                setAllStations([
+                    { id: '1', hostname: 'PC-01 (Main Operator)' },
+                    { id: '2', hostname: 'PC-02 (Secondary Radar)' },
+                    { id: '3', hostname: 'PC-03 (East Watchtower)' },
+                    { id: '4', hostname: 'CCTV-Gate-North' }
+                ]);
+            } catch {
+                setAllStations([]);
             }
         };
         fetchStations();
@@ -116,6 +140,36 @@ export default function ExtractorAdvancedStudio() {
 
     const activeStation = allStations.find(s => s.id === activeStationId);
     const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
+    const spotlightStation = allStations.find(s => s.id === spotlightStationId);
+
+    // ניווט מקלדת מעגלי במצב Spot
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+            if (isRangeModalOpen || isBookmarksModalOpen || spotlightStationId) return;
+
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            if (!activeStationId || timelineStations.length <= 1) return;
+
+            e.preventDefault();
+            const currentIdx = timelineStations.findIndex(s => s.id === activeStationId);
+            if (currentIdx === -1) {
+                setActiveStationId(timelineStations[0].id);
+                return;
+            }
+
+            if (e.key === 'ArrowDown') {
+                const nextIdx = (currentIdx + 1) % timelineStations.length;
+                setActiveStationId(timelineStations[nextIdx].id);
+            } else if (e.key === 'ArrowUp') {
+                const prevIdx = (currentIdx - 1 + timelineStations.length) % timelineStations.length;
+                setActiveStationId(timelineStations[prevIdx].id);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [activeStationId, timelineStations, isRangeModalOpen, isBookmarksModalOpen, spotlightStationId]);
 
     const handleLoadBookmark = (bm) => {
         const startMs = parseSafeEpoch(bm.startTime);
@@ -125,14 +179,10 @@ export default function ExtractorAdvancedStudio() {
         const newTimeRange = { start: bm.startTime, end: bm.endTime, durationMs: durationMs > 0 ? durationMs : 14400000 };
         const newBuf = Math.max(60000, Math.round(newTimeRange.durationMs * 0.05));
 
-        const newIn = bm.inPointMs !== undefined ? bm.inPointMs + newBuf : newBuf;
-        const newOut = bm.outPointMs !== undefined ? bm.outPointMs + newBuf : (newBuf + newTimeRange.durationMs);
-        const newPlayhead = bm.playheadMs !== undefined ? bm.playheadMs + newBuf : newIn;
-
         setTimeRange(newTimeRange);
-        setInPointMs(newIn);
-        setOutPointMs(newOut);
-        setPlayheadMs(newPlayhead);
+        setInPointMs(bm.inPointMs !== undefined ? bm.inPointMs + newBuf : newBuf);
+        setOutPointMs(bm.outPointMs !== undefined ? bm.outPointMs + newBuf : (newBuf + newTimeRange.durationMs));
+        setPlayheadMs(bm.playheadMs !== undefined ? bm.playheadMs + newBuf : (bm.inPointMs !== undefined ? bm.inPointMs + newBuf : newBuf));
 
         if (bm.stationIds && bm.stationIds.length > 0) {
             setSelectedStationIds(bm.stationIds);
@@ -191,6 +241,8 @@ export default function ExtractorAdvancedStudio() {
                                     activeStation={activeStation}
                                     timelineStations={timelineStations}
                                     onSelectActiveStation={(id) => setActiveStationId(id)}
+                                    onOpenSpotlight={(id) => setSpotlightStationId(id)}
+                                    onOpenDrawer={() => setIsDrawerOpen(true)}
                                     baseEpochMs={timelineBaseEpochMs}
                                     playheadMs={playheadMs}
                                     timeMode={timeMode}
@@ -242,8 +294,10 @@ export default function ExtractorAdvancedStudio() {
                         onUpdateSelections={setSelectedStationIds}
                         isInitialSetup={isInitialSetup}
                         onApply={() => {
-                            setIsWorkspaceActive(true);
-                            setIsDrawerOpen(false);
+                            if (selectedStationIds.length > 0) {
+                                setIsWorkspaceActive(true);
+                                setIsDrawerOpen(false);
+                            }
                         }}
                         onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     />
@@ -254,6 +308,7 @@ export default function ExtractorAdvancedStudio() {
                 isOpen={isRangeModalOpen}
                 onClose={() => setIsRangeModalOpen(false)}
                 currentRange={timeRange}
+                timeMode={timeMode}
                 onApplyRange={(newRange) => {
                     const newBuf = Math.max(60000, Math.round(newRange.durationMs * 0.05));
                     setTimeRange(newRange);
@@ -268,6 +323,23 @@ export default function ExtractorAdvancedStudio() {
                 onClose={() => setIsBookmarksModalOpen(false)}
                 currentState={{ timeRange, playheadMs, inPointMs, outPointMs, selectedStationIds }}
                 onLoadBookmark={handleLoadBookmark}
+            />
+
+            <SoloSpotlightModal
+                isOpen={Boolean(spotlightStationId && spotlightStation)}
+                station={spotlightStation}
+                allStations={timelineStations}
+                onSelectStation={setSpotlightStationId}
+                onClose={() => setSpotlightStationId(null)}
+                baseEpochMs={timelineBaseEpochMs}
+                timeMode={timeMode}
+                totalDurationMs={totalTimelineDurationMs}
+                playheadMs={playheadMs}
+                setPlayheadMs={setPlayheadMs}
+                inPointMs={inPointMs}
+                setInPointMs={setInPointMs}
+                outPointMs={outPointMs}
+                setOutPointMs={setOutPointMs}
             />
         </div>
     );

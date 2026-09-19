@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿// App.jsx
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/UI/CommandCenterHeader';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
@@ -17,6 +18,31 @@ export default function App() {
 
     const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
     const apiBaseUrl = `http://${window.location.hostname}:${apiPort}`;
+
+    // =========================================================================
+    // GLOBAL CONTEXT MENU GUARD: ביטול גלובלי של קליק ימני בכל המערכת
+    // =========================================================================
+    useEffect(() => {
+        const handleGlobalContextMenu = (e) => {
+            // 1. החרגת שדות קלט כדי לאפשר העתקה/הדבקה סטנדרטית
+            if (e.target.closest('input, textarea, [contenteditable="true"]')) {
+                return;
+            }
+
+            // 2. החרגת אלמנטים שמבקשים במפורש לאפשר קליק ימני מקורי
+            if (e.target.closest('[data-allow-context="true"]')) {
+                return;
+            }
+
+            // 3. ביטול תפריט הדפדפן המובנה בכל שאר חלקי המערכת
+            e.preventDefault();
+        };
+
+        window.addEventListener('contextmenu', handleGlobalContextMenu);
+        return () => {
+            window.removeEventListener('contextmenu', handleGlobalContextMenu);
+        };
+    }, []);
 
     const fetchStations = useCallback(async () => {
         try {
@@ -223,8 +249,8 @@ export default function App() {
                 onBulkStart={handleBulkStart}
                 onBulkStop={handleBulkStop}
                 onUpdateStationSettings={setStations}
-                systemConfig={systemConfig}              /* 💡 הזרקת הקונפיגורציה */
-                onSystemConfigUpdate={setSystemConfig}   /* 💡 הזרקת פונקציית העדכון */
+                systemConfig={systemConfig}
+                onSystemConfigUpdate={setSystemConfig}
                 direction="ltr"
                 hideOffline={hideOffline}
                 onToggleHideOffline={() => setHideOffline(prev => !prev)}

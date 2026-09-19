@@ -1,0 +1,408 @@
+// Client/src/components/Modals/SoloSpotlightModal.scss
+
+.solo-spotlight-modal-overlay {
+    /* =========================================================================
+       SINGLE SOURCE OF TRUTH (SSOT)
+       שינוי ערך זה כאן מעדכן אוטומטית גם את ה-CSS וגם את מתמטיקת ה-Playhead ב-JS
+       ========================================================================= */
+    --track-sidebar-width: 180px;
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: #020617;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    direction: ltr !important;
+    animation: spotlightFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+
+    .spotlight-viewport-canvas {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at center, rgba(15, 23, 42, 0.8) 0%, #020617 100%);
+
+        .canvas-video-feed {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+
+            .tactical-grid-overlay {
+                position: absolute;
+                inset: 0;
+                background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+                background-size: 60px 60px;
+                pointer-events: none;
+            }
+
+            .center-target-reticle {
+                width: 44px;
+                height: 44px;
+                border: 1px solid rgba(6, 182, 212, 0.35);
+                border-radius: 50%;
+                position: relative;
+
+                &::after {
+                    content: '';
+                    position: absolute;
+                    width: 5px;
+                    height: 5px;
+                    background: #06b6d4;
+                    border-radius: 50%;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    box-shadow: 0 0 8px #06b6d4;
+                }
+            }
+
+            .feed-brand-watermark {
+                position: absolute;
+                top: 75px;
+                left: 30px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+                font-weight: 700;
+                color: rgba(255, 255, 255, 0.3);
+                letter-spacing: 2px;
+                text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+            }
+        }
+
+        .canvas-scrim-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 130px;
+            background: linear-gradient(180deg, rgba(2, 6, 23, 0.85) 0%, rgba(2, 6, 23, 0.3) 60%, transparent 100%);
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .canvas-scrim-bottom {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 200px;
+            background: linear-gradient(0deg, rgba(2, 6, 23, 0.95) 0%, rgba(2, 6, 23, 0.5) 60%, transparent 100%);
+            pointer-events: none;
+            z-index: 20;
+        }
+    }
+
+    .spotlight-top-hud {
+        position: absolute;
+        top: 20px;
+        left: 24px;
+        right: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        pointer-events: none;
+        z-index: 50;
+
+        > * {
+            pointer-events: auto;
+        }
+
+        .station-brand-pill {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(10, 15, 29, 0.92);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 6px 16px;
+            border-radius: 9999px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+
+            .station-title {
+                font-size: 12.5px;
+                font-weight: 800;
+                color: #f8fafc;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+            }
+
+            .divider {
+                width: 1px;
+                height: 12px;
+                background: rgba(255, 255, 255, 0.15);
+            }
+
+            .feed-res {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                color: #94a3b8;
+                letter-spacing: 0.5px;
+            }
+        }
+
+        .station-switcher-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(10, 15, 29, 0.92);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 4px 12px;
+            border-radius: 9999px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+            direction: ltr !important;
+
+            button {
+                background: transparent;
+                border: none;
+                color: #06b6d4;
+                cursor: pointer;
+                padding: 4px 6px;
+                font-size: 11px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+
+                &:hover:not(:disabled) {
+                    background: rgba(6, 182, 212, 0.2);
+                    color: #22d3ee;
+                }
+
+                &:disabled {
+                    color: #475569;
+                    cursor: not-allowed;
+                    opacity: 0.4;
+                }
+            }
+
+            .counter-text {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+                color: #f8fafc;
+                font-weight: 700;
+                min-width: 42px;
+                text-align: center;
+                direction: ltr !important;
+                unicode-bidi: isolate;
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+            }
+        }
+
+        .btn-exit-spotlight {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(10, 15, 29, 0.92);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(244, 63, 94, 0.45);
+            color: #f43f5e;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 10.5px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            cursor: pointer;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+            transition: all 0.2s ease;
+
+            kbd {
+                background: rgba(244, 63, 94, 0.15);
+                border: 1px solid rgba(244, 63, 94, 0.35);
+                padding: 2px 5px;
+                border-radius: 4px;
+                font-size: 9px;
+            }
+
+            &:hover {
+                background: #f43f5e;
+                color: #020617;
+                box-shadow: 0 0 20px rgba(244, 63, 94, 0.6);
+
+                kbd {
+                    background: rgba(0, 0, 0, 0.3);
+                    color: #fff;
+                }
+            }
+        }
+    }
+
+    .spotlight-bottom-island {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 48px);
+        max-width: 1100px;
+        background: rgba(10, 15, 29, 0.92);
+        backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        padding: 12px 16px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 60;
+
+        .island-transport-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            .clock-timecode, .cut-duration-pill {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+
+                .label {
+                    font-size: 8.5px;
+                    font-weight: 800;
+                    letter-spacing: 0.8px;
+                    color: #64748b;
+                }
+
+                .digits, .val {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 800;
+                    color: #06b6d4;
+                    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+                }
+            }
+
+            .clock-timecode {
+                text-align: right;
+            }
+
+            .cut-duration-pill {
+                text-align: left;
+
+                .val {
+                    color: #10b981;
+                }
+            }
+
+            .transport-controls {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+
+                .btn-step {
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.06);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    color: #94a3b8;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 11px;
+                    transition: all 0.2s;
+
+                    &:hover {
+                        background: rgba(255, 255, 255, 0.15);
+                        color: #fff;
+                    }
+                }
+
+                .btn-play-hero {
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 50%;
+                    background: #06b6d4;
+                    color: #020617;
+                    border: none;
+                    font-size: 14px;
+                    cursor: pointer;
+                    box-shadow: 0 0 16px rgba(6, 182, 212, 0.4);
+                    transition: all 0.2s;
+
+                    &:hover {
+                        background: #22d3ee;
+                        transform: scale(1.05);
+                    }
+
+                    &.active {
+                        background: rgba(6, 182, 212, 0.2);
+                        border: 2px solid #06b6d4;
+                        color: #06b6d4;
+                    }
+                }
+
+                .btn-speed {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 10px;
+                    font-weight: 800;
+                    background: rgba(255, 255, 255, 0.06);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    color: #cbd5e1;
+                    padding: 3px 8px;
+                    border-radius: 9999px;
+                    cursor: pointer;
+
+                    &:hover {
+                        color: #06b6d4;
+                        border-color: #06b6d4;
+                    }
+                }
+            }
+        }
+
+        .island-timeline-row {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            /* הרולר מקבל את רוחב הסרגל מתוך משתנה ה-CSS */
+            .floating-ruler-wrap {
+                width: 100%;
+                height: 24px;
+                padding-left: var(--track-sidebar-width, 180px);
+                box-sizing: border-box;
+            }
+
+            .floating-track-wrap {
+                position: relative;
+                width: 100%;
+
+                .timeline-track-container {
+                    margin-bottom: 0;
+                    height: 52px;
+                    /* יישור עמודת שם התחנה לערך ה-SSOT */
+                    .track-sidebar {
+                        width: var(--track-sidebar-width, 180px);
+                        min-width: var(--track-sidebar-width, 180px);
+                        max-width: var(--track-sidebar-width, 180px);
+                    }
+                }
+                /* יישור נקודת ההתחלה של ה-Playhead לערך ה-SSOT */
+                .playhead-overlay-pane {
+                    top: 0;
+                    left: var(--track-sidebar-width, 180px);
+                    right: 0;
+                }
+            }
+        }
+    }
+}
+
+@keyframes spotlightFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

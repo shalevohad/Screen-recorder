@@ -1,19 +1,12 @@
+// RemoteWidgetHost.jsx
 import { useEffect, useRef, useState } from 'react';
+import './RemoteWidgetHost.scss';
 
 export default function RemoteWidgetHost({
     scriptUrl,
     widgetProps = {},
     fallback = (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: '#64748b',
-            fontSize: '0.8rem',
-            letterSpacing: '0.05em',
-            fontFamily: 'monospace'
-        }}>
+        <div className="widget-fallback-loading">
             INITIALIZING MODULE...
         </div>
     )
@@ -80,24 +73,19 @@ export default function RemoteWidgetHost({
 
     if (loadState.error) {
         return (
-            <div style={{
-                padding: '16px',
-                color: '#f43f5e',
-                backgroundColor: 'rgba(244, 63, 94, 0.1)',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontFamily: 'monospace'
-            }}>
-                <strong>WIDGET LOAD ERROR:</strong>
-                <div style={{ marginTop: '4px' }}>{loadState.error}</div>
+            <div className="remote-widget-host-root">
+                <div className="widget-error-box">
+                    <div className="error-title">WIDGET LOAD ERROR:</div>
+                    <div className="error-message">{loadState.error}</div>
+                </div>
             </div>
         );
     }
 
     return (
-        <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <div className="remote-widget-host-root">
             {loadState.loading && fallback}
-            <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+            <div ref={containerRef} className="widget-viewport-mount" />
         </div>
     );
 }

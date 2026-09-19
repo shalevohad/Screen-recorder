@@ -1,188 +1,283 @@
-﻿.master-range-modal-portal {
+﻿// Client/src/components/Modals/MasterTimeRangeModal.scss
+
+.modal-backdrop-overlay {
     position: fixed;
     inset: 0;
     z-index: 999999;
-    background: rgba(3, 7, 18, 0.72);
-    backdrop-filter: blur(12px); // טשטוש מלא לכל המערכת
+    background: rgba(2, 6, 23, 0.85);
+    backdrop-filter: blur(12px);
     display: flex;
     align-items: center;
     justify-content: center;
-    user-select: none;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    animation: fadeIn 0.15s ease-out;
 
-    .master-range-card {
-        width: 460px;
-        background: #091124;
-        border: 1px solid #1f335c;
-        border-radius: 8px;
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
-        padding: 18px;
-        color: #f1f5f9;
+    .master-time-modal-card {
+        width: 100%;
+        max-width: 530px;
+        background: #090e1a;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 20px rgba(6, 182, 212, 0.15);
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        box-sizing: border-box;
 
-        .card-header {
+        .modal-header {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
-            border-bottom: 1px solid #182847;
-            padding-bottom: 10px;
-            margin-bottom: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 12px;
 
-            .title-group {
+            .title-block {
                 display: flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 11px;
-                font-weight: 800;
-                letter-spacing: 0.12em;
-                color: #00e5ff;
+                flex-direction: column;
+                gap: 6px;
 
-                .icon-calendar {
-                    width: 16px;
-                    height: 16px;
-                    stroke: #00e5ff;
+                .modal-title {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12px;
+                    font-weight: 800;
+                    color: #06b6d4;
+                    letter-spacing: 1.5px;
+                }
+                /* תגית Timezone בולטת וטקטית */
+                .timezone-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: rgba(15, 23, 42, 0.9);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 2px 8px;
+                    border-radius: 9999px;
+                    width: fit-content;
+
+                    .pulse-indicator {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 50%;
+                    }
+
+                    .badge-text {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9.5px;
+                        color: #94a3b8;
+                        letter-spacing: 0.5px;
+
+                        strong {
+                            color: #f8fafc;
+                        }
+                    }
+
+                    &.utc {
+                        border-color: rgba(6, 182, 212, 0.4);
+
+                        .pulse-indicator {
+                            background: #06b6d4;
+                            box-shadow: 0 0 6px #06b6d4;
+                        }
+
+                        .badge-text strong {
+                            color: #22d3ee;
+                        }
+                    }
+
+                    &.local {
+                        border-color: rgba(16, 185, 129, 0.4);
+
+                        .pulse-indicator {
+                            background: #10b981;
+                            box-shadow: 0 0 6px #10b981;
+                        }
+
+                        .badge-text strong {
+                            color: #34d399;
+                        }
+                    }
                 }
             }
 
-            .btn-close-modal {
-                background: none;
+            .btn-modal-close {
+                background: transparent;
                 border: none;
                 color: #64748b;
+                font-size: 15px;
                 cursor: pointer;
-                font-size: 14px;
+                padding: 4px;
+                transition: color 0.2s;
 
                 &:hover {
-                    color: #fff;
+                    color: #f8fafc;
                 }
             }
         }
 
-        .presets-toolbar {
+        .quick-presets-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
-            margin-bottom: 16px;
+            gap: 8px;
 
-            .preset-chip {
+            .btn-preset {
+                background: rgba(15, 23, 42, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                padding: 8px 4px;
+                color: #cbd5e1;
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 gap: 6px;
-                background: #0d1a36;
-                border: 1px solid #1c325c;
-                color: #94a3b8;
-                border-radius: 4px;
-                padding: 7px 0;
-                font-size: 11px;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.15s ease;
+                transition: all 0.2s;
 
                 .dot {
                     width: 5px;
                     height: 5px;
                     border-radius: 50%;
-                    background: #00e5ff;
-                    opacity: 0.6;
+                    background: #06b6d4;
+                    box-shadow: 0 0 6px #06b6d4;
                 }
 
                 &:hover {
-                    background: #15274f;
-                    border-color: #00e5ff;
+                    background: rgba(6, 182, 212, 0.15);
+                    border-color: #06b6d4;
                     color: #fff;
+                    transform: translateY(-1px);
+                }
 
-                    .dot {
-                        opacity: 1;
-                        box-shadow: 0 0 6px #00e5ff;
-                    }
+                &.active {
+                    background: rgba(6, 182, 212, 0.25);
+                    border-color: #06b6d4;
+                    color: #22d3ee;
+                    box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
                 }
             }
         }
 
-        .datetime-selection-grid {
+        .time-range-inputs-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            background: #050b17;
-            border: 1px solid #14223d;
-            border-radius: 6px;
-            padding: 12px;
-            margin-bottom: 16px;
+            gap: 16px;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 14px;
+            border-radius: 10px;
 
-            .scope-col {
+            .input-column {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 10px;
 
-                .col-heading {
-                    font-size: 10px;
-                    font-weight: 800;
-                    color: #64748b;
-                    letter-spacing: 0.08em;
-                    border-bottom: 1px solid #14223d;
-                    padding-bottom: 4px;
+                .column-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+
+                    .column-label {
+                        font-size: 10px;
+                        font-weight: 800;
+                        color: #64748b;
+                        letter-spacing: 0.8px;
+                    }
+
+                    .tz-label {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        color: #06b6d4;
+                    }
                 }
 
-                .input-group {
+                .field-group {
                     display: flex;
                     flex-direction: column;
-                    gap: 3px;
+                    gap: 4px;
 
-                    label {
+                    .sub-label {
                         font-size: 9px;
+                        font-weight: 700;
                         color: #475569;
-                        text-transform: uppercase;
                     }
 
                     input {
-                        background: #091224;
-                        border: 1px solid #1c325c;
-                        color: #fff;
-                        padding: 5px 8px;
-                        border-radius: 4px;
-                        font-size: 11px;
-                        font-family: inherit;
+                        background: #0b1220;
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                        border-radius: 6px;
+                        padding: 7px 10px;
+                        color: #f8fafc;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 11.5px;
                         outline: none;
+                        transition: border-color 0.2s;
 
                         &:focus {
-                            border-color: #00e5ff;
+                            border-color: #06b6d4;
+                            box-shadow: 0 0 0 1px #06b6d4;
                         }
                     }
                 }
             }
         }
 
-        .modal-actions {
+        .modal-footer-actions {
             display: flex;
+            align-items: center;
             justify-content: flex-end;
-            gap: 8px;
+            gap: 10px;
+            padding-top: 4px;
 
-            button {
-                padding: 6px 14px;
-                border-radius: 4px;
-                font-size: 11px;
+            .btn-action-cancel {
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #94a3b8;
+                padding: 8px 16px;
+                border-radius: 8px;
+                font-size: 11.5px;
                 font-weight: 700;
                 cursor: pointer;
+                transition: all 0.2s;
 
-                &.btn-cancel {
-                    background: transparent;
-                    border: 1px solid #1c325c;
-                    color: #94a3b8;
-
-                    &:hover {
-                        color: #fff;
-                    }
+                &:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    color: #f8fafc;
                 }
+            }
 
-                &.btn-apply {
-                    background: #00e676;
-                    border: none;
-                    color: #020617;
+            .btn-action-load {
+                background: #10b981;
+                border: none;
+                color: #020617;
+                padding: 8px 24px;
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 0.8px;
+                cursor: pointer;
+                box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+                transition: all 0.2s;
 
-                    &:hover {
-                        background: #1bf587;
-                    }
+                &:hover {
+                    background: #34d399;
+                    box-shadow: 0 0 24px rgba(16, 185, 129, 0.5);
+                    transform: translateY(-1px);
                 }
             }
         }
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
     }
 }

@@ -52,18 +52,39 @@ export default function TimelineBoard({
         setViewportStartMs(prev => Math.max(0, Math.min(prev, totalDurationMs - viewportDurationMs)));
     }, [zoomLevel, totalDurationMs, viewportDurationMs]);
 
+    // חישוב מדויק של זמן ממיקום X: ניכוי 180px משמאל (Header) ו-58px מימין (Export Button)
     const getMsFromClientX = useCallback((clientX) => {
         if (!trackAreaRef.current) return viewportStartMs;
         const rect = trackAreaRef.current.getBoundingClientRect();
-        // עודכן ל-180px (רוחב Header) ו-54px (48px כפתור אנכי + 6px רווח)
         const contentLeft = rect.left + 180;
-        const contentWidth = rect.width - 180 - 54;
+        const contentWidth = rect.width - 180 - 58;
         if (contentWidth <= 0) return viewportStartMs;
 
         const offsetX = Math.max(0, Math.min(clientX - contentLeft, contentWidth));
         const relativeMs = (offsetX / contentWidth) * viewportDurationMs;
         return Math.round(viewportStartMs + relativeMs);
     }, [viewportStartMs, viewportDurationMs]);
+
+    // סנכרון זמן הרולר בעת הזזת עכבר מעל אזור הערוצים (Tracks)
+    const handleTracksMouseMove = useCallback((e) => {
+        if (draggingTarget || !trackAreaRef.current) return;
+        const rect = trackAreaRef.current.getBoundingClientRect();
+        const contentLeft = rect.left + 180;
+        const contentRight = rect.right - 58;
+
+        if (e.clientX >= contentLeft && e.clientX <= contentRight) {
+            const currentHoverMs = getMsFromClientX(e.clientX);
+            setHoverMs(currentHoverMs);
+        } else {
+            setHoverMs(null);
+        }
+    }, [draggingTarget, getMsFromClientX]);
+
+    const handleTracksMouseLeave = useCallback(() => {
+        if (!draggingTarget) {
+            setHoverMs(null);
+        }
+    }, [draggingTarget]);
 
     const handleFitCut = () => {
         const cutDur = Math.max(2000, outPointMs - inPointMs);
@@ -110,10 +131,14 @@ export default function TimelineBoard({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs]);
 
+    // פתיחת תפריט קליק ימני (Context Menu) עם חסימת קצוות מדויקת
     const handleContextMenu = (e) => {
         e.preventDefault();
         const rect = trackAreaRef.current?.getBoundingClientRect();
-        if (!rect || e.clientX - rect.left < 180 || e.clientX > rect.right - 54) return;
+        if (!rect) return;
+
+        // מניעת פתיחה על סרגל התחנות משמאל (< 180px) ועל כפתור הייצוא מימין (> rect.right - 58px)
+        if (e.clientX - rect.left < 180 || e.clientX > rect.right - 58) return;
 
         const targetMs = getMsFromClientX(e.clientX);
         setContextMenu({
@@ -173,6 +198,7 @@ export default function TimelineBoard({
     }, [zoomLevel, viewportStartMs, viewportDurationMs, totalDurationMs, getMsFromClientX, onZoomChange, maxDynamicZoom]);
 
     const handleStartDrag = (target, e) => {
+        setContextMenu(null);
         setDraggingTarget(target);
         setDragStartInfo({
             startX: e.clientX,
@@ -244,8 +270,8 @@ export default function TimelineBoard({
         };
     }, [draggingTarget, dragStartInfo, getMsFromClientX, inPointMs, outPointMs, playheadMs, totalDurationMs, viewportDurationMs, setPlayheadMs, setInPointMs, setOutPointMs]);
 
-    // בדיקת טווח חיתוך תקין לאקטיבציה של כפתור ה-Export
-    const isRangeValid = Math.abs(outPointMs - inPointMs) >= 1000;
+    // ולידציה הכוללת נוכחות ערוצים פעילים
+    const isRangeValid = stations.length > 0 && Math.abs(outPointMs - inPointMs) >= 1000;
 
     return (
         <div ref={trackAreaRef} className="timeline-board-root" onContextMenu={handleContextMenu}>
@@ -298,21 +324,32 @@ export default function TimelineBoard({
                 </div>
             </div>
 
-            <div className="tracks-with-export-layout">
+            <div
+                className="tracks-with-export-layout"
+                onMouseMove={handleTracksMouseMove}
+                onMouseLeave={handleTracksMouseLeave}
+            >
                 <div className="tracks-scroll-area">
-                    {stations.map(station => (
-                        <TimelineTrack
-                            key={station.id}
-                            station={station}
-                            isActive={station.id === activeStationId}
-                            onSelect={() => onSelectActiveStation && onSelectActiveStation(station.id)}
-                            viewportStartMs={viewportStartMs}
-                            viewportDurationMs={viewportDurationMs}
-                            inPointMs={inPointMs}
-                            outPointMs={outPointMs}
-                            baseEpochMs={baseEpochMs}
-                        />
-                    ))}
+                    {stations.length > 0 ? (
+                        stations.map(station => (
+                            <TimelineTrack
+                                key={station.id}
+                                station={station}
+                                isActive={station.id === activeStationId}
+                                onSelect={() => onSelectActiveStation && onSelectActiveStation(station.id)}
+                                viewportStartMs={viewportStartMs}
+                                viewportDurationMs={viewportDurationMs}
+                                inPointMs={inPointMs}
+                                outPointMs={outPointMs}
+                                baseEpochMs={baseEpochMs}
+                            />
+                        ))
+                    ) : (
+                        <div className="timeline-empty-tracks-placeholder">
+                            <span className="placeholder-pulse" />
+                            <span>NO STATIONS SELECTED — TIMELINE CHANNELS MUTED</span>
+                        </div>
+                    )}
                 </div>
 
                 <button
@@ -320,7 +357,11 @@ export default function TimelineBoard({
                     onClick={isRangeValid ? onExport : undefined}
                     className={`btn-vertical-export-action ${isRangeValid ? 'active' : 'disabled'}`}
                     disabled={!isRangeValid}
-                    title={isRangeValid ? "Export Clip (Ctrl+E)" : "Select a valid IN/OUT range to export"}
+                    title={
+                        stations.length === 0
+                            ? "Select stations to enable export"
+                            : (isRangeValid ? "Export Clip (Ctrl+E)" : "Select a valid IN/OUT range to export")
+                    }
                 >
                     <div className="export-icon-top">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -349,6 +390,7 @@ export default function TimelineBoard({
                 baseEpochMs={baseEpochMs}
                 timeMode={timeMode}
                 onAction={handleMenuAction}
+                onClose={() => setContextMenu(null)}
             />
         </div>
     );

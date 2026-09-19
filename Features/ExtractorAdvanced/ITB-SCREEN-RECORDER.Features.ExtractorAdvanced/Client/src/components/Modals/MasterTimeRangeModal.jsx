@@ -1,117 +1,239 @@
-﻿import React, { useState } from 'react';
-import ReactDOM from 'react-dom';
+﻿// Client/src/components/Modals/MasterTimeRangeModal.jsx
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import './MasterTimeRangeModal.scss';
 
-export default function MasterTimeRangeModal({ isOpen, onClose, currentRange, onApplyRange }) {
-    if (!isOpen || typeof document === 'undefined') return null;
+const pad = (n) => String(n).padStart(2, '0');
 
-    // שימוש בפורמט בטוח (עם T) כדי למנוע NaN
-    const safeStart = currentRange.start.includes('T') ? currentRange.start : currentRange.start.replace(' ', 'T');
-    const safeEnd = currentRange.end.includes('T') ? currentRange.end : currentRange.end.replace(' ', 'T');
+// פונקציות המרה המותאמות דינמית ל-UTC או LOCAL
+const toInputDate = (d, mode) => {
+    if (!d || isNaN(d.getTime())) return '';
+    if (mode === 'UTC') {
+        return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+    }
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
-    const [startDate, setStartDate] = useState(safeStart.slice(0, 10));
-    const [startTime, setStartTime] = useState(safeStart.slice(11, 19) || '11:00:00');
-    const [endDate, setEndDate] = useState(safeEnd.slice(0, 10));
-    const [endTime, setEndTime] = useState(safeEnd.slice(11, 19) || '12:00:00');
+const toInputTime = (d, mode) => {
+    if (!d || isNaN(d.getTime())) return '';
+    if (mode === 'UTC') {
+        return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+    }
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
 
-    const handlePreset = (minutes) => {
-        const now = new Date();
-        const past = new Date(now.getTime() - minutes * 60000);
+const formatStrWithMode = (d, mode) => {
+    return `${toInputDate(d, mode)}T${toInputTime(d, mode)}`;
+};
 
-        const pad = (n) => String(n).padStart(2, '0');
-        const formatD = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-        const formatT = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const parseSafeDate = (dateStr, mode) => {
+    if (!dateStr) return new Date();
+    const cleanStr = String(dateStr).replace(' ', 'T');
+    if (mode === 'UTC') {
+        const utcStr = cleanStr.endsWith('Z') ? cleanStr : `${cleanStr}Z`;
+        const d = new Date(utcStr);
+        return isNaN(d.getTime()) ? new Date() : d;
+    } else {
+        const localStr = cleanStr.endsWith('Z') ? cleanStr.slice(0, -1) : cleanStr;
+        const d = new Date(localStr);
+        return isNaN(d.getTime()) ? new Date() : d;
+    }
+};
 
-        setStartDate(formatD(past));
-        setStartTime(formatT(past));
-        setEndDate(formatD(now));
-        setEndTime(formatT(now));
+const parseInputToDate = (dateStr, timeStr, mode) => {
+    if (!dateStr || !timeStr) return null;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [hour, min, sec] = timeStr.split(':').map(Number);
+
+    if (mode === 'UTC') {
+        return new Date(Date.UTC(year, month - 1, day, hour, min, sec || 0));
+    }
+    return new Date(year, month - 1, day, hour, min, sec || 0);
+};
+
+export default function MasterTimeRangeModal({
+    isOpen,
+    onClose,
+    currentRange,
+    onApplyRange,
+    timeMode = 'LOCAL'
+}) {
+    const [startDate, setStartDate] = useState('');
+    const [startTime, setStartTime] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [endTime, setEndTime] = useState('');
+    const [activePreset, setActivePreset] = useState(null);
+
+    // עדכון שדות הקלט בכל פתיחה או שינוי של currentRange או timeMode
+    useEffect(() => {
+        if (isOpen && currentRange) {
+            const startObj = parseSafeDate(currentRange.start, timeMode);
+            const endObj = parseSafeDate(currentRange.end, timeMode);
+
+            setStartDate(toInputDate(startObj, timeMode));
+            setStartTime(toInputTime(startObj, timeMode));
+            setEndDate(toInputDate(endObj, timeMode));
+            setEndTime(toInputTime(endObj, timeMode));
+            setActivePreset(null);
+        }
+    }, [isOpen, currentRange, timeMode]);
+
+    if (!isOpen) return null;
+
+    // בחירה מהירה המחשבת ומחילה את הטווח אוטומטית לפי timeMode
+    const handleQuickPreset = (durationMs, presetLabel) => {
+        setActivePreset(presetLabel);
+        const endObj = new Date();
+        const startObj = new Date(endObj.getTime() - durationMs);
+
+        const newRange = {
+            start: formatStrWithMode(startObj, timeMode),
+            end: formatStrWithMode(endObj, timeMode),
+            durationMs: durationMs
+        };
+
+        if (onApplyRange) onApplyRange(newRange);
+        if (onClose) onClose();
     };
 
-    const handleApply = () => {
-        // שומרים על פורמט ISO תקני עם T
-        const fullStart = `${startDate}T${startTime}`;
-        const fullEnd = `${endDate}T${endTime}`;
-        const startMs = new Date(fullStart).getTime();
-        const endMs = new Date(fullEnd).getTime();
-        const diffMs = Math.max(60000, endMs - startMs);
+    // שמירה ידנית של הזמנים שהוקלדו
+    const handleManualLoad = () => {
+        const startFull = parseInputToDate(startDate, startTime, timeMode);
+        const endFull = parseInputToDate(endDate, endTime, timeMode);
 
-        onApplyRange({
-            start: fullStart,
-            end: fullEnd,
-            durationMs: diffMs
-        });
-        onClose();
+        if (!startFull || !endFull || isNaN(startFull.getTime()) || isNaN(endFull.getTime())) {
+            alert('Invalid date or time values');
+            return;
+        }
+
+        const durationMs = endFull.getTime() - startFull.getTime();
+        if (durationMs <= 0) {
+            alert('End time must be greater than start time');
+            return;
+        }
+
+        if (onApplyRange) {
+            onApplyRange({
+                start: formatStrWithMode(startFull, timeMode),
+                end: formatStrWithMode(endFull, timeMode),
+                durationMs
+            });
+        }
+        if (onClose) onClose();
     };
 
-    const modalContent = (
-        <div className="master-range-modal-portal" onClick={onClose}>
-            <div className="master-range-card" onClick={(e) => e.stopPropagation()}>
-                <div className="card-header">
-                    <div className="title-group">
-                        <svg className="icon-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" />
-                            <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" />
-                            <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" />
-                            <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
-                        </svg>
-                        <span>MISSION RECORDING SCOPE</span>
-                    </div>
-                    <button className="btn-close-modal" onClick={onClose} title="Close (Esc)">✕</button>
-                </div>
+    const isUtc = timeMode === 'UTC';
 
-                <div className="presets-toolbar">
-                    <button className="preset-chip" onClick={() => handlePreset(15)} title="Set scope to the last 15 minutes of live operations">
-                        <span className="dot" />
-                        <span>15m Quick</span>
-                    </button>
-                    <button className="preset-chip" onClick={() => handlePreset(30)} title="Set scope to the last 30 minutes">
-                        <span className="dot" />
-                        <span>30m Tactical</span>
-                    </button>
-                    <button className="preset-chip" onClick={() => handlePreset(60)} title="Set scope to the last 1 full hour">
-                        <span className="dot" />
-                        <span>1h Standard</span>
-                    </button>
-                    <button className="preset-chip" onClick={() => handlePreset(240)} title="Set scope to the last 4 hours (Full Shift)">
-                        <span className="dot" />
-                        <span>4h Shift</span>
-                    </button>
-                </div>
-
-                <div className="datetime-selection-grid">
-                    <div className="scope-col">
-                        <div className="col-heading">START POINT (FROM)</div>
-                        <div className="input-group">
-                            <label>Date</label>
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                        </div>
-                        <div className="input-group">
-                            <label>Time</label>
-                            <input type="time" step="1" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+    return createPortal(
+        <div className="modal-backdrop-overlay" onClick={onClose} dir="ltr">
+            <div className="master-time-modal-card" onClick={(e) => e.stopPropagation()}>
+                {/* כותרת ומחוון Timezone פעיל וברור */}
+                <div className="modal-header">
+                    <div className="title-block">
+                        <span className="modal-title">MISSION RECORDING SCOPE</span>
+                        <div className={`timezone-badge ${isUtc ? 'utc' : 'local'}`}>
+                            <span className="pulse-indicator" />
+                            <span className="badge-text">
+                                TIMEZONE: <strong>{isUtc ? 'UTC (ZULU)' : 'LOCAL (SYSTEM)'}</strong>
+                            </span>
                         </div>
                     </div>
+                    <button className="btn-modal-close" onClick={onClose} title="Close">✕</button>
+                </div>
 
-                    <div className="scope-col">
-                        <div className="col-heading">END POINT (TO)</div>
-                        <div className="input-group">
-                            <label>Date</label>
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                {/* כפתורי בחירה מהירה */}
+                <div className="quick-presets-grid">
+                    <button
+                        className={`btn-preset ${activePreset === '4h' ? 'active' : ''}`}
+                        onClick={() => handleQuickPreset(4 * 3600 * 1000, '4h')}
+                        title={`Load last 4 hours immediately in ${timeMode}`}
+                    >
+                        4h Shift <span className="dot" />
+                    </button>
+                    <button
+                        className={`btn-preset ${activePreset === '2h' ? 'active' : ''}`}
+                        onClick={() => handleQuickPreset(2 * 3600 * 1000, '2h')}
+                        title={`Load last 2 hours immediately in ${timeMode}`}
+                    >
+                        2h Block <span className="dot" />
+                    </button>
+                    <button
+                        className={`btn-preset ${activePreset === '1h' ? 'active' : ''}`}
+                        onClick={() => handleQuickPreset(1 * 3600 * 1000, '1h')}
+                        title={`Load last 1 hour immediately in ${timeMode}`}
+                    >
+                        1h Standard <span className="dot" />
+                    </button>
+                    <button
+                        className={`btn-preset ${activePreset === '30m' ? 'active' : ''}`}
+                        onClick={() => handleQuickPreset(30 * 60 * 1000, '30m')}
+                        title={`Load last 30 minutes immediately in ${timeMode}`}
+                    >
+                        30m Tactical <span className="dot" />
+                    </button>
+                </div>
+
+                {/* שדות קלט עם חיווי של אזור הזמן */}
+                <div className="time-range-inputs-container">
+                    <div className="input-column">
+                        <div className="column-header">
+                            <label className="column-label">START POINT (FROM)</label>
+                            <span className="tz-label">({timeMode})</span>
                         </div>
-                        <div className="input-group">
-                            <label>Time</label>
-                            <input type="time" step="1" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                        <div className="field-group">
+                            <span className="sub-label">DATE</span>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => { setStartDate(e.target.value); setActivePreset(null); }}
+                            />
+                        </div>
+                        <div className="field-group">
+                            <span className="sub-label">TIME</span>
+                            <input
+                                type="time"
+                                step="1"
+                                value={startTime}
+                                onChange={(e) => { setStartTime(e.target.value); setActivePreset(null); }}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="input-column">
+                        <div className="column-header">
+                            <label className="column-label">END POINT (TO)</label>
+                            <span className="tz-label">({timeMode})</span>
+                        </div>
+                        <div className="field-group">
+                            <span className="sub-label">DATE</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => { setEndDate(e.target.value); setActivePreset(null); }}
+                            />
+                        </div>
+                        <div className="field-group">
+                            <span className="sub-label">TIME</span>
+                            <input
+                                type="time"
+                                step="1"
+                                value={endTime}
+                                onChange={(e) => { setEndTime(e.target.value); setActivePreset(null); }}
+                            />
                         </div>
                     </div>
                 </div>
 
-                <div className="modal-actions">
-                    <button className="btn-cancel" onClick={onClose}>Cancel</button>
-                    <button className="btn-apply" onClick={handleApply}>Load Master Session</button>
+                <div className="modal-footer-actions">
+                    <button className="btn-action-cancel" onClick={onClose}>
+                        Cancel
+                    </button>
+                    <button className="btn-action-load" onClick={handleManualLoad}>
+                        LOAD
+                    </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
-
-    return ReactDOM.createPortal(modalContent, document.body);
 }
