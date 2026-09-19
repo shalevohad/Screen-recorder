@@ -1,4 +1,6 @@
-﻿.dashboard-tabs-bar-wrapper {
+﻿// Client/src/components/UI/FleetTabs.scss
+
+.dashboard-tabs-bar-wrapper {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
@@ -6,7 +8,7 @@
     background: transparent;
     border: none;
     padding: 0 16px;
-    margin-bottom: -1px;
+    margin-bottom: -1px; /* מבטיח שקו הבסיס יישב בדיוק מעל גבול הפאנל */
     box-sizing: border-box;
     position: relative;
     z-index: 10;
@@ -14,167 +16,222 @@
     .tabs-navigation-container {
         display: flex;
         align-items: flex-end;
-        justify-content: space-between;
         width: 100%;
         overflow: visible;
 
-        .active-tabs-cluster {
+        .active-tabs-cluster.unified-flow {
             display: flex;
             align-items: flex-end;
             gap: 4px;
-
-            &.left-cluster {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            /* מפריד טקטי בין טאבי עמדות לטאבי מודולים/סטודיו */
+            .tab-cluster-separator {
+                width: 1px;
+                height: 18px;
+                background-color: var(--border-subtle, rgba(148, 163, 184, 0.15));
+                margin: 0 6px 8px 6px;
                 flex-shrink: 0;
             }
-
-            &.right-cluster {
-                margin-left: auto;
-                position: relative;
-            }
-
+            /* מבנה בסיס אחיד לכל הטאבים במערכת */
             .fleet-tab-wrapper {
+                height: 36px;
                 display: flex;
                 align-items: center;
-                background: rgba(15, 23, 42, 0.4);
-                border: 1px solid var(--slate-border, #475569);
-                border-bottom: 1px solid var(--c2-blue-border, #1e3a8a);
-                border-radius: 8px 8px 0 0;
-                transition: all 0.2s ease;
+                background: rgba(15, 23, 42, 0.5);
+                border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
+                border-bottom: 1px solid var(--border-card, rgba(148, 163, 184, 0.18));
+                border-radius: var(--radius-md, 8px) var(--radius-md, 8px) 0 0;
+                transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
                 position: relative;
                 z-index: 1;
-
-                &.active {
-                    background-color: var(--bg-panel, #0f172a) !important;
-                    background-image: none !important;
-                    border-color: var(--c2-blue-border, #1e3a8a);
-                    border-bottom: 1px solid var(--bg-panel, #0f172a) !important;
-                    padding-top: 4px;
-                    z-index: 10;
-
-                    .fleet-tab-pill {
-                        color: var(--c2-cyan-light, #67e8f9);
-                    }
-                }
+                box-sizing: border-box;
 
                 &:hover:not(.active) {
                     background: rgba(255, 255, 255, 0.05);
+                    border-color: var(--border-card);
+                }
+                /* מצב טאב פעיל: Folder Tab Continuity מתחבר ישירות למשטח העבודה */
+                &.active {
+                    background-color: var(--surface-panel, #0F172A) !important;
+                    background-image: none !important;
+                    border-color: var(--border-card, rgba(148, 163, 184, 0.18)) !important;
+                    border-bottom: 1px solid var(--surface-panel, #0F172A) !important;
+                    height: 37px; /* גובה פיקסל נוסף לכיסוי קו הגבול של הפאנל */
+                    z-index: 12;
+
+                    .fleet-tab-pill {
+                        color: var(--text-primary, #F8FAFC);
+                        font-weight: 800;
+                    }
                 }
 
                 .fleet-tab-pill {
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
                     border: none;
                     background: transparent;
-                    color: var(--slate-muted, #94a3b8);
+                    color: var(--text-secondary, #94A3B8);
                     font-family: 'JetBrains Mono', monospace;
                     font-size: 11px;
                     font-weight: 700;
-                    padding: 10px 14px 10px 16px;
+                    padding: 0 12px;
                     cursor: pointer;
                     outline: none;
+                    white-space: nowrap;
+
+                    .tab-name-label {
+                        line-height: 1;
+                    }
                 }
-                /* שדה עריכת שם טאב בלחיצה כפולה (Inline Rename) */
+
                 .inline-tab-rename-input {
-                    background: rgba(0, 0, 0, 0.8) !important;
-                    border: 1px solid var(--c2-cyan, #06b6d4) !important;
-                    border-radius: 4px;
+                    background: #070A10 !important;
+                    border: 1px solid var(--accent-cyan, #06B6D4) !important;
+                    border-radius: var(--radius-xs, 4px);
                     color: #ffffff !important;
                     font-family: 'JetBrains Mono', monospace;
                     font-size: 11px;
-                    font-weight: 800;
-                    padding: 4px 8px;
-                    margin: 4px 6px 4px 10px;
+                    padding: 3px 6px;
+                    margin: 0 6px;
                     outline: none;
-                    width: 110px;
-                    box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+                    width: 100px;
                 }
 
                 .tab-edit-gear {
+                    height: 100%;
                     border: none;
                     background: transparent;
-                    color: var(--slate-dim, #64748b);
-                    padding: 8px 12px 8px 0;
+                    color: var(--slate-dim, #475569);
+                    padding: 0 10px 0 0;
                     cursor: pointer;
-                    font-size: 12px;
+                    font-size: 11px;
+                    display: flex;
+                    align-items: center;
 
                     &:hover {
-                        color: var(--c2-cyan-light, #67e8f9);
+                        color: var(--accent-cyan-light, #38BDF8);
                     }
                 }
             }
+                /* התאמות ספציפיות עבור טאב ה-ALL */
+                .fleet-tab-wrapper.all-tab {
+                    .tab-all-icon {
+                        width: 12px;
+                        height: 12px;
+                        color: var(--text-secondary, #94A3B8);
+                        flex-shrink: 0;
+                        transition: color 0.18s ease;
+                    }
 
-                .fleet-tab-wrapper.feature-tab {
-                    border-color: rgba(234, 179, 8, 0.4);
-                    background: rgba(69, 26, 3, 0.3);
+                    .tab-count-badge {
+                        font-size: 9.5px;
+                        font-weight: 800;
+                        font-family: 'JetBrains Mono', monospace;
+                        padding: 2px 6px;
+                        border-radius: var(--radius-xs, 4px);
+                        background: rgba(148, 163, 184, 0.08);
+                        border: 1px solid var(--border-subtle);
+                        color: var(--text-muted);
+                        line-height: 1;
+                        transition: all 0.18s ease;
+                    }
 
                     &.active {
-                        background-color: var(--bg-panel, #0f172a) !important;
-                        border-color: #eab308;
-                        border-bottom: 1px solid var(--bg-panel, #0f172a) !important;
+                        /* פס עליון ציאן טקטי שמדגיש בעדינות את טאב הצי הראשי */
+                        box-shadow: inset 0 2px 0 var(--accent-cyan, #06B6D4);
+
+                        .fleet-tab-pill {
+                            color: var(--text-primary, #F8FAFC);
+
+                            .tab-all-icon {
+                                color: var(--accent-cyan, #06B6D4);
+                            }
+
+                            .tab-count-badge {
+                                background: rgba(6, 182, 212, 0.15);
+                                border-color: rgba(6, 182, 212, 0.4);
+                                color: var(--accent-cyan-light, #38BDF8);
+                            }
+                        }
+                    }
+                }
+                /* התאמות לטאבי מודולים וסטודיו */
+                .fleet-tab-wrapper.feature-tab {
+                    background: rgba(245, 158, 11, 0.06);
+
+                    &.active {
+                        background-color: var(--surface-panel, #0F172A) !important;
+                        box-shadow: inset 0 2px 0 var(--accent-amber, #F59E0B);
 
                         .fleet-tab-pill.feature {
-                            color: #fef08a;
+                            color: var(--accent-amber, #F59E0B);
+                            font-weight: 800;
                         }
                     }
 
+                    &:hover:not(.active) {
+                        background: rgba(245, 158, 11, 0.12);
+                    }
+
                     .fleet-tab-pill.feature {
-                        display: flex;
-                        align-items: center;
-                        gap: 8px;
-                        color: rgba(254, 240, 138, 0.85);
-                        font-family: 'JetBrains Mono', monospace;
-                        font-size: 11px;
-                        font-weight: 700;
-                        padding: 10px 12px 10px 14px;
-                        background: transparent;
-                        border: none;
-                        cursor: pointer;
+                        color: var(--text-secondary, #94A3B8);
 
                         .feature-dot {
                             width: 6px;
                             height: 6px;
-                            background-color: #eab308;
+                            background-color: var(--accent-amber, #F59E0B);
                             border-radius: 50%;
-                            box-shadow: 0 0 8px #eab308;
+                            box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
                         }
                     }
 
                     .tab-close-btn {
+                        height: 100%;
                         border: none;
                         background: transparent;
-                        color: var(--slate-muted, #94a3b8);
-                        padding: 8px 12px 8px 0;
+                        color: var(--text-muted, #64748B);
+                        padding: 0 10px 0 0;
                         cursor: pointer;
                         font-size: 11px;
                         font-weight: 800;
+                        display: flex;
+                        align-items: center;
+                        transition: color 0.15s ease;
 
                         &:hover {
-                            color: var(--c2-red-light, #f87171);
+                            color: var(--accent-rose, #F43F5E);
                         }
                     }
                 }
-
+            /* תפריט מודולים פתוחים ברקע */
             .windows-overflow-dropdown-wrapper {
                 position: relative;
                 display: inline-block;
-                margin-left: 4px;
 
                 .windows-overflow-btn {
-                    background: rgba(69, 26, 3, 0.4);
-                    border: 1px solid rgba(234, 179, 8, 0.4);
-                    border-bottom: 1px solid var(--c2-blue-border, #1e3a8a);
-                    border-radius: 8px 8px 0 0;
-                    color: #fef08a;
+                    height: 36px;
+                    background: rgba(15, 23, 42, 0.4);
+                    border: 1px solid var(--border-subtle);
+                    border-bottom: 1px solid var(--border-card);
+                    border-radius: var(--radius-md, 8px) var(--radius-md, 8px) 0 0;
+                    color: var(--accent-amber, #F59E0B);
                     font-family: 'JetBrains Mono', monospace;
                     font-size: 11px;
                     font-weight: 800;
-                    padding: 8px 12px;
+                    padding: 0 10px;
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     gap: 6px;
+                    box-sizing: border-box;
 
                     &:hover, &.active {
-                        background: var(--bg-panel, #0f172a);
-                        border-color: #eab308;
+                        background: var(--surface-panel, #0F172A);
+                        border-color: var(--border-card);
                     }
 
                     .overflow-badge {
@@ -188,25 +245,25 @@
 
                 .windows-overflow-menu {
                     position: absolute;
-                    right: 0;
-                    bottom: 100%;
-                    margin-bottom: 6px;
-                    background: var(--bg-panel, #0f172a);
-                    border: 1px solid rgba(234, 179, 8, 0.4);
-                    border-radius: 8px;
+                    left: 0;
+                    top: 100%;
+                    margin-top: 4px;
+                    background: var(--surface-panel, #0F172A);
+                    border: 1px solid var(--border-card);
+                    border-radius: var(--radius-md, 8px);
                     width: 220px;
-                    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+                    box-shadow: var(--shadow-panel);
                     z-index: 1000;
                     padding: 6px 0;
                     font-family: 'JetBrains Mono', monospace;
 
                     .menu-header {
                         font-size: 9px;
-                        color: var(--slate-dim, #64748b);
+                        color: var(--text-muted);
                         padding: 6px 12px;
                         text-transform: uppercase;
                         letter-spacing: 0.8px;
-                        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                        border-bottom: 1px solid var(--border-subtle);
                         margin-bottom: 4px;
                     }
 
@@ -219,14 +276,14 @@
                         transition: background 0.15s;
 
                         &:hover {
-                            background: rgba(234, 179, 8, 0.1);
+                            background: rgba(245, 158, 11, 0.1);
                         }
 
                         &.active {
-                            background: rgba(234, 179, 8, 0.2);
+                            background: rgba(245, 158, 11, 0.18);
 
                             .feat-title {
-                                color: #fef08a;
+                                color: var(--accent-amber);
                                 font-weight: 800;
                             }
                         }
@@ -234,75 +291,53 @@
                         .feature-dot {
                             width: 5px;
                             height: 5px;
-                            background-color: #eab308;
+                            background-color: var(--accent-amber);
                             border-radius: 50%;
                         }
 
                         .feat-title {
                             flex: 1;
                             font-size: 11px;
-                            color: var(--slate-light, #e2e8f0);
+                            color: var(--text-primary);
                         }
 
                         .menu-item-close {
                             background: transparent;
                             border: none;
-                            color: var(--slate-muted);
+                            color: var(--text-secondary);
                             cursor: pointer;
                             font-size: 10px;
                             font-weight: 800;
                             padding: 2px 6px;
 
                             &:hover {
-                                color: var(--c2-red-light, #f87171);
+                                color: var(--accent-rose);
                             }
                         }
                     }
                 }
             }
-
-            > .fleet-tab-pill {
-                background: rgba(15, 23, 42, 0.4);
-                border: 1px solid var(--slate-border, #475569);
-                border-bottom: 1px solid var(--c2-blue-border, #1e3a8a);
-                border-radius: 8px 8px 0 0;
-                color: var(--slate-muted, #94a3b8);
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 11px;
-                font-weight: 700;
-                padding: 10px 20px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                position: relative;
-                z-index: 1;
-
-                &.active {
-                    background-color: var(--bg-panel, #0f172a) !important;
-                    background-image: none !important;
-                    border-color: var(--c2-blue-border, #1e3a8a);
-                    border-bottom: 1px solid var(--bg-panel, #0f172a) !important;
-                    color: var(--c2-cyan-light, #67e8f9);
-                    padding-top: 12px;
-                    z-index: 10;
-                }
-
-                &:hover:not(.active) {
-                    background: rgba(255, 255, 255, 0.05);
-                    color: var(--slate-light, #e2e8f0);
-                }
-            }
-
+            /* כפתור הוספת טאב */
             .fleet-tab-add-btn {
                 background: transparent;
-                border: none;
-                color: var(--slate-muted, #94a3b8);
-                font-size: 18px;
-                padding: 6px 12px;
+                border: 1px dashed var(--border-subtle);
+                border-radius: var(--radius-sm, 6px);
+                color: var(--text-secondary);
+                font-size: 14px;
+                width: 28px;
+                height: 28px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
                 cursor: pointer;
-                margin-bottom: 2px;
+                margin-left: 2px;
+                margin-bottom: 4px;
+                transition: all 0.15s ease;
 
                 &:hover {
-                    color: var(--c2-cyan-light, #67e8f9);
+                    color: var(--accent-cyan-light);
+                    border-color: var(--accent-cyan);
+                    background: var(--c2-cyan-tint);
                 }
             }
         }
@@ -314,15 +349,15 @@
         gap: 12px;
         font-family: 'JetBrains Mono', monospace;
         font-size: 10px;
-        color: var(--c2-yellow-light, #fef08a);
+        color: var(--accent-amber);
         background: transparent;
-        border: 1px dashed var(--c2-yellow-border, #ca8a04);
+        border: 1px dashed rgba(245, 158, 11, 0.4);
         padding: 6px 12px;
-        border-radius: 6px;
+        border-radius: var(--radius-sm, 6px);
         margin-bottom: 7px;
 
         span:first-child {
-            color: var(--slate-muted, #94a3b8);
+            color: var(--text-secondary);
         }
     }
 }

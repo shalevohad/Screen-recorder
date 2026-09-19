@@ -2,7 +2,7 @@
 import TabConfigModal from './TabConfigModal';
 import './FleetTabs.scss';
 
-// 💡 פונקציית עזר חיצונית שאינה תלויה ברינדור של React (עוקפת את שגיאת Purity)
+// פונקציית עזר להפקת מזהה ייחודי לטאב
 const generateTabId = () => 'tab_' + Date.now();
 
 export default function FleetTabs({
@@ -158,7 +158,7 @@ export default function FleetTabs({
 
     const currentTabConfig = fleetTabsList.find(t => t.id === activeTabId) || null;
 
-    const MAX_VISIBLE_FEATURE_TABS = 3;
+    const MAX_VISIBLE_FEATURE_TABS = 4;
     const visibleFeatureTabs = openFeatureTabs.slice(0, MAX_VISIBLE_FEATURE_TABS);
     const overflowFeatureTabs = openFeatureTabs.slice(MAX_VISIBLE_FEATURE_TABS);
     const hasOverflow = overflowFeatureTabs.length > 0;
@@ -166,15 +166,29 @@ export default function FleetTabs({
     return (
         <div className="dashboard-tabs-bar-wrapper">
             <div className="tabs-navigation-container">
-                <div className="active-tabs-cluster left-cluster">
-                    <button
-                        type="button"
-                        className={`fleet-tab-pill ${activeTabId === 'ALL' ? 'active' : ''}`}
-                        onClick={() => onTabChange('ALL')}
+                <div className="active-tabs-cluster unified-flow">
+                    {/* טאב ALL – עטוף במבנה טאב מלא ואחיד */}
+                    <div
+                        className={`fleet-tab-wrapper all-tab ${activeTabId === 'ALL' ? 'active' : ''}`}
+                        title="View All Stations"
                     >
-                        ALL ({allStations.length})
-                    </button>
+                        <button
+                            type="button"
+                            className="fleet-tab-pill"
+                            onClick={() => onTabChange('ALL')}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="tab-all-icon">
+                                <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                                <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                                <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                                <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                            </svg>
+                            <span className="tab-name-label">ALL</span>
+                            <span className="tab-count-badge">{allStations.length}</span>
+                        </button>
+                    </div>
 
+                    {/* טאבים מותאמים של קבוצות / OUs */}
                     {fleetTabsList.map(tab => {
                         const isEditing = renamingTabId === tab.id;
                         return (
@@ -204,7 +218,7 @@ export default function FleetTabs({
                                         className="fleet-tab-pill"
                                         onClick={() => onTabChange(tab.id)}
                                     >
-                                        {tab.name}
+                                        <span className="tab-name-label">{tab.name}</span>
                                     </button>
                                 )}
 
@@ -220,6 +234,7 @@ export default function FleetTabs({
                         );
                     })}
 
+                    {/* כפתור יצירת טאב חדש */}
                     <button
                         type="button"
                         className="fleet-tab-add-btn"
@@ -228,33 +243,45 @@ export default function FleetTabs({
                     >
                         +
                     </button>
-                </div>
 
-                <div className="active-tabs-cluster right-cluster">
+                    {/* מפריד טקטי במידה ומודולי סטודיו / פיצ'רים פתוחים */}
+                    {visibleFeatureTabs.length > 0 && (
+                        <div className="tab-cluster-separator" />
+                    )}
+
+                    {/* טאבי מודולים (כמו Advanced Studio) */}
                     {visibleFeatureTabs.map(feat => (
-                        <div key={feat.id} className={`fleet-tab-wrapper feature-tab ${activeTabId === feat.id ? 'active' : ''}`}>
-                            <button type="button" className="fleet-tab-pill feature" onClick={() => onTabChange(feat.id)}>
+                        <div
+                            key={feat.id}
+                            className={`fleet-tab-wrapper feature-tab ${activeTabId === feat.id ? 'active' : ''}`}
+                        >
+                            <button
+                                type="button"
+                                className="fleet-tab-pill feature"
+                                onClick={() => onTabChange(feat.id)}
+                            >
                                 <span className="feature-dot" />
-                                {feat.title.toUpperCase()}
+                                <span className="feature-title-text">{feat.title.toUpperCase()}</span>
                             </button>
                             <button
                                 type="button"
                                 className="tab-close-btn"
                                 onClick={(e) => { e.stopPropagation(); onCloseFeature(feat.id); }}
-                                title="Close Feature"
+                                title="Close Module"
                             >
                                 ✕
                             </button>
                         </div>
                     ))}
 
+                    {/* תפריט Overflow עודפים */}
                     {hasOverflow && (
                         <div className="windows-overflow-dropdown-wrapper" ref={overflowContainerRef}>
                             <button
                                 type="button"
                                 className={`windows-overflow-btn ${overflowFeatureTabs.some(f => f.id === activeTabId) ? 'active' : ''}`}
                                 onClick={() => setIsOverflowOpen(p => !p)}
-                                title="More open features"
+                                title="More open modules"
                             >
                                 <span>▾</span>
                                 <span className="overflow-badge">+{overflowFeatureTabs.length}</span>
@@ -262,7 +289,7 @@ export default function FleetTabs({
 
                             {isOverflowOpen && (
                                 <div className="windows-overflow-menu">
-                                    <div className="menu-header">Active Background Features</div>
+                                    <div className="menu-header">Active Modules</div>
                                     {overflowFeatureTabs.map(feat => (
                                         <div
                                             key={feat.id}

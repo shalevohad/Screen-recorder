@@ -1,19 +1,21 @@
-﻿.station-tactical-card {
-    background: var(--bg-app);
+﻿// Client/src/components/Station/StationThumbnail.scss
+
+.station-tactical-card {
+    background: var(--surface-card, #151E2E);
     border: 1px solid var(--border-card);
-    border-radius: 8px;
+    border-radius: var(--radius-lg, 12px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: relative;
     cursor: pointer;
     box-shadow: var(--shadow-card);
-    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-    animation: slideInFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+    animation: slideInFade 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 
     &:hover {
         border-color: var(--border-card-hover);
-        box-shadow: var(--glow-cyan);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), var(--accent-cyan-glow);
         transform: translateY(-2px);
 
         .hover-action-bar {
@@ -23,21 +25,21 @@
     }
 
     &.has-critical {
-        border-color: var(--c2-red) !important;
-        box-shadow: var(--glow-red) !important;
+        border-color: var(--accent-rose) !important;
+        box-shadow: var(--accent-rose-glow) !important;
     }
 
     &.is-offline {
-        opacity: 0.5;
+        opacity: 0.55;
         border-color: var(--border-offline);
-        filter: grayscale(0.2);
+        filter: grayscale(0.3);
     }
 
     &:has(.card-screen-viewport:hover) {
         .header-action-icon-btn.fullscreen-btn:not(:disabled) {
             background: var(--c2-cyan-tint) !important;
-            border-color: var(--c2-cyan) !important;
-            color: var(--c2-cyan-light) !important;
+            border-color: var(--accent-cyan) !important;
+            color: var(--accent-cyan-light) !important;
             box-shadow: var(--glow-cyan);
             transform: translateY(-1px);
         }
@@ -46,8 +48,8 @@
     &:has(.card-minimal-header:hover) {
         .header-action-icon-btn.inspect-drawer-trigger {
             background: var(--c2-cyan-tint) !important;
-            border-color: var(--c2-cyan) !important;
-            color: var(--c2-cyan-light) !important;
+            border-color: var(--accent-cyan) !important;
+            color: var(--accent-cyan-light) !important;
             box-shadow: var(--glow-cyan);
             transform: translateY(-1px);
         }
@@ -59,7 +61,7 @@
         justify-content: space-between;
         padding: 8px 12px;
         background: var(--bg-dark-well);
-        border-bottom: 1px solid var(--slate-border);
+        border-bottom: 1px solid var(--border-subtle);
         gap: 8px;
 
         .station-brand {
@@ -70,8 +72,8 @@
             min-width: 0;
 
             .station-name {
-                color: var(--slate-light);
-                font-size: clamp(13px, 1vw, 16px);
+                color: var(--text-primary);
+                font-size: clamp(13px, 1vw, 15px);
                 font-weight: 800;
                 font-family: 'JetBrains Mono', monospace;
                 letter-spacing: 0.5px;
@@ -82,7 +84,7 @@
             }
 
             .station-ip {
-                color: var(--slate-muted);
+                color: var(--text-secondary);
                 font-size: clamp(10px, 0.8vw, 12px);
                 font-weight: 700;
                 font-family: 'JetBrains Mono', monospace;
@@ -102,14 +104,14 @@
                 align-items: center;
                 gap: 5px;
                 padding: 4px 8px;
-                border-radius: 4px;
+                border-radius: var(--radius-sm, 6px);
                 font-family: 'JetBrains Mono', monospace;
                 font-size: 10px;
                 font-weight: 800;
                 cursor: pointer;
                 background: var(--bg-input);
                 border: 1px solid var(--border-subtle);
-                color: var(--slate-muted);
+                color: var(--text-secondary);
                 transition: all 0.18s ease;
 
                 .rec-indicator-dot {
@@ -128,7 +130,7 @@
                     gap: 1px;
 
                     .rec-time {
-                        color: var(--slate-light);
+                        color: var(--text-primary);
                         font-size: 8px;
                         font-weight: 600;
                     }
@@ -136,24 +138,23 @@
 
                 &.is-idle:hover {
                     background: var(--c2-green-tint);
-                    border-color: var(--c2-green);
+                    border-color: var(--accent-emerald);
                     color: var(--c2-green-light);
 
                     .rec-indicator-dot {
-                        background-color: var(--c2-green);
-                        box-shadow: 0 0 6px var(--c2-green);
+                        background-color: var(--accent-emerald);
+                        box-shadow: 0 0 6px var(--accent-emerald);
                     }
                 }
 
                 &.is-rec {
                     background: var(--c2-red-tint);
-                    border-color: var(--c2-red-border);
+                    border-color: var(--accent-rose-glow);
                     color: var(--c2-red-light);
 
                     .rec-indicator-dot {
-                        background-color: var(--c2-red);
-                        box-shadow: 0 0 6px var(--c2-red);
-                        animation: emblem-glow 1.4s infinite ease-in-out;
+                        background-color: var(--accent-rose);
+                        box-shadow: 0 0 6px var(--accent-rose);
                     }
 
                     .rec-time {
@@ -161,8 +162,8 @@
                     }
 
                     &:hover {
-                        background: rgba(239, 68, 68, 0.28);
-                        border-color: var(--c2-red);
+                        background: rgba(244, 63, 94, 0.25);
+                        border-color: var(--accent-rose);
                         color: #fff;
                     }
                 }
@@ -186,21 +187,21 @@
                 height: 28px;
                 background: var(--bg-panel);
                 border: 1px solid var(--border-card);
-                border-radius: 6px;
-                color: var(--slate-muted);
+                border-radius: var(--radius-sm, 6px);
+                color: var(--text-secondary);
                 cursor: pointer;
                 padding: 0;
                 transition: all 0.18s ease;
 
                 svg {
-                    width: 15px;
-                    height: 15px;
+                    width: 14px;
+                    height: 14px;
                 }
 
                 &:hover:not(:disabled) {
                     background: var(--c2-cyan-tint) !important;
-                    border-color: var(--c2-cyan) !important;
-                    color: var(--c2-cyan-light) !important;
+                    border-color: var(--accent-cyan) !important;
+                    color: var(--accent-cyan-light) !important;
                     box-shadow: var(--glow-cyan);
                     transform: translateY(-1px);
                 }
@@ -213,8 +214,6 @@
                     border-color: var(--border-subtle) !important;
                     background: transparent !important;
                     color: var(--slate-dark) !important;
-                    box-shadow: none !important;
-                    transform: none !important;
                 }
             }
         }
@@ -238,8 +237,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            color: var(--slate-dark);
-            font-size: clamp(12px, 0.9vw, 15px);
+            color: var(--text-muted);
+            font-size: clamp(11px, 0.9vw, 14px);
             font-family: 'JetBrains Mono', monospace;
             font-weight: 700;
             letter-spacing: 1px;
@@ -252,10 +251,10 @@
             display: flex;
             align-items: center;
             gap: 4px;
-            background: rgba(11, 15, 25, 0.92);
+            background: rgba(11, 15, 25, 0.88);
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
-            border-radius: 4px;
+            border-radius: var(--radius-xs, 4px);
             padding: 2px 6px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 8.5px;
@@ -264,25 +263,19 @@
             z-index: 6;
             pointer-events: none;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
-            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-            transition: all 0.2s ease;
 
             svg {
                 flex-shrink: 0;
             }
 
             &.active {
-                border: 1px solid var(--c2-green);
+                border: 1px solid var(--accent-emerald);
                 color: var(--c2-green-light);
-
-                svg {
-                    filter: drop-shadow(0 0 4px var(--c2-green));
-                }
             }
 
             &.muted {
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                color: #e2e8f0;
+                border: 1px solid var(--border-subtle);
+                color: var(--text-muted);
             }
         }
 
@@ -293,17 +286,16 @@
             background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(4px);
             -webkit-backdrop-filter: blur(4px);
-            border: 1px solid var(--c2-cyan-border);
-            color: var(--c2-cyan-light);
+            border: 1px solid var(--border-active-cyan);
+            color: var(--accent-cyan-light);
             font-family: 'JetBrains Mono', monospace;
             font-size: 8.5px;
             font-weight: 800;
             padding: 2px 6px;
-            border-radius: 4px;
+            border-radius: var(--radius-xs, 4px);
             letter-spacing: 0.4px;
             z-index: 5;
             pointer-events: none;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
         }
 
         .hover-action-bar {
@@ -318,7 +310,7 @@
             background: var(--bg-tooltip);
             backdrop-filter: blur(10px);
             border: 1px solid var(--border-card);
-            border-radius: 6px;
+            border-radius: var(--radius-sm, 6px);
             padding: 5px 10px;
             box-shadow: var(--shadow-tooltip);
             transition: all 0.2s ease;
@@ -327,46 +319,36 @@
             .action-btn {
                 background: var(--slate-border);
                 border: 1px solid var(--border-subtle);
-                border-radius: 4px;
-                color: var(--slate-light);
+                border-radius: var(--radius-xs, 4px);
+                color: var(--text-primary);
                 font-family: 'JetBrains Mono', monospace;
                 font-size: clamp(10px, 0.75vw, 12px);
                 font-weight: 800;
-                padding: 5px 10px;
+                padding: 4px 8px;
                 cursor: pointer;
 
                 &:hover:not(:disabled) {
-                    background: var(--c2-cyan);
-                    color: var(--bg-void);
-                    border-color: var(--c2-cyan);
-                }
-
-                &:disabled,
-                &.disabled {
-                    opacity: 0.25 !important;
-                    cursor: not-allowed !important;
-                    pointer-events: none !important;
-                    border-color: var(--border-subtle) !important;
-                    background: var(--bg-input) !important;
-                    color: var(--slate-dark) !important;
+                    background: var(--accent-cyan);
+                    color: #000;
+                    border-color: var(--accent-cyan);
                 }
 
                 &.stop {
-                    border-color: var(--c2-red);
+                    border-color: var(--accent-rose);
                     color: var(--c2-red-light);
 
                     &:hover:not(:disabled) {
-                        background: var(--c2-red);
+                        background: var(--accent-rose);
                         color: #fff;
                     }
                 }
 
                 &.start {
-                    border-color: var(--c2-green);
+                    border-color: var(--accent-emerald);
                     color: var(--c2-green-light);
 
                     &:hover:not(:disabled) {
-                        background: var(--c2-green);
+                        background: var(--accent-emerald);
                         color: #000;
                     }
                 }
@@ -402,7 +384,7 @@
                 background: var(--c2-yellow-tint);
 
                 .drop-indicator-dot {
-                    background-color: var(--c2-yellow);
+                    background-color: var(--accent-amber);
                 }
             }
 
@@ -411,8 +393,8 @@
                 background: var(--c2-red-tint);
 
                 .drop-indicator-dot {
-                    background-color: var(--c2-red);
-                    box-shadow: 0 0 6px var(--c2-red);
+                    background-color: var(--accent-rose);
+                    box-shadow: 0 0 6px var(--accent-rose);
                 }
             }
         }
@@ -427,15 +409,15 @@
                 transition: width 0.3s ease;
 
                 &.good {
-                    background: var(--c2-green);
+                    background: var(--accent-emerald);
                 }
 
                 &.warn {
-                    background: var(--c2-yellow);
+                    background: var(--accent-amber);
                 }
 
                 &.crit {
-                    background: var(--c2-red);
+                    background: var(--accent-rose);
                 }
             }
         }
@@ -445,52 +427,11 @@
 @keyframes slideInFade {
     0% {
         opacity: 0;
-        transform: scale(0.96) translateY(10px);
+        transform: scale(0.96) translateY(8px);
     }
 
     100% {
         opacity: 1;
         transform: scale(1) translateY(0);
-    }
-}
-
-@media (min-width: 2560px) {
-    .station-tactical-card {
-        .card-minimal-header {
-            padding: 12px 16px;
-
-            .station-brand {
-                .station-name {
-                    font-size: 18px;
-                }
-
-                .station-ip {
-                    font-size: 13px;
-                }
-            }
-
-            .station-header-right {
-                .one-click-rec-btn {
-                    font-size: 11.5px;
-                    padding: 5px 10px;
-                }
-
-                .header-action-icon-btn {
-                    width: 32px;
-                    height: 32px;
-
-                    svg {
-                        width: 17px;
-                        height: 17px;
-                    }
-                }
-            }
-        }
-
-        .card-minimal-footer {
-            .health-bar-track {
-                height: 5px;
-            }
-        }
     }
 }

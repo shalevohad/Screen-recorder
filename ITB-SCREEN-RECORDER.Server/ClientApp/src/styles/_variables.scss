@@ -1,73 +1,97 @@
 :root {
-    /* 1. רקעים ומשטחים */
-    --bg-void: #131924;
-    --bg-app: #080c14;
-    --bg-card-from: #151e2e;
-    --bg-card-to: #0d131f;
-    --bg-panel: rgba(15, 23, 42, 0.88);
-    --bg-panel-tactical: rgba(38,49,74,0.95);
-    --bg-panel-dark: rgba(10, 15, 26, 0.98);
-    --bg-surface-elevated: #0d1424;
-    --bg-dark-well: #090d16;
-    --bg-input: #111827;
-    --bg-tooltip: rgba(15, 23, 42, 0.98);
-    /* 2. צבעי סטטוס טקטיים */
-    --c2-green: #22c55e;
-    --c2-green-light: #4ade80;
-    --c2-green-deep: #0c2317;
-    --c2-green-tint: rgba(34, 197, 94, 0.12);
-    --c2-green-border: rgba(74, 222, 128, 0.5);
-    --c2-yellow: #eab308;
-    --c2-yellow-light: #fde047;
-    --c2-yellow-deep: #261e0c;
-    --c2-yellow-tint: rgba(234, 179, 8, 0.12);
-    --c2-yellow-border: rgba(245, 158, 11, 0.5);
-    --c2-red: #ef4444;
-    --c2-red-light: #f87171;
-    --c2-red-deep: #240f12;
-    --c2-red-tint: rgba(239, 68, 68, 0.15);
-    --c2-red-border: rgba(239, 68, 68, 0.6);
-    --c2-blue: #38bdf8;
-    --c2-blue-light: #60a5fa;
-    --c2-blue-deep: #141e2e;
-    --c2-blue-tint: rgba(56, 189, 248, 0.15);
-    --c2-blue-border: rgba(56, 189, 248, 0.4);
-    --c2-cyan: #06b6d4;
-    --c2-cyan-light: #22d3ee;
-    --c2-cyan-deep: #122129;
-    --c2-cyan-tint: rgba(6, 182, 212, 0.15);
-    --c2-cyan-border: rgba(6, 182, 212, 0.45);
-    /* 3. היררכיית ניטרליים ואפורים */
-    --slate-light: #f8fafc;
-    --slate-muted: #94a3b8;
-    --slate-dark: #64748b;
+    /* --- 1. משטחים והיררכיית עומק (Surface Elevation Hierarchy) --- */
+    --bg-void: #070A10;
+    --bg-app: #070A10; /* משטח הבסיס של כל האפליקציה */
+    --surface-header: #0D131F; /* סרגל פיקוד עליון */
+    --surface-panel: #0F172A; /* משטח ה-Workspace הראשי */
+    --surface-card: #151E2E; /* כרטיסיות טלמטריה ואריחי תחנות */
+    --surface-card-hover: #1B273D; /* ריחוף אינטראקטיבי */
+    --surface-glass: rgba(15, 23, 42, 0.75); /* סרגלים צפים */
+
+    --bg-card-from: #151E2E;
+    --bg-card-to: #0D131F;
+    --bg-panel: #0F172A;
+    --bg-panel-tactical: rgba(15, 23, 42, 0.85);
+    --bg-panel-dark: #070A10;
+    --bg-surface-elevated: #151E2E;
+    --bg-dark-well: #0A0F1D;
+    --bg-input: #0D1527;
+    --bg-tooltip: rgba(15, 23, 42, 0.95);
+    /* --- 2. גבולות ומסגרות עדינות (Subtle Non-Distracting Boundaries) --- */
+    --border-subtle: rgba(148, 163, 184, 0.12); /* מפרידים כברירת מחדל */
+    --border-card: rgba(148, 163, 184, 0.18); /* גבולות כרטיסיות ופאנל */
+    --border-card-hover: rgba(56, 189, 248, 0.45);
+    --border-active-cyan: rgba(6, 182, 212, 0.45); /* פוקוס וטאבים פעילים */
+    --border-active-emerald: rgba(16, 185, 129, 0.50); /* חיווי תקינות */
+    --border-offline: rgba(71, 85, 105, 0.25);
+    /* מיפוי משתנים ישנים למניעת שבירת קומפוננטות קיימות */
+    --c2-blue-border: rgba(148, 163, 184, 0.18);
+    --c2-cyan-border: rgba(6, 182, 212, 0.35);
+    /* --- 3. גווני דגש וסטטוס טקטי (Semantic Accents) --- */
+    --accent-cyan: #06B6D4; /* פעולות עיקריות ובחירה */
+    --accent-cyan-light: #38BDF8;
+    --accent-cyan-glow: rgba(6, 182, 212, 0.25);
+    --c2-cyan: #06B6D4;
+    --c2-cyan-light: #38BDF8;
+    --c2-cyan-deep: #082F49;
+    --c2-cyan-tint: rgba(6, 182, 212, 0.12);
+    --accent-emerald: #10B981; /* שידור חי, צמתים בריאים, שעון תקין */
+    --accent-emerald-glow: rgba(16, 185, 129, 0.25);
+    --c2-green: #10B981;
+    --c2-green-light: #34D399;
+    --c2-green-deep: #064E3B;
+    --c2-green-tint: rgba(16, 185, 129, 0.12);
+    --c2-green-border: rgba(16, 185, 129, 0.4);
+    --accent-amber: #F59E0B; /* אזהרות, מצב המתנה */
+    --c2-yellow: #F59E0B;
+    --c2-yellow-light: #FCD34D;
+    --c2-yellow-deep: #451A03;
+    --c2-yellow-tint: rgba(245, 158, 11, 0.12);
+    --c2-yellow-border: rgba(245, 158, 11, 0.4);
+    --accent-rose: #F43F5E; /* נפילת פריימים, תקלות, עצירת שידור */
+    --accent-rose-glow: rgba(244, 63, 94, 0.30);
+    --c2-red: #F43F5E;
+    --c2-red-light: #FB7185;
+    --c2-red-deep: #4C0519;
+    --c2-red-tint: rgba(244, 63, 94, 0.14);
+    --c2-red-border: rgba(244, 63, 94, 0.45);
+    --c2-blue: #38BDF8;
+    --c2-blue-light: #7DD3FC;
+    --c2-blue-deep: #0C4A6E;
+    --c2-blue-tint: rgba(56, 189, 248, 0.12);
+    /* --- 4. טיפוגרפיה וטקסט --- */
+    --text-primary: #F8FAFC; /* ערכים ראשיים, כותרות ושעון */
+    --text-secondary: #94A3B8; /* תוויות מדדים ותת-כותרות */
+    --text-muted: #64748B; /* יחידות מידה (Mbps, %, FPS) */
+
+    --slate-light: #F8FAFC;
+    --slate-muted: #94A3B8;
+    --slate-dark: #64748B;
     --slate-dim: #475569;
-    --slate-border: #334155;
-    --slate-line: #1e293b;
-    /* 4. גבולות ומסגרות מבניות */
-    --border-subtle: rgba(51, 65, 85, 0.45);
-    --border-card: rgba(59, 130, 246, 0.32);
-    --border-card-hover: rgba(56, 189, 248, 0.55);
-    --border-offline: rgba(71, 85, 105, 0.3);
-    /* 5. הילות, זוהר וצללים */
-    --glow-green: 0 0 14px rgba(34, 197, 94, 0.55);
-    --glow-yellow: 0 0 14px rgba(234, 179, 8, 0.55);
-    --glow-red: 0 0 14px rgba(239, 68, 68, 0.6);
-    --glow-blue: 0 0 14px rgba(56, 189, 248, 0.55);
-    --glow-cyan: 0 0 14px rgba(6, 182, 212, 0.55);
-    --shadow-dock: 0 16px 40px rgba(0, 0, 0, 0.85);
-    --shadow-card: 0 16px 36px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(59, 130, 246, 0.2);
-    --shadow-tooltip: 0 12px 28px rgba(0, 0, 0, 0.9);
-    --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.5);
-    /* גיבויי עבר */
-    --c2-amber: #f59e0b;
-    --c2-amber-light: #fbbf24;
-    --c2-amber-tint: rgba(245, 158, 11, 0.15);
-    /* 6. צבעי פיצ'רים (Feature Theme) */
-    --feature-theme-base: #eab308;
-    --feature-theme-light: #fef08a;
-    --feature-theme-border: rgba(234, 179, 8, 0.6);
-    --feature-theme-tint: rgba(234, 179, 8, 0.15);
-    --feature-theme-bg: rgba(20, 24, 12, 0.95);
-    --feature-theme-grid-lines: rgba(234, 179, 8, 0.04);
+    --slate-border: rgba(148, 163, 184, 0.15);
+    --slate-line: rgba(148, 163, 184, 0.1);
+    /* --- 5. טוקני רדיוס מעוגלים תקניים --- */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-full: 9999px;
+    /* --- 6. צללים והילות רכות --- */
+    --shadow-dock: 0 12px 32px rgba(0, 0, 0, 0.6);
+    --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.55);
+    --shadow-panel: 0 18px 45px rgba(0, 0, 0, 0.85);
+    --shadow-tooltip: 0 12px 28px rgba(0, 0, 0, 0.85);
+    --glow-green: 0 0 12px rgba(16, 185, 129, 0.35);
+    --glow-cyan: 0 0 12px rgba(6, 182, 212, 0.3);
+    --glow-red: 0 0 12px rgba(244, 63, 94, 0.35);
+    --glow-blue: 0 0 12px rgba(56, 189, 248, 0.3);
+    --glow-yellow: 0 0 12px rgba(245, 158, 11, 0.3);
+    /* ערכות נושא לפיצ'רים ומודולים */
+    --feature-theme-base: #EAB308;
+    --feature-theme-light: #FEF08A;
+    --feature-theme-border: rgba(234, 179, 8, 0.45);
+    --feature-theme-tint: rgba(234, 179, 8, 0.12);
+    --feature-theme-bg: #0F172A;
+    --feature-theme-grid-lines: rgba(234, 179, 8, 0.03);
 }

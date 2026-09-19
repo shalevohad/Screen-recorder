@@ -48,6 +48,7 @@
 		<Folder Include="ClientApp/src/components/Settings/styles/" />
 		<Folder Include="ClientApp/src/components/Settings/tabs/" />
 		<Folder Include="ClientApp/src/styles/" />
+		<Folder Include="ClientApp\src\Agents\" />
 		<Folder Include="wwwroot/css/" />
 	</ItemGroup>
 
@@ -94,9 +95,7 @@
 
 	<!-- 3. העתקת תוצרים ל-Debug (F5) - דריסה מלאה ללא דילוג על קבצים קיימים -->
 	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Condition="'@(FeatureProjects)' != ''">
-		<MSBuild Projects="$(MSBuildProjectFile)"
-		         Targets="_StageSingleFeature"
-		         Properties="_ProjPath=%(FeatureProjects.FullPath)" />
+		<MSBuild Projects="$(MSBuildProjectFile)" Targets="_StageSingleFeature" Properties="_ProjPath=%(FeatureProjects.FullPath)" />
 	</Target>
 
 	<Target Name="_StageSingleFeature">
@@ -114,23 +113,14 @@
 		</ItemGroup>
 
 		<!-- SkipUnchangedFiles="false" מבטיח דריסה ועדכון של קובצי JS, CSS ו-DLL בכל הרצה -->
-		<Copy SourceFiles="@(_Artifacts)"
-		      DestinationFolder="$(_DestStandard)\%(RecursiveDir)"
-		      SkipUnchangedFiles="false"
-		      OverwriteReadOnlyFiles="true" />
+		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(_DestStandard)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" />
 
-		<Copy SourceFiles="@(_Artifacts)"
-		      DestinationFolder="$(_DestWinX64)\%(RecursiveDir)"
-		      SkipUnchangedFiles="false"
-		      OverwriteReadOnlyFiles="true"
-		      Condition="Exists('$(TargetDir)win-x64') Or '$(RuntimeIdentifier)' == 'win-x64'" />
+		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(_DestWinX64)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" Condition="Exists('$(TargetDir)win-x64') Or '$(RuntimeIdentifier)' == 'win-x64'" />
 	</Target>
 
 	<!-- 4. אריזה דינמית ל-Publish -->
 	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="('$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))) And '@(FeatureProjects)' != ''">
-		<MSBuild Projects="$(MSBuildProjectFile)"
-		         Targets="_GetFeaturePublishFiles"
-		         Properties="_ProjPath=%(FeatureProjects.FullPath)">
+		<MSBuild Projects="$(MSBuildProjectFile)" Targets="_GetFeaturePublishFiles" Properties="_ProjPath=%(FeatureProjects.FullPath)">
 			<Output TaskParameter="TargetOutputs" ItemName="ResolvedFileToPublish" />
 		</MSBuild>
 		<Message Importance="high" Text="[ITB PUBLISH] Bundling dynamically resolved modules into publish payload..." />

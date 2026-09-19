@@ -1,7 +1,11 @@
-﻿/* איפוס גלובלי והגדרת סביבת C2 טקטית */
+﻿// Client/src/App.scss
+
+/* ==========================================================================
+   1. איפוס גלובלי והגדרת סביבת C2 טקטית (Global Canvas Reset)
+   ========================================================================== */
 html, body, #root {
-    background-color: var(--bg-void, #131924) !important;
-    color: var(--slate-light, #f8fafc);
+    background-color: var(--bg-app, #070A10) !important;
+    color: var(--text-primary, #F8FAFC);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     margin: 0 !important;
     padding: 0 !important;
@@ -18,23 +22,26 @@ html, body, #root {
     box-sizing: inherit;
 }
 
-/* מעטפת האפליקציה הראשית */
+/* ==========================================================================
+   2. מעטפת האפליקציה הראשית (Command Center Canvas Shell)
+   ========================================================================== */
 .itb-command-center-app {
     display: flex;
     flex-direction: column;
     width: 100%;
     min-height: 100vh;
-    background-color: var(--bg-void, #131924);
-    background-image: radial-gradient(ellipse at 50% 0%, rgba(30, 58, 138, 0.12) 0%, transparent 60%), radial-gradient(circle at 100% 100%, rgba(15, 23, 42, 0.4) 0%, transparent 50%);
+    background-color: var(--bg-app, #070A10);
+    /* גרדיאנט אובסידיאן עמוק וטקטי במקום צבעים זרחניים */
+    background-image: radial-gradient(circle at 50% 20%, #0F172A 0%, #070A10 100%);
     position: relative;
     padding-bottom: 2rem;
-    /* קו רשת רקע טקטי עדין */
+    /* רשת רקע טקטית מעודנת (Subtle Dot-Matrix / Tactical Grid) */
     &::before {
         content: '';
         position: fixed;
         inset: 0;
-        background-size: 40px 40px;
-        background-image: linear-gradient(to right, rgba(51, 65, 85, 0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(51, 65, 85, 0.1) 1px, transparent 1px);
+        background-size: 32px 32px;
+        background-image: linear-gradient(to right, rgba(148, 163, 184, 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
         pointer-events: none;
         z-index: 1;
     }
@@ -45,32 +52,34 @@ html, body, #root {
     }
 }
 
-/* סקרולבר טקטי */
+/* ==========================================================================
+   3. סקרולבר טקטי נקי (Tactical Glass Scrollbar)
+   ========================================================================== */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--bg-dark-well, #090d16);
+    background: var(--bg-dark-well, #0A0F1D);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--slate-line, #1e293b);
-    border-radius: 4px;
-    border: 1px solid var(--border-card);
+    background: var(--slate-line, rgba(148, 163, 184, 0.15));
+    border-radius: var(--radius-xs, 4px);
+    border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
 
     &:hover {
-        background: var(--slate-border, #334155);
-        border-color: var(--border-card-hover);
+        background: var(--border-card-hover, rgba(56, 189, 248, 0.45));
+        border-color: var(--accent-cyan, #06B6D4);
     }
 }
 
 /* ==========================================================================
-   Tactical Base Styles: מוגדל כברירת מחדל לקריאות ממרחק (1080p / 1440p / קיר מסכים)
+   4. Tactical Base Styles: מוגדל כברירת מחדל לקריאות ממרחק (1080p / 1440p / קיר מסכים)
    ========================================================================== */
 
-/* סרגל עליון */
+/* סרגל פיקוד עליון */
 .command-center-top-bar {
     padding: 0.75rem 1.6rem;
 
@@ -155,9 +164,9 @@ html, body, #root {
     }
 }
 
-/* כרטיסיות עמדה */
+/* כרטיסיות עמדה טקטיות */
 .station-tactical-card {
-    border-width: 1.5px;
+    border-width: 1px;
 
     .card-minimal-header {
         padding: 12px 16px;
@@ -171,7 +180,7 @@ html, body, #root {
             .station-ip {
                 font-size: 13px;
                 font-weight: 800;
-                color: var(--slate-muted);
+                color: var(--slate-muted, #94A3B8);
             }
         }
 
@@ -197,7 +206,7 @@ html, body, #root {
     }
 }
 
-/* רשימה דחוסה */
+/* רשימה וטבלה דחוסה של תחנות */
 .stations-dense-table {
     thead th {
         font-size: 12px;

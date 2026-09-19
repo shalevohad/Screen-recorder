@@ -33,6 +33,8 @@ export default function DashboardGrid(props) {
         logic.handleCloseFeature(featId);
     };
 
+    const hasNoAgentsInView = logic.processedStations.length === 0 && logic.activeInlineFeatures.length === 0;
+
     return (
         <div className={`dashboard-layout-wrapper ${isFeatureMode ? 'is-feature-mode' : ''}`} dir={direction}>
             <div className="dashboard-content-container">
@@ -146,17 +148,38 @@ export default function DashboardGrid(props) {
                             </div>
                         ) : (
                             <>
-                                {logic.processedStations.length === 0 && logic.activeInlineFeatures.length === 0 ? (
-                                    <div className="stations-empty-state-glass">
-                                        <div className="connection-pulse-container">
-                                            <div className="pulse-dot-amber"></div>
-                                            <div className="pulse-ring"></div>
+                                {hasNoAgentsInView ? (
+                                    <div className="active-radar-listener-stage">
+                                        <div className="sonar-emitter-cluster">
+                                            <div className="sonar-ring ring-1"></div>
+                                            <div className="sonar-ring ring-2"></div>
+                                            <div className="sonar-ring ring-3"></div>
+                                            <div className="sonar-center-beacon">
+                                                <div className="beacon-core"></div>
+                                            </div>
                                         </div>
-                                        <span className="empty-state-text">
-                                            {isFaultFilterActive ? "ALL AGENTS HEALTH NOMINAL" : (logic.searchQuery || logic.currentTabFilter !== 'ALL') ? "NO AGENTS MATCH CURRENT FILTERS" : "NO AGENTS CONNECTED TO THIS TAB"}
-                                        </span>
-                                        {(logic.searchQuery || logic.currentTabFilter !== 'ALL') && (
-                                            <button className="clear-filter-action-btn" onClick={logic.handleResetAllFilters}>CLEAR FILTERS</button>
+
+                                        <div className="radar-status-content">
+                                            <h3 className="radar-title">
+                                                {isFaultFilterActive
+                                                    ? "FLEET HEALTH NOMINAL"
+                                                    : (logic.searchQuery || logic.currentTabFilter !== 'ALL')
+                                                        ? "NO AGENTS MATCH CURRENT CRITERIA"
+                                                        : "LISTENING FOR INCOMING AGENT STREAMS"}
+                                            </h3>
+                                            <p className="radar-subtitle">
+                                                Port 8889 (WebRTC) &amp; Port 1935 (RTMP) Active &bull; {stations.length} Endpoints Registered
+                                            </p>
+                                        </div>
+
+                                        {(logic.searchQuery || logic.currentTabFilter !== 'ALL') ? (
+                                            <button className="radar-action-cta" onClick={logic.handleResetAllFilters}>
+                                                ✕ CLEAR ALL ACTIVE FILTERS
+                                            </button>
+                                        ) : (
+                                            <button className="radar-action-cta" onClick={() => logic.setIsSearchOpen(true)}>
+                                                📡 OPEN FILTER SHELF &amp; SEARCH
+                                            </button>
                                         )}
                                     </div>
                                 ) : logic.viewMode === 'grid' ? (
@@ -203,7 +226,7 @@ export default function DashboardGrid(props) {
             </div>
 
             {!isFeatureMode && logic.viewMode === 'grid' && (
-                <div className="noc-footer-zoom-pill">
+                <div className={`noc-footer-zoom-pill ${hasNoAgentsInView ? 'is-dormant' : 'is-active'}`}>
                     <button className={`zoom-auto-btn ${logic.isAutoZoom ? 'is-active' : ''}`} onClick={() => logic.setIsAutoZoom(p => !p)}>AUTO</button>
                     <div className="zoom-pill-divider"></div>
                     <button onClick={logic.handleZoomOut} disabled={logic.effectiveZoom === 1} className="zoom-btn">
