@@ -1,0 +1,75 @@
+.telemetry-compact-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    padding: 5px 10px;
+
+    .metric-pill {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.68rem;
+
+        .lbl {
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+
+        .val {
+            color: var(--text-primary);
+            font-weight: 800;
+
+            &.accent {
+                color: var(--track-active-stream);
+            }
+
+            &.rose {
+                color: var(--track-alert-region);
+            }
+        }
+    }
+
+    .continuity-capsule {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border-radius: var(--radius-pill);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.62rem;
+        font-weight: 800;
+
+        .indicator-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: var(--radius-pill);
+        }
+
+        &.healthy {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #6ee7b7;
+
+            .indicator-dot {
+                background: var(--track-active-stream);
+                box-shadow: 0 0 6px var(--track-active-stream);
+            }
+        }
+
+        &.alert {
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+            color: #fda4af;
+
+            .indicator-dot {
+                background: var(--track-alert-region);
+                box-shadow: 0 0 6px var(--track-alert-region);
+            }
+        }
+    }
+}

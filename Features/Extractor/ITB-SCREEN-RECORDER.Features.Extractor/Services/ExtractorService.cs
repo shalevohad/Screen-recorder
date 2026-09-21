@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: Features/Extractor/Services/ExtractorService.cs
+// ==========================================
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Formats.Tar;
@@ -71,7 +74,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     var current = chunks[i];
                     var next = chunks[i + 1];
 
-                    if (next.StartUtc - current.EndUtc > TimeSpan.FromSeconds(5))
+                    // סף פער מכויל: כל הפרש הגדול משנייה אחת נחשב לפער טלמטריה
+                    if (next.StartUtc - current.EndUtc > TimeSpan.FromSeconds(1))
                     {
                         gaps.Add(new TimeGapDto
                         {
@@ -189,9 +193,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             _logger.LogInformation("Successfully completed TAR stream for session {SessionId}", sessionManifest.SessionId);
         }
 
-        /// <summary>
-        /// מנוע הליבה לחיתוך מקטע וידאו מדויק (Smart Cut) מבוסס UTC Epoch
-        /// </summary>
         public virtual async Task<string> CutSegmentAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default)
         {
             if (outEpochMs <= inEpochMs)
@@ -199,23 +200,19 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 throw new ArgumentException("Out-point must be strictly greater than In-point.");
             }
 
-            // 1. המרה לזמני UTC מוחלטים
             DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(inEpochMs).UtcDateTime;
             DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(outEpochMs).UtcDateTime;
 
-            // 2. איתור כל ה-Chunks בדיסק דרך סורק האחסון של המערכת
             var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
             if (chunks == null || chunks.Count == 0)
             {
                 throw new FileNotFoundException($"No video recordings found for station '{stationId}' between {startUtc:yyyy-MM-dd HH:mm:ss} UTC and {endUtc:yyyy-MM-dd HH:mm:ss} UTC.");
             }
 
-            // 3. בניית מניפסט ה-Concat
             string concatManifest = await _storageScanner.BuildConcatManifestAsync(chunks, startUtc, endUtc);
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"cut_{stationId}_{Guid.NewGuid():N}.txt");
             await File.WriteAllTextAsync(tempManifestPath, concatManifest, new UTF8Encoding(false), ct);
 
-            // 4. יצירת תיקיית יעד מתוך הגדרות הקונפיגורציה
             string exportDir = !string.IsNullOrWhiteSpace(_options.ExportPath)
                 ? _options.ExportPath
                 : Path.Combine(AppContext.BaseDirectory, "Exports");

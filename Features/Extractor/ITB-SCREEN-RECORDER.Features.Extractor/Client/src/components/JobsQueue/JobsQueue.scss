@@ -1,0 +1,194 @@
+.jobs-multi-card {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-lg);
+    padding: 6px 10px;
+
+    .jobs-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .header-left-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+
+            .title {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.62rem;
+                font-weight: 800;
+                color: var(--accent-cyan);
+                letter-spacing: 0.05em;
+            }
+
+            .jobs-tabs {
+                display: flex;
+                gap: 4px;
+
+                .tab-btn {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted);
+                    font-size: 0.58rem;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-weight: 700;
+                    cursor: pointer;
+
+                    &.active {
+                        color: var(--accent-cyan-hover);
+                        text-decoration: underline;
+                    }
+                }
+            }
+        }
+
+        .btn-clean-done {
+            background: transparent;
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius-sm);
+            color: var(--text-muted);
+            font-size: 0.58rem;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 1px 6px;
+            cursor: pointer;
+
+            &:hover {
+                color: var(--text-primary);
+                border-color: var(--accent-cyan);
+            }
+        }
+    }
+
+    .jobs-scroll-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 80px;
+        overflow-y: auto;
+
+        .job-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            background: var(--surface-panel);
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius-sm);
+            padding: 3px 8px;
+
+            .job-meta-cell {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex: 1;
+                min-width: 0;
+
+                .status-beacon {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: var(--radius-pill);
+                    flex-shrink: 0;
+
+                    &.processing {
+                        background: var(--accent-cyan);
+                        box-shadow: 0 0 6px var(--accent-cyan);
+                        animation: pulseDot 1.4s infinite;
+                    }
+
+                    &.completed {
+                        background: var(--track-active-stream);
+                    }
+
+                    &.failed {
+                        background: var(--track-alert-region);
+                    }
+                }
+
+                .job-name {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.65rem;
+                    color: var(--text-primary);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+            }
+
+            .job-active-cell {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex: 1;
+
+                .mini-rail {
+                    flex: 1;
+                    height: 3px;
+                    background: rgba(255, 255, 255, 0.08);
+                    border-radius: var(--radius-pill);
+                    overflow: hidden;
+
+                    .mini-fill {
+                        height: 100%;
+                        background: linear-gradient(90deg, var(--accent-cyan), var(--accent-cyan-hover));
+                        border-radius: var(--radius-pill);
+                        transition: width 0.3s ease;
+                    }
+                }
+
+                .telemetry-readout {
+                    display: flex;
+                    gap: 6px;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.58rem;
+                    color: var(--text-secondary);
+
+                    .eta {
+                        color: var(--accent-cyan-hover);
+                        font-weight: 700;
+                    }
+                }
+            }
+
+            .job-done-cell {
+                .btn-download-pill {
+                    background: var(--track-active-stream);
+                    border: none;
+                    color: #020617;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.6rem;
+                    font-weight: 800;
+                    border-radius: var(--radius-pill);
+                    padding: 2px 8px;
+                    cursor: pointer;
+
+                    &:hover {
+                        background: #34d399;
+                    }
+                }
+
+                .error-lbl {
+                    font-size: 0.6rem;
+                    color: var(--track-alert-region);
+                    font-weight: 700;
+                }
+            }
+
+            .btn-close-job {
+                background: transparent;
+                border: none;
+                color: var(--text-muted);
+                font-size: 0.65rem;
+                cursor: pointer;
+
+                &:hover {
+                    color: var(--track-alert-region);
+                }
+            }
+        }
+    }
+}

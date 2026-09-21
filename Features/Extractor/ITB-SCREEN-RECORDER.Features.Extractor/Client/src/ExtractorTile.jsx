@@ -1,27 +1,75 @@
 ﻿// ==========================================
 // File: Features/Extractor/Client/src/ExtractorTile.jsx
 // ==========================================
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './ExtractorTile.scss';
 
-export default function ExtractorTile({
-    defaultWindowHours = 24
-}) {
-    const [startLocal, setStartLocal] = useState(() => {
-        const d = new Date(Date.now() - defaultWindowHours * 60 * 60 * 1000);
-        return d.toISOString().slice(0, 16);
-    });
-    const [endLocal, setEndLocal] = useState(() => {
-        return new Date().toISOString().slice(0, 16);
-    });
+import ExtractorHeader from './components/ExtractorHeader/ExtractorHeader.jsx';
+import TimeRangeBar from './components/TimeRangeBar/TimeRangeBar.jsx';
+import StationPool from './components/StationPool/StationPool.jsx';
+import TelemetryBar from './components/TelemetryBar/TelemetryBar.jsx';
+import GapsTable from './components/GapsTable/GapsTable.jsx';
 
+const epochToInputString = (epochMs, isUtc) => {
+    const d = new Date(epochMs);
+    if (isUtc) return d.toISOString().slice(0, 16);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const inputStringToEpoch = (str, isUtc) => {
+    if (!str) return Date.now();
+    return isUtc ? Date.parse(str + ':00.000Z') : new Date(str).getTime();
+};
+
+export default function ExtractorTile({
+    defaultWindowHours = 24,
+    renderExtraHeaderActions,
+    renderExtraControls
+}) {
+    // 1. הגדרות תצוגת זמן (Local מול UTC)
+    const [timeMode, setTimeMode] = useState('LOCAL'); // 'LOCAL' | 'UTC'
+    const [startEpoch, setStartEpoch] = useState(() => Date.now() - defaultWindowHours * 60 * 60 * 1000);
+    const [endEpoch, setEndEpoch] = useState(() => Date.now());
+
+    // 2. עמדות מוקלטות ותצוגה מקדימה
     const [availableHosts, setAvailableHosts] = useState([]);
     const [selectedHosts, setSelectedHosts] = useState([]);
     const [preview, setPreview] = useState(null);
     const [isScanning, setIsScanning] = useState(false);
-    const [isStreaming, setIsStreaming] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
 
+    // 3. סנכרון תור משימות הרקע (מול ה-Daemon הגלובלי)
+    const [activeJobsCount, setActiveJobsCount] = useState(0);
+    const [readyJobsCount, setReadyJobsCount] = useState(0);
+    const [isSubmittingJob, setIsSubmittingJob] = useState(false);
+
+    const isUtc = timeMode === 'UTC';
+
+    // משיכת סטטוס ראשונית והאזנה לעדכונים מה-Daemon הגלובלי
+    useEffect(() => {
+        const syncJobsCount = (jobsList) => {
+            if (!Array.isArray(jobsList)) return;
+            const active = jobsList.filter(j => j.status === 'Processing' || j.status === 'Queued').length;
+            const ready = jobsList.filter(j => j.isCompleted).length;
+            setActiveJobsCount(active);
+            setReadyJobsCount(ready);
+        };
+
+        // משיכה קלה בעלייה
+        fetch('/api/v1/extractor/jobs')
+            .then(res => (res.ok ? res.json() : []))
+            .then(syncJobsCount)
+            .catch(() => { });
+
+        // האזנה לאירוע גלובלי המשודר מה-ExportJobMonitor
+        const handleJobsUpdated = (e) => syncJobsCount(e.detail || []);
+        window.addEventListener('export-jobs-updated', handleJobsUpdated);
+
+        return () => window.removeEventListener('export-jobs-updated', handleJobsUpdated);
+    }, []);
+
+    // סריקת הקלטות בטווח הזמנים המבוקש
     const executeScan = async () => {
         setIsScanning(true);
         setPreview(null);
@@ -29,231 +77,150 @@ export default function ExtractorTile({
         setHasSearched(true);
 
         try {
-            const startUtc = new Date(startLocal).toISOString();
-            const endUtc = new Date(endLocal).toISOString();
+            const startUtcIso = new Date(startEpoch).toISOString();
+            const endUtcIso = new Date(endEpoch).toISOString();
 
-            const hostsRes = await fetch(`/api/v1/extractor/recorded-hosts?startUtc=${encodeURIComponent(startUtc)}&endUtc=${encodeURIComponent(endUtc)}`);
-            if (!hostsRes.ok) throw new Error("Failed to fetch hosts");
+            const res = await fetch(
+                `/api/v1/extractor/recorded-hosts?startUtc=${encodeURIComponent(startUtcIso)}&endUtc=${encodeURIComponent(endUtcIso)}`
+            );
+            if (!res.ok) throw new Error('Failed to retrieve recorded stations');
 
-            const hosts = await hostsRes.json();
+            const hosts = await res.json();
             setAvailableHosts(hosts);
             setSelectedHosts(hosts);
 
             if (hosts.length > 0) {
-                const previewRes = await fetch('/api/v1/extractor/preview', {
+                const prevRes = await fetch('/api/v1/extractor/preview', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        startTimeUtc: startUtc,
-                        endTimeUtc: endUtc,
-                        hostnames: hosts
-                    })
+                    body: JSON.stringify({ startTimeUtc: startUtcIso, endTimeUtc: endUtcIso, hostnames: hosts })
                 });
 
-                if (previewRes.ok) {
-                    const data = await previewRes.json();
-                    setPreview(data);
+                if (prevRes.ok) {
+                    setPreview(await prevRes.json());
                 }
             }
         } catch (err) {
-            console.error("Scan failed:", err);
+            console.error('[ExtractorTile] Scan error:', err);
         } finally {
             setIsScanning(false);
         }
     };
 
-    const toggleHost = (host) => {
-        setSelectedHosts(prev =>
-            prev.includes(host) ? prev.filter(h => h !== host) : [...prev, host]
-        );
-    };
-
-    const triggerTarStream = async () => {
+    // שיגור משימת אריזה ברקע ופתיחת מגירת הניטור
+    const triggerExport = async () => {
         if (selectedHosts.length === 0) return;
-        setIsStreaming(true);
+        setIsSubmittingJob(true);
+
         try {
-            const res = await fetch('/api/v1/extractor/export', {
+            const res = await fetch('/api/v1/extractor/jobs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    startTimeUtc: new Date(startLocal).toISOString(),
-                    endTimeUtc: new Date(endLocal).toISOString(),
+                    startTimeUtc: new Date(startEpoch).toISOString(),
+                    endTimeUtc: new Date(endEpoch).toISOString(),
                     hostnames: selectedHosts
                 })
             });
 
-            if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+            if (!res.ok) throw new Error('Failed to enqueue export task');
 
-            const blob = await res.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = downloadUrl;
-            anchor.download = `Investigation_${startLocal.replace(/[-:]/g, '')}.tar`;
-            document.body.appendChild(anchor);
-            anchor.click();
-            document.body.removeChild(anchor);
-            window.URL.revokeObjectURL(downloadUrl);
+            // פתיחת המגירה הימנית מיד לצפייה במד ההתקדמות וה-Streaming
+            window.dispatchEvent(new CustomEvent('open-export-monitor'));
+        } catch (err) {
+            alert('Export Error: ' + err.message);
         } finally {
-            setIsStreaming(false);
+            setIsSubmittingJob(false);
         }
     };
 
-    const formatSize = (bytes) => {
-        if (!bytes) return '0 B';
-        const mb = bytes / (1024 * 1024);
-        if (mb >= 1000) return `${(mb / 1024).toFixed(2)} GB`;
-        return `${mb.toFixed(1)} MB`;
-    };
-
+    // חישובי עמדות, גדלים ופערי רציפות (Gaps)
     const activeStations = preview?.stations?.filter(s => selectedHosts.includes(s.hostname)) || [];
     const totalChunks = activeStations.reduce((sum, s) => sum + s.chunkCount, 0);
     const totalBytes = activeStations.reduce((sum, s) => sum + s.totalSizeBytes, 0);
     const hasAnyGaps = activeStations.some(s => s.hasTimeGaps);
     const totalGaps = activeStations.reduce((sum, s) => sum + (s.gaps?.length || 0), 0);
-
-    const allGaps = activeStations.flatMap(s =>
-        s.gaps.map(g => ({ ...g, hostname: s.hostname }))
-    );
+    const allGaps = activeStations.flatMap(s => s.gaps.map(g => ({ ...g, hostname: s.hostname })));
 
     return (
         <div className="extractor-tile">
-            <div className="tile-header">
-                <div className="header-left">
-                    <span className="status-indicator" />
-                    <span className="title">Extractor</span>
-                </div>
-                <span className="station-badge">
-                    {selectedHosts.length} / {availableHosts.length} SELECTED
-                </span>
-            </div>
+            {/* Header: כולל Local/UTC ואינדיקציה כפולה למשימות Streaming ומוכנות */}
+            <ExtractorHeader
+                timeMode={timeMode}
+                onToggleTimeMode={setTimeMode}
+                activeJobsCount={activeJobsCount}
+                readyJobsCount={readyJobsCount}
+                selectedCount={selectedHosts.length}
+                totalCount={availableHosts.length}
+            />
+
+            {/* נקודת הרחבה להורשה (לשימוש Advance או תוספים עתידיים) */}
+            {renderExtraHeaderActions && renderExtraHeaderActions()}
 
             <div className="tile-body">
-                <div className="filter-grid">
-                    <div className="field-group">
-                        <label>Start Window</label>
-                        <input
-                            type="datetime-local"
-                            className="control-input"
-                            lang="en-GB"
-                            value={startLocal}
-                            onChange={(e) => setStartLocal(e.target.value)}
-                        />
-                    </div>
-                    <div className="field-group">
-                        <label>End Window</label>
-                        <input
-                            type="datetime-local"
-                            className="control-input"
-                            lang="en-GB"
-                            value={endLocal}
-                            onChange={(e) => setEndLocal(e.target.value)}
-                        />
-                    </div>
-                </div>
+                {/* סרגל בחירת חלון הזמן וכפתור סריקה */}
+                <TimeRangeBar
+                    startString={epochToInputString(startEpoch, isUtc)}
+                    endString={epochToInputString(endEpoch, isUtc)}
+                    timeMode={timeMode}
+                    isScanning={isScanning}
+                    isSubmitting={isSubmittingJob}
+                    onStartChange={(val) => setStartEpoch(inputStringToEpoch(val, isUtc))}
+                    onEndChange={(val) => setEndEpoch(inputStringToEpoch(val, isUtc))}
+                    onScan={executeScan}
+                />
 
                 {hasSearched && availableHosts.length === 0 && !isScanning && (
                     <div className="no-hosts-banner">
-                        <span>No matching recorded stations found for the specified time range.</span>
+                        <span>⚠️ No recorded station streams found in the requested time range.</span>
                     </div>
                 )}
 
+                {/* מאגר עמדות מרווח (רשת עמדות, סינונים ובחירה מרובה) */}
                 {availableHosts.length > 0 && (
-                    <div className="hosts-selector">
-                        <label className="section-label">Available Stations & Continuity</label>
-                        <div className="hosts-list">
-                            {availableHosts.map(host => {
-                                // מציאת נתוני ה-Preview עבור התחנה הספציפית הזו (אם קיימים)
-                                const stationMeta = preview?.stations?.find(s => s.hostname === host);
-                                const hasGaps = stationMeta?.hasTimeGaps;
-                                const gapsCount = stationMeta?.gaps?.length || 0;
-                                const isSelected = selectedHosts.includes(host);
-
-                                return (
-                                    <div
-                                        key={host}
-                                        className={`host-card ${isSelected ? 'selected' : ''} ${hasGaps ? 'has-gaps' : 'seamless'}`}
-                                        onClick={() => toggleHost(host)}
-                                    >
-                                        <div className="host-info">
-                                            <input
-                                                type="checkbox"
-                                                checked={isSelected}
-                                                onChange={() => { }} // מטופל ע"י ה-div הראשי
-                                            />
-                                            <span className="host-name">{host}</span>
-                                        </div>
-                                        {preview && (
-                                            <span className={`status-pill ${hasGaps ? 'warn' : 'ok'}`}>
-                                                {hasGaps ? `${gapsCount} Gap(s)` : 'Seamless'}
-                                            </span>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
+                    <StationPool
+                        availableHosts={availableHosts}
+                        selectedHosts={selectedHosts}
+                        preview={preview}
+                        onToggleHost={(host) =>
+                            setSelectedHosts(prev =>
+                                prev.includes(host) ? prev.filter(h => h !== host) : [...prev, host]
+                            )
+                        }
+                        onSelectBatch={(batch) =>
+                            setSelectedHosts(prev => Array.from(new Set([...prev, ...batch])))
+                        }
+                        onClearBatch={(batch) =>
+                            setSelectedHosts(prev => prev.filter(h => !batch.includes(h)))
+                        }
+                    />
                 )}
 
-                <div className="telemetry-summary">
-                    <div className="metric-box">
-                        <span className="label">Total Segments</span>
-                        <span className="val">{totalChunks}</span>
-                    </div>
-                    <div className="metric-box">
-                        <span className="label">Est. Archive Size</span>
-                        <span className="val highlight">{formatSize(totalBytes)}</span>
-                    </div>
-                    <div className="metric-box">
-                        <span className="label">Total Gaps</span>
-                        <span className="val">{totalGaps}</span>
-                    </div>
-                </div>
+                {/* נקודת הרחבה להזרקת פקדים ייעודיים של מודולים יורשים */}
+                {renderExtraControls && renderExtraControls({ selectedHosts, preview })}
 
-                <div className={`continuity-status-banner ${hasAnyGaps ? 'interrupted' : 'healthy'}`}>
-                    <span>Continuity Status</span>
-                    <span>{hasAnyGaps ? 'Telemetry Gaps Found' : 'Unbroken Stream'}</span>
-                </div>
+                {/* בר טלמטריה ורציפות מרכזית */}
+                <TelemetryBar
+                    totalChunks={totalChunks}
+                    totalBytes={totalBytes}
+                    totalGaps={totalGaps}
+                    hasAnyGaps={hasAnyGaps}
+                />
 
-                {hasAnyGaps && (
-                    <div className="gaps-micro-table">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Station</th>
-                                    <th>Expected (UTC)</th>
-                                    <th>Resumed (UTC)</th>
-                                    <th>Length</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {allGaps.map((g, idx) => (
-                                    <tr key={idx}>
-                                        <td>{g.hostname}</td>
-                                        <td>{new Date(g.expectedUtc).toLocaleTimeString()}</td>
-                                        <td>{new Date(g.actualNextStartUtc).toLocaleTimeString()}</td>
-                                        <td className="gap-len">{g.gapDuration?.split?.('.')[0] || g.gapDuration}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                {/* טבלת פערי זמן (Gaps > 1s) */}
+                <GapsTable gaps={allGaps} timeMode={timeMode} />
             </div>
 
+            {/* כפתור הפעולה הראשי (CTA) */}
             <div className="tile-footer">
                 <button
-                    className="btn btn-preview"
-                    onClick={executeScan}
-                    disabled={isScanning || isStreaming}
+                    className="btn-cta-export"
+                    onClick={triggerExport}
+                    disabled={isSubmittingJob || selectedHosts.length === 0 || totalChunks === 0}
                 >
-                    {isScanning ? 'Scanning Network...' : 'Scan Range'}
-                </button>
-                <button
-                    className="btn btn-export"
-                    onClick={triggerTarStream}
-                    disabled={isStreaming || selectedHosts.length === 0 || totalChunks === 0}
-                >
-                    {isStreaming ? 'Packaging TAR...' : 'Download TAR'}
+                    {isSubmittingJob
+                        ? 'ENQUEUING EXPORT TASK...'
+                        : `DOWNLOAD TAR (BACKGROUND) • ${selectedHosts.length} STATIONS`}
                 </button>
             </div>
         </div>

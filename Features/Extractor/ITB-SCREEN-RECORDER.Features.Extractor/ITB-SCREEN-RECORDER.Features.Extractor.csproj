@@ -74,6 +74,13 @@
 		</None>
 	</ItemGroup>
 	<ItemGroup>
+	  <Folder Include="Client\src\components\ExportMonitor\" />
+	  <Folder Include="Client\src\components\ExtractorHeader\" />
+	  <Folder Include="Client\src\components\GapsTable\" />
+	  <Folder Include="Client\src\components\JobsQueue\" />
+	  <Folder Include="Client\src\components\TelemetryBar\" />
+	  <Folder Include="Client\src\components\StationPool\" />
+	  <Folder Include="Client\src\components\TimeRangeBar\" />
 	  <Folder Include="Tools\Linux\" />
 	</ItemGroup>
 

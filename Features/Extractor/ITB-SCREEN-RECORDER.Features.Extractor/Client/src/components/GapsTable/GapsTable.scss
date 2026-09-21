@@ -1,0 +1,41 @@
+.gaps-compact-card {
+    flex-shrink: 0;
+    max-height: 85px;
+    overflow-y: auto;
+    background: var(--surface-card);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+
+    .gaps-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.65rem;
+        font-family: 'JetBrains Mono', monospace;
+
+        th {
+            position: sticky;
+            top: 0;
+            background: var(--surface-elevated);
+            color: var(--text-muted);
+            padding: 4px 8px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 0.6rem;
+        }
+
+        td {
+            padding: 3px 8px;
+            border-top: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+
+            &.host-col {
+                font-weight: 700;
+            }
+
+            .gap-pill {
+                color: var(--track-alert-region);
+                font-weight: 800;
+            }
+        }
+    }
+}

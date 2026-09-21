@@ -27,6 +27,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
                 services.AddSingleton<IExtractorService, ExtractorService>();
                 services.AddSingleton<IFeatureModule, ExtractorModule>();
                 services.AddSingleton<IDummyVideoGenerator, DummyVideoGenerator>();
+                services.AddSingleton<IExportJobManager, ExportJobManager>();
 
                 services.AddControllers()
                     .AddApplicationPart(typeof(ExtractorHostingStartup).Assembly);
