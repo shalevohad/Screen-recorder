@@ -1,4 +1,6 @@
-﻿// Client/src/components/Timeline/TimelineRuler.jsx
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineRuler.jsx
+// ==========================================
 import React, { useRef, useMemo } from 'react';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './TimelineRuler.scss';
@@ -42,14 +44,17 @@ export default function TimelineRuler({
         onSeek(Math.max(0, Math.min(totalDurationMs, seekMs)));
     };
 
-    // חישוב חלוקות הזמן ברולר בהתאם לזום
+    // 💡 אלגוריתם חכם להתאמת מרווחי השנתות למניעת Overlap (תומך בטווחים של 40+ שעות)
     const tickIntervalMs = useMemo(() => {
-        if (viewportDurationMs <= 10000) return 1000;       // 1 שניה
-        if (viewportDurationMs <= 60000) return 5000;       // 5 שניות
-        if (viewportDurationMs <= 300000) return 30000;     // 30 שניות
-        if (viewportDurationMs <= 1800000) return 120000;   // 2 דקות
-        if (viewportDurationMs <= 7200000) return 600000;   // 10 דקות
-        return 1800000;                                     // 30 דקות
+        const hours = viewportDurationMs / (3600 * 1000);
+        if (hours <= 0.1) return 1000;         // עד 6 דקות: כל שניה
+        if (hours <= 0.5) return 10000;        // עד חצי שעה: כל 10 שניות
+        if (hours <= 2) return 60000;          // עד שעתיים: כל דקה
+        if (hours <= 6) return 300000;         // עד 6 שעות: כל 5 דקות
+        if (hours <= 12) return 900000;        // עד 12 שעות: כל 15 דקות
+        if (hours <= 24) return 3600000;       // עד יום: כל שעה
+        if (hours <= 72) return 14400000;      // עד 3 ימים: כל 4 שעות
+        return 28800000;                       // מעבר לכך: כל 8 שעות
     }, [viewportDurationMs]);
 
     const ticks = useMemo(() => {
@@ -59,6 +64,11 @@ export default function TimelineRuler({
 
         for (let t = firstTick; t <= lastTick; t += tickIntervalMs) {
             result.push(t);
+        }
+        // מניעת עומס יתר ברולר: מגבלה של מקסימום 30 שנתות בו-זמנית במסך
+        if (result.length > 30) {
+            const step = Math.ceil(result.length / 25);
+            return result.filter((_, idx) => idx % step === 0);
         }
         return result;
     }, [viewportStartMs, viewportDurationMs, tickIntervalMs]);
@@ -88,7 +98,6 @@ export default function TimelineRuler({
                 })}
             </div>
 
-            {/* סמן הריחוף שמגיב גם למעבר עכבר על גבי הערוצים */}
             {isHoverVisible && (
                 <div className="ruler-hover-cursor" style={{ left: `${hoverPercent}%` }}>
                     <div className="hover-time-badge">

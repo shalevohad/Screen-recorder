@@ -1,4 +1,6 @@
-// Client/src/components/Modals/SoloSpotlightModal.jsx
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Modals/SoloSpotlightModal.jsx
+// ==========================================
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
@@ -7,7 +9,6 @@ import Playhead from '../Timeline/Playhead.jsx';
 import TimelineTrack from '../Timeline/TimelineTrack.jsx';
 import './SoloSpotlightModal.scss';
 
-// פונקציית עזר לפורמט זמן חיתוך מקצועי: שעות:דקות:שניות.פריימים
 const formatCutDurationSMPTE = (durationMs, fps = 30) => {
     const totalMs = Math.max(0, durationMs);
     const totalSeconds = Math.floor(totalMs / 1000);
@@ -34,15 +35,59 @@ export default function SoloSpotlightModal({
     inPointMs = 0,
     setInPointMs,
     outPointMs = 3600000,
-    setOutPointMs
+    setOutPointMs,
+    recordingSegments = {} // 💡 הוספת קבלת מילון המקטעים
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [draggingTarget, setDraggingTarget] = useState(null);
-    const timelineRef = useRef(null);
+    const [videoSrc, setVideoSrc] = useState('');
 
-    // ניווט במקלדת
+    const timelineRef = useRef(null);
+    const videoRef = useRef(null);
+    const streamStartOffsetMsRef = useRef(playheadMs);
+
+    useEffect(() => {
+        if (!isOpen || !station) {
+            setVideoSrc('');
+            return;
+        }
+        const host = station.hostname || station.name || '';
+        streamStartOffsetMsRef.current = playheadMs;
+        const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(host)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + playheadMs}`;
+        setVideoSrc(url);
+    }, [isOpen, station?.id, baseEpochMs, totalDurationMs]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        if (isPlaying) {
+            video.play().catch(() => setIsPlaying(false));
+        } else {
+            video.pause();
+        }
+    }, [isPlaying]);
+
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.playbackRate = playbackSpeed;
+        }
+    }, [playbackSpeed]);
+
+    const handleTimeUpdate = () => {
+        const video = videoRef.current;
+        if (!video) return;
+        const currentMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * 1000);
+        if (currentMs >= outPointMs) {
+            setIsPlaying(false);
+            setPlayheadMs(outPointMs);
+        } else {
+            setPlayheadMs(currentMs);
+        }
+    };
+
     useEffect(() => {
         if (!isOpen || !station || allStations.length === 0) return;
 
@@ -120,23 +165,6 @@ export default function SoloSpotlightModal({
         setPlayheadMs
     ]);
 
-    // מנגנון ניגון
-    useEffect(() => {
-        if (!isPlaying) return;
-        const interval = setInterval(() => {
-            setPlayheadMs(prev => {
-                const next = prev + (50 * playbackSpeed);
-                if (next >= outPointMs) {
-                    setIsPlaying(false);
-                    return outPointMs;
-                }
-                return next;
-            });
-        }, 50);
-        return () => clearInterval(interval);
-    }, [isPlaying, playbackSpeed, outPointMs, setPlayheadMs]);
-
-    // דגימה דינמית של משתנה ה-CSS (SSOT)
     const getSidebarWidth = useCallback(() => {
         if (!timelineRef.current) return 180;
         const cssVar = getComputedStyle(timelineRef.current).getPropertyValue('--track-sidebar-width');
@@ -159,7 +187,6 @@ export default function SoloSpotlightModal({
         return Math.round((offsetX / contentWidth) * totalDurationMs);
     }, [totalDurationMs, getSidebarWidth]);
 
-    // גרירה גלובלית
     useEffect(() => {
         if (!draggingTarget) return;
 
@@ -205,11 +232,24 @@ export default function SoloSpotlightModal({
 
     if (!isOpen || !station) return null;
 
+    // חילוץ המקטעים הספציפיים לעמדה הנוכחית במצב Solo
+    const stationSegments = recordingSegments[station.id] || station.segments || [];
+
     return createPortal(
         <div className="solo-spotlight-modal-overlay" dir="ltr">
-            {/* 1. רקע הווידאו במסך מלא */}
             <div className="spotlight-viewport-canvas">
                 <div className="canvas-video-feed">
+                    {videoSrc && (
+                        <video
+                            ref={videoRef}
+                            src={videoSrc}
+                            className="spotlight-active-video"
+                            playsInline
+                            autoPlay={isPlaying}
+                            onTimeUpdate={handleTimeUpdate}
+                            onEnded={() => setIsPlaying(false)}
+                        />
+                    )}
                     <div className="tactical-grid-overlay" />
                     <div className="center-target-reticle" />
                     <div className="feed-brand-watermark">
@@ -221,7 +261,6 @@ export default function SoloSpotlightModal({
                 <div className="canvas-scrim-bottom" />
             </div>
 
-            {/* 2. Top Floating Header HUD */}
             <div className="spotlight-top-hud">
                 <button className="btn-exit-spotlight" onClick={onClose} title="Exit Fullscreen (Esc)">
                     <kbd>ESC</kbd>
@@ -255,10 +294,8 @@ export default function SoloSpotlightModal({
                 </div>
             </div>
 
-            {/* 3. Bottom Floating Control Island */}
             <div className="spotlight-bottom-island">
                 <div className="island-transport-row">
-                    {/* זמן חיתוך בפורמט שעות:דקות:שניות.פריימים */}
                     <div className="cut-duration-pill">
                         <span className="label">CUT DURATION</span>
                         <span className="val">{formatCutDurationSMPTE(outPointMs - inPointMs)}</span>
@@ -318,6 +355,7 @@ export default function SoloSpotlightModal({
                             inPointMs={inPointMs}
                             outPointMs={outPointMs}
                             baseEpochMs={baseEpochMs}
+                            segments={stationSegments} // 💡 העברת המקטעים לטיימליין של ה-Solo
                         />
 
                         <Playhead

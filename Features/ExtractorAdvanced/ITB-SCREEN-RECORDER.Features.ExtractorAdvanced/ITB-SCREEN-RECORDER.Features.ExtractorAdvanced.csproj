@@ -15,9 +15,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-	  <Compile Remove="Agents\**" />
-	  <EmbeddedResource Remove="Agents\**" />
-	  <None Remove="Agents\**" />
+		<Compile Remove="Agents\**" />
+		<EmbeddedResource Remove="Agents\**" />
+		<None Remove="Agents\**" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -28,8 +28,6 @@
 		<!-- מטמיע את המניפסט ישירות לתוך ה-DLL מקומפל -->
 		<EmbeddedResource Include="feature.json" />
 	</ItemGroup>
-
-	<!-- תלות בפרויקט ה-Basic ותלות בליבה -->
 
 	<!-- קימפול ה-Widget של ה-Advanced בכל Build (מריץ Vite אוטומטית) -->
 	<Target Name="CompileAdvancedFrontend" BeforeTargets="Build" Condition="Exists('Client\package.json')">
@@ -50,18 +48,45 @@
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</Content>
 	</ItemGroup>
-	<ItemGroup>
-	  <Folder Include="Client\src\components\Modals\" />
-	  <Folder Include="Client\src\components\StationDrawer\views\Hub\" />
-	  <Folder Include="Client\src\components\StationDrawer\views\Drawer\" />
-	  <Folder Include="Client\src\components\TransportBar\" />
-	  <Folder Include="Client\src\components\Viewport\" />
-	  <Folder Include="Client\src\components\TopScopeBar\" />
-	  <Folder Include="Client\src\components\Timeline\" />
-	  <Folder Include="Client\src\hooks\" />
-	  <Folder Include="Client\src\utils\" />
-	  <Folder Include="wwwroot\" />
+
+	<!-- ========================================== -->
+	<!-- ניהול בינאריים של FFmpeg לפי מערכת הפעלה     -->
+	<!-- ========================================== -->
+
+	<!-- עבור Windows: העתקת הכלים מתיקיית Tools/Win לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<None Update="Tools\Win\**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
 	</ItemGroup>
+
+	<!-- עבור Linux: העתקת הכלים מתיקיית Tools/Linux לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<None Update="Tools/Linux/**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Folder Include="Client\src\components\Modals\" />
+		<Folder Include="Client\src\components\ExportMonitor\" />
+		<Folder Include="Client\src\components\StationDrawer\views\Hub\" />
+		<Folder Include="Client\src\components\StationDrawer\views\Drawer\" />
+		<Folder Include="Client\src\components\TransportBar\" />
+		<Folder Include="Client\src\components\Viewport\" />
+		<Folder Include="Client\src\components\TopScopeBar\" />
+		<Folder Include="Client\src\components\Timeline\" />
+		<Folder Include="Client\src\hooks\" />
+		<Folder Include="Client\src\utils\" />
+		<Folder Include="Tools\Linux\" />
+		<Folder Include="Tools\Win\" />
+		<Folder Include="wwwroot\" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj">
 			<Private>false</Private>

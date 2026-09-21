@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: Features/Extractor/Services/FfmpegConcatRunner.cs
+// ==========================================
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -29,13 +32,28 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 throw new ArgumentException("Concat manifest content cannot be empty.", nameof(concatManifestContent));
             }
 
+            // בדיקה חכמה: האם המניפסט מכיל שקופיות Dummy (פערי Gaps)?
+            bool hasDummyGaps = concatManifestContent.Contains("dummy", StringComparison.OrdinalIgnoreCase);
+
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{Guid.NewGuid():N}.txt");
             await File.WriteAllTextAsync(tempManifestPath, concatManifestContent, new UTF8Encoding(false), ct);
 
-            string arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                               "-c copy -avoid_negative_ts make_zero " +
-                               "-movflags frag_keyframe+empty_moov " +
-                               "-f mp4 pipe:1";
+            string arguments;
+            if (hasDummyGaps)
+            {
+                _logger.LogInformation("[FFmpeg Runner] Gaps/Dummy segments detected in manifest. Switching to synchronized re-encoding pipeline.");
+                arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-c:v libx264 -preset veryfast -crf 20 -c:a aac -b:a 128k " +
+                            $"-movflags frag_keyframe+empty_moov+default_base_moof " +
+                            $"-f mp4 pipe:1";
+            }
+            else
+            {
+                arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-c copy -avoid_negative_ts make_zero " +
+                            $"-movflags frag_keyframe+empty_moov " +
+                            $"-f mp4 pipe:1";
+            }
 
             var startInfo = new ProcessStartInfo
             {
@@ -90,14 +108,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         {
             string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
 
-            // 1. נתיב שהוגדר במפורש בקונפיגורציה
             if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
             {
                 EnsureLinuxExecutablePermissions(configuredPath, logger);
                 return configuredPath;
             }
 
-            // 2. בדיקה בשורש תיקיית הפיצ'ר (לפי ה-Link ב-csproj)
             string featureRootPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", binaryName);
             if (File.Exists(featureRootPath))
             {
@@ -105,7 +121,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 return featureRootPath;
             }
 
-            // 3. בדיקה בתיקיית Bin תחת הפיצ'ר
             string featureBinPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", "Bin", binaryName);
             if (File.Exists(featureBinPath))
             {
@@ -113,7 +128,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 return featureBinPath;
             }
 
-            // 4. בדיקה בשורש השרת
             string serverRootPath = Path.Combine(AppContext.BaseDirectory, binaryName);
             if (File.Exists(serverRootPath))
             {
@@ -121,7 +135,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 return serverRootPath;
             }
 
-            // 5. בדיקה בנתיבי המערכת הסטנדרטיים של לינוקס (סביבת Podman)
             if (OperatingSystem.IsLinux())
             {
                 string[] standardPaths = ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"];
@@ -132,7 +145,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // ברירת מחדל: הסתמכות על ה-PATH
             return binaryName;
         }
 

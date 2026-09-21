@@ -1,4 +1,6 @@
-﻿// Client/src/components/Extractor/ExtractorAdvancedStudio.jsx
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/ExtractorAdvancedStudio.jsx
+// ==========================================
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import TopScopeBar from './components/TopScopeBar/TopScopeBar.jsx';
 import MulticamViewport from './components/Viewport/MulticamViewport.jsx';
@@ -8,7 +10,9 @@ import StationDrawer from './components/StationDrawer/StationDrawer.jsx';
 import MasterTimeRangeModal from './components/Modals/MasterTimeRangeModal.jsx';
 import BookmarksModal from './components/Modals/BookmarksModal.jsx';
 import SoloSpotlightModal from './components/Modals/SoloSpotlightModal.jsx';
+import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
 import { getStudioSessionCache, saveStudioSessionCache } from './studioSessionStore.js';
+import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -32,7 +36,6 @@ const parseSafeEpoch = (dateStr) => {
 };
 
 export default function ExtractorAdvancedStudio() {
-    // 1. טעינת סנאפשוט יציב וחד-פעמי מהזיכרון המקומי
     const cached = useMemo(() => getStudioSessionCache() || {}, []);
 
     const [timeRange, setTimeRange] = useState(cached.timeRange || generateDefaultTimeRange());
@@ -48,7 +51,6 @@ export default function ExtractorAdvancedStudio() {
     const [recordingSegments, setRecordingSegments] = useState({});
     const [isLoadingStations, setIsLoadingStations] = useState(false);
 
-    // 2. אתחול כל המצבים ישירות לערכים המדויקים שהיו שמורים לפני הריענון (F5)
     const [selectedStationIds, setSelectedStationIds] = useState(cached.selectedStationIds || []);
     const [activeStationId, setActiveStationId] = useState(cached.activeStationId || null);
     const [spotlightStationId, setSpotlightStationId] = useState(null);
@@ -67,9 +69,7 @@ export default function ExtractorAdvancedStudio() {
     );
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // =========================================================================
-    // שמירה מתמשכת ל-Storage - מופעלת בכל שינוי בלי לדרוס וללא עיכובים
-    // =========================================================================
+    // שמירה אוטומטית מתמשכת ל-SessionStorage
     useEffect(() => {
         saveStudioSessionCache({
             timeRange,
@@ -85,9 +85,7 @@ export default function ExtractorAdvancedStudio() {
         });
     }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, isWorkspaceActive, allStations]);
 
-    // =========================================================================
-    // שליפה דינמית של תחנות פעילות (ללא מחיקה אגרסיבית של בחירות)
-    // =========================================================================
+    // שליפת עמדות פעילות בחלון הזמן
     const fetchActiveStationsForTimeScope = useCallback(async () => {
         if (isNaN(timelineBaseEpochMs)) return;
         const endEpochMs = timelineBaseEpochMs + totalTimelineDurationMs;
@@ -131,9 +129,7 @@ export default function ExtractorAdvancedStudio() {
         fetchActiveStationsForTimeScope();
     }, [fetchActiveStationsForTimeScope]);
 
-    // =========================================================================
-    // שליפת מקטעי הקלטות (Segments) מהשרת
-    // =========================================================================
+    // שליפת מקטעי ההקלטה (Segments) מהשרת
     const stationIdsKey = useMemo(() => allStations.map(s => s.id).sort().join(','), [allStations]);
 
     useEffect(() => {
@@ -160,9 +156,18 @@ export default function ExtractorAdvancedStudio() {
         return () => { isMounted = false; };
     }, [stationIdsKey, timelineBaseEpochMs, totalTimelineDurationMs]);
 
-    // =========================================================================
-    // סניטייזר רך - רק מנקה עמדות ממוקדות אם בוטל הסימון שלהן
-    // =========================================================================
+    // 💡 אוטומציה: כאשר נבחרה בדיוק עמדה אחת בלבד מלכתחילה (או שקיימת עמדה יחידה), כניסה אוטומטית למצב Solo
+    useEffect(() => {
+        if (selectedStationIds.length === 1 && !activeStationId) {
+            setActiveStationId(selectedStationIds[0]);
+        } else if (selectedStationIds.length === 0 && allStations.length === 1) {
+            setSelectedStationIds([allStations[0].id]);
+            setActiveStationId(allStations[0].id);
+            setIsWorkspaceActive(true);
+        }
+    }, [selectedStationIds, allStations, activeStationId]);
+
+    // סניטייזר רך לעמדות שנבחרו
     useEffect(() => {
         if (activeStationId && !selectedStationIds.includes(activeStationId)) {
             setActiveStationId(null);
@@ -179,12 +184,10 @@ export default function ExtractorAdvancedStudio() {
     const forceDrawerOpen = isDrawerOpen || isInitialSetup;
 
     const activeStation = allStations.find(s => s.id === activeStationId);
-
-    // מגן על ה-UI: ירנדר רק תחנות שנבחרו ועדיין קיימות ברשימת התחנות החיות
     const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
     const spotlightStation = allStations.find(s => s.id === spotlightStationId);
 
-    // ניווט מקלדת מעגלי במצב Spot
+    // ניווט מקלדת מעגלי בין עמדות
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
@@ -213,6 +216,7 @@ export default function ExtractorAdvancedStudio() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeStationId, timelineStations, isRangeModalOpen, isBookmarksModalOpen, spotlightStationId]);
 
+    // טעינת סימניית חקירה (Bookmark)
     const handleLoadBookmark = (bm) => {
         const startMs = parseSafeEpoch(bm.startTime);
         const endMs = parseSafeEpoch(bm.endTime);
@@ -235,28 +239,34 @@ export default function ExtractorAdvancedStudio() {
         setIsDrawerOpen(false);
     };
 
+    // שיגור ייצוא מסונכרן ברקע (עבור כלל העמדות שבטיימליין) ופתיחת מוניטור המשימות
     const handleExportSmartCut = async () => {
-        const targetStation = activeStationId || (timelineStations[0] ? timelineStations[0].id : null);
-        if (!targetStation) return alert('No station selected for export.');
+        const targetStationIds = timelineStations.map(s => s.id);
+        if (targetStationIds.length === 0) {
+            return alert('No active stations selected in timeline.');
+        }
 
         const payload = {
-            stationId: targetStation,
+            stationIds: targetStationIds,
             inEpochMs: timelineBaseEpochMs + inPointMs,
             outEpochMs: timelineBaseEpochMs + outPointMs
         };
 
         try {
-            const response = await fetch('/api/v1/extractor-advanced/export-cut', {
+            const response = await fetch('/api/v1/extractor-advanced/jobs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (!response.ok) throw new Error(`Status: ${response.status}`);
-            const result = await response.json();
-            alert(`Export Successful!\nSaved to: ${result.filePath}`);
+
+            if (!response.ok) {
+                throw new Error(`Server returned HTTP ${response.status}`);
+            }
+
+            window.dispatchEvent(new CustomEvent('open-export-monitor'));
         } catch (error) {
-            console.error('[Studio] Export Error:', error);
-            alert('Export failed. Check console.');
+            console.error('[Studio] Failed enqueuing export job:', error);
+            alert('Failed to launch background export. Check server connectivity.');
         }
     };
 
@@ -357,6 +367,7 @@ export default function ExtractorAdvancedStudio() {
                 onClose={() => setIsRangeModalOpen(false)}
                 currentRange={timeRange}
                 timeMode={timeMode}
+                onTimeModeChange={setTimeMode}
                 onApplyRange={(newRange) => {
                     const newBuf = Math.max(60000, Math.round(newRange.durationMs * 0.05));
                     setTimeRange(newRange);
@@ -388,7 +399,10 @@ export default function ExtractorAdvancedStudio() {
                 setInPointMs={setInPointMs}
                 outPointMs={outPointMs}
                 setOutPointMs={setOutPointMs}
+                recordingSegments={recordingSegments}
             />
+
+            <ExportJobMonitor />
         </div>
     );
 }

@@ -205,6 +205,27 @@
                     backdrop-filter: blur(12px);
                 }
 
+                .card-video-frame-container {
+                    position: absolute;
+                    inset: 0;
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+
+                    .station-live-frame {
+                        width: 100%;
+                        height: 100%;
+                        object-fit: cover;
+                        display: block;
+                        user-select: none;
+                        pointer-events: none;
+                        animation: frameFadeIn 0.15s ease-out;
+                    }
+                }
+
                 .offline-state-overlay {
                     display: flex;
                     flex-direction: column;
@@ -226,7 +247,7 @@
                         letter-spacing: 1.5px;
                     }
                 }
-                /* אלמנט Spotlight / Torch חד וקטורי שאינו מאבד פוקוס */
+
                 .tactical-spotlight-hero {
                     display: flex;
                     flex-direction: column;
@@ -237,11 +258,9 @@
                     user-select: none;
 
                     .spotlight-badge-container {
-                        /* גודל יחסי חכם שנשאר פרופורציונלי לגודל הכרטיסייה */
                         width: clamp(40px, 12cqw, 52px);
                         height: clamp(40px, 12cqw, 52px);
                         border-radius: 12px;
-                        /* רקע אטום-כהה ללא backdrop-filter שמונע טשטוש ווקטורי של ה-GPU */
                         background: rgba(9, 14, 26, 0.9);
                         border: 1.5px solid rgba(6, 182, 212, 0.45);
                         box-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
@@ -365,6 +384,16 @@
                 }
             }
         }
+    }
+}
+
+@keyframes frameFadeIn {
+    from {
+        opacity: 0.6;
+    }
+
+    to {
+        opacity: 1;
     }
 }
 

@@ -1,10 +1,6 @@
 // Client/src/components/Modals/SoloSpotlightModal.scss
 
 .solo-spotlight-modal-overlay {
-    /* =========================================================================
-       SINGLE SOURCE OF TRUTH (SSOT)
-       שינוי ערך זה כאן מעדכן אוטומטית גם את ה-CSS וגם את מתמטיקת ה-Playhead ב-JS
-       ========================================================================= */
     --track-sidebar-width: 180px;
     position: fixed;
     inset: 0;
@@ -33,12 +29,23 @@
             justify-content: center;
             position: relative;
 
+            .spotlight-active-video {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                background-color: #020617;
+                z-index: 1;
+            }
+
             .tactical-grid-overlay {
                 position: absolute;
                 inset: 0;
                 background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
                 background-size: 60px 60px;
                 pointer-events: none;
+                z-index: 2;
             }
 
             .center-target-reticle {
@@ -47,6 +54,7 @@
                 border: 1px solid rgba(6, 182, 212, 0.35);
                 border-radius: 50%;
                 position: relative;
+                z-index: 2;
 
                 &::after {
                     content: '';
@@ -72,6 +80,7 @@
                 color: rgba(255, 255, 255, 0.3);
                 letter-spacing: 2px;
                 text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+                z-index: 2;
             }
         }
 
@@ -362,7 +371,7 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
-            /* הרולר מקבל את רוחב הסרגל מתוך משתנה ה-CSS */
+
             .floating-ruler-wrap {
                 width: 100%;
                 height: 24px;
@@ -377,14 +386,14 @@
                 .timeline-track-container {
                     margin-bottom: 0;
                     height: 52px;
-                    /* יישור עמודת שם התחנה לערך ה-SSOT */
+
                     .track-sidebar {
                         width: var(--track-sidebar-width, 180px);
                         min-width: var(--track-sidebar-width, 180px);
                         max-width: var(--track-sidebar-width, 180px);
                     }
                 }
-                /* יישור נקודת ההתחלה של ה-Playhead לערך ה-SSOT */
+
                 .playhead-overlay-pane {
                     top: 0;
                     left: var(--track-sidebar-width, 180px);

@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/ExtractorAdvancedHostingStartup.cs
+// ==========================================
+using System;
 using System.IO;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -7,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 [assembly: HostingStartup(typeof(ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.ExtractorAdvancedHostingStartup))]
@@ -19,17 +23,26 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
         {
             builder.ConfigureServices((context, services) =>
             {
-                // רישום המודול של הסטודיו המתקדם
+                // רישום המודול עבור ממשק המשתמש של המערכת
                 services.AddSingleton<IFeatureModule, ExtractorAdvancedModule>();
 
-                // רישום מנוע העריכה המתקדם (Spritesheet ו-Smart Trimming)
+                // דריסת מחולל השקופיות הבסיסי במחולל הטקטי המתקדם
+                services.AddSingleton<IDummyVideoGenerator, AdvancedDummyVideoGenerator>();
+
+                // מנוע ה-NLE המתקדם
                 services.AddSingleton<AdvancedExtractorService>();
 
-                // רישום קונטרולרים אם יהיו כאלה בפרויקט ה-Advanced
+                // מנהל משימות הרקע המתקדם (מממש הן את הבסיס והן את המורחב)
+                services.AddSingleton<AdvanceJobManager>();
+                services.AddSingleton<IAdvanceJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());
+                services.AddSingleton<IExportJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());
+                services.AddHostedService<ExtractorGarbageCollectorService>();
+
+                // רישום קונטרולרים
                 services.AddControllers()
                     .AddApplicationPart(typeof(ExtractorAdvancedHostingStartup).Assembly);
 
-                // הזרקת פילטר ה-Startup להגשת הקבצים הסטטיים בנתיב /extractor-advanced
+                // הגשת תוצרי ה-Client בנתיב /extractor-advanced
                 services.AddTransient<IStartupFilter, ExtractorAdvancedStartupFilter>();
             });
         }

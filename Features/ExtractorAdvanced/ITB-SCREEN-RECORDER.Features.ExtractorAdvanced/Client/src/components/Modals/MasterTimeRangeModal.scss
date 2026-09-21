@@ -1,24 +1,26 @@
-﻿// Client/src/components/Modals/MasterTimeRangeModal.scss
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Modals/MasterTimeRangeModal.scss
+// ==========================================
 
 .modal-backdrop-overlay {
     position: fixed;
     inset: 0;
     z-index: 999999;
-    background: rgba(2, 6, 23, 0.85);
-    backdrop-filter: blur(12px);
+    background: rgba(2, 6, 23, 0.82);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: center;
     justify-content: center;
-    animation: fadeIn 0.15s ease-out;
+    animation: fadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 
     .master-time-modal-card {
         width: 100%;
-        max-width: 530px;
-        background: #090e1a;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 14px;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 20px rgba(6, 182, 212, 0.15);
-        padding: 22px;
+        max-width: 540px;
+        background: linear-gradient(150deg, rgba(15, 23, 42, 0.96) 0%, rgba(9, 14, 26, 0.98) 100%);
+        border: 1px solid rgba(6, 182, 212, 0.35);
+        border-radius: 16px;
+        box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 30px rgba(6, 182, 212, 0.15);
+        padding: 24px;
         display: flex;
         flex-direction: column;
         gap: 18px;
@@ -29,30 +31,36 @@
             align-items: flex-start;
             justify-content: space-between;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            padding-bottom: 12px;
+            padding-bottom: 14px;
 
             .title-block {
                 display: flex;
                 flex-direction: column;
-                gap: 6px;
+                gap: 8px;
 
                 .modal-title {
                     font-family: 'JetBrains Mono', monospace;
-                    font-size: 12px;
+                    font-size: 12.5px;
                     font-weight: 800;
                     color: #06b6d4;
                     letter-spacing: 1.5px;
                 }
-                /* תגית Timezone בולטת וטקטית */
+
+                .header-actions-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+
                 .timezone-badge {
                     display: inline-flex;
                     align-items: center;
                     gap: 6px;
                     background: rgba(15, 23, 42, 0.9);
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                    padding: 2px 8px;
+                    padding: 3px 10px;
                     border-radius: 9999px;
-                    width: fit-content;
 
                     .pulse-indicator {
                         width: 6px;
@@ -97,19 +105,57 @@
                         }
                     }
                 }
+
+                .modal-mode-toggle {
+                    display: flex;
+                    background: rgba(0, 0, 0, 0.4);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 9999px;
+                    padding: 2px;
+                    gap: 2px;
+
+                    .mode-pill {
+                        background: transparent;
+                        border: none;
+                        color: #94a3b8;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        padding: 3px 10px;
+                        border-radius: 9999px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+
+                        &.active {
+                            background: #06b6d4;
+                            color: #020617;
+                            box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+                        }
+
+                        &:hover:not(.active) {
+                            color: #fff;
+                        }
+                    }
+                }
             }
 
             .btn-modal-close {
-                background: transparent;
-                border: none;
-                color: #64748b;
-                font-size: 15px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #94a3b8;
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
                 cursor: pointer;
-                padding: 4px;
-                transition: color 0.2s;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
 
                 &:hover {
-                    color: #f8fafc;
+                    background: rgba(244, 63, 94, 0.2);
+                    border-color: #f43f5e;
+                    color: #f43f5e;
                 }
             }
         }
@@ -120,10 +166,10 @@
             gap: 8px;
 
             .btn-preset {
-                background: rgba(15, 23, 42, 0.7);
+                background: rgba(15, 23, 42, 0.75);
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 8px;
-                padding: 8px 4px;
+                padding: 9px 6px;
                 color: #cbd5e1;
                 font-size: 11px;
                 font-weight: 700;
@@ -162,15 +208,15 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 16px;
-            background: rgba(15, 23, 42, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 14px;
-            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 16px;
+            border-radius: 12px;
 
             .input-column {
                 display: flex;
                 flex-direction: column;
-                gap: 10px;
+                gap: 12px;
 
                 .column-header {
                     display: flex;
@@ -196,28 +242,49 @@
                     display: flex;
                     flex-direction: column;
                     gap: 4px;
+                    cursor: pointer; /* מעיד על כך שכל השורה לחיצה */
 
                     .sub-label {
                         font-size: 9px;
                         font-weight: 700;
-                        color: #475569;
+                        color: #94a3b8;
+                    }
+
+                    .input-row-wrapper {
+                        background: #0b1325;
+                        border: 1px solid rgba(255, 255, 255, 0.12);
+                        border-radius: 8px;
+                        padding: 2px 10px;
+                        transition: all 0.2s;
+
+                        &:hover {
+                            border-color: rgba(6, 182, 212, 0.4);
+                            background: rgba(15, 23, 42, 0.9);
+                        }
                     }
 
                     input {
-                        background: #0b1220;
-                        border: 1px solid rgba(255, 255, 255, 0.1);
-                        border-radius: 6px;
-                        padding: 7px 10px;
+                        width: 100%;
+                        background: transparent;
+                        border: none;
+                        padding: 8px 0;
                         color: #f8fafc;
                         font-family: 'JetBrains Mono', monospace;
-                        font-size: 11.5px;
+                        font-size: 12px;
                         outline: none;
-                        transition: border-color 0.2s;
+                        cursor: pointer;
+                        /* פתרון בעיית אייקוני לוח השנה והשעון השחורים בדפדפנים */
+                        color-scheme: dark;
 
-                        &:focus {
-                            border-color: #06b6d4;
-                            box-shadow: 0 0 0 1px #06b6d4;
+                        &::-webkit-calendar-picker-indicator {
+                            filter: invert(1) hue-rotate(180deg) brightness(1.2);
+                            cursor: pointer;
                         }
+                    }
+
+                    &:focus-within .input-row-wrapper {
+                        border-color: #06b6d4;
+                        box-shadow: 0 0 0 1px #06b6d4, 0 0 12px rgba(6, 182, 212, 0.25);
                     }
                 }
             }
@@ -234,7 +301,7 @@
                 background: transparent;
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 color: #94a3b8;
-                padding: 8px 16px;
+                padding: 8px 18px;
                 border-radius: 8px;
                 font-size: 11.5px;
                 font-weight: 700;
@@ -248,21 +315,21 @@
             }
 
             .btn-action-load {
-                background: #10b981;
+                background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
                 border: none;
                 color: #020617;
-                padding: 8px 24px;
+                padding: 8px 26px;
                 border-radius: 8px;
                 font-size: 12px;
                 font-weight: 800;
                 letter-spacing: 0.8px;
                 cursor: pointer;
-                box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+                box-shadow: 0 0 16px rgba(6, 182, 212, 0.4);
                 transition: all 0.2s;
 
                 &:hover {
-                    background: #34d399;
-                    box-shadow: 0 0 24px rgba(16, 185, 129, 0.5);
+                    background: #22d3ee;
+                    box-shadow: 0 0 24px rgba(6, 182, 212, 0.6);
                     transform: translateY(-1px);
                 }
             }

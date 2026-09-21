@@ -1,9 +1,11 @@
-// Client/src/components/Modals/BookmarksModal.jsx
-import React, { useState, useEffect } from 'react';
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Modals/BookmarksModal.jsx
+// ==========================================
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import './BookmarksModal.scss';
 
-const STORAGE_KEY = 'extractor_incident_bookmarks';
+const FALLBACK_STORAGE_KEY = 'extractor_incident_bookmarks_fallback';
 
 export default function BookmarksModal({
     isOpen,
@@ -13,29 +15,49 @@ export default function BookmarksModal({
 }) {
     const [bookmarks, setBookmarks] = useState([]);
     const [noteText, setNoteText] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // שליפת Bookmarks מהשרת עם גיבוי מקומי
+    const fetchBookmarks = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const res = await fetch('/api/v1/extractor-advanced/bookmarks');
+            if (res.ok) {
+                const data = await res.json();
+                const list = Array.isArray(data) ? data : [];
+                setBookmarks(list);
+                try {
+                    localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(list));
+                } catch { }
+                return;
+            }
+        } catch (err) {
+            console.warn('[BookmarksModal] Failed loading from server, falling back to local storage', err);
+        } finally {
+            setIsLoading(false);
+        }
+
+        // במקרה של כשל תקשורת
+        try {
+            const fallback = localStorage.getItem(FALLBACK_STORAGE_KEY);
+            if (fallback) setBookmarks(JSON.parse(fallback));
+        } catch { }
+    }, []);
 
     useEffect(() => {
         if (isOpen) {
-            try {
-                const stored = localStorage.getItem(STORAGE_KEY);
-                if (stored) {
-                    setBookmarks(JSON.parse(stored));
-                }
-            } catch (e) {
-                console.error('[BookmarksModal] Failed to load bookmarks', e);
-            }
+            fetchBookmarks();
         }
-    }, [isOpen]);
+    }, [isOpen, fetchBookmarks]);
 
     if (!isOpen) return null;
 
-    const handleSaveCurrentState = () => {
-        if (!noteText.trim()) return;
+    const handleSaveCurrentState = async () => {
+        if (!noteText.trim() || isSaving) return;
 
-        const newBookmark = {
-            id: `bm_${Date.now()}`,
+        const payload = {
             title: noteText.trim(),
-            createdAt: new Date().toISOString(),
             startTime: currentState?.timeRange?.start || '',
             endTime: currentState?.timeRange?.end || '',
             inPointMs: currentState?.inPointMs || 0,
@@ -44,25 +66,40 @@ export default function BookmarksModal({
             stationIds: currentState?.selectedStationIds || []
         };
 
-        const updated = [newBookmark, ...bookmarks];
-        setBookmarks(updated);
-        setNoteText('');
-
+        setIsSaving(true);
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        } catch (e) {
-            console.error('[BookmarksModal] Failed to save bookmark', e);
-        }
-    };
+            const res = await fetch('/api/v1/extractor-advanced/bookmarks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-    const handleDeleteBookmark = (id, e) => {
-        e.stopPropagation();
-        const updated = bookmarks.filter(b => b.id !== id);
-        setBookmarks(updated);
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            if (res.ok) {
+                const result = await res.json();
+                if (result.bookmark) {
+                    setBookmarks(prev => [result.bookmark, ...prev]);
+                    setNoteText('');
+                }
+            } else {
+                throw new Error(`Server returned ${res.status}`);
+            }
         } catch (err) {
-            console.error('[BookmarksModal] Failed to delete bookmark', err);
+            console.error('[BookmarksModal] Failed saving bookmark to server:', err);
+
+            // שמירה מקומית לשרידות
+            const localFallbackBm = {
+                ...payload,
+                id: `bm_local_${Date.now()}`,
+                createdAt: new Date().toISOString()
+            };
+            const updated = [localFallbackBm, ...bookmarks];
+            setBookmarks(updated);
+            setNoteText('');
+            try {
+                localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(updated));
+            } catch { }
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -75,7 +112,6 @@ export default function BookmarksModal({
     return createPortal(
         <div className="bookmarks-modal-overlay" onClick={onClose} dir="ltr">
             <div className="bookmarks-modal-card" onClick={(e) => e.stopPropagation()}>
-                {/* Header מבצעי מותאם לתחקור הקלטות ואירועים */}
                 <div className="modal-header">
                     <div className="header-brand-wrap">
                         <div className="brand-icon-box">
@@ -91,7 +127,6 @@ export default function BookmarksModal({
                     <button className="btn-modal-close" onClick={onClose} title="Close (Esc)">✕</button>
                 </div>
 
-                {/* שורת יצירת Bookmark */}
                 <div className="create-bookmark-row">
                     <div className="input-field-wrap">
                         <svg className="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -106,34 +141,35 @@ export default function BookmarksModal({
                             value={noteText}
                             onChange={(e) => setNoteText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSaveCurrentState()}
+                            disabled={isSaving}
                             autoFocus
                         />
                     </div>
                     <button
-                        className={`btn-save-state ${noteText.trim() ? 'active' : ''}`}
+                        className={`btn-save-state ${noteText.trim() && !isSaving ? 'active' : ''}`}
                         onClick={handleSaveCurrentState}
-                        disabled={!noteText.trim()}
+                        disabled={!noteText.trim() || isSaving}
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <line x1="12" y1="5" x2="12" y2="19" />
                             <line x1="5" y1="12" x2="19" y2="12" />
                         </svg>
-                        <span>SAVE SNAPSHOT</span>
+                        <span>{isSaving ? 'SAVING...' : 'SAVE SNAPSHOT'}</span>
                     </button>
                 </div>
 
-                {/* כותרת המקטע */}
                 <div className="bookmarks-section-heading">
                     <div className="heading-title-group">
                         <span className="pulse-indicator" />
                         <span>SAVED TIMELINE EVENTS</span>
                     </div>
-                    <span className="count-badge">{bookmarks.length} RECORDED</span>
+                    <span className="count-badge">
+                        {isLoading ? 'SYNCING...' : `${bookmarks.length} RECORDED`}
+                    </span>
                 </div>
 
-                {/* רשימת ה-Bookmarks */}
                 <div className="bookmarks-list-container">
-                    {bookmarks.length === 0 ? (
+                    {bookmarks.length === 0 && !isLoading ? (
                         <div className="empty-bookmarks-state">
                             <div className="empty-reticle-box">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -161,7 +197,7 @@ export default function BookmarksModal({
                                     <div className="bm-title-row">
                                         <span className="bm-title">{bm.title}</span>
                                         <span className="bm-time-tag">
-                                            {new Date(bm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            {bm.createdAt ? new Date(bm.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                         </span>
                                     </div>
                                     <div className="bm-meta-row">
@@ -177,19 +213,6 @@ export default function BookmarksModal({
                                             {bm.stationIds?.length || 0} STATIONS
                                         </span>
                                     </div>
-                                </div>
-
-                                <div className="bm-actions">
-                                    <button
-                                        className="btn-delete-bm"
-                                        onClick={(e) => handleDeleteBookmark(bm.id, e)}
-                                        title="Delete Bookmark"
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                            <line x1="18" y1="6" x2="6" y2="18" />
-                                            <line x1="6" y1="6" x2="18" y2="18" />
-                                        </svg>
-                                    </button>
                                 </div>
                             </div>
                         ))
