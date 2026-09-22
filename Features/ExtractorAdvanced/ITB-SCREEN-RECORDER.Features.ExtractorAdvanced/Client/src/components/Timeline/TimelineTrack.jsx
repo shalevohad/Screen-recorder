@@ -7,6 +7,13 @@ import './TimelineTrack.scss';
 const MAX_SPRITESHEET_ZOOM_MS = 2.5 * 60 * 60 * 1000;
 const MAX_CONCURRENT_REQUESTS = 3;
 
+// פונקציות עזר גנריות לחילוץ מדויק של תחילת וסיום מקטע
+const getSegStart = (seg) =>
+    seg.startEpochMs ?? seg.startEpoch ?? seg.StartEpoch ?? seg.start ?? (seg.startUtc ? new Date(seg.startUtc).getTime() : 0);
+
+const getSegEnd = (seg) =>
+    seg.endEpochMs ?? seg.endEpoch ?? seg.EndEpoch ?? seg.end ?? (seg.endUtc ? new Date(seg.endUtc).getTime() : 0);
+
 export default function TimelineTrack({
     station,
     isActive,
@@ -16,16 +23,19 @@ export default function TimelineTrack({
     inPointMs,
     outPointMs,
     baseEpochMs,
-    segments = []
+    segments: initialSegments = [],
+    globalGaps = []
 }) {
     const trackRef = useRef(null);
     const [loadedFrames, setLoadedFrames] = useState({});
     const [streamMetadata, setStreamMetadata] = useState({ fps: 30, frameDurationMs: 33.333 });
+    const [realChunks, setRealChunks] = useState([]);
     const activeAbortControllerRef = useRef(null);
 
-    // 1. שליפת נתוני וידאו אמיתיים (FPS ורזולוציה) מ-FFprobe
+    const hostname = station.hostname || station.id || station.name || '';
+
+    // 1. שליפת נתוני וידאו אמיתיים מ-FFprobe
     useEffect(() => {
-        const hostname = station.hostname || station.id || station.name;
         if (!hostname || !baseEpochMs) return;
 
         const targetEpoch = baseEpochMs + Math.round(inPointMs || viewportStartMs);
@@ -37,26 +47,53 @@ export default function TimelineTrack({
                 }
             })
             .catch(() => { });
-    }, [station, baseEpochMs, inPointMs, viewportStartMs]);
+    }, [hostname, baseEpochMs, inPointMs, viewportStartMs]);
+
+    // 2. שליפת הצ'אנקים האמיתיים שנמצאו פיזית על הדיסק עבור התחנה בטווח הנוכחי
+    useEffect(() => {
+        if (!hostname || !baseEpochMs) return;
+
+        const startEpoch = baseEpochMs + Math.round(inPointMs || viewportStartMs || 0);
+        const endEpoch = baseEpochMs + Math.round(outPointMs || (viewportStartMs + viewportDurationMs) || 0);
+
+        fetch(`/api/v1/extractor-advanced/timeline-segments?stations=${encodeURIComponent(hostname)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data && data[hostname] && Array.isArray(data[hostname])) {
+                    setRealChunks(data[hostname]);
+                }
+            })
+            .catch(() => { });
+    }, [hostname, baseEpochMs, inPointMs, outPointMs, viewportStartMs, viewportDurationMs]);
+
+    // 3. הגדרת המקטעים האמיתיים: עדיפות מוחלטת לצ'אנקים שנסרקו מהדיסק
+    const activeSegments = useMemo(() => {
+        if (realChunks.length > 0) return realChunks;
+
+        // אם עדיין לא הגיעו צ'אנקים מהשרת, מנפים מקטע מדומה שלוקח את כל ה-Scope
+        return (initialSegments || []).filter(s => {
+            const dur = getSegEnd(s) - getSegStart(s);
+            return dur > 0 && dur < viewportDurationMs * 0.95;
+        });
+    }, [realChunks, initialSegments, viewportDurationMs]);
 
     const inPercent = ((inPointMs - viewportStartMs) / viewportDurationMs) * 100;
     const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;
 
-    // 2. חישוב תאי הזמן המסונכרנים עם ה-FPS
+    // 4. חישוב תאי הפריים: אכיפה קשיחה של יצירת פריימים אך ורק בתחום הצ'אנקים האמיתיים
     const frameCells = useMemo(() => {
         if (
             !baseEpochMs ||
             viewportDurationMs <= 0 ||
             viewportDurationMs > MAX_SPRITESHEET_ZOOM_MS ||
-            !segments ||
-            segments.length === 0
+            !activeSegments ||
+            activeSegments.length === 0
         ) {
             return [];
         }
 
         const realFrameDurationMs = streamMetadata.frameDurationMs || (1000 / (streamMetadata.fps || 30));
 
-        // קביעת צעד הזמן לפי רמת הזום (בזום מקסימלי: פריים בודד לפי ה-FPS)
         let stepMs = realFrameDurationMs;
         if (viewportDurationMs > 600000) {
             stepMs = 30000;
@@ -78,16 +115,17 @@ export default function TimelineTrack({
         const focusStartEpoch = baseEpochMs + focusStartMs;
         const focusEndEpoch = baseEpochMs + focusEndMs;
 
-        const hostname = station.hostname || station.id || station.name || '';
         const cells = [];
 
-        segments.forEach((seg, sIdx) => {
-            const segStart = seg.startEpoch ?? seg.StartEpoch ?? seg.start ?? 0;
-            const segEnd = seg.endEpoch ?? seg.EndEpoch ?? seg.end ?? 0;
+        activeSegments.forEach((seg, sIdx) => {
+            const segStart = getSegStart(seg);
+            const segEnd = getSegEnd(seg);
 
+            // חיתוך גבולות הפריים אך ורק לתחום המקטע האמיתי
             const activeStartEpoch = Math.max(focusStartEpoch, segStart);
             const activeEndEpoch = Math.min(focusEndEpoch, segEnd);
 
+            // אם אין חפיפה בין הצ'אנק לפוקוס — מדלגים לחלוטין (מונע ציור פריימים על גבי Gaps)
             if (activeEndEpoch <= activeStartEpoch) return;
 
             const firstCellStart = Math.floor(activeStartEpoch / stepMs) * stepMs;
@@ -120,9 +158,9 @@ export default function TimelineTrack({
         });
 
         return cells;
-    }, [station, baseEpochMs, viewportStartMs, viewportDurationMs, inPointMs, outPointMs, segments, streamMetadata]);
+    }, [hostname, baseEpochMs, viewportStartMs, viewportDurationMs, inPointMs, outPointMs, activeSegments, streamMetadata]);
 
-    // 3. תור טעינת פריימים מבוקר
+    // 5. תור טעינת פריימים מבוקר
     useEffect(() => {
         if (frameCells.length === 0) return;
 
@@ -149,12 +187,7 @@ export default function TimelineTrack({
             activeWorkers++;
 
             fetch(nextCell.url, { signal: abortController.signal })
-                .then(res => {
-                    if (res.ok && res.status === 200) {
-                        return res.blob();
-                    }
-                    return null;
-                })
+                .then(res => (res.ok && res.status === 200 ? res.blob() : null))
                 .then(blob => {
                     if (blob && blob.size > 0 && !isCancelled) {
                         const blobUrl = URL.createObjectURL(blob);
@@ -182,17 +215,17 @@ export default function TimelineTrack({
         };
     }, [frameCells]);
 
-    // מקטעי הקלטה פעילים (ירוק)
+    // 6. מקטעי הקלטה פעילים (קו נוכחות ירוק בתחתית עבור הצ'אנקים האמיתיים בלבד)
     const recordedBars = useMemo(() => {
-        if (!segments || segments.length === 0 || !baseEpochMs) return [];
+        if (!activeSegments || activeSegments.length === 0 || !baseEpochMs) return [];
 
         const vpStart = viewportStartMs;
         const vpEnd = viewportStartMs + viewportDurationMs;
 
-        return segments
+        return activeSegments
             .map((seg, idx) => {
-                const startEpoch = seg.startEpoch ?? seg.StartEpoch ?? seg.start ?? 0;
-                const endEpoch = seg.endEpoch ?? seg.EndEpoch ?? seg.end ?? 0;
+                const startEpoch = getSegStart(seg);
+                const endEpoch = getSegEnd(seg);
 
                 const startMs = startEpoch - baseEpochMs;
                 const endMs = endEpoch - baseEpochMs;
@@ -208,70 +241,126 @@ export default function TimelineTrack({
                 return { id: idx, leftPct, widthPct };
             })
             .filter(Boolean);
-    }, [segments, baseEpochMs, viewportStartMs, viewportDurationMs]);
+    }, [activeSegments, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
-    // פערי זמן (GAPs) בגובה מלא
-    const realGaps = useMemo(() => {
+    // 7. סיווג פערים: הפרדה בין פער משותף (כתום-ענבר שיורד ב-Cut) לבין פער פרטני (אדום/No Signal)
+    const classifiedGaps = useMemo(() => {
         if (!baseEpochMs || viewportDurationMs <= 0) return [];
 
-        const sorted = [...(segments || [])].sort((a, b) => {
-            const aStart = a.startEpoch ?? a.StartEpoch ?? a.start ?? 0;
-            const bStart = b.startEpoch ?? b.StartEpoch ?? b.start ?? 0;
-            return aStart - bStart;
-        });
+        const sorted = [...(activeSegments || [])].sort((a, b) => getSegStart(a) - getSegStart(b));
 
-        const gaps = [];
+        const rawStationEmptyRanges = [];
         const vpStart = viewportStartMs;
         const vpEnd = viewportStartMs + viewportDurationMs;
+        const vpStartEpoch = baseEpochMs + vpStart;
+        const vpEndEpoch = baseEpochMs + vpEnd;
 
         if (sorted.length > 0) {
-            const firstSegStart = sorted[0].startEpoch ?? sorted[0].StartEpoch ?? sorted[0].start ?? baseEpochMs;
-            const firstSegStartMs = firstSegStart - baseEpochMs;
-            if (firstSegStartMs > vpStart) {
-                const clStart = vpStart;
-                const clEnd = Math.min(vpEnd, firstSegStartMs);
-                const leftPct = ((clStart - vpStart) / viewportDurationMs) * 100;
-                const widthPct = ((clEnd - clStart) / viewportDurationMs) * 100;
-                if (widthPct > 0) gaps.push({ id: 'gap-leading', leftPct, widthPct });
+            const firstSegStart = getSegStart(sorted[0]);
+            if (firstSegStart > vpStartEpoch) {
+                rawStationEmptyRanges.push({ startEpoch: vpStartEpoch, endEpoch: firstSegStart });
             }
         } else if (viewportDurationMs > 0) {
-            gaps.push({ id: 'gap-all', leftPct: 0, widthPct: 100 });
+            rawStationEmptyRanges.push({ startEpoch: vpStartEpoch, endEpoch: vpEndEpoch });
         }
 
         for (let i = 0; i < sorted.length - 1; i++) {
-            const currentEnd = sorted[i].endEpoch ?? sorted[i].EndEpoch ?? sorted[i].end ?? 0;
-            const nextStart = sorted[i + 1].startEpoch ?? sorted[i + 1].StartEpoch ?? sorted[i + 1].start ?? 0;
+            const currentEnd = getSegEnd(sorted[i]);
+            const nextStart = getSegStart(sorted[i + 1]);
 
-            const currentEndMs = currentEnd - baseEpochMs;
-            const nextStartMs = nextStart - baseEpochMs;
-
-            if (nextStartMs - currentEndMs > 1000) {
-                if (nextStartMs > vpStart && currentEndMs < vpEnd) {
-                    const clStart = Math.max(vpStart, currentEndMs);
-                    const clEnd = Math.min(vpEnd, nextStartMs);
-
-                    const leftPct = ((clStart - vpStart) / viewportDurationMs) * 100;
-                    const widthPct = ((clEnd - clStart) / viewportDurationMs) * 100;
-
-                    if (widthPct > 0) gaps.push({ id: `gap-${i}`, leftPct, widthPct });
-                }
+            if (nextStart - currentEnd > 1000) {
+                rawStationEmptyRanges.push({ startEpoch: currentEnd, endEpoch: nextStart });
             }
         }
 
         if (sorted.length > 0) {
-            const lastSegEnd = sorted[sorted.length - 1].endEpoch ?? sorted[sorted.length - 1].EndEpoch ?? sorted[sorted.length - 1].end ?? baseEpochMs;
-            const lastSegEndMs = lastSegEnd - baseEpochMs;
-            if (lastSegEndMs < vpEnd) {
-                const clStart = Math.max(vpStart, lastSegEndMs);
-                const clEnd = vpEnd;
-                const leftPct = ((clStart - vpStart) / viewportDurationMs) * 100;
-                const widthPct = ((clEnd - clStart) / viewportDurationMs) * 100;
-                if (widthPct > 0) gaps.push({ id: 'gap-trailing', leftPct, widthPct });
+            const lastSegEnd = getSegEnd(sorted[sorted.length - 1]);
+            if (lastSegEnd < vpEndEpoch) {
+                rawStationEmptyRanges.push({ startEpoch: lastSegEnd, endEpoch: vpEndEpoch });
             }
         }
 
-        return gaps;
-    }, [segments, baseEpochMs, viewportStartMs, viewportDurationMs]);
+        const resultGaps = [];
+
+        // 1. פערים משותפים (כתום-ענבר שייחתכו החוצה ב-Export)
+        if (globalGaps && globalGaps.length > 0) {
+            globalGaps.forEach((g, idx) => {
+                const gStart = g.startEpochMs;
+                const gEnd = g.endEpochMs;
+
+                if (gEnd <= vpStartEpoch || gStart >= vpEndEpoch) return;
+
+                const clStartEpoch = Math.max(vpStartEpoch, gStart);
+                const clEndEpoch = Math.min(vpEndEpoch, gEnd);
+
+                const startMs = clStartEpoch - baseEpochMs;
+                const endMs = clEndEpoch - baseEpochMs;
+
+                const leftPct = ((startMs - vpStart) / viewportDurationMs) * 100;
+                const widthPct = ((endMs - startMs) / viewportDurationMs) * 100;
+
+                if (widthPct > 0) {
+                    resultGaps.push({
+                        id: `global-${idx}`,
+                        type: 'global',
+                        leftPct,
+                        widthPct,
+                        durationSec: g.durationSeconds || Math.round((gEnd - gStart) / 1000)
+                    });
+                }
+            });
+        }
+
+        // 2. פערי תחנה פרטניים (אדום/No Signal - נשארים עם שקופית גישור)
+        rawStationEmptyRanges.forEach((range, rIdx) => {
+            let subRanges = [range];
+
+            if (globalGaps && globalGaps.length > 0) {
+                globalGaps.forEach(g => {
+                    const nextSubs = [];
+                    subRanges.forEach(sub => {
+                        if (g.endEpochMs <= sub.startEpoch || g.startEpochMs >= sub.endEpoch) {
+                            nextSubs.push(sub);
+                        } else {
+                            if (g.startEpochMs > sub.startEpoch) {
+                                nextSubs.push({ startEpoch: sub.startEpoch, endEpoch: g.startEpochMs });
+                            }
+                            if (g.endEpochMs < sub.endEpoch) {
+                                nextSubs.push({ startEpoch: g.endEpochMs, endEpoch: sub.endEpoch });
+                            }
+                        }
+                    });
+                    subRanges = nextSubs;
+                });
+            }
+
+            subRanges.forEach((sub, sIdx) => {
+                if (sub.endEpoch - sub.startEpoch < 1000) return;
+                if (sub.endEpoch <= vpStartEpoch || sub.startEpoch >= vpEndEpoch) return;
+
+                const clStartEpoch = Math.max(vpStartEpoch, sub.startEpoch);
+                const clEndEpoch = Math.min(vpEndEpoch, sub.endEpoch);
+
+                const startMs = clStartEpoch - baseEpochMs;
+                const endMs = clEndEpoch - baseEpochMs;
+
+                const leftPct = ((startMs - vpStart) / viewportDurationMs) * 100;
+                const widthPct = ((endMs - startMs) / viewportDurationMs) * 100;
+
+                if (widthPct > 0) {
+                    resultGaps.push({
+                        id: `station-${rIdx}-${sIdx}`,
+                        type: 'station',
+                        leftPct,
+                        widthPct,
+                        durationSec: Math.round((sub.endEpoch - sub.startEpoch) / 1000)
+                    });
+                }
+            });
+        });
+
+        return resultGaps;
+    }, [activeSegments, globalGaps, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
     const stationName = station.displayName || station.hostname || station.name || '';
 
@@ -288,26 +377,32 @@ export default function TimelineTrack({
             </div>
 
             <div className="track-canvas" ref={trackRef}>
-                {/* 1. שכבת GAPs בגובה מלא */}
+                {/* 1. שכבת פערי זמן בגובה מלא */}
                 <div className="full-height-gaps-layer">
-                    {realGaps.map(gap => (
+                    {classifiedGaps.map(gap => (
                         <div
                             key={gap.id}
-                            className="gap-full-block"
+                            className={`gap-full-block ${gap.type === 'global' ? 'gap-global-skipped' : 'gap-station-signal'}`}
                             style={{ left: `${gap.leftPct}%`, width: `${gap.widthPct}%` }}
-                            title="Recording Gap / No Signal"
+                            title={
+                                gap.type === 'global'
+                                    ? `Shared Gap: ${gap.durationSec}s will be skipped in export with 0.3s dip-to-black`
+                                    : `Station Gap: ${gap.durationSec}s will be bridged with No-Signal pattern`
+                            }
                         >
                             <div className="gap-pattern" />
-                            {gap.widthPct > 6 && (
-                                <div className="gap-badge">
-                                    <span>NO SIGNAL</span>
+                            {gap.widthPct > 5 && (
+                                <div className={`gap-badge ${gap.type === 'global' ? 'global-badge' : ''}`}>
+                                    <span>
+                                        {gap.type === 'global' ? `✂ SKIPPED (${gap.durationSec}s)` : 'NO SIGNAL'}
+                                    </span>
                                 </div>
                             )}
                         </div>
                     ))}
                 </div>
 
-                {/* 2. שכבת תאי הפריים עם שקופית Blur מקדימה ומעבר Focus-In */}
+                {/* 2. שכבת תאי הפריים (נוצרת אך ורק במקטעים שבהם באמת הוקלט וידאו) */}
                 {frameCells.length > 0 && (
                     <div className="spritesheet-filmstrip-layer">
                         {frameCells.map(cell => {
@@ -321,10 +416,7 @@ export default function TimelineTrack({
                                         width: `${cell.widthPct}%`
                                     }}
                                 >
-                                    {/* 💡 שקופית Blur מקדימה המוצגת מיידית */}
                                     <div className="placeholder-blur" />
-
-                                    {/* 💡 התמונה האמיתית: נכנסת ב-Focus רך מטושטש לחד */}
                                     {blobUrl && (
                                         <div
                                             className="frame-image-cover"
@@ -337,7 +429,7 @@ export default function TimelineTrack({
                     </div>
                 )}
 
-                {/* 3. מחוון נוכחות ירוק בתחתית */}
+                {/* 3. מחוון נוכחות ירוק בתחתית (עבור הצ'אנקים האמיתיים בלבד) */}
                 <div className="data-presence-layer">
                     {recordedBars.map(bar => (
                         <div

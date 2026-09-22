@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
@@ -44,12 +45,36 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             return Accepted(job);
         }
 
+        /// <summary>
+        /// 💡 הערכת גודל ופערים מקדימה בזמן עריכה בציר הזמן (TimelineBoard)
+        /// תומך בפנייה ישירה מ-/api/v1/extractor-advanced/estimate או דרך /jobs/estimate
+        /// </summary>
+        [HttpPost("estimate")]
+        [HttpPost("/api/v1/extractor-advanced/estimate")]
+        public async Task<IActionResult> EstimateJob([FromBody] AdvanceCutRequestDto request)
+        {
+            if (request.StationIds == null || request.StationIds.Count == 0 || request.OutEpochMs <= request.InEpochMs)
+            {
+                return BadRequest(new { error = "Invalid station selection or In/Out time parameters." });
+            }
+
+            try
+            {
+                var estimate = await _advanceJobManager.EstimateCutJobAsync(request);
+                return Ok(estimate);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:AdvancedJobs] Error calculating cut estimate.");
+                return StatusCode(500, "Error calculating cut estimate.");
+            }
+        }
+
         [HttpGet]
         public IActionResult GetJobs()
         {
             try
             {
-                // שליפת כל המשימות ישירות ממנהל המשימות המקורי
                 var jobs = _jobManager.GetAllJobs();
                 return Ok(jobs);
             }
@@ -94,7 +119,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return NotFound(new { error = "Export archive not ready or expired." });
             }
 
-            // עדכון מונה ההורדות בדומה למקורי
             _jobManager.RegisterDownload(jobId);
 
             var fileName = job.FileName ?? Path.GetFileName(job.OutputFilePath);

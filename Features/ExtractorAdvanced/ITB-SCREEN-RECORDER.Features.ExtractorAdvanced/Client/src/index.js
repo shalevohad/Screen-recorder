@@ -4,7 +4,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import ExtractorAdvancedStudio from './ExtractorAdvancedStudio.jsx';
-import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor';
+import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
 import './ExtractorAdvanced.scss';
 
 const STYLE_ID = 'itb-extractor-advanced-theme';

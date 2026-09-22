@@ -38,7 +38,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         public async Task<IActionResult> GetStations(
             [FromQuery] long? startEpoch,
             [FromQuery] long? endEpoch,
-            [FromQuery] string? timeMode = "LOCAL")
+            [FromQuery] string? timeMode = "LOCAL",
+            CancellationToken ct = default)
         {
             try
             {
@@ -51,14 +52,33 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
-                var stations = availableHosts.Select(host => new
+                var stations = new List<object>();
+
+                foreach (var host in availableHosts)
                 {
-                    id = host,
-                    hostname = host,
-                    displayName = host,
-                    isOnline = true,
-                    recordingsCount = 0
-                }).ToList();
+                    var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
+                    var realSegments = chunks
+                        .Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath))
+                        .OrderBy(c => c.StartUtc)
+                        .Select(c => new
+                        {
+                            startEpoch = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
+                            endEpoch = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds(),
+                            startEpochMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
+                            endEpochMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds()
+                        }).ToList();
+
+                    stations.Add(new
+                    {
+                        id = host,
+                        hostname = host,
+                        displayName = host,
+                        isOnline = true,
+                        recordingsCount = realSegments.Count,
+                        // 💡 מזינים ישירות את הצ'אנקים האמיתיים שנמצאו פיזית בדיסק!
+                        segments = realSegments
+                    });
+                }
 
                 return Ok(stations);
             }
@@ -96,12 +116,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
 
                     var segList = new List<object>();
-                    foreach (var chunk in chunks.OrderBy(c => c.StartUtc))
+                    foreach (var chunk in chunks.Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath)).OrderBy(c => c.StartUtc))
                     {
+                        long sMs = new DateTimeOffset(chunk.StartUtc).ToUnixTimeMilliseconds();
+                        long eMs = new DateTimeOffset(chunk.EndUtc).ToUnixTimeMilliseconds();
+
                         segList.Add(new
                         {
-                            startEpoch = new DateTimeOffset(chunk.StartUtc).ToUnixTimeMilliseconds(),
-                            endEpoch = new DateTimeOffset(chunk.EndUtc).ToUnixTimeMilliseconds()
+                            startEpoch = sMs,
+                            endEpoch = eMs,
+                            startEpochMs = sMs,
+                            endEpochMs = eMs
                         });
                     }
 

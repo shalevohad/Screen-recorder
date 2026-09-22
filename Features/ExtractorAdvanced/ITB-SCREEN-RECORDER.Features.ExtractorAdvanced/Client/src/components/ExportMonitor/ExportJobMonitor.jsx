@@ -259,7 +259,8 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                                     <div className="progress-fill" style={{ width: `${Math.max(3, currentPct)}%` }} />
                                                 </div>
                                                 <div className="progress-bottom-meta">
-                                                    <span className="size-streamed">{formatSize(job.fileSizeBytes)}</span>
+                                                    {/* 💡 הצגת הגודל המשוער של הארכיון, כאשר הגודל שנבנה בפועל מוצג ב-phase-lbl מעל */}
+                                                    <span className="size-streamed">EST: {formatSize(job.fileSizeBytes)}</span>
                                                     <div className="telemetry-tags">
                                                         <span className="speed">{job.speedMBps > 0 ? `${job.speedMBps.toFixed(1)} MB/s` : 'Analyzing'}</span>
                                                         {job.estimatedSecondsRemaining > 0 && (

@@ -1,4 +1,6 @@
-﻿// Client/src/components/Timeline/TimelineBoard.scss
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.scss
+// ==========================================
 
 .timeline-board-root {
     position: relative;
@@ -31,7 +33,7 @@
             min-width: 0;
             display: flex;
             flex-direction: column;
-            gap: 10px; /* מרווח המונע התנגשות בין תגית הריחוף של הרולר למינימאפ */
+            gap: 10px;
 
             .timeline-overview-strip {
                 height: 34px;
@@ -46,23 +48,19 @@
                 width: 100%;
                 height: 26px;
                 box-sizing: border-box;
-                padding-left: 30px; /* 150px + 30px = 180px, בדיוק מיושר לקו הערוצים */
-                padding-right: 58px; /* מיושר לפיקסל בדיוק מול רוחב כפתור ה-Export */
+                padding-left: 30px;
+                padding-right: 58px;
             }
         }
     }
 }
-
-/* =========================================================
-   מבנה הערוצים וכפתור ה-Export (קינון נקי ועיצוב Soft Modern)
-   ========================================================= */
 
 .tracks-with-export-layout {
     display: block !important;
     position: relative !important;
     width: 100% !important;
     background: transparent !important;
-    padding-right: 58px !important; /* פינוי מקום מדויק לכפתור (48px רוחב + 10px רווח) */
+    padding-right: 58px !important;
     box-sizing: border-box !important;
     min-width: 0 !important;
 
@@ -85,7 +83,7 @@
             background-color: rgba(148, 163, 184, 0.2);
             border-radius: 9999px;
         }
-        /* חיווי טקטי מרוכך למצב שבו לא נבחרו תחנות פעילות */
+
         .timeline-empty-tracks-placeholder {
             height: 48px;
             display: flex;
@@ -123,7 +121,7 @@
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
-        padding: 0 !important;
+        padding: 8px 2px !important;
         margin: 0 !important;
         border-radius: 12px !important;
         outline: none !important;
@@ -138,19 +136,20 @@
         container-type: size !important;
 
         .export-icon-top {
-            margin-bottom: 12px !important;
+            margin-bottom: 8px !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
             transition: margin 0.3s ease !important;
             background: rgba(15, 23, 42, 0.4) !important;
-            width: 32px !important;
-            height: 32px !important;
+            width: 30px !important;
+            height: 30px !important;
             border-radius: 50% !important;
+            flex-shrink: 0 !important;
 
             svg {
-                width: 16px !important;
-                height: 16px !important;
+                width: 15px !important;
+                height: 15px !important;
                 transition: transform 0.3s ease, filter 0.3s ease !important;
                 stroke: currentColor !important;
             }
@@ -160,12 +159,59 @@
             writing-mode: vertical-rl !important;
             transform: rotate(180deg) !important;
             font-family: var(--font-ui, sans-serif) !important;
-            font-size: 11px !important;
+            font-size: 10px !important;
             font-weight: 700 !important;
             letter-spacing: 2px !important;
             white-space: nowrap !important;
             text-transform: uppercase !important;
             transition: opacity 0.2s ease !important;
+        }
+
+        .export-button-estimate-box {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            gap: 3px !important;
+            margin-top: 8px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+            flex-shrink: 0 !important;
+
+            .estimate-size-pill {
+                font-family: 'JetBrains Mono', monospace !important;
+                font-size: 8.5px !important;
+                font-weight: 800 !important;
+                color: #34d399 !important;
+                background: rgba(16, 185, 129, 0.16) !important;
+                border: 1px solid rgba(52, 211, 153, 0.35) !important;
+                border-radius: 4px !important;
+                padding: 1px 3px !important;
+                white-space: nowrap !important;
+                line-height: 1.1 !important;
+                letter-spacing: 0.2px !important;
+                transition: all 0.2s ease !important;
+            }
+
+            .estimate-gaps-pill {
+                font-family: 'JetBrains Mono', monospace !important;
+                font-size: 8px !important;
+                font-weight: 700 !important;
+                color: #38bdf8 !important;
+                background: rgba(56, 189, 248, 0.15) !important;
+                border: 1px solid rgba(56, 189, 248, 0.35) !important;
+                border-radius: 4px !important;
+                padding: 1px 3px !important;
+                white-space: nowrap !important;
+                line-height: 1.1 !important;
+                transition: all 0.2s ease !important;
+            }
+
+            .estimate-loading {
+                font-family: 'JetBrains Mono', monospace !important;
+                font-size: 9px !important;
+                color: #94a3b8 !important;
+                opacity: 0.7 !important;
+            }
         }
 
         @container (max-height: 160px) {
@@ -174,7 +220,17 @@
             }
 
             .export-icon-top {
-                margin-bottom: 0 !important;
+                margin-bottom: 2px !important;
+            }
+
+            .export-button-estimate-box {
+                margin-top: 4px !important;
+            }
+        }
+
+        @container (max-height: 110px) {
+            .export-button-estimate-box .estimate-gaps-pill {
+                display: none !important;
             }
         }
 
@@ -195,11 +251,25 @@
 
                 .export-icon-top {
                     background: transparent !important;
-                }
 
-                    .export-icon-top svg {
+                    svg {
                         transform: translateY(-2px) !important;
                     }
+                }
+
+                .export-button-estimate-box {
+                    .estimate-size-pill {
+                        color: #064e3b !important;
+                        background: rgba(255, 255, 255, 0.85) !important;
+                        border-color: rgba(6, 78, 59, 0.3) !important;
+                    }
+
+                    .estimate-gaps-pill {
+                        color: #0c4a6e !important;
+                        background: rgba(255, 255, 255, 0.75) !important;
+                        border-color: rgba(12, 74, 110, 0.3) !important;
+                    }
+                }
             }
         }
 
@@ -212,6 +282,10 @@
 
             .export-icon-top {
                 background: transparent !important;
+            }
+
+            .export-button-estimate-box {
+                opacity: 0.4 !important;
             }
         }
     }

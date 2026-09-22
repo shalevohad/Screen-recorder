@@ -110,7 +110,7 @@
         height: 100%;
         overflow: hidden;
         background-color: rgba(10, 15, 29, 0.5);
-        // שכבת GAPs בגובה מלא
+        // שכבת פערי זמן בגובה מלא
         .full-height-gaps-layer {
             position: absolute;
             inset: 0;
@@ -121,51 +121,96 @@
                 position: absolute;
                 top: 0;
                 bottom: 0;
-                background-color: rgba(225, 29, 72, 0.16);
-                border-left: 1px solid rgba(244, 63, 94, 0.65);
-                border-right: 1px solid rgba(244, 63, 94, 0.65);
                 box-sizing: border-box;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 overflow: hidden;
+                // 1. פער פרטני: NO SIGNAL (ורוד/אדום)
+                &.gap-station-signal {
+                    background-color: rgba(225, 29, 72, 0.16);
+                    border-left: 1px solid rgba(244, 63, 94, 0.65);
+                    border-right: 1px solid rgba(244, 63, 94, 0.65);
 
-                .gap-pattern {
-                    position: absolute;
-                    inset: 0;
-                    background-image: repeating-linear-gradient( -45deg, rgba(244, 63, 94, 0.22), rgba(244, 63, 94, 0.22) 10px, rgba(159, 18, 57, 0.38) 10px, rgba(159, 18, 57, 0.38) 20px );
+                    .gap-pattern {
+                        position: absolute;
+                        inset: 0;
+                        background-image: repeating-linear-gradient( -45deg, rgba(244, 63, 94, 0.22), rgba(244, 63, 94, 0.22) 10px, rgba(159, 18, 57, 0.38) 10px, rgba(159, 18, 57, 0.38) 20px );
+                    }
+
+                    .gap-badge {
+                        position: relative;
+                        z-index: 2;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 2px 8px;
+                        background-color: rgba(15, 23, 42, 0.88);
+                        border: 1px solid rgba(244, 63, 94, 0.55);
+                        border-radius: 4px;
+                        color: #FDA4AF;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        letter-spacing: 0.5px;
+                        text-transform: uppercase;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+                        white-space: nowrap;
+
+                        &::before {
+                            content: '';
+                            width: 5px;
+                            height: 5px;
+                            border-radius: 50%;
+                            background-color: #F43F5E;
+                            box-shadow: 0 0 6px #F43F5E;
+                        }
+                    }
                 }
+                // 2. פער משותף שיורד בסרטון: SKIPPED GAP (כתום-ענבר טקטי)
+                &.gap-global-skipped {
+                    background-color: rgba(245, 158, 11, 0.12);
+                    border-left: 1px dashed rgba(245, 158, 11, 0.7);
+                    border-right: 1px dashed rgba(245, 158, 11, 0.7);
 
-                .gap-badge {
-                    position: relative;
-                    z-index: 2;
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 2px 10px;
-                    background-color: rgba(15, 23, 42, 0.88);
-                    border: 1px solid rgba(244, 63, 94, 0.55);
-                    border-radius: 4px;
-                    color: #FDA4AF;
-                    font-size: 9.5px;
-                    font-weight: 800;
-                    letter-spacing: 1px;
-                    text-transform: uppercase;
-                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-                    white-space: nowrap;
+                    .gap-pattern {
+                        position: absolute;
+                        inset: 0;
+                        background-image: repeating-linear-gradient( -45deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.18) 10px, rgba(180, 83, 9, 0.3) 10px, rgba(180, 83, 9, 0.3) 20px );
+                    }
 
-                    &::before {
-                        content: '';
-                        width: 5px;
-                        height: 5px;
-                        border-radius: 50%;
-                        background-color: #F43F5E;
-                        box-shadow: 0 0 6px #F43F5E;
+                    .gap-badge.global-badge {
+                        position: relative;
+                        z-index: 2;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                        padding: 2px 8px;
+                        background-color: rgba(15, 23, 42, 0.92);
+                        border: 1px solid rgba(245, 158, 11, 0.65);
+                        border-radius: 4px;
+                        color: #FDE68A;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        letter-spacing: 0.5px;
+                        text-transform: uppercase;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+                        white-space: nowrap;
+
+                        &::before {
+                            content: '';
+                            width: 5px;
+                            height: 5px;
+                            border-radius: 50%;
+                            background-color: #F59E0B;
+                            box-shadow: 0 0 6px #F59E0B;
+                        }
                     }
                 }
             }
         }
-        // 💡 שכבת תאי הפריים עם שקופית Blur מקדימה ומעבר Focus-In
+        // שכבת תאי הפריים
         .spritesheet-filmstrip-layer {
             position: absolute;
             inset: 0;
@@ -181,7 +226,7 @@
                 border-right: 1px solid rgba(255, 255, 255, 0.12);
                 overflow: hidden;
                 background-color: rgba(15, 23, 42, 0.6);
-                // 1. שקופית Blur & Shimmer כללית לפני שהתמונה נטענת
+
                 .placeholder-blur {
                     position: absolute;
                     inset: 0;
@@ -192,7 +237,7 @@
                     opacity: 1;
                     transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
                 }
-                // 2. התמונה האמיתית: נטענת עם טשטוש ונפתחת בחדות חלקה
+
                 .frame-image-cover {
                     position: absolute;
                     inset: 0;
@@ -201,10 +246,10 @@
                     background-repeat: no-repeat;
                     opacity: 0;
                     filter: blur(10px) brightness(0.8);
-                    transform: scale(1.05); // מונע מסגרת לבנה סביב ה-Blur
+                    transform: scale(1.05);
                     transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1), filter 0.32s cubic-bezier(0.4, 0, 0.2, 1), transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
                 }
-                // מצב לאחר סיום טעינה: Blur נעלם והתמונה חדה
+
                 &.is-loaded {
                     .placeholder-blur {
                         opacity: 0;
@@ -218,7 +263,7 @@
                 }
             }
         }
-        // מחוון נוכחות ירוק בתחתית הרצועה
+        // מחוון נוכחות ירוק בתחתית
         .data-presence-layer {
             position: absolute;
             bottom: 0;

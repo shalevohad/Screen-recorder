@@ -1,6 +1,12 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvancedExtractorService.cs
 // ==========================================
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,17 +14,56 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using ITB_SCREEN_RECORDER.Features.Extractor.Models;
-using ITB_SCREEN_RECORDER.Features.Extractor.Services;
-using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 {
+    public class TimeInterval
+    {
+        public DateTime StartUtc { get; set; }
+        public DateTime EndUtc { get; set; }
+        public double DurationSeconds => Math.Max(0, (EndUtc - StartUtc).TotalSeconds);
+    }
+
+    public class GlobalGapRecord
+    {
+        public int GapIndex { get; set; }
+        public DateTime StartUtc { get; set; }
+        public DateTime EndUtc { get; set; }
+        public double SkippedDurationSeconds { get; set; }
+        public double TimelineOffsetSeconds { get; set; }
+    }
+
+    public class StationGapRecord
+    {
+        public string StationId { get; set; } = string.Empty;
+        public DateTime StartUtc { get; set; }
+        public DateTime EndUtc { get; set; }
+        public double DurationSeconds { get; set; }
+    }
+
+    public class SynchronizationPlan
+    {
+        public List<TimeInterval> ActiveSegments { get; set; } = new();
+        public List<GlobalGapRecord> RemovedGlobalGaps { get; set; } = new();
+        public List<StationGapRecord> StationGaps { get; set; } = new();
+        public double TotalActiveSeconds => ActiveSegments.Sum(s => s.DurationSeconds);
+    }
+
+    public class ProbedStationMetadata
+    {
+        public int Width { get; set; } = 1920;
+        public int Height { get; set; } = 1080;
+        public double Fps { get; set; } = 30.0;
+        public string PixFmt { get; set; } = "yuv420p";
+        public bool HasAudio { get; set; } = false;
+        public int AudioSampleRate { get; set; } = 48000;
+        public int AudioChannels { get; set; } = 2;
+        public string AudioCodec { get; set; } = "aac";
+    }
+
     public class AdvancedExtractorService : ExtractorService
     {
         private readonly IDummyVideoGenerator _dummyVideoGenerator;
@@ -48,7 +93,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _memoryCache = memoryCache;
         }
 
-        public string ResolveFfmpegBinary() => ResolveBinary("ffmpeg");
+        public new string ResolveFfmpegBinary() => ResolveBinary("ffmpeg");
         public string ResolveFfprobeBinary() => ResolveBinary("ffprobe");
 
         private string ResolveBinary(string baseName)
@@ -111,29 +156,28 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 return new MemoryStream(cached);
 
             DateTime targetUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
-            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-2), targetUtc.AddMinutes(2));
+
+            // סריקת צ'אנקים באזור הזמן המבוקש
+            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-1), targetUtc.AddMinutes(1));
             await AdjustChunksToAccuratePtsAsync(chunks, ct);
 
-            var matchingChunk = chunks.FirstOrDefault(c => c.StartUtc <= targetUtc && targetUtc <= c.EndUtc);
+            // בדיקה קפדנית: האם קיים צ'אנק פיזי אמיתי בדיסק שהזמן הזה נופל בתוכו?
+            var matchingChunk = chunks.FirstOrDefault(c =>
+                !string.IsNullOrEmpty(c.FullPath) &&
+                File.Exists(c.FullPath) &&
+                c.StartUtc <= targetUtc &&
+                targetUtc <= c.EndUtc);
+
+            // 💡 קריטי: אם אין הקלטה אמיתית - לא מחזירים תמונת בדיקה! מחזירים ריק!
             if (matchingChunk == null)
             {
-                chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddHours(-1), targetUtc.AddHours(1));
-                await AdjustChunksToAccuratePtsAsync(chunks, ct);
-                matchingChunk = chunks.FirstOrDefault(c => c.StartUtc <= targetUtc && targetUtc <= c.EndUtc);
+                return Stream.Null;
             }
 
             string ffmpegPath = ResolveFfmpegBinary();
-
-            if (matchingChunk == null || !File.Exists(matchingChunk.FullPath) || targetUtc < matchingChunk.StartUtc || targetUtc > matchingChunk.EndUtc)
-            {
-                byte[] noSignal = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
-                _memoryCache?.Set(cacheKey, noSignal, TimeSpan.FromMinutes(5));
-                return new MemoryStream(noSignal);
-            }
-
             using var memoryStream = new MemoryStream(65536);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linkedCts.CancelAfter(TimeSpan.FromSeconds(5));
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(4));
 
             try
             {
@@ -165,13 +209,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     return new MemoryStream(bytes);
                 }
 
-                byte[] fallback = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
-                return new MemoryStream(fallback);
+                return Stream.Null;
             }
             catch
             {
-                byte[] fallback = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
-                return new MemoryStream(fallback);
+                return Stream.Null;
             }
         }
 
@@ -203,43 +245,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             var orderedChunks = chunks.OrderBy(c => c.StartUtc).ToList();
             var manifestLines = new List<string>();
-            DateTime currentCursor = startUtc;
 
-            if (orderedChunks[0].StartUtc > startUtc)
+            foreach (var chunk in orderedChunks)
             {
-                double gapDur = (orderedChunks[0].StartUtc - currentCursor).TotalSeconds;
-                if (gapDur > 0.1)
-                {
-                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
-                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy)) manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
-                }
-                currentCursor = orderedChunks[0].StartUtc;
-            }
-
-            for (int i = 0; i < orderedChunks.Count; i++)
-            {
-                var chunk = orderedChunks[i];
-                if (chunk.StartUtc > currentCursor)
-                {
-                    double gapDur = (chunk.StartUtc - currentCursor).TotalSeconds;
-                    if (gapDur > 0.1)
-                    {
-                        string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
-                        if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy)) manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
-                    }
-                }
                 manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
-                currentCursor = chunk.EndUtc > currentCursor ? chunk.EndUtc : currentCursor;
-            }
-
-            if (currentCursor < endUtc)
-            {
-                double trailingDur = (endUtc - currentCursor).TotalSeconds;
-                if (trailingDur > 0.1)
-                {
-                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(trailingDur, ct);
-                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy)) manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
-                }
             }
 
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"spritesheet_{Guid.NewGuid():N}.txt");
@@ -283,83 +292,479 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
         }
 
-        public async Task<string> CutSynchronizedStationTrackAsync(
-            string stationId,
+        public SynchronizationPlan BuildSynchronizationPlan(
+            List<string> stationIds,
             DateTime startUtc,
             DateTime endUtc,
-            string tempOutputDir,
-            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
-            CancellationToken ct = default)
+            Dictionary<string, List<RecordingChunkMetadata>> stationChunks)
         {
-            var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
-            await AdjustChunksToAccuratePtsAsync(chunks, ct);
+            var plan = new SynchronizationPlan();
 
-            var orderedChunks = chunks.OrderBy(c => c.StartUtc).ToList();
-            var manifestLines = new List<string>();
-            DateTime currentCursor = startUtc;
-
-            if (orderedChunks.Count == 0 || orderedChunks[0].StartUtc > startUtc)
+            var allActiveRaw = new List<TimeInterval>();
+            foreach (var kvp in stationChunks)
             {
-                DateTime gapEnd = orderedChunks.Count == 0 ? endUtc : orderedChunks[0].StartUtc;
-                if (gapEnd > endUtc) gapEnd = endUtc;
-
-                double gapDur = (gapEnd - currentCursor).TotalSeconds;
-                if (gapDur > 0.05)
+                foreach (var chunk in kvp.Value)
                 {
-                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
-                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy))
-                        manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
+                    var segStart = chunk.StartUtc < startUtc ? startUtc : chunk.StartUtc;
+                    var segEnd = chunk.EndUtc > endUtc ? endUtc : chunk.EndUtc;
+                    if (segEnd > segStart)
+                    {
+                        allActiveRaw.Add(new TimeInterval { StartUtc = segStart, EndUtc = segEnd });
+                    }
                 }
-                currentCursor = gapEnd;
             }
 
-            for (int i = 0; i < orderedChunks.Count; i++)
-            {
-                var chunk = orderedChunks[i];
+            if (allActiveRaw.Count == 0) return plan;
 
-                if (chunk.StartUtc > currentCursor)
+            var sortedRaw = allActiveRaw.OrderBy(r => r.StartUtc).ToList();
+            var mergedActive = new List<TimeInterval>();
+            var current = new TimeInterval { StartUtc = sortedRaw[0].StartUtc, EndUtc = sortedRaw[0].EndUtc };
+
+            for (int i = 1; i < sortedRaw.Count; i++)
+            {
+                if (sortedRaw[i].StartUtc <= current.EndUtc.AddSeconds(1.0))
                 {
-                    double gapDur = (chunk.StartUtc - currentCursor).TotalSeconds;
-                    if (gapDur > 0.05)
+                    if (sortedRaw[i].EndUtc > current.EndUtc) current.EndUtc = sortedRaw[i].EndUtc;
+                }
+                else
+                {
+                    mergedActive.Add(current);
+                    current = new TimeInterval { StartUtc = sortedRaw[i].StartUtc, EndUtc = sortedRaw[i].EndUtc };
+                }
+            }
+            mergedActive.Add(current);
+            plan.ActiveSegments = mergedActive;
+
+            int gapIdx = 1;
+            double runningOffset = 0;
+
+            if (mergedActive[0].StartUtc > startUtc)
+            {
+                double dur = (mergedActive[0].StartUtc - startUtc).TotalSeconds;
+                if (dur >= 1.0)
+                {
+                    plan.RemovedGlobalGaps.Add(new GlobalGapRecord
                     {
-                        string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
-                        if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy))
-                            manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
+                        GapIndex = gapIdx++,
+                        StartUtc = startUtc,
+                        EndUtc = mergedActive[0].StartUtc,
+                        SkippedDurationSeconds = dur,
+                        TimelineOffsetSeconds = 0
+                    });
+                }
+            }
+
+            for (int i = 0; i < mergedActive.Count - 1; i++)
+            {
+                runningOffset += mergedActive[i].DurationSeconds;
+                var gStart = mergedActive[i].EndUtc;
+                var gEnd = mergedActive[i + 1].StartUtc;
+                double dur = (gEnd - gStart).TotalSeconds;
+
+                if (dur >= 1.0)
+                {
+                    plan.RemovedGlobalGaps.Add(new GlobalGapRecord
+                    {
+                        GapIndex = gapIdx++,
+                        StartUtc = gStart,
+                        EndUtc = gEnd,
+                        SkippedDurationSeconds = dur,
+                        TimelineOffsetSeconds = runningOffset
+                    });
+                }
+            }
+
+            if (mergedActive.Last().EndUtc < endUtc)
+            {
+                double dur = (endUtc - mergedActive.Last().EndUtc).TotalSeconds;
+                if (dur >= 1.0)
+                {
+                    plan.RemovedGlobalGaps.Add(new GlobalGapRecord
+                    {
+                        GapIndex = gapIdx++,
+                        StartUtc = mergedActive.Last().EndUtc,
+                        EndUtc = endUtc,
+                        SkippedDurationSeconds = dur,
+                        TimelineOffsetSeconds = plan.TotalActiveSeconds
+                    });
+                }
+            }
+
+            if (stationIds.Count > 1)
+            {
+                foreach (var sId in stationIds)
+                {
+                    var sChunks = stationChunks.GetValueOrDefault(sId, new List<RecordingChunkMetadata>())
+                                               .OrderBy(c => c.StartUtc).ToList();
+
+                    foreach (var activeSeg in mergedActive)
+                    {
+                        DateTime segCursor = activeSeg.StartUtc;
+                        var overlapping = sChunks
+                            .Where(c => c.EndUtc > activeSeg.StartUtc && c.StartUtc < activeSeg.EndUtc)
+                            .OrderBy(c => c.StartUtc).ToList();
+
+                        foreach (var chunk in overlapping)
+                        {
+                            if (chunk.StartUtc > segCursor.AddSeconds(1.0))
+                            {
+                                plan.StationGaps.Add(new StationGapRecord
+                                {
+                                    StationId = sId,
+                                    StartUtc = segCursor,
+                                    EndUtc = chunk.StartUtc,
+                                    DurationSeconds = (chunk.StartUtc - segCursor).TotalSeconds
+                                });
+                            }
+                            segCursor = chunk.EndUtc > segCursor ? chunk.EndUtc : segCursor;
+                        }
+
+                        if (segCursor < activeSeg.EndUtc.AddSeconds(-1.0))
+                        {
+                            plan.StationGaps.Add(new StationGapRecord
+                            {
+                                StationId = sId,
+                                StartUtc = segCursor,
+                                EndUtc = activeSeg.EndUtc,
+                                DurationSeconds = (activeSeg.EndUtc - segCursor).TotalSeconds
+                            });
+                        }
+                    }
+                }
+            }
+
+            return plan;
+        }
+
+        /// <summary>
+        /// דוגם ישירות באמצעות FFprobe קובץ וידאו פיזי של התחנה
+        /// </summary>
+        public async Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(string filePath, string stationId, CancellationToken ct)
+        {
+            var meta = new ProbedStationMetadata();
+            string ffprobePath = ResolveFfprobeBinary();
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffprobePath,
+                Arguments = $"-v error -show_streams -show_format -of json \"{filePath.Replace('\\', '/')}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var proc = new Process { StartInfo = psi };
+            var sb = new StringBuilder();
+            proc.OutputDataReceived += (_, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
+
+            try
+            {
+                proc.Start();
+                proc.BeginOutputReadLine();
+                await proc.WaitForExitAsync(ct);
+
+                string json = sb.ToString();
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    _advancedLogger.LogWarning("[FFprobe Direct Probe] Empty output for '{File}'. Using defaults.", filePath);
+                    return meta;
+                }
+
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
+                {
+                    bool foundVideo = false;
+                    foreach (var stream in streams.EnumerateArray())
+                    {
+                        if (!stream.TryGetProperty("codec_type", out var typeProp)) continue;
+                        string type = typeProp.GetString() ?? "";
+
+                        if (type == "video" && !foundVideo)
+                        {
+                            foundVideo = true;
+                            if (stream.TryGetProperty("width", out var w)) meta.Width = w.GetInt32();
+                            if (stream.TryGetProperty("height", out var h)) meta.Height = h.GetInt32();
+                            if (stream.TryGetProperty("pix_fmt", out var pf)) meta.PixFmt = pf.GetString() ?? "yuv420p";
+
+                            if (stream.TryGetProperty("r_frame_rate", out var rfr) && ParseFpsFraction(rfr.GetString(), out double rFps))
+                            {
+                                meta.Fps = rFps;
+                            }
+                            else if (stream.TryGetProperty("avg_frame_rate", out var afr) && ParseFpsFraction(afr.GetString(), out double aFps))
+                            {
+                                meta.Fps = aFps;
+                            }
+                        }
+                        else if (type == "audio")
+                        {
+                            meta.HasAudio = true;
+                            if (stream.TryGetProperty("sample_rate", out var sr) && int.TryParse(sr.GetString(), out int srVal) && srVal > 0)
+                            {
+                                meta.AudioSampleRate = srVal;
+                            }
+                            if (stream.TryGetProperty("channels", out var ch))
+                            {
+                                meta.AudioChannels = ch.GetInt32();
+                            }
+                            if (stream.TryGetProperty("codec_name", out var cn))
+                            {
+                                meta.AudioCodec = cn.GetString() ?? "aac";
+                            }
+                        }
                     }
                 }
 
-                if (chunk.EndUtc > currentCursor)
-                {
-                    manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
-                    currentCursor = chunk.EndUtc > currentCursor ? chunk.EndUtc : currentCursor;
-                }
-
-                if (currentCursor >= endUtc) break;
+                _advancedLogger.LogInformation(
+                    "[FFprobe Direct Probe] Station '{StationId}' file '{File}': {Width}x{Height} @ {Fps:0.##} fps ({PixFmt}), HasAudio={HasAudio} ({SampleRate}Hz, {Channels}ch)",
+                    stationId, Path.GetFileName(filePath), meta.Width, meta.Height, meta.Fps, meta.PixFmt, meta.HasAudio, meta.AudioSampleRate, meta.AudioChannels);
             }
-
-            if (currentCursor < endUtc)
+            catch (Exception ex)
             {
-                double trailingDur = (endUtc - currentCursor).TotalSeconds;
-                if (trailingDur > 0.05)
+                _advancedLogger.LogError(ex, "[FFprobe Direct Probe] Failed probing file '{File}' for station '{StationId}'.", filePath, stationId);
+            }
+
+            return meta;
+        }
+
+        private static bool ParseFpsFraction(string? fpsStr, out double fps)
+        {
+            fps = 30.0;
+            if (string.IsNullOrWhiteSpace(fpsStr)) return false;
+            var parts = fpsStr.Split('/');
+            if (parts.Length == 2 &&
+                double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double num) &&
+                double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double den) && den > 0)
+            {
+                fps = num / den;
+                return true;
+            }
+            if (double.TryParse(fpsStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double val) && val > 0)
+            {
+                fps = val;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// מייצר שקופית גישור התואמת 1:1 למטא-דאטה של הצ'אנק הצמוד אליה
+        /// </summary>
+        private async Task<string> GenerateMatchedBridgeVideoAsync(
+            double durationSeconds,
+            ProbedStationMetadata probe,
+            string tempDir,
+            CancellationToken ct)
+        {
+            string bridgePath = Path.Combine(tempDir, $"bridge_{Guid.NewGuid():N}.mp4");
+            string ffmpegPath = ResolveFfmpegBinary();
+            string durStr = durationSeconds.ToString("0.000", CultureInfo.InvariantCulture);
+            string fpsStr = Math.Clamp(probe.Fps, 10, 120).ToString("0.00", CultureInfo.InvariantCulture);
+
+            string args;
+            if (probe.HasAudio)
+            {
+                string channelLayout = probe.AudioChannels == 1 ? "mono" : "stereo";
+                args = $"-nostdin -loglevel error -y " +
+                       $"-f lavfi -i color=c=black:s={probe.Width}x{probe.Height}:r={fpsStr} " +
+                       $"-f lavfi -i anullsrc=r={probe.AudioSampleRate}:cl={channelLayout} " +
+                       $"-t {durStr} " +
+                       $"-c:v libx264 -preset ultrafast -pix_fmt yuv420p " +
+                       $"-c:a aac -b:a 128k -ar {probe.AudioSampleRate} -ac {probe.AudioChannels} " +
+                       $"\"{bridgePath.Replace('\\', '/')}\"";
+            }
+            else
+            {
+                args = $"-nostdin -loglevel error -y " +
+                       $"-f lavfi -i color=c=black:s={probe.Width}x{probe.Height}:r={fpsStr} " +
+                       $"-t {durStr} " +
+                       $"-c:v libx264 -preset ultrafast -pix_fmt yuv420p " +
+                       $"-an \"{bridgePath.Replace('\\', '/')}\"";
+            }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = args,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var proc = Process.Start(psi);
+            if (proc != null)
+            {
+                await proc.WaitForExitAsync(ct);
+            }
+
+            return bridgePath;
+        }
+
+        /// <summary>
+        /// מרנדר קובץ MP4 עבור התחנה: דוגם את הצ'אנק הקרוב לחיתוך, ודוגם צ'אנק שכן עבור כל פער פנימי
+        /// </summary>
+        public async Task<(string OutputFilePath, bool HasAudio)> CutSynchronizedTrackAsync(
+            string stationId,
+            SynchronizationPlan plan,
+            List<RecordingChunkMetadata> stationChunks,
+            string tempOutputDir,
+            bool isMultiStation,
+            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
+            CancellationToken ct = default)
+        {
+            var orderedChunks = stationChunks.OrderBy(c => c.StartUtc).ToList();
+            if (orderedChunks.Count == 0)
+            {
+                throw new InvalidOperationException($"No video chunks found for station '{stationId}'.");
+            }
+
+            // מנגנון מטמון מקומי לדגימות FFprobe לפי נתיב קובץ
+            var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
+
+            async Task<ProbedStationMetadata> GetChunkProbeAsync(RecordingChunkMetadata? chunk)
+            {
+                if (chunk == null || string.IsNullOrEmpty(chunk.FullPath) || !File.Exists(chunk.FullPath))
+                    return new ProbedStationMetadata();
+
+                if (probeCache.TryGetValue(chunk.FullPath, out var cached))
+                    return cached;
+
+                var probed = await ProbeMediaFileDirectlyAsync(chunk.FullPath, stationId, ct);
+                probeCache[chunk.FullPath] = probed;
+                return probed;
+            }
+
+            // 💡 1. דגימת Baseline ממוקדת: הצ'אנק שהכי קרוב לתחילת ה-Cut המבוקש (ולא הקובץ הראשון והמרוחק)
+            DateTime cutStartUtc = plan.ActiveSegments.FirstOrDefault()?.StartUtc ?? orderedChunks[0].StartUtc;
+            var representativeChunk = orderedChunks
+                .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
+                .OrderBy(c => Math.Abs((c.StartUtc - cutStartUtc).TotalSeconds))
+                .FirstOrDefault();
+
+            var baselineProbe = await GetChunkProbeAsync(representativeChunk);
+            _advancedLogger.LogInformation(
+                "[CutSynchronizedTrack] Station '{StationId}' baseline probed from closest chunk '{File}' (Delta: {Delta:0.1}s from cut start).",
+                stationId, Path.GetFileName(representativeChunk?.FullPath ?? "none"),
+                representativeChunk != null ? Math.Abs((representativeChunk.StartUtc - cutStartUtc).TotalSeconds) : 0);
+
+            var manifestLines = new List<string>();
+            var cutJunctions = new List<double>();
+            double runningSeconds = 0;
+            bool anyChunkHasAudio = baselineProbe.HasAudio;
+
+            for (int segIdx = 0; segIdx < plan.ActiveSegments.Count; segIdx++)
+            {
+                var seg = plan.ActiveSegments[segIdx];
+                DateTime cursor = seg.StartUtc;
+                RecordingChunkMetadata? lastPlayedChunkInSeg = null;
+
+                if (segIdx > 0 && runningSeconds > 0.6)
                 {
-                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(trailingDur, ct);
-                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy))
-                        manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
+                    cutJunctions.Add(runningSeconds);
+                }
+
+                var segChunks = orderedChunks
+                    .Where(c => c.EndUtc > seg.StartUtc && c.StartUtc < seg.EndUtc)
+                    .OrderBy(c => c.StartUtc).ToList();
+
+                foreach (var chunk in segChunks)
+                {
+                    // 💡 2. אם יש פער פנימי בריבוי תחנות: דוגמים את הצ'אנק השכן הצמוד לפער (הקודם או הנוכחי)
+                    if (isMultiStation && chunk.StartUtc > cursor.AddSeconds(0.2))
+                    {
+                        double gapDur = (chunk.StartUtc - cursor).TotalSeconds;
+                        var neighborChunk = lastPlayedChunkInSeg ?? chunk;
+                        var neighborProbe = await GetChunkProbeAsync(neighborChunk);
+
+                        _advancedLogger.LogInformation(
+                            "[Bridge Neighbor Probe] Station '{StationId}' gap of {Dur:0.2}s bridged using neighbor chunk '{File}' ({W}x{H} @ {Fps:0.##}fps)",
+                            stationId, gapDur, Path.GetFileName(neighborChunk.FullPath), neighborProbe.Width, neighborProbe.Height, neighborProbe.Fps);
+
+                        string bridge = await GenerateMatchedBridgeVideoAsync(gapDur, neighborProbe, tempOutputDir, ct);
+                        if (File.Exists(bridge))
+                        {
+                            manifestLines.Add($"file '{bridge.Replace('\\', '/')}'");
+                            runningSeconds += gapDur;
+                        }
+                    }
+
+                    DateTime effStart = chunk.StartUtc < cursor ? cursor : chunk.StartUtc;
+                    DateTime effEnd = chunk.EndUtc > seg.EndUtc ? seg.EndUtc : chunk.EndUtc;
+                    double dur = (effEnd - effStart).TotalSeconds;
+
+                    if (dur > 0.05 && File.Exists(chunk.FullPath))
+                    {
+                        manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
+                        runningSeconds += dur;
+                        cursor = effEnd;
+                        lastPlayedChunkInSeg = chunk;
+                    }
+                }
+
+                // 💡 3. סגירת פער פרטני בסוף המקטע הפעיל: דוגמים את הצ'אנק האחרון שניגן
+                if (isMultiStation && cursor < seg.EndUtc.AddSeconds(-0.2))
+                {
+                    double gapDur = (seg.EndUtc - cursor).TotalSeconds;
+                    var neighborChunk = lastPlayedChunkInSeg ?? representativeChunk;
+                    var neighborProbe = await GetChunkProbeAsync(neighborChunk);
+
+                    _advancedLogger.LogInformation(
+                        "[Bridge Trailing Neighbor Probe] Station '{StationId}' trailing gap of {Dur:0.2}s bridged using chunk '{File}'",
+                        stationId, gapDur, Path.GetFileName(neighborChunk?.FullPath ?? "none"));
+
+                    string bridge = await GenerateMatchedBridgeVideoAsync(gapDur, neighborProbe, tempOutputDir, ct);
+                    if (File.Exists(bridge))
+                    {
+                        manifestLines.Add($"file '{bridge.Replace('\\', '/')}'");
+                        runningSeconds += gapDur;
+                    }
                 }
             }
 
-            string tempManifestPath = Path.Combine(Path.GetTempPath(), $"sync_{stationId}_{Guid.NewGuid():N}.txt");
+            if (manifestLines.Count == 0)
+            {
+                throw new InvalidOperationException($"No valid media segments found to bundle for station {stationId}.");
+            }
+
+            string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{stationId}_{Guid.NewGuid():N}.txt");
             await File.WriteAllLinesAsync(tempManifestPath, manifestLines, new UTF8Encoding(false), ct);
 
-            string outputPath = Path.Combine(tempOutputDir, $"{stationId}_{startUtc:yyyyMMdd_HHmmss}.mp4");
-            double targetSeconds = (endUtc - startUtc).TotalSeconds;
+            string outputPath = Path.Combine(tempOutputDir, $"{stationId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.mp4");
 
-            string vfFilter = "fade=t=in:st=0:d=0.3,fade=t=out:st=" + Math.Max(0.1, targetSeconds - 0.3).ToString("0.03", CultureInfo.InvariantCulture) + ":d=0.3,format=yuv420p";
+            // בניית פילטרי ה-Fade המאובטחים בנקודות הדילוג על פערים משותפים
+            var vfFilters = new List<string>();
+            vfFilters.Add("fade=t=in:st=0:d=0.3:enable='between(t,0,0.3)'");
+
+            foreach (var junc in cutJunctions.Distinct())
+            {
+                double outStart = Math.Max(0, junc - 0.3);
+                string outStartStr = outStart.ToString("0.00", CultureInfo.InvariantCulture);
+                string juncStr = junc.ToString("0.00", CultureInfo.InvariantCulture);
+                double inEnd = Math.Min(runningSeconds, junc + 0.3);
+                string inEndStr = inEnd.ToString("0.00", CultureInfo.InvariantCulture);
+
+                vfFilters.Add($"fade=t=out:st={outStartStr}:d=0.3:enable='between(t,{outStartStr},{juncStr})'");
+                vfFilters.Add($"fade=t=in:st={juncStr}:d=0.3:enable='between(t,{juncStr},{inEndStr})'");
+            }
+
+            if (runningSeconds > 0.6)
+            {
+                double endStart = Math.Max(0, runningSeconds - 0.3);
+                string endStartStr = endStart.ToString("0.00", CultureInfo.InvariantCulture);
+                string totalStr = runningSeconds.ToString("0.00", CultureInfo.InvariantCulture);
+                vfFilters.Add($"fade=t=out:st={endStartStr}:d=0.3:enable='between(t,{endStartStr},{totalStr})'");
+            }
+
+            vfFilters.Add("format=yuv420p");
+            string videoFilterArg = string.Join(",", vfFilters);
+
+            // הגדרת ערוץ אודיו בהתאם לדגימת ה-FFprobe הממוקדת
+            string audioArg = anyChunkHasAudio
+                ? $"-c:a aac -b:a 128k -ar {baselineProbe.AudioSampleRate} -ac {baselineProbe.AudioChannels}"
+                : "-an";
 
             string arguments = $"-nostdin -v error -stats -progress pipe:1 -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                               $"-t {targetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                               $"-vf \"{vfFilter}\" " +
-                               $"-c:v libx264 -preset veryfast -crf 20 -c:a aac -b:a 128k -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
+                               $"-vf \"{videoFilterArg}\" " +
+                               $"-c:v libx264 -preset veryfast -crf 20 {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
 
             var startInfo = new ProcessStartInfo
             {
@@ -380,10 +785,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 var readProgressTask = Task.Run(async () =>
                 {
-                    double currentSeconds = 0;
-                    double currentFps = 0;
-                    double currentSpeed = 1.0;
-
                     using var reader = process.StandardOutput;
                     string? line;
                     while ((line = await reader.ReadLineAsync(ct)) != null)
@@ -396,20 +797,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                         if (key == "out_time_us" && long.TryParse(val, out long us))
                         {
-                            currentSeconds = us / 1_000_000.0;
-                            progress?.Report((currentSeconds, currentFps, currentSpeed));
+                            progress?.Report((us / 1_000_000.0, 0, 1.0));
                         }
                         else if (key == "fps" && double.TryParse(val, NumberStyles.Any, CultureInfo.InvariantCulture, out double f))
                         {
-                            currentFps = f;
-                        }
-                        else if (key == "speed")
-                        {
-                            string sVal = val.Replace("x", "").Trim();
-                            if (double.TryParse(sVal, NumberStyles.Any, CultureInfo.InvariantCulture, out double sp) && sp > 0)
-                            {
-                                currentSpeed = sp;
-                            }
+                            progress?.Report((0, f, 1.0));
                         }
                     }
                 }, ct);
@@ -418,9 +810,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 await Task.WhenAll(process.WaitForExitAsync(ct), readProgressTask);
 
                 if (process.ExitCode != 0)
+                {
                     throw new InvalidOperationException($"FFmpeg failed for {stationId}: {errorOutput}");
+                }
 
-                return outputPath;
+                return (outputPath, anyChunkHasAudio);
             }
             finally
             {

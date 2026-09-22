@@ -15,7 +15,7 @@
 
     .master-time-modal-card {
         width: 100%;
-        max-width: 540px;
+        max-width: 560px;
         background: linear-gradient(150deg, rgba(15, 23, 42, 0.96) 0%, rgba(9, 14, 26, 0.98) 100%);
         border: 1px solid rgba(6, 182, 212, 0.35);
         border-radius: 16px;
@@ -23,7 +23,7 @@
         padding: 24px;
         display: flex;
         flex-direction: column;
-        gap: 18px;
+        gap: 16px;
         box-sizing: border-box;
 
         .modal-header {
@@ -216,12 +216,12 @@
             .input-column {
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: 8px;
 
                 .column-header {
                     display: flex;
                     align-items: center;
-                    gap: 6px;
+                    justify-content: space-between;
 
                     .column-label {
                         font-size: 10px;
@@ -241,20 +241,13 @@
                 .field-group {
                     display: flex;
                     flex-direction: column;
-                    gap: 4px;
-                    cursor: pointer; /* מעיד על כך שכל השורה לחיצה */
-
-                    .sub-label {
-                        font-size: 9px;
-                        font-weight: 700;
-                        color: #94a3b8;
-                    }
+                    cursor: pointer;
 
                     .input-row-wrapper {
                         background: #0b1325;
                         border: 1px solid rgba(255, 255, 255, 0.12);
                         border-radius: 8px;
-                        padding: 2px 10px;
+                        padding: 6px 12px;
                         transition: all 0.2s;
 
                         &:hover {
@@ -263,22 +256,27 @@
                         }
                     }
 
-                    input {
+                    input[type="datetime-local"] {
                         width: 100%;
                         background: transparent;
                         border: none;
-                        padding: 8px 0;
                         color: #f8fafc;
                         font-family: 'JetBrains Mono', monospace;
                         font-size: 12px;
+                        font-weight: 600;
                         outline: none;
                         cursor: pointer;
-                        /* פתרון בעיית אייקוני לוח השנה והשעון השחורים בדפדפנים */
-                        color-scheme: dark;
+                        color-scheme: dark; /* מבטיח ערכת צבעים כהה ופורמט צבאי 24 שעות */
 
                         &::-webkit-calendar-picker-indicator {
-                            filter: invert(1) hue-rotate(180deg) brightness(1.2);
+                            filter: invert(0.8) sepia(1) saturate(5) hue-rotate(145deg);
                             cursor: pointer;
+                            opacity: 0.8;
+                            transition: opacity 0.2s;
+
+                            &:hover {
+                                opacity: 1;
+                            }
                         }
                     }
 
@@ -287,6 +285,34 @@
                         box-shadow: 0 0 0 1px #06b6d4, 0 0 12px rgba(6, 182, 212, 0.25);
                     }
                 }
+            }
+        }
+
+        .range-scope-summary-pill {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(6, 182, 212, 0.08);
+            border: 1px dashed rgba(6, 182, 212, 0.3);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+
+            .summary-label {
+                color: #94a3b8;
+                font-weight: 700;
+            }
+
+            .summary-value {
+                color: #22d3ee;
+                font-size: 11.5px;
+            }
+
+            .summary-cap {
+                color: #64748b;
+                font-weight: 700;
             }
         }
 

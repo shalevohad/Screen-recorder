@@ -1,5 +1,5 @@
 ﻿// ==========================================
-// File: Client/src/components/Timeline/TimelineBoard.jsx
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx
 // ==========================================
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import TimelineRuler from './TimelineRuler.jsx';
@@ -11,11 +11,18 @@ import TimelineContextMenu from './TimelineContextMenu.jsx';
 import './TimelineBoard.scss';
 
 /**
- * עקומת בלימה קובית רכה (Cubic Easing Out) לתנועת Pan חלקה וטבעית
+ * עקומת בלימה קובית רכה (Cubic Easing Out) לתנועת Pan חלקה
  */
 function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
 }
+
+const formatEstimateSize = (bytes) => {
+    if (!bytes || bytes <= 0) return '0 MB';
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 1000) return `${(mb / 1024).toFixed(1)} GB`;
+    return `${Math.round(mb)} MB`;
+};
 
 export default function TimelineBoard({
     stations = [],
@@ -42,21 +49,24 @@ export default function TimelineBoard({
     const [dragStartInfo, setDragStartInfo] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
 
-    // FPS אמיתי מ-FFprobe עבור הערוץ הנבחר (ברירת מחדל 30)
+    // FPS אמיתי מ-FFprobe עבור הערוץ הנבחר
     const [activeFps, setActiveFps] = useState(30);
+
+    // מטא-דאטה, צ'אנקים אמיתיים מהדיסק והערכת משקל מקדימה
+    const [estimateData, setEstimateData] = useState(null);
+    const [isEstimating, setIsEstimating] = useState(false);
 
     const trackAreaRef = useRef(null);
     const minimapRef = useRef(null);
     const hasInitializedPlayheadRef = useRef(false);
 
-    // רפרנסים לניהול גלישת ה-Pan החלקה
     const animFrameRef = useRef(null);
     const viewportStartRef = useRef(viewportStartMs);
 
     const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
     const viewportDurationMs = totalDurationMs / zoomLevel;
 
-    // 💡 שליפת ה-FPS האמיתי מ-FFprobe עבור התחנה הנבחרת
+    // שליפת FPS אמיתי מ-FFprobe
     useEffect(() => {
         if (!activeStationId || !baseEpochMs) return;
 
@@ -69,14 +79,56 @@ export default function TimelineBoard({
                 }
             })
             .catch(() => { });
-    }, [activeStationId, baseEpochMs]);
+    }, [activeStationId, baseEpochMs, playheadMs, inPointMs]);
 
-    // סנכרון רפרנס המיקום הנוכחי בכל שינוי Viewport
+    // מנגנון Debounce לשליפת צ'אנקים אמיתיים מהדיסק והערכת גודל
+    useEffect(() => {
+        if (!stations.length || outPointMs <= inPointMs || !baseEpochMs) {
+            setEstimateData(null);
+            return;
+        }
+
+        const controller = new AbortController();
+        setIsEstimating(true);
+
+        const timer = setTimeout(async () => {
+            try {
+                const payload = {
+                    stationIds: stations.map(s => s.id),
+                    inEpochMs: baseEpochMs + Math.round(inPointMs),
+                    outEpochMs: baseEpochMs + Math.round(outPointMs)
+                };
+
+                const res = await fetch('/api/v1/extractor-advanced/estimate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setEstimateData(data);
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.warn('[TimelineBoard] Estimate failed:', err);
+                }
+            } finally {
+                setIsEstimating(false);
+            }
+        }, 350);
+
+        return () => {
+            clearTimeout(timer);
+            controller.abort();
+        };
+    }, [stations, inPointMs, outPointMs, baseEpochMs]);
+
     useEffect(() => {
         viewportStartRef.current = viewportStartMs;
     }, [viewportStartMs]);
 
-    // ניקוי AnimationFrame בעת פירוק הקומפוננטה
     useEffect(() => {
         return () => {
             if (animFrameRef.current) {
@@ -98,7 +150,6 @@ export default function TimelineBoard({
         setViewportStartMs(prev => Math.max(0, Math.min(prev, totalDurationMs - viewportDurationMs)));
     }, [zoomLevel, totalDurationMs, viewportDurationMs]);
 
-    // 💡 מנוע גלישת Viewport רך ומדויק
     const animateViewportTo = useCallback((targetStart, durationMs = 280) => {
         if (animFrameRef.current) {
             cancelAnimationFrame(animFrameRef.current);
@@ -128,7 +179,6 @@ export default function TimelineBoard({
         animFrameRef.current = requestAnimationFrame(step);
     }, []);
 
-    // חישוב מדויק של זמן ממיקום X: ניכוי 180px משמאל (Header) ו-58px מימין (Export Button)
     const getMsFromClientX = useCallback((clientX) => {
         if (!trackAreaRef.current) return viewportStartMs;
         const rect = trackAreaRef.current.getBoundingClientRect();
@@ -176,12 +226,10 @@ export default function TimelineBoard({
         if (onZoomReset) onZoomReset();
     };
 
-    // 💡 ניווט מקלדת מסונכרן ל-FPS אמיתי עם Paging מונפש ברכות
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
 
-            // חישוב משך פריים בודד לפי ה-FPS של הסרטון
             const realFrameMs = 1000 / (activeFps || 30);
             const isHighZoom = viewportDurationMs <= 30000;
             const baseStep = isHighZoom ? realFrameMs : 1000;
@@ -195,7 +243,6 @@ export default function TimelineBoard({
                 const currentVpStart = viewportStartRef.current;
                 const currentVpEnd = currentVpStart + viewportDurationMs;
 
-                // יציאה ימינה: ה-View הבא יופיע כשה-Playhead בדיוק במרכז המסך
                 if (nextPlayhead >= currentVpEnd) {
                     let targetVpStart = nextPlayhead - (viewportDurationMs / 2);
                     targetVpStart = Math.max(0, Math.min(targetVpStart, totalDurationMs - viewportDurationMs));
@@ -208,7 +255,6 @@ export default function TimelineBoard({
 
                 const currentVpStart = viewportStartRef.current;
 
-                // יציאה שמאלה: ה-View הבא יופיע כשה-Playhead בדיוק בסוף המסך (בקצה הימני)
                 if (nextPlayhead < currentVpStart) {
                     let targetVpStart = nextPlayhead - viewportDurationMs;
                     targetVpStart = Math.max(0, Math.min(targetVpStart, totalDurationMs - viewportDurationMs));
@@ -368,6 +414,18 @@ export default function TimelineBoard({
 
     const isRangeValid = stations.length > 0 && Math.abs(outPointMs - inPointMs) >= 1000;
 
+    const getExportTooltip = () => {
+        if (stations.length === 0) return "Select stations to enable export";
+        if (!isRangeValid) return "Select a valid IN/OUT range to export";
+        if (!estimateData) return "Export Synchronized Multi-Track Clip (Ctrl+E)";
+
+        const sizeStr = formatEstimateSize(estimateData.estimatedFileSizeBytes);
+        const gapsStr = estimateData.removedGlobalGapsCount > 0
+            ? ` • ${estimateData.removedGlobalGapsCount} global gap(s) skipped`
+            : '';
+        return `Export Cut (Ctrl+E) • Est: ~${sizeStr}${gapsStr}`;
+    };
+
     return (
         <div ref={trackAreaRef} className="timeline-board-root" onContextMenu={handleContextMenu}>
             <div className="timeline-top-deck">
@@ -426,21 +484,32 @@ export default function TimelineBoard({
             >
                 <div className="tracks-scroll-area">
                     {stations.length > 0 ? (
-                        stations.map(station => (
-                            <TimelineTrack
-                                key={station.id}
-                                station={station}
-                                isActive={station.id === activeStationId}
-                                onSelect={() => onSelectActiveStation && onSelectActiveStation(station.id)}
-                                viewportStartMs={viewportStartMs}
-                                viewportDurationMs={viewportDurationMs}
-                                inPointMs={inPointMs}
-                                outPointMs={outPointMs}
-                                baseEpochMs={baseEpochMs}
-                                segments={recordingSegments[station.id] || station.segments || []}
-                                recordingSegments={recordingSegments}
-                            />
-                        ))
+                        stations.map(station => {
+                            // 💡 סנכרון ישיר לצ'אנקים האמיתיים שנמצאו בדיסק
+                            const effectiveSegments =
+                                estimateData?.stationChunks?.[station.id] ||
+                                (estimateData?.activeSegments?.length > 0 ? estimateData.activeSegments : null) ||
+                                recordingSegments[station.id] ||
+                                station.segments ||
+                                [];
+
+                            return (
+                                <TimelineTrack
+                                    key={station.id}
+                                    station={station}
+                                    isActive={station.id === activeStationId}
+                                    onSelect={() => onSelectActiveStation && onSelectActiveStation(station.id)}
+                                    viewportStartMs={viewportStartMs}
+                                    viewportDurationMs={viewportDurationMs}
+                                    inPointMs={inPointMs}
+                                    outPointMs={outPointMs}
+                                    baseEpochMs={baseEpochMs}
+                                    segments={effectiveSegments}
+                                    recordingSegments={recordingSegments}
+                                    globalGaps={estimateData?.removedGlobalGaps || []}
+                                />
+                            );
+                        })
                     ) : (
                         <div className="timeline-empty-tracks-placeholder">
                             <span className="placeholder-pulse" />
@@ -449,16 +518,13 @@ export default function TimelineBoard({
                     )}
                 </div>
 
+                {/* כפתור Export אנכי עם הצגת הערכת משקל ופערים חיה */}
                 <button
                     type="button"
                     onClick={isRangeValid ? onExport : undefined}
                     className={`btn-vertical-export-action ${isRangeValid ? 'active' : 'disabled'}`}
                     disabled={!isRangeValid}
-                    title={
-                        stations.length === 0
-                            ? "Select stations to enable export"
-                            : (isRangeValid ? "Export Clip (Ctrl+E)" : "Select a valid IN/OUT range to export")
-                    }
+                    title={getExportTooltip()}
                 >
                     <div className="export-icon-top">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -467,7 +533,27 @@ export default function TimelineBoard({
                             <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
                     </div>
+
                     <span className="vertical-label">EXPORT CUT</span>
+
+                    {isRangeValid && (
+                        <div className="export-button-estimate-box">
+                            {isEstimating ? (
+                                <span className="estimate-loading">...</span>
+                            ) : estimateData ? (
+                                <>
+                                    <span className="estimate-size-pill">
+                                        ~{formatEstimateSize(estimateData.estimatedFileSizeBytes)}
+                                    </span>
+                                    {estimateData.removedGlobalGapsCount > 0 && (
+                                        <span className="estimate-gaps-pill" title={`${estimateData.removedGlobalGapsCount} global gaps will be skipped`}>
+                                            ✂ {estimateData.removedGlobalGapsCount}
+                                        </span>
+                                    )}
+                                </>
+                            ) : null}
+                        </div>
+                    )}
                 </button>
             </div>
 

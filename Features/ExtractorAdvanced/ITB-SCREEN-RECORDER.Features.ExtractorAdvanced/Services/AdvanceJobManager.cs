@@ -21,6 +21,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
     public interface IAdvanceJobManager : IExportJobManager
     {
         AdvancedModels.AdvanceJobInfo EnqueueAdvanceCutJob(AdvancedModels.AdvanceCutRequestDto request);
+        Task<object> EstimateCutJobAsync(AdvancedModels.AdvanceCutRequestDto request);
     }
 
     public class AdvanceJobManager : ExportJobManager, IAdvanceJobManager
@@ -43,6 +44,70 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _advLogger = advLogger;
         }
 
+        public async Task<object> EstimateCutJobAsync(AdvancedModels.AdvanceCutRequestDto request)
+        {
+            DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(request.InEpochMs).UtcDateTime;
+            DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(request.OutEpochMs).UtcDateTime;
+
+            var allStationChunks = new Dictionary<string, List<RecordingChunkMetadata>>();
+            long totalRawBytes = 0;
+
+            foreach (var sId in request.StationIds)
+            {
+                var chunks = await _storageScanner.GetChunksForStationAsync(sId, startUtc, endUtc);
+                allStationChunks[sId] = chunks;
+                foreach (var c in chunks)
+                {
+                    if (!string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
+                    {
+                        totalRawBytes += new FileInfo(c.FullPath).Length;
+                    }
+                }
+            }
+
+            var plan = _advancedExtractorService.BuildSynchronizationPlan(request.StationIds, startUtc, endUtc, allStationChunks);
+            double originalSeconds = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
+            double activeFraction = Math.Clamp(plan.TotalActiveSeconds / originalSeconds, 0.05, 1.0);
+
+            long estimatedBytes = (long)(totalRawBytes * activeFraction);
+            if (estimatedBytes < 5 * 1024 * 1024)
+            {
+                estimatedBytes = (long)(request.StationIds.Count * (plan.TotalActiveSeconds / 60.0) * 15.0 * 1024.0 * 1024.0);
+            }
+
+            return new
+            {
+                estimatedFileSizeBytes = Math.Max(5 * 1024 * 1024, estimatedBytes),
+                activeDurationSeconds = Math.Round(plan.TotalActiveSeconds, 1),
+                skippedDurationSeconds = Math.Round(plan.RemovedGlobalGaps.Sum(g => g.SkippedDurationSeconds), 1),
+                removedGlobalGapsCount = plan.RemovedGlobalGaps.Count,
+                // 💡 החזרת הפערים המשותפים שייחתכו
+                removedGlobalGaps = plan.RemovedGlobalGaps.Select(g => new
+                {
+                    gapIndex = g.GapIndex,
+                    startEpochMs = new DateTimeOffset(g.StartUtc).ToUnixTimeMilliseconds(),
+                    endEpochMs = new DateTimeOffset(g.EndUtc).ToUnixTimeMilliseconds(),
+                    durationSeconds = g.SkippedDurationSeconds
+                }),
+                // 💡 החזרת המקטעים הפעילים האמיתיים שנמצאו בדיסק (30 שניות במקום 10 דקות!)
+                activeSegments = plan.ActiveSegments.Select(s => new
+                {
+                    startEpochMs = new DateTimeOffset(s.StartUtc).ToUnixTimeMilliseconds(),
+                    endEpochMs = new DateTimeOffset(s.EndUtc).ToUnixTimeMilliseconds(),
+                    durationSeconds = s.DurationSeconds
+                }),
+                // 💡 הצ'אנקים האמיתיים פר תחנה
+                stationChunks = allStationChunks.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Select(c => new
+                    {
+                        startEpochMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
+                        endEpochMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds()
+                    })
+                )
+            };
+        }
+
         public AdvancedModels.AdvanceJobInfo EnqueueAdvanceCutJob(AdvancedModels.AdvanceCutRequestDto request)
         {
             if (request.StationIds == null || request.StationIds.Count == 0)
@@ -61,7 +126,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
 
             string fileName = $"RECORDINGS_EXPORT_{stationSummary}_{startUtc:yyyyMMdd_HHmm}_to_{endUtc:HHmm}.tar";
-
             double durationMinutes = (endUtc - startUtc).TotalMinutes;
             long estimatedSize = (long)(request.StationIds.Count * durationMinutes * 15.0 * 1024.0 * 1024.0);
             if (estimatedSize < 5 * 1024 * 1024) estimatedSize = 15 * 1024 * 1024;
@@ -75,7 +139,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 FileName = fileName,
                 NetworkFolderPath = _exportDirectory,
                 Status = "Queued",
-                StatusMessage = "Analyzing camera chunks & estimating size...",
+                StatusMessage = "Analyzing gaps & calculating synchronization...",
                 ProgressPercent = 0,
                 SpeedMBps = 0,
                 FileSizeBytes = estimatedSize,
@@ -93,7 +157,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private async Task ProcessSynchronizedExportAsync(AdvancedModels.AdvanceJobInfo job, DateTime startUtc, DateTime endUtc)
         {
             job.Status = "Processing";
-            job.StatusMessage = $"Preparing synchronized export for {job.StationIds.Count} stations...";
+            job.StatusMessage = $"Synchronizing {job.StationIds.Count} stations...";
             job.CreatedAtUtc = DateTime.UtcNow;
 
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
@@ -101,44 +165,39 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             string finalTarPath = Path.Combine(_exportDirectory, job.FileName);
 
-            var sessionManifest = new AdvancedModels.SessionManifest
-            {
-                SessionId = job.JobId,
-                RangeStartUtc = startUtc,
-                RangeEndUtc = endUtc
-            };
-
             try
             {
-                double targetDurationSeconds = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
-                double totalDurationMs = targetDurationSeconds * 1000.0;
-                var generatedTrackPaths = new List<string>();
+                var allStationChunks = new Dictionary<string, List<RecordingChunkMetadata>>();
+                long rawBytes = 0;
+                foreach (var sId in job.StationIds)
+                {
+                    var chunks = await _storageScanner.GetChunksForStationAsync(sId, startUtc, endUtc);
+                    allStationChunks[sId] = chunks;
+                    foreach (var c in chunks)
+                    {
+                        if (!string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
+                        {
+                            rawBytes += new FileInfo(c.FullPath).Length;
+                        }
+                    }
+                }
 
+                var plan = _advancedExtractorService.BuildSynchronizationPlan(job.StationIds, startUtc, endUtc, allStationChunks);
+                double originalDurationSec = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
+                double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);
+
+                if (rawBytes > 0)
+                {
+                    job.FileSizeBytes = Math.Max(5 * 1024 * 1024, (long)(rawBytes * (exportedDurationSec / originalDurationSec)));
+                }
+
+                var generatedTrackPaths = new List<string>();
+                var sessionTracks = new List<object>();
+
+                bool isMultiStation = job.StationIds.Count > 1;
                 double slicePerStation = 80.0 / job.StationIds.Count;
                 var stopwatch = Stopwatch.StartNew();
                 DateTime lastPersistUtc = DateTime.UtcNow;
-
-                long precalculatedBytes = 0;
-                foreach (var sId in job.StationIds)
-                {
-                    try
-                    {
-                        var chunks = await _storageScanner.GetChunksForStationAsync(sId, startUtc, endUtc);
-                        foreach (var c in chunks)
-                        {
-                            if (!string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
-                            {
-                                precalculatedBytes += new FileInfo(c.FullPath).Length;
-                            }
-                            else
-                            {
-                                precalculatedBytes += 10 * 1024 * 1024;
-                            }
-                        }
-                    }
-                    catch { }
-                }
-                if (precalculatedBytes > 0) job.FileSizeBytes = precalculatedBytes;
 
                 for (int i = 0; i < job.StationIds.Count; i++)
                 {
@@ -147,36 +206,35 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                     var trackProgress = new Progress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>(p =>
                     {
-                        double fraction = Math.Clamp(p.SecondsProcessed / targetDurationSeconds, 0.0, 1.0);
+                        double fraction = Math.Clamp(p.SecondsProcessed / exportedDurationSec, 0.0, 1.0);
                         double totalProgress = baseStationProgress + (fraction * slicePerStation);
-
                         job.ProgressPercent = (int)Math.Clamp(Math.Round(totalProgress, 0), 0, 84);
 
-                        double remainingStationSeconds = Math.Max(0, targetDurationSeconds - p.SecondsProcessed);
-                        double totalRemainingSec = (remainingStationSeconds / Math.Max(0.1, p.SpeedMultiplier))
-                                                 + ((job.StationIds.Count - 1 - i) * (targetDurationSeconds / Math.Max(0.1, p.SpeedMultiplier)))
-                                                 + 3.0;
+                        double remainingStationSec = Math.Max(0, exportedDurationSec - p.SecondsProcessed);
+                        double totalRemSec = (remainingStationSec / Math.Max(0.1, p.SpeedMultiplier))
+                                           + ((job.StationIds.Count - 1 - i) * (exportedDurationSec / Math.Max(0.1, p.SpeedMultiplier)))
+                                           + 3.0;
 
-                        job.EstimatedSecondsRemaining = Math.Round(totalRemainingSec, 0);
+                        job.EstimatedSecondsRemaining = Math.Round(totalRemSec, 0);
 
-                        double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-                        if (elapsedSeconds > 0.8)
+                        long currentBuiltBytes = 0;
+                        try
                         {
-                            long currentSize = 0;
-                            try
+                            if (Directory.Exists(tempStagingDir))
                             {
-                                if (Directory.Exists(tempStagingDir))
-                                {
-                                    currentSize = Directory.GetFiles(tempStagingDir).Sum(f => new FileInfo(f).Length);
-                                }
+                                currentBuiltBytes = Directory.GetFiles(tempStagingDir).Sum(f => new FileInfo(f).Length);
                             }
-                            catch { }
+                        }
+                        catch { }
 
-                            if (currentSize > 0) job.FileSizeBytes = currentSize;
-                            job.SpeedMBps = Math.Round((job.FileSizeBytes / (1024.0 * 1024.0)) / elapsedSeconds, 1);
+                        double elapsed = stopwatch.Elapsed.TotalSeconds;
+                        if (elapsed > 0.8 && currentBuiltBytes > 0)
+                        {
+                            job.SpeedMBps = Math.Round((currentBuiltBytes / (1024.0 * 1024.0)) / elapsed, 1);
                         }
 
-                        job.StatusMessage = $"Rendering Track {i + 1} of {job.StationIds.Count}: {stationId} ({p.SpeedMultiplier:0.0}x)";
+                        double builtMb = currentBuiltBytes / (1024.0 * 1024.0);
+                        job.StatusMessage = $"Rendering Track {i + 1} of {job.StationIds.Count}: {stationId} • Built: {builtMb:0.1} MB";
 
                         if ((DateTime.UtcNow - lastPersistUtc).TotalSeconds >= 1.0)
                         {
@@ -185,23 +243,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
                     });
 
-                    // 💡 קריאה תקינה ל-6 פרמטרים התואמים את החתימה היציבה
-                    string stationMp4Path = await _advancedExtractorService.CutSynchronizedStationTrackAsync(
-                        stationId, startUtc, endUtc, tempStagingDir, trackProgress, CancellationToken.None);
+                    // 💡 רינדור הקובץ מקבל כעת חזרה גם את האם קיים ערוץ אודיו
+                    var trackResult = await _advancedExtractorService.CutSynchronizedTrackAsync(
+                        stationId, plan, allStationChunks[stationId], tempStagingDir, isMultiStation, trackProgress, CancellationToken.None);
 
-                    generatedTrackPaths.Add(stationMp4Path);
+                    generatedTrackPaths.Add(trackResult.OutputFilePath);
 
-                    sessionManifest.Tracks.Add(new AdvancedModels.SessionTrackInfo
+                    sessionTracks.Add(new
                     {
-                        Hostname = stationId,
-                        VideoFileName = Path.GetFileName(stationMp4Path),
-                        StartOffsetMs = 0,
-                        DurationMs = totalDurationMs,
-                        HasAudio = true
+                        hostname = stationId,
+                        videoFileName = Path.GetFileName(trackResult.OutputFilePath),
+                        startOffsetMs = 0,
+                        durationMs = exportedDurationSec * 1000.0,
+                        hasAudio = trackResult.HasAudio
                     });
                 }
 
-                job.StatusMessage = "Bundling synchronized screen recording archive (Tar)...";
+                job.StatusMessage = "Bundling synchronized archive (Tar)...";
                 job.ProgressPercent = 85;
                 job.EstimatedSecondsRemaining = 2;
                 PersistJobsToDisk();
@@ -219,12 +277,35 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         job.ProgressPercent = (int)Math.Round(85.0 + (((k + 1.0) / generatedTrackPaths.Count) * 12.0), 0);
                     }
 
-                    byte[] manifestBytes = JsonSerializer.SerializeToUtf8Bytes(sessionManifest, new JsonSerializerOptions { WriteIndented = true });
-                    await using var manifestMs = new MemoryStream(manifestBytes);
-                    var manifestEntry = new PaxTarEntry(TarEntryType.RegularFile, "session.json")
+                    var sessionManifestObj = new
                     {
-                        DataStream = manifestMs
+                        sessionId = job.JobId,
+                        rangeStartUtc = startUtc,
+                        rangeEndUtc = endUtc,
+                        originalDurationSeconds = originalDurationSec,
+                        exportedDurationSeconds = exportedDurationSec,
+                        removedGlobalGaps = plan.RemovedGlobalGaps.Select(g => new
+                        {
+                            gapIndex = g.GapIndex,
+                            startUtc = g.StartUtc,
+                            endUtc = g.EndUtc,
+                            skippedDurationSeconds = g.SkippedDurationSeconds,
+                            timelineOffsetSeconds = g.TimelineOffsetSeconds
+                        }),
+                        stationGaps = plan.StationGaps.Select(g => new
+                        {
+                            stationId = g.StationId,
+                            startUtc = g.StartUtc,
+                            endUtc = g.EndUtc,
+                            durationSeconds = g.DurationSeconds,
+                            bridgeType = "NoSignal"
+                        }),
+                        tracks = sessionTracks
                     };
+
+                    byte[] manifestBytes = JsonSerializer.SerializeToUtf8Bytes(sessionManifestObj, new JsonSerializerOptions { WriteIndented = true });
+                    await using var manifestMs = new MemoryStream(manifestBytes);
+                    var manifestEntry = new PaxTarEntry(TarEntryType.RegularFile, "session.json") { DataStream = manifestMs };
                     await tarWriter.WriteEntryAsync(manifestEntry);
                 }
 
@@ -237,15 +318,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.StatusMessage = "Ready for download";
                 job.CompletedAtUtc = DateTime.UtcNow;
 
-                _advLogger.LogInformation("[AdvanceJobManager] Synchronized bundle ready: {Path} ({Size} bytes)", finalTarPath, job.FileSizeBytes);
+                _advLogger.LogInformation("[AdvanceJobManager] Archive ready: {Path} ({Size} bytes)", finalTarPath, job.FileSizeBytes);
             }
             catch (Exception ex)
             {
                 job.Status = "Failed";
                 job.ErrorMessage = ex.Message;
-                job.StatusMessage = "Synchronized export failed";
+                job.StatusMessage = "Export failed";
                 job.EstimatedSecondsRemaining = 0;
-                _advLogger.LogError(ex, "[AdvanceJobManager] Screen recording packaging failed for job {JobId}", job.JobId);
+                _advLogger.LogError(ex, "[AdvanceJobManager] Export failed for job {JobId}", job.JobId);
             }
             finally
             {

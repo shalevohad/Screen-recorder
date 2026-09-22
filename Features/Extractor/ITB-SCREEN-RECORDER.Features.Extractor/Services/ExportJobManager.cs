@@ -36,7 +36,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         protected readonly Timer _retentionTimer;
         protected readonly string _exportDirectory;
         protected readonly string _stateFilePath;
-        private readonly object _stateLock = new();
+        protected readonly object _stateLock = new();
 
         protected static readonly TimeSpan RetentionPeriod = TimeSpan.FromHours(24);
 
@@ -56,10 +56,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             Directory.CreateDirectory(_exportDirectory);
             _stateFilePath = Path.Combine(_exportDirectory, "jobs_state.json");
 
-            // שחזור משימות קיימות בעליית השרת
             LoadJobsFromDisk();
 
-            // בדיקת ניקוי אוטומטית של 24 שעות שרצה כל 30 דקות
             _retentionTimer = new Timer(ExecuteRetentionCleanup, null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(30));
         }
 
@@ -78,7 +76,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         protected virtual ExportJobInfo CreateJobInstance(ExtractionRequestDto request)
         {
             string hostSummary = string.Join("_", request.Hostnames.Take(2));
-            if (request.Hostnames.Count > 2) hostSummary += $"_and_{request.Hostnames.Count - 2}_more";
+            if (request.Hostnames.Count > 2)
+            {
+                hostSummary += $"_and_{request.Hostnames.Count - 2}_more";
+            }
 
             return new ExportJobInfo
             {
@@ -163,7 +164,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 job.StatusMessage = "Ready for download";
                 job.CompletedAtUtc = DateTime.UtcNow;
 
-                // עדכון מיידי של קובץ המצב בדיסק
                 PersistJobsToDisk();
             }
             catch (Exception ex)
@@ -246,10 +246,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
         }
 
-        /// <summary>
-        /// טעינת המצב מהדיסק בעת עליית השרת ווידוא שהקבצים עדיין קיימים
-        /// </summary>
-        private void LoadJobsFromDisk()
+        protected virtual void LoadJobsFromDisk()
         {
             lock (_stateLock)
             {
@@ -264,7 +261,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     {
                         foreach (var job in savedJobs)
                         {
-                            // אם השרת קרס באמצע אריזה
                             if (job.Status == "Processing" || job.Status == "Queued")
                             {
                                 job.Status = "Failed";
@@ -273,7 +269,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                 continue;
                             }
 
-                            // בדיקה שקובץ ה-TAR שהסתיים עדיין קיים בדיסק
                             if (job.IsCompleted)
                             {
                                 if (!string.IsNullOrWhiteSpace(job.OutputFilePath) && File.Exists(job.OutputFilePath))
@@ -299,10 +294,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
         }
 
-        /// <summary>
-        /// כתיבה אטומית של מצב המשימות לקובץ JSON
-        /// </summary>
-        private void PersistJobsToDisk()
+        protected virtual void PersistJobsToDisk()
         {
             lock (_stateLock)
             {
