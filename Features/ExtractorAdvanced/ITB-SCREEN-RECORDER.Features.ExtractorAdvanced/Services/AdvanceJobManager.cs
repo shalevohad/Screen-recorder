@@ -60,7 +60,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 stationSummary += $"_and_{request.StationIds.Count - 2}_more";
             }
 
-            string fileName = $"INVESTIGATION_{stationSummary}_{startUtc:yyyyMMdd_HHmm}_to_{endUtc:HHmm}.tar";
+            string fileName = $"RECORDINGS_EXPORT_{stationSummary}_{startUtc:yyyyMMdd_HHmm}_to_{endUtc:HHmm}.tar";
 
             double durationMinutes = (endUtc - startUtc).TotalMinutes;
             long estimatedSize = (long)(request.StationIds.Count * durationMinutes * 15.0 * 1024.0 * 1024.0);
@@ -96,7 +96,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             job.StatusMessage = $"Preparing synchronized export for {job.StationIds.Count} stations...";
             job.CreatedAtUtc = DateTime.UtcNow;
 
-            // 💡 תיקון סינטקס המחרוזת האינטרפולטיבית
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
             Directory.CreateDirectory(tempStagingDir);
 
@@ -186,6 +185,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
                     });
 
+                    // 💡 קריאה תקינה ל-6 פרמטרים התואמים את החתימה היציבה
                     string stationMp4Path = await _advancedExtractorService.CutSynchronizedStationTrackAsync(
                         stationId, startUtc, endUtc, tempStagingDir, trackProgress, CancellationToken.None);
 
@@ -201,7 +201,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     });
                 }
 
-                job.StatusMessage = "Bundling synchronized investigation archive (Tar)...";
+                job.StatusMessage = "Bundling synchronized screen recording archive (Tar)...";
                 job.ProgressPercent = 85;
                 job.EstimatedSecondsRemaining = 2;
                 PersistJobsToDisk();
@@ -245,7 +245,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.ErrorMessage = ex.Message;
                 job.StatusMessage = "Synchronized export failed";
                 job.EstimatedSecondsRemaining = 0;
-                _advLogger.LogError(ex, "[AdvanceJobManager] Investigation packaging failed for job {JobId}", job.JobId);
+                _advLogger.LogError(ex, "[AdvanceJobManager] Screen recording packaging failed for job {JobId}", job.JobId);
             }
             finally
             {

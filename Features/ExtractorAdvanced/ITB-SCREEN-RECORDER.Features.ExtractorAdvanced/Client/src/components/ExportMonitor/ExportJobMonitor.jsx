@@ -24,7 +24,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
         }
     });
 
-    // פתיחה אוטומטית רק אם נשמר מצב Pinned
     const [isOpen, setIsOpen] = useState(() => {
         try {
             return localStorage.getItem('itb_export_drawer_pinned') === 'true';
@@ -35,7 +34,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
 
     const isFetchingRef = useRef(false);
 
-    // שליפת משימות רציפה מקונטרולר ה-Advanced המעודכן
     const fetchJobs = useCallback(async () => {
         if (isFetchingRef.current) return;
         isFetchingRef.current = true;
@@ -64,7 +62,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
         return () => clearInterval(interval);
     }, [fetchJobs]);
 
-    // פתיחה אוטומטית בעת שיגור משימת ייצוא
     useEffect(() => {
         const handleOpen = () => {
             setIsOpen(true);
@@ -74,12 +71,11 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
         return () => window.removeEventListener('open-export-monitor', handleOpen);
     }, [fetchJobs]);
 
-    // סגירת המגירה בלחיצה בחוץ כאשר היא אינה נעוצה (Pinned)
     useEffect(() => {
         if (!isOpen || isPinned) return;
 
         const handleOutsideClick = (e) => {
-            if (drawerRef.current && !drawerRef.current.contains(e.target) && !e.target.closest('.floating-monitor-pill')) {
+            if (drawerRef.current && !drawerRef.current.contains(e.target) && !e.target.closest('.export-floating-hud')) {
                 setIsOpen(false);
             }
         };
@@ -89,7 +85,7 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
     }, [isOpen, isPinned]);
 
     const activeJobs = jobs.filter(j => j.status === 'Processing' || j.status === 'Queued');
-    const readyJobs = jobs.filter(j => j.status === 'Completed');
+    const readyJobs = jobs.filter(j => j.status === 'Completed' || j.isCompleted);
 
     const handleTogglePin = () => {
         setIsPinned(prev => {
@@ -109,7 +105,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
         } catch { }
     };
 
-    // מחיקה עם Fade & Collapse הדרגתי (320ms) וקריאה ל-DismissJob בשרת
     const handleDismissJob = (jobId, e) => {
         e.stopPropagation();
         if (!jobId || dismissingIds.has(jobId)) return;
@@ -165,199 +160,186 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
         setTimeout(fetchJobs, 1000);
     };
 
-    const formatBytes = (bytes) => {
-        if (!bytes || bytes <= 0) return '0 MB';
-        const gb = bytes / (1024 * 1024 * 1024);
-        if (gb >= 1) return `${gb.toFixed(2)} GB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    const formatSize = (bytes) => {
+        if (!bytes || bytes <= 0) return '0 B';
+        const mb = bytes / (1024 * 1024);
+        if (mb >= 1000) return `${(mb / 1024).toFixed(2)} GB`;
+        return `${mb.toFixed(1)} MB`;
     };
 
     if (jobs.length === 0 && !isOpen) return null;
 
-    const content = (
+    return createPortal(
         <div className="export-job-monitor-root" dir="ltr">
-            {/* Pill צף מרווח עם חיווי רדאר */}
-            {!isOpen && (activeJobs.length > 0 || readyJobs.length > 0) && (
-                <button
-                    type="button"
-                    className={`floating-monitor-pill ${activeJobs.length > 0 ? 'is-active' : 'is-ready'}`}
+            {/* כפתור HUD צף */}
+            {jobs.length > 0 && !isOpen && (
+                <div
+                    className={`export-floating-hud ${activeJobs.length > 0 ? 'has-active' : 'all-ready'}`}
                     onClick={() => setIsOpen(true)}
-                    title="Click to inspect background export queue"
+                    title="Open Export Queue"
                 >
-                    <div className="pill-status-indicator">
-                        <span className={`pulse-beacon ${activeJobs.length > 0 ? 'active' : 'ready'}`} />
-                        {activeJobs.length > 0 && <span className="radar-ring" />}
+                    <span className={`beacon-dot ${activeJobs.length > 0 ? 'active' : 'done'}`} />
+                    <div className="hud-content">
+                        <span className="hud-title">
+                            {activeJobs.length > 0 ? `EXPORTS: ${activeJobs.length} PACKAGING` : `${readyJobs.length} ARCHIVE${readyJobs.length > 1 ? 'S' : ''} READY`}
+                        </span>
+                        <span className={`hud-metric ${activeJobs.length > 0 ? '' : 'ready'}`}>
+                            {activeJobs.length > 0 ? `${activeJobs[0].progressPercent}%` : 'DOWNLOAD'}
+                        </span>
                     </div>
-
-                    <span className="pill-label">EXPORTS</span>
-
-                    <div className={`pill-counter-badge ${activeJobs.length > 0 ? 'active' : 'ready'}`}>
-                        {activeJobs.length > 0 ? (
-                            <>
-                                <span className="counter-num">{activeJobs.length}</span>
-                                <span className="counter-text">PACKAGING</span>
-                            </>
-                        ) : (
-                            <>
-                                <span className="counter-num">{readyJobs.length}</span>
-                                <span className="counter-text">READY</span>
-                            </>
-                        )}
-                    </div>
-
-                    <svg className="pill-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                </button>
+                </div>
             )}
 
             {/* מגירת המשימות */}
             {isOpen && (
-                <div ref={drawerRef} className={`export-monitor-drawer ${isPinned ? 'pinned' : ''}`}>
-                    <div className="drawer-top-bar">
-                        <div className="title-cluster">
-                            <span className="dot pulse" />
-                            <span className="drawer-heading">EXPORT QUEUE</span>
-                            <span className="task-badge">{jobs.length} TASKS</span>
-                        </div>
+                <div className="export-drawer-backdrop" onClick={() => !isPinned && setIsOpen(false)}>
+                    <aside ref={drawerRef} className={`export-drawer-panel ${isPinned ? 'pinned' : ''}`} onClick={e => e.stopPropagation()}>
 
-                        <div className="bar-actions">
-                            <button
-                                type="button"
-                                className={`btn-pin ${isPinned ? 'active' : ''}`}
-                                onClick={handleTogglePin}
-                                title={isPinned ? "Unpin Drawer (Auto-closes when clicking outside)" : "Pin Drawer (Stays open across all tabs)"}
-                            >
-                                📌
-                            </button>
-                            <button
-                                type="button"
-                                className="btn-close"
-                                onClick={handleCloseDrawer}
-                                title="Close Drawer"
-                            >
-                                ✕
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="drawer-job-list">
-                        {jobs.map(job => {
-                            const isReady = job.status === 'Completed';
-                            const isFailed = job.status === 'Failed';
-                            const isProcessing = job.status === 'Processing' || job.status === 'Queued';
-                            const id = job.jobId || job.id;
-                            const isDismissing = dismissingIds.has(id);
-                            const currentPct = isReady ? 100 : Math.round(job.progressPercent || job.progressPercentage || job.progress || 0);
-
-                            return (
-                                <div
-                                    key={id}
-                                    className={`monitor-job-card ${job.status.toLowerCase()} ${isDismissing ? 'is-dismissing' : ''}`}
-                                >
-                                    <div className="card-tier-identity">
-                                        <div className="status-tag-group">
-                                            <span className={`status-pill ${job.status.toLowerCase()}`}>
-                                                {job.status.toUpperCase()}
-                                            </span>
-                                            {isProcessing && (
-                                                <span className="pct-badge">{currentPct}%</span>
-                                            )}
-                                        </div>
-
-                                        <span className="job-filename" title={job.fileName}>
-                                            {job.fileName}
-                                        </span>
-
-                                        <button
-                                            type="button"
-                                            className="btn-card-dismiss"
-                                            onClick={(e) => handleDismissJob(id, e)}
-                                            title="Delete / Dismiss Task"
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-
-                                    {isProcessing && (
-                                        <div className="card-tier-progress">
-                                            <div className="progress-track">
-                                                <div
-                                                    className="progress-fill"
-                                                    style={{ width: `${Math.max(3, currentPct)}%` }}
-                                                />
-                                            </div>
-                                            <div className="telemetry-row">
-                                                <span className="speed-tag">
-                                                    {job.speedMBps > 0 ? `${job.speedMBps.toFixed(1)} MB/s` : 'Analyzing Chunks...'}
-                                                    {job.estimatedSecondsRemaining > 0 && (() => {
-                                                        const etaDate = new Date(Date.now() + job.estimatedSecondsRemaining * 1000);
-                                                        const timeStr = etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                                                        return ` • ~${Math.ceil(job.estimatedSecondsRemaining)}s (${timeStr})`;
-                                                    })()}
-                                                </span>
-                                                <span className="status-msg">{job.statusMessage || 'Packaging archive'}</span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* גודל קובץ אמיתי, הורדות וסימנייה */}
-                                    {isReady && (
-                                        <div className="card-tier-telemetry">
-                                            <span className="meta-item size">{formatBytes(job.fileSizeBytes)}</span>
-                                            <span className="meta-item dls" title="Total downloads across all workstations">
-                                                📥 {job.downloadCount || 0} dls
-                                            </span>
-                                            <span className={`meta-item policy ${job.isBookmarked ? 'pinned' : ''}`}>
-                                                {job.isBookmarked ? '★ PINNED' : '24H PURGE'}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {isFailed && (
-                                        <div className="card-tier-error">
-                                            <span>{job.errorMessage || job.error || 'Export process interrupted'}</span>
-                                        </div>
-                                    )}
-
-                                    {/* פעולות משימה */}
-                                    {isReady && (
-                                        <div className="card-tier-actions">
-                                            <button
-                                                type="button"
-                                                className={`btn-action-pin ${job.isBookmarked ? 'active' : ''}`}
-                                                onClick={(e) => handleToggleBookmark(id, e)}
-                                                title={job.isBookmarked ? "Remove Bookmark" : "Protect from 24h purge"}
-                                            >
-                                                {job.isBookmarked ? '★ PINNED' : '☆ PIN'}
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                className="btn-action-unc"
-                                                onClick={(e) => handleCopyUncPath(job, e)}
-                                                title="Copy Local UNC Network Directory"
-                                            >
-                                                📂 UNC
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                className="btn-action-download"
-                                                onClick={() => handleDownload(job)}
-                                            >
-                                                ⬇ DOWNLOAD
-                                            </button>
-                                        </div>
-                                    )}
+                        <div className="drawer-header">
+                            <div className="header-left">
+                                <span className="header-icon">📦</span>
+                                <div>
+                                    <h3 className="drawer-title">EXPORT QUEUE</h3>
+                                    <span className="drawer-subtitle">{jobs.length} REGISTERED EXPORTS</span>
                                 </div>
-                            );
-                        })}
-                    </div>
+                            </div>
+                            <div className="bar-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <button
+                                    type="button"
+                                    className={`btn-pin ${isPinned ? 'active' : ''}`}
+                                    onClick={handleTogglePin}
+                                    title={isPinned ? "Unpin Drawer" : "Pin Drawer"}
+                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', color: isPinned ? '#22d3ee' : '#94a3b8' }}
+                                >
+                                    📌
+                                </button>
+                                <button className="btn-close" onClick={handleCloseDrawer}>✕</button>
+                            </div>
+                        </div>
+
+                        <div className="drawer-cards-scroll">
+                            {jobs.map(job => {
+                                const isReady = job.status === 'Completed' || job.isCompleted;
+                                const isFailed = job.status === 'Failed' || job.isFailed;
+                                const isProcessing = job.status === 'Processing' || job.status === 'Queued';
+                                const id = job.jobId || job.id;
+                                const isDismissing = dismissingIds.has(id);
+                                const currentPct = isReady ? 100 : Math.round(job.progressPercent || job.progressPercentage || job.progress || 0);
+
+                                return (
+                                    <div
+                                        key={id}
+                                        className={`export-job-card ${job.status.toLowerCase()} ${job.isBookmarked ? 'is-bookmarked' : ''} ${isDismissing ? 'is-dismissing' : ''}`}
+                                    >
+                                        <div className="card-header-row">
+                                            <div className="identity-group">
+                                                <span className={`status-pill ${job.status.toLowerCase()}`}>
+                                                    {isReady ? 'READY' : job.status}
+                                                </span>
+                                                <span className="file-name" title={job.fileName}>
+                                                    {job.fileName}
+                                                </span>
+                                            </div>
+                                            <button
+                                                className="btn-dismiss-card"
+                                                onClick={(e) => handleDismissJob(id, e)}
+                                                title="Dismiss export task"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+
+                                        {isProcessing && (
+                                            <div className="job-progress-section">
+                                                <div className="progress-top-line">
+                                                    <span className="phase-lbl">{job.statusMessage || 'Processing...'}</span>
+                                                    <span className="percent-val">{currentPct}%</span>
+                                                </div>
+                                                <div className="progress-rail">
+                                                    <div className="progress-fill" style={{ width: `${Math.max(3, currentPct)}%` }} />
+                                                </div>
+                                                <div className="progress-bottom-meta">
+                                                    <span className="size-streamed">{formatSize(job.fileSizeBytes)}</span>
+                                                    <div className="telemetry-tags">
+                                                        <span className="speed">{job.speedMBps > 0 ? `${job.speedMBps.toFixed(1)} MB/s` : 'Analyzing'}</span>
+                                                        {job.estimatedSecondsRemaining > 0 && (
+                                                            <span className="eta">ETA ~{Math.ceil(job.estimatedSecondsRemaining)}s</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* קוביית נתונים מתקדמת זהה למערכת הבסיסית */}
+                                        {isReady && (
+                                            <div className="job-ready-meta-box">
+                                                <div className="meta-item">
+                                                    <span className="lbl">ARCHIVE SIZE</span>
+                                                    <span className="val highlight-emerald">{formatSize(job.fileSizeBytes)}</span>
+                                                </div>
+                                                <div className="meta-item">
+                                                    <span className="lbl">DOWNLOADS</span>
+                                                    <span className="val">📥 {job.downloadCount || 0}</span>
+                                                </div>
+                                                <div className="meta-item">
+                                                    <span className="lbl">COMPLETED</span>
+                                                    <span className="val">{job.completedAtUtc ? new Date(job.completedAtUtc).toLocaleTimeString() : '--:--'}</span>
+                                                </div>
+                                                <div className="meta-item">
+                                                    <span className="lbl">RETENTION</span>
+                                                    <span className={`val policy-tag ${job.isBookmarked ? 'pinned' : ''}`}>
+                                                        {job.isBookmarked ? '★ PINNED' : '24H PURGE'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* סרגל פעולות מלא ותואם */}
+                                        {isReady && (
+                                            <div className="card-actions-bar">
+                                                <div className="sub-actions">
+                                                    <button
+                                                        type="button"
+                                                        className={`btn-action-tool ${job.isBookmarked ? 'bookmarked' : ''}`}
+                                                        onClick={(e) => handleToggleBookmark(id, e)}
+                                                        title={job.isBookmarked ? "Pinned archive (Protected from 24h purge)" : "Pin archive to protect from auto-purge"}
+                                                    >
+                                                        {job.isBookmarked ? '★ PINNED' : '☆ PIN'}
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        className="btn-action-tool"
+                                                        onClick={(e) => handleCopyUncPath(job, e)}
+                                                        title="Copy shared network directory path (UNC)"
+                                                    >
+                                                        📂 UNC
+                                                    </button>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    className="btn-download-primary"
+                                                    onClick={() => handleDownload(job)}
+                                                >
+                                                    ⬇ DOWNLOAD ARCHIVE
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {isFailed && (
+                                            <div className="job-failed-banner">
+                                                <span>FAILED: {job.errorMessage || job.error || 'Export failed'}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </aside>
                 </div>
             )}
-        </div>
+        </div>,
+        document.body
     );
-
-    return createPortal(content, document.body);
 }

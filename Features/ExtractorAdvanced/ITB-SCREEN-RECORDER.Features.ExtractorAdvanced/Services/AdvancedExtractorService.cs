@@ -283,9 +283,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
         }
 
-        /// <summary>
-        /// 💡 חיתוך וידאו מסונכרן תוך שימוש בשקופית no_signal.jpg עבור פערים פרטניים, עם תמיכה ב-Fade-in/Fade-out והזרמת התקדמות חיה מ-FFmpeg
-        /// </summary>
         public async Task<string> CutSynchronizedStationTrackAsync(
             string stationId,
             DateTime startUtc,
@@ -357,7 +354,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             string outputPath = Path.Combine(tempOutputDir, $"{stationId}_{startUtc:yyyyMMdd_HHmmss}.mp4");
             double targetSeconds = (endUtc - startUtc).TotalSeconds;
 
-            // 💡 פילטר Fade-in ו-Fade-out עדין בכניסה וביציאה מהחיתוך
             string vfFilter = "fade=t=in:st=0:d=0.3,fade=t=out:st=" + Math.Max(0.1, targetSeconds - 0.3).ToString("0.03", CultureInfo.InvariantCulture) + ":d=0.3,format=yuv420p";
 
             string arguments = $"-nostdin -v error -stats -progress pipe:1 -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
