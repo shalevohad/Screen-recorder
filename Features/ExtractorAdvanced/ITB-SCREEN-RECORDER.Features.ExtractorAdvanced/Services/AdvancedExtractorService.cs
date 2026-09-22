@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,90 +15,60 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 {
-    public static class DummyVideoGeneratorExtensions
-    {
-        public static async Task<string> GetOrCreateDummyVideoAsync(
-            this IDummyVideoGenerator generator,
-            double durationSeconds,
-            CancellationToken ct)
-        {
-            if (generator == null) return string.Empty;
-
-            var type = generator.GetType();
-            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance);
-
-            foreach (var m in methods)
-            {
-                var pars = m.GetParameters();
-                if (pars.Length >= 1 && (pars[0].ParameterType == typeof(double) || pars[0].ParameterType == typeof(float) || pars[0].ParameterType == typeof(int)))
-                {
-                    try
-                    {
-                        object[] args = pars.Length >= 2 && pars[1].ParameterType == typeof(CancellationToken)
-                            ? new object[] { durationSeconds, ct }
-                            : new object[] { durationSeconds };
-
-                        var res = m.Invoke(generator, args);
-                        if (res is Task<string> taskStr) return await taskStr;
-                        if (res is Task taskObj) { await taskObj; return string.Empty; }
-                        if (res is string strPath) return strPath;
-                    }
-                    catch { }
-                }
-            }
-            return string.Empty;
-        }
-    }
-
     public class AdvancedExtractorService : ExtractorService
     {
         private readonly IDummyVideoGenerator _dummyVideoGenerator;
+        private readonly INoSignalPatternService _patternService;
+        private readonly IVideoMetadataService _metadataService;
         private readonly ILogger<AdvancedExtractorService> _advancedLogger;
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
+        private static readonly SemaphoreSlim _localVisualThrottle = new(6, 6);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
             IFfmpegConcatRunner ffmpegRunner,
             IOptions<ExtractorOptions> extractorOptions,
             IDummyVideoGenerator dummyVideoGenerator,
+            INoSignalPatternService patternService,
+            IVideoMetadataService metadataService,
             ILogger<AdvancedExtractorService> logger,
             IMemoryCache? memoryCache = null)
             : base(storageScanner, ffmpegRunner, extractorOptions, logger)
         {
             _dummyVideoGenerator = dummyVideoGenerator;
+            _patternService = patternService;
+            _metadataService = metadataService;
             _advancedLogger = logger;
             _extractorOptions = extractorOptions.Value;
             _memoryCache = memoryCache;
         }
 
-        protected new string ResolveFfmpegBinary()
-        {
-            string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+        public string ResolveFfmpegBinary() => ResolveBinary("ffmpeg");
+        public string ResolveFfprobeBinary() => ResolveBinary("ffprobe");
 
+        private string ResolveBinary(string baseName)
+        {
+            string binaryName = OperatingSystem.IsWindows() ? $"{baseName}.exe" : baseName;
             string? assemblyDir = Path.GetDirectoryName(typeof(AdvancedExtractorService).Assembly.Location);
             if (!string.IsNullOrWhiteSpace(assemblyDir))
             {
-                string pluginBinPath = Path.Combine(assemblyDir, binaryName);
-                if (File.Exists(pluginBinPath))
-                {
-                    EnsureLinuxExecutablePermissions(pluginBinPath);
-                    return pluginBinPath;
-                }
+                string pluginBin = Path.Combine(assemblyDir, binaryName);
+                if (File.Exists(pluginBin)) { EnsureLinuxPermissions(pluginBin); return pluginBin; }
             }
 
-            if (!string.IsNullOrWhiteSpace(_extractorOptions.FfmpegPath) && File.Exists(_extractorOptions.FfmpegPath))
+            if (!string.IsNullOrWhiteSpace(_extractorOptions.FfmpegPath) && File.Exists(_extractorOptions.FfmpegPath) && baseName == "ffmpeg")
             {
-                EnsureLinuxExecutablePermissions(_extractorOptions.FfmpegPath);
+                EnsureLinuxPermissions(_extractorOptions.FfmpegPath);
                 return _extractorOptions.FfmpegPath;
             }
 
             var baseDir = AppContext.BaseDirectory;
-            string[] directCandidates =
-            {
+            string[] directCandidates = {
                 Path.Combine(baseDir, "Features", "ExtractorAdvanced", binaryName),
                 Path.Combine(baseDir, "Features", "Extractor", binaryName),
                 Path.Combine(baseDir, "Features", "Extractor", "Bin", binaryName),
@@ -110,26 +79,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             foreach (var path in directCandidates)
             {
                 var full = Path.GetFullPath(path);
-                if (File.Exists(full))
-                {
-                    EnsureLinuxExecutablePermissions(full);
-                    return full;
-                }
-            }
-
-            if (OperatingSystem.IsLinux())
-            {
-                string[] standardPaths = { "/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg" };
-                foreach (var path in standardPaths)
-                {
-                    if (File.Exists(path)) return path;
-                }
+                if (File.Exists(full)) { EnsureLinuxPermissions(full); return full; }
             }
 
             return binaryName;
         }
 
-        private void EnsureLinuxExecutablePermissions(string filePath)
+        private static void EnsureLinuxPermissions(string filePath)
         {
             if (!OperatingSystem.IsLinux() || !File.Exists(filePath)) return;
             try
@@ -142,52 +98,53 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             catch { }
         }
 
+        public Task<StreamMetadataDto> GetStreamMetadataAsync(string hostname, long epochMs, CancellationToken ct = default) =>
+            _metadataService.GetStreamMetadataAsync(hostname, epochMs, ResolveFfprobeBinary(), ct);
+
+        public Task AdjustChunksToAccuratePtsAsync<T>(IEnumerable<T> chunks, CancellationToken ct = default) where T : class =>
+            _metadataService.AdjustChunksToAccuratePtsAsync(chunks, ResolveFfprobeBinary(), ct);
+
         public async Task<Stream> ExtractFrameAsync(string hostname, long epochMs, CancellationToken ct = default)
         {
-            long epochSec = epochMs / 1000;
-            string cacheKey = $"frame_{hostname}_{epochSec}";
-
-            if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out byte[]? cachedBytes) && cachedBytes != null)
-            {
-                return new MemoryStream(cachedBytes);
-            }
+            string cacheKey = $"frame_{hostname}_{epochMs}";
+            if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out byte[]? cached) && cached != null)
+                return new MemoryStream(cached);
 
             DateTime targetUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
+            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-2), targetUtc.AddMinutes(2));
+            await AdjustChunksToAccuratePtsAsync(chunks, ct);
 
-            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-5), targetUtc.AddMinutes(5));
             var matchingChunk = chunks.FirstOrDefault(c => c.StartUtc <= targetUtc && targetUtc <= c.EndUtc);
-
             if (matchingChunk == null)
             {
                 chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddHours(-1), targetUtc.AddHours(1));
-                matchingChunk = chunks.FirstOrDefault(c => c.StartUtc <= targetUtc && targetUtc <= c.EndUtc)
-                                ?? chunks.OrderBy(c => Math.Abs((c.StartUtc - targetUtc).Ticks)).FirstOrDefault();
+                await AdjustChunksToAccuratePtsAsync(chunks, ct);
+                matchingChunk = chunks.FirstOrDefault(c => c.StartUtc <= targetUtc && targetUtc <= c.EndUtc);
             }
 
             string ffmpegPath = ResolveFfmpegBinary();
-            var memoryStream = new MemoryStream(65536);
+
+            if (matchingChunk == null || !File.Exists(matchingChunk.FullPath) || targetUtc < matchingChunk.StartUtc || targetUtc > matchingChunk.EndUtc)
+            {
+                byte[] noSignal = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
+                _memoryCache?.Set(cacheKey, noSignal, TimeSpan.FromMinutes(5));
+                return new MemoryStream(noSignal);
+            }
+
+            using var memoryStream = new MemoryStream(65536);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(5));
 
             try
             {
-                string arguments;
-                if (matchingChunk != null && File.Exists(matchingChunk.FullPath) && matchingChunk.StartUtc <= targetUtc && targetUtc <= matchingChunk.EndUtc)
-                {
-                    double offsetSeconds = Math.Max(0, (targetUtc - matchingChunk.StartUtc).TotalSeconds);
-                    string normalizedChunkPath = matchingChunk.FullPath.Replace('\\', '/');
-
-                    arguments = $"-nostdin -noautorotate -noaccurate_seek -ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                                $"-i \"{normalizedChunkPath}\" " +
-                                $"-an -sn -dn -threads 2 -vframes 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1";
-                }
-                else
-                {
-                    arguments = $"-nostdin -f lavfi -i color=c=black:s=640x360 -vframes 1 -q:v 5 -f image2pipe -vcodec mjpeg pipe:1";
-                }
+                double offsetSeconds = Math.Max(0, (targetUtc - matchingChunk.StartUtc).TotalSeconds);
+                string normalizedPath = matchingChunk.FullPath.Replace('\\', '/');
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = arguments,
+                    Arguments = $"-nostdin -loglevel error -noautorotate -ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                $"-i \"{normalizedPath}\" -an -sn -dn -threads 2 -vframes 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,
                     UseShellExecute = false,
@@ -197,58 +154,164 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 using var process = new Process { StartInfo = startInfo };
                 process.Start();
 
-                using var reg = ct.Register(() =>
-                {
-                    try { if (!process.HasExited) process.Kill(true); } catch { }
-                });
-
-                await process.StandardOutput.BaseStream.CopyToAsync(memoryStream, 32768, ct);
-                await process.WaitForExitAsync(ct);
+                using var reg = linkedCts.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+                await process.StandardOutput.BaseStream.CopyToAsync(memoryStream, 32768, linkedCts.Token);
+                await process.WaitForExitAsync(linkedCts.Token);
 
                 if (memoryStream.Length > 0)
                 {
-                    byte[] frameBytes = memoryStream.ToArray();
-                    _memoryCache?.Set(cacheKey, frameBytes, TimeSpan.FromMinutes(3));
-                    return new MemoryStream(frameBytes);
+                    byte[] bytes = memoryStream.ToArray();
+                    _memoryCache?.Set(cacheKey, bytes, TimeSpan.FromMinutes(3));
+                    return new MemoryStream(bytes);
                 }
 
-                return Stream.Null;
-            }
-            catch (OperationCanceledException)
-            {
-                return Stream.Null;
+                byte[] fallback = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
+                return new MemoryStream(fallback);
             }
             catch
             {
-                return Stream.Null;
+                byte[] fallback = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
+                return new MemoryStream(fallback);
             }
         }
 
+        public async Task<Stream> GenerateSpritesheetAsync(string hostname, DateTime startUtc, DateTime endUtc, int frameCount, int tileWidth = 120, int tileHeight = 52, CancellationToken ct = default)
+        {
+            frameCount = Math.Clamp(frameCount, 2, 8);
+            tileWidth = Math.Clamp(tileWidth, 60, 240);
+            tileHeight = Math.Clamp(tileHeight, 30, 135);
+
+            double totalSeconds = (endUtc - startUtc).TotalSeconds;
+            if (totalSeconds <= 0) return Stream.Null;
+
+            string cacheDir = Path.Combine(Path.GetTempPath(), "itb_sprites_cache", hostname);
+            Directory.CreateDirectory(cacheDir);
+
+            string cacheFilePath = Path.Combine(cacheDir, $"{startUtc:yyyyMMddHHmmss}_{endUtc:yyyyMMddHHmmss}_{frameCount}_{tileWidth}x{tileHeight}.jpg");
+            if (File.Exists(cacheFilePath) && new FileInfo(cacheFilePath).Length > 0)
+                return new FileStream(cacheFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc, endUtc);
+            await AdjustChunksToAccuratePtsAsync(chunks, ct);
+
+            string ffmpegPath = ResolveFfmpegBinary();
+            if (chunks.Count == 0)
+            {
+                byte[] blackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
+                return new MemoryStream(blackTile);
+            }
+
+            var orderedChunks = chunks.OrderBy(c => c.StartUtc).ToList();
+            var manifestLines = new List<string>();
+            DateTime currentCursor = startUtc;
+
+            if (orderedChunks[0].StartUtc > startUtc)
+            {
+                double gapDur = (orderedChunks[0].StartUtc - currentCursor).TotalSeconds;
+                if (gapDur > 0.1)
+                {
+                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
+                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy)) manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
+                }
+                currentCursor = orderedChunks[0].StartUtc;
+            }
+
+            for (int i = 0; i < orderedChunks.Count; i++)
+            {
+                var chunk = orderedChunks[i];
+                if (chunk.StartUtc > currentCursor)
+                {
+                    double gapDur = (chunk.StartUtc - currentCursor).TotalSeconds;
+                    if (gapDur > 0.1)
+                    {
+                        string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
+                        if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy)) manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
+                    }
+                }
+                manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
+                currentCursor = chunk.EndUtc > currentCursor ? chunk.EndUtc : currentCursor;
+            }
+
+            if (currentCursor < endUtc)
+            {
+                double trailingDur = (endUtc - currentCursor).TotalSeconds;
+                if (trailingDur > 0.1)
+                {
+                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(trailingDur, ct);
+                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy)) manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
+                }
+            }
+
+            string tempManifestPath = Path.Combine(Path.GetTempPath(), $"spritesheet_{Guid.NewGuid():N}.txt");
+            await File.WriteAllLinesAsync(tempManifestPath, manifestLines, new UTF8Encoding(false), ct);
+
+            double interval = Math.Max(0.05, totalSeconds / frameCount);
+            string filters = $"fps=1/{interval.ToString("F3", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = $"-nostdin -loglevel error -noautorotate -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-vf \"{filters}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 4 -y \"{cacheFilePath.Replace('\\', '/')}\"",
+                RedirectStandardOutput = false,
+                RedirectStandardError = false,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(8));
+            await _localVisualThrottle.WaitAsync(linkedCts.Token);
+
+            try
+            {
+                using var process = new Process { StartInfo = startInfo };
+                process.Start();
+                using var reg = linkedCts.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+                await process.WaitForExitAsync(linkedCts.Token);
+
+                if (File.Exists(cacheFilePath) && new FileInfo(cacheFilePath).Length > 0)
+                    return new FileStream(cacheFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+                byte[] blackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
+                return new MemoryStream(blackTile);
+            }
+            finally
+            {
+                _localVisualThrottle.Release();
+                if (File.Exists(tempManifestPath)) try { File.Delete(tempManifestPath); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// 💡 חיתוך וידאו מסונכרן תוך שימוש בשקופית no_signal.jpg עבור פערים פרטניים, עם תמיכה ב-Fade-in/Fade-out והזרמת התקדמות חיה מ-FFmpeg
+        /// </summary>
         public async Task<string> CutSynchronizedStationTrackAsync(
             string stationId,
             DateTime startUtc,
             DateTime endUtc,
             string tempOutputDir,
+            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
             CancellationToken ct = default)
         {
             var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
-            var orderedChunks = chunks.OrderBy(c => c.StartUtc).ToList();
+            await AdjustChunksToAccuratePtsAsync(chunks, ct);
 
+            var orderedChunks = chunks.OrderBy(c => c.StartUtc).ToList();
             var manifestLines = new List<string>();
             DateTime currentCursor = startUtc;
 
             if (orderedChunks.Count == 0 || orderedChunks[0].StartUtc > startUtc)
             {
                 DateTime gapEnd = orderedChunks.Count == 0 ? endUtc : orderedChunks[0].StartUtc;
-                double gapDuration = (gapEnd - currentCursor).TotalSeconds;
+                if (gapEnd > endUtc) gapEnd = endUtc;
 
-                if (gapDuration > 0)
+                double gapDur = (gapEnd - currentCursor).TotalSeconds;
+                if (gapDur > 0.05)
                 {
-                    string dummyPath = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDuration, ct);
-                    if (!string.IsNullOrEmpty(dummyPath) && File.Exists(dummyPath))
-                    {
-                        manifestLines.Add($"file '{dummyPath.Replace('\\', '/')}'");
-                    }
+                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
+                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy))
+                        manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
                 }
                 currentCursor = gapEnd;
             }
@@ -259,50 +322,54 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 if (chunk.StartUtc > currentCursor)
                 {
-                    double gapDuration = (chunk.StartUtc - currentCursor).TotalSeconds;
-                    string dummyPath = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDuration, ct);
-                    if (!string.IsNullOrEmpty(dummyPath) && File.Exists(dummyPath))
+                    double gapDur = (chunk.StartUtc - currentCursor).TotalSeconds;
+                    if (gapDur > 0.05)
                     {
-                        manifestLines.Add($"file '{dummyPath.Replace('\\', '/')}'");
+                        string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(gapDur, ct);
+                        if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy))
+                            manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
                     }
                 }
 
-                manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
-                currentCursor = chunk.EndUtc > currentCursor ? chunk.EndUtc : currentCursor;
+                if (chunk.EndUtc > currentCursor)
+                {
+                    manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
+                    currentCursor = chunk.EndUtc > currentCursor ? chunk.EndUtc : currentCursor;
+                }
+
+                if (currentCursor >= endUtc) break;
             }
 
             if (currentCursor < endUtc)
             {
-                double trailingDuration = (endUtc - currentCursor).TotalSeconds;
-                if (trailingDuration > 0)
+                double trailingDur = (endUtc - currentCursor).TotalSeconds;
+                if (trailingDur > 0.05)
                 {
-                    string dummyPath = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(trailingDuration, ct);
-                    if (!string.IsNullOrEmpty(dummyPath) && File.Exists(dummyPath))
-                    {
-                        manifestLines.Add($"file '{dummyPath.Replace('\\', '/')}'");
-                    }
+                    string dummy = await _dummyVideoGenerator.GetOrCreateDummyVideoAsync(trailingDur, ct);
+                    if (!string.IsNullOrEmpty(dummy) && File.Exists(dummy))
+                        manifestLines.Add($"file '{dummy.Replace('\\', '/')}'");
                 }
             }
 
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"sync_{stationId}_{Guid.NewGuid():N}.txt");
             await File.WriteAllLinesAsync(tempManifestPath, manifestLines, new UTF8Encoding(false), ct);
 
-            string outputFileName = $"{stationId}_{startUtc:yyyyMMdd_HHmmss}.mp4";
-            string outputPath = Path.Combine(tempOutputDir, outputFileName);
+            string outputPath = Path.Combine(tempOutputDir, $"{stationId}_{startUtc:yyyyMMdd_HHmmss}.mp4");
+            double targetSeconds = (endUtc - startUtc).TotalSeconds;
 
-            double targetDurationSeconds = (endUtc - startUtc).TotalSeconds;
-            string ffmpegPath = ResolveFfmpegBinary();
+            // 💡 פילטר Fade-in ו-Fade-out עדין בכניסה וביציאה מהחיתוך
+            string vfFilter = "fade=t=in:st=0:d=0.3,fade=t=out:st=" + Math.Max(0.1, targetSeconds - 0.3).ToString("0.03", CultureInfo.InvariantCulture) + ":d=0.3,format=yuv420p";
 
-            string arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                               $"-t {targetDurationSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
+            string arguments = $"-nostdin -v error -stats -progress pipe:1 -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                               $"-t {targetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                               $"-vf \"{vfFilter}\" " +
                                $"-c:v libx264 -preset veryfast -crf 20 -c:a aac -b:a 128k -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
-
-            _advancedLogger.LogInformation("[SYNC CUT] Rendering synchronized track for {Station} ({Duration}s) via FFmpeg at {Path}", stationId, targetDurationSeconds, ffmpegPath);
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = ffmpegPath,
+                FileName = ResolveFfmpegBinary(),
                 Arguments = arguments,
+                RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -314,123 +381,55 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             try
             {
                 process.Start();
+
+                var readProgressTask = Task.Run(async () =>
+                {
+                    double currentSeconds = 0;
+                    double currentFps = 0;
+                    double currentSpeed = 1.0;
+
+                    using var reader = process.StandardOutput;
+                    string? line;
+                    while ((line = await reader.ReadLineAsync(ct)) != null)
+                    {
+                        var parts = line.Split('=', 2);
+                        if (parts.Length != 2) continue;
+
+                        string key = parts[0].Trim();
+                        string val = parts[1].Trim();
+
+                        if (key == "out_time_us" && long.TryParse(val, out long us))
+                        {
+                            currentSeconds = us / 1_000_000.0;
+                            progress?.Report((currentSeconds, currentFps, currentSpeed));
+                        }
+                        else if (key == "fps" && double.TryParse(val, NumberStyles.Any, CultureInfo.InvariantCulture, out double f))
+                        {
+                            currentFps = f;
+                        }
+                        else if (key == "speed")
+                        {
+                            string sVal = val.Replace("x", "").Trim();
+                            if (double.TryParse(sVal, NumberStyles.Any, CultureInfo.InvariantCulture, out double sp) && sp > 0)
+                            {
+                                currentSpeed = sp;
+                            }
+                        }
+                    }
+                }, ct);
+
                 string errorOutput = await process.StandardError.ReadToEndAsync(ct);
-                await process.WaitForExitAsync(ct);
+                await Task.WhenAll(process.WaitForExitAsync(ct), readProgressTask);
 
                 if (process.ExitCode != 0)
-                {
-                    _advancedLogger.LogError("[SYNC CUT ERROR] Station {Station} failed: {Err}", stationId, errorOutput);
-                    throw new InvalidOperationException($"FFmpeg failed for {stationId} with exit code {process.ExitCode}: {errorOutput}");
-                }
+                    throw new InvalidOperationException($"FFmpeg failed for {stationId}: {errorOutput}");
 
                 return outputPath;
             }
             finally
             {
                 _concurrencyThrottle.Release();
-                if (File.Exists(tempManifestPath))
-                {
-                    try { File.Delete(tempManifestPath); } catch { }
-                }
-            }
-        }
-
-        /// <summary>
-        /// הפקת Spritesheet מבוססת מקטעים (Chunk/Tile) עם מטמון קשיח בדיסק ודילוג על פערי זמן
-        /// </summary>
-        public async Task<Stream> GenerateSpritesheetAsync(
-            string hostname,
-            DateTime startUtc,
-            DateTime endUtc,
-            int frameCount,
-            int tileWidth = 160,
-            int tileHeight = 90,
-            CancellationToken ct = default)
-        {
-            frameCount = Math.Clamp(frameCount, 2, 8);
-            tileWidth = Math.Clamp(tileWidth, 80, 240);
-            tileHeight = Math.Clamp(tileHeight, 45, 135);
-
-            // 1. בדיקת מטמון בדיסק: קבצי עבר אינם משתנים לעולם
-            string cacheDir = Path.Combine(Path.GetTempPath(), "itb_sprites_cache", hostname);
-            Directory.CreateDirectory(cacheDir);
-
-            string cacheFileName = $"{startUtc:yyyyMMddHHmmss}_{endUtc:yyyyMMddHHmmss}_{frameCount}_{tileWidth}x{tileHeight}.jpg";
-            string cacheFilePath = Path.Combine(cacheDir, cacheFileName);
-
-            if (File.Exists(cacheFilePath) && new FileInfo(cacheFilePath).Length > 0)
-            {
-                return new FileStream(cacheFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            }
-
-            // 2. בדיקת קבצים פיזיים: אם אין הקלטות במקטע זה - החזרה מיידית של 204 No Content ללא הרצת FFmpeg
-            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc, endUtc);
-            if (chunks.Count == 0)
-            {
-                return Stream.Null;
-            }
-
-            // 3. ייצור מהיר של האריח הנקודתי (מקיף 1-2 צ'אנקים בלבד)
-            string concatManifest = await _storageScanner.BuildConcatManifestAsync(chunks, startUtc, endUtc);
-            string tempManifestPath = Path.Combine(Path.GetTempPath(), $"spritesheet_{Guid.NewGuid():N}.txt");
-            await File.WriteAllTextAsync(tempManifestPath, concatManifest, new UTF8Encoding(false), ct);
-
-            double totalSeconds = (endUtc - startUtc).TotalSeconds;
-            double interval = Math.Max(0.1, totalSeconds / frameCount);
-
-            string filters = $"fps=1/{interval.ToString("F3", CultureInfo.InvariantCulture)}," +
-                             $"scale={tileWidth}:{tileHeight}:force_original_aspect_ratio=decrease," +
-                             $"pad={tileWidth}:{tileHeight}:(ow-iw)/2:(oh-ih)/2:color=black," +
-                             $"tile={frameCount}x1";
-
-            string ffmpegPath = ResolveFfmpegBinary();
-            string arguments = $"-nostdin -noautorotate -skip_frame nokey " +
-                               $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                               $"-vf \"{filters}\" -an -sn -dn -threads 2 " +
-                               $"-frames:v 1 -q:v 5 -y \"{cacheFilePath.Replace('\\', '/')}\"";
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = arguments,
-                RedirectStandardOutput = false,
-                RedirectStandardError = false,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            await _visualConcurrencyThrottle.WaitAsync(ct);
-            using var process = new Process { StartInfo = startInfo };
-
-            try
-            {
-                process.Start();
-
-                using var reg = ct.Register(() =>
-                {
-                    try { if (!process.HasExited) process.Kill(true); } catch { }
-                });
-
-                await process.WaitForExitAsync(ct);
-
-                if (File.Exists(cacheFilePath) && new FileInfo(cacheFilePath).Length > 0)
-                {
-                    return new FileStream(cacheFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                }
-
-                return Stream.Null;
-            }
-            catch (OperationCanceledException)
-            {
-                return Stream.Null;
-            }
-            finally
-            {
-                _visualConcurrencyThrottle.Release();
-                if (File.Exists(tempManifestPath))
-                {
-                    try { File.Delete(tempManifestPath); } catch { }
-                }
+                if (File.Exists(tempManifestPath)) try { File.Delete(tempManifestPath); } catch { }
             }
         }
     }

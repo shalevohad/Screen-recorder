@@ -90,7 +90,7 @@
 	<!-- 2. שחזור ובנייה שקטה של הפיצ'רים לפני בניית השרת -->
 	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild">
 		<Message Importance="high" Text="[ITB BUILD] Compiling internal Feature modules ($(Configuration))..." Condition="'@(FeatureProjects)' != ''" />
-		<MSBuild Projects="@(FeatureProjects)" Targets="Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="'@(FeatureProjects)' != ''" />
+		<MSBuild Projects="@(FeatureProjects)" Targets="Restore;Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="'@(FeatureProjects)' != ''" />
 	</Target>
 
 	<!-- 3. העתקת תוצרים ל-Debug (F5) - דריסה מלאה ללא דילוג על קבצים קיימים -->

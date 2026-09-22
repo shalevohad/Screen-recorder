@@ -84,7 +84,7 @@
 		<Folder Include="Client\src\utils\" />
 		<Folder Include="Tools\Linux\" />
 		<Folder Include="Tools\Win\" />
-		<Folder Include="wwwroot\" />
+		<Folder Include="Client\public\assets\" />
 	</ItemGroup>
 
 	<ItemGroup>

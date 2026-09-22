@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/ExportMonitor/ExportJobMonitor.scss
 // ==========================================
 
@@ -8,72 +8,142 @@
     right: 0 !important;
     z-index: 9999999 !important;
     direction: ltr !important;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    pointer-events: none;
     user-select: none;
 
     .floating-monitor-pill {
         position: fixed;
         bottom: 24px;
-        right: 24px;
-        display: flex;
+        right: 28px;
+        height: 40px;
+        padding: 0 14px 0 12px;
+        display: inline-flex;
         align-items: center;
-        gap: 12px;
-        background: rgba(15, 23, 42, 0.95);
-        border: 1px solid rgba(6, 182, 212, 0.45);
+        gap: 9px;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(9, 14, 26, 0.98) 100%);
+        border: 1px solid rgba(6, 182, 212, 0.4);
         border-radius: 9999px;
-        padding: 8px 18px;
-        color: #f8fafc;
-        cursor: pointer;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(6, 182, 212, 0.25);
+        box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.8), 0 0 16px rgba(6, 182, 212, 0.22);
         backdrop-filter: blur(16px);
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        -webkit-backdrop-filter: blur(16px);
+        cursor: pointer;
+        pointer-events: auto;
+        white-space: nowrap;
+        box-sizing: border-box;
+        outline: none;
+        transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 
         &:hover {
             transform: translateY(-2px);
             border-color: #22d3ee;
-            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.9), 0 0 25px rgba(6, 182, 212, 0.45);
+            box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.9), 0 0 22px rgba(6, 182, 212, 0.38);
+
+            .pill-chevron {
+                transform: translateX(2px);
+                stroke: #22d3ee;
+            }
         }
 
-        .pill-pulse-lead {
+        &:active {
+            transform: translateY(0);
+        }
+
+        &.is-ready {
+            border-color: rgba(16, 185, 129, 0.45);
+            box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.8), 0 0 16px rgba(16, 185, 129, 0.22);
+
+            &:hover {
+                border-color: #34d399;
+                box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.9), 0 0 22px rgba(16, 185, 129, 0.38);
+
+                .pill-chevron {
+                    stroke: #34d399;
+                }
+            }
+        }
+
+        .pill-status-indicator {
+            position: relative;
+            width: 10px;
+            height: 10px;
             display: flex;
             align-items: center;
+            justify-content: center;
 
-            .monitor-dot {
-                width: 8px;
-                height: 8px;
+            .pulse-beacon {
+                width: 7px;
+                height: 7px;
                 border-radius: 50%;
 
                 &.active {
                     background: #06b6d4;
-                    box-shadow: 0 0 10px #06b6d4;
-                    animation: monitorPulse 1.4s infinite;
+                    box-shadow: 0 0 8px #06b6d4;
                 }
 
                 &.ready {
                     background: #10b981;
-                    box-shadow: 0 0 10px #10b981;
+                    box-shadow: 0 0 8px #10b981;
                 }
+            }
+
+            .radar-ring {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                border: 1.5px solid #06b6d4;
+                animation: chipRadarPulse 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
             }
         }
 
-        .pill-text-group {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 1px;
+        .pill-label {
+            font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            line-height: 1;
+        }
 
-            .pill-title {
-                font-size: 9px;
-                font-weight: 800;
-                letter-spacing: 1px;
-                color: #64748b;
-            }
+        .pill-counter-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 9999px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 800;
+            line-height: 1;
 
-            .pill-counter {
-                font-size: 11px;
-                font-weight: 800;
+            &.active {
+                background: rgba(6, 182, 212, 0.15);
+                border: 1px solid rgba(6, 182, 212, 0.35);
                 color: #22d3ee;
             }
+
+            &.ready {
+                background: rgba(16, 185, 129, 0.15);
+                border: 1px solid rgba(16, 185, 129, 0.35);
+                color: #34d399;
+            }
+
+            .counter-num {
+                font-weight: 900;
+            }
+
+            .counter-text {
+                font-size: 9px;
+                letter-spacing: 0.5px;
+            }
+        }
+
+        .pill-chevron {
+            width: 13px;
+            height: 13px;
+            stroke: #64748b;
+            transition: all 0.2s ease;
         }
     }
 
@@ -89,7 +159,19 @@
         backdrop-filter: blur(20px);
         display: flex;
         flex-direction: column;
+        pointer-events: auto;
         animation: drawerSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        font-family: 'JetBrains Mono', ui-monospace, monospace;
+
+        &.pinned {
+            border-left-color: #06b6d4;
+            box-shadow: -15px 0 45px rgba(6, 182, 212, 0.15);
+
+            .drawer-top-bar .bar-actions .btn-pin {
+                color: #22d3ee;
+                text-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+            }
+        }
 
         .drawer-top-bar {
             height: 52px;
@@ -153,6 +235,7 @@
         .drawer-job-list {
             flex: 1;
             overflow-y: auto;
+            overflow-x: hidden;
             padding: 14px;
             display: flex;
             flex-direction: column;
@@ -166,7 +249,7 @@
                 background: rgba(6, 182, 212, 0.3);
                 border-radius: 4px;
             }
-
+            // 💡 כרטיסיית משימה עם אנימציית כניסה, יציאה והחלקה חלקה
             .monitor-job-card {
                 background: rgba(15, 23, 42, 0.85);
                 border: 1px solid rgba(255, 255, 255, 0.08);
@@ -176,6 +259,24 @@
                 flex-direction: column;
                 gap: 10px;
                 box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+                box-sizing: border-box;
+                max-height: 280px;
+                opacity: 1;
+                transform: translate3d(0, 0, 0) scale(1);
+                transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s ease, transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), margin 0.32s cubic-bezier(0.4, 0, 0.2, 1), padding 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+                overflow: hidden;
+                animation: jobCardEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+                // 💡 קריסת כרטיסייה במחיקה המושכת את שאר הכרטיסיות מעלה בחלקות
+                &.is-dismissing {
+                    opacity: 0 !important;
+                    max-height: 0 !important;
+                    margin-bottom: -12px !important; // מקזז את ה-gap של הרשימה
+                    padding-top: 0 !important;
+                    padding-bottom: 0 !important;
+                    border-width: 0 !important;
+                    transform: scale(0.92) translateX(30px) !important;
+                    pointer-events: none !important;
+                }
 
                 &.completed {
                     border-color: rgba(16, 185, 129, 0.35);
@@ -366,15 +467,15 @@
     }
 }
 
-@keyframes monitorPulse {
-    0%, 100% {
-        transform: scale(1);
-        opacity: 1;
+@keyframes chipRadarPulse {
+    0% {
+        transform: scale(0.9);
+        opacity: 0.9;
     }
 
-    50% {
-        transform: scale(1.3);
-        opacity: 0.7;
+    100% {
+        transform: scale(2.3);
+        opacity: 0;
     }
 }
 
@@ -385,5 +486,19 @@
 
     to {
         transform: translateX(0);
+    }
+}
+
+@keyframes jobCardEnter {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.97);
+        max-height: 0;
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        max-height: 280px;
     }
 }

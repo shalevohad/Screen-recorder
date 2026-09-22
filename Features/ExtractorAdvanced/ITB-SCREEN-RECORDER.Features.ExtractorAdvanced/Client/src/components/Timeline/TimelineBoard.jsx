@@ -1,4 +1,6 @@
-﻿// Client/src/components/Timeline/TimelineBoard.jsx
+﻿// ==========================================
+// File: Client/src/components/Timeline/TimelineBoard.jsx
+// ==========================================
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import TimelineRuler from './TimelineRuler.jsx';
 import TimelineTrack from './TimelineTrack.jsx';
@@ -7,6 +9,13 @@ import SessionClockBadge from './SessionClockBadge.jsx';
 import TimelineMinimap from './TimelineMinimap.jsx';
 import TimelineContextMenu from './TimelineContextMenu.jsx';
 import './TimelineBoard.scss';
+
+/**
+ * עקומת בלימה קובית רכה (Cubic Easing Out) לתנועת Pan חלקה וטבעית
+ */
+function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+}
 
 export default function TimelineBoard({
     stations = [],
@@ -33,12 +42,48 @@ export default function TimelineBoard({
     const [dragStartInfo, setDragStartInfo] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
 
+    // FPS אמיתי מ-FFprobe עבור הערוץ הנבחר (ברירת מחדל 30)
+    const [activeFps, setActiveFps] = useState(30);
+
     const trackAreaRef = useRef(null);
     const minimapRef = useRef(null);
     const hasInitializedPlayheadRef = useRef(false);
 
+    // רפרנסים לניהול גלישת ה-Pan החלקה
+    const animFrameRef = useRef(null);
+    const viewportStartRef = useRef(viewportStartMs);
+
     const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
     const viewportDurationMs = totalDurationMs / zoomLevel;
+
+    // 💡 שליפת ה-FPS האמיתי מ-FFprobe עבור התחנה הנבחרת
+    useEffect(() => {
+        if (!activeStationId || !baseEpochMs) return;
+
+        const targetEpoch = baseEpochMs + Math.round(playheadMs || inPointMs || 0);
+        fetch(`/api/v1/extractor-advanced/stream-metadata?hostname=${encodeURIComponent(activeStationId)}&epochMs=${targetEpoch}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data && data.fps > 0) {
+                    setActiveFps(data.fps);
+                }
+            })
+            .catch(() => { });
+    }, [activeStationId, baseEpochMs]);
+
+    // סנכרון רפרנס המיקום הנוכחי בכל שינוי Viewport
+    useEffect(() => {
+        viewportStartRef.current = viewportStartMs;
+    }, [viewportStartMs]);
+
+    // ניקוי AnimationFrame בעת פירוק הקומפוננטה
+    useEffect(() => {
+        return () => {
+            if (animFrameRef.current) {
+                cancelAnimationFrame(animFrameRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (!hasInitializedPlayheadRef.current && setPlayheadMs) {
@@ -53,6 +98,36 @@ export default function TimelineBoard({
         setViewportStartMs(prev => Math.max(0, Math.min(prev, totalDurationMs - viewportDurationMs)));
     }, [zoomLevel, totalDurationMs, viewportDurationMs]);
 
+    // 💡 מנוע גלישת Viewport רך ומדויק
+    const animateViewportTo = useCallback((targetStart, durationMs = 280) => {
+        if (animFrameRef.current) {
+            cancelAnimationFrame(animFrameRef.current);
+        }
+
+        const startPos = viewportStartRef.current;
+        const delta = targetStart - startPos;
+        if (Math.abs(delta) < 1) return;
+
+        const startTime = performance.now();
+
+        const step = (now) => {
+            const elapsed = now - startTime;
+            const progress = Math.min(1, elapsed / durationMs);
+            const eased = easeOutCubic(progress);
+
+            const nextPos = startPos + delta * eased;
+            setViewportStartMs(Math.round(nextPos));
+
+            if (progress < 1) {
+                animFrameRef.current = requestAnimationFrame(step);
+            } else {
+                animFrameRef.current = null;
+            }
+        };
+
+        animFrameRef.current = requestAnimationFrame(step);
+    }, []);
+
     // חישוב מדויק של זמן ממיקום X: ניכוי 180px משמאל (Header) ו-58px מימין (Export Button)
     const getMsFromClientX = useCallback((clientX) => {
         if (!trackAreaRef.current) return viewportStartMs;
@@ -66,7 +141,6 @@ export default function TimelineBoard({
         return Math.round(viewportStartMs + relativeMs);
     }, [viewportStartMs, viewportDurationMs]);
 
-    // סנכרון זמן הרולר בעת הזזת עכבר מעל אזור הערוצים (Tracks)
     const handleTracksMouseMove = useCallback((e) => {
         if (draggingTarget || !trackAreaRef.current) return;
         const rect = trackAreaRef.current.getBoundingClientRect();
@@ -93,30 +167,53 @@ export default function TimelineBoard({
         const center = (inPointMs + outPointMs) / 2;
         const newVpDur = totalDurationMs / targetZoom;
         const newStart = Math.max(0, Math.min(center - newVpDur / 2, totalDurationMs - newVpDur));
-        setViewportStartMs(newStart);
+        animateViewportTo(newStart);
         if (onZoomChange) onZoomChange(Number(targetZoom.toFixed(1)));
     };
 
     const handleResetZoom = () => {
-        setViewportStartMs(0);
+        animateViewportTo(0);
         if (onZoomReset) onZoomReset();
     };
 
+    // 💡 ניווט מקלדת מסונכרן ל-FPS אמיתי עם Paging מונפש ברכות
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
 
-            const frameMs = 50;
+            // חישוב משך פריים בודד לפי ה-FPS של הסרטון
+            const realFrameMs = 1000 / (activeFps || 30);
             const isHighZoom = viewportDurationMs <= 30000;
-            let baseStep = isHighZoom ? frameMs : 1000;
+            const baseStep = isHighZoom ? realFrameMs : 1000;
             const step = baseStep * (e.shiftKey ? 5 : 1);
 
             if (e.key === 'ArrowRight') {
                 e.preventDefault();
-                setPlayheadMs(prev => Math.min(totalDurationMs, prev + step));
+                const nextPlayhead = Math.min(totalDurationMs, playheadMs + step);
+                setPlayheadMs(nextPlayhead);
+
+                const currentVpStart = viewportStartRef.current;
+                const currentVpEnd = currentVpStart + viewportDurationMs;
+
+                // יציאה ימינה: ה-View הבא יופיע כשה-Playhead בדיוק במרכז המסך
+                if (nextPlayhead >= currentVpEnd) {
+                    let targetVpStart = nextPlayhead - (viewportDurationMs / 2);
+                    targetVpStart = Math.max(0, Math.min(targetVpStart, totalDurationMs - viewportDurationMs));
+                    animateViewportTo(targetVpStart);
+                }
             } else if (e.key === 'ArrowLeft') {
                 e.preventDefault();
-                setPlayheadMs(prev => Math.max(0, prev - step));
+                const nextPlayhead = Math.max(0, playheadMs - step);
+                setPlayheadMs(nextPlayhead);
+
+                const currentVpStart = viewportStartRef.current;
+
+                // יציאה שמאלה: ה-View הבא יופיע כשה-Playhead בדיוק בסוף המסך (בקצה הימני)
+                if (nextPlayhead < currentVpStart) {
+                    let targetVpStart = nextPlayhead - viewportDurationMs;
+                    targetVpStart = Math.max(0, Math.min(targetVpStart, totalDurationMs - viewportDurationMs));
+                    animateViewportTo(targetVpStart);
+                }
             } else if (e.key === '[') {
                 e.preventDefault();
                 const newOut = Math.max(playheadMs, inPointMs + 1000);
@@ -130,9 +227,8 @@ export default function TimelineBoard({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs]);
+    }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs, animateViewportTo, activeFps]);
 
-    // פתיחת תפריט קליק ימני (Context Menu) עם חסימת קצוות מדויקת
     const handleContextMenu = (e) => {
         e.preventDefault();
         const rect = trackAreaRef.current?.getBoundingClientRect();

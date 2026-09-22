@@ -29,7 +29,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                 // דריסת מחולל השקופיות הבסיסי במחולל הטקטי המתקדם
                 services.AddSingleton<IDummyVideoGenerator, AdvancedDummyVideoGenerator>();
 
-                // מנוע ה-NLE המתקדם
+                // 💡 רישום שירותי העזר המפוצלים
+                services.AddSingleton<INoSignalPatternService, NoSignalPatternService>();
+                services.AddSingleton<IVideoMetadataService, VideoMetadataService>();
+
+                // מנוע ה-NLE המתקדם (מקבל את השירותים המפוצלים ב-DI)
                 services.AddSingleton<AdvancedExtractorService>();
 
                 // מנהל משימות הרקע המתקדם (מממש הן את הבסיס והן את המורחב)

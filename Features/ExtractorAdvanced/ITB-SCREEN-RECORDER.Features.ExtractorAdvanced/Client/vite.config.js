@@ -14,6 +14,8 @@ export default defineConfig({
             include: '**/*.{jsx,js}',
         })
     ],
+    // הגדרת ספריית המקור לקבצים סטטיים (Client/public)
+    publicDir: resolve(currentDir, 'public'),
     esbuild: {
         loader: 'jsx',
         include: /src\/.*\.[jt]sx?$/,
@@ -26,6 +28,8 @@ export default defineConfig({
         extensions: ['.mjs', '.js', '.jsx', '.json']
     },
     build: {
+        // 💡 מאפשר ל-Vite להעתיק את public/ ל-wwwroot גם ב-Library Mode
+        copyPublicDir: true,
         lib: {
             entry: resolve(currentDir, 'src/index.js'),
             name: 'ExtractorAdvancedWidget',
