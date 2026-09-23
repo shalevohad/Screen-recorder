@@ -57,19 +57,93 @@ export default function ExtractorAdvancedStudio() {
 
     const [isRangeModalOpen, setIsRangeModalOpen] = useState(false);
     const [isBookmarksModalOpen, setIsBookmarksModalOpen] = useState(false);
+
+    // ניהול הזום וגלילת ה-Viewport ברמת הסטודיו הראשי
     const [zoomLevel, setZoomLevel] = useState(cached.zoomLevel || 1);
+    const [viewportStartMs, setViewportStartMs] = useState(cached.viewportStartMs || 0);
+    const viewportDurationMs = totalTimelineDurationMs / zoomLevel;
 
     const [inPointMs, setInPointMs] = useState(cached.inPointMs ?? bufferMs);
     const [outPointMs, setOutPointMs] = useState(cached.outPointMs ?? (bufferMs + timeRange.durationMs));
     const [playheadMs, setPlayheadMs] = useState(cached.playheadMs ?? (cached.inPointMs ?? bufferMs));
 
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isLooping, setIsLooping] = useState(false);
+    const [globalGaps, setGlobalGaps] = useState([]);
+
+    // עצירת הניגון במסך הראשי ברגע שנפתח חלון הספוטלייט (מניעת ניגון כפול ברקע)
+    useEffect(() => {
+        if (spotlightStationId) {
+            setIsPlaying(false);
+        }
+    }, [spotlightStationId]);
+
+    useEffect(() => {
+        setPlayheadMs((prev) => {
+            if (prev < inPointMs) return inPointMs;
+            if (prev > outPointMs) {
+                setIsPlaying(false);
+                return outPointMs;
+            }
+            return prev;
+        });
+    }, [inPointMs, outPointMs]);
+
+    const lastTickRef = useRef(null);
+    const requestRef = useRef(null);
+
+    const updatePlayhead = useCallback((timestamp) => {
+        if (!lastTickRef.current) lastTickRef.current = timestamp;
+        const deltaMs = timestamp - lastTickRef.current;
+        lastTickRef.current = timestamp;
+
+        setPlayheadMs((prev) => {
+            let nextPos = prev + deltaMs;
+
+            if (globalGaps && globalGaps.length > 0) {
+                const currentEpoch = timelineBaseEpochMs + nextPos;
+                const activeGap = globalGaps.find(g => currentEpoch >= g.startEpochMs && currentEpoch < g.endEpochMs);
+                if (activeGap) {
+                    const gapEndOffsetMs = activeGap.endEpochMs - timelineBaseEpochMs;
+                    nextPos = gapEndOffsetMs;
+                }
+            }
+
+            if (nextPos >= outPointMs) {
+                if (isLooping) {
+                    nextPos = inPointMs;
+                } else {
+                    setIsPlaying(false);
+                    nextPos = outPointMs;
+                }
+            }
+            return nextPos;
+        });
+
+        if (isPlaying) {
+            requestRef.current = requestAnimationFrame(updatePlayhead);
+        }
+    }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs]);
+
+    useEffect(() => {
+        if (isPlaying) {
+            lastTickRef.current = performance.now();
+            requestRef.current = requestAnimationFrame(updatePlayhead);
+        } else {
+            if (requestRef.current) cancelAnimationFrame(requestRef.current);
+            lastTickRef.current = null;
+        }
+
+        return () => {
+            if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        };
+    }, [isPlaying, updatePlayhead]);
+
     const [isWorkspaceActive, setIsWorkspaceActive] = useState(
         Boolean(cached.isWorkspaceActive && cached.selectedStationIds?.length > 0)
     );
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // שמירה אוטומטית מתמשכת ל-SessionStorage
     useEffect(() => {
         saveStudioSessionCache({
             timeRange,
@@ -80,12 +154,12 @@ export default function ExtractorAdvancedStudio() {
             selectedStationIds,
             activeStationId,
             zoomLevel,
+            viewportStartMs,
             isWorkspaceActive,
             allStations
         });
-    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, isWorkspaceActive, allStations]);
+    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, viewportStartMs, isWorkspaceActive, allStations]);
 
-    // שליפת עמדות פעילות בחלון הזמן
     const fetchActiveStationsForTimeScope = useCallback(async () => {
         if (isNaN(timelineBaseEpochMs)) return;
         const endEpochMs = timelineBaseEpochMs + totalTimelineDurationMs;
@@ -129,7 +203,6 @@ export default function ExtractorAdvancedStudio() {
         fetchActiveStationsForTimeScope();
     }, [fetchActiveStationsForTimeScope]);
 
-    // שליפת מקטעי ההקלטה (Segments) מהשרת
     const stationIdsKey = useMemo(() => allStations.map(s => s.id).sort().join(','), [allStations]);
 
     useEffect(() => {
@@ -156,7 +229,6 @@ export default function ExtractorAdvancedStudio() {
         return () => { isMounted = false; };
     }, [stationIdsKey, timelineBaseEpochMs, totalTimelineDurationMs]);
 
-    // 💡 אוטומציה: כאשר נבחרה בדיוק עמדה אחת בלבד מלכתחילה (או שקיימת עמדה יחידה), כניסה אוטומטית למצב Solo
     useEffect(() => {
         if (selectedStationIds.length === 1 && !activeStationId) {
             setActiveStationId(selectedStationIds[0]);
@@ -167,7 +239,6 @@ export default function ExtractorAdvancedStudio() {
         }
     }, [selectedStationIds, allStations, activeStationId]);
 
-    // סניטייזר רך לעמדות שנבחרו
     useEffect(() => {
         if (activeStationId && !selectedStationIds.includes(activeStationId)) {
             setActiveStationId(null);
@@ -187,11 +258,16 @@ export default function ExtractorAdvancedStudio() {
     const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
     const spotlightStation = allStations.find(s => s.id === spotlightStationId);
 
-    // ניווט מקלדת מעגלי בין עמדות
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
             if (isRangeModalOpen || isBookmarksModalOpen || spotlightStationId) return;
+
+            if (e.code === 'Space') {
+                e.preventDefault();
+                setIsPlaying(p => !p);
+                return;
+            }
 
             if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
             if (!activeStationId || timelineStations.length <= 1) return;
@@ -216,7 +292,6 @@ export default function ExtractorAdvancedStudio() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeStationId, timelineStations, isRangeModalOpen, isBookmarksModalOpen, spotlightStationId]);
 
-    // טעינת סימניית חקירה (Bookmark)
     const handleLoadBookmark = (bm) => {
         const startMs = parseSafeEpoch(bm.startTime);
         const endMs = parseSafeEpoch(bm.endTime);
@@ -239,7 +314,6 @@ export default function ExtractorAdvancedStudio() {
         setIsDrawerOpen(false);
     };
 
-    // שיגור ייצוא מסונכרן ברקע (עבור כלל העמדות שבטיימליין) ופתיחת מוניטור המשימות
     const handleExportSmartCut = async () => {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) {
@@ -259,10 +333,7 @@ export default function ExtractorAdvancedStudio() {
                 body: JSON.stringify(payload)
             });
 
-            if (!response.ok) {
-                throw new Error(`Server returned HTTP ${response.status}`);
-            }
-
+            if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
             window.dispatchEvent(new CustomEvent('open-export-monitor'));
         } catch (error) {
             console.error('[Studio] Failed enqueuing export job:', error);
@@ -279,6 +350,7 @@ export default function ExtractorAdvancedStudio() {
                     timeMode={timeMode}
                     setTimeMode={setTimeMode}
                     activeStationId={activeStationId}
+                    hideBackToGrid={timelineStations.length <= 1}
                     onResetActiveStation={() => setActiveStationId(null)}
                     onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
@@ -299,6 +371,13 @@ export default function ExtractorAdvancedStudio() {
                                     baseEpochMs={timelineBaseEpochMs}
                                     playheadMs={playheadMs}
                                     timeMode={timeMode}
+
+                                    isPlaying={isPlaying}
+                                    setIsPlaying={setIsPlaying}
+                                    totalDurationMs={totalTimelineDurationMs}
+                                    inPointMs={inPointMs}
+                                    outPointMs={outPointMs}
+                                    setPlayheadMs={setPlayheadMs}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}
@@ -311,6 +390,8 @@ export default function ExtractorAdvancedStudio() {
                                     activeStationId={activeStationId}
                                     isPlaying={isPlaying}
                                     setIsPlaying={setIsPlaying}
+                                    isLooping={isLooping}
+                                    setIsLooping={setIsLooping}
                                 />
                             </div>
 
@@ -331,8 +412,15 @@ export default function ExtractorAdvancedStudio() {
                                     setInPointMs={setInPointMs}
                                     outPointMs={outPointMs}
                                     setOutPointMs={setOutPointMs}
+                                    viewportStartMs={viewportStartMs}
+                                    onViewportStartChange={setViewportStartMs}
                                     onExport={handleExportSmartCut}
                                     recordingSegments={recordingSegments}
+                                    onEstimateLoaded={(est) => {
+                                        if (est && est.removedGlobalGaps) {
+                                            setGlobalGaps(est.removedGlobalGaps);
+                                        }
+                                    }}
                                 />
                             </div>
                         </div>
@@ -393,6 +481,10 @@ export default function ExtractorAdvancedStudio() {
                 baseEpochMs={timelineBaseEpochMs}
                 timeMode={timeMode}
                 totalDurationMs={totalTimelineDurationMs}
+                zoomLevel={zoomLevel}
+                onZoomChange={setZoomLevel}
+                viewportStartMs={viewportStartMs}
+                onViewportStartChange={setViewportStartMs}
                 playheadMs={playheadMs}
                 setPlayheadMs={setPlayheadMs}
                 inPointMs={inPointMs}
@@ -400,6 +492,7 @@ export default function ExtractorAdvancedStudio() {
                 outPointMs={outPointMs}
                 setOutPointMs={setOutPointMs}
                 recordingSegments={recordingSegments}
+                globalGaps={globalGaps}
             />
 
             <ExportJobMonitor />

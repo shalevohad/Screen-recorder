@@ -1,4 +1,24 @@
-// Client/src/components/Modals/SoloSpotlightModal.scss
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Modals/SoloSpotlightModal.scss
+// ==========================================
+
+@keyframes spotlightFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes spotlightSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
 
 .solo-spotlight-modal-overlay {
     --track-sidebar-width: 180px;
@@ -29,14 +49,58 @@
             justify-content: center;
             position: relative;
 
-            .spotlight-active-video {
+            .spotlight-active-video, .spotlight-static-frame {
                 position: absolute;
                 inset: 0;
                 width: 100%;
                 height: 100%;
                 object-fit: contain;
                 background-color: #020617;
+                transition: opacity 0.15s ease-out;
+            }
+
+            .spotlight-active-video {
                 z-index: 1;
+            }
+
+            .spotlight-static-frame {
+                z-index: 2;
+
+                &.hidden-under-video {
+                    opacity: 0;
+                    pointer-events: none;
+                }
+            }
+
+            .stream-buffering-overlay {
+                position: absolute;
+                z-index: 10;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                background: rgba(2, 6, 23, 0.75);
+                backdrop-filter: blur(8px);
+                border: 1px solid rgba(6, 182, 212, 0.3);
+                padding: 8px 16px;
+                border-radius: 9999px;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+                .buffer-spinner {
+                    width: 14px;
+                    height: 14px;
+                    border: 2px solid rgba(6, 182, 212, 0.2);
+                    border-top-color: #06b6d4;
+                    border-radius: 50%;
+                    animation: spotlightSpin 0.8s linear infinite;
+                }
+
+                span {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 10px;
+                    font-weight: 800;
+                    color: #22d3ee;
+                    letter-spacing: 1px;
+                }
             }
 
             .tactical-grid-overlay {
@@ -45,7 +109,7 @@
                 background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
                 background-size: 60px 60px;
                 pointer-events: none;
-                z-index: 2;
+                z-index: 5;
             }
 
             .center-target-reticle {
@@ -54,7 +118,7 @@
                 border: 1px solid rgba(6, 182, 212, 0.35);
                 border-radius: 50%;
                 position: relative;
-                z-index: 2;
+                z-index: 5;
 
                 &::after {
                     content: '';
@@ -80,7 +144,7 @@
                 color: rgba(255, 255, 255, 0.3);
                 letter-spacing: 2px;
                 text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
-                z-index: 2;
+                z-index: 5;
             }
         }
 
@@ -248,7 +312,7 @@
         left: 50%;
         transform: translateX(-50%);
         width: calc(100% - 48px);
-        max-width: 1100px;
+        max-width: 1200px;
         background: rgba(10, 15, 29, 0.92);
         backdrop-filter: blur(24px);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -365,53 +429,12 @@
                 }
             }
         }
-
-        .island-timeline-row {
-            position: relative;
+        // 💡 מעטפת נקייה עבור ה-TimelineBoard שנטמע בתוך המודאל
+        .island-timeline-board-wrap {
+            width: 100%;
             display: flex;
             flex-direction: column;
-            gap: 4px;
-
-            .floating-ruler-wrap {
-                width: 100%;
-                height: 24px;
-                padding-left: var(--track-sidebar-width, 180px);
-                box-sizing: border-box;
-            }
-
-            .floating-track-wrap {
-                position: relative;
-                width: 100%;
-
-                .timeline-track-container {
-                    margin-bottom: 0;
-                    height: 52px;
-
-                    .track-sidebar {
-                        width: var(--track-sidebar-width, 180px);
-                        min-width: var(--track-sidebar-width, 180px);
-                        max-width: var(--track-sidebar-width, 180px);
-                    }
-                }
-
-                .playhead-overlay-pane {
-                    top: 0;
-                    left: var(--track-sidebar-width, 180px);
-                    right: 0;
-                }
-            }
+            background: transparent;
         }
-    }
-}
-
-@keyframes spotlightFadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.98);
-    }
-
-    to {
-        opacity: 1;
-        transform: scale(1);
     }
 }

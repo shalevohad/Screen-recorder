@@ -12,6 +12,12 @@
     }
 }
 
+@keyframes trackSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .timeline-track-container {
     display: flex;
     width: 100%;
@@ -110,7 +116,7 @@
         height: 100%;
         overflow: hidden;
         background-color: rgba(10, 15, 29, 0.5);
-        // שכבת פערי זמן בגובה מלא
+
         .full-height-gaps-layer {
             position: absolute;
             inset: 0;
@@ -126,7 +132,7 @@
                 align-items: center;
                 justify-content: center;
                 overflow: hidden;
-                // 1. פער פרטני: NO SIGNAL (ורוד/אדום)
+
                 &.gap-station-signal {
                     background-color: rgba(225, 29, 72, 0.16);
                     border-left: 1px solid rgba(244, 63, 94, 0.65);
@@ -135,7 +141,7 @@
                     .gap-pattern {
                         position: absolute;
                         inset: 0;
-                        background-image: repeating-linear-gradient( -45deg, rgba(244, 63, 94, 0.22), rgba(244, 63, 94, 0.22) 10px, rgba(159, 18, 57, 0.38) 10px, rgba(159, 18, 57, 0.38) 20px );
+                        background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.22), rgba(244, 63, 94, 0.22) 10px, rgba(159, 18, 57, 0.38) 10px, rgba(159, 18, 57, 0.38) 20px);
                     }
 
                     .gap-badge {
@@ -167,7 +173,7 @@
                         }
                     }
                 }
-                // 2. פער משותף שיורד בסרטון: SKIPPED GAP (כתום-ענבר טקטי)
+
                 &.gap-global-skipped {
                     background-color: rgba(245, 158, 11, 0.12);
                     border-left: 1px dashed rgba(245, 158, 11, 0.7);
@@ -176,7 +182,7 @@
                     .gap-pattern {
                         position: absolute;
                         inset: 0;
-                        background-image: repeating-linear-gradient( -45deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.18) 10px, rgba(180, 83, 9, 0.3) 10px, rgba(180, 83, 9, 0.3) 20px );
+                        background-image: repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.18) 10px, rgba(180, 83, 9, 0.3) 10px, rgba(180, 83, 9, 0.3) 20px);
                     }
 
                     .gap-badge.global-badge {
@@ -210,7 +216,7 @@
                 }
             }
         }
-        // שכבת תאי הפריים
+
         .spritesheet-filmstrip-layer {
             position: absolute;
             inset: 0;
@@ -230,7 +236,7 @@
                 .placeholder-blur {
                     position: absolute;
                     inset: 0;
-                    background: linear-gradient( 105deg, rgba(30, 41, 59, 0.35) 0%, rgba(51, 65, 85, 0.55) 30%, rgba(14, 165, 233, 0.12) 50%, rgba(30, 41, 59, 0.35) 100% );
+                    background: linear-gradient(105deg, rgba(30, 41, 59, 0.35) 0%, rgba(51, 65, 85, 0.55) 30%, rgba(14, 165, 233, 0.12) 50%, rgba(30, 41, 59, 0.35) 100%);
                     background-size: 200% 100%;
                     animation: placeholderShimmer 1.8s infinite linear;
                     filter: blur(6px);
@@ -249,6 +255,15 @@
                     transform: scale(1.05);
                     transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1), filter 0.32s cubic-bezier(0.4, 0, 0.2, 1), transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
                 }
+                // 💡 העיצוב לתמונת פריים חסרה / No Signal
+                .frame-no-signal-pattern {
+                    position: absolute;
+                    inset: 0;
+                    background-color: rgba(225, 29, 72, 0.1);
+                    background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.2), rgba(244, 63, 94, 0.2) 3px, transparent 3px, transparent 6px);
+                    opacity: 0;
+                    transition: opacity 0.3s ease;
+                }
 
                 &.is-loaded {
                     .placeholder-blur {
@@ -260,10 +275,14 @@
                         filter: blur(0px) brightness(0.96) contrast(1.04);
                         transform: scale(1);
                     }
+
+                    .frame-no-signal-pattern {
+                        opacity: 1;
+                    }
                 }
             }
         }
-        // מחוון נוכחות ירוק בתחתית
+
         .data-presence-layer {
             position: absolute;
             bottom: 0;
@@ -281,7 +300,7 @@
                 border-radius: 2px;
             }
         }
-        // מסכות In/Out עמומות
+
         .mask-dimmed {
             position: absolute;
             top: 0;
@@ -297,6 +316,36 @@
 
             &.right-mask {
                 right: 0;
+            }
+        }
+
+        .track-loading-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(3px) grayscale(50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            pointer-events: none;
+
+            .track-spinner {
+                width: 14px;
+                height: 14px;
+                border: 2px solid rgba(6, 182, 212, 0.25);
+                border-top-color: #06B6D4;
+                border-radius: 50%;
+                animation: trackSpin 0.8s linear infinite;
+            }
+
+            .loading-label {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                font-weight: 700;
+                color: #06B6D4;
+                letter-spacing: 1px;
             }
         }
     }

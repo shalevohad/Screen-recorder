@@ -36,19 +36,22 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
         [HttpGet("stations")]
         public async Task<IActionResult> GetStations(
-            [FromQuery] long? startEpoch,
-            [FromQuery] long? endEpoch,
+            [FromQuery] double? startEpoch,
+            [FromQuery] double? endEpoch,
             [FromQuery] string? timeMode = "LOCAL",
             CancellationToken ct = default)
         {
             try
             {
-                DateTime startUtc = startEpoch.HasValue && startEpoch.Value > 0
-                    ? DateTimeOffset.FromUnixTimeMilliseconds(startEpoch.Value).UtcDateTime
+                long? lStart = startEpoch.HasValue ? (long)Math.Round(startEpoch.Value) : (long?)null;
+                long? lEnd = endEpoch.HasValue ? (long)Math.Round(endEpoch.Value) : (long?)null;
+
+                DateTime startUtc = lStart.HasValue && lStart.Value > 0
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(lStart.Value).UtcDateTime
                     : DateTime.UtcNow.AddHours(-4);
 
-                DateTime endUtc = endEpoch.HasValue && endEpoch.Value > 0
-                    ? DateTimeOffset.FromUnixTimeMilliseconds(endEpoch.Value).UtcDateTime
+                DateTime endUtc = lEnd.HasValue && lEnd.Value > 0
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(lEnd.Value).UtcDateTime
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
@@ -75,7 +78,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         displayName = host,
                         isOnline = true,
                         recordingsCount = realSegments.Count,
-                        // 💡 מזינים ישירות את הצ'אנקים האמיתיים שנמצאו פיזית בדיסק!
                         segments = realSegments
                     });
                 }
@@ -93,19 +95,22 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         [HttpGet("/api/v1/extractor/timeline-segments")]
         public async Task<IActionResult> GetTimelineSegments(
             [FromQuery] string stations,
-            [FromQuery] long startEpoch,
-            [FromQuery] long endEpoch,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
             CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(stations) || startEpoch <= 0 || endEpoch <= startEpoch)
+            long lStart = (long)Math.Round(startEpoch);
+            long lEnd = (long)Math.Round(endEpoch);
+
+            if (string.IsNullOrWhiteSpace(stations) || lStart <= 0 || lEnd <= lStart)
             {
                 return BadRequest("Invalid stations or epoch parameters.");
             }
 
             try
             {
-                DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(startEpoch).UtcDateTime;
-                DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(endEpoch).UtcDateTime;
+                DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime;
+                DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
                 var stationList = stations.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 var segmentsMap = new Dictionary<string, List<object>>();
@@ -145,22 +150,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         [HttpGet("stream-metadata")]
         public async Task<IActionResult> GetStreamMetadata(
             [FromQuery] string hostname,
-            [FromQuery] long epochMs,
+            [FromQuery] double epochMs,
             CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(hostname) || epochMs <= 0)
+            long lEpoch = (long)Math.Round(epochMs);
+            if (string.IsNullOrWhiteSpace(hostname) || lEpoch <= 0)
             {
                 return BadRequest("Hostname and valid epochMs are required.");
             }
 
             try
             {
-                var metadata = await _advancedExtractorService.GetStreamMetadataAsync(hostname, epochMs, ct);
+                var metadata = await _advancedExtractorService.GetStreamMetadataAsync(hostname, lEpoch, ct);
                 return Ok(metadata);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[API:StreamMetadata] Failed retrieving metadata for {Host} at {Epoch}", hostname, epochMs);
+                _logger.LogError(ex, "[API:StreamMetadata] Failed retrieving metadata for {Host} at {Epoch}", hostname, lEpoch);
                 return StatusCode(500, "Error retrieving stream metadata.");
             }
         }
@@ -168,17 +174,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         [HttpGet("frame")]
         public async Task<IActionResult> GetStationFrame(
             [FromQuery] string hostname,
-            [FromQuery] long epochMs,
+            [FromQuery] double epochMs,
             CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(hostname) || epochMs <= 0)
+            long lEpoch = (long)Math.Round(epochMs);
+            if (string.IsNullOrWhiteSpace(hostname) || lEpoch <= 0)
             {
                 return BadRequest("Hostname and valid epochMs are required.");
             }
 
             try
             {
-                var imageStream = await _advancedExtractorService.ExtractFrameAsync(hostname, epochMs, ct);
+                var imageStream = await _advancedExtractorService.ExtractFrameAsync(hostname, lEpoch, ct);
                 if (imageStream == null || imageStream == Stream.Null || imageStream.Length == 0)
                 {
                     return NoContent();
@@ -188,7 +195,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[API:Frame] Failed extracting frame for {Host} at {Epoch}", hostname, epochMs);
+                _logger.LogError(ex, "[API:Frame] Failed extracting frame for {Host} at {Epoch}", hostname, lEpoch);
                 return StatusCode(500, "Error extracting frame.");
             }
         }
@@ -196,23 +203,27 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         [HttpGet("stream")]
         public async Task StreamContinuousStationVideo(
             [FromQuery] string hostname,
-            [FromQuery] long startEpoch,
-            [FromQuery] long endEpoch,
-            [FromQuery] long? seekEpoch = null,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
+            [FromQuery] double? seekEpoch = null,
             CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(hostname) || startEpoch <= 0 || endEpoch <= startEpoch)
+            long lStart = (long)Math.Round(startEpoch);
+            long lEnd = (long)Math.Round(endEpoch);
+            long? lSeek = seekEpoch.HasValue ? (long)Math.Round(seekEpoch.Value) : (long?)null;
+
+            if (string.IsNullOrWhiteSpace(hostname) || lStart <= 0 || lEnd <= lStart)
             {
                 Response.StatusCode = 400;
                 return;
             }
 
-            long effectiveStartEpoch = seekEpoch.HasValue && seekEpoch.Value >= startEpoch && seekEpoch.Value < endEpoch
-                ? seekEpoch.Value
-                : startEpoch;
+            long effectiveStartEpoch = lSeek.HasValue && lSeek.Value >= lStart && lSeek.Value < lEnd
+                ? lSeek.Value
+                : lStart;
 
             DateTime rangeStartUtc = DateTimeOffset.FromUnixTimeMilliseconds(effectiveStartEpoch).UtcDateTime;
-            DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(endEpoch).UtcDateTime;
+            DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc, rangeEndUtc);
             await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
@@ -263,20 +274,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         [HttpGet("spritesheet")]
         public async Task<IActionResult> GetSpritesheet(
             [FromQuery] string hostname,
-            [FromQuery] long startEpoch,
-            [FromQuery] long endEpoch,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
             [FromQuery] int frameCount = 4,
             [FromQuery] int tileWidth = 120,
             [FromQuery] int tileHeight = 52,
             CancellationToken ct = default)
         {
+            long lStart = (long)Math.Round(startEpoch);
+            long lEnd = (long)Math.Round(endEpoch);
+
             if (string.IsNullOrWhiteSpace(hostname)) return BadRequest("Hostname is required.");
-            if (startEpoch >= endEpoch) return BadRequest("Start time must be before end time.");
+            if (lStart >= lEnd) return BadRequest("Start time must be before end time.");
 
             try
             {
-                var startUtc = DateTimeOffset.FromUnixTimeMilliseconds(startEpoch).UtcDateTime;
-                var endUtc = DateTimeOffset.FromUnixTimeMilliseconds(endEpoch).UtcDateTime;
+                var startUtc = DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime;
+                var endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
                 var imageStream = await _advancedExtractorService.GenerateSpritesheetAsync(
                     hostname, startUtc, endUtc, frameCount, tileWidth, tileHeight, ct);

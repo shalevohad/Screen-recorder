@@ -1,4 +1,6 @@
-﻿// Client/src/components/TopScopeBar/TopScopeBar.jsx
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/TopScopeBar/TopScopeBar.jsx
+// ==========================================
 import React, { useMemo } from 'react';
 import './TopScopeBar.scss';
 
@@ -8,11 +10,12 @@ export default function TopScopeBar({
     timeMode,
     setTimeMode,
     activeStationId,
+    hideBackToGrid, // 💡 הפרופ החדש שקיבלנו מהאבא
     onResetActiveStation,
     onOpenRangeModal,
     onOpenBookmarksModal,
     onToggleDrawer,
-    isInitialSetup = false // הגנת React: קבלת סטטוס האתחול
+    isInitialSetup = false
 }) {
     const formattedScopeRange = useMemo(() => {
         const startEpoch = baseEpochMs;
@@ -77,7 +80,8 @@ export default function TopScopeBar({
             </div>
 
             <div className="scope-view-actions">
-                {activeStationId && (
+                {/* 💡 העלמה מוחלטת של כפתור החזרה אם נבחרה תחנה יחידה */}
+                {!hideBackToGrid && activeStationId && (
                     <button type="button" onClick={onResetActiveStation} className="btn-grid-return">
                         ⊞ Back to Grid
                     </button>
@@ -95,7 +99,6 @@ export default function TopScopeBar({
                     <span>BOOKMARKS</span>
                 </button>
 
-                {/* הגנת React: מוצג אך ורק בסביבת עבודה פעילה ולא במהלך אתחול/בחירת תחנות ראשונית */}
                 {!isInitialSetup && (
                     <button
                         type="button"

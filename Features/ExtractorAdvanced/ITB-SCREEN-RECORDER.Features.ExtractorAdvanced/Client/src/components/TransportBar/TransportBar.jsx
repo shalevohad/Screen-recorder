@@ -1,4 +1,6 @@
-﻿// Client/src/components/TransportBar/TransportBar.jsx
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/TransportBar/TransportBar.jsx
+// ==========================================
 import React, { useState } from 'react';
 import './TransportBar.scss';
 
@@ -6,6 +8,8 @@ export default function TransportBar({
     activeStationId,
     isPlaying,
     setIsPlaying,
+    isLooping,        // 💡 סטייט ה-Loop
+    setIsLooping,     // 💡 פונקציית עדכון ה-Loop
     onStepFrameForward,
     onStepFrameBackward,
     playbackSpeed = 1,
@@ -33,19 +37,35 @@ export default function TransportBar({
             className={`transport-bar-root ${isEnabled ? 'is-expanded' : 'is-compact-disabled'}`}
             title={!isEnabled ? 'Select a station card above to enable timeline playback' : ''}
         >
-            {/* כפתור מהירות ניגון */}
             <button
                 type="button"
                 className="btn-speed-badge"
                 disabled={!isEnabled}
                 onClick={handleCycleSpeed}
+                title="Playback Speed"
             >
                 {playbackSpeed}x
             </button>
 
-            {/* פקדי הרצה וניגון */}
             <div className="transport-controls-cluster">
-                {/* הרצה אחורה */}
+                {/* 💡 כפתור Repeat / Loop */}
+                <button
+                    type="button"
+                    className={`btn-ctrl-action btn-loop ${isLooping ? 'active-loop' : ''}`}
+                    disabled={!isEnabled}
+                    onClick={() => setIsLooping && setIsLooping(!isLooping)}
+                    title={isLooping ? 'Repeat/Loop (ON)' : 'Repeat/Loop (OFF)'}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <polyline points="17 1 21 5 17 9"></polyline>
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                        <polyline points="7 23 3 19 7 15"></polyline>
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                    </svg>
+                </button>
+
+                <div className="divider" />
+
                 <button
                     type="button"
                     className="btn-ctrl-action"
@@ -59,7 +79,6 @@ export default function TransportBar({
                     </svg>
                 </button>
 
-                {/* Frame Step אחורה */}
                 <button
                     type="button"
                     className="btn-ctrl-action"
@@ -73,7 +92,6 @@ export default function TransportBar({
                     </svg>
                 </button>
 
-                {/* כפתור Play / Pause מרכזי */}
                 <button
                     type="button"
                     className={`btn-play-hero ${isPlaying ? 'playing' : ''}`}
@@ -93,7 +111,6 @@ export default function TransportBar({
                     )}
                 </button>
 
-                {/* Frame Step קדימה */}
                 <button
                     type="button"
                     className="btn-ctrl-action"
@@ -107,7 +124,6 @@ export default function TransportBar({
                     </svg>
                 </button>
 
-                {/* הרצה קדימה */}
                 <button
                     type="button"
                     className="btn-ctrl-action"
@@ -122,7 +138,6 @@ export default function TransportBar({
                 </button>
             </div>
 
-            {/* בקרת שמע (מוצגת ומורחבת רק כשהסרגל פעיל) */}
             {isEnabled && (
                 <div className="audio-control-cluster">
                     <button

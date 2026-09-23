@@ -157,38 +157,70 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             DateTime targetUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
 
-            // סריקת צ'אנקים באזור הזמן המבוקש
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-1), targetUtc.AddMinutes(1));
             await AdjustChunksToAccuratePtsAsync(chunks, ct);
 
-            // בדיקה קפדנית: האם קיים צ'אנק פיזי אמיתי בדיסק שהזמן הזה נופל בתוכו?
             var matchingChunk = chunks.FirstOrDefault(c =>
                 !string.IsNullOrEmpty(c.FullPath) &&
                 File.Exists(c.FullPath) &&
                 c.StartUtc <= targetUtc &&
                 targetUtc <= c.EndUtc);
 
-            // 💡 קריטי: אם אין הקלטה אמיתית - לא מחזירים תמונת בדיקה! מחזירים ריק!
             if (matchingChunk == null)
             {
                 return Stream.Null;
             }
 
             string ffmpegPath = ResolveFfmpegBinary();
+            double offsetSeconds = Math.Max(0, (targetUtc - matchingChunk.StartUtc).TotalSeconds);
+            string normalizedPath = matchingChunk.FullPath.Replace('\\', '/');
+
+            // 💡 מנגנון Fallback כפול לחילוץ פריים מדויק ללא שגיאות 204
+            byte[]? frameBytes = await TryExtractFrameInternalAsync(ffmpegPath, normalizedPath, offsetSeconds, fastSeek: true, ct);
+            if (frameBytes == null || frameBytes.Length == 0)
+            {
+                // ניסיון שני: Seek מוקדם יותר עם פתיחת מרווח פענוח מדויק (-accurate_seek)
+                frameBytes = await TryExtractFrameInternalAsync(ffmpegPath, normalizedPath, offsetSeconds, fastSeek: false, ct);
+            }
+
+            if (frameBytes != null && frameBytes.Length > 0)
+            {
+                _memoryCache?.Set(cacheKey, frameBytes, TimeSpan.FromMinutes(3));
+                return new MemoryStream(frameBytes);
+            }
+
+            return Stream.Null;
+        }
+
+        private async Task<byte[]?> TryExtractFrameInternalAsync(string ffmpegPath, string inputPath, double offsetSeconds, bool fastSeek, CancellationToken ct)
+        {
             using var memoryStream = new MemoryStream(65536);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             linkedCts.CancelAfter(TimeSpan.FromSeconds(4));
 
             try
             {
-                double offsetSeconds = Math.Max(0, (targetUtc - matchingChunk.StartUtc).TotalSeconds);
-                string normalizedPath = matchingChunk.FullPath.Replace('\\', '/');
+                string seekArgs;
+                double targetTime = offsetSeconds;
+
+                if (fastSeek)
+                {
+                    seekArgs = $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)}";
+                }
+                else
+                {
+                    // הליכה אחורה אל ה-Keyframe הקרוב ופענוח מדויק קדימה
+                    double safeSeek = Math.Max(0, offsetSeconds - 3.0);
+                    seekArgs = $"-ss {safeSeek.ToString("0.000", CultureInfo.InvariantCulture)} -accurate_seek";
+                    targetTime = offsetSeconds - safeSeek;
+                }
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate -ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                                $"-i \"{normalizedPath}\" -an -sn -dn -threads 2 -vframes 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
+                    Arguments = $"-nostdin -loglevel error -noautorotate {seekArgs} " +
+                                $"-i \"{inputPath}\" -ss {targetTime.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                $"-an -sn -dn -threads 2 -vframes 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,
                     UseShellExecute = false,
@@ -204,17 +236,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 if (memoryStream.Length > 0)
                 {
-                    byte[] bytes = memoryStream.ToArray();
-                    _memoryCache?.Set(cacheKey, bytes, TimeSpan.FromMinutes(3));
-                    return new MemoryStream(bytes);
+                    return memoryStream.ToArray();
                 }
-
-                return Stream.Null;
             }
             catch
             {
-                return Stream.Null;
+                // התעלמות ושקט כדי לאפשר Fallback
             }
+
+            return null;
         }
 
         public async Task<Stream> GenerateSpritesheetAsync(string hostname, DateTime startUtc, DateTime endUtc, int frameCount, int tileWidth = 120, int tileHeight = 52, CancellationToken ct = default)

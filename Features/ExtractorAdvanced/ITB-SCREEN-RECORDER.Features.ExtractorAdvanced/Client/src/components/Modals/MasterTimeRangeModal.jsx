@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import './MasterTimeRangeModal.scss';
 
-const MAX_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 שעות במדויק
+const MAX_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 שעות
 const pad = (n) => String(n).padStart(2, '0');
 
 /**
@@ -32,7 +32,7 @@ const toInputDateTime = (d, mode) => {
 };
 
 /**
- * פענוח מחרוזת datetime-local לאובייקט Date בהתאם ל-mode
+ * פענוח מחרוזת datetime-local לאובייקט Date
  */
 const parseInputDateTime = (dtStr, mode) => {
     if (!dtStr) return null;
@@ -88,26 +88,7 @@ export default function MasterTimeRangeModal({
         }
     }, [isOpen, currentRange, timeMode]);
 
-    // חישוב גבולות דינמיים: חסימה הדדית שלא תאפשר בחירה מעבר ל-24 שעות
-    const limits = useMemo(() => {
-        const startObj = parseInputDateTime(startDateTime, timeMode);
-        const endObj = parseInputDateTime(endDateTime, timeMode);
-
-        const startMs = startObj?.getTime();
-        const endMs = endObj?.getTime();
-
-        return {
-            // ה-Start לא יכול להיות מאוחר מה-End, ולא יכול להיות ישן יותר מ-End מינוס 24 שעות
-            startMax: endMs ? toInputDateTime(new Date(endMs - 1000), timeMode) : undefined,
-            startMin: endMs ? toInputDateTime(new Date(endMs - MAX_WINDOW_MS), timeMode) : undefined,
-
-            // ה-End לא יכול להיות מוקדם מה-Start, ולא יכול לעבור את Start פלוס 24 שעות
-            endMin: startMs ? toInputDateTime(new Date(startMs + 1000), timeMode) : undefined,
-            endMax: startMs ? toInputDateTime(new Date(startMs + MAX_WINDOW_MS), timeMode) : undefined
-        };
-    }, [startDateTime, endDateTime, timeMode]);
-
-    // חישוב משך הזמן הנבחר כרגע להצגה
+    // חישוב משך הזמן הנבחר כרגע להצגה חזותית בלבד
     const currentDurationHours = useMemo(() => {
         const startObj = parseInputDateTime(startDateTime, timeMode);
         const endObj = parseInputDateTime(endDateTime, timeMode);
@@ -140,12 +121,17 @@ export default function MasterTimeRangeModal({
 
         const startObj = parseInputDateTime(newStartStr, timeMode);
         const endObj = parseInputDateTime(endDateTime, timeMode);
-        if (!startObj) return;
+        if (!startObj || !endObj) return;
 
-        // אם ה-End הנוכחי רחוק ביותר מ-24 שעות מה-Start החדש, מיישרים את ה-End
-        if (endObj && (endObj.getTime() - startObj.getTime() > MAX_WINDOW_MS)) {
+        const diffMs = endObj.getTime() - startObj.getTime();
+
+        // 💡 יישור אוטומטי של תאריך הסיום אם חרגנו מ-24 שעות
+        if (diffMs > MAX_WINDOW_MS) {
+            alert('The selected scope exceeds 24 hours.\nThe End Point has been automatically adjusted.');
             setEndDateTime(toInputDateTime(new Date(startObj.getTime() + MAX_WINDOW_MS), timeMode));
-        } else if (endObj && endObj.getTime() <= startObj.getTime()) {
+        }
+        // מונע בחירת נקודת התחלה שמאוחרת מנקודת הסיום
+        else if (diffMs <= 0) {
             setEndDateTime(toInputDateTime(new Date(startObj.getTime() + (3600 * 1000)), timeMode));
         }
     };
@@ -157,12 +143,17 @@ export default function MasterTimeRangeModal({
 
         const endObj = parseInputDateTime(newEndStr, timeMode);
         const startObj = parseInputDateTime(startDateTime, timeMode);
-        if (!endObj) return;
+        if (!endObj || !startObj) return;
 
-        // אם ה-Start הנוכחי ישן ביותר מ-24 שעות מה-End שנבחר, מקדמים את ה-Start
-        if (startObj && (endObj.getTime() - startObj.getTime() > MAX_WINDOW_MS)) {
+        const diffMs = endObj.getTime() - startObj.getTime();
+
+        // 💡 יישור אוטומטי של תאריך ההתחלה אם חרגנו מ-24 שעות
+        if (diffMs > MAX_WINDOW_MS) {
+            alert('The selected scope exceeds 24 hours.\nThe Start Point has been automatically adjusted.');
             setStartDateTime(toInputDateTime(new Date(endObj.getTime() - MAX_WINDOW_MS), timeMode));
-        } else if (startObj && startObj.getTime() >= endObj.getTime()) {
+        }
+        // מונע בחירת נקודת סיום שמוקדמת לנקודת ההתחלה
+        else if (diffMs <= 0) {
             setStartDateTime(toInputDateTime(new Date(endObj.getTime() - (3600 * 1000)), timeMode));
         }
     };
@@ -177,13 +168,9 @@ export default function MasterTimeRangeModal({
         }
 
         const durationMs = endFull.getTime() - startFull.getTime();
-        if (durationMs <= 0) {
-            alert('End point must be greater than start point');
-            return;
-        }
 
-        if (durationMs > MAX_WINDOW_MS) {
-            alert('Maximum allowed time scope is 24 hours');
+        if (durationMs <= 0) {
+            alert('End point must be strictly after the start point.');
             return;
         }
 
@@ -202,7 +189,6 @@ export default function MasterTimeRangeModal({
     return createPortal(
         <div className="modal-backdrop-overlay" onClick={onClose} dir="ltr">
             <div className="master-time-modal-card" onClick={(e) => e.stopPropagation()}>
-                {/* כותרת ראשית ובורר UTC / Local מובנה */}
                 <div className="modal-header">
                     <div className="title-block">
                         <span className="modal-title">MISSION RECORDING SCOPE</span>
@@ -238,7 +224,6 @@ export default function MasterTimeRangeModal({
                     <button className="btn-modal-close" onClick={onClose} title="Close">✕</button>
                 </div>
 
-                {/* כפתורי בחירה מהירה (עד 24 שעות) */}
                 <div className="quick-presets-grid">
                     <button
                         className={`btn-preset ${activePreset === '24h' ? 'active' : ''}`}
@@ -266,12 +251,11 @@ export default function MasterTimeRangeModal({
                     </button>
                 </div>
 
-                {/* שדות תאריך ושעה מאוחדים (24H עם חסימה הדדית) */}
                 <div className="time-range-inputs-container">
                     <div className="input-column">
                         <div className="column-header">
                             <span className="column-label">START POINT (FROM)</span>
-                            <span className="tz-label">({timeMode} - 24H)</span>
+                            <span className="tz-label">({timeMode})</span>
                         </div>
 
                         <div className="field-group" onClick={(e) => e.currentTarget.querySelector('input')?.showPicker?.()}>
@@ -280,8 +264,6 @@ export default function MasterTimeRangeModal({
                                     type="datetime-local"
                                     step="1"
                                     value={startDateTime}
-                                    min={limits.startMin}
-                                    max={limits.startMax}
                                     onChange={handleStartChange}
                                 />
                             </div>
@@ -291,7 +273,7 @@ export default function MasterTimeRangeModal({
                     <div className="input-column">
                         <div className="column-header">
                             <span className="column-label">END POINT (TO)</span>
-                            <span className="tz-label">({timeMode} - 24H)</span>
+                            <span className="tz-label">({timeMode})</span>
                         </div>
 
                         <div className="field-group" onClick={(e) => e.currentTarget.querySelector('input')?.showPicker?.()}>
@@ -300,8 +282,6 @@ export default function MasterTimeRangeModal({
                                     type="datetime-local"
                                     step="1"
                                     value={endDateTime}
-                                    min={limits.endMin}
-                                    max={limits.endMax}
                                     onChange={handleEndChange}
                                 />
                             </div>
@@ -309,10 +289,11 @@ export default function MasterTimeRangeModal({
                     </div>
                 </div>
 
-                {/* שורת אינדיקציה של חלון הזמן המרבי */}
                 <div className="range-scope-summary-pill">
                     <span className="summary-label">SELECTED WINDOW:</span>
-                    <strong className="summary-value">{currentDurationHours}</strong>
+                    <strong className="summary-value" style={{ color: parseInputDateTime(startDateTime, timeMode)?.getTime() < parseInputDateTime(endDateTime, timeMode)?.getTime() - MAX_WINDOW_MS ? '#f43f5e' : '#22d3ee' }}>
+                        {currentDurationHours}
+                    </strong>
                     <span className="summary-cap">/ 24h MAXIMUM</span>
                 </div>
 

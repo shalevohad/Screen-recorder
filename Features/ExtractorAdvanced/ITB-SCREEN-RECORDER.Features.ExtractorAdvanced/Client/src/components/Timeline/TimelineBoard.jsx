@@ -10,9 +10,6 @@ import TimelineMinimap from './TimelineMinimap.jsx';
 import TimelineContextMenu from './TimelineContextMenu.jsx';
 import './TimelineBoard.scss';
 
-/**
- * עקומת בלימה קובית רכה (Cubic Easing Out) לתנועת Pan חלקה
- */
 function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
 }
@@ -41,18 +38,32 @@ export default function TimelineBoard({
     outPointMs = 3600000,
     setOutPointMs,
     onExport,
-    recordingSegments = {}
+    recordingSegments = {},
+    viewportStartMs: propViewportStartMs,       // 💡 קבלת מיקום גלילה מבחוץ
+    onViewportStartChange                       // 💡 פונקציית עדכון גלילה החוצה
 }) {
     const [hoverMs, setHoverMs] = useState(null);
-    const [viewportStartMs, setViewportStartMs] = useState(0);
+
+    // 💡 ניהול היברידי ל-Viewport (תמיכה במצב מבוקר מבחוץ או מקומי)
+    const [internalViewportStartMs, setInternalViewportStartMs] = useState(propViewportStartMs || 0);
+    const viewportStartMs = propViewportStartMs !== undefined ? propViewportStartMs : internalViewportStartMs;
+
+    const setViewportStartMs = useCallback((val) => {
+        const nextVal = typeof val === 'function' ? val(viewportStartMs) : val;
+        if (propViewportStartMs === undefined) {
+            setInternalViewportStartMs(nextVal);
+        }
+        if (onViewportStartChange) {
+            onViewportStartChange(nextVal);
+        }
+    }, [propViewportStartMs, onViewportStartChange, viewportStartMs]);
+
     const [draggingTarget, setDraggingTarget] = useState(null);
     const [dragStartInfo, setDragStartInfo] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
 
-    // FPS אמיתי מ-FFprobe עבור הערוץ הנבחר
     const [activeFps, setActiveFps] = useState(30);
 
-    // מטא-דאטה, צ'אנקים אמיתיים מהדיסק והערכת משקל מקדימה
     const [estimateData, setEstimateData] = useState(null);
     const [isEstimating, setIsEstimating] = useState(false);
 
@@ -66,11 +77,10 @@ export default function TimelineBoard({
     const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
     const viewportDurationMs = totalDurationMs / zoomLevel;
 
-    // שליפת FPS אמיתי מ-FFprobe
     useEffect(() => {
         if (!activeStationId || !baseEpochMs) return;
 
-        const targetEpoch = baseEpochMs + Math.round(playheadMs || inPointMs || 0);
+        const targetEpoch = baseEpochMs + Math.round(inPointMs || 0);
         fetch(`/api/v1/extractor-advanced/stream-metadata?hostname=${encodeURIComponent(activeStationId)}&epochMs=${targetEpoch}`)
             .then(res => res.ok ? res.json() : null)
             .then(data => {
@@ -79,9 +89,8 @@ export default function TimelineBoard({
                 }
             })
             .catch(() => { });
-    }, [activeStationId, baseEpochMs, playheadMs, inPointMs]);
+    }, [activeStationId, baseEpochMs, inPointMs]);
 
-    // מנגנון Debounce לשליפת צ'אנקים אמיתיים מהדיסק והערכת גודל
     useEffect(() => {
         if (!stations.length || outPointMs <= inPointMs || !baseEpochMs) {
             setEstimateData(null);
@@ -148,7 +157,7 @@ export default function TimelineBoard({
 
     useEffect(() => {
         setViewportStartMs(prev => Math.max(0, Math.min(prev, totalDurationMs - viewportDurationMs)));
-    }, [zoomLevel, totalDurationMs, viewportDurationMs]);
+    }, [zoomLevel, totalDurationMs, viewportDurationMs, setViewportStartMs]);
 
     const animateViewportTo = useCallback((targetStart, durationMs = 280) => {
         if (animFrameRef.current) {
@@ -177,7 +186,7 @@ export default function TimelineBoard({
         };
 
         animFrameRef.current = requestAnimationFrame(step);
-    }, []);
+    }, [setViewportStartMs]);
 
     const getMsFromClientX = useCallback((clientX) => {
         if (!trackAreaRef.current) return viewportStartMs;
@@ -273,7 +282,7 @@ export default function TimelineBoard({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs, animateViewportTo, activeFps]);
+    }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs, animateViewportTo, activeFps, setViewportStartMs]);
 
     const handleContextMenu = (e) => {
         e.preventDefault();
@@ -337,7 +346,7 @@ export default function TimelineBoard({
 
         el.addEventListener('wheel', handleWheel, { passive: false });
         return () => el.removeEventListener('wheel', handleWheel);
-    }, [zoomLevel, viewportStartMs, viewportDurationMs, totalDurationMs, getMsFromClientX, onZoomChange, maxDynamicZoom]);
+    }, [zoomLevel, viewportStartMs, viewportDurationMs, totalDurationMs, getMsFromClientX, onZoomChange, maxDynamicZoom, setViewportStartMs]);
 
     const handleStartDrag = (target, e) => {
         setContextMenu(null);
@@ -410,7 +419,7 @@ export default function TimelineBoard({
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [draggingTarget, dragStartInfo, getMsFromClientX, inPointMs, outPointMs, playheadMs, totalDurationMs, viewportDurationMs, setPlayheadMs, setInPointMs, setOutPointMs]);
+    }, [draggingTarget, dragStartInfo, getMsFromClientX, inPointMs, outPointMs, playheadMs, totalDurationMs, viewportDurationMs, setPlayheadMs, setInPointMs, setOutPointMs, setViewportStartMs]);
 
     const isRangeValid = stations.length > 0 && Math.abs(outPointMs - inPointMs) >= 1000;
 
@@ -485,7 +494,6 @@ export default function TimelineBoard({
                 <div className="tracks-scroll-area">
                     {stations.length > 0 ? (
                         stations.map(station => {
-                            // 💡 סנכרון ישיר לצ'אנקים האמיתיים שנמצאו בדיסק
                             const effectiveSegments =
                                 estimateData?.stationChunks?.[station.id] ||
                                 (estimateData?.activeSegments?.length > 0 ? estimateData.activeSegments : null) ||
@@ -518,7 +526,6 @@ export default function TimelineBoard({
                     )}
                 </div>
 
-                {/* כפתור Export אנכי עם הצגת הערכת משקל ופערים חיה */}
                 <button
                     type="button"
                     onClick={isRangeValid ? onExport : undefined}
