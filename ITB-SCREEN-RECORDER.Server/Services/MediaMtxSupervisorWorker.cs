@@ -304,7 +304,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
             return;
         }
 
-        string recordPath = $"{cleanRoot}/%path/%Y-%m-%d_%H-%M-%S-%f";
+        string recordPath = _storageResolver.BuildRecordPath(cleanRoot, config);
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
         string retentionHours = $"{config.Storage.RetentionDays * 24}h";
 

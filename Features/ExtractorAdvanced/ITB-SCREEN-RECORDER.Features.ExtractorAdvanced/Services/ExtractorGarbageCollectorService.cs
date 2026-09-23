@@ -2,6 +2,7 @@
 // File: Features/ExtractorAdvanced/Services/ExtractorGarbageCollectorService.cs
 // ==========================================
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -12,16 +13,16 @@ using Microsoft.Extensions.Logging;
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 {
     /// <summary>
-    /// שירות רקע לניקוי אוטומטי (GC) של קבצי Temp, מניפסטים וקאש תמונות של ה-Extractor
+    /// שירות רקע לניקוי קבצי זבל בדיסק וסגירת תהליכי FFmpeg/FFprobe תקועים ויתומים
     /// </summary>
     public class ExtractorGarbageCollectorService : BackgroundService
     {
         private readonly ILogger<ExtractorGarbageCollectorService> _logger;
 
-        // הגדרות תזמון וזמני שימור
-        private static readonly TimeSpan RunInterval = TimeSpan.FromMinutes(15);
-        private static readonly TimeSpan TempFilesMaxAge = TimeSpan.FromMinutes(20);
+        private static readonly TimeSpan RunInterval = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan TempFilesMaxAge = TimeSpan.FromMinutes(15);
         private static readonly TimeSpan SpritesCacheMaxAge = TimeSpan.FromHours(8);
+        private static readonly TimeSpan MaxProcessLifetime = TimeSpan.FromMinutes(5); // תהליך FFmpeg שלא סיים תוך 5 דק' נחשב תקוע
 
         public ExtractorGarbageCollectorService(ILogger<ExtractorGarbageCollectorService> logger)
         {
@@ -32,8 +33,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
             _logger.LogInformation("[Extractor GC] Service initialized. Running every {Interval} minutes.", RunInterval.TotalMinutes);
 
-            // הפעלה ראשונית מיד עם עליית השרת לניקוי שאריות מקריסות קודמות
-            RunCleanupCycle();
+            // הפעלה ראשונית עם עליית השרת
+            RunFullMaintenanceCycle();
 
             using var timer = new PeriodicTimer(RunInterval);
 
@@ -41,7 +42,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 try
                 {
-                    RunCleanupCycle();
+                    RunFullMaintenanceCycle();
                 }
                 catch (OperationCanceledException)
                 {
@@ -49,14 +50,76 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "[Extractor GC] Unexpected failure during cleanup cycle.");
+                    _logger.LogError(ex, "[Extractor GC] Unexpected failure during maintenance cycle.");
                 }
             }
 
             _logger.LogInformation("[Extractor GC] Service stopped.");
         }
 
-        private void RunCleanupCycle()
+        private void RunFullMaintenanceCycle()
+        {
+            CleanupOrphanProcesses();
+            CleanupDiskArtifacts();
+        }
+
+        /// <summary>
+        /// 💡 סגירת תהליכי FFmpeg ו-FFprobe זומבים/תקועים שחונקים את המעבד
+        /// </summary>
+        private void CleanupOrphanProcesses()
+        {
+            string[] targetProcessNames = { "ffmpeg", "ffprobe" };
+            DateTime processThreshold = DateTime.Now - MaxProcessLifetime;
+            int killedCount = 0;
+
+            foreach (var procName in targetProcessNames)
+            {
+                Process[] processes;
+                try
+                {
+                    processes = Process.GetProcessesByName(procName);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (var proc in processes)
+                {
+                    try
+                    {
+                        if (proc.HasExited) continue;
+
+                        if (proc.StartTime < processThreshold)
+                        {
+                            _logger.LogWarning("[Extractor GC] Killing stale process {Name} (PID: {Pid}, Running since: {StartTime:HH:mm:ss})",
+                                procName, proc.Id, proc.StartTime);
+
+                            proc.Kill(entireProcessTree: true);
+                            killedCount++;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // התהליך אולי נסגר מעצמו בשבריר שניה זו
+                    }
+                    finally
+                    {
+                        proc.Dispose();
+                    }
+                }
+            }
+
+            if (killedCount > 0)
+            {
+                _logger.LogInformation("[Extractor GC] Terminated {Count} orphaned FFmpeg/FFprobe processes.", killedCount);
+            }
+        }
+
+        /// <summary>
+        /// ניקוי קבצי מניפסט, גשרים, פריימים וקאש ישנים מהדיסק
+        /// </summary>
+        private void CleanupDiskArtifacts()
         {
             int deletedCount = 0;
             long freedBytes = 0;
@@ -65,8 +128,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             string tempPath = Path.GetTempPath();
 
-            // 1. ניקוי קבצים זמניים יתומים (מניפסטים, פריימים, סטרים) מתיקיית ה-Temp הכללית
-            string[] tempPrefixes = { "spritesheet_", "sync_", "frame_", "stream_", "manifest_" };
+            // 💡 הוספת תחיליות מלאות כולל bridge_ ו-concat_ שמיוצרות ב-AdvancedExtractorService
+            string[] tempPrefixes = { "spritesheet_", "sync_", "frame_", "stream_", "manifest_", "bridge_", "concat_" };
 
             try
             {
@@ -94,7 +157,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                 deletedCount++;
                                 freedBytes += size;
                             }
-                            catch (IOException) { /* קובץ עדיין בשימוש/נעול ע"י FFmpeg */ }
+                            catch (IOException) { }
                             catch (UnauthorizedAccessException) { }
                         }
                     }
@@ -105,7 +168,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 _logger.LogWarning(ex, "[Extractor GC] Failed scanning general temp directory.");
             }
 
-            // 2. ניקוי קבצי קאש של Spritesheets ישנים
+            // ניקוי קאש תמונות Spritesheet ישנות
             string cacheDir = Path.Combine(tempPath, "itb_sprites_cache");
             if (Directory.Exists(cacheDir))
             {
@@ -128,7 +191,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
                     }
 
-                    // מחיקת תיקיות תחנה ריקות
+                    // מחיקת תיקיות תחנה שהתרוקנו
                     foreach (var dir in cacheDirInfo.EnumerateDirectories())
                     {
                         if (!dir.EnumerateFileSystemInfos().Any())

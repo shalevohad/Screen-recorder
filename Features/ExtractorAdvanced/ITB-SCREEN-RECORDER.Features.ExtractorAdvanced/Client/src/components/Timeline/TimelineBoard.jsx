@@ -39,12 +39,12 @@ export default function TimelineBoard({
     setOutPointMs,
     onExport,
     recordingSegments = {},
-    viewportStartMs: propViewportStartMs,       // 💡 קבלת מיקום גלילה מבחוץ
-    onViewportStartChange                       // 💡 פונקציית עדכון גלילה החוצה
+    viewportStartMs: propViewportStartMs,
+    onViewportStartChange,
+    onEstimateLoaded
 }) {
     const [hoverMs, setHoverMs] = useState(null);
 
-    // 💡 ניהול היברידי ל-Viewport (תמיכה במצב מבוקר מבחוץ או מקומי)
     const [internalViewportStartMs, setInternalViewportStartMs] = useState(propViewportStartMs || 0);
     const viewportStartMs = propViewportStartMs !== undefined ? propViewportStartMs : internalViewportStartMs;
 
@@ -63,7 +63,6 @@ export default function TimelineBoard({
     const [contextMenu, setContextMenu] = useState(null);
 
     const [activeFps, setActiveFps] = useState(30);
-
     const [estimateData, setEstimateData] = useState(null);
     const [isEstimating, setIsEstimating] = useState(false);
 
@@ -118,6 +117,9 @@ export default function TimelineBoard({
                 if (res.ok) {
                     const data = await res.json();
                     setEstimateData(data);
+                    if (onEstimateLoaded) {
+                        onEstimateLoaded(data);
+                    }
                 }
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -132,7 +134,7 @@ export default function TimelineBoard({
             clearTimeout(timer);
             controller.abort();
         };
-    }, [stations, inPointMs, outPointMs, baseEpochMs]);
+    }, [stations, inPointMs, outPointMs, baseEpochMs, onEstimateLoaded]);
 
     useEffect(() => {
         viewportStartRef.current = viewportStartMs;
@@ -156,7 +158,12 @@ export default function TimelineBoard({
     }, [inPointMs, playheadMs, setPlayheadMs]);
 
     useEffect(() => {
-        setViewportStartMs(prev => Math.max(0, Math.min(prev, totalDurationMs - viewportDurationMs)));
+        if (totalDurationMs > 0 && viewportDurationMs > 0 && viewportDurationMs < totalDurationMs) {
+            const maxStart = totalDurationMs - viewportDurationMs;
+            if (viewportStartRef.current > maxStart) {
+                setViewportStartMs(Math.max(0, maxStart));
+            }
+        }
     }, [zoomLevel, totalDurationMs, viewportDurationMs, setViewportStartMs]);
 
     const animateViewportTo = useCallback((targetStart, durationMs = 280) => {
@@ -494,9 +501,9 @@ export default function TimelineBoard({
                 <div className="tracks-scroll-area">
                     {stations.length > 0 ? (
                         stations.map(station => {
-                            const effectiveSegments =
-                                estimateData?.stationChunks?.[station.id] ||
-                                (estimateData?.activeSegments?.length > 0 ? estimateData.activeSegments : null) ||
+                            // 💡 שימוש תמידי במערך הסגמנטים המלא של התחנה (שמכסה את כל ציר הזמן)
+                            // כך שסגמנטים שנמצאים לפני ה-IN או אחרי ה-OUT ימשיכו להופיע כפסים ירוקים תקינים!
+                            const fullStationSegments =
                                 recordingSegments[station.id] ||
                                 station.segments ||
                                 [];
@@ -512,7 +519,7 @@ export default function TimelineBoard({
                                     inPointMs={inPointMs}
                                     outPointMs={outPointMs}
                                     baseEpochMs={baseEpochMs}
-                                    segments={effectiveSegments}
+                                    segments={fullStationSegments}
                                     recordingSegments={recordingSegments}
                                     globalGaps={estimateData?.removedGlobalGaps || []}
                                 />

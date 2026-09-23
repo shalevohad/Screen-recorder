@@ -77,11 +77,10 @@
 		<Folder Include="Client\src\components\StationDrawer\views\Hub\" />
 		<Folder Include="Client\src\components\StationDrawer\views\Drawer\" />
 		<Folder Include="Client\src\components\TransportBar\" />
-		<Folder Include="Client\src\components\Viewport\" />
 		<Folder Include="Client\src\components\TopScopeBar\" />
 		<Folder Include="Client\src\components\Timeline\" />
+		<Folder Include="Client\src\components\Viewport\utils\" />
 		<Folder Include="Client\src\hooks\" />
-		<Folder Include="Client\src\utils\" />
 		<Folder Include="Tools\Linux\" />
 		<Folder Include="Tools\Win\" />
 		<Folder Include="Client\public\assets\" />

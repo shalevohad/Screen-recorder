@@ -11,7 +11,7 @@ import MasterTimeRangeModal from './components/Modals/MasterTimeRangeModal.jsx';
 import BookmarksModal from './components/Modals/BookmarksModal.jsx';
 import SoloSpotlightModal from './components/Modals/SoloSpotlightModal.jsx';
 import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
-import { getStudioSessionCache, saveStudioSessionCache } from './studioSessionStore.js';
+import { getStudioSessionCache, saveStudioSessionCache } from './utils/studioSessionStore.js';
 import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
 
@@ -58,10 +58,8 @@ export default function ExtractorAdvancedStudio() {
     const [isRangeModalOpen, setIsRangeModalOpen] = useState(false);
     const [isBookmarksModalOpen, setIsBookmarksModalOpen] = useState(false);
 
-    // ניהול הזום וגלילת ה-Viewport ברמת הסטודיו הראשי
     const [zoomLevel, setZoomLevel] = useState(cached.zoomLevel || 1);
     const [viewportStartMs, setViewportStartMs] = useState(cached.viewportStartMs || 0);
-    const viewportDurationMs = totalTimelineDurationMs / zoomLevel;
 
     const [inPointMs, setInPointMs] = useState(cached.inPointMs ?? bufferMs);
     const [outPointMs, setOutPointMs] = useState(cached.outPointMs ?? (bufferMs + timeRange.durationMs));
@@ -70,13 +68,6 @@ export default function ExtractorAdvancedStudio() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLooping, setIsLooping] = useState(false);
     const [globalGaps, setGlobalGaps] = useState([]);
-
-    // עצירת הניגון במסך הראשי ברגע שנפתח חלון הספוטלייט (מניעת ניגון כפול ברקע)
-    useEffect(() => {
-        if (spotlightStationId) {
-            setIsPlaying(false);
-        }
-    }, [spotlightStationId]);
 
     useEffect(() => {
         setPlayheadMs((prev) => {
@@ -92,6 +83,27 @@ export default function ExtractorAdvancedStudio() {
     const lastTickRef = useRef(null);
     const requestRef = useRef(null);
 
+    // בדיקה האם פועל נגן סולו או ספוטלייט מול סגמנט מוקלט
+    const activeStation = allStations.find(s => s.id === activeStationId);
+    const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
+    const spotlightStation = allStations.find(s => s.id === spotlightStationId);
+
+    const currentStationToCheck = spotlightStation || (activeStationId ? activeStation : null);
+    const stationSegmentsToCheck = currentStationToCheck
+        ? (recordingSegments[currentStationToCheck.id] || currentStationToCheck.segments || [])
+        : [];
+
+    const isCurrentInValidSegment = stationSegmentsToCheck.some(seg => {
+        const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
+        const e = seg.endEpochMs ?? seg.endEpoch ?? 0;
+        const curEp = timelineBaseEpochMs + playheadMs;
+        return curEp >= s && curEp <= e;
+    });
+
+    const isVideoDirectlyDrivingClock = Boolean(
+        (spotlightStationId || activeStationId) && isCurrentInValidSegment
+    );
+
     const updatePlayhead = useCallback((timestamp) => {
         if (!lastTickRef.current) lastTickRef.current = timestamp;
         const deltaMs = timestamp - lastTickRef.current;
@@ -104,8 +116,7 @@ export default function ExtractorAdvancedStudio() {
                 const currentEpoch = timelineBaseEpochMs + nextPos;
                 const activeGap = globalGaps.find(g => currentEpoch >= g.startEpochMs && currentEpoch < g.endEpochMs);
                 if (activeGap) {
-                    const gapEndOffsetMs = activeGap.endEpochMs - timelineBaseEpochMs;
-                    nextPos = gapEndOffsetMs;
+                    nextPos = activeGap.endEpochMs - timelineBaseEpochMs;
                 }
             }
 
@@ -120,13 +131,13 @@ export default function ExtractorAdvancedStudio() {
             return nextPos;
         });
 
-        if (isPlaying) {
+        if (isPlaying && !isVideoDirectlyDrivingClock) {
             requestRef.current = requestAnimationFrame(updatePlayhead);
         }
-    }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs]);
+    }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs, isVideoDirectlyDrivingClock]);
 
     useEffect(() => {
-        if (isPlaying) {
+        if (isPlaying && !isVideoDirectlyDrivingClock) {
             lastTickRef.current = performance.now();
             requestRef.current = requestAnimationFrame(updatePlayhead);
         } else {
@@ -137,7 +148,36 @@ export default function ExtractorAdvancedStudio() {
         return () => {
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
         };
-    }, [isPlaying, updatePlayhead]);
+    }, [isPlaying, updatePlayhead, isVideoDirectlyDrivingClock]);
+
+    // 💡 הפעלת ניגון חכמה שמדלגת מעל פערים בעת התחלה
+    const handleTogglePlaySmart = useCallback(() => {
+        if (!isPlaying) {
+            let targetPlayhead = playheadMs;
+            const curEpoch = timelineBaseEpochMs + targetPlayhead;
+
+            const activeGlobalGap = globalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
+            if (activeGlobalGap) {
+                targetPlayhead = activeGlobalGap.endEpochMs - timelineBaseEpochMs;
+            } else if (currentStationToCheck && !isCurrentInValidSegment) {
+                const nextSeg = stationSegmentsToCheck
+                    .map(seg => ({ start: seg.startEpochMs ?? seg.startEpoch ?? 0, end: seg.endEpochMs ?? seg.endEpoch ?? 0 }))
+                    .filter(s => s.start > curEpoch)
+                    .sort((a, b) => a.start - b.start)[0];
+
+                if (nextSeg) {
+                    targetPlayhead = nextSeg.start - timelineBaseEpochMs;
+                }
+            }
+
+            if (targetPlayhead !== playheadMs) {
+                setPlayheadMs(targetPlayhead);
+            }
+            setIsPlaying(true);
+        } else {
+            setIsPlaying(false);
+        }
+    }, [isPlaying, playheadMs, timelineBaseEpochMs, globalGaps, currentStationToCheck, isCurrentInValidSegment, stationSegmentsToCheck, setPlayheadMs]);
 
     const [isWorkspaceActive, setIsWorkspaceActive] = useState(
         Boolean(cached.isWorkspaceActive && cached.selectedStationIds?.length > 0)
@@ -186,7 +226,8 @@ export default function ExtractorAdvancedStudio() {
                         hostname: item.hostname || item.displayName || item.name || 'Station',
                         displayName: item.displayName || item.hostname || item.name,
                         isOnline: item.isOnline !== undefined ? item.isOnline : true,
-                        recordingsCount: item.recordingsCount || 0
+                        recordingsCount: item.recordingsCount || 0,
+                        segments: item.segments || []
                     }));
 
                     setAllStations(normalized);
@@ -254,10 +295,6 @@ export default function ExtractorAdvancedStudio() {
     const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
     const forceDrawerOpen = isDrawerOpen || isInitialSetup;
 
-    const activeStation = allStations.find(s => s.id === activeStationId);
-    const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
-    const spotlightStation = allStations.find(s => s.id === spotlightStationId);
-
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
@@ -265,7 +302,7 @@ export default function ExtractorAdvancedStudio() {
 
             if (e.code === 'Space') {
                 e.preventDefault();
-                setIsPlaying(p => !p);
+                handleTogglePlaySmart();
                 return;
             }
 
@@ -290,7 +327,7 @@ export default function ExtractorAdvancedStudio() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeStationId, timelineStations, isRangeModalOpen, isBookmarksModalOpen, spotlightStationId]);
+    }, [activeStationId, timelineStations, isRangeModalOpen, isBookmarksModalOpen, spotlightStationId, handleTogglePlaySmart]);
 
     const handleLoadBookmark = (bm) => {
         const startMs = parseSafeEpoch(bm.startTime);
@@ -366,18 +403,21 @@ export default function ExtractorAdvancedStudio() {
                                     activeStation={activeStation}
                                     timelineStations={timelineStations}
                                     onSelectActiveStation={(id) => setActiveStationId(id)}
-                                    onOpenSpotlight={(id) => setSpotlightStationId(id)}
+                                    onOpenSpotlight={(id) => {
+                                        setActiveStationId(id);
+                                        setSpotlightStationId(id);
+                                    }}
                                     onOpenDrawer={() => setIsDrawerOpen(true)}
                                     baseEpochMs={timelineBaseEpochMs}
                                     playheadMs={playheadMs}
                                     timeMode={timeMode}
-
                                     isPlaying={isPlaying}
                                     setIsPlaying={setIsPlaying}
                                     totalDurationMs={totalTimelineDurationMs}
                                     inPointMs={inPointMs}
                                     outPointMs={outPointMs}
                                     setPlayheadMs={setPlayheadMs}
+                                    globalGaps={globalGaps}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}
@@ -389,7 +429,7 @@ export default function ExtractorAdvancedStudio() {
                                     setOutPointMs={setOutPointMs}
                                     activeStationId={activeStationId}
                                     isPlaying={isPlaying}
-                                    setIsPlaying={setIsPlaying}
+                                    setIsPlaying={handleTogglePlaySmart}
                                     isLooping={isLooping}
                                     setIsLooping={setIsLooping}
                                 />
@@ -477,7 +517,12 @@ export default function ExtractorAdvancedStudio() {
                 station={spotlightStation}
                 allStations={timelineStations}
                 onSelectStation={setSpotlightStationId}
-                onClose={() => setSpotlightStationId(null)}
+                onClose={() => {
+                    if (!activeStationId && spotlightStationId) {
+                        setActiveStationId(spotlightStationId);
+                    }
+                    setSpotlightStationId(null);
+                }}
                 baseEpochMs={timelineBaseEpochMs}
                 timeMode={timeMode}
                 totalDurationMs={totalTimelineDurationMs}
@@ -493,6 +538,9 @@ export default function ExtractorAdvancedStudio() {
                 setOutPointMs={setOutPointMs}
                 recordingSegments={recordingSegments}
                 globalGaps={globalGaps}
+                isPlaying={isPlaying}
+                setIsPlaying={setIsPlaying}
+                onExport={handleExportSmartCut}
             />
 
             <ExportJobMonitor />

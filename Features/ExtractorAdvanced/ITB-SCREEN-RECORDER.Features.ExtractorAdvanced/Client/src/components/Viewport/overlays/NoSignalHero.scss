@@ -1,0 +1,46 @@
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Viewport/overlays/NoSignalHero.scss
+// ==========================================
+
+.tactical-no-signal-hero {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: #020617;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    user-select: none;
+
+    .spotlight-badge-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(6, 182, 212, 0.08);
+        border: 1px solid rgba(6, 182, 212, 0.25);
+        border-radius: 50%;
+        padding: 12px;
+        box-shadow: 0 0 24px rgba(6, 182, 212, 0.15);
+
+        .torch-fullscreen-svg {
+            width: 44px;
+            height: 44px;
+        }
+    }
+
+    .spotlight-title-label {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 800;
+        color: #22d3ee;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        background: rgba(6, 182, 212, 0.1);
+        border: 1px solid rgba(6, 182, 212, 0.3);
+        padding: 4px 10px;
+        border-radius: 4px;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    }
+}

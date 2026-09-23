@@ -23,20 +23,21 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         private readonly ExtractorOptions _options;
         private readonly ILogger<StorageScannerService> _logger;
         private readonly IDummyVideoGenerator _dummyGenerator;
+        private readonly TimeZoneInfo _serverLocalTz;
 
-        // תבנית 1: שמות קבצים בפורמט קומפקטי עם UTC Z (למשל: 20260920_032041_117698Z.mp4)
+        // זיהוי פורמט דחוס: YYYYMMDD_HHMMSS[_ffffff][Z]
         private static readonly Regex IsoUtcCompactRegex = new(
-            @"^(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?:_\d+)?Z?\.(mp4|flv)$",
+            @"^(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?:_\d+)?(?<utc>Z)?\.(mp4|flv)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // תבנית 2: שמות קבצים עם מקפים (למשל: 2026-09-20_01-18-07-292918.mp4)
+        // זיהוי פורמט מקפים: YYYY-MM-DD_HH-MM-SS[-ffffff][Z]
         private static readonly Regex HyphenatedRegex = new(
-            @"^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})_(?<hour>\d{2})-(?<minute>\d{2})-(?<sec>\d{2})(?:-\d+)?\.(mp4|flv)$",
+            @"^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})_(?<hour>\d{2})-(?<minute>\d{2})-(?<sec>\d{2})(?:-\d+)?(?<utc>Z)?\.(mp4|flv)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // תבנית 3: שמות קבצים הכוללים את שם התחנה כקידומת (Host_YYYYMMDD_HHMMSS.mp4)
+        // תמיכה לאחור בפורמט ישן עם קידומת מחשב
         private static readonly Regex LegacyHostPrefixRegex = new(
-            @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})\.(mp4|flv)$",
+            @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?<utc>Z)?\.(mp4|flv)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public StorageScannerService(
@@ -67,6 +68,19 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 NetAppUncPath = netAppPath,
                 LocalFallbackPath = fallbackPath
             };
+
+            // קביעת אזור הזמן המקומי של השרת לטיפול בקבצים ללא Z
+            string configuredTz = systemConfig.Value?.DisplayTimezone;
+            try
+            {
+                _serverLocalTz = !string.IsNullOrWhiteSpace(configuredTz)
+                    ? TimeZoneInfo.FindSystemTimeZoneById(configuredTz)
+                    : TimeZoneInfo.Local;
+            }
+            catch
+            {
+                _serverLocalTz = TimeZoneInfo.Local;
+            }
         }
 
         public Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
@@ -80,7 +94,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
                 try
                 {
-                    // 1. סריקה מהירה וממוקדת של תיקיית live (רמה עליונה בלבד - TopDirectoryOnly)
                     string liveDir = Path.Combine(root, "live");
                     if (Directory.Exists(liveDir))
                     {
@@ -94,7 +107,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         }
                     }
 
-                    // 2. בדיקת תת-תיקיות תחנה ישירות תחת ה-Root (ללא כניסה לתיקיות מערכת)
                     foreach (var stationDir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
                     {
                         string hostName = Path.GetFileName(stationDir);
@@ -138,7 +150,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         Path.Combine(root, hostname)
                     };
 
-                    // איתור קבצים בתיקיות התחנה הספציפיות
                     foreach (var targetDir in targetDirs)
                     {
                         if (Directory.Exists(targetDir))
@@ -155,7 +166,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         }
                     }
 
-                    // תמיכה לאחור בקבצים בודדים תחת ה-Root עם קידומת התחנה
                     var legacyFiles = Directory.EnumerateFiles(root, $"{hostname}_*.mp4", SearchOption.TopDirectoryOnly);
                     foreach (var file in legacyFiles)
                     {
@@ -172,28 +182,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // מיון וניקוי כפילויות
             var sortedUniqueChunks = chunks
                 .GroupBy(c => c.FullPath)
                 .Select(g => g.First())
                 .OrderBy(c => c.StartUtc)
                 .ToList();
-
-            // תיקון סטיית הזמנים: עדכון EndUtc לפי תחילת המקטע הבא במקום ברירת מחדל של 10 דקות
-            for (int i = 0; i < sortedUniqueChunks.Count; i++)
-            {
-                if (i < sortedUniqueChunks.Count - 1)
-                {
-                    var nextChunk = sortedUniqueChunks[i + 1];
-                    var diff = nextChunk.StartUtc - sortedUniqueChunks[i].StartUtc;
-
-                    // אם המרחק עד המקטע הבא תקין ורציף (עד 15 דקות), סוף המקטע הנוכחי הוא תחילת המקטע הבא
-                    if (diff > TimeSpan.Zero && diff <= TimeSpan.FromMinutes(15))
-                    {
-                        sortedUniqueChunks[i].EndUtc = nextChunk.StartUtc;
-                    }
-                }
-            }
 
             return Task.FromResult(sortedUniqueChunks);
         }
@@ -232,7 +225,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 if (chunk.EndUtc <= currentTimelineUtc) continue;
 
-                // טיפול בפערי זמן (Gaps) בין מקטעים: הזרקת וידאו NO SIGNAL
                 if (chunk.StartUtc > currentTimelineUtc)
                 {
                     TimeSpan gap = chunk.StartUtc - currentTimelineUtc;
@@ -247,14 +239,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 string normalizedPath = chunk.FullPath.Replace('\\', '/');
                 sb.AppendLine($"file '{normalizedPath}'");
 
-                // חיתוך נקודת התחלה אם המקטע מתחיל לפני החלון המבוקש
                 if (chunk.StartUtc < rangeStartUtc)
                 {
                     double inPoint = (rangeStartUtc - chunk.StartUtc).TotalSeconds;
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "inpoint {0:F3}", inPoint));
                 }
 
-                // חיתוך נקודת סיום אם המקטע מסתיים אחרי החלון המבוקש
                 if (chunk.EndUtc > rangeEndUtc)
                 {
                     double outPoint = (rangeEndUtc - chunk.StartUtc).TotalSeconds;
@@ -268,7 +258,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // השלמת פער סיום אם טווח החלון המבוקש ארוך מסיום ההקלטה האחרונה
             if (currentTimelineUtc < rangeEndUtc)
             {
                 TimeSpan finalGap = rangeEndUtc - currentTimelineUtc;
@@ -320,8 +309,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             DateTime startUtc;
             string host = inferredHost ?? string.Empty;
 
-            // בדיקת תבנית 1: פורמט קומפקטי עם Z (למשל 20260920_032041_117698Z.mp4)
             var match = IsoUtcCompactRegex.Match(fileName);
+            if (!match.Success)
+            {
+                match = HyphenatedRegex.Match(fileName);
+            }
+
             if (match.Success)
             {
                 int year = int.Parse(match.Groups["year"].Value);
@@ -331,38 +324,41 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 int minute = int.Parse(match.Groups["minute"].Value);
                 int second = int.Parse(match.Groups["sec"].Value);
 
-                startUtc = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
-            }
-            else
-            {
-                // בדיקת תבנית 2: פורמט עם מקפים (למשל 2026-09-20_01-18-07-292918.mp4)
-                match = HyphenatedRegex.Match(fileName);
-                if (match.Success)
-                {
-                    int year = int.Parse(match.Groups["year"].Value);
-                    int month = int.Parse(match.Groups["month"].Value);
-                    int day = int.Parse(match.Groups["day"].Value);
-                    int hour = int.Parse(match.Groups["hour"].Value);
-                    int minute = int.Parse(match.Groups["minute"].Value);
-                    int second = int.Parse(match.Groups["sec"].Value);
+                bool isExplicitUtc = match.Groups["utc"].Success;
 
+                if (isExplicitUtc)
+                {
                     startUtc = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
                 }
                 else
                 {
-                    // בדיקת תבנית 3: שם התחנה בתחילת הקובץ (Host_20260920_...)
-                    match = LegacyHostPrefixRegex.Match(fileName);
-                    if (!match.Success) return null;
+                    // נרמול חיוני: הקובץ נכתב בזמן מקומי של השרת -> המרה ל-UTC אמיתי
+                    var localTime = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Unspecified);
+                    startUtc = TimeZoneInfo.ConvertTimeToUtc(localTime, _serverLocalTz);
+                }
+            }
+            else
+            {
+                match = LegacyHostPrefixRegex.Match(fileName);
+                if (!match.Success) return null;
 
-                    host = match.Groups["host"].Value;
-                    int year = int.Parse(match.Groups["year"].Value);
-                    int month = int.Parse(match.Groups["month"].Value);
-                    int day = int.Parse(match.Groups["day"].Value);
-                    int hour = int.Parse(match.Groups["hour"].Value);
-                    int minute = int.Parse(match.Groups["minute"].Value);
-                    int second = int.Parse(match.Groups["sec"].Value);
+                host = match.Groups["host"].Value;
+                int year = int.Parse(match.Groups["year"].Value);
+                int month = int.Parse(match.Groups["month"].Value);
+                int day = int.Parse(match.Groups["day"].Value);
+                int hour = int.Parse(match.Groups["hour"].Value);
+                int minute = int.Parse(match.Groups["minute"].Value);
+                int second = int.Parse(match.Groups["sec"].Value);
 
+                bool isExplicitUtc = match.Groups["utc"].Success;
+                if (isExplicitUtc)
+                {
                     startUtc = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
+                }
+                else
+                {
+                    var localTime = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Unspecified);
+                    startUtc = TimeZoneInfo.ConvertTimeToUtc(localTime, _serverLocalTz);
                 }
             }
 
@@ -380,8 +376,27 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             try
             {
                 var fi = new FileInfo(filePath);
-                // ברירת מחדל התחלתית המותאמת בהמשך ב-GetChunksForStationAsync
-                var endUtc = startUtc.AddMinutes(10);
+                if (!fi.Exists || fi.Length < 1024) return null;
+
+                DateTime endUtc = startUtc;
+
+                var headerDuration = Mp4HeaderInspector.ExtractDuration(filePath);
+                if (headerDuration.HasValue && headerDuration.Value.TotalSeconds > 1)
+                {
+                    endUtc = startUtc + headerDuration.Value;
+                }
+                else
+                {
+                    DateTime fileWriteUtc = fi.LastWriteTimeUtc;
+                    if (fileWriteUtc > startUtc.AddSeconds(1))
+                    {
+                        endUtc = fileWriteUtc;
+                    }
+                    else
+                    {
+                        endUtc = startUtc.AddSeconds(1);
+                    }
+                }
 
                 return new RecordingChunkMetadata
                 {
@@ -389,7 +404,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     Hostname = host,
                     StartUtc = startUtc,
                     EndUtc = endUtc,
-                    FileSizeBytes = fi.Exists ? fi.Length : 0
+                    FileSizeBytes = fi.Length
                 };
             }
             catch

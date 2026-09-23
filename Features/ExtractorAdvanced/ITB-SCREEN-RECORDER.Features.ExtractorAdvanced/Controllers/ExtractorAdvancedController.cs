@@ -60,6 +60,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 foreach (var host in availableHosts)
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
+                    // 💡 כיול זמני הצ'אנק לפי ה-PTS והמשך האמיתי גם ברשימת התחנות הראשונית!
+                    await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
+
                     var realSegments = chunks
                         .Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath))
                         .OrderBy(c => c.StartUtc)
@@ -193,6 +196,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
                 return File(imageStream, "image/jpeg");
             }
+            catch (OperationCanceledException)
+            {
+                // 💡 ביטול שגרתי של הדפדפן בזמן גרירה מהירה - יציאה שקטה ללא שגיאות בלוג
+                return NoContent();
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[API:Frame] Failed extracting frame for {Host} at {Epoch}", hostname, lEpoch);
@@ -276,9 +284,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] string hostname,
             [FromQuery] double startEpoch,
             [FromQuery] double endEpoch,
-            [FromQuery] int frameCount = 4,
-            [FromQuery] int tileWidth = 120,
-            [FromQuery] int tileHeight = 52,
+            [FromQuery] int frameCount = 6,
+            [FromQuery] int tileWidth = 100,
+            [FromQuery] int tileHeight = 50,
             CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
@@ -301,6 +309,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 }
 
                 return File(imageStream, "image/jpeg");
+            }
+            catch (OperationCanceledException)
+            {
+                return NoContent();
             }
             catch (Exception ex)
             {

@@ -135,7 +135,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             var startInfo = new ProcessStartInfo
             {
                 FileName = ffprobePath,
-                Arguments = $"-v error -select_streams v:0 -show_entries stream=duration:format=duration -of csv=s=x:p=0 \"{filePath.Replace('\\', '/')}\"",
+                Arguments = $"-v error -show_entries format=duration:stream=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = false,
                 UseShellExecute = false,
@@ -149,21 +149,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 string output = await process.StandardOutput.ReadToEndAsync(ct);
                 await process.WaitForExitAsync(ct);
 
-                double detectedDuration = 0;
-                var parts = output.Trim().Split('x', StringSplitOptions.RemoveEmptyEntries);
-                foreach (var part in parts)
+                var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
                 {
-                    if (double.TryParse(part, NumberStyles.Any, CultureInfo.InvariantCulture, out double val) && val > 0)
+                    string cleaned = line.Trim();
+                    if (double.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out double val) && val > 0)
                     {
-                        detectedDuration = val;
-                        break;
+                        _memoryCache?.Set(cacheKey, val, TimeSpan.FromHours(2));
+                        return val;
                     }
-                }
-
-                if (detectedDuration > 0)
-                {
-                    _memoryCache?.Set(cacheKey, detectedDuration, TimeSpan.FromHours(2));
-                    return detectedDuration;
                 }
             }
             catch (Exception ex)
@@ -190,19 +184,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath)) continue;
 
                     DateTime startUtc = (DateTime)startUtcProp.GetValue(chunk)!;
-                    DateTime currentEndUtc = (DateTime)endUtcProp.GetValue(chunk)!;
 
                     double realDuration = await GetAccurateVideoDurationSecondsAsync(fullPath, ffprobePath, ct);
-                    if (realDuration > 0)
+                    if (realDuration > 0 && endUtcProp.CanWrite)
                     {
-                        DateTime realEndUtc = startUtc.AddSeconds(realDuration);
-                        if (realEndUtc < currentEndUtc && endUtcProp.CanWrite)
-                        {
-                            endUtcProp.SetValue(chunk, realEndUtc);
-                        }
+                        DateTime accurateEndUtc = startUtc.AddSeconds(realDuration);
+                        endUtcProp.SetValue(chunk, accurateEndUtc);
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[AdjustChunks] Failed adjusting chunk PTS.");
+                }
             }
         }
     }

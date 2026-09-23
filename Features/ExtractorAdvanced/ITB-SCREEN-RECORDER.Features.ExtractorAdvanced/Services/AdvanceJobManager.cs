@@ -55,7 +55,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             foreach (var sId in request.StationIds)
             {
                 var chunks = await _storageScanner.GetChunksForStationAsync(sId, startUtc, endUtc);
+                await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks);
                 allStationChunks[sId] = chunks;
+
                 foreach (var c in chunks)
                 {
                     if (!string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
@@ -81,7 +83,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 activeDurationSeconds = Math.Round(plan.TotalActiveSeconds, 1),
                 skippedDurationSeconds = Math.Round(plan.RemovedGlobalGaps.Sum(g => g.SkippedDurationSeconds), 1),
                 removedGlobalGapsCount = plan.RemovedGlobalGaps.Count,
-                // 💡 החזרת הפערים המשותפים שייחתכו
                 removedGlobalGaps = plan.RemovedGlobalGaps.Select(g => new
                 {
                     gapIndex = g.GapIndex,
@@ -89,14 +90,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     endEpochMs = new DateTimeOffset(g.EndUtc).ToUnixTimeMilliseconds(),
                     durationSeconds = g.SkippedDurationSeconds
                 }),
-                // 💡 החזרת המקטעים הפעילים האמיתיים שנמצאו בדיסק (30 שניות במקום 10 דקות!)
                 activeSegments = plan.ActiveSegments.Select(s => new
                 {
                     startEpochMs = new DateTimeOffset(s.StartUtc).ToUnixTimeMilliseconds(),
                     endEpochMs = new DateTimeOffset(s.EndUtc).ToUnixTimeMilliseconds(),
                     durationSeconds = s.DurationSeconds
                 }),
-                // 💡 הצ'אנקים האמיתיים פר תחנה
                 stationChunks = allStationChunks.ToDictionary(
                     kvp => kvp.Key,
                     kvp => kvp.Value.Select(c => new
@@ -169,10 +168,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 var allStationChunks = new Dictionary<string, List<RecordingChunkMetadata>>();
                 long rawBytes = 0;
+
                 foreach (var sId in job.StationIds)
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(sId, startUtc, endUtc);
+                    await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks);
                     allStationChunks[sId] = chunks;
+
                     foreach (var c in chunks)
                     {
                         if (!string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
@@ -243,7 +245,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
                     });
 
-                    // 💡 רינדור הקובץ מקבל כעת חזרה גם את האם קיים ערוץ אודיו
                     var trackResult = await _advancedExtractorService.CutSynchronizedTrackAsync(
                         stationId, plan, allStationChunks[stationId], tempStagingDir, isMultiStation, trackProgress, CancellationToken.None);
 

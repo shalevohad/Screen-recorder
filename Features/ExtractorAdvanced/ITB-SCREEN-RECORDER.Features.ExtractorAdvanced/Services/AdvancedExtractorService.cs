@@ -72,7 +72,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly ILogger<AdvancedExtractorService> _advancedLogger;
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
-        private static readonly SemaphoreSlim _localVisualThrottle = new(6, 6);
+        private static readonly SemaphoreSlim _localVisualThrottle = new(4, 4);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
@@ -157,7 +157,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             DateTime targetUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
 
-            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-1), targetUtc.AddMinutes(1));
+            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-5), targetUtc.AddMinutes(5));
             await AdjustChunksToAccuratePtsAsync(chunks, ct);
 
             var matchingChunk = chunks.FirstOrDefault(c =>
@@ -166,20 +166,25 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 c.StartUtc <= targetUtc &&
                 targetUtc <= c.EndUtc);
 
+            string ffmpegPath = ResolveFfmpegBinary();
+
+            // החזרת NO SIGNAL ישירה באפס השהייה כאשר הזמן נופל בתוך Gap
             if (matchingChunk == null)
             {
+                byte[] noSignal = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
+                if (noSignal != null && noSignal.Length > 0)
+                {
+                    return new MemoryStream(noSignal);
+                }
                 return Stream.Null;
             }
 
-            string ffmpegPath = ResolveFfmpegBinary();
             double offsetSeconds = Math.Max(0, (targetUtc - matchingChunk.StartUtc).TotalSeconds);
             string normalizedPath = matchingChunk.FullPath.Replace('\\', '/');
 
-            // 💡 מנגנון Fallback כפול לחילוץ פריים מדויק ללא שגיאות 204
             byte[]? frameBytes = await TryExtractFrameInternalAsync(ffmpegPath, normalizedPath, offsetSeconds, fastSeek: true, ct);
             if (frameBytes == null || frameBytes.Length == 0)
             {
-                // ניסיון שני: Seek מוקדם יותר עם פתיחת מרווח פענוח מדויק (-accurate_seek)
                 frameBytes = await TryExtractFrameInternalAsync(ffmpegPath, normalizedPath, offsetSeconds, fastSeek: false, ct);
             }
 
@@ -189,7 +194,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 return new MemoryStream(frameBytes);
             }
 
-            return Stream.Null;
+            byte[] fallbackPattern = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
+            return new MemoryStream(fallbackPattern);
         }
 
         private async Task<byte[]?> TryExtractFrameInternalAsync(string ffmpegPath, string inputPath, double offsetSeconds, bool fastSeek, CancellationToken ct)
@@ -209,7 +215,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
                 else
                 {
-                    // הליכה אחורה אל ה-Keyframe הקרוב ופענוח מדויק קדימה
                     double safeSeek = Math.Max(0, offsetSeconds - 3.0);
                     seekArgs = $"-ss {safeSeek.ToString("0.000", CultureInfo.InvariantCulture)} -accurate_seek";
                     targetTime = offsetSeconds - safeSeek;
@@ -239,15 +244,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     return memoryStream.ToArray();
                 }
             }
-            catch
-            {
-                // התעלמות ושקט כדי לאפשר Fallback
-            }
+            catch { }
 
             return null;
         }
 
-        public async Task<Stream> GenerateSpritesheetAsync(string hostname, DateTime startUtc, DateTime endUtc, int frameCount, int tileWidth = 120, int tileHeight = 52, CancellationToken ct = default)
+        public async Task<Stream> GenerateSpritesheetAsync(string hostname, DateTime startUtc, DateTime endUtc, int frameCount, int tileWidth = 100, int tileHeight = 50, CancellationToken ct = default)
         {
             frameCount = Math.Clamp(frameCount, 2, 8);
             tileWidth = Math.Clamp(tileWidth, 60, 240);
@@ -302,9 +304,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             linkedCts.CancelAfter(TimeSpan.FromSeconds(8));
             await _localVisualThrottle.WaitAsync(linkedCts.Token);
 
+            using var process = new Process { StartInfo = startInfo };
             try
             {
-                using var process = new Process { StartInfo = startInfo };
                 process.Start();
                 using var reg = linkedCts.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
                 await process.WaitForExitAsync(linkedCts.Token);
@@ -314,6 +316,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 byte[] blackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
                 return new MemoryStream(blackTile);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    if (!process.HasExited) process.Kill(true);
+                }
+                catch { }
+                throw;
             }
             finally
             {
@@ -466,9 +477,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             return plan;
         }
 
-        /// <summary>
-        /// דוגם ישירות באמצעות FFprobe קובץ וידאו פיזי של התחנה
-        /// </summary>
         public async Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(string filePath, string stationId, CancellationToken ct)
         {
             var meta = new ProbedStationMetadata();
@@ -544,10 +552,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
                     }
                 }
-
-                _advancedLogger.LogInformation(
-                    "[FFprobe Direct Probe] Station '{StationId}' file '{File}': {Width}x{Height} @ {Fps:0.##} fps ({PixFmt}), HasAudio={HasAudio} ({SampleRate}Hz, {Channels}ch)",
-                    stationId, Path.GetFileName(filePath), meta.Width, meta.Height, meta.Fps, meta.PixFmt, meta.HasAudio, meta.AudioSampleRate, meta.AudioChannels);
             }
             catch (Exception ex)
             {
@@ -577,9 +581,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             return false;
         }
 
-        /// <summary>
-        /// מייצר שקופית גישור התואמת 1:1 למטא-דאטה של הצ'אנק הצמוד אליה
-        /// </summary>
         private async Task<string> GenerateMatchedBridgeVideoAsync(
             double durationSeconds,
             ProbedStationMetadata probe,
@@ -629,9 +630,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             return bridgePath;
         }
 
-        /// <summary>
-        /// מרנדר קובץ MP4 עבור התחנה: דוגם את הצ'אנק הקרוב לחיתוך, ודוגם צ'אנק שכן עבור כל פער פנימי
-        /// </summary>
         public async Task<(string OutputFilePath, bool HasAudio)> CutSynchronizedTrackAsync(
             string stationId,
             SynchronizationPlan plan,
@@ -647,7 +645,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 throw new InvalidOperationException($"No video chunks found for station '{stationId}'.");
             }
 
-            // מנגנון מטמון מקומי לדגימות FFprobe לפי נתיב קובץ
             var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
 
             async Task<ProbedStationMetadata> GetChunkProbeAsync(RecordingChunkMetadata? chunk)
@@ -663,7 +660,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 return probed;
             }
 
-            // 💡 1. דגימת Baseline ממוקדת: הצ'אנק שהכי קרוב לתחילת ה-Cut המבוקש (ולא הקובץ הראשון והמרוחק)
             DateTime cutStartUtc = plan.ActiveSegments.FirstOrDefault()?.StartUtc ?? orderedChunks[0].StartUtc;
             var representativeChunk = orderedChunks
                 .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
@@ -671,10 +667,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 .FirstOrDefault();
 
             var baselineProbe = await GetChunkProbeAsync(representativeChunk);
-            _advancedLogger.LogInformation(
-                "[CutSynchronizedTrack] Station '{StationId}' baseline probed from closest chunk '{File}' (Delta: {Delta:0.1}s from cut start).",
-                stationId, Path.GetFileName(representativeChunk?.FullPath ?? "none"),
-                representativeChunk != null ? Math.Abs((representativeChunk.StartUtc - cutStartUtc).TotalSeconds) : 0);
 
             var manifestLines = new List<string>();
             var cutJunctions = new List<double>();
@@ -698,16 +690,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 foreach (var chunk in segChunks)
                 {
-                    // 💡 2. אם יש פער פנימי בריבוי תחנות: דוגמים את הצ'אנק השכן הצמוד לפער (הקודם או הנוכחי)
                     if (isMultiStation && chunk.StartUtc > cursor.AddSeconds(0.2))
                     {
                         double gapDur = (chunk.StartUtc - cursor).TotalSeconds;
                         var neighborChunk = lastPlayedChunkInSeg ?? chunk;
                         var neighborProbe = await GetChunkProbeAsync(neighborChunk);
-
-                        _advancedLogger.LogInformation(
-                            "[Bridge Neighbor Probe] Station '{StationId}' gap of {Dur:0.2}s bridged using neighbor chunk '{File}' ({W}x{H} @ {Fps:0.##}fps)",
-                            stationId, gapDur, Path.GetFileName(neighborChunk.FullPath), neighborProbe.Width, neighborProbe.Height, neighborProbe.Fps);
 
                         string bridge = await GenerateMatchedBridgeVideoAsync(gapDur, neighborProbe, tempOutputDir, ct);
                         if (File.Exists(bridge))
@@ -730,16 +717,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     }
                 }
 
-                // 💡 3. סגירת פער פרטני בסוף המקטע הפעיל: דוגמים את הצ'אנק האחרון שניגן
                 if (isMultiStation && cursor < seg.EndUtc.AddSeconds(-0.2))
                 {
                     double gapDur = (seg.EndUtc - cursor).TotalSeconds;
                     var neighborChunk = lastPlayedChunkInSeg ?? representativeChunk;
                     var neighborProbe = await GetChunkProbeAsync(neighborChunk);
-
-                    _advancedLogger.LogInformation(
-                        "[Bridge Trailing Neighbor Probe] Station '{StationId}' trailing gap of {Dur:0.2}s bridged using chunk '{File}'",
-                        stationId, gapDur, Path.GetFileName(neighborChunk?.FullPath ?? "none"));
 
                     string bridge = await GenerateMatchedBridgeVideoAsync(gapDur, neighborProbe, tempOutputDir, ct);
                     if (File.Exists(bridge))
@@ -760,7 +742,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             string outputPath = Path.Combine(tempOutputDir, $"{stationId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.mp4");
 
-            // בניית פילטרי ה-Fade המאובטחים בנקודות הדילוג על פערים משותפים
             var vfFilters = new List<string>();
             vfFilters.Add("fade=t=in:st=0:d=0.3:enable='between(t,0,0.3)'");
 
@@ -787,7 +768,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             vfFilters.Add("format=yuv420p");
             string videoFilterArg = string.Join(",", vfFilters);
 
-            // הגדרת ערוץ אודיו בהתאם לדגימת ה-FFprobe הממוקדת
             string audioArg = anyChunkHasAudio
                 ? $"-c:a aac -b:a 128k -ar {baselineProbe.AudioSampleRate} -ac {baselineProbe.AudioChannels}"
                 : "-an";
