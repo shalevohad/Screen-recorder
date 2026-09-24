@@ -1,6 +1,6 @@
 {
   "id": "extractor-advanced-studio",
-  "name": "Advanced Studio",
+  "name": "Editing & Export Studio",
   "version": "1.0.0",
   "description": "Frame-accurate non-linear editing studio, extending the base Extractor timeline.",
   "author": "ITB",
@@ -8,5 +8,15 @@
   "dependencies": [],
   "supersedes": [
     "extractor-slicer"
+  ],
+  "requireTools": [
+    {
+      "name": "ffmpeg",
+      "destination": "."
+    },
+    {
+      "name": "ffprobe",
+      "destination": "."
+    }
   ]
 }

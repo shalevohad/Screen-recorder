@@ -1,6 +1,6 @@
 {
   "id": "extractor-slicer",
-  "name": "Session Slicer (Extractor Feature)",
+  "name": "Session Extractor",
   "version": "1.0.0",
   "description": "Enables time-range video slicing, FFmpeg concatenation, and TAR archiving export.",
   "author": "ITB",
