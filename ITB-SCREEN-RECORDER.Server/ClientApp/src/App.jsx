@@ -1,3 +1,4 @@
+﻿// App.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/UI/CommandCenterHeader';
@@ -8,16 +9,40 @@ import './App.scss';
 export default function App() {
     const [stations, setStations] = useState([]);
     const [serverTelemetry, setServerTelemetry] = useState(null);
+    const [systemConfig, setSystemConfig] = useState(null);
     const [actionPending, setActionPending] = useState({});
 
-    // סנכרון גלובלי של סינון Offline ומצב בידוד תקלות
     const [hideOffline, setHideOffline] = useState(true);
     const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
-
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
     const apiBaseUrl = `http://${window.location.hostname}:${apiPort}`;
+
+    // =========================================================================
+    // GLOBAL CONTEXT MENU GUARD: ביטול גלובלי של קליק ימני בכל המערכת
+    // =========================================================================
+    useEffect(() => {
+        const handleGlobalContextMenu = (e) => {
+            // 1. החרגת שדות קלט כדי לאפשר העתקה/הדבקה סטנדרטית
+            if (e.target.closest('input, textarea, [contenteditable="true"]')) {
+                return;
+            }
+
+            // 2. החרגת אלמנטים שמבקשים במפורש לאפשר קליק ימני מקורי
+            if (e.target.closest('[data-allow-context="true"]')) {
+                return;
+            }
+
+            // 3. ביטול תפריט הדפדפן המובנה בכל שאר חלקי המערכת
+            e.preventDefault();
+        };
+
+        window.addEventListener('contextmenu', handleGlobalContextMenu);
+        return () => {
+            window.removeEventListener('contextmenu', handleGlobalContextMenu);
+        };
+    }, []);
 
     const fetchStations = useCallback(async () => {
         try {
@@ -31,22 +56,50 @@ export default function App() {
         }
     }, [apiBaseUrl]);
 
+    const fetchSystemConfig = useCallback(async () => {
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/settings`);
+            if (res.ok) {
+                const data = await res.json();
+                setSystemConfig(data);
+                return;
+            }
+            const altRes = await fetch(`${apiBaseUrl}/api/system/config`);
+            if (altRes.ok) {
+                const data = await altRes.json();
+                setSystemConfig(data);
+            }
+        } catch (err) {
+            console.error('[App] Failed to fetch system config:', err);
+        }
+    }, [apiBaseUrl]);
+
     useEffect(() => {
         let isMounted = true;
 
-        const loadInitialStations = async () => {
+        const loadInitialData = async () => {
             try {
-                const res = await fetch(`${apiBaseUrl}/api/agents`);
-                if (res.ok && isMounted) {
-                    const data = await res.json();
-                    setStations(data);
+                const [agentsRes, cfgRes] = await Promise.allSettled([
+                    fetch(`${apiBaseUrl}/api/agents`),
+                    fetch(`${apiBaseUrl}/api/settings`)
+                ]);
+
+                if (isMounted) {
+                    if (agentsRes.status === 'fulfilled' && agentsRes.value.ok) {
+                        const data = await agentsRes.value.json();
+                        setStations(data);
+                    }
+                    if (cfgRes.status === 'fulfilled' && cfgRes.value.ok) {
+                        const cfg = await cfgRes.value.json();
+                        setSystemConfig(cfg);
+                    }
                 }
             } catch (err) {
-                console.error('[App] Failed to fetch agents:', err);
+                console.error('[App] Failed to load initial data:', err);
             }
         };
 
-        loadInitialStations();
+        loadInitialData();
 
         return () => {
             isMounted = false;
@@ -97,14 +150,19 @@ export default function App() {
 
     const handleSettingsSaved = useCallback(async () => {
         await fetchStations();
-    }, [fetchStations]);
+        await fetchSystemConfig();
+    }, [fetchStations, fetchSystemConfig]);
 
-    const handleToggleStream = async (hostname, isCurrentlyStreaming) => {
+    const handleToggleStream = async (hostname, isCurrentlyStreaming, policy = {}) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
         const targetEnable = !isCurrentlyStreaming;
 
+        const queryParams = new URLSearchParams({ enable: targetEnable });
+        if (targetEnable && policy.bitrate) queryParams.append('bitrate', policy.bitrate);
+        if (targetEnable && policy.fps) queryParams.append('fps', policy.fps);
+
         try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/command/${hostname}?enable=${targetEnable}`, {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/command/${hostname}?${queryParams.toString()}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -124,14 +182,16 @@ export default function App() {
         }
     };
 
-    const handleBulkStart = async (targetHostnames = []) => {
+    const handleBulkStart = async (targetHostnames = [], policy = {}) => {
         try {
             const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     enable: true,
-                    hostnames: targetHostnames.length > 0 ? targetHostnames : null
+                    hostnames: targetHostnames.length > 0 ? targetHostnames : null,
+                    bitrate: policy.bitrate || null,
+                    fps: policy.fps || null
                 })
             });
 
@@ -173,6 +233,7 @@ export default function App() {
             <CommandCenterHeader
                 stations={sortedStations}
                 serverTelemetry={serverTelemetry}
+                systemConfig={systemConfig}
                 isSettingsOpen={isSettingsOpen}
                 onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
                 hideOffline={hideOffline}
@@ -187,6 +248,9 @@ export default function App() {
                 onToggleStream={handleToggleStream}
                 onBulkStart={handleBulkStart}
                 onBulkStop={handleBulkStop}
+                onUpdateStationSettings={setStations}
+                systemConfig={systemConfig}
+                onSystemConfigUpdate={setSystemConfig}
                 direction="ltr"
                 hideOffline={hideOffline}
                 onToggleHideOffline={() => setHideOffline(prev => !prev)}

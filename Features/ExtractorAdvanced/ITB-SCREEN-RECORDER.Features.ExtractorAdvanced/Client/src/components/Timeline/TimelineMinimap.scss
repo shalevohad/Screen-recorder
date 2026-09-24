@@ -1,0 +1,152 @@
+// Client/src/components/Timeline/TimelineMinimap.scss
+
+.overview-track-canvas {
+    position: relative;
+    flex: 1;
+    height: 26px;
+    background: rgba(4, 8, 19, 0.65);
+    border: 1px solid #1c3054;
+    border-radius: 6px;
+    margin: 0 16px;
+    cursor: pointer;
+    overflow: hidden;
+    user-select: none;
+    box-sizing: border-box;
+    /* מקטע החיתוך */
+    .minimap-cut-highlight {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: rgba(0, 229, 255, 0.16);
+        border-left: 1.5px solid #00e5ff;
+        border-right: 1.5px solid #00e5ff;
+        border-radius: 3px;
+        z-index: 2;
+        box-sizing: border-box;
+        pointer-events: none;
+
+        .cut-in-tag {
+            position: absolute;
+            left: 2px;
+            top: 2px;
+            bottom: 2px;
+            display: flex;
+            align-items: center;
+        }
+
+        .cut-out-tag {
+            position: absolute;
+            right: 2px;
+            top: 2px;
+            bottom: 2px;
+            display: flex;
+            align-items: center;
+        }
+    }
+    /* מסגרת ה-Viewport המוזזת */
+    .minimap-viewport-box {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.85);
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        z-index: 3;
+        box-sizing: border-box;
+
+        .viewport-tag {
+            position: absolute;
+            top: 2px;
+            bottom: 2px;
+            display: flex;
+            align-items: center;
+
+            &.left {
+                left: 2px;
+            }
+
+            &.right {
+                right: 2px;
+            }
+        }
+    }
+    /* תגיות הזמן הטקטיות */
+    .minimap-time-tag {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 8px;
+        font-weight: 800;
+        line-height: 1;
+        padding: 0 4px;
+        height: 16px;
+        border-radius: 3px;
+        pointer-events: none;
+        white-space: nowrap;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        box-sizing: border-box;
+
+        &.viewport-tag {
+            color: #f8fafc;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.45);
+        }
+
+        &.cut-in-tag {
+            color: #00e5ff;
+            background: rgba(2, 6, 23, 0.95);
+            border: 1px solid rgba(0, 229, 255, 0.7);
+        }
+
+        &.cut-out-tag {
+            color: #f59e0b;
+            background: rgba(2, 6, 23, 0.95);
+            border: 1px solid rgba(245, 158, 11, 0.7);
+        }
+    }
+
+    .minimap-needle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #f43f5e;
+        box-shadow: 0 0 6px rgba(244, 63, 94, 0.8);
+        z-index: 4;
+        pointer-events: none;
+    }
+}
+
+.timeline-zoom-controls {
+    display: flex;
+    align-items: center;
+    background: rgba(10, 16, 30, 0.8);
+    border: 1px solid #1c3057;
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+    height: 28px;
+    box-sizing: border-box;
+
+    .btn-zoom-action {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 9.5px;
+        font-weight: 800;
+        padding: 3px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+
+        &:hover {
+            background: rgba(0, 229, 255, 0.15);
+            color: #00e5ff;
+        }
+
+        &.reset:hover {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+        }
+    }
+}

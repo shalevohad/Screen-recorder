@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<OutputType>Library</OutputType>
+		<Version Condition="'$(Version)' == ''">1.0.26</Version>
+		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..'))</SolutionRoot>
+		<LinuxRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..'))</LinuxRoot>
+
+		<StagingDir>$(SolutionRoot)\Publish\Staging\server_linux</StagingDir>
+		<FinalOutputDir>$(SolutionRoot)\Publish\Server\linux</FinalOutputDir>
+		<OutputRunFile>$(FinalOutputDir)\ITB-ScreenRecorder-Server-Setup-$(Version).run</OutputRunFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="installer-header.sh" />
+		<None Include="setup.sh" />
+		<None Include="itb-server.service" />
+		<None Include="SelectLinuxFeatures.ps1" />
+	</ItemGroup>
+
+	<Target Name="BuildLinuxServerPackage" AfterTargets="Build">
+		<Message Importance="high" Text="=== [1/5] Preparing Clean Server Staging ===" />
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+		<MakeDir Directories="$(StagingDir)\server" />
+		<MakeDir Directories="$(StagingDir)\features" />
+
+		<Message Importance="high" Text="=== [2/5] Publishing Central Server (linux-x64) ===" />
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)\server&quot;" />
+		<RemoveDir Directories="$(StagingDir)\server\Features" ContinueOnError="true" />
+
+		<Message Importance="high" Text="=== [3/5] Publishing All Discovered Modular Features (linux-x64) ===" />
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(SolutionRoot)\Installers\Windows\ITB-SCREEN-RECORDER.Server.Installer\PublishFeatures.ps1' -FeaturesRoot '$(SolutionRoot)\Features' -StagingDir '$(StagingDir)\features' -Configuration '$(Configuration)' -Runtime 'linux-x64'&quot;" />
+
+		<Message Importance="high" Text="=== [4/5] Launching Interactive Linux Feature Selection Engine (Stealth Mode) ===" />
+		<Exec Command="powershell.exe -Sta -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(MSBuildProjectDirectory)\SelectLinuxFeatures.ps1' -FeaturesDir '$(StagingDir)\features'&quot;" />
+
+		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="itb-server.service" DestinationFolder="$(StagingDir)" />
+
+		<Message Importance="high" Text="=== [5/5] Packing Native Systemd Server .run Installer ===" />
+		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)\BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)\installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />
+
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+	</Target>
+</Project>

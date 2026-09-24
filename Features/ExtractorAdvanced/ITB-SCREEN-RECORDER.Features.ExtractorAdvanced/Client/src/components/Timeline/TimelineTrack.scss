@@ -1,0 +1,396 @@
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineTrack.scss
+// ==========================================
+
+@keyframes placeholderShimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes tileShimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+@keyframes trackSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.timeline-track-container {
+    display: flex;
+    width: 100%;
+    cursor: pointer;
+    transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 6px;
+    border-radius: 8px;
+    overflow: hidden;
+
+    &.active-track {
+        height: 52px;
+        background-color: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+
+        .track-sidebar {
+            background-color: rgba(30, 41, 59, 0.55);
+            border-left: 3px solid #06B6D4;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+
+            .station-label {
+                color: #F8FAFC;
+                font-weight: 700;
+            }
+
+            .status-indicator.online {
+                background-color: #10B981;
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+            }
+        }
+
+        .data-presence-layer {
+            height: 4px;
+        }
+    }
+
+    &.collapsed-track {
+        height: 28px;
+        background-color: rgba(15, 23, 42, 0.4);
+        border: 1px solid transparent;
+
+        &:hover {
+            background-color: rgba(30, 41, 59, 0.55);
+            border-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .track-sidebar {
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            border-left: 3px solid transparent;
+
+            .station-label {
+                color: #94A3B8;
+                font-weight: 500;
+            }
+
+            .status-indicator.idle {
+                background-color: #475569;
+            }
+        }
+
+        .data-presence-layer {
+            height: 100%;
+            opacity: 0.65;
+        }
+    }
+
+    .track-sidebar {
+        width: 180px;
+        min-width: 180px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px;
+        box-sizing: border-box;
+
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .station-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 11.5px;
+            font-family: var(--font-ui, sans-serif);
+        }
+    }
+
+    .track-canvas {
+        position: relative;
+        flex: 1;
+        height: 100%;
+        overflow: hidden;
+        background-color: rgba(10, 15, 29, 0.5);
+
+        .full-height-gaps-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+
+            .gap-full-block {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                box-sizing: border-box;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+
+                &.gap-station-signal {
+                    background-color: rgba(225, 29, 72, 0.16);
+                    border-left: 1px solid rgba(244, 63, 94, 0.65);
+                    border-right: 1px solid rgba(244, 63, 94, 0.65);
+
+                    .gap-pattern {
+                        position: absolute;
+                        inset: 0;
+                        background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.22), rgba(244, 63, 94, 0.22) 10px, rgba(159, 18, 57, 0.38) 10px, rgba(159, 18, 57, 0.38) 20px);
+                    }
+
+                    .gap-badge {
+                        position: relative;
+                        z-index: 2;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 2px 8px;
+                        background-color: rgba(15, 23, 42, 0.88);
+                        border: 1px solid rgba(244, 63, 94, 0.55);
+                        border-radius: 4px;
+                        color: #FDA4AF;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        letter-spacing: 0.5px;
+                        text-transform: uppercase;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+                        white-space: nowrap;
+
+                        &::before {
+                            content: '';
+                            width: 5px;
+                            height: 5px;
+                            border-radius: 50%;
+                            background-color: #F43F5E;
+                            box-shadow: 0 0 6px #F43F5E;
+                        }
+                    }
+                }
+
+                &.gap-global-skipped {
+                    background-color: rgba(245, 158, 11, 0.12);
+                    border-left: 1px dashed rgba(245, 158, 11, 0.7);
+                    border-right: 1px dashed rgba(245, 158, 11, 0.7);
+
+                    .gap-pattern {
+                        position: absolute;
+                        inset: 0;
+                        background-image: repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.18) 10px, rgba(180, 83, 9, 0.3) 10px, rgba(180, 83, 9, 0.3) 20px);
+                    }
+
+                    .gap-badge.global-badge {
+                        position: relative;
+                        z-index: 2;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                        padding: 2px 8px;
+                        background-color: rgba(15, 23, 42, 0.92);
+                        border: 1px solid rgba(245, 158, 11, 0.65);
+                        border-radius: 4px;
+                        color: #FDE68A;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        letter-spacing: 0.5px;
+                        text-transform: uppercase;
+                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+                        white-space: nowrap;
+
+                        &::before {
+                            content: '';
+                            width: 5px;
+                            height: 5px;
+                            border-radius: 50%;
+                            background-color: #F59E0B;
+                            box-shadow: 0 0 6px #F59E0B;
+                        }
+                    }
+                }
+            }
+        }
+
+        .spritesheet-filmstrip-layer {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 2;
+
+            .spritesheet-tile-block {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                box-sizing: border-box;
+                overflow: hidden;
+
+                &.is-loading {
+                    background-color: rgba(15, 23, 42, 0.65);
+                }
+
+                &.is-loaded {
+                    opacity: 0.95;
+                }
+
+                .tile-shimmer-loader {
+                    position: absolute;
+                    inset: 0;
+                    background: linear-gradient( 90deg, rgba(30, 41, 59, 0.25) 0%, rgba(6, 182, 212, 0.12) 50%, rgba(30, 41, 59, 0.25) 100% );
+                    background-size: 200% 100%;
+                    animation: tileShimmer 1.8s infinite linear;
+
+                    .shimmer-wave {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        height: 2px;
+                        background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.6), transparent);
+                        box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+                    }
+                }
+            }
+
+            .filmstrip-cell {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                box-sizing: border-box;
+                border-right: 1px solid rgba(255, 255, 255, 0.12);
+                overflow: hidden;
+                background-color: rgba(15, 23, 42, 0.6);
+
+                .placeholder-blur {
+                    position: absolute;
+                    inset: 0;
+                    background: linear-gradient(105deg, rgba(30, 41, 59, 0.35) 0%, rgba(51, 65, 85, 0.55) 30%, rgba(14, 165, 233, 0.12) 50%, rgba(30, 41, 59, 0.35) 100%);
+                    background-size: 200% 100%;
+                    animation: placeholderShimmer 1.8s infinite linear;
+                    filter: blur(6px);
+                    opacity: 1;
+                    transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .frame-image-cover {
+                    position: absolute;
+                    inset: 0;
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
+                    opacity: 0;
+                    filter: blur(10px) brightness(0.8);
+                    transform: scale(1.05);
+                    transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1), filter 0.32s cubic-bezier(0.4, 0, 0.2, 1), transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                .frame-no-signal-pattern {
+                    position: absolute;
+                    inset: 0;
+                    background-color: rgba(225, 29, 72, 0.1);
+                    background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.2), rgba(244, 63, 94, 0.2) 3px, transparent 3px, transparent 6px);
+                    opacity: 0;
+                    transition: opacity 0.3s ease;
+                }
+
+                &.is-loaded {
+                    .placeholder-blur {
+                        opacity: 0;
+                    }
+
+                    .frame-image-cover {
+                        opacity: 0.95;
+                        filter: blur(0px) brightness(0.96) contrast(1.04);
+                        transform: scale(1);
+                    }
+
+                    .frame-no-signal-pattern {
+                        opacity: 1;
+                    }
+                }
+            }
+        }
+
+        .data-presence-layer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+            z-index: 3;
+
+            .data-presence-bar {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                background-color: #10B981;
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+                border-radius: 2px;
+            }
+        }
+
+        .mask-dimmed {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background-color: rgba(15, 23, 42, 0.55);
+            backdrop-filter: grayscale(40%) blur(1px);
+            pointer-events: none;
+            z-index: 10;
+
+            &.left-mask {
+                left: 0;
+            }
+
+            &.right-mask {
+                right: 0;
+            }
+        }
+
+        .track-loading-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(3px) grayscale(50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            pointer-events: none;
+
+            .track-spinner {
+                width: 14px;
+                height: 14px;
+                border: 2px solid rgba(6, 182, 212, 0.25);
+                border-top-color: #06B6D4;
+                border-radius: 50%;
+                animation: trackSpin 0.8s linear infinite;
+            }
+
+            .loading-label {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10px;
+                font-weight: 700;
+                color: #06B6D4;
+                letter-spacing: 1px;
+            }
+        }
+    }
+}

@@ -1,0 +1,86 @@
+.time-range-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .time-field-card {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        background: var(--surface-card);
+        border: 1px solid var(--border-card);
+        border-radius: var(--radius-md);
+        padding: 5px 10px;
+        cursor: pointer;
+        transition: border-color 0.2s;
+
+        &:hover {
+            border-color: var(--border-accent-cyan);
+        }
+
+        .field-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+
+            .field-label {
+                font-size: 0.62rem;
+                font-family: 'JetBrains Mono', monospace;
+                font-weight: 700;
+                color: var(--text-secondary);
+            }
+
+            .field-icon {
+                font-size: 0.7rem;
+                opacity: 0.6;
+            }
+        }
+
+        .control-input {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color-scheme: dark;
+            cursor: pointer;
+            padding: 0;
+
+            &:focus {
+                outline: none;
+            }
+
+            &::-webkit-calendar-picker-indicator {
+                cursor: pointer;
+                opacity: 0.75;
+                filter: invert(65%) sepia(85%) saturate(1200%) hue-rotate(150deg) brightness(95%);
+            }
+        }
+    }
+
+    .btn-scan-action {
+        padding: 0 16px;
+        height: 44px;
+        background: var(--surface-elevated);
+        border: 1px solid var(--border-accent-cyan);
+        border-radius: var(--radius-md);
+        color: var(--accent-cyan);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.72rem;
+        font-weight: 800;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+
+        &:hover:not(:disabled) {
+            background: var(--accent-cyan-soft);
+            box-shadow: 0 0 14px rgba(6, 182, 212, 0.25);
+        }
+
+        &.scanning {
+            opacity: 0.6;
+            cursor: wait;
+        }
+    }
+}

@@ -1,0 +1,173 @@
+// Client/src/components/StationDrawer/controls/StationPaginationBar.scss
+
+.hub-pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    background: rgba(10, 15, 29, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    margin-top: 4px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+    user-select: none;
+    transition: all 0.2s ease;
+    // מצב שבו יש עמוד יחיד בלבד ואין צורך בדפדוף
+    &.is-single-page-mode {
+        padding: 3px 10px;
+        background: rgba(10, 15, 29, 0.45);
+        border-color: rgba(255, 255, 255, 0.04);
+    }
+
+    .pagination-range-info {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 9px;
+        color: #64748b;
+        letter-spacing: 0.5px;
+
+        .accent-num {
+            color: #22d3ee;
+            font-weight: 800;
+        }
+
+        .total-num {
+            color: #cbd5e1;
+            font-weight: 800;
+        }
+    }
+
+    .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+
+        .btn-page-step {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            color: #cbd5e1;
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.18s ease;
+
+            &:hover:not(:disabled) {
+                background: rgba(6, 182, 212, 0.2);
+                border-color: #06b6d4;
+                color: #22d3ee;
+            }
+
+            &:disabled {
+                opacity: 0.25;
+                cursor: not-allowed;
+            }
+        }
+
+        .page-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            padding: 0 6px;
+
+            .current-page {
+                color: #22d3ee;
+                font-weight: 800;
+            }
+
+            .divider {
+                color: #475569;
+            }
+
+            .total-pages {
+                color: #94a3b8;
+                font-weight: 700;
+            }
+        }
+        // כיווץ נוסף כשיש עמוד יחיד בלבד
+        &.controls-disabled-compact {
+            opacity: 0.45;
+
+            .btn-page-step {
+                width: 18px;
+                height: 18px;
+                font-size: 10px;
+                background: transparent;
+                border-color: rgba(255, 255, 255, 0.03);
+            }
+
+            .page-indicator {
+                font-size: 9px;
+
+                .current-page {
+                    color: #94a3b8;
+                }
+            }
+        }
+    }
+
+    .pagination-size-selector {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .selector-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8px;
+            font-weight: 800;
+            color: #64748b;
+            letter-spacing: 0.5px;
+        }
+
+        .size-pills-group {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+
+            .btn-size-pill {
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 4px;
+                color: #94a3b8;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 8.5px;
+                font-weight: 700;
+                padding: 2px 6px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover:not(:disabled) {
+                    color: #f8fafc;
+                    border-color: rgba(255, 255, 255, 0.2);
+                }
+
+                &.active {
+                    background: rgba(6, 182, 212, 0.2);
+                    border-color: #06b6d4;
+                    color: #22d3ee;
+                    font-weight: 800;
+                }
+                // מצב מושבת ומכווץ עבור גדלים שלא ישנו דבר
+                &.redundant-disabled {
+                    opacity: 0.22;
+                    font-size: 7.5px;
+                    padding: 1px 4px;
+                    cursor: not-allowed;
+                    border-color: rgba(255, 255, 255, 0.03);
+                    color: #475569;
+                    background: transparent !important;
+                }
+            }
+        }
+    }
+}

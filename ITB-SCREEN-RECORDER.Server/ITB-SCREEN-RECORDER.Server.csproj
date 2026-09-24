@@ -1,51 +1,161 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>ITB_SCREEN_RECORDER.Server</RootNamespace>
-	<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<RootNamespace>ITB_SCREEN_RECORDER.Server</RootNamespace>
+		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
 
-  <ItemGroup>
-    <Content Include="ClientApp\public\css\tailwind.min.css" />
-  </ItemGroup>
+		<!-- זיהוי אוטומטי של סביבת הריצה/Runner למניעת שגיאות שחזור ב-Linux CI -->
+		<RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+		<RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('Windows'))">linux-x64</RuntimeIdentifier>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.11" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.11" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
-  </ItemGroup>
+		<SelfContained>true</SelfContained>
+		<PublishSingleFile>false</PublishSingleFile>
+		<EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
-  </ItemGroup>
+	<!-- הוסף בתוך ה-PropertyGroup הראשי של Debug -->
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+		<DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <Folder Include="ClientApp\src\components\Settings\styles\" />
-    <Folder Include="ClientApp\src\components\Settings\tabs\" />
-    <Folder Include="ClientApp\src\styles\" />
-    <Folder Include="MediaMTX\" />
-    <Folder Include="wwwroot\css\" />
-  </ItemGroup>
-  
-  <ItemGroup>
-    <None Update="MediaMTX\mediamtx.exe">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="MediaMTX\mediamtx.yml">
-	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  
-  <ItemGroup>
-    <Content Update="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+	<ItemGroup>
+		<Compile Remove="Features/**" />
+		<Content Remove="Features/**" />
+		<EmbeddedResource Remove="Features/**" />
+		<None Remove="Features/**" />
+	</ItemGroup>
 
-    <Target Name="CompileFrontend" BeforeTargets="Build" Condition="Exists('ClientApp\package.json')">
-	    <Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies and building ClientApp..." />
-	    <Exec Command="npm install" WorkingDirectory="ClientApp" Condition="!Exists('ClientApp\node_modules')" />
-	    <Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
-    </Target>
+	<ItemGroup>
+		<None Remove="ClientApp/src/components/UI/CommandCenterHeader.jsx~RF168a55cf.TMP" />
+		<Content Include="ClientApp/public/css/tailwind.min.css" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="../ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Folder Include="ClientApp/src/components/Settings/styles/" />
+		<Folder Include="ClientApp/src/components/Settings/tabs/" />
+		<Folder Include="ClientApp/src/styles/" />
+		<Folder Include="ClientApp\src\Agents\" />
+		<Folder Include="wwwroot/css/" />
+	</ItemGroup>
+
+	<!-- ======================================================== -->
+	<!-- העתקה פיזית מלאה של כל תכולת MediaMTX לתיקיית הפלט     -->
+	<!-- ======================================================== -->
+	<ItemGroup>
+		<None Include="MediaMTX\**">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</None>
+		<None Update="MediaMTX\mediamtx.yml">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<Target Name="CompileFrontend" BeforeTargets="Build" Condition="Exists('ClientApp/package.json')">
+		<Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies and building ClientApp..." />
+		<Exec Command="npm install" WorkingDirectory="ClientApp" Condition="!Exists('ClientApp/node_modules')" />
+		<Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
+	</Target>
+
+	<!-- ========================================================== -->
+	<!-- מערכת צללים (Stealth) לאיתור, בנייה והפצה דינמית           -->
+	<!-- ========================================================== -->
+
+	<!-- 1. איסוף אוטומטי של כל פרויקט פיצ'ר קיים ללא שיום מפורש -->
+	<ItemGroup>
+		<FeatureProjects Include="$(MSBuildProjectDirectory)/../Features/*/*/*.csproj" />
+		<!-- מורה ל-Visual Studio FastUpToDateCheck לבדוק שינויים בכל תיקיית הפיצ'רים -->
+		<UpToDateCheckInput Include="$(MSBuildProjectDirectory)/../Features/**/*.*" />
+	</ItemGroup>
+
+	<!-- 2. שחזור ובנייה שקטה של הפיצ'רים לפני בניית השרת -->
+	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild">
+		<Message Importance="high" Text="[ITB BUILD] Compiling internal Feature modules ($(Configuration))..." Condition="'@(FeatureProjects)' != ''" />
+		<MSBuild Projects="@(FeatureProjects)" Targets="Restore;Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="'@(FeatureProjects)' != ''" />
+	</Target>
+
+	<!-- 3. העתקת תוצרים ל-Debug (F5) - דריסה מלאה ללא דילוג על קבצים קיימים -->
+	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Condition="'@(FeatureProjects)' != ''">
+		<MSBuild Projects="$(MSBuildProjectFile)" Targets="_StageSingleFeature" Properties="_ProjPath=%(FeatureProjects.FullPath)" />
+	</Target>
+
+	<Target Name="_StageSingleFeature">
+		<PropertyGroup>
+			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
+			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
+			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
+
+			<_DestStandard>$(TargetDir)Features\$(_FeatureName)</_DestStandard>
+			<_DestWinX64>$(TargetDir)win-x64\Features\$(_FeatureName)</_DestWinX64>
+		</PropertyGroup>
+
+		<ItemGroup>
+			<_Artifacts Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
+		</ItemGroup>
+
+		<!-- SkipUnchangedFiles="false" מבטיח דריסה ועדכון של קובצי JS, CSS ו-DLL בכל הרצה -->
+		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(_DestStandard)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" />
+
+		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(_DestWinX64)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" Condition="Exists('$(TargetDir)win-x64') Or '$(RuntimeIdentifier)' == 'win-x64'" />
+	</Target>
+
+	<!-- 4. אריזה דינמית ל-Publish -->
+	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="('$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))) And '@(FeatureProjects)' != ''">
+		<MSBuild Projects="$(MSBuildProjectFile)" Targets="_GetFeaturePublishFiles" Properties="_ProjPath=%(FeatureProjects.FullPath)">
+			<Output TaskParameter="TargetOutputs" ItemName="ResolvedFileToPublish" />
+		</MSBuild>
+		<Message Importance="high" Text="[ITB PUBLISH] Bundling dynamically resolved modules into publish payload..." />
+	</Target>
+
+	<Target Name="_GetFeaturePublishFiles" Returns="@(_FeatureFilesToPublish)">
+		<PropertyGroup>
+			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
+			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
+			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
+		</PropertyGroup>
+
+		<ItemGroup>
+			<_RawFiles Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
+			<_FeatureFilesToPublish Include="@(_RawFiles)">
+				<RelativePath>Features\$(_FeatureName)\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			</_FeatureFilesToPublish>
+		</ItemGroup>
+	</Target>
+
+	<Target Name="_GetFeaturePublishFiles" Returns="@(_FeatureFilesToPublish)">
+		<PropertyGroup>
+			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
+			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
+			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
+		</PropertyGroup>
+
+		<ItemGroup>
+			<_RawFiles Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
+			<_FeatureFilesToPublish Include="@(_RawFiles)">
+				<RelativePath>Features\$(_FeatureName)\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			</_FeatureFilesToPublish>
+		</ItemGroup>
+	</Target>
+
 </Project>

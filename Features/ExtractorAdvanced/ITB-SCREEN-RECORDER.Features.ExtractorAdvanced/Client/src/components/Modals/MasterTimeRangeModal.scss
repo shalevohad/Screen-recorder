@@ -1,0 +1,376 @@
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Modals/MasterTimeRangeModal.scss
+// ==========================================
+
+.modal-backdrop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: rgba(2, 6, 23, 0.82);
+    backdrop-filter: blur(16px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+
+    .master-time-modal-card {
+        width: 100%;
+        max-width: 560px;
+        background: linear-gradient(150deg, rgba(15, 23, 42, 0.96) 0%, rgba(9, 14, 26, 0.98) 100%);
+        border: 1px solid rgba(6, 182, 212, 0.35);
+        border-radius: 16px;
+        box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 30px rgba(6, 182, 212, 0.15);
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        box-sizing: border-box;
+
+        .modal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 14px;
+
+            .title-block {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+
+                .modal-title {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 12.5px;
+                    font-weight: 800;
+                    color: #06b6d4;
+                    letter-spacing: 1.5px;
+                }
+
+                .header-actions-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+
+                .timezone-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: rgba(15, 23, 42, 0.9);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    padding: 3px 10px;
+                    border-radius: 9999px;
+
+                    .pulse-indicator {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 50%;
+                    }
+
+                    .badge-text {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9.5px;
+                        color: #94a3b8;
+                        letter-spacing: 0.5px;
+
+                        strong {
+                            color: #f8fafc;
+                        }
+                    }
+
+                    &.utc {
+                        border-color: rgba(6, 182, 212, 0.4);
+
+                        .pulse-indicator {
+                            background: #06b6d4;
+                            box-shadow: 0 0 6px #06b6d4;
+                        }
+
+                        .badge-text strong {
+                            color: #22d3ee;
+                        }
+                    }
+
+                    &.local {
+                        border-color: rgba(16, 185, 129, 0.4);
+
+                        .pulse-indicator {
+                            background: #10b981;
+                            box-shadow: 0 0 6px #10b981;
+                        }
+
+                        .badge-text strong {
+                            color: #34d399;
+                        }
+                    }
+                }
+
+                .modal-mode-toggle {
+                    display: flex;
+                    background: rgba(0, 0, 0, 0.4);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 9999px;
+                    padding: 2px;
+                    gap: 2px;
+
+                    .mode-pill {
+                        background: transparent;
+                        border: none;
+                        color: #94a3b8;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        padding: 3px 10px;
+                        border-radius: 9999px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+
+                        &.active {
+                            background: #06b6d4;
+                            color: #020617;
+                            box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+                        }
+
+                        &:hover:not(.active) {
+                            color: #fff;
+                        }
+                    }
+                }
+            }
+
+            .btn-modal-close {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #94a3b8;
+                width: 28px;
+                height: 28px;
+                border-radius: 50%;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+
+                &:hover {
+                    background: rgba(244, 63, 94, 0.2);
+                    border-color: #f43f5e;
+                    color: #f43f5e;
+                }
+            }
+        }
+
+        .quick-presets-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+
+            .btn-preset {
+                background: rgba(15, 23, 42, 0.75);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                padding: 9px 6px;
+                color: #cbd5e1;
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                transition: all 0.2s;
+
+                .dot {
+                    width: 5px;
+                    height: 5px;
+                    border-radius: 50%;
+                    background: #06b6d4;
+                    box-shadow: 0 0 6px #06b6d4;
+                }
+
+                &:hover {
+                    background: rgba(6, 182, 212, 0.15);
+                    border-color: #06b6d4;
+                    color: #fff;
+                    transform: translateY(-1px);
+                }
+
+                &.active {
+                    background: rgba(6, 182, 212, 0.25);
+                    border-color: #06b6d4;
+                    color: #22d3ee;
+                    box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
+                }
+            }
+        }
+
+        .time-range-inputs-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 16px;
+            border-radius: 12px;
+
+            .input-column {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+
+                .column-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+
+                    .column-label {
+                        font-size: 10px;
+                        font-weight: 800;
+                        color: #64748b;
+                        letter-spacing: 0.8px;
+                    }
+
+                    .tz-label {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9px;
+                        font-weight: 800;
+                        color: #06b6d4;
+                    }
+                }
+
+                .field-group {
+                    display: flex;
+                    flex-direction: column;
+                    cursor: pointer;
+
+                    .input-row-wrapper {
+                        background: #0b1325;
+                        border: 1px solid rgba(255, 255, 255, 0.12);
+                        border-radius: 8px;
+                        padding: 6px 12px;
+                        transition: all 0.2s;
+
+                        &:hover {
+                            border-color: rgba(6, 182, 212, 0.4);
+                            background: rgba(15, 23, 42, 0.9);
+                        }
+                    }
+
+                    input[type="datetime-local"] {
+                        width: 100%;
+                        background: transparent;
+                        border: none;
+                        color: #f8fafc;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 12px;
+                        font-weight: 600;
+                        outline: none;
+                        cursor: pointer;
+                        color-scheme: dark; /* מבטיח ערכת צבעים כהה ופורמט צבאי 24 שעות */
+
+                        &::-webkit-calendar-picker-indicator {
+                            filter: invert(0.8) sepia(1) saturate(5) hue-rotate(145deg);
+                            cursor: pointer;
+                            opacity: 0.8;
+                            transition: opacity 0.2s;
+
+                            &:hover {
+                                opacity: 1;
+                            }
+                        }
+                    }
+
+                    &:focus-within .input-row-wrapper {
+                        border-color: #06b6d4;
+                        box-shadow: 0 0 0 1px #06b6d4, 0 0 12px rgba(6, 182, 212, 0.25);
+                    }
+                }
+            }
+        }
+
+        .range-scope-summary-pill {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(6, 182, 212, 0.08);
+            border: 1px dashed rgba(6, 182, 212, 0.3);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+
+            .summary-label {
+                color: #94a3b8;
+                font-weight: 700;
+            }
+
+            .summary-value {
+                color: #22d3ee;
+                font-size: 11.5px;
+            }
+
+            .summary-cap {
+                color: #64748b;
+                font-weight: 700;
+            }
+        }
+
+        .modal-footer-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            padding-top: 4px;
+
+            .btn-action-cancel {
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #94a3b8;
+                padding: 8px 18px;
+                border-radius: 8px;
+                font-size: 11.5px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.2s;
+
+                &:hover {
+                    background: rgba(255, 255, 255, 0.05);
+                    color: #f8fafc;
+                }
+            }
+
+            .btn-action-load {
+                background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+                border: none;
+                color: #020617;
+                padding: 8px 26px;
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 0.8px;
+                cursor: pointer;
+                box-shadow: 0 0 16px rgba(6, 182, 212, 0.4);
+                transition: all 0.2s;
+
+                &:hover {
+                    background: #22d3ee;
+                    box-shadow: 0 0 24px rgba(6, 182, 212, 0.6);
+                    transform: translateY(-1px);
+                }
+            }
+        }
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

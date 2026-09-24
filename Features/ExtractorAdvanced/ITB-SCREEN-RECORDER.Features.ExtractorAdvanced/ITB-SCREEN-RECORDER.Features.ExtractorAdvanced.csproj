@@ -1,0 +1,108 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<RootNamespace>ITB_SCREEN_RECORDER.Features.ExtractorAdvanced</RootNamespace>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+
+		<!-- מניעת Self-Contained עבור תוסף מודולרי והבטחת נתיב פלט אחיד -->
+		<SelfContained>false</SelfContained>
+		<AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Remove="Agents\**" />
+		<EmbeddedResource Remove="Agents\**" />
+		<None Remove="Agents\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- מטמיע את המניפסט ישירות לתוך ה-DLL מקומפל -->
+		<EmbeddedResource Include="feature.json" />
+	</ItemGroup>
+
+	<!-- קימפול ה-Widget של ה-Advanced בכל Build (מריץ Vite אוטומטית) -->
+	<Target Name="CompileAdvancedFrontend" BeforeTargets="Build" Condition="Exists('Client\package.json')">
+		<Message Importance="high" Text="[ITB EXTRACTOR ADVANCED] Building Client Widget..." />
+		<Exec Command="npm install" WorkingDirectory="Client" Condition="!Exists('Client\node_modules')" />
+		<Exec Command="npm run build" WorkingDirectory="Client" ContinueOnError="false" />
+	</Target>
+
+	<!-- הכללת תוצרי ה-Web והמניפסט בפלט ה-Build וה-Publish -->
+	<ItemGroup>
+		<None Update="wwwroot\**">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			<Visible>true</Visible>
+		</None>
+		<Content Include="feature.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</Content>
+	</ItemGroup>
+
+	<!-- ========================================== -->
+	<!-- ניהול בינאריים של FFmpeg לפי מערכת הפעלה     -->
+	<!-- ========================================== -->
+
+	<!-- עבור Windows: העתקת הכלים מתיקיית Tools/Win לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<None Update="Tools\Win\**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- עבור Linux: העתקת הכלים מתיקיית Tools/Linux לשורש הפלט -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<None Update="Tools/Linux/**">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Folder Include="Client\src\components\Modals\" />
+		<Folder Include="Client\src\components\ExportMonitor\" />
+		<Folder Include="Client\src\components\StationDrawer\views\Hub\" />
+		<Folder Include="Client\src\components\StationDrawer\views\Drawer\" />
+		<Folder Include="Client\src\components\TransportBar\" />
+		<Folder Include="Client\src\components\TopScopeBar\" />
+		<Folder Include="Client\src\components\Timeline\" />
+		<Folder Include="Client\src\components\Viewport\utils\" />
+		<Folder Include="Client\src\hooks\" />
+		<Folder Include="Tools\Linux\" />
+		<Folder Include="Tools\Win\" />
+		<Folder Include="Client\public\assets\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+		<ProjectReference Include="..\..\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+	</ItemGroup>
+
+	<!-- העתקה אוטומטית של ה-DLL והנכסים לשרת הפיתוח בסיום ה-Build -->
+	<Target Name="CopyToDevServer" AfterTargets="Build" Condition="Exists('..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0')">
+		<ItemGroup>
+			<PluginOutputFiles Include="$(TargetDir)**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(PluginOutputFiles)" DestinationFolder="..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0\Features\ExtractorAdvanced\%(RecursiveDir)" SkipUnchangedFiles="true" />
+	</Target>
+
+</Project>

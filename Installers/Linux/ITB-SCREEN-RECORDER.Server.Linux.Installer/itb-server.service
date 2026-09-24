@@ -1,0 +1,16 @@
+[Unit]
+Description=ITB Screen Recorder Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/itb-screen-recorder/server
+ExecStart=/opt/itb-screen-recorder/server/ITB-SCREEN-RECORDER.Server
+Restart=always
+RestartSec=10
+SyslogIdentifier=itb-server
+Environment=ASPNETCORE_ENVIRONMENT=Production
+
+[Install]
+WantedBy=multi-user.target

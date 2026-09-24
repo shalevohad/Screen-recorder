@@ -1,0 +1,189 @@
+// Client/src/components/TopScopeBar/TopScopeBar.scss
+
+.studio-top-scope-bar {
+    height: 56px;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 100;
+
+    .scope-info-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0 auto;
+
+        .scope-tag {
+            font-size: 10px;
+            font-weight: 800;
+            color: #64748b;
+            letter-spacing: 1px;
+            margin-right: -4px;
+        }
+
+        .scope-time-badge.clickable {
+            background-color: #1E293B;
+            border: 1px solid rgba(148, 163, 184, 0.15);
+            padding: 6px 16px;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+
+            .time-string {
+                font-family: var(--font-mono, monospace);
+                font-size: 11px;
+                font-weight: 700;
+                color: #F8FAFC;
+            }
+
+            .total-duration {
+                font-family: var(--font-ui, sans-serif);
+                font-size: 10px;
+                color: #10B981;
+                font-weight: 700;
+            }
+
+            &:hover {
+                border-color: #06B6D4;
+                box-shadow: 0 6px 16px rgba(6, 182, 212, 0.2);
+                transform: translateY(-1px);
+            }
+        }
+
+        .time-mode-toggle-group {
+            display: flex;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 9999px;
+            padding: 2px;
+            gap: 2px;
+
+            .btn-mode-icon {
+                width: 28px;
+                height: 28px;
+                background: transparent;
+                border: none;
+                color: #64748b;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s ease;
+
+                svg {
+                    width: 14px;
+                    height: 14px;
+                }
+
+                &:hover {
+                    color: #cbd5e1;
+                    background-color: rgba(255, 255, 255, 0.08);
+                }
+
+                &.active {
+                    background-color: #06B6D4;
+                    color: #090D14;
+                    box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+
+                    svg {
+                        stroke: #090D14;
+                    }
+                }
+            }
+        }
+    }
+
+    .scope-view-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        .btn-grid-return {
+            background-color: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #94a3b8;
+            font-size: 11px;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: all 0.2s;
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+                color: #F8FAFC;
+            }
+        }
+
+        .btn-bookmarks-prominent {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background-color: rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            color: #06B6D4;
+            padding: 6px 16px;
+            border-radius: 9999px;
+            font-size: 10.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+            svg {
+                width: 13px;
+                height: 13px;
+                stroke: #06B6D4;
+            }
+
+            &:hover {
+                background-color: #06B6D4;
+                color: #090D14;
+                box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+
+                svg {
+                    stroke: #090D14;
+                }
+            }
+        }
+
+        .btn-toggle-drawer {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+
+            svg {
+                width: 16px;
+                height: 16px;
+            }
+
+            &:hover {
+                background: rgba(255, 255, 255, 0.1);
+                color: #F8FAFC;
+            }
+
+            &.is-hidden {
+                display: none !important;
+            }
+        }
+    }
+}

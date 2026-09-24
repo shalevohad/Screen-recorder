@@ -1,0 +1,119 @@
+// Client/src/components/StationDrawer/views/Drawer/StationDrawerRow.scss
+
+.station-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.15s;
+
+    &:hover {
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    &.selected {
+        background: rgba(6, 182, 212, 0.12);
+        border-color: rgba(6, 182, 212, 0.25);
+    }
+
+    .checkbox-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .hidden-checkbox {
+            display: none;
+        }
+
+        .custom-checkbox {
+            width: 14px;
+            height: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            svg {
+                display: none;
+                width: 10px;
+                height: 10px;
+                stroke: #020617;
+            }
+        }
+        /* רמזור: ירוק / צהוב / אדום */
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+
+            &.optimal {
+                background: #10b981;
+                box-shadow: 0 0 5px rgba(16, 185, 129, 0.6);
+            }
+
+            &.warning {
+                background: #f59e0b;
+                box-shadow: 0 0 5px rgba(245, 158, 11, 0.6);
+            }
+
+            &.critical {
+                background: #f43f5e;
+                box-shadow: 0 0 5px rgba(244, 63, 94, 0.6);
+            }
+        }
+
+        .hostname {
+            font-size: 11px;
+            color: #f8fafc;
+            font-weight: 700;
+        }
+    }
+
+    .mini-row-tags {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .mini-audio-icon {
+            display: flex;
+            align-items: center;
+            color: #06b6d4;
+
+            svg {
+                width: 11px;
+                height: 11px;
+            }
+        }
+
+        .coverage-pct {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9.5px;
+            font-weight: 700;
+
+            &.optimal {
+                color: #34d399;
+            }
+
+            &.warning {
+                color: #fbbf24;
+            }
+
+            &.critical {
+                color: #fda4af;
+            }
+        }
+    }
+
+    &.selected .custom-checkbox {
+        background: #06b6d4;
+        border-color: #06b6d4;
+
+        svg {
+            display: block;
+        }
+    }
+}
