@@ -25,7 +25,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
         private readonly IAdvanceJobManager _jobManager;
-        private readonly IBookmarkRepository _bookmarkRepository;
         private readonly IEditingDraftRepository _draftRepository;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
@@ -33,20 +32,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
             IAdvanceJobManager jobManager,
-            IBookmarkRepository bookmarkRepository,
             IEditingDraftRepository draftRepository,
             ILogger<ExtractorAdvancedController> logger)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
             _jobManager = jobManager;
-            _bookmarkRepository = bookmarkRepository;
             _draftRepository = draftRepository;
             _logger = logger;
         }
 
         // =========================================================================
-        // 1. ניהול תחנות, סגמנטים ומטא-דאטה לציר הזמן (Timeline Data)
+        // ניהול תחנות, סגמנטים ומטא-דאטה לציר הזמן (Hybrid Storage Discovery)
         // =========================================================================
 
         [HttpGet("stations")]
@@ -61,13 +58,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 long? lStart = startEpoch.HasValue ? (long)Math.Round(startEpoch.Value) : (long?)null;
                 long? lEnd = endEpoch.HasValue ? (long)Math.Round(endEpoch.Value) : (long?)null;
 
+                // ברירת מחדל: 7 ימים לאחור לאיתור כל תחנות העבר והחומרים החיצוניים באחסון
                 DateTime startUtc = lStart.HasValue && lStart.Value > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(lStart.Value).UtcDateTime
-                    : DateTime.UtcNow.AddHours(-4);
+                    : DateTime.UtcNow.AddDays(-7);
 
                 DateTime endUtc = lEnd.HasValue && lEnd.Value > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(lEnd.Value).UtcDateTime
                     : DateTime.UtcNow;
+
+                _logger.LogInformation("[API:Stations] Querying stations between {Start} and {End} (Mode: {Mode})",
+                    startUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), endUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), timeMode);
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
                 var stations = new List<object>();
@@ -99,6 +100,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     });
                 }
 
+                _logger.LogInformation("[API:Stations] Returning {Count} stations to client.", stations.Count);
                 return Ok(stations);
             }
             catch (Exception ex)
@@ -189,7 +191,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         // =========================================================================
-        // 2. תהליכי עריכה מתקדמת (NLE Render & Estimation)
+        // תהליכי עריכה מתקדמת (NLE Render & Estimation)
         // =========================================================================
 
         [HttpPost("estimate")]
@@ -231,72 +233,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         // =========================================================================
-        // 3. סימניות להגנת מחיקה (Retention Shield Bookmarks - מסד נתונים)
-        // =========================================================================
-
-        [HttpGet("retention-bookmarks")]
-        public async Task<IActionResult> GetAllRetentionBookmarks([FromQuery] string? stationId = null)
-        {
-            try
-            {
-                var bookmarks = string.IsNullOrWhiteSpace(stationId)
-                    ? await _bookmarkRepository.GetAllAsync()
-                    : await _bookmarkRepository.GetByStationAsync(stationId);
-
-                return Ok(bookmarks);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:RetentionBookmarks] Error retrieving retention bookmarks");
-                return StatusCode(500, new { message = "Failed to retrieve retention bookmarks." });
-            }
-        }
-
-        [HttpPost("retention-bookmarks")]
-        public async Task<IActionResult> CreateRetentionBookmark([FromBody] BookmarkInfo bookmark)
-        {
-            if (string.IsNullOrWhiteSpace(bookmark.StationId) || bookmark.StartUtc >= bookmark.EndUtc)
-            {
-                return BadRequest(new { message = "Invalid bookmark range or station ID." });
-            }
-
-            try
-            {
-                if (string.IsNullOrWhiteSpace(bookmark.Id))
-                {
-                    bookmark.Id = Guid.NewGuid().ToString("N");
-                }
-
-                bookmark.CreatedAtUtc = DateTime.UtcNow;
-                await _bookmarkRepository.UpsertAsync(bookmark);
-
-                return CreatedAtAction(nameof(GetAllRetentionBookmarks), new { stationId = bookmark.StationId }, bookmark);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:RetentionBookmarks] Error saving retention bookmark");
-                return StatusCode(500, new { message = "Failed to save retention bookmark." });
-            }
-        }
-
-        [HttpDelete("retention-bookmarks/{bookmarkId}")]
-        public async Task<IActionResult> DeleteRetentionBookmark([FromRoute] string bookmarkId)
-        {
-            try
-            {
-                bool deleted = await _bookmarkRepository.DeleteAsync(bookmarkId);
-                if (!deleted) return NotFound(new { message = "Retention bookmark not found." });
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:RetentionBookmarks] Error deleting retention bookmark {Id}", bookmarkId);
-                return StatusCode(500, new { message = "Failed to delete retention bookmark." });
-            }
-        }
-
-        // =========================================================================
-        // 4. ניהול טיוטות ציר זמן (Timeline Editing Drafts)
+        // ניהול טיוטות ציר זמן (Timeline Editing Drafts)
         // =========================================================================
 
         [HttpGet("drafts")]
@@ -375,7 +312,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         // =========================================================================
-        // 5. ניגון רציף, פריימים ו-Spritesheets
+        // ניגון רציף, פריימים ו-Spritesheets
         // =========================================================================
 
         [HttpGet("frame")]

@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import './MasterTimeRangeModal.scss';
 
-const MAX_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 שעות
+const MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 ימים (שבוע)
 const pad = (n) => String(n).padStart(2, '0');
 
 /**
@@ -78,23 +78,38 @@ export default function MasterTimeRangeModal({
     const [activePreset, setActivePreset] = useState(null);
 
     useEffect(() => {
-        if (isOpen && currentRange) {
+        if (!isOpen) return;
+
+        if (currentRange && currentRange.start && currentRange.end) {
             const startObj = parseSafeDate(currentRange.start, timeMode);
             const endObj = parseSafeDate(currentRange.end, timeMode);
 
             setStartDateTime(toInputDateTime(startObj, timeMode));
             setEndDateTime(toInputDateTime(endObj, timeMode));
             setActivePreset(null);
+        } else {
+            // ברירת מחדל מערכתית: שבוע אחורה עד הרגע הנוכחי
+            const endObj = new Date();
+            const startObj = new Date(endObj.getTime() - MAX_WINDOW_MS);
+
+            setStartDateTime(toInputDateTime(startObj, timeMode));
+            setEndDateTime(toInputDateTime(endObj, timeMode));
+            setActivePreset('7d');
         }
     }, [isOpen, currentRange, timeMode]);
 
-    // חישוב משך הזמן הנבחר כרגע להצגה חזותית בלבד
-    const currentDurationHours = useMemo(() => {
+    // חישוב משך הזמן הנבחר להצגה חזותית בימים ושעות
+    const currentDurationFormatted = useMemo(() => {
         const startObj = parseInputDateTime(startDateTime, timeMode);
         const endObj = parseInputDateTime(endDateTime, timeMode);
         if (!startObj || !endObj || endObj <= startObj) return '0h';
-        const hours = (endObj.getTime() - startObj.getTime()) / (1000 * 60 * 60);
-        return `${hours.toFixed(1)}h`;
+
+        const totalHours = (endObj.getTime() - startObj.getTime()) / (1000 * 60 * 60);
+        if (totalHours >= 24) {
+            const days = (totalHours / 24).toFixed(1);
+            return `${days}d (${totalHours.toFixed(0)}h)`;
+        }
+        return `${totalHours.toFixed(1)}h`;
     }, [startDateTime, endDateTime, timeMode]);
 
     if (!isOpen) return null;
@@ -125,9 +140,9 @@ export default function MasterTimeRangeModal({
 
         const diffMs = endObj.getTime() - startObj.getTime();
 
-        // 💡 יישור אוטומטי של תאריך הסיום אם חרגנו מ-24 שעות
+        // יישור אוטומטי של תאריך הסיום אם חרגנו מ-7 ימים
         if (diffMs > MAX_WINDOW_MS) {
-            alert('The selected scope exceeds 24 hours.\nThe End Point has been automatically adjusted.');
+            alert('The selected scope exceeds 7 days (168 hours).\nThe End Point has been automatically adjusted.');
             setEndDateTime(toInputDateTime(new Date(startObj.getTime() + MAX_WINDOW_MS), timeMode));
         }
         // מונע בחירת נקודת התחלה שמאוחרת מנקודת הסיום
@@ -147,9 +162,9 @@ export default function MasterTimeRangeModal({
 
         const diffMs = endObj.getTime() - startObj.getTime();
 
-        // 💡 יישור אוטומטי של תאריך ההתחלה אם חרגנו מ-24 שעות
+        // יישור אוטומטי של תאריך ההתחלה אם חרגנו מ-7 ימים
         if (diffMs > MAX_WINDOW_MS) {
-            alert('The selected scope exceeds 24 hours.\nThe Start Point has been automatically adjusted.');
+            alert('The selected scope exceeds 7 days (168 hours).\nThe Start Point has been automatically adjusted.');
             setStartDateTime(toInputDateTime(new Date(endObj.getTime() - MAX_WINDOW_MS), timeMode));
         }
         // מונע בחירת נקודת סיום שמוקדמת לנקודת ההתחלה
@@ -171,6 +186,11 @@ export default function MasterTimeRangeModal({
 
         if (durationMs <= 0) {
             alert('End point must be strictly after the start point.');
+            return;
+        }
+
+        if (durationMs > MAX_WINDOW_MS) {
+            alert('The selected scope cannot exceed 7 days (168 hours).');
             return;
         }
 
@@ -226,28 +246,28 @@ export default function MasterTimeRangeModal({
 
                 <div className="quick-presets-grid">
                     <button
+                        className={`btn-preset ${activePreset === '7d' ? 'active' : ''}`}
+                        onClick={() => handleQuickPreset(7 * 24 * 3600 * 1000, '7d')}
+                    >
+                        7d Week Max <span className="dot" />
+                    </button>
+                    <button
+                        className={`btn-preset ${activePreset === '3d' ? 'active' : ''}`}
+                        onClick={() => handleQuickPreset(3 * 24 * 3600 * 1000, '3d')}
+                    >
+                        3d Block <span className="dot" />
+                    </button>
+                    <button
                         className={`btn-preset ${activePreset === '24h' ? 'active' : ''}`}
                         onClick={() => handleQuickPreset(24 * 3600 * 1000, '24h')}
                     >
-                        24h Max <span className="dot" />
+                        24h Day <span className="dot" />
                     </button>
                     <button
                         className={`btn-preset ${activePreset === '8h' ? 'active' : ''}`}
                         onClick={() => handleQuickPreset(8 * 3600 * 1000, '8h')}
                     >
                         8h Shift <span className="dot" />
-                    </button>
-                    <button
-                        className={`btn-preset ${activePreset === '4h' ? 'active' : ''}`}
-                        onClick={() => handleQuickPreset(4 * 3600 * 1000, '4h')}
-                    >
-                        4h Block <span className="dot" />
-                    </button>
-                    <button
-                        className={`btn-preset ${activePreset === '1h' ? 'active' : ''}`}
-                        onClick={() => handleQuickPreset(1 * 3600 * 1000, '1h')}
-                    >
-                        1h Standard <span className="dot" />
                     </button>
                 </div>
 
@@ -292,9 +312,9 @@ export default function MasterTimeRangeModal({
                 <div className="range-scope-summary-pill">
                     <span className="summary-label">SELECTED WINDOW:</span>
                     <strong className="summary-value" style={{ color: parseInputDateTime(startDateTime, timeMode)?.getTime() < parseInputDateTime(endDateTime, timeMode)?.getTime() - MAX_WINDOW_MS ? '#f43f5e' : '#22d3ee' }}>
-                        {currentDurationHours}
+                        {currentDurationFormatted}
                     </strong>
-                    <span className="summary-cap">/ 24h MAXIMUM</span>
+                    <span className="summary-cap">/ 7 DAYS MAXIMUM</span>
                 </div>
 
                 <div className="modal-footer-actions">

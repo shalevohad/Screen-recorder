@@ -9,6 +9,8 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Data.Sqlite;
+using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,25 +21,25 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     public class StorageScannerService : IStorageScannerService
     {
+        private readonly IConfiguration _configuration;
         private readonly StorageSettings _storageSettings;
         private readonly ExtractorOptions _options;
         private readonly ILogger<StorageScannerService> _logger;
         private readonly IDummyVideoGenerator _dummyGenerator;
         private readonly TimeZoneInfo _serverLocalTz;
 
-        // זיהוי פורמט דחוס: YYYYMMDD_HHMMSS[_ffffff][Z]
+        private static readonly string[] SupportedVideoExtensions = new[] { ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov" };
+
         private static readonly Regex IsoUtcCompactRegex = new(
-            @"^(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?:_\d+)?(?<utc>Z)?\.(mp4|flv)$",
+            @"^(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?:_\d+)?(?<utc>Z)?\.(mp4|fmp4|flv|mkv|ts|mov)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // זיהוי פורמט מקפים: YYYY-MM-DD_HH-MM-SS[-ffffff][Z]
         private static readonly Regex HyphenatedRegex = new(
-            @"^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})_(?<hour>\d{2})-(?<minute>\d{2})-(?<sec>\d{2})(?:-\d+)?(?<utc>Z)?\.(mp4|flv)$",
+            @"^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})_(?<hour>\d{2})-(?<minute>\d{2})-(?<sec>\d{2})(?:-\d+)?(?<utc>Z)?\.(mp4|fmp4|flv|mkv|ts|mov)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // תמיכה לאחור בפורמט ישן עם קידומת מחשב
         private static readonly Regex LegacyHostPrefixRegex = new(
-            @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?<utc>Z)?\.(mp4|flv)$",
+            @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?<utc>Z)?\.(mp4|fmp4|flv|mkv|ts|mov)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public StorageScannerService(
@@ -47,6 +49,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             ILogger<StorageScannerService> logger,
             IDummyVideoGenerator dummyGenerator)
         {
+            _configuration = configuration;
             _options = options.Value;
             _logger = logger;
             _dummyGenerator = dummyGenerator;
@@ -69,7 +72,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 LocalFallbackPath = fallbackPath
             };
 
-            // קביעת אזור הזמן המקומי של השרת לטיפול בקבצים ללא Z
             string configuredTz = systemConfig.Value?.DisplayTimezone;
             try
             {
@@ -81,62 +83,237 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 _serverLocalTz = TimeZoneInfo.Local;
             }
+
+            _logger.LogInformation("[STORAGE SCANNER:INIT] Configured Storage Paths: NetApp='{NetApp}', Fallback='{Fallback}', TimeZone='{Tz}'",
+                _storageSettings.NetAppUncPath, _storageSettings.LocalFallbackPath, _serverLocalTz.Id);
         }
 
-        public Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
+        private SqliteConnection? OpenCatalogDbConnection()
         {
+            try
+            {
+                string baseDir = _configuration["Database:BaseDirectory"]
+                    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ITB-SCREEN-RECORDER", "Data");
+                string dbPath = Path.Combine(baseDir, "system_catalog.db");
+
+                if (!File.Exists(dbPath))
+                {
+                    _logger.LogDebug("[STORAGE SCANNER:DB] system_catalog.db not found at '{Path}'", dbPath);
+                    return null;
+                }
+
+                var csb = new SqliteConnectionStringBuilder
+                {
+                    DataSource = dbPath,
+                    Mode = SqliteOpenMode.ReadOnly,
+                    DefaultTimeout = 3
+                };
+
+                var conn = new SqliteConnection(csb.ConnectionString);
+                conn.Open();
+                return conn;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[STORAGE SCANNER:DB] Could not open system_catalog.db in ReadOnly mode.");
+                return null;
+            }
+        }
+
+        public async Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
+        {
+            _logger.LogInformation("================================================================================");
+            _logger.LogInformation("[STORAGE SCANNER] Starting Host Discovery. Window: [{Start} -> {End}]",
+                startUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), endUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"));
+
             var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var roots = ResolveActiveStorageRoots();
+
+            // 1. שאילתות מסד הנתונים
+            using (var conn = OpenCatalogDbConnection())
+            {
+                if (conn != null)
+                {
+                    try
+                    {
+                        long startMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                        long endMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+
+                        const string chunksSql = @"
+                            SELECT DISTINCT station_id 
+                            FROM recording_chunks 
+                            WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs;";
+
+                        var dbStations = (await conn.QueryAsync<string>(chunksSql, new { startMs, endMs })).ToList();
+                        _logger.LogInformation("[STORAGE SCANNER:DB] Found {Count} stations in 'recording_chunks' matching time window: [{List}]",
+                            dbStations.Count, string.Join(", ", dbStations));
+
+                        foreach (var s in dbStations)
+                        {
+                            if (!string.IsNullOrWhiteSpace(s)) hosts.Add(s);
+                        }
+
+                        // אם טווח הזמן רחב, מאחזרים בנוסף את כל התחנות ההיסטוריות הרשומות
+                        const string nodesSql = "SELECT station_id FROM station_nodes;";
+                        var nodeStations = (await conn.QueryAsync<string>(nodesSql)).ToList();
+                        _logger.LogInformation("[STORAGE SCANNER:DB] Found {Count} total registered stations in 'station_nodes': [{List}]",
+                            nodeStations.Count, string.Join(", ", nodeStations));
+
+                        foreach (var s in nodeStations)
+                        {
+                            if (!string.IsNullOrWhiteSpace(s)) hosts.Add(s);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[STORAGE SCANNER:DB] Exception occurred querying system_catalog.db");
+                    }
+                }
+            }
+
+            // 2. סריקה פיזית של מערכת הקבצים
+            var roots = ResolveActiveStorageRoots().ToList();
+            _logger.LogInformation("[STORAGE SCANNER:FS] Scanning active storage roots ({Count}): [{Roots}]",
+                roots.Count, string.Join(", ", roots));
 
             foreach (var root in roots)
             {
-                if (!Directory.Exists(root)) continue;
+                if (!Directory.Exists(root))
+                {
+                    _logger.LogWarning("[STORAGE SCANNER:FS] Storage root does not exist or is unreachable: '{Root}'", root);
+                    continue;
+                }
 
                 try
                 {
+                    // סריקת תיקיית live
                     string liveDir = Path.Combine(root, "live");
                     if (Directory.Exists(liveDir))
                     {
-                        foreach (var stationDir in Directory.EnumerateDirectories(liveDir, "*", SearchOption.TopDirectoryOnly))
+                        var liveStationDirs = Directory.EnumerateDirectories(liveDir, "*", SearchOption.TopDirectoryOnly).ToList();
+                        _logger.LogDebug("[STORAGE SCANNER:FS] Found {Count} station directories inside '{LiveDir}'", liveStationDirs.Count, liveDir);
+
+                        foreach (var stationDir in liveStationDirs)
                         {
                             string hostName = Path.GetFileName(stationDir);
+                            if (hosts.Contains(hostName))
+                            {
+                                _logger.LogDebug("[STORAGE SCANNER:FS] Host '{Host}' already known from DB. Skipping deep scan.", hostName);
+                                continue;
+                            }
+
                             if (HasValidRecordingsInRange(stationDir, hostName, startUtc, endUtc))
                             {
+                                _logger.LogInformation("[STORAGE SCANNER:FS] Discovered external/unindexed station with valid recordings: '{Host}' in '{Dir}'", hostName, stationDir);
                                 hosts.Add(hostName);
                             }
                         }
                     }
 
-                    foreach (var stationDir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
+                    // סריקת תיקיות תחנה בשורש האחסון
+                    var rootDirs = Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly).ToList();
+                    foreach (var stationDir in rootDirs)
                     {
                         string hostName = Path.GetFileName(stationDir);
-                        if (string.Equals(hostName, "live", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(hostName, "RecordingsBuffer", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(hostName, "Buffer", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(hostName, "Logs", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
+                        if (IsReservedDirectoryName(hostName)) continue;
+                        if (hosts.Contains(hostName)) continue;
 
                         if (HasValidRecordingsInRange(stationDir, hostName, startUtc, endUtc))
                         {
+                            _logger.LogInformation("[STORAGE SCANNER:FS] Discovered external station: '{Host}' in '{Dir}'", hostName, stationDir);
                             hosts.Add(hostName);
+                        }
+                    }
+
+                    // איתור קבצי Legacy ישירות בשורש
+                    var rootFiles = Directory.EnumerateFiles(root, "*.*", SearchOption.TopDirectoryOnly).ToList();
+                    foreach (var file in rootFiles)
+                    {
+                        string ext = Path.GetExtension(file);
+                        if (!SupportedVideoExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase)) continue;
+
+                        var parsed = TryParseChunk(file, null);
+                        if (parsed != null && parsed.EndUtc >= startUtc && parsed.StartUtc <= endUtc)
+                        {
+                            if (!string.IsNullOrWhiteSpace(parsed.Hostname) && hosts.Add(parsed.Hostname))
+                            {
+                                _logger.LogInformation("[STORAGE SCANNER:FS] Discovered legacy station '{Host}' from root file: '{File}'", parsed.Hostname, file);
+                            }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed fast scanning storage root {Root}", root);
+                    _logger.LogError(ex, "[STORAGE SCANNER:FS] Error scanning root '{Root}'", root);
                 }
             }
 
-            return Task.FromResult(hosts.OrderBy(h => h).ToList());
+            var resultList = hosts.OrderBy(h => h).ToList();
+            _logger.LogInformation("[STORAGE SCANNER] Host Discovery Complete. Discovered {Count} unique stations: [{List}]",
+                resultList.Count, string.Join(", ", resultList));
+            _logger.LogInformation("================================================================================");
+
+            return resultList;
         }
 
-        public Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc)
+        public async Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc)
         {
+            _logger.LogInformation("[STORAGE SCANNER:CHUNKS] Fetching chunks for host '{Host}' between {Start} and {End}",
+                hostname, startUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), endUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"));
+
             var chunks = new List<RecordingChunkMetadata>();
+            var indexedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // 1. שליפה מ-system_catalog.db
+            using (var conn = OpenCatalogDbConnection())
+            {
+                if (conn != null)
+                {
+                    try
+                    {
+                        long startMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                        long endMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+
+                        const string sql = @"
+                            SELECT file_path AS FullPath, station_id AS Hostname,
+                                   start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
+                                   file_size_bytes AS FileSizeBytes
+                            FROM recording_chunks
+                            WHERE station_id = @hostname
+                              AND end_epoch_ms >= @startMs
+                              AND start_epoch_ms <= @endMs
+                            ORDER BY start_epoch_ms ASC;";
+
+                        var dbChunks = await conn.QueryAsync(sql, new { hostname, startMs, endMs });
+                        int dbCount = 0;
+                        foreach (var row in dbChunks)
+                        {
+                            string filePath = (string)row.FullPath;
+                            if (File.Exists(filePath))
+                            {
+                                indexedPaths.Add(filePath);
+                                chunks.Add(new RecordingChunkMetadata
+                                {
+                                    FullPath = filePath,
+                                    Hostname = (string)row.Hostname,
+                                    StartUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)row.StartEpochMs).UtcDateTime,
+                                    EndUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)row.EndEpochMs).UtcDateTime,
+                                    FileSizeBytes = (long)row.FileSizeBytes
+                                });
+                                dbCount++;
+                            }
+                        }
+                        _logger.LogInformation("[STORAGE SCANNER:CHUNKS] Loaded {Count} verified chunks from system_catalog.db for '{Host}'", dbCount, hostname);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[STORAGE SCANNER:CHUNKS] Failed querying DB chunks for '{Host}'", hostname);
+                    }
+                }
+            }
+
+            // 2. השלמה מתוך מערכת הקבצים
             var roots = ResolveActiveStorageRoots();
+            int fsFoundCount = 0;
 
             foreach (var root in roots)
             {
@@ -154,41 +331,61 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     {
                         if (Directory.Exists(targetDir))
                         {
-                            var files = Directory.EnumerateFiles(targetDir, "*.mp4", SearchOption.AllDirectories);
+                            var files = Directory.EnumerateFiles(targetDir, "*.*", SearchOption.AllDirectories);
                             foreach (var file in files)
                             {
+                                if (indexedPaths.Contains(file)) continue;
+
+                                string ext = Path.GetExtension(file);
+                                if (!SupportedVideoExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase)) continue;
+
                                 var parsed = TryParseChunk(file, hostname);
                                 if (parsed != null && parsed.EndUtc >= startUtc && parsed.StartUtc <= endUtc)
                                 {
+                                    indexedPaths.Add(file);
                                     chunks.Add(parsed);
+                                    fsFoundCount++;
                                 }
                             }
                         }
                     }
 
-                    var legacyFiles = Directory.EnumerateFiles(root, $"{hostname}_*.mp4", SearchOption.TopDirectoryOnly);
+                    var legacyFiles = Directory.EnumerateFiles(root, $"{hostname}_*.*", SearchOption.TopDirectoryOnly);
                     foreach (var file in legacyFiles)
                     {
+                        if (indexedPaths.Contains(file)) continue;
+
+                        string ext = Path.GetExtension(file);
+                        if (!SupportedVideoExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase)) continue;
+
                         var parsed = TryParseChunk(file, hostname);
                         if (parsed != null && parsed.EndUtc >= startUtc && parsed.StartUtc <= endUtc)
                         {
+                            indexedPaths.Add(file);
                             chunks.Add(parsed);
+                            fsFoundCount++;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed reading station chunks from {Root} for {Host}", root, hostname);
+                    _logger.LogError(ex, "[STORAGE SCANNER:CHUNKS] Failed reading filesystem chunks for '{Host}' in '{Root}'", hostname, root);
                 }
             }
 
+            if (fsFoundCount > 0)
+            {
+                _logger.LogInformation("[STORAGE SCANNER:CHUNKS] Supplemented {Count} external/unindexed files from filesystem for '{Host}'", fsFoundCount, hostname);
+            }
+
             var sortedUniqueChunks = chunks
-                .GroupBy(c => c.FullPath)
+                .GroupBy(c => c.FullPath, StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
                 .OrderBy(c => c.StartUtc)
                 .ToList();
 
-            return Task.FromResult(sortedUniqueChunks);
+            _logger.LogInformation("[STORAGE SCANNER:CHUNKS] Total valid chunks returned for '{Host}': {Count}", sortedUniqueChunks.Count, hostname);
+            return sortedUniqueChunks;
         }
 
         public async Task<string> BuildConcatManifestAsync(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc)
@@ -275,9 +472,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         {
             try
             {
-                var files = Directory.EnumerateFiles(dirPath, "*.mp4", SearchOption.TopDirectoryOnly);
+                var files = Directory.EnumerateFiles(dirPath, "*.*", SearchOption.AllDirectories);
                 foreach (var file in files)
                 {
+                    string ext = Path.GetExtension(file);
+                    if (!SupportedVideoExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase)) continue;
+
                     var parsed = TryParseChunk(file, hostName);
                     if (parsed != null && parsed.EndUtc >= startUtc && parsed.StartUtc <= endUtc)
                     {
@@ -285,8 +485,22 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[STORAGE SCANNER:FS] Cannot read directory '{Dir}'", dirPath);
+            }
             return false;
+        }
+
+        private static bool IsReservedDirectoryName(string dirName)
+        {
+            return string.Equals(dirName, "live", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(dirName, "RecordingsBuffer", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(dirName, "Buffer", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(dirName, "Logs", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(dirName, "Export", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(dirName, "Exports", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(dirName, "Temp", StringComparison.OrdinalIgnoreCase);
         }
 
         private IEnumerable<string> ResolveActiveStorageRoots()
@@ -332,7 +546,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
                 else
                 {
-                    // נרמול חיוני: הקובץ נכתב בזמן מקומי של השרת -> המרה ל-UTC אמיתי
                     var localTime = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Unspecified);
                     startUtc = TimeZoneInfo.ConvertTimeToUtc(localTime, _serverLocalTz);
                 }
@@ -379,7 +592,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 if (!fi.Exists || fi.Length < 1024) return null;
 
                 DateTime endUtc = startUtc;
-
                 var headerDuration = Mp4HeaderInspector.ExtractDuration(filePath);
                 if (headerDuration.HasValue && headerDuration.Value.TotalSeconds > 1)
                 {
@@ -388,14 +600,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 else
                 {
                     DateTime fileWriteUtc = fi.LastWriteTimeUtc;
-                    if (fileWriteUtc > startUtc.AddSeconds(1))
-                    {
-                        endUtc = fileWriteUtc;
-                    }
-                    else
-                    {
-                        endUtc = startUtc.AddSeconds(1);
-                    }
+                    endUtc = fileWriteUtc > startUtc.AddSeconds(1) ? fileWriteUtc : startUtc.AddSeconds(1);
                 }
 
                 return new RecordingChunkMetadata
