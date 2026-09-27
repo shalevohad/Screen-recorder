@@ -1,9 +1,15 @@
 ﻿namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -14,6 +20,7 @@ public class RecordingChunkScheduler : BackgroundService
     private readonly StoragePathResolver _storageResolver;
     private readonly MediaMtxApiClient _apiClient;
     private readonly EventLogger _eventLogger;
+    private readonly ICatalogRepository _catalogRepository;
     private readonly ILogger<RecordingChunkScheduler> _logger;
     private readonly IDisposable? _configChangeSubscription;
 
@@ -25,15 +32,16 @@ public class RecordingChunkScheduler : BackgroundService
         StoragePathResolver storageResolver,
         MediaMtxApiClient apiClient,
         EventLogger eventLogger,
+        ICatalogRepository catalogRepository,
         ILogger<RecordingChunkScheduler> logger)
     {
         _configMonitor = configMonitor;
         _storageResolver = storageResolver;
         _apiClient = apiClient;
         _eventLogger = eventLogger;
+        _catalogRepository = catalogRepository;
         _logger = logger;
 
-        // תיקון סעיף 9: האזנה לעדכון נתיבי אחסון בזמן אמת ללא צורך באיתחול שירות
         _configChangeSubscription = _configMonitor.OnChange(async newConfig =>
         {
             _logger.LogInformation("[CHUNK SCHEDULER] Live configuration change detected. Applying to MediaMTX immediately...");
@@ -52,7 +60,6 @@ public class RecordingChunkScheduler : BackgroundService
     {
         _logger.LogInformation("[CHUNK SCHEDULER] Recording chunk scheduler starting...");
 
-        // החלת תצורה ראשונית על MediaMTX
         await ApplyMediaMtxStorageConfigAsync(_configMonitor.CurrentValue, stoppingToken).ConfigureAwait(false);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -77,7 +84,7 @@ public class RecordingChunkScheduler : BackgroundService
 
             try
             {
-                await OnBoundaryReachedAsync(stoppingToken).ConfigureAwait(false);
+                await OnBoundaryReachedAsync(nextBoundaryUtc, stoppingToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -116,25 +123,99 @@ public class RecordingChunkScheduler : BackgroundService
         }
     }
 
-    private async Task OnBoundaryReachedAsync(CancellationToken stoppingToken)
+    private async Task OnBoundaryReachedAsync(DateTime boundaryUtc, CancellationToken stoppingToken)
     {
         SystemConfig config = _configMonitor.CurrentValue;
 
-        // וידוא שהגדרות האחסון מסונכרנות לפני חיתוך
         await ApplyMediaMtxStorageConfigAsync(config, stoppingToken).ConfigureAwait(false);
 
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         var activePaths = await _apiClient.GetActivePathNamesAsync(config.MediaMtx.ApiPort, stoppingToken).ConfigureAwait(false);
 
+        var finalizedChunksToIndex = new List<ChunkFinalizedEvent>();
+
         foreach (string path in activePaths)
         {
             bool rotated = await _apiClient.RotatePathRecordingAsync(config.MediaMtx.ApiPort, path, stoppingToken).ConfigureAwait(false);
             await _eventLogger.LogChunkCutAsync(config.Storage.ChunkEventLogPath, path, root, rotated, stoppingToken).ConfigureAwait(false);
+
+            if (rotated)
+            {
+                // איתור הקובץ שנסגר ואינדוקסו
+                var chunkEvent = await TryResolveFinalizedChunkAsync(root, path, config, boundaryUtc, stoppingToken).ConfigureAwait(false);
+                if (chunkEvent.HasValue)
+                {
+                    finalizedChunksToIndex.Add(chunkEvent.Value);
+                }
+            }
+        }
+
+        if (finalizedChunksToIndex.Count > 0)
+        {
+            await _catalogRepository.BulkUpsertChunksAsync(finalizedChunksToIndex).ConfigureAwait(false);
+            _logger.LogInformation("[CHUNK SCHEDULER] Indexed {Count} finalized chunk(s) into SQLite system_catalog.db.", finalizedChunksToIndex.Count);
         }
 
         if (activePaths.Count > 0)
         {
             _logger.LogInformation("[CHUNK SCHEDULER] Rotated {Count} active recording(s) at clock boundary.", activePaths.Count);
+        }
+    }
+
+    private async Task<ChunkFinalizedEvent?> TryResolveFinalizedChunkAsync(
+        string root,
+        string stationPath,
+        SystemConfig config,
+        DateTime boundaryUtc,
+        CancellationToken ct)
+    {
+        try
+        {
+            // השהיה קצרה לשחרור אטומי של ה-File Lock ע"י MediaMTX
+            await Task.Delay(350, ct).ConfigureAwait(false);
+
+            string stationDir = Path.Combine(root, stationPath);
+            if (!Directory.Exists(stationDir)) return null;
+
+            string format = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
+            var dirInfo = new DirectoryInfo(stationDir);
+
+            // שליפת הקובץ האחרון שנכתב (למעט קבצים ריקים)
+            var lastClosedFile = dirInfo.GetFiles($"*.{format}")
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .FirstOrDefault(f => f.Length > 0);
+
+            if (lastClosedFile == null) return null;
+
+            long startEpochMs;
+            long endEpochMs = new DateTimeOffset(boundaryUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+            // חילוץ זמן ההתחלה מתוך תבנית השם (למשל: 20260924_114500)
+            string fileNameWithoutExt = Path.GetFileNameWithoutExtension(lastClosedFile.Name);
+            if (fileNameWithoutExt.Length >= 15 &&
+                DateTime.TryParseExact(fileNameWithoutExt.Substring(0, 15), "yyyyMMdd_HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedStartUtc))
+            {
+                startEpochMs = new DateTimeOffset(parsedStartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+            }
+            else
+            {
+                int intervalMinutes = Math.Max(1, config.Storage.ChunkIntervalMinutes);
+                startEpochMs = endEpochMs - (intervalMinutes * 60 * 1000);
+            }
+
+            return new ChunkFinalizedEvent(
+                StationId: stationPath,
+                FilePath: lastClosedFile.FullName,
+                StartEpochMs: startEpochMs,
+                EndEpochMs: endEpochMs,
+                FileSizeBytes: lastClosedFile.Length,
+                IsFinalized: true
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CHUNK SCHEDULER] Could not parse finalized chunk file metadata for station '{Station}'.", stationPath);
+            return null;
         }
     }
 

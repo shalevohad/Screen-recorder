@@ -29,8 +29,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\MediaMTX\LICENSE-MEDIAMTX.txt" Link="LICENSE-MEDIAMTX.txt" />
-		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\MediaMTX\mediamtx.yml" Link="mediamtx.yml" />
+		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\Tools\LICENSE-MEDIAMTX.txt" Link="LICENSE-MEDIAMTX.txt" />
+		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\Tools\mediamtx.yml" Link="mediamtx.yml" />
 		<Content Include="UpdateSettings.ps1" />
 		<Content Include="PublishFeatures.ps1" />
 	</ItemGroup>

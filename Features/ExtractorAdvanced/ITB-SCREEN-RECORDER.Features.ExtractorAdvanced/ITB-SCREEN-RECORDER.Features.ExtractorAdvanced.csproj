@@ -12,6 +12,12 @@
 		<SelfContained>false</SelfContained>
 		<AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
 		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+
+		<!-- 💡 השתקת שגיאת NETSDK1152 בכפילויות פלט Publish -->
+		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+
+		<!-- מייצר קובץ .deps.json עבור הפיצ'ר לטעינת תלויות מקומית -->
+		<GenerateDependencyFile>true</GenerateDependencyFile>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -25,7 +31,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- מטמיע את המניפסט ישירות לתוך ה-DLL מקומפל -->
+		<!-- מטמיע את המניפסט ישירות לתוך ה-DLL המקומפל -->
 		<EmbeddedResource Include="feature.json" />
 	</ItemGroup>
 
@@ -87,15 +93,41 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- Core: משותף ורץ בתהליך המארח (השרת), לכן לא משוכפל -->
 		<ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj">
 			<Private>false</Private>
 			<ExcludeAssets>runtime</ExcludeAssets>
 		</ProjectReference>
+
+		<!-- 💡 Extractor: נארז עצמאית, ה-DLL מועתק לפלט -->
 		<ProjectReference Include="..\..\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj">
-			<Private>false</Private>
-			<ExcludeAssets>runtime</ExcludeAssets>
+			<Private>true</Private>
+			<CopyLocalSatelliteAssemblies>true</CopyLocalSatelliteAssemblies>
 		</ProjectReference>
 	</ItemGroup>
+
+	<!-- ========================================================================= -->
+	<!-- סינון חכם של כפילויות Publish (משאיר רק את ה-DLL של Extractor ומונע שגיאת NETSDK1152) -->
+	<!-- ========================================================================= -->
+	<Target Name="RemoveReferencedExtractorContentDuplicates" BeforeTargets="ComputeResolvedFilesToPublishList">
+		<ItemGroup>
+			<_ExtractorContentFiles1 Include="@(_SourceItemsToCopyToPublishDirectory)"
+				Condition="$([System.String]::Copy('%(_SourceItemsToCopyToPublishDirectory.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(_SourceItemsToCopyToPublishDirectory.Extension)' != '.dll' And '%(_SourceItemsToCopyToPublishDirectory.Extension)' != '.pdb'" />
+			<_SourceItemsToCopyToPublishDirectory Remove="@(_ExtractorContentFiles1)" />
+
+			<_ExtractorContentFiles2 Include="@(_SourceItemsToCopyToPublishDirectoryAlways)"
+				Condition="$([System.String]::Copy('%(_SourceItemsToCopyToPublishDirectoryAlways.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(_SourceItemsToCopyToPublishDirectoryAlways.Extension)' != '.dll' And '%(_SourceItemsToCopyToPublishDirectoryAlways.Extension)' != '.pdb'" />
+			<_SourceItemsToCopyToPublishDirectoryAlways Remove="@(_ExtractorContentFiles2)" />
+		</ItemGroup>
+	</Target>
+
+	<Target Name="FilterDuplicatePublishOutput" AfterTargets="ComputeResolvedFilesToPublishList" BeforeTargets="_CheckForDuplicatePublishOutputFiles">
+		<ItemGroup>
+			<_DuplicatePublishItems Include="@(ResolvedFileToPublish)"
+				Condition="$([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(ResolvedFileToPublish.Extension)' != '.dll' And '%(ResolvedFileToPublish.Extension)' != '.pdb'" />
+			<ResolvedFileToPublish Remove="@(_DuplicatePublishItems)" />
+		</ItemGroup>
+	</Target>
 
 	<!-- העתקה אוטומטית של ה-DLL והנכסים לשרת הפיתוח בסיום ה-Build -->
 	<Target Name="CopyToDevServer" AfterTargets="Build" Condition="Exists('..\..\..\ITB-SCREEN-RECORDER.Server\bin\Debug\net8.0')">

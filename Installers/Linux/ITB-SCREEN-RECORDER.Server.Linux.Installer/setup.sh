@@ -64,7 +64,10 @@ fi
 echo "--> Applying execution permissions..."
 chmod +x "$INSTALL_ROOT/ITB-SCREEN-RECORDER.Server"
 
-if [ -f "$INSTALL_ROOT/mediamtx" ]; then
+# וידוא הרשאות ריצה עבור MediaMTX בתת-התיקייה או בשורש
+if [ -f "$INSTALL_ROOT/MediaMTX/mediamtx" ]; then
+    chmod +x "$INSTALL_ROOT/MediaMTX/mediamtx"
+elif [ -f "$INSTALL_ROOT/mediamtx" ]; then
     chmod +x "$INSTALL_ROOT/mediamtx"
 fi
 

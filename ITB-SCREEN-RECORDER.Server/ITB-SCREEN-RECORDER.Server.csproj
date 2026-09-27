@@ -16,7 +16,7 @@
 		<EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
 	</PropertyGroup>
 
-	<!-- הוסף בתוך ה-PropertyGroup הראשי של Debug -->
+	<!-- הגדרות מצב Debug -->
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
 		<DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
 	</PropertyGroup>
@@ -34,6 +34,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="Dapper" Version="2.1.89" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
@@ -49,19 +50,78 @@
 		<Folder Include="ClientApp/src/components/Settings/tabs/" />
 		<Folder Include="ClientApp/src/styles/" />
 		<Folder Include="ClientApp\src\Agents\" />
+		<Folder Include="Tools\Win\" />
+		<Folder Include="Tools\Linux\" />
 		<Folder Include="wwwroot/css/" />
 	</ItemGroup>
 
 	<!-- ======================================================== -->
-	<!-- העתקה פיזית מלאה של כל תכולת MediaMTX לתיקיית הפלט     -->
+	<!-- ניהול קובצי קונפיגורציה לפי יעד מערכת הפעלה               -->
 	<!-- ======================================================== -->
 	<ItemGroup>
-		<None Include="MediaMTX\**">
+		<None Remove="appsettings.Windows.json" />
+		<None Remove="appsettings.Linux.json" />
+		<None Remove="appsettings.json" />
+	</ItemGroup>
+
+	<!-- בחירת הגדרות Windows ל-Build ול-Publish -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<None Include="appsettings.Windows.json">
+			<Link>appsettings.json</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- בחירת הגדרות Linux ל-Build ול-Publish -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<None Include="appsettings.Linux.json">
+			<Link>appsettings.json</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- ======================================================== -->
+	<!-- ניהול אוטומטי של כלי Native ו-MediaMTX לפי מערכת הפעלה   -->
+	<!-- ======================================================== -->
+	<ItemGroup>
+		<!-- 1. קובץ ההגדרות והרישיון של MediaMTX - משותפים לכל הפלטפורמות -->
+		<None Include="Tools\mediamtx.yml" Condition="Exists('Tools\mediamtx.yml')">
+			<TargetPath>MediaMTX\mediamtx.yml</TargetPath>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</None>
+		<None Include="Tools\LICENSE-MEDIAMTX.txt" Condition="Exists('Tools\LICENSE-MEDIAMTX.txt')">
+			<TargetPath>MediaMTX\LICENSE-MEDIAMTX.txt</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
-		<None Update="MediaMTX\mediamtx.yml">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	</ItemGroup>
+
+	<!-- התאמות ייעודיות ל-Windows -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<!-- העתקת ספריות VC++ Runtime (vcruntime140 / msvcp140) ישירות לשורש הפלט לטעינת SQLite תקינה -->
+		<None Include="Tools\Win\*.dll">
+			<TargetPath>%(Filename)%(Extension)</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</None>
+
+		<!-- קובץ ההפעלה של MediaMTX עבור Windows תחת תיקיית MediaMTX -->
+		<None Include="Tools\Win\mediamtx.exe">
+			<TargetPath>MediaMTX\mediamtx.exe</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- התאמות ייעודיות ל-Linux -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<!-- קובץ ההפעלה של MediaMTX עבור Linux תחת תיקיית MediaMTX -->
+		<None Include="Tools/Linux/mediamtx">
+			<TargetPath>MediaMTX/mediamtx</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
@@ -83,79 +143,48 @@
 	<!-- 1. איסוף אוטומטי של כל פרויקט פיצ'ר קיים ללא שיום מפורש -->
 	<ItemGroup>
 		<FeatureProjects Include="$(MSBuildProjectDirectory)/../Features/*/*/*.csproj" />
-		<!-- מורה ל-Visual Studio FastUpToDateCheck לבדוק שינויים בכל תיקיית הפיצ'רים -->
 		<UpToDateCheckInput Include="$(MSBuildProjectDirectory)/../Features/**/*.*" />
 	</ItemGroup>
 
-	<!-- 2. שחזור ובנייה שקטה של הפיצ'רים לפני בניית השרת -->
-	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild">
-		<Message Importance="high" Text="[ITB BUILD] Compiling internal Feature modules ($(Configuration))..." Condition="'@(FeatureProjects)' != ''" />
-		<MSBuild Projects="@(FeatureProjects)" Targets="Restore;Build" Properties="Configuration=$(Configuration);SelfContained=false" Condition="'@(FeatureProjects)' != ''" />
+	<!-- 2. בנייה ישירה של הפיצ'רים (ללא Restore כפול ששובר את MSBuild) -->
+	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild" Condition="'@(FeatureProjects)' != ''">
+		<Message Importance="high" Text="[ITB BUILD] Compiling internal Feature modules ($(Configuration))..." />
+		<MSBuild Projects="@(FeatureProjects)" Targets="Build" Properties="Configuration=$(Configuration)" />
 	</Target>
 
-	<!-- 3. העתקת תוצרים ל-Debug (F5) - דריסה מלאה ללא דילוג על קבצים קיימים -->
-	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Condition="'@(FeatureProjects)' != ''">
-		<MSBuild Projects="$(MSBuildProjectFile)" Targets="_StageSingleFeature" Properties="_ProjPath=%(FeatureProjects.FullPath)" />
-	</Target>
-
-	<Target Name="_StageSingleFeature">
+	<!-- 3. העתקת תוצרים ל-Debug (F5) באמצעות Batching ישיר ללא קריאות MSBuild רקורסיביות -->
+	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Inputs="@(FeatureProjects)" Outputs="%(Identity).Dummy" Condition="'@(FeatureProjects)' != ''">
 		<PropertyGroup>
-			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
+			<_ProjDir>$([System.IO.Path]::GetDirectoryName('%(FeatureProjects.FullPath)'))</_ProjDir>
 			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
 			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
-
 			<_DestStandard>$(TargetDir)Features\$(_FeatureName)</_DestStandard>
-			<_DestWinX64>$(TargetDir)win-x64\Features\$(_FeatureName)</_DestWinX64>
 		</PropertyGroup>
 
 		<ItemGroup>
 			<_Artifacts Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
 		</ItemGroup>
 
-		<!-- SkipUnchangedFiles="false" מבטיח דריסה ועדכון של קובצי JS, CSS ו-DLL בכל הרצה -->
 		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(_DestStandard)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" />
-
-		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(_DestWinX64)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" Condition="Exists('$(TargetDir)win-x64') Or '$(RuntimeIdentifier)' == 'win-x64'" />
+		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(TargetDir)$(RuntimeIdentifier)\Features\$(_FeatureName)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" Condition="Exists('$(TargetDir)$(RuntimeIdentifier)')" />
 	</Target>
 
-	<!-- 4. אריזה דינמית ל-Publish -->
-	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Condition="('$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))) And '@(FeatureProjects)' != ''">
-		<MSBuild Projects="$(MSBuildProjectFile)" Targets="_GetFeaturePublishFiles" Properties="_ProjPath=%(FeatureProjects.FullPath)">
-			<Output TaskParameter="TargetOutputs" ItemName="ResolvedFileToPublish" />
-		</MSBuild>
-		<Message Importance="high" Text="[ITB PUBLISH] Bundling dynamically resolved modules into publish payload..." />
-	</Target>
-
-	<Target Name="_GetFeaturePublishFiles" Returns="@(_FeatureFilesToPublish)">
+	<!-- 4. אריזה ל-Publish באמצעות מיפוי ישיר של הקבצים ל-ResolvedFileToPublish -->
+	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Inputs="@(FeatureProjects)" Outputs="%(Identity).Dummy" Condition="'@(FeatureProjects)' != ''">
 		<PropertyGroup>
-			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
-			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
-			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
+			<_PubProjDir>$([System.IO.Path]::GetDirectoryName('%(FeatureProjects.FullPath)'))</_PubProjDir>
+			<_PubFeatureDir>$([System.IO.Path]::GetDirectoryName('$(_PubProjDir)'))</_PubFeatureDir>
+			<_PubFeatureName>$([System.IO.Path]::GetFileName('$(_PubFeatureDir)'))</_PubFeatureName>
 		</PropertyGroup>
 
 		<ItemGroup>
-			<_RawFiles Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
-			<_FeatureFilesToPublish Include="@(_RawFiles)">
-				<RelativePath>Features\$(_FeatureName)\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+			<_RawFeatureFiles Include="$(_PubProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
+			<ResolvedFileToPublish Include="@(_RawFeatureFiles)">
+				<RelativePath>Features\$(_PubFeatureName)\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
 				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			</_FeatureFilesToPublish>
+			</ResolvedFileToPublish>
 		</ItemGroup>
-	</Target>
-
-	<Target Name="_GetFeaturePublishFiles" Returns="@(_FeatureFilesToPublish)">
-		<PropertyGroup>
-			<_ProjDir>$([System.IO.Path]::GetDirectoryName('$(_ProjPath)'))</_ProjDir>
-			<_FeatureDir>$([System.IO.Path]::GetDirectoryName('$(_ProjDir)'))</_FeatureDir>
-			<_FeatureName>$([System.IO.Path]::GetFileName('$(_FeatureDir)'))</_FeatureName>
-		</PropertyGroup>
-
-		<ItemGroup>
-			<_RawFiles Include="$(_ProjDir)\bin\$(Configuration)\net8.0\**\*.*" />
-			<_FeatureFilesToPublish Include="@(_RawFiles)">
-				<RelativePath>Features\$(_FeatureName)\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
-				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-			</_FeatureFilesToPublish>
-		</ItemGroup>
+		<Message Importance="high" Text="[ITB PUBLISH] Bundling feature module '$(_PubFeatureName)' into publish payload..." />
 	</Target>
 
 </Project>

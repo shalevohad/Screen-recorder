@@ -46,11 +46,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         /// <summary>
-        /// 💡 הערכת גודל ופערים מקדימה בזמן עריכה בציר הזמן (TimelineBoard)
-        /// תומך בפנייה ישירה מ-/api/v1/extractor-advanced/estimate או דרך /jobs/estimate
+        /// הערכת גודל ופערים עבור משימת ייצוא ספציפית
+        /// זמין תחת: POST api/v1/extractor-advanced/jobs/estimate
         /// </summary>
         [HttpPost("estimate")]
-        [HttpPost("/api/v1/extractor-advanced/estimate")]
         public async Task<IActionResult> EstimateJob([FromBody] AdvanceCutRequestDto request)
         {
             if (request.StationIds == null || request.StationIds.Count == 0 || request.OutEpochMs <= request.InEpochMs)

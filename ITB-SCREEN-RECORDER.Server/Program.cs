@@ -1,6 +1,9 @@
-﻿using ITB_SCREEN_RECORDER.Core.Common;
+﻿using ITB_SCREEN_RECORDER.Core.Abstractions;
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Server.Data;
+using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -97,7 +100,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
             try
             {
-                // 2. זיהוי, טעינה ואתחול של כל מודול פיצ'ר שנמצא בתיקיית Features
+                // 2. זיהוי, טעינה ואתחול של כל מודול פיצ'ר שנמצא בתיקיית Features דרך IHostingStartup
                 var loadedFeatureAssemblies = new List<Assembly>();
                 var featuresBaseDir = ResolveFeaturesDirectory();
 
@@ -157,7 +160,7 @@ namespace ITB_SCREEN_RECORDER.Server
                     serverOptions.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
                 });
 
-                // קביעת פורט האזנה חוצה-פלטפורמות (Registry -> משתנה סביבה -> הגדרות -> ברירת מחדל 5090)
+                // קביעת פורט האזנה חוצה-פלטפורמות
                 int? resolvedHttpPort = null;
 
                 if (OperatingSystem.IsWindows())
@@ -292,15 +295,50 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Diagnostics.NetworkTelemetry>();
 
+                // -------------------------------------------------------------
+                // תשתית מסד הנתונים המרכזי והגנת מחיקה (SQLite Core)
+                // -------------------------------------------------------------
+                builder.Services.AddSingleton<ICatalogConnectionFactory, CatalogConnectionFactory>();
+                builder.Services.AddSingleton<IFeatureDbInitializer, CatalogDbInitializer>();
+                builder.Services.AddSingleton<ICatalogRepository, CatalogRepository>();
+
+                // שירותי הרקע המובנים
                 builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
                 builder.Services.AddHostedService<RecordingChunkScheduler>();
                 builder.Services.AddHostedService<ServerTelemetryHostService>();
+                builder.Services.AddHostedService<StorageRetentionWorker>();
 
                 var app = builder.Build();
 
-                // דיאגנוסטיקה: אימות מודולים רשומים ב-DI
+                // -------------------------------------------------------------
+                // אתחול סכמות מסדי נתונים ואימות מודולים ב-DI
+                // -------------------------------------------------------------
                 using (var scope = app.Services.CreateScope())
                 {
+                    // 1. אתחול כל מסדי הנתונים לפי סדר עדיפויות
+                    var dbInitializers = scope.ServiceProvider
+                        .GetServices<IFeatureDbInitializer>()
+                        .OrderBy(init => init.ExecutionOrder)
+                        .ToList();
+
+                    Logger.AlwaysInfo($"[DATABASE] Discovered {dbInitializers.Count} database initializers.");
+                    foreach (var initializer in dbInitializers)
+                    {
+                        try
+                        {
+                            initializer.Initialize();
+                            Logger.AlwaysInfo($"[DATABASE] Successfully initialized schema for: '{initializer.FeatureName}' (Order: {initializer.ExecutionOrder})");
+                        }
+                        catch (Exception ex)
+                        {
+                            var dbErrMsg = $"[DATABASE] CRITICAL: Failed to initialize schema for '{initializer.FeatureName}': {ex.Message}";
+                            Console.WriteLine(dbErrMsg);
+                            Logger.Error(dbErrMsg);
+                            throw;
+                        }
+                    }
+
+                    // 2. דיאגנוסטיקה: אימות מודולים רשומים ב-DI
                     var registeredFeatures = scope.ServiceProvider.GetServices<IFeatureModule>().ToList();
                     Logger.AlwaysInfo($"[PLUGIN-LOADER] Total registered IFeatureModules in DI: {registeredFeatures.Count}");
 

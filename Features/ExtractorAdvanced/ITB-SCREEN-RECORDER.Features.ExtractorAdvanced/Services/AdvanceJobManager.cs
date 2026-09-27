@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
 using AdvancedModels = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
@@ -28,12 +29,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
     {
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
+        private readonly IAdvanceJobRepository _repository;
         private readonly ILogger<AdvanceJobManager> _advLogger;
 
         public AdvanceJobManager(
             IExtractorService extractorService,
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
+            IAdvanceJobRepository repository,
             IOptions<ExtractorOptions> options,
             ILogger<ExportJobManager> baseLogger,
             ILogger<AdvanceJobManager> advLogger)
@@ -41,7 +44,36 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
+            _repository = repository;
             _advLogger = advLogger;
+
+            // טעינה ושחזור משימות מ-advance_extractor.db בעליית השרת
+            _ = LoadAndRecoverJobsFromDatabaseAsync();
+        }
+
+        private async Task LoadAndRecoverJobsFromDatabaseAsync()
+        {
+            try
+            {
+                var dbJobs = await _repository.GetAllJobsAsync();
+                foreach (var job in dbJobs)
+                {
+                    if (job.Status == "Processing" || job.Status == "Queued")
+                    {
+                        job.Status = "Failed";
+                        job.ErrorMessage = "Task terminated unexpectedly due to server restart.";
+                        job.CompletedAtUtc = DateTime.UtcNow;
+                        await _repository.UpsertJobAsync(job);
+                    }
+
+                    _jobs[job.JobId] = job;
+                }
+                _advLogger.LogInformation("[AdvanceJobManager] Restored {Count} jobs from advance_extractor.db", dbJobs.Count);
+            }
+            catch (Exception ex)
+            {
+                _advLogger.LogError(ex, "[AdvanceJobManager] Failed to restore jobs from advance_extractor.db");
+            }
         }
 
         public async Task<object> EstimateCutJobAsync(AdvancedModels.AdvanceCutRequestDto request)
@@ -148,6 +180,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             _jobs[job.JobId] = job;
             PersistJobsToDisk();
+            _ = _repository.UpsertJobAsync(job);
 
             _ = Task.Run(() => ProcessSynchronizedExportAsync(job, startUtc, endUtc));
             return job;
@@ -158,6 +191,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             job.Status = "Processing";
             job.StatusMessage = $"Synchronizing {job.StationIds.Count} stations...";
             job.CreatedAtUtc = DateTime.UtcNow;
+            _ = _repository.UpsertJobAsync(job);
 
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
             Directory.CreateDirectory(tempStagingDir);
@@ -242,6 +276,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         {
                             lastPersistUtc = DateTime.UtcNow;
                             PersistJobsToDisk();
+                            _ = _repository.UpsertJobAsync(job);
                         }
                     });
 
@@ -264,6 +299,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.ProgressPercent = 85;
                 job.EstimatedSecondsRemaining = 2;
                 PersistJobsToDisk();
+                _ = _repository.UpsertJobAsync(job);
 
                 await using (var tarStream = new FileStream(finalTarPath, FileMode.Create, FileAccess.Write, FileShare.None))
                 await using (var tarWriter = new TarWriter(tarStream, TarEntryFormat.Pax, leaveOpen: false))
@@ -319,6 +355,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.StatusMessage = "Ready for download";
                 job.CompletedAtUtc = DateTime.UtcNow;
 
+                _ = _repository.UpsertJobAsync(job);
                 _advLogger.LogInformation("[AdvanceJobManager] Archive ready: {Path} ({Size} bytes)", finalTarPath, job.FileSizeBytes);
             }
             catch (Exception ex)
@@ -327,11 +364,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.ErrorMessage = ex.Message;
                 job.StatusMessage = "Export failed";
                 job.EstimatedSecondsRemaining = 0;
+                _ = _repository.UpsertJobAsync(job);
                 _advLogger.LogError(ex, "[AdvanceJobManager] Export failed for job {JobId}", job.JobId);
             }
             finally
             {
                 PersistJobsToDisk();
+                _ = _repository.UpsertJobAsync(job);
+
                 if (Directory.Exists(tempStagingDir))
                 {
                     try { Directory.Delete(tempStagingDir, true); } catch { }

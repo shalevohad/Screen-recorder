@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
@@ -22,17 +24,30 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
     {
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
+        private readonly IAdvanceJobManager _jobManager;
+        private readonly IBookmarkRepository _bookmarkRepository;
+        private readonly IEditingDraftRepository _draftRepository;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
+            IAdvanceJobManager jobManager,
+            IBookmarkRepository bookmarkRepository,
+            IEditingDraftRepository draftRepository,
             ILogger<ExtractorAdvancedController> logger)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
+            _jobManager = jobManager;
+            _bookmarkRepository = bookmarkRepository;
+            _draftRepository = draftRepository;
             _logger = logger;
         }
+
+        // =========================================================================
+        // 1. ניהול תחנות, סגמנטים ומטא-דאטה לציר הזמן (Timeline Data)
+        // =========================================================================
 
         [HttpGet("stations")]
         public async Task<IActionResult> GetStations(
@@ -60,7 +75,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 foreach (var host in availableHosts)
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
-                    // 💡 כיול זמני הצ'אנק לפי ה-PTS והמשך האמיתי גם ברשימת התחנות הראשונית!
                     await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
 
                     var realSegments = chunks
@@ -174,6 +188,196 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
         }
 
+        // =========================================================================
+        // 2. תהליכי עריכה מתקדמת (NLE Render & Estimation)
+        // =========================================================================
+
+        [HttpPost("estimate")]
+        public async Task<IActionResult> EstimateCutJob([FromBody] AdvanceCutRequestDto request)
+        {
+            try
+            {
+                var estimation = await _jobManager.EstimateCutJobAsync(request);
+                return Ok(estimation);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Estimate] Error estimating timeline cut");
+                return StatusCode(500, new { message = "Failed to calculate cut estimation." });
+            }
+        }
+
+        [HttpPost("cut")]
+        public IActionResult EnqueueAdvanceCutJob([FromBody] AdvanceCutRequestDto request)
+        {
+            try
+            {
+                var job = _jobManager.EnqueueAdvanceCutJob(request);
+                return Accepted(new { jobId = job.JobId, fileName = job.FileName, status = job.Status });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Cut] Error enqueuing advance cut job");
+                return StatusCode(500, new { message = "Failed to start extraction job." });
+            }
+        }
+
+        // =========================================================================
+        // 3. סימניות להגנת מחיקה (Retention Shield Bookmarks - מסד נתונים)
+        // =========================================================================
+
+        [HttpGet("retention-bookmarks")]
+        public async Task<IActionResult> GetAllRetentionBookmarks([FromQuery] string? stationId = null)
+        {
+            try
+            {
+                var bookmarks = string.IsNullOrWhiteSpace(stationId)
+                    ? await _bookmarkRepository.GetAllAsync()
+                    : await _bookmarkRepository.GetByStationAsync(stationId);
+
+                return Ok(bookmarks);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:RetentionBookmarks] Error retrieving retention bookmarks");
+                return StatusCode(500, new { message = "Failed to retrieve retention bookmarks." });
+            }
+        }
+
+        [HttpPost("retention-bookmarks")]
+        public async Task<IActionResult> CreateRetentionBookmark([FromBody] BookmarkInfo bookmark)
+        {
+            if (string.IsNullOrWhiteSpace(bookmark.StationId) || bookmark.StartUtc >= bookmark.EndUtc)
+            {
+                return BadRequest(new { message = "Invalid bookmark range or station ID." });
+            }
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(bookmark.Id))
+                {
+                    bookmark.Id = Guid.NewGuid().ToString("N");
+                }
+
+                bookmark.CreatedAtUtc = DateTime.UtcNow;
+                await _bookmarkRepository.UpsertAsync(bookmark);
+
+                return CreatedAtAction(nameof(GetAllRetentionBookmarks), new { stationId = bookmark.StationId }, bookmark);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:RetentionBookmarks] Error saving retention bookmark");
+                return StatusCode(500, new { message = "Failed to save retention bookmark." });
+            }
+        }
+
+        [HttpDelete("retention-bookmarks/{bookmarkId}")]
+        public async Task<IActionResult> DeleteRetentionBookmark([FromRoute] string bookmarkId)
+        {
+            try
+            {
+                bool deleted = await _bookmarkRepository.DeleteAsync(bookmarkId);
+                if (!deleted) return NotFound(new { message = "Retention bookmark not found." });
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:RetentionBookmarks] Error deleting retention bookmark {Id}", bookmarkId);
+                return StatusCode(500, new { message = "Failed to delete retention bookmark." });
+            }
+        }
+
+        // =========================================================================
+        // 4. ניהול טיוטות ציר זמן (Timeline Editing Drafts)
+        // =========================================================================
+
+        [HttpGet("drafts")]
+        public async Task<IActionResult> GetAllDrafts()
+        {
+            try
+            {
+                var drafts = await _draftRepository.GetAllAsync();
+                return Ok(drafts);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Drafts] Error fetching drafts");
+                return StatusCode(500, new { message = "Failed to retrieve drafts." });
+            }
+        }
+
+        [HttpGet("drafts/{draftId}")]
+        public async Task<IActionResult> GetDraft([FromRoute] string draftId)
+        {
+            try
+            {
+                var draft = await _draftRepository.GetByIdAsync(draftId);
+                if (draft == null) return NotFound(new { message = "Draft not found." });
+                return Ok(draft);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Drafts] Error fetching draft {Id}", draftId);
+                return StatusCode(500, new { message = "Failed to retrieve draft." });
+            }
+        }
+
+        [HttpPost("drafts")]
+        public async Task<IActionResult> SaveDraft([FromBody] EditingDraftInfo draft)
+        {
+            if (string.IsNullOrWhiteSpace(draft.Title))
+            {
+                return BadRequest(new { message = "Draft title is required." });
+            }
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(draft.DraftId))
+                {
+                    draft.DraftId = Guid.NewGuid().ToString("N");
+                    draft.CreatedAtUtc = DateTime.UtcNow;
+                }
+
+                draft.UpdatedAtUtc = DateTime.UtcNow;
+                await _draftRepository.UpsertAsync(draft);
+
+                return Ok(draft);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Drafts] Error persisting editing draft");
+                return StatusCode(500, new { message = "Failed to save draft." });
+            }
+        }
+
+        [HttpDelete("drafts/{draftId}")]
+        public async Task<IActionResult> DeleteDraft([FromRoute] string draftId)
+        {
+            try
+            {
+                bool deleted = await _draftRepository.DeleteAsync(draftId);
+                if (!deleted) return NotFound(new { message = "Draft not found." });
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Drafts] Error deleting draft {Id}", draftId);
+                return StatusCode(500, new { message = "Failed to delete draft." });
+            }
+        }
+
+        // =========================================================================
+        // 5. ניגון רציף, פריימים ו-Spritesheets
+        // =========================================================================
+
         [HttpGet("frame")]
         public async Task<IActionResult> GetStationFrame(
             [FromQuery] string hostname,
@@ -198,7 +402,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (OperationCanceledException)
             {
-                // 💡 ביטול שגרתי של הדפדפן בזמן גרירה מהירה - יציאה שקטה ללא שגיאות בלוג
                 return NoContent();
             }
             catch (Exception ex)
