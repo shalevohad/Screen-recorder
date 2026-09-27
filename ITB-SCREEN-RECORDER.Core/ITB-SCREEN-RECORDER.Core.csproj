@@ -5,6 +5,7 @@
 		<RootNamespace>ITB_SCREEN_RECORDER.Core</RootNamespace>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<DefineConstants Condition="'$(OS)' == 'Windows_NT'">$(DefineConstants);WINDOWS</DefineConstants>
 	</PropertyGroup>
 
@@ -14,6 +15,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Dapper" Version="2.1.89" />
+		<!-- 💡 גרסה 8.0.12 יציבה ומותאמת ל-.NET 8 עבור SQLite -->
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />

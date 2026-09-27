@@ -1,12 +1,54 @@
 ﻿namespace ITB_SCREEN_RECORDER.Core.Abstractions;
 
+using System;
 using System.Data;
+using System.IO;
+using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 
 public abstract class BaseSqliteConnectionFactory
 {
     private readonly string _connectionString;
     public string DatabasePath { get; }
+
+    static BaseSqliteConnectionFactory()
+    {
+        EnsureSqliteNativeLoaded();
+    }
+
+    private static void EnsureSqliteNativeLoaded()
+    {
+        try
+        {
+            bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+            string libName = isWindows ? "e_sqlite3.dll" : "libe_sqlite3.so";
+            string rid = isWindows ? "win-x64" : "linux-x64";
+            string baseDir = AppContext.BaseDirectory;
+
+            // נתיבי חיפוש אפשריים: שורש הפלט, תת-ספריית runtimes של NuGet, או סביבת פיתוח
+            string[] probePaths =
+            [
+                Path.Combine(baseDir, libName),
+                Path.Combine(baseDir, "runtimes", rid, "native", libName),
+                Path.Combine(baseDir, "..", "..", "runtimes", rid, "native", libName)
+            ];
+
+            foreach (var path in probePaths)
+            {
+                if (File.Exists(path) && NativeLibrary.TryLoad(path, out _))
+                {
+                    break;
+                }
+            }
+
+            // אתחול מנוע הסוללות של SQLitePCL
+            SQLitePCL.Batteries_V2.Init();
+        }
+        catch
+        {
+            // המשך - ייכשל עם פירוט מדויק בעת פתיחת החיבור אם הקובץ לא יימצא
+        }
+    }
 
     protected BaseSqliteConnectionFactory(string dbFileName, string? customDirectory = null, int busyTimeoutSeconds = 5)
     {

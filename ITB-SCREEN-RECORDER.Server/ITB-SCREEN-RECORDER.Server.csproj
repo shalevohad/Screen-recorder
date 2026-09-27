@@ -7,7 +7,7 @@
 		<RootNamespace>ITB_SCREEN_RECORDER.Server</RootNamespace>
 		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
 
-		<!-- זיהוי אוטומטי של סביבת הריצה/Runner למניעת שגיאות שחזור ב-Linux CI -->
+		<!-- זיהוי אוטומטי של סביבת הריצה למניעת שגיאות שחזור ב-Linux CI -->
 		<RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
 		<RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('Windows'))">linux-x64</RuntimeIdentifier>
 
@@ -35,6 +35,9 @@
 
 	<ItemGroup>
 		<PackageReference Include="Dapper" Version="2.1.89" />
+		<!-- 💡 חבילות SQLite מנוהלות ו-Native Bundle ישיר מ-NuGet -->
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
@@ -83,10 +86,9 @@
 	</ItemGroup>
 
 	<!-- ======================================================== -->
-	<!-- ניהול אוטומטי של כלי Native ו-MediaMTX לפי מערכת הפעלה   -->
+	<!-- ניהול אוטומטי של כלי MediaMTX ו-VC++ לפי מערכת הפעלה     -->
 	<!-- ======================================================== -->
 	<ItemGroup>
-		<!-- 1. קובץ ההגדרות והרישיון של MediaMTX - משותפים לכל הפלטפורמות -->
 		<None Include="Tools\mediamtx.yml" Condition="Exists('Tools\mediamtx.yml')">
 			<TargetPath>MediaMTX\mediamtx.yml</TargetPath>
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -101,14 +103,12 @@
 
 	<!-- התאמות ייעודיות ל-Windows -->
 	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
-		<!-- העתקת ספריות VC++ Runtime (vcruntime140 / msvcp140) ישירות לשורש הפלט לטעינת SQLite תקינה -->
-		<None Include="Tools\Win\*.dll">
+		<None Include="Tools\Win\*.dll" Condition="Exists('Tools\Win')">
 			<TargetPath>%(Filename)%(Extension)</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 
-		<!-- קובץ ההפעלה של MediaMTX עבור Windows תחת תיקיית MediaMTX -->
 		<None Include="Tools\Win\mediamtx.exe">
 			<TargetPath>MediaMTX\mediamtx.exe</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -118,13 +118,38 @@
 
 	<!-- התאמות ייעודיות ל-Linux -->
 	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
-		<!-- קובץ ההפעלה של MediaMTX עבור Linux תחת תיקיית MediaMTX -->
 		<None Include="Tools/Linux/mediamtx">
 			<TargetPath>MediaMTX/mediamtx</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
+
+	<!-- ========================================================================= -->
+	<!-- 💡 אוטומציה: חילוץ e_sqlite3.dll / libe_sqlite3.so מ-NuGet לשורש הפלט     -->
+	<!-- ========================================================================= -->
+
+	<!-- 1. בעת Publish: שכפול קובץ ה-Native משורת ה-NuGet ישירות לשורש תיקיית ה-Publish -->
+	<Target Name="PublishSqliteNativeToRoot" AfterTargets="ComputeResolvedFilesToPublishList">
+		<ItemGroup>
+			<_SqliteNativeToPublish Include="@(ResolvedFileToPublish)"
+			                        Condition="'%(Filename)' == 'e_sqlite3' or '%(Filename)' == 'libe_sqlite3'" />
+			<ResolvedFileToPublish Include="@(_SqliteNativeToPublish)">
+				<RelativePath>%(Filename)%(Extension)</RelativePath>
+				<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+			</ResolvedFileToPublish>
+		</ItemGroup>
+		<Message Importance="high" Text="[SQLITE AUTOMATION] Bundled SQLite Native binary into publish root." />
+	</Target>
+
+	<!-- 2. בעת Build רגיל: העתקת ה-DLL לשורש ה-bin להרצה חלקה מ-Visual Studio -->
+	<Target Name="CopySqliteNativeToOutputRoot" AfterTargets="CopyFilesToOutputDirectory">
+		<ItemGroup>
+			<_SqliteNativeBuildFiles Include="@(ReferenceCopyLocalPaths)"
+			                         Condition="'%(Filename)' == 'e_sqlite3' or '%(Filename)' == 'libe_sqlite3'" />
+		</ItemGroup>
+		<Copy SourceFiles="@(_SqliteNativeBuildFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+	</Target>
 
 	<ItemGroup>
 		<Content Update="wwwroot/**" CopyToOutputDirectory="PreserveNewest" />
@@ -137,22 +162,19 @@
 	</Target>
 
 	<!-- ========================================================== -->
-	<!-- מערכת צללים (Stealth) לאיתור, בנייה והפצה דינמית           -->
+	<!-- מערכת לאיתור ובניית Features                               -->
 	<!-- ========================================================== -->
 
-	<!-- 1. איסוף אוטומטי של כל פרויקט פיצ'ר קיים ללא שיום מפורש -->
 	<ItemGroup>
 		<FeatureProjects Include="$(MSBuildProjectDirectory)/../Features/*/*/*.csproj" />
 		<UpToDateCheckInput Include="$(MSBuildProjectDirectory)/../Features/**/*.*" />
 	</ItemGroup>
 
-	<!-- 2. בנייה ישירה של הפיצ'רים (ללא Restore כפול ששובר את MSBuild) -->
 	<Target Name="BuildFeatureModules" BeforeTargets="BeforeBuild" Condition="'@(FeatureProjects)' != ''">
 		<Message Importance="high" Text="[ITB BUILD] Compiling internal Feature modules ($(Configuration))..." />
 		<MSBuild Projects="@(FeatureProjects)" Targets="Build" Properties="Configuration=$(Configuration)" />
 	</Target>
 
-	<!-- 3. העתקת תוצרים ל-Debug (F5) באמצעות Batching ישיר ללא קריאות MSBuild רקורסיביות -->
 	<Target Name="StageFeaturesToOutput" AfterTargets="Build" Inputs="@(FeatureProjects)" Outputs="%(Identity).Dummy" Condition="'@(FeatureProjects)' != ''">
 		<PropertyGroup>
 			<_ProjDir>$([System.IO.Path]::GetDirectoryName('%(FeatureProjects.FullPath)'))</_ProjDir>
@@ -169,7 +191,6 @@
 		<Copy SourceFiles="@(_Artifacts)" DestinationFolder="$(TargetDir)$(RuntimeIdentifier)\Features\$(_FeatureName)\%(RecursiveDir)" SkipUnchangedFiles="false" OverwriteReadOnlyFiles="true" Condition="Exists('$(TargetDir)$(RuntimeIdentifier)')" />
 	</Target>
 
-	<!-- 4. אריזה ל-Publish באמצעות מיפוי ישיר של הקבצים ל-ResolvedFileToPublish -->
 	<Target Name="IncludeFeaturesInPublish" BeforeTargets="PrepareForPublish" Inputs="@(FeatureProjects)" Outputs="%(Identity).Dummy" Condition="'@(FeatureProjects)' != ''">
 		<PropertyGroup>
 			<_PubProjDir>$([System.IO.Path]::GetDirectoryName('%(FeatureProjects.FullPath)'))</_PubProjDir>
