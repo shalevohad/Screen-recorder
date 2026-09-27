@@ -4,11 +4,12 @@ import './StationHubTableRow.scss';
 
 export default function StationHubTableRow({ station, isSelected, onToggle, meta }) {
     const hostNameStr = station.displayName || station.hostname || station.name || '';
+    const isLoading = meta?.isLoading;
 
     return (
         <div
             onClick={() => onToggle(station.id)}
-            className={`hub-table-row ${isSelected ? 'is-selected' : ''}`}
+            className={`hub-table-row ${isSelected ? 'is-selected' : ''} ${isLoading ? 'is-syncing' : ''}`}
         >
             <div className="row-col col-check">
                 <div className={`row-checkbox ${isSelected ? 'checked' : ''}`}>
@@ -25,33 +26,43 @@ export default function StationHubTableRow({ station, isSelected, onToggle, meta
             </div>
 
             <div className="row-col col-audio">
-                <span className={`badge-pill ${meta.hasAudio ? 'audio-on' : 'audio-off'}`} title={meta.audioChannels}>
-                    {meta.hasAudio ? 'AUDIO' : 'MUTED'}
+                <span className={`badge-pill ${isLoading ? 'audio-loading' : (meta.hasAudio ? 'audio-on' : 'audio-off')}`} title={meta.audioChannels}>
+                    {isLoading ? '...' : (meta.hasAudio ? 'AUDIO' : 'MUTED')}
                 </span>
             </div>
 
             <div className="row-col col-coverage">
-                <span className="coverage-text">{meta.recordedDuration} ({meta.coveragePct}%)</span>
+                <span className="coverage-text">
+                    {isLoading ? 'Scanning...' : `${meta.recordedDuration} (${meta.coveragePct}%)`}
+                </span>
             </div>
 
             <div className="row-col col-gaps-bar">
-                <div className="row-gap-track" title={`Coverage: ${meta.coveragePct}%`}>
-                    {meta.segments.map((seg, idx) => (
-                        <div
-                            key={idx}
-                            className={`track-seg ${seg.type === 'rec' ? 'rec' : 'gap'}`}
-                            style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
-                        />
-                    ))}
+                <div className="row-gap-track" title={isLoading ? 'Scanning segments...' : `Coverage: ${meta.coveragePct}%`}>
+                    {isLoading ? (
+                        <div className="row-loading-shimmer" />
+                    ) : (
+                        meta.segments.map((seg, idx) => (
+                            <div
+                                key={idx}
+                                className={`track-seg ${seg.type === 'rec' ? 'rec' : 'gap'}`}
+                                style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
+                            />
+                        ))
+                    )}
                 </div>
             </div>
 
             <div className="row-col col-specs">
-                <span className="specs-text">{meta.resolution} • {meta.fps}fps</span>
+                <span className="specs-text">
+                    {isLoading ? '...' : `${meta.resolution} • ${meta.fps}fps`}
+                </span>
             </div>
 
             <div className="row-col col-size">
-                <span className="size-text">{meta.fileSize}</span>
+                <span className="size-text">
+                    {isLoading ? '...' : meta.fileSize}
+                </span>
             </div>
         </div>
     );

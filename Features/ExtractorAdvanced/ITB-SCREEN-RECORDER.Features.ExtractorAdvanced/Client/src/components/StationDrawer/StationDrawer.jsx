@@ -22,6 +22,7 @@ export default function StationDrawer({
     onUpdateSelections,
     isInitialSetup,
     isLoadingStations = false,
+    isLoadingSegments = false, // תמיכה ישירה בטעינה עצלנית של מקטעים
     onApply,
     onOpenRangeModal,
     systemTabs = DEFAULT_SYSTEM_TABS,
@@ -42,10 +43,13 @@ export default function StationDrawer({
     const [currentPage, setCurrentPage] = useState(1);
 
     const hasFetchedRef = useRef(false);
+
+    // מצב טעינה ראשוני קיים רק אם אין עדיין אף תחנה ברשימה
+    const isInitialDiscovery = isLoadingStations && allStations.length === 0;
     const isEmptyState = allStations.length === 0 && !isLoadingStations;
 
     let panelClass = 'is-closed';
-    if (isInitialSetup || isEmptyState || isLoadingStations) panelClass = 'is-full-width';
+    if (isInitialSetup || isEmptyState || isInitialDiscovery) panelClass = 'is-full-width';
     else if (isOpen) panelClass = 'is-open';
 
     useEffect(() => {
@@ -119,17 +123,42 @@ export default function StationDrawer({
         return activeTab.stationIds || [];
     }, [activeTab, allStations]);
 
-    // חישוב מטא-דאטה טהור ומבוסס נתונים עבור כל תחנה
+    // חישוב תחנות שסגמנטיהן נטענו בפועל עבור חיווי ה-Progress
+    const loadedStationsCount = useMemo(() => {
+        if (!recordingSegments || Object.keys(recordingSegments).length === 0) {
+            return allStations.filter(s => s.isLoaded || (s.segments && s.segments.length > 0)).length;
+        }
+        return allStations.filter(s => (recordingSegments[s.id] !== undefined) || s.isLoaded).length;
+    }, [allStations, recordingSegments]);
+
+    const isSegmentsSyncing = useMemo(() => {
+        if (isLoadingSegments) return true;
+        if (isLoadingStations && allStations.length > 0) return true;
+        if (allStations.length > 0 && loadedStationsCount < allStations.length && Object.keys(recordingSegments).length > 0) return true;
+        return false;
+    }, [isLoadingSegments, isLoadingStations, allStations.length, loadedStationsCount, recordingSegments]);
+
+    // חישוב מטא-דאטה טהור ומבוסס נתונים עבור כל תחנה + סטטוס טעינה פרטני
     const stationMetaMap = useMemo(() => {
         const map = new Map();
         const scope = { baseEpochMs, durationMs };
 
         for (const st of allStations) {
-            const segs = recordingSegments[st.id] || st.segments || [];
-            map.set(st.id, getStationDebriefMeta(st, segs, scope));
+            const hasLoadedSegments = (recordingSegments && recordingSegments[st.id] !== undefined) ||
+                st.isLoaded === true ||
+                (st.segments && st.segments.length > 0);
+
+            const isStationLoading = !hasLoadedSegments && (isSegmentsSyncing || isLoadingStations || isLoadingSegments);
+            const segs = (recordingSegments && recordingSegments[st.id]) || st.segments || [];
+            const meta = getStationDebriefMeta(st, segs, scope);
+
+            map.set(st.id, {
+                ...meta,
+                isLoading: isStationLoading
+            });
         }
         return map;
-    }, [allStations, recordingSegments, baseEpochMs, durationMs]);
+    }, [allStations, recordingSegments, baseEpochMs, durationMs, isSegmentsSyncing, isLoadingStations, isLoadingSegments]);
 
     const filteredStations = useMemo(() => {
         return allStations
@@ -191,29 +220,42 @@ export default function StationDrawer({
     return (
         <div className={`station-drawer-panel ${panelClass}`}>
             {panelClass !== 'is-full-width' && (
-                <div className="drawer-header" onClick={() => panelClass === 'is-closed' && onToggle && onToggle()}>
-                    <div className="header-title">
-                        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                        <span>Station Pool ({selectedStationIds.length}/{allStations.length})</span>
-                    </div>
-                    {panelClass === 'is-open' && (
-                        <button type="button" className="btn-close" onClick={onClose || onToggle} title="Close Drawer">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                <>
+                    <div className="drawer-header" onClick={() => panelClass === 'is-closed' && onToggle && onToggle()}>
+                        <div className="header-title">
+                            <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
                             </svg>
-                        </button>
+                            <span>
+                                Station Pool ({selectedStationIds.length}/{allStations.length})
+                                {isSegmentsSyncing && <span className="sync-badge-inline"> • Syncing {loadedStationsCount}/{allStations.length}</span>}
+                            </span>
+                        </div>
+                        {panelClass === 'is-open' && (
+                            <button type="button" className="btn-close" onClick={onClose || onToggle} title="Close Drawer">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
+                    {isSegmentsSyncing && (
+                        <div className="drawer-thin-progress-bar">
+                            <div
+                                className="drawer-thin-progress-fill"
+                                style={{ width: `${allStations.length > 0 ? (loadedStationsCount / allStations.length) * 100 : 0}%` }}
+                            />
+                        </div>
                     )}
-                </div>
+                </>
             )}
 
             <div className="drawer-body">
-                {isLoadingStations ? (
+                {isInitialDiscovery ? (
                     <div className="drawer-loading-state">
                         <div className="tactical-spinner" />
-                        <span className="loading-title">ANALYZING RECORDING TIMELINES & CHUNKS...</span>
-                        <span className="loading-subtitle">Querying recording server for verified segments</span>
+                        <span className="loading-title">DISCOVERING RECORDING STATIONS...</span>
+                        <span className="loading-subtitle">Scanning storage directories and catalog database</span>
                     </div>
                 ) : isEmptyState ? (
                     <div className="empty-state-view">
@@ -241,6 +283,43 @@ export default function StationDrawer({
                                 <p className="hero-subtitle">
                                     Review recording continuity, audio availability, and feed health to select stations for investigation.
                                 </p>
+                            </div>
+                        )}
+
+                        {/* באנר סנכרון והתקדמות עצלני במצב Hub */}
+                        {panelClass === 'is-full-width' && allStations.length > 0 && (
+                            <div className={`hub-sync-banner ${isSegmentsSyncing ? 'is-syncing' : 'is-synced'}`}>
+                                <div className="sync-info">
+                                    <div className="sync-icon-wrap">
+                                        {isSegmentsSyncing ? (
+                                            <div className="mini-tactical-spinner" />
+                                        ) : (
+                                            <svg className="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <div className="sync-text-group">
+                                        <span className="sync-title">
+                                            {isSegmentsSyncing
+                                                ? `ANALYZING TIMELINE ARCHIVES • ${loadedStationsCount} OF ${allStations.length} STATIONS SYNCED (${Math.min(100, Math.round((loadedStationsCount / allStations.length) * 100))}%)`
+                                                : `ALL WORKSTATION ARCHIVES SYNCED • ${allStations.length} STATIONS READY`}
+                                        </span>
+                                        <span className="sync-subtitle">
+                                            {isSegmentsSyncing
+                                                ? 'Scanning verified recording chunks in background. You can select stations and begin immediately.'
+                                                : 'Continuity analysis and feed specifications are verified and up-to-date.'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="sync-progress-bar-wrap">
+                                    <div
+                                        className="sync-progress-bar-fill"
+                                        style={{
+                                            width: `${allStations.length > 0 ? Math.min(100, Math.round((loadedStationsCount / allStations.length) * 100)) : 0}%`
+                                        }}
+                                    />
+                                </div>
                             </div>
                         )}
 

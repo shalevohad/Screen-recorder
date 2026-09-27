@@ -12,8 +12,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
-using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
-using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
@@ -24,26 +22,20 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
     {
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
-        private readonly IAdvanceJobManager _jobManager;
-        private readonly IEditingDraftRepository _draftRepository;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
-            IAdvanceJobManager jobManager,
-            IEditingDraftRepository draftRepository,
             ILogger<ExtractorAdvancedController> logger)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
-            _jobManager = jobManager;
-            _draftRepository = draftRepository;
             _logger = logger;
         }
 
         // =========================================================================
-        // ניהול תחנות, סגמנטים ומטא-דאטה לציר הזמן (Hybrid Storage Discovery)
+        // 1. איתור תחנות מהיר ועצלני (Fast Discovery)
         // =========================================================================
 
         [HttpGet("stations")]
@@ -58,7 +50,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 long? lStart = startEpoch.HasValue ? (long)Math.Round(startEpoch.Value) : (long?)null;
                 long? lEnd = endEpoch.HasValue ? (long)Math.Round(endEpoch.Value) : (long?)null;
 
-                // ברירת מחדל: 7 ימים לאחור לאיתור כל תחנות העבר והחומרים החיצוניים באחסון
                 DateTime startUtc = lStart.HasValue && lStart.Value > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(lStart.Value).UtcDateTime
                     : DateTime.UtcNow.AddDays(-7);
@@ -67,40 +58,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     ? DateTimeOffset.FromUnixTimeMilliseconds(lEnd.Value).UtcDateTime
                     : DateTime.UtcNow;
 
-                _logger.LogInformation("[API:Stations] Querying stations between {Start} and {End} (Mode: {Mode})",
-                    startUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), endUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), timeMode);
+                _logger.LogInformation("[API:Stations] Fast querying stations between {Start} and {End}",
+                    startUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), endUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"));
 
+                // שליפה מהירה של שמות התחנות מה-DB ומהאחסון ללא קריאת כותרי קבצים ו-PTS
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
-                var stations = new List<object>();
 
-                foreach (var host in availableHosts)
+                var stations = availableHosts.Select(host => new
                 {
-                    var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
-                    await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
+                    id = host,
+                    hostname = host,
+                    displayName = host,
+                    isOnline = true,
+                    recordingsCount = 0,
+                    segments = Array.Empty<object>()
+                }).ToList();
 
-                    var realSegments = chunks
-                        .Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath))
-                        .OrderBy(c => c.StartUtc)
-                        .Select(c => new
-                        {
-                            startEpoch = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
-                            endEpoch = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds(),
-                            startEpochMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
-                            endEpochMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds()
-                        }).ToList();
-
-                    stations.Add(new
-                    {
-                        id = host,
-                        hostname = host,
-                        displayName = host,
-                        isOnline = true,
-                        recordingsCount = realSegments.Count,
-                        segments = realSegments
-                    });
-                }
-
-                _logger.LogInformation("[API:Stations] Returning {Count} stations to client.", stations.Count);
+                _logger.LogInformation("[API:Stations] Discovery returned {Count} stations.", stations.Count);
                 return Ok(stations);
             }
             catch (Exception ex)
@@ -109,6 +83,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, "Error scanning storage directories.");
             }
         }
+
+        // =========================================================================
+        // 2. שליפת סגמנטים לציר הזמן (Lazy Timeline Segments)
+        // =========================================================================
 
         [HttpGet("timeline-segments")]
         [HttpGet("/api/v1/extractor/timeline-segments")]
@@ -136,28 +114,34 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
                 foreach (var stationId in stationList)
                 {
+                    ct.ThrowIfCancellationRequested();
+
                     var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
-                    await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
 
-                    var segList = new List<object>();
-                    foreach (var chunk in chunks.Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath)).OrderBy(c => c.StartUtc))
-                    {
-                        long sMs = new DateTimeOffset(chunk.StartUtc).ToUnixTimeMilliseconds();
-                        long eMs = new DateTimeOffset(chunk.EndUtc).ToUnixTimeMilliseconds();
-
-                        segList.Add(new
+                    var segList = chunks
+                        .Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath))
+                        .OrderBy(c => c.StartUtc)
+                        .Select(c =>
                         {
-                            startEpoch = sMs,
-                            endEpoch = eMs,
-                            startEpochMs = sMs,
-                            endEpochMs = eMs
-                        });
-                    }
+                            long sMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds();
+                            long eMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds();
+                            return (object)new
+                            {
+                                startEpoch = sMs,
+                                endEpoch = eMs,
+                                startEpochMs = sMs,
+                                endEpochMs = eMs
+                            };
+                        }).ToList();
 
                     segmentsMap[stationId] = segList;
                 }
 
                 return Ok(segmentsMap);
+            }
+            catch (OperationCanceledException)
+            {
+                return NoContent();
             }
             catch (Exception ex)
             {
@@ -165,6 +149,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, "Failed to retrieve timeline segments.");
             }
         }
+
+        // =========================================================================
+        // 3. מטא-דאטה, תמונות וניגון רציף (Stream, Frame & Spritesheet)
+        // =========================================================================
 
         [HttpGet("stream-metadata")]
         public async Task<IActionResult> GetStreamMetadata(
@@ -189,131 +177,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, "Error retrieving stream metadata.");
             }
         }
-
-        // =========================================================================
-        // תהליכי עריכה מתקדמת (NLE Render & Estimation)
-        // =========================================================================
-
-        [HttpPost("estimate")]
-        public async Task<IActionResult> EstimateCutJob([FromBody] AdvanceCutRequestDto request)
-        {
-            try
-            {
-                var estimation = await _jobManager.EstimateCutJobAsync(request);
-                return Ok(estimation);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:Estimate] Error estimating timeline cut");
-                return StatusCode(500, new { message = "Failed to calculate cut estimation." });
-            }
-        }
-
-        [HttpPost("cut")]
-        public IActionResult EnqueueAdvanceCutJob([FromBody] AdvanceCutRequestDto request)
-        {
-            try
-            {
-                var job = _jobManager.EnqueueAdvanceCutJob(request);
-                return Accepted(new { jobId = job.JobId, fileName = job.FileName, status = job.Status });
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:Cut] Error enqueuing advance cut job");
-                return StatusCode(500, new { message = "Failed to start extraction job." });
-            }
-        }
-
-        // =========================================================================
-        // ניהול טיוטות ציר זמן (Timeline Editing Drafts)
-        // =========================================================================
-
-        [HttpGet("drafts")]
-        public async Task<IActionResult> GetAllDrafts()
-        {
-            try
-            {
-                var drafts = await _draftRepository.GetAllAsync();
-                return Ok(drafts);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:Drafts] Error fetching drafts");
-                return StatusCode(500, new { message = "Failed to retrieve drafts." });
-            }
-        }
-
-        [HttpGet("drafts/{draftId}")]
-        public async Task<IActionResult> GetDraft([FromRoute] string draftId)
-        {
-            try
-            {
-                var draft = await _draftRepository.GetByIdAsync(draftId);
-                if (draft == null) return NotFound(new { message = "Draft not found." });
-                return Ok(draft);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:Drafts] Error fetching draft {Id}", draftId);
-                return StatusCode(500, new { message = "Failed to retrieve draft." });
-            }
-        }
-
-        [HttpPost("drafts")]
-        public async Task<IActionResult> SaveDraft([FromBody] EditingDraftInfo draft)
-        {
-            if (string.IsNullOrWhiteSpace(draft.Title))
-            {
-                return BadRequest(new { message = "Draft title is required." });
-            }
-
-            try
-            {
-                if (string.IsNullOrWhiteSpace(draft.DraftId))
-                {
-                    draft.DraftId = Guid.NewGuid().ToString("N");
-                    draft.CreatedAtUtc = DateTime.UtcNow;
-                }
-
-                draft.UpdatedAtUtc = DateTime.UtcNow;
-                await _draftRepository.UpsertAsync(draft);
-
-                return Ok(draft);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:Drafts] Error persisting editing draft");
-                return StatusCode(500, new { message = "Failed to save draft." });
-            }
-        }
-
-        [HttpDelete("drafts/{draftId}")]
-        public async Task<IActionResult> DeleteDraft([FromRoute] string draftId)
-        {
-            try
-            {
-                bool deleted = await _draftRepository.DeleteAsync(draftId);
-                if (!deleted) return NotFound(new { message = "Draft not found." });
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[API:Drafts] Error deleting draft {Id}", draftId);
-                return StatusCode(500, new { message = "Failed to delete draft." });
-            }
-        }
-
-        // =========================================================================
-        // ניגון רציף, פריימים ו-Spritesheets
-        // =========================================================================
 
         [HttpGet("frame")]
         public async Task<IActionResult> GetStationFrame(

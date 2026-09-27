@@ -14,7 +14,6 @@
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
     position: relative;
-    /* ביצועי רינדור אופטימליים עבור מאסות של 100 תחנות */
     content-visibility: auto;
     contain-intrinsic-size: 130px;
 
@@ -23,7 +22,6 @@
         border-color: rgba(6, 182, 212, 0.5);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 16px rgba(6, 182, 212, 0.2);
         transform: translateY(-2px);
-        /* מציף את הכרטיסייה מעל אלמנטים שכנים ללא חיתוך */
         z-index: 5;
     }
 
@@ -83,6 +81,12 @@
                     height: 9px;
                 }
 
+                &.loading {
+                    background: rgba(6, 182, 212, 0.1);
+                    border: 1px solid rgba(6, 182, 212, 0.25);
+                    color: #22d3ee;
+                }
+
                 &.has-audio {
                     background: rgba(6, 182, 212, 0.15);
                     border: 1px solid rgba(6, 182, 212, 0.35);
@@ -111,6 +115,18 @@
                     width: 4.5px;
                     height: 4.5px;
                     border-radius: 50%;
+                }
+
+                &.is-loading {
+                    background: rgba(6, 182, 212, 0.12);
+                    border: 1px solid rgba(6, 182, 212, 0.35);
+                    color: #22d3ee;
+
+                    .dot {
+                        background: #06b6d4;
+                        box-shadow: 0 0 6px #06b6d4;
+                        animation: pulse 0.9s infinite alternate;
+                    }
                 }
 
                 &.full-archived {
@@ -197,6 +213,15 @@
             overflow: hidden;
             margin-top: 1px;
 
+            .track-loading-shimmer {
+                width: 100%;
+                height: 100%;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.5) 50%, rgba(6, 182, 212, 0.1) 100%);
+                background-size: 200% 100%;
+                animation: shimmer 1.4s infinite linear;
+            }
+
             .card-gap-track {
                 position: relative;
                 width: 100%;
@@ -244,5 +269,27 @@
                 color: #020617;
             }
         }
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.4;
+        transform: scale(0.9);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1.1);
     }
 }
