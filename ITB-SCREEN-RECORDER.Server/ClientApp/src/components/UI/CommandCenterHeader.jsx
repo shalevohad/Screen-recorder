@@ -1,3 +1,4 @@
+// Client/src/components/UI/CommandCenterHeader.jsx
 import { useState, useMemo, useEffect } from 'react';
 import ServerClock from './ServerClock';
 import ServerTelemetryWidget from './ServerTelemetryWidget';
@@ -15,6 +16,7 @@ export default function CommandCenterHeader({
 }) {
     const totalCount = stations.length;
     const [fetchedConfig, setFetchedConfig] = useState(null);
+    const [isExpanded, setIsExpanded] = useState(true);
 
     useEffect(() => {
         if (!propSystemConfig) {
@@ -24,7 +26,7 @@ export default function CommandCenterHeader({
                     if (data) setFetchedConfig(data);
                 })
                 .catch(() => {
-                    console.error("unable to fetch config timezone - falling to default 'Asia/Jerusalem'")
+                    console.error("Unable to fetch config timezone - falling back to default 'Asia/Jerusalem'");
                 });
         }
     }, [propSystemConfig]);
@@ -48,11 +50,8 @@ export default function CommandCenterHeader({
         const onlineStations = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2);
         const onlineCount = onlineStations.length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
-
         const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
-
         const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
-        // 💡 אגרגציה של רוחב הפס של ממשק ה-C2 מכלל התחנות
         const aggregateC2Kbps = stations.reduce((acc, s) => acc + (s.telemetryTxKbps || 0), 0);
 
         return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps };
@@ -66,8 +65,6 @@ export default function CommandCenterHeader({
         !s.isOnline && s.status !== 1 && s.status !== 2 && !s.isProcessRunning
     ).length;
 
-    const [isExpanded, setIsExpanded] = useState(true);
-
     const toggleExpand = () => {
         setIsExpanded(prev => !prev);
     };
@@ -80,9 +77,9 @@ export default function CommandCenterHeader({
                         <img
                             src="/images/LogoDark2.png"
                             alt="ITB Logo Dark"
-                            className="relative z-10"
+                            onError={(e) => { e.target.style.display = 'none'; }}
                         />
-                        <div className="emblem-core-pulse"></div>
+                        <div className="emblem-core-pulse" />
                     </div>
                     <div className="brand-text-group">
                         <div className="brand-title-row">
@@ -95,7 +92,7 @@ export default function CommandCenterHeader({
 
                 <div className="header-clock-section">
                     <ServerClock
-                        uptimeSeconds={serverTelemetry?.uptimeSeconds}
+                        uptimeSeconds={serverTelemetry?.uptimeSeconds ?? serverTelemetry?.systemUptimeSeconds}
                         timezone={resolvedTimezone}
                         locale={resolvedLocale}
                     />
@@ -116,14 +113,14 @@ export default function CommandCenterHeader({
                         </svg>
                     </button>
 
-                    <div className="fleet-nodes-indicator">
+                    <div className="fleet-nodes-indicator" title="Connected Fleet Agents">
                         <div className="indicator-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                                 <rect x="2" y="3" width="20" height="14" rx="2" />
                                 <line x1="8" y1="21" x2="16" y2="21" />
                                 <line x1="12" y1="17" x2="12" y2="21" />
                             </svg>
-                            <span className={`status-beacon ${activeWorkerCount > 0 ? 'online' : 'offline'}`}></span>
+                            <span className={`status-beacon ${activeWorkerCount > 0 ? 'online' : 'offline'}`} />
                         </div>
 
                         <div className="indicator-data">
@@ -151,7 +148,7 @@ export default function CommandCenterHeader({
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
                             <circle cx="12" cy="12" r="3" />
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l-.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09A1.65 1.65 0 0 0-1.51 1z" />
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                         </svg>
                     </button>
                 </div>
@@ -165,11 +162,12 @@ export default function CommandCenterHeader({
                             <div className="pod-val-row">
                                 <span className="pod-primary cyan">{agentMetrics.streamingCount}</span>
                                 <span className="pod-slash">/</span>
-                                <span className="pod-total">{agentMetrics.onlineCount} LIVE</span>
+                                <span className="pod-total">{agentMetrics.onlineCount}</span>
+                                <span className="pod-unit">LIVE</span>
                             </div>
                         </div>
 
-                        <div className="summary-divider"></div>
+                        <div className="summary-divider" />
 
                         <div className="summary-pod">
                             <span className="pod-lbl">AGGREGATE TX</span>
@@ -179,10 +177,10 @@ export default function CommandCenterHeader({
                             </div>
                         </div>
 
-                        <div className="summary-divider"></div>
+                        <div className="summary-divider" />
 
                         <div
-                            className={`summary-pod health-pod ${agentMetrics.criticalAlerts > 0 ? 'alert is-clickable' : 'nominal'} ${isFaultFilterActive ? 'filter-active' : ''}`}
+                            className={`summary-pod health-pod ${agentMetrics.criticalAlerts > 0 ? 'is-clickable' : ''} ${isFaultFilterActive ? 'filter-active' : ''}`}
                             onClick={() => {
                                 if (agentMetrics.criticalAlerts > 0 && onToggleFaultFilter) {
                                     onToggleFaultFilter();
@@ -200,7 +198,7 @@ export default function CommandCenterHeader({
                             <div className="pod-val-row">
                                 {agentMetrics.criticalAlerts > 0 ? (
                                     <>
-                                        <span className="alert-beacon-dot"></span>
+                                        <span className="alert-beacon-dot" />
                                         <span className="pod-primary red">
                                             {isFaultFilterActive ? `${agentMetrics.criticalAlerts} FILTERED` : `${agentMetrics.criticalAlerts} ALERTS`}
                                         </span>
@@ -208,7 +206,7 @@ export default function CommandCenterHeader({
                                     </>
                                 ) : (
                                     <>
-                                        <span className="nominal-beacon-dot"></span>
+                                        <span className="nominal-beacon-dot" />
                                         <span className="pod-primary green">NOMINAL</span>
                                     </>
                                 )}
@@ -218,7 +216,6 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-telemetry-wrapper">
-                    {/* 💡 העברת מדד ה-C2 לווידג'ט */}
                     <ServerTelemetryWidget
                         serverTelemetry={serverTelemetry}
                         fleetC2Kbps={agentMetrics.aggregateC2Kbps}

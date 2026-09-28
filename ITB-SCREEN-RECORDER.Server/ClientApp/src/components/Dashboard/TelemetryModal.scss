@@ -1,7 +1,8 @@
+// Client/src/components/Dashboard/TelemetryModal.scss
+
 .telemetry-modal-backdrop {
     position: fixed;
-    top: 0;
-    left: 0;
+    inset: 0;
     width: 100vw;
     height: 100vh;
     z-index: 9999;
@@ -9,21 +10,23 @@
     align-items: center;
     justify-content: center;
     padding: 2rem;
-    /* 💡 טשטוש כהה ועמוק התואם בדיוק ל-FullscreenModal */
-    background-color: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
+    background-color: rgba(3, 7, 18, 0.78);
+    backdrop-filter: var(--blur-scrim, blur(24px));
+    -webkit-backdrop-filter: var(--blur-scrim, blur(24px));
 }
 
 .telemetry-modal-box {
     width: 95vw;
+    max-width: 1200px;
     height: 90vh;
     display: flex;
     flex-direction: column;
-    background-color: #0f172a;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 14px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.5);
+    background: var(--surface-glass-modal, rgba(15, 23, 42, 0.92));
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-card, 16px);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 20px rgba(6, 182, 212, 0.12);
     overflow: hidden;
 }
 
@@ -31,38 +34,43 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.5rem;
-    background-color: #020617;
-    border-bottom: 1px solid #1e293b;
+    padding: 1rem 1.6rem;
+    background-color: rgba(11, 15, 25, 0.5);
+    border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
     flex-shrink: 0;
 
     h2 {
-        color: #f8fafc;
-        font-size: 1rem;
-        font-weight: 700;
-        letter-spacing: 0.1em;
+        color: var(--text-primary, #F8FAFC);
+        font-family: var(--font-primary, 'Inter', sans-serif);
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
         margin: 0;
     }
 }
 
 .telemetry-modal-close-btn {
-    background: transparent;
-    border: none;
-    color: #94a3b8;
-    font-size: 1.25rem;
+    background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+    border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+    color: var(--text-secondary, #94A3B8);
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-controls, 8px);
     cursor: pointer;
-    padding: 0.35rem 0.6rem;
-    border-radius: 6px;
-    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.18s ease;
 
     &:hover {
-        color: #f8fafc;
-        background-color: #1e293b;
+        color: #FFF;
+        background-color: var(--accent-rose, #EF4444);
+        border-color: var(--accent-rose);
     }
 }
 
 .telemetry-modal-body {
-    padding: 2rem;
+    padding: 1.6rem;
     flex-grow: 1;
     overflow-y: auto;
     display: flex;
