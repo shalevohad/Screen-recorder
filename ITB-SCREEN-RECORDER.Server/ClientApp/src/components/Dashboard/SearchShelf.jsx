@@ -1,4 +1,5 @@
-﻿import './SearchShelf.scss';
+﻿// Client/src/components/Dashboard/SearchShelf.jsx
+import './SearchShelf.scss';
 
 export default function SearchShelf({
     isSearchOpen,
@@ -27,7 +28,7 @@ export default function SearchShelf({
                         onKeyDown={(e) => e.key === 'Escape' && handleClearFilter()}
                     />
                     {searchQuery && (
-                        <button className="clear-btn" onClick={handleClearFilter}>✕</button>
+                        <button className="clear-btn" onClick={handleClearFilter} title="Clear filter">✕</button>
                     )}
                 </div>
 

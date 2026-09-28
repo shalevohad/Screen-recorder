@@ -1,12 +1,14 @@
+// Client/src/components/Dashboard/StationsDenseView.jsx
 import RemoteWidgetHost from '../UI/RemoteWidgetHost';
 import './StationsDenseView.scss';
 
 export default function StationsDenseView({
-    paginatedStations,
-    activeInlineFeatures,
+    paginatedStations = [],
+    activeInlineFeatures = [],
     focusedWidgetHost,
     inspectedHostname,
     handleCloseFeature,
+    actionPending = {},
     onToggleStream,
     setInspectedHostname,
     setFullscreenHostname
@@ -32,8 +34,10 @@ export default function StationsDenseView({
 
             <div className="stations-dense-grid">
                 {paginatedStations.map((s) => {
-                    const isRec = s.isStreaming;
-                    const hasDrops = s.droppedFrames > 0;
+                    const isRec = Boolean(s.isStreaming);
+                    const hasDrops = (s.droppedFrames || 0) > 0;
+                    const isPending = actionPending[s.hostname] || false;
+
                     return (
                         <div
                             key={s.hostname}
@@ -45,28 +49,37 @@ export default function StationsDenseView({
                             <div className="dense-col status-col">
                                 <span className={`dense-beacon ${s.isOnline ? 'online' : 'offline'}`} />
                             </div>
+
                             <div className="dense-col host-info">
                                 <span className="dense-hostname">{s.hostname}</span>
-                                <span className="dense-ip">{s.ipAddress || 'N/A'}</span>
+                                <span className="dense-ip">{s.ipAddress || s.ip || 'N/A'}</span>
                             </div>
+
                             <div className="dense-col tag-col">
-                                {isRec ? <span className="dense-badge rec">REC</span> : <span className="dense-badge idle">IDLE</span>}
+                                {isRec ? (
+                                    <span className="dense-badge rec">REC</span>
+                                ) : (
+                                    <span className="dense-badge idle">IDLE</span>
+                                )}
                             </div>
+
                             <div className="dense-col metrics">
                                 <span>{s.effectiveFps || s.actualFps || 0} FPS</span>
                                 <span className="cpu-metric">{s.hostCpuPct || 0}% CPU</span>
                                 {hasDrops && <span className="dense-drop-tag">({s.droppedFrames} D)</span>}
                             </div>
+
                             <div className="dense-col actions" onClick={(e) => e.stopPropagation()}>
                                 <button
                                     type="button"
                                     className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
+                                    disabled={!s.isOnline || isPending}
                                     onClick={() => onToggleStream(s.hostname, isRec, {
                                         bitrate: s.effectiveBitrate,
                                         fps: s.effectiveFps
                                     })}
                                 >
-                                    {isRec ? 'STOP' : 'START'}
+                                    {isPending ? '...' : isRec ? 'STOP' : 'START'}
                                 </button>
                                 <button
                                     type="button"
@@ -81,7 +94,7 @@ export default function StationsDenseView({
                                     type="button"
                                     className="dense-act-btn icon"
                                     onClick={() => setInspectedHostname(s.hostname)}
-                                    title="Inspect"
+                                    title="Inspect station"
                                 >
                                     INSP
                                 </button>

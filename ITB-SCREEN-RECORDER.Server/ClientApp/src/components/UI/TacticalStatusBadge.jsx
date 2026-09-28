@@ -1,3 +1,4 @@
+// Client/src/components/UI/TacticalStatusBadge.jsx
 import React from 'react';
 import './TacticalStatusBadge.scss';
 
@@ -84,7 +85,7 @@ export default function TacticalStatusBadge({
             {(displayTitle || description) && (
                 <div className="tactical-hud-tooltip">
                     <div className="tooltip-header">
-                        <span className="tooltip-dot"></span>
+                        <span className="tooltip-dot" />
                         <span className="tooltip-title">{displayTitle}</span>
                         {displayStatus && <span className="tooltip-status">{displayStatus}</span>}
                     </div>
