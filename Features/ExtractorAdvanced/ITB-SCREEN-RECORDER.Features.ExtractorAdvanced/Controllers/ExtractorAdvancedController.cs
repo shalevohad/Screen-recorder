@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
@@ -22,20 +23,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
     {
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
+        private readonly IAdvanceJobManager _jobManager;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
+            IAdvanceJobManager jobManager,
             ILogger<ExtractorAdvancedController> logger)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
+            _jobManager = jobManager;
             _logger = logger;
         }
 
         // =========================================================================
-        // 1. איתור תחנות מהיר ועצלני (Fast Discovery)
+        // 1. איתור תחנות וסגמנטים (Fast & Lazy Discovery)
         // =========================================================================
 
         [HttpGet("stations")]
@@ -58,10 +62,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     ? DateTimeOffset.FromUnixTimeMilliseconds(lEnd.Value).UtcDateTime
                     : DateTime.UtcNow;
 
-                _logger.LogInformation("[API:Stations] Fast querying stations between {Start} and {End}",
-                    startUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"), endUtc.ToString("yyyy-MM-dd HH:mm:ss UTC"));
-
-                // שליפה מהירה של שמות התחנות מה-DB ומהאחסון ללא קריאת כותרי קבצים ו-PTS
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
 
                 var stations = availableHosts.Select(host => new
@@ -74,7 +74,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     segments = Array.Empty<object>()
                 }).ToList();
 
-                _logger.LogInformation("[API:Stations] Discovery returned {Count} stations.", stations.Count);
                 return Ok(stations);
             }
             catch (Exception ex)
@@ -83,10 +82,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, "Error scanning storage directories.");
             }
         }
-
-        // =========================================================================
-        // 2. שליפת סגמנטים לציר הזמן (Lazy Timeline Segments)
-        // =========================================================================
 
         [HttpGet("timeline-segments")]
         [HttpGet("/api/v1/extractor/timeline-segments")]
@@ -147,6 +142,48 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             {
                 _logger.LogError(ex, "[API:TimelineSegments] Error fetching segments.");
                 return StatusCode(500, "Failed to retrieve timeline segments.");
+            }
+        }
+
+        // =========================================================================
+        // 2. תהליכי עריכה מתקדמת (NLE Estimate & Cut Jobs)
+        // =========================================================================
+
+        [HttpPost("estimate")]
+        public async Task<IActionResult> EstimateCutJob([FromBody] AdvanceCutRequestDto request)
+        {
+            try
+            {
+                var estimation = await _jobManager.EstimateCutJobAsync(request);
+                return Ok(estimation);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Estimate] Error estimating timeline cut");
+                return StatusCode(500, new { message = "Failed to calculate cut estimation." });
+            }
+        }
+
+        [HttpPost("cut")]
+        public IActionResult EnqueueAdvanceCutJob([FromBody] AdvanceCutRequestDto request)
+        {
+            try
+            {
+                var job = _jobManager.EnqueueAdvanceCutJob(request);
+                return Accepted(new { jobId = job.JobId, fileName = job.FileName, status = job.Status });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Cut] Error enqueuing advance cut job");
+                return StatusCode(500, new { message = "Failed to start extraction job." });
             }
         }
 
