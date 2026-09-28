@@ -3,34 +3,74 @@ import './RadialGauge.scss';
 
 export default function RadialGauge({
     percentage = 0,
-    color = 'var(--accent-cyan)',
-    size = 42,
-    strokeWidth = 4,
-    multiSegments = [],
+    color = 'var(--accent-cyan, #06B6D4)',
+    size = 36,
+    strokeWidth = 2.5,
+    concentricSegments = [], // עבור שני שעונים עם שתי קשתות (חיצונית ופנימית)
+    multiSegments = [],      // עבור רצועות עוקבות באותו היקף
     children
 }) {
+    const center = size / 2;
+
+    // מצב 1: שתי קשתות קונצנטריות (Outer Arc + Inner Arc)
+    if (concentricSegments && concentricSegments.length > 0) {
+        const gap = 2; // רווח עדין בין הקשת החיצונית לפנימית
+
+        return (
+            <div className="radial-gauge-wrapper" style={{ width: size, height: size }}>
+                <svg width={size} height={size} className="radial-svg">
+                    {concentricSegments.map((seg, idx) => {
+                        const radius = (size - strokeWidth) / 2 - idx * (strokeWidth + gap);
+                        const circumference = 2 * Math.PI * radius;
+                        const normalizedPct = Math.min(100, Math.max(0, seg.pct));
+                        const dashOffset = circumference - (normalizedPct / 100) * circumference;
+
+                        return (
+                            <g key={idx}>
+                                {/* מסלול רקע אפור עדין */}
+                                <circle
+                                    cx={center}
+                                    cy={center}
+                                    r={radius}
+                                    strokeWidth={strokeWidth}
+                                    className="radial-track"
+                                />
+                                {/* קשת צבעונית פעילה */}
+                                <circle
+                                    cx={center}
+                                    cy={center}
+                                    r={radius}
+                                    strokeWidth={strokeWidth}
+                                    stroke={seg.color}
+                                    strokeDasharray={circumference}
+                                    strokeDashoffset={dashOffset}
+                                    strokeLinecap="round"
+                                    className="radial-indicator concentric"
+                                />
+                            </g>
+                        );
+                    })}
+                </svg>
+                {children && <div className="radial-inner-content">{children}</div>}
+            </div>
+        );
+    }
+
+    // מצב 2: שעון רדיאלי רגיל או רצועות עוקבות
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
-
     const hasMulti = multiSegments && multiSegments.length > 0;
     let accumulatedOffset = 0;
 
     const normalizedPct = Math.min(100, Math.max(0, percentage));
     const strokeDashoffset = circumference - (normalizedPct / 100) * circumference;
 
-    const angle = (normalizedPct / 100) * 360 - 90;
-    const rad = (angle * Math.PI) / 180;
-    const cx = size / 2;
-    const cy = size / 2;
-    const labelX = cx + (radius + 3) * Math.cos(rad);
-    const labelY = cy + (radius + 3) * Math.sin(rad);
-
     return (
         <div className="radial-gauge-wrapper" style={{ width: size, height: size }}>
             <svg width={size} height={size} className="radial-svg">
                 <circle
-                    cx={cx}
-                    cy={cy}
+                    cx={center}
+                    cy={center}
                     r={radius}
                     strokeWidth={strokeWidth}
                     className="radial-track"
@@ -46,8 +86,8 @@ export default function RadialGauge({
                         return (
                             <circle
                                 key={idx}
-                                cx={cx}
-                                cy={cy}
+                                cx={center}
+                                cy={center}
                                 r={radius}
                                 strokeWidth={strokeWidth}
                                 stroke={seg.color}
@@ -60,8 +100,8 @@ export default function RadialGauge({
                     })
                 ) : (
                     <circle
-                        cx={cx}
-                        cy={cx}
+                        cx={center}
+                        cy={center}
                         r={radius}
                         strokeWidth={strokeWidth}
                         stroke={color}
@@ -73,21 +113,7 @@ export default function RadialGauge({
                 )}
             </svg>
 
-            <div className="radial-inner-content">
-                {children}
-            </div>
-
-            {!hasMulti && (
-                <span
-                    className="radial-external-label"
-                    style={{
-                        left: `${labelX}px`,
-                        top: `${labelY}px`
-                    }}
-                >
-                    {Math.round(normalizedPct)}%
-                </span>
-            )}
+            {children && <div className="radial-inner-content">{children}</div>}
         </div>
     );
 }
