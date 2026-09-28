@@ -1,17 +1,19 @@
+// Client/src/components/UI/TacticalStatusBadge.scss
+
 .tactical-status-badge {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px !important;
-    height: 28px !important;
-    min-width: 28px !important;
-    min-height: 28px !important;
-    border-radius: 6px;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+    border-radius: var(--radius-controls, 8px);
     box-sizing: border-box;
     cursor: help;
     user-select: none;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 
     .badge-icon-slot {
         display: flex;
@@ -21,60 +23,62 @@
         height: 100%;
 
         svg, .tactical-icon-glyph {
-            width: 14px;
-            height: 14px;
-            max-width: 14px;
-            max-height: 14px;
+            width: 15px;
+            height: 15px;
+            max-width: 15px;
+            max-height: 15px;
             flex-shrink: 0;
             display: block;
         }
     }
 
     &.status-ok {
-        background: var(--c2-green-deep);
-        border: 1.5px solid var(--c2-green);
-        color: var(--c2-green-light);
-        box-shadow: var(--glow-green);
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        color: var(--accent-emerald-light, #34D399);
+        box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
     }
 
     &.status-warn {
-        background: var(--c2-yellow-deep);
-        border: 1.5px solid var(--c2-yellow);
-        color: var(--c2-yellow-light);
-        box-shadow: var(--glow-yellow);
+        background: rgba(245, 158, 11, 0.15);
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        color: var(--accent-amber-light, #FBBF24);
+        box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
     }
 
     &.status-crit {
-        background: var(--c2-red-deep);
-        border: 1.5px solid var(--c2-red);
-        color: var(--c2-red-light);
-        box-shadow: var(--glow-red);
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid rgba(239, 68, 68, 0.45);
+        color: var(--c2-red-light, #F87171);
+        box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
     }
 
     &.status-offline {
-        background: var(--bg-input);
-        border: 1.5px solid var(--slate-border);
-        color: var(--slate-dark);
+        background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+        border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
+        color: var(--text-muted, #64748B);
     }
 
     .tactical-hud-tooltip {
         position: absolute;
         bottom: calc(100% + 8px);
         left: 0;
-        background: linear-gradient(135deg, var(--bg-tooltip) 0%, var(--bg-panel-dark) 100%);
-        border: 1px solid var(--slate-border);
-        border-radius: 7px;
-        padding: 7px 11px;
-        width: 220px;
+        background: var(--surface-glass-modal, rgba(15, 23, 42, 0.94));
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+        border-radius: var(--radius-controls, 8px);
+        padding: 8px 12px;
+        width: 230px;
         white-space: normal;
         pointer-events: none;
         opacity: 0;
         visibility: hidden;
         transform: translateY(4px);
         transition: opacity 0.18s ease, transform 0.18s ease;
-        box-shadow: var(--shadow-tooltip);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.75);
         z-index: 1000;
-        font-family: 'JetBrains Mono', monospace;
+        box-sizing: border-box;
 
         .tooltip-header {
             display: flex;
@@ -91,13 +95,15 @@
             }
 
             .tooltip-title {
-                font-size: 10px;
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-size: 11px;
                 font-weight: 800;
-                color: var(--slate-light);
-                letter-spacing: 0.5px;
+                color: var(--text-primary, #F8FAFC);
+                letter-spacing: 0.3px;
             }
 
             .tooltip-status {
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
                 font-size: 10px;
                 font-weight: 800;
                 margin-left: auto;
@@ -106,13 +112,13 @@
         }
 
         .tooltip-desc {
-            font-family: 'Inter', system-ui, sans-serif;
-            font-size: 9.5px;
-            color: var(--slate-muted);
-            line-height: 1.35;
+            font-family: var(--font-primary, 'Inter', system-ui, sans-serif);
+            font-size: 10px;
+            color: var(--text-secondary, #94A3B8);
+            line-height: 1.4;
             margin-top: 6px;
             padding-top: 5px;
-            border-top: 1px solid var(--border-subtle);
+            border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
         }
 
         &::after {
@@ -122,7 +128,7 @@
             left: 14px;
             border-width: 5px;
             border-style: solid;
-            border-color: var(--slate-border) transparent transparent transparent;
+            border-color: rgba(15, 23, 42, 0.94) transparent transparent transparent;
         }
     }
 
@@ -136,50 +142,34 @@
         }
 
         &.status-ok .tactical-hud-tooltip {
-            border-color: var(--c2-green-border);
+            border-color: rgba(16, 185, 129, 0.35);
 
             .tooltip-status {
-                color: var(--c2-green-light);
-            }
-
-            &::after {
-                border-top-color: var(--c2-green-border);
+                color: var(--accent-emerald-light, #34D399);
             }
         }
 
         &.status-warn .tactical-hud-tooltip {
-            border-color: var(--c2-yellow-border);
+            border-color: rgba(245, 158, 11, 0.35);
 
             .tooltip-status {
-                color: var(--c2-yellow-light);
-            }
-
-            &::after {
-                border-top-color: var(--c2-yellow-border);
+                color: var(--accent-amber-light, #FBBF24);
             }
         }
 
         &.status-crit .tactical-hud-tooltip {
-            border-color: var(--c2-red-border);
+            border-color: rgba(239, 68, 68, 0.40);
 
             .tooltip-status {
-                color: var(--c2-red-light);
-            }
-
-            &::after {
-                border-top-color: var(--c2-red-border);
+                color: var(--c2-red-light, #F87171);
             }
         }
 
         &.status-offline .tactical-hud-tooltip {
-            border-color: var(--border-subtle);
+            border-color: var(--border-subtle, rgba(148, 163, 184, 0.15));
 
             .tooltip-status {
-                color: var(--slate-dark);
-            }
-
-            &::after {
-                border-top-color: var(--border-subtle);
+                color: var(--text-muted, #64748B);
             }
         }
     }

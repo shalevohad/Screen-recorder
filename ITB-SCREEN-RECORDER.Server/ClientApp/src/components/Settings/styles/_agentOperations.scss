@@ -1,3 +1,5 @@
+// Client/src/components/Settings/styles/_agentOperations.scss
+
 .agent-operations-fieldset {
     display: flex;
     flex-direction: column;
@@ -14,8 +16,8 @@
     }
     /* שורת קצב רענון במלוא הרוחב */
     .refresh-rate-field {
-        margin-top: 4px;
-        padding-top: 8px;
-        border-top: 1px dashed rgba(51, 65, 85, 0.4);
+        margin-top: 6px;
+        padding-top: 10px;
+        border-top: 1px dashed var(--border-subtle, rgba(148, 163, 184, 0.15));
     }
 }

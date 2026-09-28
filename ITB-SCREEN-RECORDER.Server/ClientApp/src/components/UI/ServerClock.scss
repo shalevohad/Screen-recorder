@@ -1,8 +1,10 @@
+// Client/src/components/UI/ServerClock.scss
+
 .noc-clock-panel {
     display: flex;
     align-items: center;
     gap: 16px;
-    font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
     user-select: none;
     padding: 0 4px;
 
@@ -24,23 +26,23 @@
             line-height: 1;
 
             .chrono-digits {
-                color: var(--c2-green);
+                color: var(--accent-emerald-light, #34D399);
                 font-size: 1.45rem;
-                font-weight: 900;
+                font-weight: 800;
                 letter-spacing: 0.5px;
-                text-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+                text-shadow: 0 0 12px var(--accent-emerald-glow, rgba(16, 185, 129, 0.25));
             }
 
             .chrono-seconds {
-                color: var(--c2-green-light);
+                color: var(--accent-emerald-light, #34D399);
                 font-size: 1.45rem;
-                font-weight: 900;
+                font-weight: 800;
                 letter-spacing: 0.5px;
-                text-shadow: 0 0 14px rgba(74, 222, 128, 0.5);
+                text-shadow: 0 0 14px var(--accent-emerald-glow, rgba(16, 185, 129, 0.35));
             }
 
             .chrono-tz {
-                color: var(--slate-dark);
+                color: var(--text-muted, #64748B);
                 font-size: 0.65rem;
                 font-weight: 700;
                 margin-left: 3px;
@@ -51,7 +53,7 @@
             line-height: 1;
 
             .chrono-utc {
-                color: var(--slate-muted);
+                color: var(--text-secondary, #94A3B8);
                 font-size: 0.72rem;
                 font-weight: 700;
                 letter-spacing: 0.6px;
@@ -62,7 +64,7 @@
             line-height: 1;
 
             .chrono-uptime {
-                color: var(--slate-dim);
+                color: var(--text-muted, #64748B);
                 font-size: 0.65rem;
                 font-weight: 700;
                 letter-spacing: 0.4px;
@@ -74,26 +76,30 @@
         text-align: left;
         gap: 1px;
         padding-left: 14px;
-        border-left: 1px solid rgba(51, 65, 85, 0.5);
+        border-left: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
 
         .date-day-name {
-            color: var(--c2-blue-light);
+            color: var(--accent-cyan-light, #38BDF8);
+            font-family: var(--font-primary, 'Inter', sans-serif);
             font-size: 0.65rem;
             font-weight: 800;
             letter-spacing: 0.8px;
             line-height: 1;
+            text-transform: uppercase;
         }
 
         .date-month-day {
-            color: var(--slate-light);
+            color: var(--text-primary, #F8FAFC);
+            font-family: var(--font-primary, 'Inter', sans-serif);
             font-size: 0.75rem;
-            font-weight: 800;
+            font-weight: 700;
             letter-spacing: 0.5px;
             line-height: 1.1;
         }
 
         .date-year {
-            color: var(--slate-dark);
+            color: var(--text-muted, #64748B);
+            font-family: var(--font-mono, 'JetBrains Mono', monospace);
             font-size: 0.65rem;
             font-weight: 700;
             letter-spacing: 0.5px;

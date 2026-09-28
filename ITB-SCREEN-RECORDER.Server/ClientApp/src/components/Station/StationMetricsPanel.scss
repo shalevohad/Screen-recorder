@@ -1,8 +1,11 @@
+﻿// Client/src/components/Station/StationMetricsPanel.scss
+
 .station-telemetry {
-    padding: 8px 10px;
-    background: var(--bg-panel-dark);
-    border-top: 1px solid rgba(59, 130, 246, 0.15);
-    border-radius: 0 0 9px 9px;
+    padding: 10px 12px;
+    background: var(--surface-card, #151E2E);
+    border-top: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+    border-radius: 0 0 var(--radius-card, 14px) var(--radius-card, 14px);
+    box-sizing: border-box;
 
     .inline-network-stats {
         display: grid;
@@ -14,40 +17,42 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--border-subtle);
-            border-radius: 4px;
-            padding: 3px 0;
+            background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+            border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+            border-radius: var(--radius-controls, 6px);
+            padding: 4px 2px;
 
             .stat-label {
-                font-size: 8px;
-                color: var(--slate-dark);
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-size: 8.5px;
+                color: var(--text-secondary, #94A3B8);
                 font-weight: 700;
+                letter-spacing: 0.3px;
             }
 
             .stat-value {
                 font-size: 11px;
                 font-weight: 800;
-                font-family: 'JetBrains Mono', monospace;
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
 
                 &.green {
-                    color: var(--c2-green-light);
+                    color: var(--accent-emerald-light, #34D399);
                 }
 
                 &.yellow {
-                    color: var(--c2-yellow-light);
+                    color: var(--accent-amber-light, #FBBF24);
                 }
 
                 &.blue {
-                    color: var(--c2-blue);
+                    color: var(--accent-cyan-light, #38BDF8);
                 }
 
                 &.red {
-                    color: var(--c2-red-light);
+                    color: var(--c2-red-light, #F87171);
                 }
 
                 &.gray {
-                    color: var(--slate-muted);
+                    color: var(--text-muted, #64748B);
                 }
             }
         }
@@ -56,36 +61,40 @@
     .metric-bars-container {
         display: flex;
         flex-direction: column;
-        gap: 5px;
+        gap: 6px;
 
         .dual-metric-group {
             .telemetry-label {
                 display: flex;
                 justify-content: space-between;
-                font-size: 9px;
-                font-family: monospace;
+                font-size: 9.5px;
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
                 margin-bottom: 2px;
+                user-select: none;
 
                 .cat-name {
-                    color: var(--slate-muted);
+                    font-family: var(--font-primary, 'Inter', sans-serif);
+                    color: var(--text-secondary, #94A3B8);
                     font-weight: 700;
 
                     .link-badge {
-                        color: var(--c2-cyan-light);
+                        color: var(--accent-cyan-light, #38BDF8);
+                        font-family: var(--font-mono, 'JetBrains Mono', monospace);
                         font-weight: 800;
                     }
                 }
 
                 .cat-values {
-                    color: var(--slate-dark);
+                    color: var(--text-muted, #64748B);
 
                     .val-host {
-                        color: var(--c2-green-light);
+                        color: var(--accent-emerald-light, #34D399);
                         font-weight: 700;
                     }
 
                     .val-app {
-                        color: var(--c2-blue);
+                        color: var(--accent-cyan-light, #38BDF8);
+                        font-weight: 700;
                     }
                 }
             }
@@ -93,24 +102,27 @@
             .bars-pair {
                 display: flex;
                 flex-direction: column;
-                gap: 1px;
+                gap: 2px;
 
                 .bar-track {
-                    height: 3px;
-                    background: rgba(30, 41, 59, 0.8);
-                    border-radius: 2px;
+                    height: 4px; /* גובה 4px תקני */
+                    background: rgba(148, 163, 184, 0.12);
+                    border-radius: var(--radius-full, 9999px);
                     overflow: hidden;
 
                     .bar-fill {
                         height: 100%;
-                        transition: width 0.3s ease;
+                        border-radius: var(--radius-full, 9999px);
+                        transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 
                         &.host-green {
-                            background: var(--c2-green);
+                            background: var(--accent-emerald, #10B981);
+                            box-shadow: 0 0 6px var(--accent-emerald-glow);
                         }
 
                         &.app-blue {
-                            background: var(--c2-blue);
+                            background: var(--accent-cyan, #06B6D4);
+                            box-shadow: 0 0 6px var(--accent-cyan-glow);
                         }
                     }
                 }

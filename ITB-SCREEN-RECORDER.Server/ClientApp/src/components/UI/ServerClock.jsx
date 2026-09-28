@@ -1,27 +1,29 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+﻿// Client/src/components/UI/ServerClock.jsx
+import { useState, useEffect, useMemo } from 'react';
 import './ServerClock.scss';
 
 function getTimeParts(date, timeZone, locale = 'en-US') {
-    // וידוא פורמט תקני לאזור הזמן (לדוגמה UTC / Etc/UTC)
     let tz = (timeZone || 'UTC').trim();
     if (tz.toUpperCase() === 'UTC') {
         tz = 'Etc/UTC';
     }
 
+    const formatOptions = {
+        timeZone: tz,
+        hour12: false,
+        hourCycle: 'h23',
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'shortOffset'
+    };
+
     try {
-        const dtf = new Intl.DateTimeFormat(locale, {
-            timeZone: tz,
-            hour12: false,
-            hourCycle: 'h23',
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            timeZoneName: 'shortOffset'
-        });
+        const dtf = new Intl.DateTimeFormat(locale, formatOptions);
         const parts = dtf.formatToParts(date);
         const map = {};
         for (const p of parts) {
@@ -30,17 +32,8 @@ function getTimeParts(date, timeZone, locale = 'en-US') {
         return map;
     } catch {
         const dtf = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Etc/UTC',
-            hour12: false,
-            hourCycle: 'h23',
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            timeZoneName: 'shortOffset'
+            ...formatOptions,
+            timeZone: 'Etc/UTC'
         });
         const parts = dtf.formatToParts(date);
         const map = {};
@@ -57,7 +50,6 @@ export default function ServerClock({
     locale = 'en-US'
 }) {
     const [currentTime, setCurrentTime] = useState(new Date());
-
     const [prevServerUptime, setPrevServerUptime] = useState(serverUptime);
     const [elapsedUptime, setElapsedUptime] = useState(serverUptime);
 
@@ -76,6 +68,7 @@ export default function ServerClock({
     }, []);
 
     const formatUptime = (totalSec) => {
+        if (!totalSec || totalSec <= 0) return 'UP: 0s';
         const d = Math.floor(totalSec / 86400);
         const h = Math.floor((totalSec % 86400) / 3600);
         const m = Math.floor((totalSec % 3600) / 60);
@@ -116,8 +109,8 @@ export default function ServerClock({
         <div className="noc-clock-panel">
             <div className="clock-col chrono-col">
                 <div className="chrono-main-row">
-                    <span className="chrono-digits">{displayHours}:{displayMinutes}:</span>
-                    <span className="chrono-seconds">{displaySeconds}</span>
+                    <span className="chrono-digits">{displayHours}:{displayMinutes}</span>
+                    <span className="chrono-seconds">:{displaySeconds}</span>
                     <span className="chrono-tz">({tzLabel})</span>
                 </div>
 
