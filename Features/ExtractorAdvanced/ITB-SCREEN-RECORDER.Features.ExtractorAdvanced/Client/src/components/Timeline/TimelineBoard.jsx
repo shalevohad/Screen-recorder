@@ -1,14 +1,21 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx
 // ==========================================
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import TimelineRuler from './TimelineRuler.jsx';
 import TimelineTrack from './TimelineTrack.jsx';
 import Playhead from './Playhead.jsx';
 import SessionClockBadge from './SessionClockBadge.jsx';
 import TimelineMinimap from './TimelineMinimap.jsx';
 import TimelineContextMenu from './TimelineContextMenu.jsx';
+import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './TimelineBoard.scss';
+
+// ==========================================
+// קבועי מקשי קיצור לחיתוך (Shortcut Keybinds)
+// ==========================================
+export const CUT_KEY_IN = 'BracketLeft';   // מקש קביעת נקודת IN (תחילת חיתוך)
+export const CUT_KEY_OUT = 'BracketRight';  // מקש קביעת נקודת OUT (סוף חיתוך)
 
 function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
@@ -72,9 +79,44 @@ export default function TimelineBoard({
 
     const animFrameRef = useRef(null);
     const viewportStartRef = useRef(viewportStartMs);
+    const onEstimateLoadedRef = useRef(onEstimateLoaded);
+
+    const isInitialMountRef = useRef(true);
+    const prevInRef = useRef(inPointMs);
+    const prevOutRef = useRef(outPointMs);
+
+    useEffect(() => {
+        onEstimateLoadedRef.current = onEstimateLoaded;
+    });
 
     const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
     const viewportDurationMs = totalDurationMs / zoomLevel;
+
+    const { earliestMediaMs, latestMediaMs } = useMemo(() => {
+        if (!stations.length || !baseEpochMs) return { earliestMediaMs: null, latestMediaMs: null };
+        let minEpoch = Infinity;
+        let maxEpoch = -Infinity;
+
+        stations.forEach(st => {
+            const segs = recordingSegments[st.id] || st.segments || [];
+            segs.forEach(seg => {
+                const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
+                const e = seg.endEpochMs ?? seg.endEpoch ?? 0;
+                if (s > 0 && s < minEpoch) minEpoch = s;
+                if (e > 0 && e > maxEpoch) maxEpoch = e;
+            });
+        });
+
+        if (minEpoch === Infinity) return { earliestMediaMs: null, latestMediaMs: null };
+        const startRel = Math.max(0, Math.min(totalDurationMs, minEpoch - baseEpochMs));
+        const endRel = Math.max(0, Math.min(totalDurationMs, maxEpoch - baseEpochMs));
+        return { earliestMediaMs: startRel, latestMediaMs: endRel };
+    }, [stations, recordingSegments, baseEpochMs, totalDurationMs]);
+
+    const hasActiveCut = useMemo(() => {
+        const isRangeNonDefault = (inPointMs > 500) || (outPointMs < totalDurationMs - 500);
+        return isRangeNonDefault && (outPointMs - inPointMs >= 1000);
+    }, [inPointMs, outPointMs, totalDurationMs]);
 
     useEffect(() => {
         if (!activeStationId || !baseEpochMs) return;
@@ -90,8 +132,10 @@ export default function TimelineBoard({
             .catch(() => { });
     }, [activeStationId, baseEpochMs, inPointMs]);
 
+    const stationIdsKey = useMemo(() => stations.map(s => s.id).sort().join(','), [stations]);
+
     useEffect(() => {
-        if (!stations.length || outPointMs <= inPointMs || !baseEpochMs) {
+        if (!stationIdsKey || outPointMs <= inPointMs || !baseEpochMs) {
             setEstimateData(null);
             return;
         }
@@ -102,7 +146,7 @@ export default function TimelineBoard({
         const timer = setTimeout(async () => {
             try {
                 const payload = {
-                    stationIds: stations.map(s => s.id),
+                    stationIds: stationIdsKey.split(','),
                     inEpochMs: baseEpochMs + Math.round(inPointMs),
                     outEpochMs: baseEpochMs + Math.round(outPointMs)
                 };
@@ -117,8 +161,8 @@ export default function TimelineBoard({
                 if (res.ok) {
                     const data = await res.json();
                     setEstimateData(data);
-                    if (onEstimateLoaded) {
-                        onEstimateLoaded(data);
+                    if (onEstimateLoadedRef.current) {
+                        onEstimateLoadedRef.current(data);
                     }
                 }
             } catch (err) {
@@ -134,7 +178,7 @@ export default function TimelineBoard({
             clearTimeout(timer);
             controller.abort();
         };
-    }, [stations, inPointMs, outPointMs, baseEpochMs, onEstimateLoaded]);
+    }, [stationIdsKey, inPointMs, outPointMs, baseEpochMs]);
 
     useEffect(() => {
         viewportStartRef.current = viewportStartMs;
@@ -195,6 +239,68 @@ export default function TimelineBoard({
         animFrameRef.current = requestAnimationFrame(step);
     }, [setViewportStartMs]);
 
+    const handleFitRange = useCallback((startMs, endMs) => {
+        const cutDur = Math.max(1000, endMs - startMs);
+        const paddingMs = Math.max(500, cutDur * 0.05);
+
+        const targetStart = Math.max(0, startMs - paddingMs);
+        const targetEnd = Math.min(totalDurationMs, endMs + paddingMs);
+        const effectiveDur = targetEnd - targetStart;
+
+        const targetZoom = Math.max(1, Math.min(maxDynamicZoom, totalDurationMs / effectiveDur));
+        const newVpDur = totalDurationMs / targetZoom;
+        const newStart = Math.max(0, Math.min(targetStart, totalDurationMs - newVpDur));
+
+        animateViewportTo(newStart);
+        if (onZoomChange) onZoomChange(Number(targetZoom.toFixed(1)));
+    }, [totalDurationMs, maxDynamicZoom, animateViewportTo, onZoomChange]);
+
+    useEffect(() => {
+        if (isInitialMountRef.current) {
+            isInitialMountRef.current = false;
+            prevInRef.current = inPointMs;
+            prevOutRef.current = outPointMs;
+            return;
+        }
+
+        if (draggingTarget) return;
+
+        const inChanged = Math.abs(prevInRef.current - inPointMs) > 10;
+        const outChanged = Math.abs(prevOutRef.current - outPointMs) > 10;
+
+        if (inChanged || outChanged) {
+            prevInRef.current = inPointMs;
+            prevOutRef.current = outPointMs;
+
+            if (outPointMs - inPointMs >= 1000) {
+                handleFitRange(inPointMs, outPointMs);
+            }
+        }
+    }, [inPointMs, outPointMs, draggingTarget, handleFitRange]);
+
+    const handleContextualFit = useCallback(() => {
+        if (hasActiveCut) {
+            handleFitRange(inPointMs, outPointMs);
+        } else if (earliestMediaMs !== null && latestMediaMs !== null && latestMediaMs > earliestMediaMs) {
+            handleFitRange(earliestMediaMs, latestMediaMs);
+        } else {
+            animateViewportTo(0);
+            if (onZoomReset) onZoomReset();
+        }
+    }, [hasActiveCut, inPointMs, outPointMs, earliestMediaMs, latestMediaMs, handleFitRange, animateViewportTo, onZoomReset]);
+
+    const handleResetZoom = useCallback(() => {
+        animateViewportTo(0);
+        if (onZoomReset) onZoomReset();
+    }, [animateViewportTo, onZoomReset]);
+
+    const handleJumpToFirstMedia = useCallback(() => {
+        if (earliestMediaMs === null) return;
+        setPlayheadMs(earliestMediaMs);
+        const targetStart = Math.max(0, Math.min(earliestMediaMs - viewportDurationMs / 4, totalDurationMs - viewportDurationMs));
+        animateViewportTo(targetStart);
+    }, [earliestMediaMs, setPlayheadMs, viewportDurationMs, totalDurationMs, animateViewportTo]);
+
     const getMsFromClientX = useCallback((clientX) => {
         if (!trackAreaRef.current) return viewportStartMs;
         const rect = trackAreaRef.current.getBoundingClientRect();
@@ -227,21 +333,7 @@ export default function TimelineBoard({
         }
     }, [draggingTarget]);
 
-    const handleFitCut = () => {
-        const cutDur = Math.max(2000, outPointMs - inPointMs);
-        const targetZoom = Math.max(1, Math.min(maxDynamicZoom, (totalDurationMs / cutDur) * 0.85));
-        const center = (inPointMs + outPointMs) / 2;
-        const newVpDur = totalDurationMs / targetZoom;
-        const newStart = Math.max(0, Math.min(center - newVpDur / 2, totalDurationMs - newVpDur));
-        animateViewportTo(newStart);
-        if (onZoomChange) onZoomChange(Number(targetZoom.toFixed(1)));
-    };
-
-    const handleResetZoom = () => {
-        animateViewportTo(0);
-        if (onZoomReset) onZoomReset();
-    };
-
+    // 💡 שימוש בקבועי החיתוך ב-KeyDown
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
@@ -276,20 +368,24 @@ export default function TimelineBoard({
                     targetVpStart = Math.max(0, Math.min(targetVpStart, totalDurationMs - viewportDurationMs));
                     animateViewportTo(targetVpStart);
                 }
-            } else if (e.key === '[') {
-                e.preventDefault();
-                const newOut = Math.max(playheadMs, inPointMs + 1000);
-                setOutPointMs(Math.min(totalDurationMs, newOut));
-            } else if (e.key === ']') {
+            } else if (e.key === CUT_KEY_IN) {
+                // 💡 קביעת נקודת IN לפי הקבוע
                 e.preventDefault();
                 const newIn = Math.min(playheadMs, outPointMs - 1000);
-                setInPointMs(Math.max(0, newIn));
+                const finalIn = Math.max(0, newIn);
+                setInPointMs(finalIn);
+            } else if (e.key === CUT_KEY_OUT) {
+                // 💡 קביעת נקודת OUT לפי הקבוע
+                e.preventDefault();
+                const newOut = Math.max(playheadMs, inPointMs + 1000);
+                const finalOut = Math.min(totalDurationMs, newOut);
+                setOutPointMs(finalOut);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs, animateViewportTo, activeFps, setViewportStartMs]);
+    }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs, animateViewportTo, activeFps]);
 
     const handleContextMenu = (e) => {
         e.preventDefault();
@@ -359,6 +455,7 @@ export default function TimelineBoard({
         setContextMenu(null);
         setDraggingTarget(target);
         setDragStartInfo({
+            target,
             startX: e.clientX,
             initialPlayhead: playheadMs,
             initialIn: inPointMs,
@@ -471,9 +568,49 @@ export default function TimelineBoard({
                             outPointMs={outPointMs}
                             playheadMs={playheadMs}
                             onStartDragMinimap={handleStartDrag}
-                            onFitCut={handleFitCut}
-                            onResetZoom={handleResetZoom}
                         />
+
+                        <div className="timeline-viewport-actions-group">
+                            {earliestMediaMs !== null && (
+                                <button
+                                    type="button"
+                                    className="btn-vp-action"
+                                    onClick={handleJumpToFirstMedia}
+                                    title={`Jump playhead to first media (${formatTimelineClock(baseEpochMs + earliestMediaMs, timeMode)})`}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="19 20 9 12 19 4 19 20" />
+                                        <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" strokeWidth="2.5" />
+                                    </svg>
+                                    <span>FIRST MEDIA</span>
+                                </button>
+                            )}
+
+                            <button
+                                type="button"
+                                className={`btn-vp-action fit-action ${hasActiveCut ? 'fit-cut' : ''}`}
+                                onClick={handleContextualFit}
+                                title={hasActiveCut ? "Fit Viewport to Cut Range" : "Fit Viewport to Recorded Media"}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                                </svg>
+                                <span>{hasActiveCut ? 'FIT CUT' : 'FIT MEDIA'}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                className="btn-vp-action"
+                                onClick={handleResetZoom}
+                                title="Reset to Full Time Scope (100% / No Zoom)"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <polyline points="1 4 1 10 7 10" />
+                                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                                </svg>
+                                <span>RESET</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div className="ruler-container-offset">
@@ -488,6 +625,7 @@ export default function TimelineBoard({
                             onSeek={(seekMs) => setPlayheadMs && setPlayheadMs(seekMs)}
                             inPointMs={inPointMs}
                             outPointMs={outPointMs}
+                            earliestMediaMs={earliestMediaMs}
                         />
                     </div>
                 </div>
@@ -501,8 +639,6 @@ export default function TimelineBoard({
                 <div className="tracks-scroll-area">
                     {stations.length > 0 ? (
                         stations.map(station => {
-                            // 💡 שימוש תמידי במערך הסגמנטים המלא של התחנה (שמכסה את כל ציר הזמן)
-                            // כך שסגמנטים שנמצאים לפני ה-IN או אחרי ה-OUT ימשיכו להופיע כפסים ירוקים תקינים!
                             const fullStationSegments =
                                 recordingSegments[station.id] ||
                                 station.segments ||
@@ -522,6 +658,7 @@ export default function TimelineBoard({
                                     segments={fullStationSegments}
                                     recordingSegments={recordingSegments}
                                     globalGaps={estimateData?.removedGlobalGaps || []}
+                                    disableFilmstrip={stations.length > 1 && station.id !== activeStationId}
                                 />
                             );
                         })

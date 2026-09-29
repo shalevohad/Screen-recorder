@@ -1,4 +1,4 @@
-// Client/src/components/StationDrawer/views/Hub/StationHubCard.scss
+﻿// Client/src/components/StationDrawer/views/Hub/StationHubCard.scss
 
 .hub-station-card {
     background: rgba(15, 23, 42, 0.7);
@@ -204,9 +204,9 @@
 
         .card-gap-track-container {
             width: 100%;
-            height: 7px;
-            background: rgba(10, 15, 29, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            height: 8px;
+            background: rgba(10, 15, 29, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 9999px;
             padding: 1px;
             box-sizing: border-box;
@@ -233,15 +233,20 @@
                     position: absolute;
                     top: 0;
                     bottom: 0;
-
+                    /* הבלטת מקטעים קצרים עם רוחב מינימלי וזוהר כפול */
                     &.rec {
+                        min-width: 5px !important; // לעולם לא ייבלע
                         background: #10b981;
-                        box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+                        border-radius: 2px;
+                        z-index: 3;
+                        box-shadow: 0 0 6px #10b981, 0 0 12px rgba(52, 211, 153, 0.9);
+                        border: 0.5px solid #6ee7b7;
                     }
-
+                    /* עמעום פסי ה-Gap כדי שהירוק יבלוט מיד */
                     &.gap {
-                        background: repeating-linear-gradient( -45deg, #f43f5e, #f43f5e 4px, #881337 4px, #881337 8px );
-                        box-shadow: 0 0 6px rgba(244, 63, 94, 0.4);
+                        background: rgba(15, 23, 42, 0.95);
+                        background-image: repeating-linear-gradient( -45deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.12) 4px, rgba(15, 23, 42, 0.95) 4px, rgba(15, 23, 42, 0.95) 8px );
+                        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
                     }
                 }
             }

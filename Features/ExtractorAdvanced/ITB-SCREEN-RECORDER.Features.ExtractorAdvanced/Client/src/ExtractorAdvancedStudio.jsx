@@ -61,12 +61,14 @@ export default function ExtractorAdvancedStudio() {
     const [zoomLevel, setZoomLevel] = useState(cached.zoomLevel || 1);
     const [viewportStartMs, setViewportStartMs] = useState(cached.viewportStartMs || 0);
 
-    const [inPointMs, setInPointMs] = useState(cached.inPointMs ?? bufferMs);
-    const [outPointMs, setOutPointMs] = useState(cached.outPointMs ?? (bufferMs + timeRange.durationMs));
-    const [playheadMs, setPlayheadMs] = useState(cached.playheadMs ?? (cached.inPointMs ?? bufferMs));
+    // 💡 תיקון: IN/OUT מתחילים מקצות הטיים-ליין (0 עד total) אלא אם המשתמש חתך במפורש
+    const [inPointMs, setInPointMs] = useState(cached.inPointMs !== null && cached.inPointMs !== undefined ? cached.inPointMs : 0);
+    const [outPointMs, setOutPointMs] = useState(cached.outPointMs !== null && cached.outPointMs !== undefined ? cached.outPointMs : totalTimelineDurationMs);
+    const [playheadMs, setPlayheadMs] = useState(cached.playheadMs !== null && cached.playheadMs !== undefined ? cached.playheadMs : 0);
 
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isLooping, setIsLooping] = useState(false);
+    const [isLooping, setIsLooping] = useState(cached.isLooping !== undefined ? cached.isLooping : true);
+    const [playbackSpeed, setPlaybackSpeed] = useState(cached.playbackSpeed || 1);
     const [globalGaps, setGlobalGaps] = useState([]);
 
     useEffect(() => {
@@ -83,7 +85,6 @@ export default function ExtractorAdvancedStudio() {
     const lastTickRef = useRef(null);
     const requestRef = useRef(null);
 
-    // בדיקה האם פועל נגן סולו או ספוטלייט מול סגמנט מוקלט
     const activeStation = allStations.find(s => s.id === activeStationId);
     const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
     const spotlightStation = allStations.find(s => s.id === spotlightStationId);
@@ -106,7 +107,7 @@ export default function ExtractorAdvancedStudio() {
 
     const updatePlayhead = useCallback((timestamp) => {
         if (!lastTickRef.current) lastTickRef.current = timestamp;
-        const deltaMs = timestamp - lastTickRef.current;
+        const deltaMs = (timestamp - lastTickRef.current) * playbackSpeed;
         lastTickRef.current = timestamp;
 
         setPlayheadMs((prev) => {
@@ -134,7 +135,7 @@ export default function ExtractorAdvancedStudio() {
         if (isPlaying && !isVideoDirectlyDrivingClock) {
             requestRef.current = requestAnimationFrame(updatePlayhead);
         }
-    }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs, isVideoDirectlyDrivingClock]);
+    }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs, isVideoDirectlyDrivingClock, playbackSpeed]);
 
     useEffect(() => {
         if (isPlaying && !isVideoDirectlyDrivingClock) {
@@ -150,7 +151,6 @@ export default function ExtractorAdvancedStudio() {
         };
     }, [isPlaying, updatePlayhead, isVideoDirectlyDrivingClock]);
 
-    // 💡 הפעלת ניגון חכמה שמדלגת מעל פערים בעת התחלה
     const handleTogglePlaySmart = useCallback(() => {
         if (!isPlaying) {
             let targetPlayhead = playheadMs;
@@ -179,6 +179,21 @@ export default function ExtractorAdvancedStudio() {
         }
     }, [isPlaying, playheadMs, timelineBaseEpochMs, globalGaps, currentStationToCheck, isCurrentInValidSegment, stationSegmentsToCheck, setPlayheadMs]);
 
+    const handleSelectActiveStation = useCallback((id) => {
+        if (id === null) {
+            setIsPlaying(false);
+            setPlaybackSpeed(1);
+        } else if (id !== activeStationId) {
+            setPlaybackSpeed(1);
+        }
+        setActiveStationId(id);
+    }, [activeStationId]);
+
+    const handleSpeedChange = useCallback((speed) => {
+        console.log('[Studio] 🚀 Changing playback speed to:', speed);
+        setPlaybackSpeed(speed);
+    }, []);
+
     const [isWorkspaceActive, setIsWorkspaceActive] = useState(
         Boolean(cached.isWorkspaceActive && cached.selectedStationIds?.length > 0)
     );
@@ -196,10 +211,13 @@ export default function ExtractorAdvancedStudio() {
             zoomLevel,
             viewportStartMs,
             isWorkspaceActive,
-            allStations
+            allStations,
+            isLooping,
+            playbackSpeed
         });
-    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, viewportStartMs, isWorkspaceActive, allStations]);
+    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, viewportStartMs, isWorkspaceActive, allStations, isLooping, playbackSpeed]);
 
+    // החלף את בלוק ה-fetchActiveStationsForTimeScope ב-ExtractorAdvancedStudio.jsx:
     const fetchActiveStationsForTimeScope = useCallback(async () => {
         if (isNaN(timelineBaseEpochMs)) return;
         const endEpochMs = timelineBaseEpochMs + totalTimelineDurationMs;
@@ -227,7 +245,18 @@ export default function ExtractorAdvancedStudio() {
                         displayName: item.displayName || item.hostname || item.name,
                         isOnline: item.isOnline !== undefined ? item.isOnline : true,
                         recordingsCount: item.recordingsCount || 0,
-                        segments: item.segments || []
+                        segments: item.segments || [],
+                        // 💡 שדות מטא-דאטה אמיתיים מהשרת
+                        hasAudio: Boolean(item.hasAudio),
+                        audioCodec: item.audioCodec || '',
+                        audioChannels: item.audioChannels || 0,
+                        audioLabel: item.audioLabel || (item.hasAudio ? 'AAC' : 'NONE'),
+                        width: item.width || 1920,
+                        height: item.height || 1080,
+                        fps: item.fps || 30,
+                        isVfr: Boolean(item.isVfr),
+                        resolution: item.resolution || '1080p',
+                        feedSpec: item.feedSpec || '1080p • 30fps'
                     }));
 
                     setAllStations(normalized);
@@ -261,7 +290,7 @@ export default function ExtractorAdvancedStudio() {
                     const data = await res.json();
                     setRecordingSegments(data || {});
                 }
-            } catch {
+            } catch (e) {
                 if (isMounted) setRecordingSegments({});
             }
         };
@@ -283,12 +312,17 @@ export default function ExtractorAdvancedStudio() {
     useEffect(() => {
         if (activeStationId && !selectedStationIds.includes(activeStationId)) {
             setActiveStationId(null);
+            setIsPlaying(false);
+            setPlaybackSpeed(1);
         }
         if (spotlightStationId && !selectedStationIds.includes(spotlightStationId)) {
             setSpotlightStationId(selectedStationIds[0] || null);
+            setPlaybackSpeed(1);
         }
         if (selectedStationIds.length === 0 && isWorkspaceActive) {
             setIsWorkspaceActive(false);
+            setIsPlaying(false);
+            setPlaybackSpeed(1);
         }
     }, [selectedStationIds, activeStationId, spotlightStationId, isWorkspaceActive]);
 
@@ -313,15 +347,18 @@ export default function ExtractorAdvancedStudio() {
             const currentIdx = timelineStations.findIndex(s => s.id === activeStationId);
             if (currentIdx === -1) {
                 setActiveStationId(timelineStations[0].id);
+                setPlaybackSpeed(1);
                 return;
             }
 
             if (e.key === 'ArrowDown') {
                 const nextIdx = (currentIdx + 1) % timelineStations.length;
                 setActiveStationId(timelineStations[nextIdx].id);
+                setPlaybackSpeed(1);
             } else if (e.key === 'ArrowUp') {
                 const prevIdx = (currentIdx - 1 + timelineStations.length) % timelineStations.length;
                 setActiveStationId(timelineStations[prevIdx].id);
+                setPlaybackSpeed(1);
             }
         };
 
@@ -338,13 +375,14 @@ export default function ExtractorAdvancedStudio() {
         const newBuf = Math.max(60000, Math.round(newTimeRange.durationMs * 0.05));
 
         setTimeRange(newTimeRange);
-        setInPointMs(bm.inPointMs !== undefined ? bm.inPointMs + newBuf : newBuf);
-        setOutPointMs(bm.outPointMs !== undefined ? bm.outPointMs + newBuf : (newBuf + newTimeRange.durationMs));
-        setPlayheadMs(bm.playheadMs !== undefined ? bm.playheadMs + newBuf : (bm.inPointMs !== undefined ? bm.inPointMs + newBuf : newBuf));
+        setInPointMs(bm.inPointMs !== undefined ? bm.inPointMs + newBuf : 0);
+        setOutPointMs(bm.outPointMs !== undefined ? bm.outPointMs + newBuf : (newTimeRange.durationMs + 2 * newBuf));
+        setPlayheadMs(bm.playheadMs !== undefined ? bm.playheadMs + newBuf : 0);
 
         if (bm.stationIds && bm.stationIds.length > 0) {
             setSelectedStationIds(bm.stationIds);
             setActiveStationId(bm.stationIds[0]);
+            setPlaybackSpeed(1);
         }
 
         setIsWorkspaceActive(true);
@@ -378,6 +416,12 @@ export default function ExtractorAdvancedStudio() {
         }
     };
 
+    const handleEstimateLoaded = useCallback((est) => {
+        if (est && est.removedGlobalGaps) {
+            setGlobalGaps(est.removedGlobalGaps);
+        }
+    }, []);
+
     return (
         <div className="extractor-advanced-studio">
             <div className="studio-workspace-area">
@@ -388,7 +432,7 @@ export default function ExtractorAdvancedStudio() {
                     setTimeMode={setTimeMode}
                     activeStationId={activeStationId}
                     hideBackToGrid={timelineStations.length <= 1}
-                    onResetActiveStation={() => setActiveStationId(null)}
+                    onResetActiveStation={() => handleSelectActiveStation(null)}
                     onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
                     onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
@@ -402,8 +446,11 @@ export default function ExtractorAdvancedStudio() {
                                 <MulticamViewport
                                     activeStation={activeStation}
                                     timelineStations={timelineStations}
-                                    onSelectActiveStation={(id) => setActiveStationId(id)}
+                                    onSelectActiveStation={handleSelectActiveStation}
                                     onOpenSpotlight={(id) => {
+                                        if (id !== activeStationId) {
+                                            setPlaybackSpeed(1);
+                                        }
                                         setActiveStationId(id);
                                         setSpotlightStationId(id);
                                     }}
@@ -418,6 +465,8 @@ export default function ExtractorAdvancedStudio() {
                                     outPointMs={outPointMs}
                                     setPlayheadMs={setPlayheadMs}
                                     globalGaps={globalGaps}
+                                    recordingSegments={recordingSegments}
+                                    playbackSpeed={playbackSpeed}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}
@@ -432,6 +481,8 @@ export default function ExtractorAdvancedStudio() {
                                     setIsPlaying={handleTogglePlaySmart}
                                     isLooping={isLooping}
                                     setIsLooping={setIsLooping}
+                                    playbackSpeed={playbackSpeed}
+                                    onChangeSpeed={handleSpeedChange}
                                 />
                             </div>
 
@@ -439,7 +490,7 @@ export default function ExtractorAdvancedStudio() {
                                 <TimelineBoard
                                     stations={timelineStations}
                                     activeStationId={activeStationId}
-                                    onSelectActiveStation={(id) => setActiveStationId(id === activeStationId ? null : id)}
+                                    onSelectActiveStation={(id) => handleSelectActiveStation(id === activeStationId ? null : id)}
                                     baseEpochMs={timelineBaseEpochMs}
                                     timeMode={timeMode}
                                     totalDurationMs={totalTimelineDurationMs}
@@ -456,11 +507,7 @@ export default function ExtractorAdvancedStudio() {
                                     onViewportStartChange={setViewportStartMs}
                                     onExport={handleExportSmartCut}
                                     recordingSegments={recordingSegments}
-                                    onEstimateLoaded={(est) => {
-                                        if (est && est.removedGlobalGaps) {
-                                            setGlobalGaps(est.removedGlobalGaps);
-                                        }
-                                    }}
+                                    onEstimateLoaded={handleEstimateLoaded}
                                 />
                             </div>
                         </div>
@@ -498,10 +545,11 @@ export default function ExtractorAdvancedStudio() {
                 onTimeModeChange={setTimeMode}
                 onApplyRange={(newRange) => {
                     const newBuf = Math.max(60000, Math.round(newRange.durationMs * 0.05));
+                    const newTotal = newRange.durationMs + (2 * newBuf);
                     setTimeRange(newRange);
-                    setInPointMs(newBuf);
-                    setOutPointMs(newBuf + newRange.durationMs);
-                    setPlayheadMs(newBuf);
+                    setInPointMs(0);
+                    setOutPointMs(newTotal);
+                    setPlayheadMs(0);
                 }}
             />
 
@@ -516,7 +564,13 @@ export default function ExtractorAdvancedStudio() {
                 isOpen={Boolean(spotlightStationId && spotlightStation)}
                 station={spotlightStation}
                 allStations={timelineStations}
-                onSelectStation={setSpotlightStationId}
+                onSelectStation={(newId) => {
+                    if (newId !== spotlightStationId) {
+                        setPlaybackSpeed(1);
+                    }
+                    setActiveStationId(newId);
+                    setSpotlightStationId(newId);
+                }}
                 onClose={() => {
                     if (!activeStationId && spotlightStationId) {
                         setActiveStationId(spotlightStationId);
@@ -540,6 +594,10 @@ export default function ExtractorAdvancedStudio() {
                 globalGaps={globalGaps}
                 isPlaying={isPlaying}
                 setIsPlaying={setIsPlaying}
+                isLooping={isLooping}
+                setIsLooping={setIsLooping}
+                playbackSpeed={playbackSpeed}
+                setPlaybackSpeed={handleSpeedChange}
                 onExport={handleExportSmartCut}
             />
 

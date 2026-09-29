@@ -5,7 +5,6 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { spritesheetStore } from '../../utils/spritesheetStore.js';
 import './TimelineTrack.scss';
 
-// טבלת LOD (Level of Detail) הקובעת את רזולוציית הזמן לפי חלון הזום הנוכחי
 const getLodConfig = (viewportDurationMs) => {
     if (viewportDurationMs <= 60 * 1000) {
         return { tileDurationMs: 4 * 1000, framesPerTile: 4 };
@@ -47,7 +46,6 @@ export default function TimelineTrack({
 
     const hostname = station?.hostname || station?.id || station?.name || '';
 
-    // סנכרון רשימת הצ'אנקים מול השרת לכל רוחב ה-Viewport ולא רק בתוך תחום ה-Cut
     useEffect(() => {
         if (!hostname || !baseEpochMs) return;
 
@@ -85,7 +83,7 @@ export default function TimelineTrack({
 
     const lodConfig = useMemo(() => getLodConfig(viewportDurationMs), [viewportDurationMs]);
 
-    // חישוב אריחי ה-LOD עם Frustum Culling
+    // שליפה רק לתחנה הפעילה/סולו — חוסך תעבורת רשת כבדה
     const timelineTiles = useMemo(() => {
         if (disableFilmstrip || activeSegments.length === 0 || !baseEpochMs || viewportDurationMs <= 0) return [];
 
@@ -228,7 +226,6 @@ export default function TimelineTrack({
         }).filter(Boolean);
     }, [activeSegments, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
-    // סיווג הפערים: תגיות SKIPPED גלובליות מוגבלות לתחום [inPointMs, outPointMs] בלבד
     const classifiedGaps = useMemo(() => {
         if (!baseEpochMs || viewportDurationMs <= 0) return [];
 
@@ -262,13 +259,12 @@ export default function TimelineTrack({
 
         const resultGaps = [];
 
-        // 1. פערים גלובליים לחיתוך - תקפים רק בתוך גבולות ה-IN וה-OUT
+        // 1. פערים גלובליים לחיתוך (צהובים עם מספריים ✂)
         if (globalGaps && globalGaps.length > 0) {
             globalGaps.forEach((g, idx) => {
                 const gStart = g.startEpochMs;
                 const gEnd = g.endEpochMs;
 
-                // חיתוך הפער לתחום ה-IN וה-OUT
                 const boundedStart = Math.max(gStart, effectiveInEpoch);
                 const boundedEnd = Math.min(gEnd, effectiveOutEpoch);
 
@@ -293,7 +289,7 @@ export default function TimelineTrack({
             });
         }
 
-        // 2. פערי היעדר אות תחנתיים (מוצגים כ-NO SIGNAL בכל שאר חלקי הטיים-ליין)
+        // 2. פערי היעדר אות תחנתיים (מעומעמים ברקע)
         rawStationEmptyRanges.forEach((range, rIdx) => {
             let subRanges = [range];
 

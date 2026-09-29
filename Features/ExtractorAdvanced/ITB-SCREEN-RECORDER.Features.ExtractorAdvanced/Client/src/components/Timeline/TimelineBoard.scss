@@ -41,7 +41,65 @@
                 border-bottom: 1px solid rgba(255, 255, 255, 0.06);
                 display: flex;
                 align-items: center;
+                gap: 10px;
                 box-sizing: border-box;
+                /* 💡 הסתרה הרמטית של כפתורי Fit/Reset ישנים מתוך המינימאפ */
+                .timeline-minimap-root,
+                .timeline-minimap-container,
+                [class*="minimap"] {
+                    button {
+                        display: none !important;
+                    }
+                }
+                /* סרגל כפתורי Viewport חכם ונקי */
+                .timeline-viewport-actions-group {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex-shrink: 0;
+                    margin-left: auto;
+
+                    .btn-vp-action {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 5px;
+                        padding: 3px 8px;
+                        background: rgba(15, 23, 42, 0.6);
+                        border: 1px solid rgba(255, 255, 255, 0.12);
+                        border-radius: 4px;
+                        color: #94a3b8;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 9.5px;
+                        font-weight: 700;
+                        cursor: pointer;
+                        white-space: nowrap;
+                        transition: all 0.2s;
+
+                        svg {
+                            width: 11px;
+                            height: 11px;
+                        }
+
+                        &:hover {
+                            color: #f8fafc;
+                            background: rgba(255, 255, 255, 0.1);
+                            border-color: rgba(255, 255, 255, 0.25);
+                        }
+
+                        &.fit-action.fit-cut {
+                            background: rgba(6, 182, 212, 0.18);
+                            border-color: rgba(6, 182, 212, 0.45);
+                            color: #22d3ee;
+                            box-shadow: 0 0 10px rgba(6, 182, 212, 0.25);
+
+                            &:hover {
+                                background: #06b6d4;
+                                color: #020617;
+                                box-shadow: 0 0 16px rgba(6, 182, 212, 0.5);
+                            }
+                        }
+                    }
+                }
             }
 
             .ruler-container-offset {

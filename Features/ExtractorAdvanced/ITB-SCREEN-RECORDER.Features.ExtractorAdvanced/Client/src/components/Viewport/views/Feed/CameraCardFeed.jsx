@@ -1,8 +1,9 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Feed/CameraCardFeed.jsx
 // ==========================================
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { frameStore } from '../../../../utils/frameStore.js';
+import { getAudioSettings } from '../../../../utils/studioSessionStore.js';
 import NoSignalHero from '../../overlays/NoSignalHero.jsx';
 import './CameraCardFeed.scss';
 
@@ -18,7 +19,9 @@ export default function CameraCardFeed({
     outPointMs,
     setPlayheadMs,
     isSpotlightActive,
-    globalGaps = []
+    globalGaps = [],
+    recordingSegments = {},
+    playbackSpeed = 1
 }) {
     const stationName = station.hostname || station.name || '';
     const roundedEpochMs = Math.round(currentEpochMs);
@@ -39,12 +42,30 @@ export default function CameraCardFeed({
     const isSkippingGapRef = useRef(false);
     currentRelativeMsRef.current = currentEpochMs - baseEpochMs;
 
-    const stationSegments = station.segments || [];
+    const stationSegments = recordingSegments[station?.id] || station?.segments || [];
     const isInRecordingSegment = stationSegments.some(seg => {
         const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
         const e = seg.endEpochMs ?? seg.endEpoch ?? 0;
         return currentEpochMs >= s && currentEpochMs <= e;
     });
+
+    const applyAudioToVideo = useCallback(() => {
+        if (!videoRef.current) return;
+        const audio = getAudioSettings();
+        videoRef.current.volume = audio.volume;
+        videoRef.current.muted = audio.isMuted;
+    }, []);
+
+    useEffect(() => {
+        const handleAudioChange = (e) => {
+            if (videoRef.current && e.detail) {
+                videoRef.current.volume = e.detail.volume;
+                videoRef.current.muted = e.detail.isMuted;
+            }
+        };
+        window.addEventListener('itb-audio-state-changed', handleAudioChange);
+        return () => window.removeEventListener('itb-audio-state-changed', handleAudioChange);
+    }, []);
 
     useEffect(() => {
         if (isOffline || !roundedEpochMs || !stationName) return;
@@ -103,6 +124,7 @@ export default function CameraCardFeed({
         };
     }, [stationName, roundedEpochMs, isOffline, isPlaying]);
 
+    // 💡 פתיחת ורענון הסטרים עם speed ולוג Console
     useEffect(() => {
         if (!stationName || !isSolo) return;
 
@@ -111,7 +133,8 @@ export default function CameraCardFeed({
         if (isPlaying && !isSpotlightActive && isInRecordingSegment) {
             const initialSeekMs = currentRelativeMsRef.current;
             streamStartOffsetMsRef.current = initialSeekMs;
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&_t=${Date.now()}`;
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&speed=${playbackSpeed}&_t=${Date.now()}`;
+            console.log(`[CameraCardFeed] 🎥 Loading stream (${stationName}) at ${playbackSpeed}x:`, url);
             setStreamSrc(url);
             setIsVideoReady(false);
 
@@ -130,7 +153,7 @@ export default function CameraCardFeed({
         return () => {
             if (safetyTimeout) clearTimeout(safetyTimeout);
         };
-    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
+    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, playbackSpeed]);
 
     const handleTimeUpdate = () => {
         const video = videoRef.current;
@@ -138,17 +161,16 @@ export default function CameraCardFeed({
 
         if (!isVideoReady) setIsVideoReady(true);
 
-        let calculatedMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * 1000);
+        let calculatedMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * playbackSpeed * 1000);
         const curEpoch = baseEpochMs + calculatedMs;
 
-        // דילוג רציף מעל כל פער חיתוך גלובלי
         const activeGap = globalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
         if (activeGap) {
             isSkippingGapRef.current = true;
             const gapEndOffsetMs = activeGap.endEpochMs - baseEpochMs;
             setPlayheadMs(gapEndOffsetMs);
             streamStartOffsetMsRef.current = gapEndOffsetMs;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&_t=${Date.now()}`;
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&speed=${playbackSpeed}&_t=${Date.now()}`;
             setStreamSrc(newUrl);
             setIsVideoReady(false);
 
@@ -178,7 +200,7 @@ export default function CameraCardFeed({
             const nextMs = nextSeg.start - baseEpochMs;
             setPlayheadMs(nextMs);
             streamStartOffsetMsRef.current = nextMs;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + nextMs}&_t=${Date.now()}`;
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + nextMs}&speed=${playbackSpeed}&_t=${Date.now()}`;
             setStreamSrc(newUrl);
             setIsVideoReady(false);
 
@@ -219,6 +241,12 @@ export default function CameraCardFeed({
                     }}
                     playsInline
                     autoPlay
+                    onCanPlay={() => {
+                        applyAudioToVideo();
+                        if (isPlaying && videoRef.current) {
+                            videoRef.current.play().catch(() => { });
+                        }
+                    }}
                     onPlaying={() => setIsVideoReady(true)}
                     onTimeUpdate={handleTimeUpdate}
                     onEnded={handleVideoEnded}

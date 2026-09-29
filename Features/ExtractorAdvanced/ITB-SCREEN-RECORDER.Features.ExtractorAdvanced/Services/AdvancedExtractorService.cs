@@ -57,6 +57,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         public int Width { get; set; } = 1920;
         public int Height { get; set; } = 1080;
         public double Fps { get; set; } = 30.0;
+        public bool IsVfr { get; set; } = false; // 💡 זיהוי קצב פריימים משתנה
         public string PixFmt { get; set; } = "yuv420p";
         public bool HasAudio { get; set; } = false;
         public int AudioSampleRate { get; set; } = 48000;
@@ -73,6 +74,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
         private static readonly SemaphoreSlim _localVisualThrottle = new(4, 4);
+        private static readonly SemaphoreSlim _probeThrottle = new(6, 6);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
@@ -168,7 +170,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             string ffmpegPath = ResolveFfmpegBinary();
 
-            // החזרת NO SIGNAL ישירה באפס השהייה כאשר הזמן נופל בתוך Gap
             if (matchingChunk == null)
             {
                 byte[] noSignal = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
@@ -477,6 +478,58 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             return plan;
         }
 
+        // 💡 פונקציית דגימה מהירה במטמון לכל עמדה
+        public async Task<ProbedStationMetadata> GetOrProbeStationMetadataAsync(
+            string hostname,
+            DateTime startUtc,
+            DateTime endUtc,
+            CancellationToken ct = default)
+        {
+            string cacheKey = $"station_probe_meta_{hostname}";
+            if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out ProbedStationMetadata? cached) && cached != null)
+            {
+                return cached;
+            }
+
+            await _probeThrottle.WaitAsync(ct);
+            try
+            {
+                if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out cached) && cached != null)
+                {
+                    return cached;
+                }
+
+                var chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc, endUtc);
+                if (chunks.Count == 0)
+                {
+                    chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc.AddHours(-48), endUtc.AddHours(24));
+                }
+
+                var sampleChunk = chunks
+                    .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath) && c.FileSizeBytes > 4096)
+                    .OrderByDescending(c => c.StartUtc)
+                    .FirstOrDefault();
+
+                if (sampleChunk == null)
+                {
+                    return new ProbedStationMetadata();
+                }
+
+                var probed = await ProbeMediaFileDirectlyAsync(sampleChunk.FullPath, hostname, ct);
+                _memoryCache?.Set(cacheKey, probed, TimeSpan.FromMinutes(15));
+                return probed;
+            }
+            catch (Exception ex)
+            {
+                _advancedLogger.LogWarning(ex, "[ProbeStation] Failed probing station '{Host}'", hostname);
+                return new ProbedStationMetadata();
+            }
+            finally
+            {
+                _probeThrottle.Release();
+            }
+        }
+
         public async Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(string filePath, string stationId, CancellationToken ct)
         {
             var meta = new ProbedStationMetadata();
@@ -505,7 +558,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 string json = sb.ToString();
                 if (string.IsNullOrWhiteSpace(json))
                 {
-                    _advancedLogger.LogWarning("[FFprobe Direct Probe] Empty output for '{File}'. Using defaults.", filePath);
                     return meta;
                 }
 
@@ -518,32 +570,62 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         if (!stream.TryGetProperty("codec_type", out var typeProp)) continue;
                         string type = typeProp.GetString() ?? "";
 
-                        if (type == "video" && !foundVideo)
+                        if (type.Equals("video", StringComparison.OrdinalIgnoreCase) && !foundVideo)
                         {
                             foundVideo = true;
-                            if (stream.TryGetProperty("width", out var w)) meta.Width = w.GetInt32();
-                            if (stream.TryGetProperty("height", out var h)) meta.Height = h.GetInt32();
+                            if (stream.TryGetProperty("width", out var w) && w.TryGetInt32(out int wVal)) meta.Width = wVal;
+                            if (stream.TryGetProperty("height", out var h) && h.TryGetInt32(out int hVal)) meta.Height = hVal;
                             if (stream.TryGetProperty("pix_fmt", out var pf)) meta.PixFmt = pf.GetString() ?? "yuv420p";
 
-                            if (stream.TryGetProperty("r_frame_rate", out var rfr) && ParseFpsFraction(rfr.GetString(), out double rFps))
+                            // ✅ אתחול מקדים של משתני ה-FPS כדי למנוע את שגיאת CS0165
+                            double aFps = 0.0;
+                            double rFps = 0.0;
+
+                            bool hasAvg = stream.TryGetProperty("avg_frame_rate", out var afr) &&
+                                          ParseFpsFraction(afr.GetString(), out aFps) && aFps > 0 && aFps <= 240;
+
+                            bool hasR = stream.TryGetProperty("r_frame_rate", out var rfr) &&
+                                        ParseFpsFraction(rfr.GetString(), out rFps) && rFps > 0 && rFps <= 240;
+
+                            if (hasAvg && aFps >= 5 && aFps <= 120)
                             {
-                                meta.Fps = rFps;
+                                meta.Fps = Math.Round(aFps, 2);
                             }
-                            else if (stream.TryGetProperty("avg_frame_rate", out var afr) && ParseFpsFraction(afr.GetString(), out double aFps))
+                            else if (hasR && rFps >= 5 && rFps <= 120)
                             {
-                                meta.Fps = aFps;
+                                meta.Fps = Math.Round(rFps, 2);
+                            }
+                            else if (hasAvg)
+                            {
+                                meta.Fps = Math.Round(aFps, 2);
+                            }
+                            else if (hasR)
+                            {
+                                meta.Fps = Math.Round(rFps, 2);
+                            }
+
+                            if (hasAvg && hasR && Math.Abs(aFps - rFps) > 0.8)
+                            {
+                                meta.IsVfr = true;
+                            }
+                            else if (stream.TryGetProperty("r_frame_rate", out var rawRfr) &&
+                                     ParseFpsFraction(rawRfr.GetString(), out double rawR) && rawR > 120 && meta.Fps <= 60)
+                            {
+                                meta.IsVfr = true;
                             }
                         }
-                        else if (type == "audio")
+                        else if (type.Equals("audio", StringComparison.OrdinalIgnoreCase))
                         {
                             meta.HasAudio = true;
-                            if (stream.TryGetProperty("sample_rate", out var sr) && int.TryParse(sr.GetString(), out int srVal) && srVal > 0)
+                            if (stream.TryGetProperty("sample_rate", out var sr))
                             {
-                                meta.AudioSampleRate = srVal;
+                                if (sr.ValueKind == JsonValueKind.Number && sr.TryGetInt32(out int srNum)) meta.AudioSampleRate = srNum;
+                                else if (sr.ValueKind == JsonValueKind.String && int.TryParse(sr.GetString(), out int srVal) && srVal > 0) meta.AudioSampleRate = srVal;
                             }
                             if (stream.TryGetProperty("channels", out var ch))
                             {
-                                meta.AudioChannels = ch.GetInt32();
+                                if (ch.ValueKind == JsonValueKind.Number && ch.TryGetInt32(out int chVal)) meta.AudioChannels = chVal;
+                                else if (ch.ValueKind == JsonValueKind.String && int.TryParse(ch.GetString(), out int chStrVal)) meta.AudioChannels = chStrVal;
                             }
                             if (stream.TryGetProperty("codec_name", out var cn))
                             {

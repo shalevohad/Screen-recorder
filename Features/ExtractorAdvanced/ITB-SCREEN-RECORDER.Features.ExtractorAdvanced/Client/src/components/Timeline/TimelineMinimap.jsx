@@ -14,9 +14,7 @@ export default function TimelineMinimap({
     inPointMs = 0,
     outPointMs = 3600000,
     playheadMs = 0,
-    onStartDragMinimap,
-    onFitCut,
-    onResetZoom
+    onStartDragMinimap
 }) {
     // חישובי מיקומים באחוזים מתוך כלל הסשן
     const inPercent = Math.max(0, Math.min(100, (inPointMs / totalDurationMs) * 100));
@@ -47,74 +45,52 @@ export default function TimelineMinimap({
     const showVpEnd = isZoomed && vpWidthPercent >= 12 && !isVpEndColliding;
 
     return (
-        <>
+        <div
+            ref={minimapRef}
+            className="overview-track-canvas"
+            onMouseDown={(e) => onStartDragMinimap && onStartDragMinimap('minimap-viewport', e)}
+        >
+            {/* 1. מקטע החיתוך (Cut Highlight) */}
             <div
-                ref={minimapRef}
-                className="overview-track-canvas"
-                onMouseDown={(e) => onStartDragMinimap && onStartDragMinimap('minimap-viewport', e)}
+                className="minimap-cut-highlight"
+                style={{ left: `${inPercent}%`, width: `${cutWidthPercent}%` }}
             >
-                {/* 1. מקטע החיתוך (Cut Highlight) */}
-                <div
-                    className="minimap-cut-highlight"
-                    style={{ left: `${inPercent}%`, width: `${cutWidthPercent}%` }}
-                >
-                    {showCutIn && (
-                        <span className="minimap-time-tag cut-in-tag">
-                            {formatTimelineClock(baseEpochMs + inPointMs, timeMode)}
-                        </span>
-                    )}
+                {showCutIn && (
+                    <span className="minimap-time-tag cut-in-tag">
+                        {formatTimelineClock(baseEpochMs + inPointMs, timeMode)}
+                    </span>
+                )}
 
-                    {showCutOut && (
-                        <span className="minimap-time-tag cut-out-tag">
-                            {formatTimelineClock(baseEpochMs + outPointMs, timeMode)}
-                        </span>
-                    )}
-                </div>
-
-                {/* 2. חלון ה-Viewport המוזז */}
-                <div
-                    className="minimap-viewport-box"
-                    style={{ left: `${vpStartPercent}%`, width: `${vpWidthPercent}%` }}
-                >
-                    {showVpStart && (
-                        <span className="minimap-time-tag viewport-tag left">
-                            {formatTimelineClock(baseEpochMs + viewportStartMs, timeMode)}
-                        </span>
-                    )}
-
-                    {showVpEnd && (
-                        <span className="minimap-time-tag viewport-tag right">
-                            {formatTimelineClock(baseEpochMs + viewportStartMs + viewportDurationMs, timeMode)}
-                        </span>
-                    )}
-                </div>
-
-                {/* 3. מחט המיקום (Playhead Needle) */}
-                <div
-                    className="minimap-needle"
-                    style={{ left: `${(playheadMs / totalDurationMs) * 100}%` }}
-                />
+                {showCutOut && (
+                    <span className="minimap-time-tag cut-out-tag">
+                        {formatTimelineClock(baseEpochMs + outPointMs, timeMode)}
+                    </span>
+                )}
             </div>
 
-            {/* כפתורי הזום */}
-            <div className="timeline-zoom-controls">
-                <button
-                    type="button"
-                    onClick={onFitCut}
-                    className="btn-zoom-action fit"
-                    title="Fit cut region to center viewport"
-                >
-                    FIT
-                </button>
-                <button
-                    type="button"
-                    onClick={onResetZoom}
-                    className="btn-zoom-action reset"
-                    title="Reset zoom to full session"
-                >
-                    RESET
-                </button>
+            {/* 2. חלון ה-Viewport המוזז */}
+            <div
+                className="minimap-viewport-box"
+                style={{ left: `${vpStartPercent}%`, width: `${vpWidthPercent}%` }}
+            >
+                {showVpStart && (
+                    <span className="minimap-time-tag viewport-tag left">
+                        {formatTimelineClock(baseEpochMs + viewportStartMs, timeMode)}
+                    </span>
+                )}
+
+                {showVpEnd && (
+                    <span className="minimap-time-tag viewport-tag right">
+                        {formatTimelineClock(baseEpochMs + viewportStartMs + viewportDurationMs, timeMode)}
+                    </span>
+                )}
             </div>
-        </>
+
+            {/* 3. מחט המיקום (Playhead Needle) */}
+            <div
+                className="minimap-needle"
+                style={{ left: `${(playheadMs / totalDurationMs) * 100}%` }}
+            />
+        </div>
     );
 }

@@ -1,35 +1,116 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/TransportBar/TransportBar.jsx
 // ==========================================
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { getAudioSettings, saveAudioSettings } from '../../utils/studioSessionStore.js';
 import './TransportBar.scss';
+
+const SPEED_STEPS = [0.5, 1, 1.25, 1.5, 2, 4];
 
 export default function TransportBar({
     activeStationId,
     isPlaying,
     setIsPlaying,
-    isLooping,        // 💡 סטייט ה-Loop
-    setIsLooping,     // 💡 פונקציית עדכון ה-Loop
+    isLooping = true,
+    setIsLooping,
     onStepFrameForward,
     onStepFrameBackward,
     playbackSpeed = 1,
     onChangeSpeed
 }) {
-    const [volume, setVolume] = useState(1);
-    const [isMuted, setIsMuted] = useState(false);
+    const [audioState, setAudioState] = useState(() => getAudioSettings());
+    const { volume, isMuted } = audioState;
 
     const isEnabled = Boolean(activeStationId);
 
-    const handlePlayPause = () => {
+    useEffect(() => {
+        const handleAudioSync = (e) => {
+            if (e.detail) {
+                setAudioState(e.detail);
+            }
+        };
+        window.addEventListener('itb-audio-state-changed', handleAudioSync);
+        return () => window.removeEventListener('itb-audio-state-changed', handleAudioSync);
+    }, []);
+
+    const updateAudio = useCallback((newVolume, newMuted) => {
+        const updated = {
+            volume: typeof newVolume === 'number' ? newVolume : volume,
+            isMuted: typeof newMuted === 'boolean' ? newMuted : isMuted
+        };
+        setAudioState(updated);
+        saveAudioSettings(updated);
+    }, [volume, isMuted]);
+
+    const handlePlayPause = (e) => {
+        e?.stopPropagation();
         if (!isEnabled) return;
         setIsPlaying(!isPlaying);
     };
 
-    const handleCycleSpeed = () => {
-        if (!isEnabled || !onChangeSpeed) return;
-        const speeds = [0.5, 1, 2, 4, 8];
-        const nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.length;
-        onChangeSpeed(speeds[nextIdx]);
+    const handleCycleSpeed = (e) => {
+        e?.stopPropagation();
+        console.log(`[TransportBar] ⚡ Speed clicked. isEnabled: ${isEnabled}, current: ${playbackSpeed}x`);
+
+        if (!isEnabled || !onChangeSpeed) {
+            console.warn('[TransportBar] Speed change blocked:', { isEnabled, hasOnChangeSpeed: Boolean(onChangeSpeed) });
+            return;
+        }
+
+        const currentIdx = SPEED_STEPS.indexOf(playbackSpeed);
+        const nextIdx = currentIdx === -1 ? 1 : (currentIdx + 1) % SPEED_STEPS.length;
+        const nextSpeed = SPEED_STEPS[nextIdx];
+
+        console.log(`[TransportBar] 🚀 Cycling speed: ${playbackSpeed}x ➔ ${nextSpeed}x`);
+        onChangeSpeed(nextSpeed);
+    };
+
+    const handleToggleMute = (e) => {
+        e?.stopPropagation();
+        if (isMuted) {
+            updateAudio(volume === 0 ? 0.5 : volume, false);
+        } else {
+            updateAudio(volume, true);
+        }
+    };
+
+    const handleVolumeSliderChange = (e) => {
+        e.stopPropagation();
+        const val = parseFloat(e.target.value);
+        if (val === 0) {
+            updateAudio(0, true);
+        } else {
+            updateAudio(val, false);
+        }
+    };
+
+    const renderSpeakerIcon = () => {
+        if (isMuted || volume === 0) {
+            return (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
+                    <line x1="23" y1="9" x2="17" y2="15" />
+                    <line x1="17" y1="9" x2="23" y2="15" />
+                </svg>
+            );
+        }
+
+        if (volume < 0.5) {
+            return (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                </svg>
+            );
+        }
+
+        return (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+        );
     };
 
     return (
@@ -48,19 +129,21 @@ export default function TransportBar({
             </button>
 
             <div className="transport-controls-cluster">
-                {/* 💡 כפתור Repeat / Loop */}
                 <button
                     type="button"
                     className={`btn-ctrl-action btn-loop ${isLooping ? 'active-loop' : ''}`}
                     disabled={!isEnabled}
-                    onClick={() => setIsLooping && setIsLooping(!isLooping)}
-                    title={isLooping ? 'Repeat/Loop (ON)' : 'Repeat/Loop (OFF)'}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (setIsLooping) setIsLooping(!isLooping);
+                    }}
+                    title={isLooping ? 'Repeat/Loop Range (ON)' : 'Repeat/Loop Range (OFF)'}
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polyline points="17 1 21 5 17 9"></polyline>
-                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-                        <polyline points="7 23 3 19 7 15"></polyline>
-                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                        <polyline points="17 1 21 5 17 9" />
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                        <polyline points="7 23 3 19 7 15" />
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
                     </svg>
                 </button>
 
@@ -70,7 +153,7 @@ export default function TransportBar({
                     type="button"
                     className="btn-ctrl-action"
                     disabled={!isEnabled}
-                    onClick={onStepFrameBackward}
+                    onClick={(e) => { e.stopPropagation(); onStepFrameBackward && onStepFrameBackward(); }}
                     title="Jump Back (5s)"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -83,7 +166,7 @@ export default function TransportBar({
                     type="button"
                     className="btn-ctrl-action"
                     disabled={!isEnabled}
-                    onClick={onStepFrameBackward}
+                    onClick={(e) => { e.stopPropagation(); onStepFrameBackward && onStepFrameBackward(); }}
                     title="Step 1 Frame Back"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -97,7 +180,7 @@ export default function TransportBar({
                     className={`btn-play-hero ${isPlaying ? 'playing' : ''}`}
                     disabled={!isEnabled}
                     onClick={handlePlayPause}
-                    title={isPlaying ? 'Pause' : 'Play'}
+                    title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
                 >
                     {isPlaying ? (
                         <svg viewBox="0 0 24 24" fill="currentColor">
@@ -115,7 +198,7 @@ export default function TransportBar({
                     type="button"
                     className="btn-ctrl-action"
                     disabled={!isEnabled}
-                    onClick={onStepFrameForward}
+                    onClick={(e) => { e.stopPropagation(); onStepFrameForward && onStepFrameForward(); }}
                     title="Step 1 Frame Forward"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -128,7 +211,7 @@ export default function TransportBar({
                     type="button"
                     className="btn-ctrl-action"
                     disabled={!isEnabled}
-                    onClick={onStepFrameForward}
+                    onClick={(e) => { e.stopPropagation(); onStepFrameForward && onStepFrameForward(); }}
                     title="Jump Forward (5s)"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -142,25 +225,11 @@ export default function TransportBar({
                 <div className="audio-control-cluster">
                     <button
                         type="button"
-                        className="btn-audio-mute"
-                        onClick={() => setIsMuted(!isMuted)}
-                        title={isMuted ? 'Unmute' : 'Mute'}
+                        className={`btn-audio-mute ${isMuted || volume === 0 ? 'is-muted' : ''}`}
+                        onClick={handleToggleMute}
+                        title={isMuted ? 'Unmute' : `Mute (${Math.round(volume * 100)}%)`}
                     >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            {isMuted ? (
-                                <>
-                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-                                    <line x1="23" y1="9" x2="17" y2="15" />
-                                    <line x1="17" y1="9" x2="23" y2="15" />
-                                </>
-                            ) : (
-                                <>
-                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-                                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                                </>
-                            )}
-                        </svg>
+                        {renderSpeakerIcon()}
                     </button>
                     <input
                         type="range"
@@ -168,11 +237,9 @@ export default function TransportBar({
                         max="1"
                         step="0.05"
                         value={isMuted ? 0 : volume}
-                        onChange={(e) => {
-                            setVolume(parseFloat(e.target.value));
-                            if (isMuted) setIsMuted(false);
-                        }}
+                        onChange={handleVolumeSliderChange}
                         className="volume-slider"
+                        title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
                     />
                 </div>
             )}

@@ -18,6 +18,8 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
+		<!-- 💡 הוספת ההפניה המפורשת למניעת שגיאת טעינת ה-EventLog בסביבה מבודדת -->
+		<PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
 	</ItemGroup>
 
 	<ItemGroup>

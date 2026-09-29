@@ -23,12 +23,12 @@ export default function TimelineRuler({
     onHoverChange,
     onSeek,
     inPointMs,
-    outPointMs
+    outPointMs,
+    earliestMediaMs = null
 }) {
     const rulerRef = useRef(null);
     const [pixelWidth, setPixelWidth] = useState(1000);
 
-    // 💡 מדידה דינמית של רוחב הרולר בפועל למניעת צפיפות בכל גודל מסך
     useEffect(() => {
         if (!rulerRef.current) return;
         const ro = new ResizeObserver(entries => {
@@ -67,7 +67,6 @@ export default function TimelineRuler({
         onSeek(Math.max(0, Math.min(totalDurationMs, seekMs)));
     };
 
-    // 💡 חישוב מרווח שנתות מרווח (לפחות 85px מרווח לכל תווית שעה!)
     const tickIntervalMs = useMemo(() => {
         const maxLabels = Math.max(3, Math.floor(pixelWidth / 85));
         const targetInterval = viewportDurationMs / maxLabels;
@@ -89,7 +88,6 @@ export default function TimelineRuler({
         return result;
     }, [viewportStartMs, viewportDurationMs, tickIntervalMs]);
 
-    // זיהוי מעברי חצות (תאריך חדש)
     const dateBoundaries = useMemo(() => {
         if (!viewportDurationMs || !baseEpochMs) return [];
 
@@ -126,6 +124,12 @@ export default function TimelineRuler({
 
         return boundaries;
     }, [baseEpochMs, viewportStartMs, viewportDurationMs, timeMode]);
+
+    // בדיקה האם נקודת ההקלטה הראשונה גלויה בחלון הזום הנוכחי
+    const isFirstMediaVisible = earliestMediaMs !== null &&
+        earliestMediaMs >= viewportStartMs &&
+        earliestMediaMs <= (viewportStartMs + viewportDurationMs);
+    const firstMediaPct = isFirstMediaVisible ? toPercent(earliestMediaMs) : null;
 
     const hoverPercent = hoverMs !== null ? toPercent(hoverMs) : null;
     const isHoverVisible = hoverPercent !== null && hoverPercent >= 0 && hoverPercent <= 100;
@@ -171,6 +175,26 @@ export default function TimelineRuler({
                         </div>
                     </div>
                 ))}
+
+                {/* 💡 סמן סיכה טקטי נקי ומדויק לנקודת ההקלטה המוקדמת ביותר */}
+                {isFirstMediaVisible && (
+                    <div
+                        className="ruler-first-media-pin"
+                        style={{ left: `${firstMediaPct}%` }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onSeek) onSeek(earliestMediaMs);
+                        }}
+                        title={`First Media Recorded: ${formatTimelineClock(baseEpochMs + earliestMediaMs, timeMode)} (Click to jump)`}
+                    >
+                        <div className="pin-head">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="12 18 6 6 18 6 12 18" />
+                            </svg>
+                        </div>
+                        <div className="pin-line" />
+                    </div>
+                )}
             </div>
 
             {isHoverVisible && (

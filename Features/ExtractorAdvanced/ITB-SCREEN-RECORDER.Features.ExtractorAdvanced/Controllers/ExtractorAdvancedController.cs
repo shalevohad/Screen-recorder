@@ -1,19 +1,20 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs
 // ==========================================
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using ITB_SCREEN_RECORDER.Features.Extractor.Services;
-using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
-using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 {
@@ -39,7 +40,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         // =========================================================================
-        // 1. איתור תחנות וסגמנטים (Fast & Lazy Discovery)
+        // 1. איתור תחנות עם מטא-דאטה אמיתי של אודיו ו-Feed Specs
         // =========================================================================
 
         [HttpGet("stations")]
@@ -64,23 +65,56 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
 
-                var stations = availableHosts.Select(host => new
+                // 💡 שליפת מטא-דאטה אמיתי במקביל ומבוקר לכלל העמדות (Cached & Throttled)
+                var probeTasks = availableHosts.Select(async host =>
                 {
-                    id = host,
-                    hostname = host,
-                    displayName = host,
-                    isOnline = true,
-                    recordingsCount = 0,
-                    segments = Array.Empty<object>()
-                }).ToList();
+                    var meta = await _advancedExtractorService.GetOrProbeStationMetadataAsync(host, startUtc, endUtc, ct);
+                    string resLabel = FormatResolution(meta.Width, meta.Height);
+                    string fpsLabel = meta.IsVfr ? $"~{Math.Round(meta.Fps)}fps" : $"{Math.Round(meta.Fps)}fps";
+                    string feedSpec = $"{resLabel} • {fpsLabel}";
+                    string audioLabel = meta.HasAudio
+                        ? (meta.AudioCodec.ToUpperInvariant() == "AAC" ? "AAC" : meta.AudioCodec.ToUpperInvariant())
+                        : "NONE";
 
-                return Ok(stations);
+                    return new
+                    {
+                        id = host,
+                        hostname = host,
+                        displayName = host,
+                        isOnline = true,
+                        recordingsCount = 0,
+                        segments = Array.Empty<object>(),
+                        hasAudio = meta.HasAudio,
+                        audioCodec = meta.AudioCodec,
+                        audioChannels = meta.AudioChannels,
+                        audioLabel = audioLabel,
+                        width = meta.Width,
+                        height = meta.Height,
+                        fps = meta.Fps,
+                        isVfr = meta.IsVfr,
+                        resolution = resLabel,
+                        feedSpec = feedSpec
+                    };
+                });
+
+                var stations = await Task.WhenAll(probeTasks);
+                return Ok(stations.OrderBy(s => s.hostname).ToList());
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[API:Stations] Failed scanning storage for stations.");
                 return StatusCode(500, "Error scanning storage directories.");
             }
+        }
+
+        private static string FormatResolution(int width, int height)
+        {
+            if (height >= 2100 || width >= 3800) return "4K";
+            if (height >= 1400 || width >= 2500) return "1440p";
+            if (height >= 1050 || width >= 1900) return "1080p";
+            if (height >= 700 || width >= 1260) return "720p";
+            if (width > 0 && height > 0) return $"{width}x{height}";
+            return "1080p";
         }
 
         [HttpGet("timeline-segments")]
@@ -254,6 +288,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] double startEpoch,
             [FromQuery] double endEpoch,
             [FromQuery] double? seekEpoch = null,
+            [FromQuery] double speed = 1.0,
             CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
@@ -265,6 +300,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 Response.StatusCode = 400;
                 return;
             }
+
+            double safeSpeed = speed > 0 ? speed : 1.0;
+
+            _logger.LogInformation("[Stream:Start] Host: {Host}, Speed: {Speed}x, Start: {Start}, Seek: {Seek}, End: {End}",
+                hostname, safeSpeed, lStart, lSeek, lEnd);
 
             long effectiveStartEpoch = lSeek.HasValue && lSeek.Value >= lStart && lSeek.Value < lEnd
                 ? lSeek.Value
@@ -285,8 +325,29 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             Response.Headers.Append("X-Content-Type-Options", "nosniff");
 
             string ffmpegPath = _advancedExtractorService.ResolveFfmpegBinary();
-            string arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                               $"-c copy -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+            string arguments;
+
+            if (Math.Abs(safeSpeed - 1.0) < 0.05)
+            {
+                arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-c copy -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+            }
+            else
+            {
+                int step = (int)Math.Round(safeSpeed);
+                double ptsScale = 1.0 / safeSpeed;
+                string ptsScaleStr = ptsScale.ToString("0.000", CultureInfo.InvariantCulture);
+
+                string vfFilter = step > 1
+                    ? $"framestep={step},setpts={ptsScaleStr}*PTS"
+                    : $"setpts={ptsScaleStr}*PTS";
+
+                arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-vf \"{vfFilter}\" -an -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p " +
+                            $"-movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+            }
+
+            _logger.LogInformation("[Stream:FFmpeg] Running command: {Binary} {Args}", ffmpegPath, arguments);
 
             var startInfo = new ProcessStartInfo
             {
@@ -307,7 +368,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Client closed stream for {Host}", hostname);
+                _logger.LogInformation("[Stream:Stop] Client closed stream for {Host}", hostname);
             }
             finally
             {

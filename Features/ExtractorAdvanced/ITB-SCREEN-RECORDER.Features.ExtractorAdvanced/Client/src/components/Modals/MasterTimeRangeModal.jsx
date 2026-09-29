@@ -8,9 +8,6 @@ import './MasterTimeRangeModal.scss';
 const MAX_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7 ימים (שבוע)
 const pad = (n) => String(n).padStart(2, '0');
 
-/**
- * המרת אובייקט Date למחרוזת שמתאימה ל-input datetime-local (YYYY-MM-DDTHH:mm:ss)
- */
 const toInputDateTime = (d, mode) => {
     if (!d || isNaN(d.getTime())) return '';
     if (mode === 'UTC') {
@@ -31,9 +28,6 @@ const toInputDateTime = (d, mode) => {
     return `${y}-${m}-${day}T${hh}:${mm}:${ss}`;
 };
 
-/**
- * פענוח מחרוזת datetime-local לאובייקט Date
- */
 const parseInputDateTime = (dtStr, mode) => {
     if (!dtStr) return null;
     const parts = dtStr.split('T');
@@ -88,7 +82,6 @@ export default function MasterTimeRangeModal({
             setEndDateTime(toInputDateTime(endObj, timeMode));
             setActivePreset(null);
         } else {
-            // ברירת מחדל מערכתית: שבוע אחורה עד הרגע הנוכחי
             const endObj = new Date();
             const startObj = new Date(endObj.getTime() - MAX_WINDOW_MS);
 
@@ -98,7 +91,6 @@ export default function MasterTimeRangeModal({
         }
     }, [isOpen, currentRange, timeMode]);
 
-    // חישוב משך הזמן הנבחר להצגה חזותית בימים ושעות
     const currentDurationFormatted = useMemo(() => {
         const startObj = parseInputDateTime(startDateTime, timeMode);
         const endObj = parseInputDateTime(endDateTime, timeMode);
@@ -140,13 +132,10 @@ export default function MasterTimeRangeModal({
 
         const diffMs = endObj.getTime() - startObj.getTime();
 
-        // יישור אוטומטי של תאריך הסיום אם חרגנו מ-7 ימים
         if (diffMs > MAX_WINDOW_MS) {
             alert('The selected scope exceeds 7 days (168 hours).\nThe End Point has been automatically adjusted.');
             setEndDateTime(toInputDateTime(new Date(startObj.getTime() + MAX_WINDOW_MS), timeMode));
-        }
-        // מונע בחירת נקודת התחלה שמאוחרת מנקודת הסיום
-        else if (diffMs <= 0) {
+        } else if (diffMs <= 0) {
             setEndDateTime(toInputDateTime(new Date(startObj.getTime() + (3600 * 1000)), timeMode));
         }
     };
@@ -162,13 +151,10 @@ export default function MasterTimeRangeModal({
 
         const diffMs = endObj.getTime() - startObj.getTime();
 
-        // יישור אוטומטי של תאריך ההתחלה אם חרגנו מ-7 ימים
         if (diffMs > MAX_WINDOW_MS) {
             alert('The selected scope exceeds 7 days (168 hours).\nThe Start Point has been automatically adjusted.');
             setStartDateTime(toInputDateTime(new Date(endObj.getTime() - MAX_WINDOW_MS), timeMode));
-        }
-        // מונע בחירת נקודת סיום שמוקדמת לנקודת ההתחלה
-        else if (diffMs <= 0) {
+        } else if (diffMs <= 0) {
             setStartDateTime(toInputDateTime(new Date(endObj.getTime() - (3600 * 1000)), timeMode));
         }
     };
@@ -207,7 +193,8 @@ export default function MasterTimeRangeModal({
     const isUtc = timeMode === 'UTC';
 
     return createPortal(
-        <div className="modal-backdrop-overlay" onClick={onClose} dir="ltr">
+        /* ביטול סגירה בלחיצה על הרקע — הסגירה רק דרך Cancel או כפתור X */
+        <div className="modal-backdrop-overlay" dir="ltr">
             <div className="master-time-modal-card" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <div className="title-block">

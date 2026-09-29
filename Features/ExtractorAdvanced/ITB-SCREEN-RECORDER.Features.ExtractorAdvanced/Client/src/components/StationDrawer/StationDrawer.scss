@@ -78,6 +78,68 @@
             }
         }
     }
+    /* סרגל פעולות מהיר קבוע בראש המגירה הצרה */
+    .drawer-quick-actions-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        background: rgba(10, 15, 29, 0.75);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        flex-shrink: 0;
+
+        .btn-quick-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 3px 8px;
+            cursor: pointer;
+            transition: all 0.18s;
+
+            svg {
+                width: 10px;
+                height: 10px;
+            }
+
+            &.select-all {
+                color: #22d3ee;
+                border-color: rgba(6, 182, 212, 0.25);
+
+                &:hover:not(:disabled) {
+                    background: rgba(6, 182, 212, 0.18);
+                    color: #f8fafc;
+                    border-color: #06b6d4;
+                }
+            }
+
+            &.clear {
+                color: #fda4af;
+                border-color: rgba(244, 63, 94, 0.2);
+
+                &:hover:not(:disabled) {
+                    background: rgba(244, 63, 94, 0.15);
+                    color: #fff;
+                    border-color: #f43f5e;
+                }
+            }
+
+            &:disabled {
+                opacity: 0.35;
+                cursor: not-allowed;
+            }
+        }
+
+        .action-sep {
+            color: rgba(255, 255, 255, 0.15);
+            font-size: 10px;
+        }
+    }
 
     .drawer-thin-progress-bar {
         width: 100%;
@@ -222,7 +284,7 @@
                     margin: 0;
                 }
             }
-            /* באנר סנכרון טקטי */
+
             .hub-sync-banner {
                 margin-bottom: 8px;
                 padding: 6px 12px;
@@ -303,6 +365,84 @@
                         background: linear-gradient(90deg, #06b6d4, #22d3ee);
                         box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
                         transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                    }
+                }
+            }
+            /* סרגל פעולות Select All / Clear במסך מלא */
+            .hub-bulk-actions-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 6px 12px;
+                background: rgba(10, 15, 29, 0.65);
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 6px;
+                margin-bottom: 6px;
+                flex-shrink: 0;
+
+                .bulk-actions-left {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+
+                    .btn-bulk-action {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 4px 10px;
+                        border-radius: 4px;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 10px;
+                        font-weight: 800;
+                        letter-spacing: 0.5px;
+                        cursor: pointer;
+                        transition: all 0.2s;
+
+                        svg {
+                            width: 11px;
+                            height: 11px;
+                        }
+
+                        &.select-all {
+                            background: rgba(6, 182, 212, 0.12);
+                            border: 1px solid rgba(6, 182, 212, 0.35);
+                            color: #22d3ee;
+
+                            &:hover:not(:disabled) {
+                                background: #06b6d4;
+                                color: #020617;
+                                box-shadow: 0 0 12px rgba(6, 182, 212, 0.45);
+                            }
+                        }
+
+                        &.clear {
+                            background: rgba(244, 63, 94, 0.1);
+                            border: 1px solid rgba(244, 63, 94, 0.3);
+                            color: #fda4af;
+
+                            &:hover:not(:disabled) {
+                                background: #f43f5e;
+                                color: #fff;
+                                box-shadow: 0 0 12px rgba(244, 63, 94, 0.45);
+                            }
+                        }
+
+                        &:disabled {
+                            opacity: 0.3;
+                            cursor: not-allowed;
+                        }
+                    }
+                }
+
+                .bulk-actions-right {
+                    .bulk-stats-label {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 10px;
+                        color: #94a3b8;
+
+                        strong {
+                            color: #22d3ee;
+                        }
                     }
                 }
             }
