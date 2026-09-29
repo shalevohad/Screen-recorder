@@ -38,10 +38,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                 // 4. רישום המודול עבור מערך הפלאגינים וממשק ה-UI הראשי
                 services.AddSingleton<IFeatureModule, ExtractorAdvancedModule>();
 
-                // 5. שירותי מנוע העריכה המתקדם
+                // 5. שירותי מנוע העריכה המתקדם (ארכיטקטורה מודולרית)
                 services.AddSingleton<IDummyVideoGenerator, AdvancedDummyVideoGenerator>();
                 services.AddSingleton<INoSignalPatternService, NoSignalPatternService>();
                 services.AddSingleton<IVideoMetadataService, VideoMetadataService>();
+                services.AddSingleton<IMediaProbeService, MediaProbeService>();
+                services.AddSingleton<IBridgeVideoGenerator, BridgeVideoGenerator>();
+                services.AddSingleton<ISynchronizationPlanBuilder, SynchronizationPlanBuilder>();
+                services.AddSingleton<ISynchronizedTrackCutter, SynchronizedTrackCutter>();
                 services.AddSingleton<AdvancedExtractorService>();
 
                 // 6. ניהול משימות NLE וניקוי רקע
@@ -65,7 +69,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
         {
             return app =>
             {
-                // אתחול עצמאי של advance_extractor.db בעליית השרת (Stealth מלא)
                 using (var scope = app.ApplicationServices.CreateScope())
                 {
                     try
@@ -80,7 +83,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                     }
                 }
 
-                // הגשת תוצרי ה-Client בנתיב /extractor-advanced דרך מנגנון הליבה
                 app.UseFeatureStaticAssets(typeof(ExtractorAdvancedStartupFilter).Assembly, "/extractor-advanced");
 
                 next(app);

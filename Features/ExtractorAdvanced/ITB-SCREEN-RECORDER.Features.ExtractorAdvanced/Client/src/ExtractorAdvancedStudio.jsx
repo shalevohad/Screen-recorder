@@ -61,7 +61,6 @@ export default function ExtractorAdvancedStudio() {
     const [zoomLevel, setZoomLevel] = useState(cached.zoomLevel || 1);
     const [viewportStartMs, setViewportStartMs] = useState(cached.viewportStartMs || 0);
 
-    // 💡 תיקון: IN/OUT מתחילים מקצות הטיים-ליין (0 עד total) אלא אם המשתמש חתך במפורש
     const [inPointMs, setInPointMs] = useState(cached.inPointMs !== null && cached.inPointMs !== undefined ? cached.inPointMs : 0);
     const [outPointMs, setOutPointMs] = useState(cached.outPointMs !== null && cached.outPointMs !== undefined ? cached.outPointMs : totalTimelineDurationMs);
     const [playheadMs, setPlayheadMs] = useState(cached.playheadMs !== null && cached.playheadMs !== undefined ? cached.playheadMs : 0);
@@ -217,7 +216,6 @@ export default function ExtractorAdvancedStudio() {
         });
     }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, viewportStartMs, isWorkspaceActive, allStations, isLooping, playbackSpeed]);
 
-    // החלף את בלוק ה-fetchActiveStationsForTimeScope ב-ExtractorAdvancedStudio.jsx:
     const fetchActiveStationsForTimeScope = useCallback(async () => {
         if (isNaN(timelineBaseEpochMs)) return;
         const endEpochMs = timelineBaseEpochMs + totalTimelineDurationMs;
@@ -246,7 +244,6 @@ export default function ExtractorAdvancedStudio() {
                         isOnline: item.isOnline !== undefined ? item.isOnline : true,
                         recordingsCount: item.recordingsCount || 0,
                         segments: item.segments || [],
-                        // 💡 שדות מטא-דאטה אמיתיים מהשרת
                         hasAudio: Boolean(item.hasAudio),
                         audioCodec: item.audioCodec || '',
                         audioChannels: item.audioChannels || 0,
@@ -299,15 +296,7 @@ export default function ExtractorAdvancedStudio() {
         return () => { isMounted = false; };
     }, [stationIdsKey, timelineBaseEpochMs, totalTimelineDurationMs]);
 
-    useEffect(() => {
-        if (selectedStationIds.length === 1 && !activeStationId) {
-            setActiveStationId(selectedStationIds[0]);
-        } else if (selectedStationIds.length === 0 && allStations.length === 1) {
-            setSelectedStationIds([allStations[0].id]);
-            setActiveStationId(allStations[0].id);
-            setIsWorkspaceActive(true);
-        }
-    }, [selectedStationIds, allStations, activeStationId]);
+    // 💡 הסרנו את ה-useEffect הכופה כדי לאפשר מעבר ידני חופשי בין Grid ל-Spotlight
 
     useEffect(() => {
         if (activeStationId && !selectedStationIds.includes(activeStationId)) {
@@ -381,7 +370,13 @@ export default function ExtractorAdvancedStudio() {
 
         if (bm.stationIds && bm.stationIds.length > 0) {
             setSelectedStationIds(bm.stationIds);
-            setActiveStationId(bm.stationIds[0]);
+            if (bm.stationIds.length === 1) {
+                setActiveStationId(bm.stationIds[0]);
+                setSpotlightStationId(bm.stationIds[0]);
+            } else {
+                setActiveStationId(null);
+                setSpotlightStationId(null);
+            }
             setPlaybackSpeed(1);
         }
 
@@ -528,6 +523,16 @@ export default function ExtractorAdvancedStudio() {
                         durationMs={timeRange.durationMs}
                         onApply={() => {
                             if (selectedStationIds.length > 0) {
+                                if (selectedStationIds.length === 1) {
+                                    // 💡 בחירת תחנה בודדת -> פתיחה ישירה ב-Spotlight
+                                    const singleId = selectedStationIds[0];
+                                    setActiveStationId(singleId);
+                                    setSpotlightStationId(singleId);
+                                } else {
+                                    // 💡 בחירת מספר תחנות -> פתיחה במצב Grid
+                                    setActiveStationId(null);
+                                    setSpotlightStationId(null);
+                                }
                                 setIsWorkspaceActive(true);
                                 setIsDrawerOpen(false);
                             }

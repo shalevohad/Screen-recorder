@@ -11,11 +11,8 @@ import { frameStore } from '../../utils/frameStore.js';
 import { getAudioSettings } from '../../utils/studioSessionStore.js';
 import './SoloSpotlightModal.scss';
 
-// ==========================================
-// קבועי מקשי קיצור לחיתוך (Shortcut Keybinds)
-// ==========================================
-export const CUT_KEY_IN = '[';   // מקש קביעת נקודת IN (תחילת חיתוך)
-export const CUT_KEY_OUT = ']';  // מקש קביעת נקודת OUT (סוף חיתוך)
+export const CUT_KEY_IN = '[';
+export const CUT_KEY_OUT = ']';
 
 const formatCutDurationSMPTE = (durationMs, fps = 30) => {
     const totalMs = Math.max(0, durationMs);
@@ -147,6 +144,13 @@ export default function SoloSpotlightModal({
         return () => window.removeEventListener('itb-audio-state-changed', handleAudioChange);
     }, []);
 
+    // 💡 עדכון מהירות הניגון מקומית בלבד (playbackRate)
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.playbackRate = playbackSpeed;
+        }
+    }, [playbackSpeed]);
+
     useEffect(() => {
         if (!isOpen) return;
         document.body.classList.add('itb-spotlight-active');
@@ -204,6 +208,7 @@ export default function SoloSpotlightModal({
         };
     }, [isOpen, station, hostname, baseEpochMs, playheadMs, isPlaying]);
 
+    // 💡 הזרמה תמיד ב-speed=1 קבוע לצורך c copy מהיר ורציף
     useEffect(() => {
         if (!isOpen || !station) return;
 
@@ -217,8 +222,8 @@ export default function SoloSpotlightModal({
             const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
             const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + currentHead)));
 
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=${playbackSpeed}&_t=${Date.now()}`;
-            console.log(`[SoloSpotlightModal] 🎥 Loading stream (${hostname}) at ${playbackSpeed}x:`, url);
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=1&_t=${Date.now()}`;
+            console.log(`[SoloSpotlightModal] 🎥 Loading continuous stream (${hostname}) at 1x:`, url);
 
             setStreamSrc(url);
             setIsVideoReady(false);
@@ -237,7 +242,7 @@ export default function SoloSpotlightModal({
         return () => {
             if (safetyTimeout) clearTimeout(safetyTimeout);
         };
-    }, [isPlaying, isOpen, station, hostname, baseEpochMs, totalDurationMs, isInRecordingSegment, playbackSpeed]);
+    }, [isPlaying, isOpen, station, hostname, baseEpochMs, totalDurationMs, isInRecordingSegment]);
 
     const handleTimeUpdate = () => {
         const video = videoRef.current;
@@ -245,7 +250,7 @@ export default function SoloSpotlightModal({
 
         if (!isVideoReady) setIsVideoReady(true);
 
-        let currentMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * playbackSpeed * 1000);
+        let currentMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * 1000);
         const curEpoch = baseEpochMs + currentMs;
 
         const activeGlobalGap = activeGlobalGaps && activeGlobalGaps.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
@@ -258,7 +263,8 @@ export default function SoloSpotlightModal({
             const startEpochVal = Math.round(baseEpochMs);
             const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
             const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + gapEndMs)));
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=${playbackSpeed}&_t=${Date.now()}`;
+            // 💡 מובטח speed=1 גם בדילוג על Gaps
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=1&_t=${Date.now()}`;
             setStreamSrc(url);
             setIsVideoReady(false);
 
@@ -301,7 +307,8 @@ export default function SoloSpotlightModal({
             const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
             const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + nextMs)));
 
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=${playbackSpeed}&_t=${Date.now()}`;
+            // 💡 מובטח speed=1 גם במעבר למקטע הבא
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=1&_t=${Date.now()}`;
             setStreamSrc(url);
             setIsVideoReady(false);
 
@@ -389,7 +396,6 @@ export default function SoloSpotlightModal({
         }
     }, []);
 
-    // 💡 טיפול בקיצורי המקלדת לפי הקבועים
     useEffect(() => {
         if (!isOpen || !station || allStations.length === 0) return;
 
@@ -432,14 +438,12 @@ export default function SoloSpotlightModal({
             }
 
             if (e.key === CUT_KEY_IN) {
-                // 💡 שימוש בקבוע CUT_KEY_IN
                 e.preventDefault();
                 setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)));
                 return;
             }
 
             if (e.key === CUT_KEY_OUT) {
-                // 💡 שימוש בקבוע CUT_KEY_OUT
                 e.preventDefault();
                 setOutPointMs(Math.min(totalDurationMs, Math.max(playheadMs, inPointMs + 1000)));
                 return;
@@ -503,7 +507,7 @@ export default function SoloSpotlightModal({
                         <video
                             ref={videoRef}
                             src={streamSrc}
-                            className="spotlight-active-video"
+                            className="station-live-frame"
                             style={{
                                 position: 'absolute',
                                 inset: 0,
@@ -514,10 +518,23 @@ export default function SoloSpotlightModal({
                             }}
                             playsInline
                             autoPlay
+                            muted={getAudioSettings().isMuted}
+                            onLoadedData={() => {
+                                setIsVideoReady(true);
+                                if (videoRef.current) {
+                                    videoRef.current.playbackRate = playbackSpeed;
+                                }
+                                if (isPlaying && videoRef.current) {
+                                    videoRef.current.play().catch(err => console.warn("[Video] Play prevented:", err));
+                                }
+                            }}
                             onCanPlay={() => {
                                 applyAudioToVideo();
+                                if (videoRef.current) {
+                                    videoRef.current.playbackRate = playbackSpeed;
+                                }
                                 if (isPlaying && videoRef.current) {
-                                    videoRef.current.play().catch(function () { });
+                                    videoRef.current.play().catch(err => console.warn("[Video] CanPlay prevented:", err));
                                 }
                             }}
                             onPlaying={() => setIsVideoReady(true)}
@@ -557,9 +574,22 @@ export default function SoloSpotlightModal({
                     </div>
 
                     {isPlaying && isInRecordingSegment && !isVideoReady && (
-                        <div className="stream-buffering-overlay" style={{ position: 'absolute', zIndex: 4 }}>
-                            <div className="buffer-spinner" />
-                            <span>BUFFERING STREAM...</span>
+                        <div className="stream-buffering-overlay" style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 10,
+                            background: 'rgba(10, 14, 23, 0.75)',
+                            backdropFilter: 'blur(4px)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '12px'
+                        }}>
+                            <div className="buffer-spinner" style={{ width: '36px', height: '36px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                            <span style={{ fontFamily: 'monospace', fontSize: '12px', letterSpacing: '1.5px', color: '#93c5fd', fontWeight: '600' }}>
+                                CONNECTING & BUFFERING STREAM...
+                            </span>
                         </div>
                     )}
 

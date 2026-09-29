@@ -284,12 +284,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
         [HttpGet("stream")]
         public async Task StreamContinuousStationVideo(
-            [FromQuery] string hostname,
-            [FromQuery] double startEpoch,
-            [FromQuery] double endEpoch,
-            [FromQuery] double? seekEpoch = null,
-            [FromQuery] double speed = 1.0,
-            CancellationToken ct = default)
+    [FromQuery] string hostname,
+    [FromQuery] double startEpoch,
+    [FromQuery] double endEpoch,
+    [FromQuery] double? seekEpoch = null,
+    [FromQuery] double speed = 1.0,
+    CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
             long lEnd = (long)Math.Round(endEpoch);
@@ -329,22 +329,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             if (Math.Abs(safeSpeed - 1.0) < 0.05)
             {
-                arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                            $"-c copy -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+                // 💡 הוספת -fflags +genpts ו- -avoid_negative_ts make_zero לאיפוס זמנים נקי לדפדפן
+                arguments = $"-nostdin -loglevel error -fflags +genpts -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
             else
             {
                 int step = (int)Math.Round(safeSpeed);
                 double ptsScale = 1.0 / safeSpeed;
-                string ptsScaleStr = ptsScale.ToString("0.000", CultureInfo.InvariantCulture);
+                string ptsScaleStr = ptsScale.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
 
                 string vfFilter = step > 1
                     ? $"framestep={step},setpts={ptsScaleStr}*PTS"
                     : $"setpts={ptsScaleStr}*PTS";
 
-                arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                arguments = $"-nostdin -loglevel error -fflags +genpts -flush_packets 1 -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
                             $"-vf \"{vfFilter}\" -an -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p " +
-                            $"-movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+                            $"-avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
 
             _logger.LogInformation("[Stream:FFmpeg] Running command: {Binary} {Args}", ffmpegPath, arguments);

@@ -34,6 +34,7 @@ export default function CameraCardFeed({
     const [streamSrc, setStreamSrc] = useState('');
     const [isVideoReady, setIsVideoReady] = useState(false);
     const [hasError, setHasError] = useState(false);
+    const [isLoadingFrame, setIsLoadingFrame] = useState(false); // 💡 חיווי טעינה לפריים בגריד
 
     const prevIsPlayingRef = useRef(isPlaying);
     const videoRef = useRef(null);
@@ -67,10 +68,17 @@ export default function CameraCardFeed({
         return () => window.removeEventListener('itb-audio-state-changed', handleAudioChange);
     }, []);
 
+    // 💡 עדכון מהירות הניגון מקומית בלבד (playbackRate)
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.playbackRate = playbackSpeed;
+        }
+    }, [playbackSpeed]);
+
     useEffect(() => {
         if (isOffline || !roundedEpochMs || !stationName) return;
 
-        if (isPlaying) {
+        if (isPlaying && isSolo) {
             prevIsPlayingRef.current = true;
             return;
         }
@@ -85,9 +93,12 @@ export default function CameraCardFeed({
         if (cached) {
             setFrameSrc(cached);
             setHasError(false);
+            setIsLoadingFrame(false);
             return;
         }
 
+        // 💡 הפעלת ספינר טעינה כאשר הפריים עדיין לא ב-Cache ונשלף מהשרת
+        setIsLoadingFrame(true);
         const delayMs = wasPlaying ? 50 : 350;
 
         const timer = setTimeout(() => {
@@ -95,6 +106,7 @@ export default function CameraCardFeed({
 
             frameStore.fetchFrame(stationName, roundedEpochMs, abortController.signal).then(res => {
                 if (isMounted) {
+                    setIsLoadingFrame(false);
                     if (res && res !== 'NO_SIGNAL') {
                         setFrameSrc(res);
                         setHasError(false);
@@ -107,6 +119,7 @@ export default function CameraCardFeed({
 
         const unsubscribe = frameStore.subscribe((h, e, val) => {
             if (h === stationName && e === roundedEpochMs && isMounted) {
+                setIsLoadingFrame(false);
                 if (val && val !== 'NO_SIGNAL') {
                     setFrameSrc(val);
                     setHasError(false);
@@ -122,9 +135,9 @@ export default function CameraCardFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [stationName, roundedEpochMs, isOffline, isPlaying]);
+    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo]);
 
-    // 💡 פתיחת ורענון הסטרים עם speed ולוג Console
+    // 💡 הזרמה תמיד ב-speed=1 קבוע לצורך c copy מהיר ורציף
     useEffect(() => {
         if (!stationName || !isSolo) return;
 
@@ -133,8 +146,7 @@ export default function CameraCardFeed({
         if (isPlaying && !isSpotlightActive && isInRecordingSegment) {
             const initialSeekMs = currentRelativeMsRef.current;
             streamStartOffsetMsRef.current = initialSeekMs;
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&speed=${playbackSpeed}&_t=${Date.now()}`;
-            console.log(`[CameraCardFeed] 🎥 Loading stream (${stationName}) at ${playbackSpeed}x:`, url);
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&speed=1&_t=${Date.now()}`;
             setStreamSrc(url);
             setIsVideoReady(false);
 
@@ -153,7 +165,7 @@ export default function CameraCardFeed({
         return () => {
             if (safetyTimeout) clearTimeout(safetyTimeout);
         };
-    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, playbackSpeed]);
+    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
 
     const handleTimeUpdate = () => {
         const video = videoRef.current;
@@ -161,7 +173,7 @@ export default function CameraCardFeed({
 
         if (!isVideoReady) setIsVideoReady(true);
 
-        let calculatedMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * playbackSpeed * 1000);
+        let calculatedMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * 1000);
         const curEpoch = baseEpochMs + calculatedMs;
 
         const activeGap = globalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
@@ -170,7 +182,7 @@ export default function CameraCardFeed({
             const gapEndOffsetMs = activeGap.endEpochMs - baseEpochMs;
             setPlayheadMs(gapEndOffsetMs);
             streamStartOffsetMsRef.current = gapEndOffsetMs;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&speed=${playbackSpeed}&_t=${Date.now()}`;
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&speed=1&_t=${Date.now()}`;
             setStreamSrc(newUrl);
             setIsVideoReady(false);
 
@@ -200,7 +212,7 @@ export default function CameraCardFeed({
             const nextMs = nextSeg.start - baseEpochMs;
             setPlayheadMs(nextMs);
             streamStartOffsetMsRef.current = nextMs;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + nextMs}&speed=${playbackSpeed}&_t=${Date.now()}`;
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + nextMs}&speed=1&_t=${Date.now()}`;
             setStreamSrc(newUrl);
             setIsVideoReady(false);
 
@@ -241,10 +253,23 @@ export default function CameraCardFeed({
                     }}
                     playsInline
                     autoPlay
+                    muted={getAudioSettings().isMuted}
+                    onLoadedData={() => {
+                        setIsVideoReady(true);
+                        if (videoRef.current) {
+                            videoRef.current.playbackRate = playbackSpeed;
+                        }
+                        if (isPlaying && videoRef.current) {
+                            videoRef.current.play().catch(err => console.warn("[Video] Play prevented:", err));
+                        }
+                    }}
                     onCanPlay={() => {
                         applyAudioToVideo();
+                        if (videoRef.current) {
+                            videoRef.current.playbackRate = playbackSpeed;
+                        }
                         if (isPlaying && videoRef.current) {
-                            videoRef.current.play().catch(() => { });
+                            videoRef.current.play().catch(err => console.warn("[Video] CanPlay prevented:", err));
                         }
                     }}
                     onPlaying={() => setIsVideoReady(true)}
@@ -273,6 +298,16 @@ export default function CameraCardFeed({
                     <NoSignalHero isPlaying={isPlaying} />
                 ) : null}
             </div>
+
+            {/* 💡 אינדיקטור טעינה לפריים כאשר מתבצעת שליפה (Loading Frame) */}
+            {isLoadingFrame && (!isSolo || !isPlaying || !isVideoReady) && (
+                <div className="feed-buffering-overlay" style={{ zIndex: 5, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(3px)' }}>
+                    <div className="feed-buffer-spinner" style={{ width: '26px', height: '26px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                    <span className="feed-buffer-badge" style={{ fontFamily: 'monospace', fontSize: '10px', letterSpacing: '1px', color: '#93c5fd', marginTop: '6px' }}>
+                        LOADING FRAME...
+                    </span>
+                </div>
+            )}
 
             {isSolo && isPlaying && isInRecordingSegment && !isVideoReady && !isSpotlightActive && (
                 <div className="feed-buffering-overlay" style={{ zIndex: 4 }}>

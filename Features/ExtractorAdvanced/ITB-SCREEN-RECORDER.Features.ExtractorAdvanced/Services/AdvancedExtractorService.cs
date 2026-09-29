@@ -1,12 +1,6 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvancedExtractorService.cs
 // ==========================================
-using ITB_SCREEN_RECORDER.Features.Extractor.Models;
-using ITB_SCREEN_RECORDER.Features.Extractor.Services;
-using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,67 +8,29 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 {
-    public class TimeInterval
-    {
-        public DateTime StartUtc { get; set; }
-        public DateTime EndUtc { get; set; }
-        public double DurationSeconds => Math.Max(0, (EndUtc - StartUtc).TotalSeconds);
-    }
-
-    public class GlobalGapRecord
-    {
-        public int GapIndex { get; set; }
-        public DateTime StartUtc { get; set; }
-        public DateTime EndUtc { get; set; }
-        public double SkippedDurationSeconds { get; set; }
-        public double TimelineOffsetSeconds { get; set; }
-    }
-
-    public class StationGapRecord
-    {
-        public string StationId { get; set; } = string.Empty;
-        public DateTime StartUtc { get; set; }
-        public DateTime EndUtc { get; set; }
-        public double DurationSeconds { get; set; }
-    }
-
-    public class SynchronizationPlan
-    {
-        public List<TimeInterval> ActiveSegments { get; set; } = new();
-        public List<GlobalGapRecord> RemovedGlobalGaps { get; set; } = new();
-        public List<StationGapRecord> StationGaps { get; set; } = new();
-        public double TotalActiveSeconds => ActiveSegments.Sum(s => s.DurationSeconds);
-    }
-
-    public class ProbedStationMetadata
-    {
-        public int Width { get; set; } = 1920;
-        public int Height { get; set; } = 1080;
-        public double Fps { get; set; } = 30.0;
-        public bool IsVfr { get; set; } = false; // 💡 זיהוי קצב פריימים משתנה
-        public string PixFmt { get; set; } = "yuv420p";
-        public bool HasAudio { get; set; } = false;
-        public int AudioSampleRate { get; set; } = 48000;
-        public int AudioChannels { get; set; } = 2;
-        public string AudioCodec { get; set; } = "aac";
-    }
-
     public class AdvancedExtractorService : ExtractorService
     {
         private readonly IDummyVideoGenerator _dummyVideoGenerator;
         private readonly INoSignalPatternService _patternService;
         private readonly IVideoMetadataService _metadataService;
+        private readonly ISynchronizationPlanBuilder _planBuilder;
+        private readonly ISynchronizedTrackCutter _trackCutter;
+        private readonly IMediaProbeService _mediaProbeService;
         private readonly ILogger<AdvancedExtractorService> _advancedLogger;
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
         private static readonly SemaphoreSlim _localVisualThrottle = new(4, 4);
-        private static readonly SemaphoreSlim _probeThrottle = new(6, 6);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
@@ -83,6 +39,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             IDummyVideoGenerator dummyVideoGenerator,
             INoSignalPatternService patternService,
             IVideoMetadataService metadataService,
+            ISynchronizationPlanBuilder planBuilder,
+            ISynchronizedTrackCutter trackCutter,
+            IMediaProbeService mediaProbeService,
             ILogger<AdvancedExtractorService> logger,
             IMemoryCache? memoryCache = null)
             : base(storageScanner, ffmpegRunner, extractorOptions, logger)
@@ -90,6 +49,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _dummyVideoGenerator = dummyVideoGenerator;
             _patternService = patternService;
             _metadataService = metadataService;
+            _planBuilder = planBuilder;
+            _trackCutter = trackCutter;
+            _mediaProbeService = mediaProbeService;
             _advancedLogger = logger;
             _extractorOptions = extractorOptions.Value;
             _memoryCache = memoryCache;
@@ -98,7 +60,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         public new string ResolveFfmpegBinary() => ResolveBinary("ffmpeg");
         public string ResolveFfprobeBinary() => ResolveBinary("ffprobe");
 
-        private string ResolveBinary(string baseName)
+        public string ResolveBinary(string baseName)
         {
             string binaryName = OperatingSystem.IsWindows() ? $"{baseName}.exe" : baseName;
             string? assemblyDir = Path.GetDirectoryName(typeof(AdvancedExtractorService).Assembly.Location);
@@ -145,11 +107,42 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             catch { }
         }
 
+        // 💡 מתודת הדגימה הנדרשת עבור ExtractorAdvancedController בשורה 71
+        public Task<ProbedStationMetadata> GetOrProbeStationMetadataAsync(
+            string hostname,
+            DateTime startUtc,
+            DateTime endUtc,
+            CancellationToken ct = default) =>
+            _mediaProbeService.GetOrProbeStationMetadataAsync(hostname, startUtc, endUtc, ct);
+
+        public Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(
+            string filePath,
+            string stationId,
+            CancellationToken ct = default) =>
+            _mediaProbeService.ProbeMediaFileDirectlyAsync(filePath, stationId, ct);
+
         public Task<StreamMetadataDto> GetStreamMetadataAsync(string hostname, long epochMs, CancellationToken ct = default) =>
             _metadataService.GetStreamMetadataAsync(hostname, epochMs, ResolveFfprobeBinary(), ct);
 
         public Task AdjustChunksToAccuratePtsAsync<T>(IEnumerable<T> chunks, CancellationToken ct = default) where T : class =>
             _metadataService.AdjustChunksToAccuratePtsAsync(chunks, ResolveFfprobeBinary(), ct);
+
+        public SynchronizationPlan BuildSynchronizationPlan(
+            List<string> stationIds,
+            DateTime startUtc,
+            DateTime endUtc,
+            Dictionary<string, List<RecordingChunkMetadata>> stationChunks) =>
+            _planBuilder.BuildSynchronizationPlan(stationIds, startUtc, endUtc, stationChunks);
+
+        public Task<(string OutputFilePath, bool HasAudio)> CutSynchronizedTrackAsync(
+            string stationId,
+            SynchronizationPlan plan,
+            List<RecordingChunkMetadata> stationChunks,
+            string tempOutputDir,
+            bool isMultiStation,
+            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
+            CancellationToken ct = default) =>
+            _trackCutter.CutSynchronizedTrackAsync(stationId, plan, stationChunks, tempOutputDir, isMultiStation, progress, ct);
 
         public async Task<Stream> ExtractFrameAsync(string hostname, long epochMs, CancellationToken ct = default)
         {
@@ -207,19 +200,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             try
             {
-                string seekArgs;
-                double targetTime = offsetSeconds;
+                string seekArgs = fastSeek
+                    ? $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)}"
+                    : $"-ss {Math.Max(0, offsetSeconds - 3.0).ToString("0.000", CultureInfo.InvariantCulture)} -accurate_seek";
 
-                if (fastSeek)
-                {
-                    seekArgs = $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)}";
-                }
-                else
-                {
-                    double safeSeek = Math.Max(0, offsetSeconds - 3.0);
-                    seekArgs = $"-ss {safeSeek.ToString("0.000", CultureInfo.InvariantCulture)} -accurate_seek";
-                    targetTime = offsetSeconds - safeSeek;
-                }
+                double targetTime = fastSeek ? offsetSeconds : (offsetSeconds - Math.Max(0, offsetSeconds - 3.0));
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -276,14 +261,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 return new MemoryStream(blackTile);
             }
 
-            var orderedChunks = chunks.OrderBy(c => c.StartUtc).ToList();
-            var manifestLines = new List<string>();
-
-            foreach (var chunk in orderedChunks)
-            {
-                manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
-            }
-
+            var manifestLines = chunks.OrderBy(c => c.StartUtc).Select(c => $"file '{c.FullPath.Replace('\\', '/')}'").ToList();
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"spritesheet_{Guid.NewGuid():N}.txt");
             await File.WriteAllLinesAsync(tempManifestPath, manifestLines, new UTF8Encoding(false), ct);
 
@@ -320,597 +298,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
             catch (OperationCanceledException)
             {
-                try
-                {
-                    if (!process.HasExited) process.Kill(true);
-                }
-                catch { }
+                try { if (!process.HasExited) process.Kill(true); } catch { }
                 throw;
             }
             finally
             {
                 _localVisualThrottle.Release();
-                if (File.Exists(tempManifestPath)) try { File.Delete(tempManifestPath); } catch { }
-            }
-        }
-
-        public SynchronizationPlan BuildSynchronizationPlan(
-            List<string> stationIds,
-            DateTime startUtc,
-            DateTime endUtc,
-            Dictionary<string, List<RecordingChunkMetadata>> stationChunks)
-        {
-            var plan = new SynchronizationPlan();
-
-            var allActiveRaw = new List<TimeInterval>();
-            foreach (var kvp in stationChunks)
-            {
-                foreach (var chunk in kvp.Value)
-                {
-                    var segStart = chunk.StartUtc < startUtc ? startUtc : chunk.StartUtc;
-                    var segEnd = chunk.EndUtc > endUtc ? endUtc : chunk.EndUtc;
-                    if (segEnd > segStart)
-                    {
-                        allActiveRaw.Add(new TimeInterval { StartUtc = segStart, EndUtc = segEnd });
-                    }
-                }
-            }
-
-            if (allActiveRaw.Count == 0) return plan;
-
-            var sortedRaw = allActiveRaw.OrderBy(r => r.StartUtc).ToList();
-            var mergedActive = new List<TimeInterval>();
-            var current = new TimeInterval { StartUtc = sortedRaw[0].StartUtc, EndUtc = sortedRaw[0].EndUtc };
-
-            for (int i = 1; i < sortedRaw.Count; i++)
-            {
-                if (sortedRaw[i].StartUtc <= current.EndUtc.AddSeconds(1.0))
-                {
-                    if (sortedRaw[i].EndUtc > current.EndUtc) current.EndUtc = sortedRaw[i].EndUtc;
-                }
-                else
-                {
-                    mergedActive.Add(current);
-                    current = new TimeInterval { StartUtc = sortedRaw[i].StartUtc, EndUtc = sortedRaw[i].EndUtc };
-                }
-            }
-            mergedActive.Add(current);
-            plan.ActiveSegments = mergedActive;
-
-            int gapIdx = 1;
-            double runningOffset = 0;
-
-            if (mergedActive[0].StartUtc > startUtc)
-            {
-                double dur = (mergedActive[0].StartUtc - startUtc).TotalSeconds;
-                if (dur >= 1.0)
-                {
-                    plan.RemovedGlobalGaps.Add(new GlobalGapRecord
-                    {
-                        GapIndex = gapIdx++,
-                        StartUtc = startUtc,
-                        EndUtc = mergedActive[0].StartUtc,
-                        SkippedDurationSeconds = dur,
-                        TimelineOffsetSeconds = 0
-                    });
-                }
-            }
-
-            for (int i = 0; i < mergedActive.Count - 1; i++)
-            {
-                runningOffset += mergedActive[i].DurationSeconds;
-                var gStart = mergedActive[i].EndUtc;
-                var gEnd = mergedActive[i + 1].StartUtc;
-                double dur = (gEnd - gStart).TotalSeconds;
-
-                if (dur >= 1.0)
-                {
-                    plan.RemovedGlobalGaps.Add(new GlobalGapRecord
-                    {
-                        GapIndex = gapIdx++,
-                        StartUtc = gStart,
-                        EndUtc = gEnd,
-                        SkippedDurationSeconds = dur,
-                        TimelineOffsetSeconds = runningOffset
-                    });
-                }
-            }
-
-            if (mergedActive.Last().EndUtc < endUtc)
-            {
-                double dur = (endUtc - mergedActive.Last().EndUtc).TotalSeconds;
-                if (dur >= 1.0)
-                {
-                    plan.RemovedGlobalGaps.Add(new GlobalGapRecord
-                    {
-                        GapIndex = gapIdx++,
-                        StartUtc = mergedActive.Last().EndUtc,
-                        EndUtc = endUtc,
-                        SkippedDurationSeconds = dur,
-                        TimelineOffsetSeconds = plan.TotalActiveSeconds
-                    });
-                }
-            }
-
-            if (stationIds.Count > 1)
-            {
-                foreach (var sId in stationIds)
-                {
-                    var sChunks = stationChunks.GetValueOrDefault(sId, new List<RecordingChunkMetadata>())
-                                               .OrderBy(c => c.StartUtc).ToList();
-
-                    foreach (var activeSeg in mergedActive)
-                    {
-                        DateTime segCursor = activeSeg.StartUtc;
-                        var overlapping = sChunks
-                            .Where(c => c.EndUtc > activeSeg.StartUtc && c.StartUtc < activeSeg.EndUtc)
-                            .OrderBy(c => c.StartUtc).ToList();
-
-                        foreach (var chunk in overlapping)
-                        {
-                            if (chunk.StartUtc > segCursor.AddSeconds(1.0))
-                            {
-                                plan.StationGaps.Add(new StationGapRecord
-                                {
-                                    StationId = sId,
-                                    StartUtc = segCursor,
-                                    EndUtc = chunk.StartUtc,
-                                    DurationSeconds = (chunk.StartUtc - segCursor).TotalSeconds
-                                });
-                            }
-                            segCursor = chunk.EndUtc > segCursor ? chunk.EndUtc : segCursor;
-                        }
-
-                        if (segCursor < activeSeg.EndUtc.AddSeconds(-1.0))
-                        {
-                            plan.StationGaps.Add(new StationGapRecord
-                            {
-                                StationId = sId,
-                                StartUtc = segCursor,
-                                EndUtc = activeSeg.EndUtc,
-                                DurationSeconds = (activeSeg.EndUtc - segCursor).TotalSeconds
-                            });
-                        }
-                    }
-                }
-            }
-
-            return plan;
-        }
-
-        // 💡 פונקציית דגימה מהירה במטמון לכל עמדה
-        public async Task<ProbedStationMetadata> GetOrProbeStationMetadataAsync(
-            string hostname,
-            DateTime startUtc,
-            DateTime endUtc,
-            CancellationToken ct = default)
-        {
-            string cacheKey = $"station_probe_meta_{hostname}";
-            if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out ProbedStationMetadata? cached) && cached != null)
-            {
-                return cached;
-            }
-
-            await _probeThrottle.WaitAsync(ct);
-            try
-            {
-                if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out cached) && cached != null)
-                {
-                    return cached;
-                }
-
-                var chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc, endUtc);
-                if (chunks.Count == 0)
-                {
-                    chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc.AddHours(-48), endUtc.AddHours(24));
-                }
-
-                var sampleChunk = chunks
-                    .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath) && c.FileSizeBytes > 4096)
-                    .OrderByDescending(c => c.StartUtc)
-                    .FirstOrDefault();
-
-                if (sampleChunk == null)
-                {
-                    return new ProbedStationMetadata();
-                }
-
-                var probed = await ProbeMediaFileDirectlyAsync(sampleChunk.FullPath, hostname, ct);
-                _memoryCache?.Set(cacheKey, probed, TimeSpan.FromMinutes(15));
-                return probed;
-            }
-            catch (Exception ex)
-            {
-                _advancedLogger.LogWarning(ex, "[ProbeStation] Failed probing station '{Host}'", hostname);
-                return new ProbedStationMetadata();
-            }
-            finally
-            {
-                _probeThrottle.Release();
-            }
-        }
-
-        public async Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(string filePath, string stationId, CancellationToken ct)
-        {
-            var meta = new ProbedStationMetadata();
-            string ffprobePath = ResolveFfprobeBinary();
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = ffprobePath,
-                Arguments = $"-v error -show_streams -show_format -of json \"{filePath.Replace('\\', '/')}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var proc = new Process { StartInfo = psi };
-            var sb = new StringBuilder();
-            proc.OutputDataReceived += (_, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
-
-            try
-            {
-                proc.Start();
-                proc.BeginOutputReadLine();
-                await proc.WaitForExitAsync(ct);
-
-                string json = sb.ToString();
-                if (string.IsNullOrWhiteSpace(json))
-                {
-                    return meta;
-                }
-
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
-                {
-                    bool foundVideo = false;
-                    foreach (var stream in streams.EnumerateArray())
-                    {
-                        if (!stream.TryGetProperty("codec_type", out var typeProp)) continue;
-                        string type = typeProp.GetString() ?? "";
-
-                        if (type.Equals("video", StringComparison.OrdinalIgnoreCase) && !foundVideo)
-                        {
-                            foundVideo = true;
-                            if (stream.TryGetProperty("width", out var w) && w.TryGetInt32(out int wVal)) meta.Width = wVal;
-                            if (stream.TryGetProperty("height", out var h) && h.TryGetInt32(out int hVal)) meta.Height = hVal;
-                            if (stream.TryGetProperty("pix_fmt", out var pf)) meta.PixFmt = pf.GetString() ?? "yuv420p";
-
-                            // ✅ אתחול מקדים של משתני ה-FPS כדי למנוע את שגיאת CS0165
-                            double aFps = 0.0;
-                            double rFps = 0.0;
-
-                            bool hasAvg = stream.TryGetProperty("avg_frame_rate", out var afr) &&
-                                          ParseFpsFraction(afr.GetString(), out aFps) && aFps > 0 && aFps <= 240;
-
-                            bool hasR = stream.TryGetProperty("r_frame_rate", out var rfr) &&
-                                        ParseFpsFraction(rfr.GetString(), out rFps) && rFps > 0 && rFps <= 240;
-
-                            if (hasAvg && aFps >= 5 && aFps <= 120)
-                            {
-                                meta.Fps = Math.Round(aFps, 2);
-                            }
-                            else if (hasR && rFps >= 5 && rFps <= 120)
-                            {
-                                meta.Fps = Math.Round(rFps, 2);
-                            }
-                            else if (hasAvg)
-                            {
-                                meta.Fps = Math.Round(aFps, 2);
-                            }
-                            else if (hasR)
-                            {
-                                meta.Fps = Math.Round(rFps, 2);
-                            }
-
-                            if (hasAvg && hasR && Math.Abs(aFps - rFps) > 0.8)
-                            {
-                                meta.IsVfr = true;
-                            }
-                            else if (stream.TryGetProperty("r_frame_rate", out var rawRfr) &&
-                                     ParseFpsFraction(rawRfr.GetString(), out double rawR) && rawR > 120 && meta.Fps <= 60)
-                            {
-                                meta.IsVfr = true;
-                            }
-                        }
-                        else if (type.Equals("audio", StringComparison.OrdinalIgnoreCase))
-                        {
-                            meta.HasAudio = true;
-                            if (stream.TryGetProperty("sample_rate", out var sr))
-                            {
-                                if (sr.ValueKind == JsonValueKind.Number && sr.TryGetInt32(out int srNum)) meta.AudioSampleRate = srNum;
-                                else if (sr.ValueKind == JsonValueKind.String && int.TryParse(sr.GetString(), out int srVal) && srVal > 0) meta.AudioSampleRate = srVal;
-                            }
-                            if (stream.TryGetProperty("channels", out var ch))
-                            {
-                                if (ch.ValueKind == JsonValueKind.Number && ch.TryGetInt32(out int chVal)) meta.AudioChannels = chVal;
-                                else if (ch.ValueKind == JsonValueKind.String && int.TryParse(ch.GetString(), out int chStrVal)) meta.AudioChannels = chStrVal;
-                            }
-                            if (stream.TryGetProperty("codec_name", out var cn))
-                            {
-                                meta.AudioCodec = cn.GetString() ?? "aac";
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _advancedLogger.LogError(ex, "[FFprobe Direct Probe] Failed probing file '{File}' for station '{StationId}'.", filePath, stationId);
-            }
-
-            return meta;
-        }
-
-        private static bool ParseFpsFraction(string? fpsStr, out double fps)
-        {
-            fps = 30.0;
-            if (string.IsNullOrWhiteSpace(fpsStr)) return false;
-            var parts = fpsStr.Split('/');
-            if (parts.Length == 2 &&
-                double.TryParse(parts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out double num) &&
-                double.TryParse(parts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double den) && den > 0)
-            {
-                fps = num / den;
-                return true;
-            }
-            if (double.TryParse(fpsStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double val) && val > 0)
-            {
-                fps = val;
-                return true;
-            }
-            return false;
-        }
-
-        private async Task<string> GenerateMatchedBridgeVideoAsync(
-            double durationSeconds,
-            ProbedStationMetadata probe,
-            string tempDir,
-            CancellationToken ct)
-        {
-            string bridgePath = Path.Combine(tempDir, $"bridge_{Guid.NewGuid():N}.mp4");
-            string ffmpegPath = ResolveFfmpegBinary();
-            string durStr = durationSeconds.ToString("0.000", CultureInfo.InvariantCulture);
-            string fpsStr = Math.Clamp(probe.Fps, 10, 120).ToString("0.00", CultureInfo.InvariantCulture);
-
-            string args;
-            if (probe.HasAudio)
-            {
-                string channelLayout = probe.AudioChannels == 1 ? "mono" : "stereo";
-                args = $"-nostdin -loglevel error -y " +
-                       $"-f lavfi -i color=c=black:s={probe.Width}x{probe.Height}:r={fpsStr} " +
-                       $"-f lavfi -i anullsrc=r={probe.AudioSampleRate}:cl={channelLayout} " +
-                       $"-t {durStr} " +
-                       $"-c:v libx264 -preset ultrafast -pix_fmt yuv420p " +
-                       $"-c:a aac -b:a 128k -ar {probe.AudioSampleRate} -ac {probe.AudioChannels} " +
-                       $"\"{bridgePath.Replace('\\', '/')}\"";
-            }
-            else
-            {
-                args = $"-nostdin -loglevel error -y " +
-                       $"-f lavfi -i color=c=black:s={probe.Width}x{probe.Height}:r={fpsStr} " +
-                       $"-t {durStr} " +
-                       $"-c:v libx264 -preset ultrafast -pix_fmt yuv420p " +
-                       $"-an \"{bridgePath.Replace('\\', '/')}\"";
-            }
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = args,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var proc = Process.Start(psi);
-            if (proc != null)
-            {
-                await proc.WaitForExitAsync(ct);
-            }
-
-            return bridgePath;
-        }
-
-        public async Task<(string OutputFilePath, bool HasAudio)> CutSynchronizedTrackAsync(
-            string stationId,
-            SynchronizationPlan plan,
-            List<RecordingChunkMetadata> stationChunks,
-            string tempOutputDir,
-            bool isMultiStation,
-            IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
-            CancellationToken ct = default)
-        {
-            var orderedChunks = stationChunks.OrderBy(c => c.StartUtc).ToList();
-            if (orderedChunks.Count == 0)
-            {
-                throw new InvalidOperationException($"No video chunks found for station '{stationId}'.");
-            }
-
-            var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
-
-            async Task<ProbedStationMetadata> GetChunkProbeAsync(RecordingChunkMetadata? chunk)
-            {
-                if (chunk == null || string.IsNullOrEmpty(chunk.FullPath) || !File.Exists(chunk.FullPath))
-                    return new ProbedStationMetadata();
-
-                if (probeCache.TryGetValue(chunk.FullPath, out var cached))
-                    return cached;
-
-                var probed = await ProbeMediaFileDirectlyAsync(chunk.FullPath, stationId, ct);
-                probeCache[chunk.FullPath] = probed;
-                return probed;
-            }
-
-            DateTime cutStartUtc = plan.ActiveSegments.FirstOrDefault()?.StartUtc ?? orderedChunks[0].StartUtc;
-            var representativeChunk = orderedChunks
-                .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
-                .OrderBy(c => Math.Abs((c.StartUtc - cutStartUtc).TotalSeconds))
-                .FirstOrDefault();
-
-            var baselineProbe = await GetChunkProbeAsync(representativeChunk);
-
-            var manifestLines = new List<string>();
-            var cutJunctions = new List<double>();
-            double runningSeconds = 0;
-            bool anyChunkHasAudio = baselineProbe.HasAudio;
-
-            for (int segIdx = 0; segIdx < plan.ActiveSegments.Count; segIdx++)
-            {
-                var seg = plan.ActiveSegments[segIdx];
-                DateTime cursor = seg.StartUtc;
-                RecordingChunkMetadata? lastPlayedChunkInSeg = null;
-
-                if (segIdx > 0 && runningSeconds > 0.6)
-                {
-                    cutJunctions.Add(runningSeconds);
-                }
-
-                var segChunks = orderedChunks
-                    .Where(c => c.EndUtc > seg.StartUtc && c.StartUtc < seg.EndUtc)
-                    .OrderBy(c => c.StartUtc).ToList();
-
-                foreach (var chunk in segChunks)
-                {
-                    if (isMultiStation && chunk.StartUtc > cursor.AddSeconds(0.2))
-                    {
-                        double gapDur = (chunk.StartUtc - cursor).TotalSeconds;
-                        var neighborChunk = lastPlayedChunkInSeg ?? chunk;
-                        var neighborProbe = await GetChunkProbeAsync(neighborChunk);
-
-                        string bridge = await GenerateMatchedBridgeVideoAsync(gapDur, neighborProbe, tempOutputDir, ct);
-                        if (File.Exists(bridge))
-                        {
-                            manifestLines.Add($"file '{bridge.Replace('\\', '/')}'");
-                            runningSeconds += gapDur;
-                        }
-                    }
-
-                    DateTime effStart = chunk.StartUtc < cursor ? cursor : chunk.StartUtc;
-                    DateTime effEnd = chunk.EndUtc > seg.EndUtc ? seg.EndUtc : chunk.EndUtc;
-                    double dur = (effEnd - effStart).TotalSeconds;
-
-                    if (dur > 0.05 && File.Exists(chunk.FullPath))
-                    {
-                        manifestLines.Add($"file '{chunk.FullPath.Replace('\\', '/')}'");
-                        runningSeconds += dur;
-                        cursor = effEnd;
-                        lastPlayedChunkInSeg = chunk;
-                    }
-                }
-
-                if (isMultiStation && cursor < seg.EndUtc.AddSeconds(-0.2))
-                {
-                    double gapDur = (seg.EndUtc - cursor).TotalSeconds;
-                    var neighborChunk = lastPlayedChunkInSeg ?? representativeChunk;
-                    var neighborProbe = await GetChunkProbeAsync(neighborChunk);
-
-                    string bridge = await GenerateMatchedBridgeVideoAsync(gapDur, neighborProbe, tempOutputDir, ct);
-                    if (File.Exists(bridge))
-                    {
-                        manifestLines.Add($"file '{bridge.Replace('\\', '/')}'");
-                        runningSeconds += gapDur;
-                    }
-                }
-            }
-
-            if (manifestLines.Count == 0)
-            {
-                throw new InvalidOperationException($"No valid media segments found to bundle for station {stationId}.");
-            }
-
-            string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{stationId}_{Guid.NewGuid():N}.txt");
-            await File.WriteAllLinesAsync(tempManifestPath, manifestLines, new UTF8Encoding(false), ct);
-
-            string outputPath = Path.Combine(tempOutputDir, $"{stationId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.mp4");
-
-            var vfFilters = new List<string>();
-            vfFilters.Add("fade=t=in:st=0:d=0.3:enable='between(t,0,0.3)'");
-
-            foreach (var junc in cutJunctions.Distinct())
-            {
-                double outStart = Math.Max(0, junc - 0.3);
-                string outStartStr = outStart.ToString("0.00", CultureInfo.InvariantCulture);
-                string juncStr = junc.ToString("0.00", CultureInfo.InvariantCulture);
-                double inEnd = Math.Min(runningSeconds, junc + 0.3);
-                string inEndStr = inEnd.ToString("0.00", CultureInfo.InvariantCulture);
-
-                vfFilters.Add($"fade=t=out:st={outStartStr}:d=0.3:enable='between(t,{outStartStr},{juncStr})'");
-                vfFilters.Add($"fade=t=in:st={juncStr}:d=0.3:enable='between(t,{juncStr},{inEndStr})'");
-            }
-
-            if (runningSeconds > 0.6)
-            {
-                double endStart = Math.Max(0, runningSeconds - 0.3);
-                string endStartStr = endStart.ToString("0.00", CultureInfo.InvariantCulture);
-                string totalStr = runningSeconds.ToString("0.00", CultureInfo.InvariantCulture);
-                vfFilters.Add($"fade=t=out:st={endStartStr}:d=0.3:enable='between(t,{endStartStr},{totalStr})'");
-            }
-
-            vfFilters.Add("format=yuv420p");
-            string videoFilterArg = string.Join(",", vfFilters);
-
-            string audioArg = anyChunkHasAudio
-                ? $"-c:a aac -b:a 128k -ar {baselineProbe.AudioSampleRate} -ac {baselineProbe.AudioChannels}"
-                : "-an";
-
-            string arguments = $"-nostdin -v error -stats -progress pipe:1 -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                               $"-vf \"{videoFilterArg}\" " +
-                               $"-c:v libx264 -preset veryfast -crf 20 {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ResolveFfmpegBinary(),
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            await _concurrencyThrottle.WaitAsync(ct);
-            using var process = new Process { StartInfo = startInfo };
-
-            try
-            {
-                process.Start();
-
-                var readProgressTask = Task.Run(async () =>
-                {
-                    using var reader = process.StandardOutput;
-                    string? line;
-                    while ((line = await reader.ReadLineAsync(ct)) != null)
-                    {
-                        var parts = line.Split('=', 2);
-                        if (parts.Length != 2) continue;
-
-                        string key = parts[0].Trim();
-                        string val = parts[1].Trim();
-
-                        if (key == "out_time_us" && long.TryParse(val, out long us))
-                        {
-                            progress?.Report((us / 1_000_000.0, 0, 1.0));
-                        }
-                        else if (key == "fps" && double.TryParse(val, NumberStyles.Any, CultureInfo.InvariantCulture, out double f))
-                        {
-                            progress?.Report((0, f, 1.0));
-                        }
-                    }
-                }, ct);
-
-                string errorOutput = await process.StandardError.ReadToEndAsync(ct);
-                await Task.WhenAll(process.WaitForExitAsync(ct), readProgressTask);
-
-                if (process.ExitCode != 0)
-                {
-                    throw new InvalidOperationException($"FFmpeg failed for {stationId}: {errorOutput}");
-                }
-
-                return (outputPath, anyChunkHasAudio);
-            }
-            finally
-            {
-                _concurrencyThrottle.Release();
                 if (File.Exists(tempManifestPath)) try { File.Delete(tempManifestPath); } catch { }
             }
         }
