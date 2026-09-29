@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using Microsoft.Extensions.Logging;
 
@@ -20,16 +21,19 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
     {
         private readonly IBridgeVideoGenerator _bridgeGenerator;
         private readonly IMediaProbeService _mediaProbeService;
+        private readonly IFfmpegBinaryResolver _binaryResolver;
         private readonly ILogger<SynchronizedTrackCutter> _logger;
         private static readonly SemaphoreSlim _concurrencyThrottle = new(2, 2);
 
         public SynchronizedTrackCutter(
             IBridgeVideoGenerator bridgeGenerator,
             IMediaProbeService mediaProbeService,
+            IFfmpegBinaryResolver binaryResolver,
             ILogger<SynchronizedTrackCutter> logger)
         {
             _bridgeGenerator = bridgeGenerator;
             _mediaProbeService = mediaProbeService;
+            _binaryResolver = binaryResolver;
             _logger = logger;
         }
 
@@ -43,11 +47,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             CancellationToken ct = default)
         {
             var orderedChunks = stationChunks.OrderBy(c => c.StartUtc).ToList();
-            if (orderedChunks.Count == 0)
-            {
-                throw new InvalidOperationException($"No video chunks found for station '{stationId}'.");
-            }
-
             var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
 
             async Task<ProbedStationMetadata> GetChunkProbeAsync(RecordingChunkMetadata? chunk)
@@ -63,16 +62,27 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 return probed;
             }
 
-            DateTime cutStartUtc = plan.ActiveSegments.FirstOrDefault()?.StartUtc ?? orderedChunks[0].StartUtc;
-            var representativeChunk = orderedChunks
-                .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
-                .OrderBy(c => Math.Abs((c.StartUtc - cutStartUtc).TotalSeconds))
-                .FirstOrDefault();
+            DateTime cutStartUtc = plan.ActiveSegments.FirstOrDefault()?.StartUtc ?? DateTime.UtcNow;
+            DateTime cutEndUtc = plan.ActiveSegments.LastOrDefault()?.EndUtc ?? DateTime.UtcNow;
 
-            var baselineProbe = await GetChunkProbeAsync(representativeChunk);
+            ProbedStationMetadata baselineProbe;
+            if (orderedChunks.Count > 0)
+            {
+                var representativeChunk = orderedChunks
+                    .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
+                    .OrderBy(c => Math.Abs((c.StartUtc - cutStartUtc).TotalSeconds))
+                    .FirstOrDefault();
+
+                baselineProbe = await GetChunkProbeAsync(representativeChunk);
+            }
+            else
+            {
+                // 💡 עבור תחנה ללא הקלטות בטווח הנבחר: מנסים לדגום היסטוריה או ברירת מחדל
+                baselineProbe = await _mediaProbeService.GetOrProbeStationMetadataAsync(stationId, cutStartUtc, cutEndUtc, ct);
+            }
 
             bool trackHasAudio = baselineProbe.HasAudio;
-            if (!trackHasAudio)
+            if (!trackHasAudio && orderedChunks.Count > 0)
             {
                 foreach (var ch in orderedChunks.Take(5))
                 {
@@ -106,9 +116,26 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     .Where(c => c.EndUtc > seg.StartUtc && c.StartUtc < seg.EndUtc)
                     .OrderBy(c => c.StartUtc).ToList();
 
+                // 💡 אם לתחנה זו אין צ'אנקים בסגמנט הפעיל (פער מלא)
+                if (segChunks.Count == 0)
+                {
+                    double gapDur = seg.DurationSeconds;
+                    if (gapDur > 0.05)
+                    {
+                        string bridge = await _bridgeGenerator.GenerateMatchedBridgeVideoAsync(gapDur, baselineProbe, tempOutputDir, trackHasAudio, ct);
+                        if (File.Exists(bridge) && new FileInfo(bridge).Length > 1024)
+                        {
+                            manifestLines.Add($"file '{bridge.Replace('\\', '/')}'");
+                            manifestLines.Add(string.Format(CultureInfo.InvariantCulture, "duration {0:F3}", gapDur));
+                            runningSeconds += gapDur;
+                        }
+                    }
+                    continue;
+                }
+
                 foreach (var chunk in segChunks)
                 {
-                    if (isMultiStation && chunk.StartUtc > cursor.AddSeconds(0.2))
+                    if (chunk.StartUtc > cursor.AddSeconds(0.2))
                     {
                         double gapDur = (chunk.StartUtc - cursor).TotalSeconds;
                         var neighborChunk = lastPlayedChunkInSeg ?? chunk;
@@ -149,11 +176,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     }
                 }
 
-                if (isMultiStation && cursor < seg.EndUtc.AddSeconds(-0.2))
+                if (cursor < seg.EndUtc.AddSeconds(-0.2))
                 {
                     double gapDur = (seg.EndUtc - cursor).TotalSeconds;
-                    var neighborChunk = lastPlayedChunkInSeg ?? representativeChunk;
-                    var neighborProbe = await GetChunkProbeAsync(neighborChunk);
+                    var neighborChunk = lastPlayedChunkInSeg;
+                    var neighborProbe = neighborChunk != null ? await GetChunkProbeAsync(neighborChunk) : baselineProbe;
 
                     string bridge = await _bridgeGenerator.GenerateMatchedBridgeVideoAsync(gapDur, neighborProbe, tempOutputDir, trackHasAudio, ct);
                     if (File.Exists(bridge) && new FileInfo(bridge).Length > 1024)
@@ -167,7 +194,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             if (manifestLines.Count <= 1)
             {
-                throw new InvalidOperationException($"No valid media segments found to bundle for station {stationId}.");
+                throw new InvalidOperationException($"No media timeline created for station {stationId}.");
             }
 
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{stationId}_{Guid.NewGuid():N}.txt");
@@ -204,13 +231,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 ? $"-c:a aac -b:a 128k -ar {baselineProbe.AudioSampleRate} -ac {baselineProbe.AudioChannels}"
                 : "-an";
 
+            string ffmpegPath = _binaryResolver.ResolveFfmpeg();
+
             string arguments = $"-nostdin -v error -progress pipe:1 -fflags +genpts+discardcorrupt -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
                                $"-vf \"{videoFilterArg}\" " +
                                $"-c:v libx264 -preset veryfast -crf 20 -avoid_negative_ts make_zero {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
 
             var startInfo = new ProcessStartInfo
             {
-                FileName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg",
+                FileName = ffmpegPath,
                 Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,

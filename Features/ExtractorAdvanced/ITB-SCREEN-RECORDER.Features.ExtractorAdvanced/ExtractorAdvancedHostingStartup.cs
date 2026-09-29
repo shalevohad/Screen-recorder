@@ -4,10 +4,12 @@
 using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Core.Abstractions;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
@@ -23,6 +25,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
         {
             builder.ConfigureServices((context, services) =>
             {
+                // הבטחת טעינת הגדרות ExtractorOptions גם אם מודול ה-Advanced נטען קודם
+                services.Configure<ExtractorOptions>(context.Configuration.GetSection(ExtractorOptions.SectionName));
+
                 // 1. תשתית מסד הנתונים advance_extractor.db (SQLite ב-WAL Mode)
                 services.AddSingleton<IAdvancedExtractorConnectionFactory, AdvancedExtractorConnectionFactory>();
                 services.AddSingleton<IFeatureDbInitializer, AdvancedExtractorDbInitializer>();
@@ -39,6 +44,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                 services.AddSingleton<IFeatureModule, ExtractorAdvancedModule>();
 
                 // 5. שירותי מנוע העריכה המתקדם (ארכיטקטורה מודולרית)
+                services.AddSingleton<IFfmpegBinaryResolver, AdvancedFfmpegBinaryResolver>();
                 services.AddSingleton<IDummyVideoGenerator, AdvancedDummyVideoGenerator>();
                 services.AddSingleton<INoSignalPatternService, NoSignalPatternService>();
                 services.AddSingleton<IVideoMetadataService, VideoMetadataService>();

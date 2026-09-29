@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: Features/Extractor/ExtractorHostingStartup.cs
+// ==========================================
+using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -23,12 +26,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
             {
                 services.Configure<ExtractorOptions>(context.Configuration.GetSection(ExtractorOptions.SectionName));
 
-                // תשתית מסד הנתונים SQLite של הפיצ'ר
+                // 1. תשתית מסד הנתונים SQLite של הפיצ'ר
                 services.AddSingleton<IExtractorConnectionFactory, ExtractorConnectionFactory>();
                 services.AddSingleton<IFeatureDbInitializer, ExtractorDbInitializer>();
                 services.AddSingleton<IExportJobRepository, ExportJobRepository>();
 
-                // שירותי ליבה
+                // 2. שירות איתור בינאריים תשתיתי (FFmpeg / FFprobe)
+                services.AddSingleton<IFfmpegBinaryResolver, FfmpegBinaryResolver>();
+
+                // 3. שירותי ליבה
                 services.AddSingleton<IStorageScannerService, StorageScannerService>();
                 services.AddSingleton<IFfmpegConcatRunner, FfmpegConcatRunner>();
                 services.AddSingleton<IExtractorService, ExtractorService>();
@@ -39,7 +45,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
                 services.AddControllers()
                     .AddApplicationPart(typeof(ExtractorHostingStartup).Assembly);
 
-                // אתחול אוטונומי וניתוב UI
+                // 4. אתחול אוטונומי וניתוב UI
                 services.AddTransient<IStartupFilter, ExtractorStartupFilter>();
             });
         }
@@ -51,7 +57,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
         {
             return app =>
             {
-                // 1. אתחול אוטונומי של extractor.db בעליית המערכת (Stealth מלא)
+                // אתחול אוטונומי של extractor.db בעליית המערכת (Stealth מלא)
                 using (var scope = app.ApplicationServices.CreateScope())
                 {
                     try
@@ -66,7 +72,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
                     }
                 }
 
-                // 2. הגשת נכסי הווב הסטטיים של הווידג'ט ישירות דרך ההרחבה ב-Core
+                // הגשת נכסי הווב הסטטיים של הווידג'ט ישירות דרך ההרחבה ב-Core
                 app.UseFeatureStaticAssets(typeof(ExtractorStartupFilter).Assembly, "/extractor");
 
                 next(app);

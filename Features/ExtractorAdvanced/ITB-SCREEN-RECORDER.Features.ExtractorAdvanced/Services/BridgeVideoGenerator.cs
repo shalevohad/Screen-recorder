@@ -15,14 +15,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 {
     public class BridgeVideoGenerator : IBridgeVideoGenerator
     {
-        private readonly IFfmpegConcatRunner _ffmpegRunner;
+        private readonly IFfmpegBinaryResolver _binaryResolver;
         private readonly ILogger<BridgeVideoGenerator> _logger;
 
         public BridgeVideoGenerator(
-            IFfmpegConcatRunner ffmpegRunner,
+            IFfmpegBinaryResolver binaryResolver,
             ILogger<BridgeVideoGenerator> logger)
         {
-            _ffmpegRunner = ffmpegRunner;
+            _binaryResolver = binaryResolver;
             _logger = logger;
         }
 
@@ -34,6 +34,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             CancellationToken ct = default)
         {
             string bridgePath = Path.Combine(tempDir, $"bridge_{Guid.NewGuid():N}.mp4");
+            string ffmpegPath = _binaryResolver.ResolveFfmpeg();
             string durStr = durationSeconds.ToString("0.000", CultureInfo.InvariantCulture);
             string fpsStr = Math.Clamp(probe.Fps, 10, 120).ToString("0.00", CultureInfo.InvariantCulture);
 
@@ -63,7 +64,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             var psi = new ProcessStartInfo
             {
-                FileName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg",
+                FileName = ffmpegPath,
                 Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true
