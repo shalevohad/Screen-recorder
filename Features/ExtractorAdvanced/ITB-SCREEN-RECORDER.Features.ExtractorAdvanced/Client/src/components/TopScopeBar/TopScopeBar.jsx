@@ -1,7 +1,7 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/TopScopeBar/TopScopeBar.jsx
 // ==========================================
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import './TopScopeBar.scss';
 
 export default function TopScopeBar({
@@ -10,13 +10,18 @@ export default function TopScopeBar({
     timeMode,
     setTimeMode,
     activeStationId,
-    hideBackToGrid, // 💡 הפרופ החדש שקיבלנו מהאבא
+    hideBackToGrid,
     onResetActiveStation,
     onOpenRangeModal,
     onOpenBookmarksModal,
     onToggleDrawer,
-    isInitialSetup = false
+    isInitialSetup = false,
+    selectedCount = 0,
+    totalCount = 0,
+    onResetStudio
 }) {
+    const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false);
+
     const formattedScopeRange = useMemo(() => {
         const startEpoch = baseEpochMs;
         const endEpoch = baseEpochMs + timeRange.durationMs;
@@ -37,6 +42,11 @@ export default function TopScopeBar({
         const eTime = `${pad(dEnd.getHours())}:${pad(dEnd.getMinutes())}:${pad(dEnd.getSeconds())}`;
         return `${dateStr} ${sTime} ➔ ${eTime} (LOCAL)`;
     }, [baseEpochMs, timeRange.durationMs, timeMode]);
+
+    const handleConfirmReset = () => {
+        setIsConfirmResetOpen(false);
+        onResetStudio?.();
+    };
 
     return (
         <div className="studio-top-scope-bar">
@@ -77,10 +87,20 @@ export default function TopScopeBar({
                         </svg>
                     </button>
                 </div>
+
+                <div
+                    className="scope-fleet-selection-pill clickable"
+                    onClick={onToggleDrawer}
+                    title="Click to change selected station pool"
+                >
+                    <span className="beacon-dot" />
+                    <span className="selection-label">SELECTED:</span>
+                    <strong className="selection-count">{selectedCount}</strong>
+                    <span className="selection-total">/ {totalCount}</span>
+                </div>
             </div>
 
             <div className="scope-view-actions">
-                {/* 💡 העלמה מוחלטת של כפתור החזרה אם נבחרה תחנה יחידה */}
                 {!hideBackToGrid && activeStationId && (
                     <button type="button" onClick={onResetActiveStation} className="btn-grid-return">
                         ⊞ Back to Grid
@@ -99,6 +119,19 @@ export default function TopScopeBar({
                     <span>BOOKMARKS</span>
                 </button>
 
+                <button
+                    type="button"
+                    onClick={() => setIsConfirmResetOpen(true)}
+                    className="btn-reset-studio"
+                    title="Reset Studio Session & Clear Cache"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                    </svg>
+                    <span>RESET</span>
+                </button>
+
                 {!isInitialSetup && (
                     <button
                         type="button"
@@ -112,6 +145,30 @@ export default function TopScopeBar({
                     </button>
                 )}
             </div>
+
+            {isConfirmResetOpen && (
+                <div className="studio-reset-modal-backdrop" onClick={() => setIsConfirmResetOpen(false)}>
+                    <div className="studio-reset-modal-card" onClick={(e) => e.stopPropagation()}>
+                        <div className="reset-modal-header">
+                            <span className="warning-icon">⚠</span>
+                            <h3>RESET STUDIO SESSION</h3>
+                        </div>
+                        <p className="reset-modal-desc">
+                            Are you sure you want to reset the entire studio workspace?
+                            <br />
+                            All station selections, cut in/out markers, playhead position, and local timeline caches will be permanently cleared.
+                        </p>
+                        <div className="reset-modal-actions">
+                            <button type="button" className="btn-cancel" onClick={() => setIsConfirmResetOpen(false)}>
+                                CANCEL
+                            </button>
+                            <button type="button" className="btn-confirm-danger" onClick={handleConfirmReset}>
+                                YES, RESET EVERYTHING
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

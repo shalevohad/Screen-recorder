@@ -16,7 +16,10 @@ export default function TransportBar({
     onStepFrameForward,
     onStepFrameBackward,
     playbackSpeed = 1,
-    onChangeSpeed
+    onChangeSpeed,
+    // 💡 כפתורי Cut In ו-Cut Out ייעודיים
+    onSetInPoint,
+    onSetOutPoint
 }) {
     const [audioState, setAudioState] = useState(() => getAudioSettings());
     const { volume, isMuted } = audioState;
@@ -50,19 +53,11 @@ export default function TransportBar({
 
     const handleCycleSpeed = (e) => {
         e?.stopPropagation();
-        console.log(`[TransportBar] ⚡ Speed clicked. isEnabled: ${isEnabled}, current: ${playbackSpeed}x`);
-
-        if (!isEnabled || !onChangeSpeed) {
-            console.warn('[TransportBar] Speed change blocked:', { isEnabled, hasOnChangeSpeed: Boolean(onChangeSpeed) });
-            return;
-        }
+        if (!isEnabled || !onChangeSpeed) return;
 
         const currentIdx = SPEED_STEPS.indexOf(playbackSpeed);
         const nextIdx = currentIdx === -1 ? 1 : (currentIdx + 1) % SPEED_STEPS.length;
-        const nextSpeed = SPEED_STEPS[nextIdx];
-
-        console.log(`[TransportBar] 🚀 Cycling speed: ${playbackSpeed}x ➔ ${nextSpeed}x`);
-        onChangeSpeed(nextSpeed);
+        onChangeSpeed(SPEED_STEPS[nextIdx]);
     };
 
     const handleToggleMute = (e) => {
@@ -126,6 +121,17 @@ export default function TransportBar({
                 title="Playback Speed"
             >
                 {playbackSpeed}x
+            </button>
+
+            {/* 💡 כפתור CUT IN */}
+            <button
+                type="button"
+                className="btn-cut-action cut-in"
+                disabled={!onSetInPoint}
+                onClick={(e) => { e.stopPropagation(); onSetInPoint?.(); }}
+                title="Set CUT IN to current Playhead (Key: [ )"
+            >
+                [ IN
             </button>
 
             <div className="transport-controls-cluster">
@@ -220,6 +226,17 @@ export default function TransportBar({
                     </svg>
                 </button>
             </div>
+
+            {/* 💡 כפתור CUT OUT */}
+            <button
+                type="button"
+                className="btn-cut-action cut-out"
+                disabled={!onSetOutPoint}
+                onClick={(e) => { e.stopPropagation(); onSetOutPoint?.(); }}
+                title="Set CUT OUT to current Playhead (Key: ] )"
+            >
+                OUT ]
+            </button>
 
             {isEnabled && (
                 <div className="audio-control-cluster">

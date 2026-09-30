@@ -37,53 +37,26 @@ export default function TimelineTrack({
     outPointMs,
     baseEpochMs,
     segments: rawSegments = [],
+    recordingSegments = {},
     globalGaps = [],
     disableFilmstrip = false
 }) {
     const [tilesMap, setTilesMap] = useState({});
-    const [verifiedChunks, setVerifiedChunks] = useState(null);
-    const isLoadingChunks = verifiedChunks === null;
-
     const hostname = station?.hostname || station?.id || station?.name || '';
 
-    useEffect(() => {
-        if (!hostname || !baseEpochMs) return;
-
-        let isMounted = true;
-        setVerifiedChunks(null);
-
-        const startEpoch = baseEpochMs + Math.round(viewportStartMs || 0);
-        const endEpoch = baseEpochMs + Math.round((viewportStartMs + viewportDurationMs) || 0);
-
-        fetch(`/api/v1/extractor-advanced/timeline-segments?stations=${encodeURIComponent(hostname)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`)
-            .then(res => res.ok ? res.json() : null)
-            .then(data => {
-                if (!isMounted) return;
-                if (data && data[hostname] && Array.isArray(data[hostname])) {
-                    setVerifiedChunks(data[hostname]);
-                } else {
-                    setVerifiedChunks([]);
-                }
-            })
-            .catch(() => {
-                if (isMounted) setVerifiedChunks([]);
-            });
-
-        return () => { isMounted = false; };
-    }, [hostname, baseEpochMs, viewportStartMs, viewportDurationMs]);
-
+    // 💡 שימוש ישיר בנתוני המקטעים שכבר נשלפו בריכוז על ידי האב - ללא קריאות HTTP כפולות
     const activeSegments = useMemo(() => {
-        if (verifiedChunks !== null) return verifiedChunks;
-        if (!rawSegments || rawSegments.length === 0) return [];
-        return rawSegments.filter(s => {
+        const stationSegs = recordingSegments[hostname] || rawSegments || [];
+        if (!stationSegs || stationSegs.length === 0) return [];
+        return stationSegs.filter(s => {
             const dur = getSegEnd(s) - getSegStart(s);
             return dur > 0;
         });
-    }, [verifiedChunks, rawSegments]);
+    }, [recordingSegments, rawSegments, hostname]);
 
     const lodConfig = useMemo(() => getLodConfig(viewportDurationMs), [viewportDurationMs]);
 
-    // שליפה רק לתחנה הפעילה/סולו — חוסך תעבורת רשת כבדה
+    // שליפת פריימים עבור Filmstrip רק לתחנה הפעילה (חיסכון רוחב פס משמעותי)
     const timelineTiles = useMemo(() => {
         if (disableFilmstrip || activeSegments.length === 0 || !baseEpochMs || viewportDurationMs <= 0) return [];
 
@@ -259,7 +232,6 @@ export default function TimelineTrack({
 
         const resultGaps = [];
 
-        // 1. פערים גלובליים לחיתוך (צהובים עם מספריים ✂)
         if (globalGaps && globalGaps.length > 0) {
             globalGaps.forEach((g, idx) => {
                 const gStart = g.startEpochMs;
@@ -289,7 +261,6 @@ export default function TimelineTrack({
             });
         }
 
-        // 2. פערי היעדר אות תחנתיים (מעומעמים ברקע)
         rawStationEmptyRanges.forEach((range, rIdx) => {
             let subRanges = [range];
 
@@ -406,13 +377,6 @@ export default function TimelineTrack({
 
                 {inPercent > 0 && <div className="mask-dimmed left-mask" style={{ width: `${Math.min(100, inPercent)}%` }} />}
                 {outPercent < 100 && <div className="mask-dimmed right-mask" style={{ left: `${Math.max(0, outPercent)}%`, right: 0 }} />}
-
-                {isLoadingChunks && (
-                    <div className="track-loading-overlay">
-                        <div className="track-spinner" />
-                        <span className="loading-label">SYNCING TRACK...</span>
-                    </div>
-                )}
             </div>
         </div>
     );

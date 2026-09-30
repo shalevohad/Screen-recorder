@@ -1,8 +1,8 @@
-﻿import { useState, useMemo, useEffect, useRef } from 'react';
+﻿// Client/src/components/Dashboard/useDashboardLogic.js
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
 
-// שליפת משתני CSS גלובליים המוגדרים ב-SCSS
 const getCssPixelValue = (varName, fallback) => {
     if (typeof window === 'undefined') return fallback;
     const val = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
@@ -11,7 +11,6 @@ const getCssPixelValue = (varName, fallback) => {
 
 export function useDashboardLogic({
     stations = [],
-    systemConfig,
     hideOffline = true,
     isFaultFilterActive = false,
     onExitFaultFilter,
@@ -30,22 +29,49 @@ export function useDashboardLogic({
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 24;
 
-    const fleetTabsList = useMemo(() => systemConfig?.dashboard?.fleetTabs || [], [systemConfig]);
-    const activeFleetTabConfig = useMemo(() => fleetTabsList.find(t => t.id === activeTabId) || null, [fleetTabsList, activeTabId]);
+    // 💡 שליפת רשימת הטאבים הישירה מ-SQLite
+    const [fleetTabsList, setFleetTabsList] = useState([]);
 
+    const fetchTabsFromDb = useCallback(async () => {
+        try {
+            const res = await fetch('/api/v1/dashboard/tabs');
+            if (res.ok) {
+                const data = await res.json();
+                setFleetTabsList(Array.isArray(data) ? data : []);
+            }
+        } catch (err) {
+            console.error('Failed fetching fleet tabs in useDashboardLogic:', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchTabsFromDb();
+        const handleTabsChanged = () => fetchTabsFromDb();
+        window.addEventListener('itb-fleet-tabs-updated', handleTabsChanged);
+        return () => window.removeEventListener('itb-fleet-tabs-updated', handleTabsChanged);
+    }, [fetchTabsFromDb]);
+
+    const activeFleetTabConfig = useMemo(() => {
+        if (activeTabId === 'ALL') return null;
+        return fleetTabsList.find(t => t.id === activeTabId) || null;
+    }, [fleetTabsList, activeTabId]);
+
+    // 💡 סינון אמיתי ומדויק של תחנות הטאב
     const tabFilteredStations = useMemo(() => {
-        if (activeTabId === 'ALL') return stations;
-        if (!activeFleetTabConfig) return stations;
+        if (activeTabId === 'ALL' || !activeFleetTabConfig) return stations;
+
+        const assigned = (activeFleetTabConfig.assignedHostnames || []).map(h => h.toLowerCase());
+        const assignedOus = (activeFleetTabConfig.assignedOus || []).map(ou => ou.toLowerCase());
 
         return stations.filter(station => {
-            const matchesNames = activeFleetTabConfig.assignedHostnames?.some(h =>
-                h.toLowerCase() === station.hostname?.toLowerCase() ||
-                h.toLowerCase() === station.displayName?.toLowerCase()
-            );
-            const matchesOu = activeFleetTabConfig.assignedOus?.some(ou =>
-                station.ou?.toLowerCase().includes(ou.toLowerCase()) ||
-                station.group?.toLowerCase().includes(ou.toLowerCase())
-            );
+            const host = (station.hostname || '').toLowerCase();
+            const disp = (station.displayName || '').toLowerCase();
+            const matchesNames = assigned.includes(host) || assigned.includes(disp);
+
+            const ou = (station.ou || '').toLowerCase();
+            const grp = (station.group || '').toLowerCase();
+            const matchesOu = assignedOus.some(o => ou.includes(o) || grp.includes(o));
+
             return matchesNames || matchesOu;
         });
     }, [stations, activeTabId, activeFleetTabConfig]);
@@ -221,7 +247,6 @@ export function useDashboardLogic({
         }));
     };
 
-    // מעקב מידות קונטיינר דרך ResizeObserver
     const [containerSize, setContainerSize] = useState({
         width: typeof window !== 'undefined' ? window.innerWidth - 100 : 1400,
         height: typeof window !== 'undefined' ? window.innerHeight - 240 : 700
@@ -253,7 +278,6 @@ export function useDashboardLogic({
         };
     }, []);
 
-    // חישוב זום אוטומטי המבוסס על שטח ה-Pane הזמין בלבד
     const autoOptimalZoom = useMemo(() => {
         const count = paginatedStations.length + activeInlineFeatures.length;
         if (count === 0) return 3;
@@ -263,7 +287,6 @@ export function useDashboardLogic({
         const padX = pane ? (parseFloat(getComputedStyle(pane).paddingLeft) + parseFloat(getComputedStyle(pane).paddingRight)) : 32;
 
         const availW = Math.max(300, (pane ? pane.clientWidth : containerSize.width) - padX);
-        // גובה זמין נטו (ללא צורך בקיזוז ידני, מכיוון שהסרגלים יושבים מחוץ ל-Pane)
         const availH = Math.max(160, (pane ? pane.clientHeight : containerSize.height) - padY - 8);
 
         const cardWidths = { 5: 700, 4: 570, 3: 450, 2: 360, 1: 290 };

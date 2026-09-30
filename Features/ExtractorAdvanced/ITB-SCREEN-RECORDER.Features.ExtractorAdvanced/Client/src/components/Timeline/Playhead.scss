@@ -5,35 +5,29 @@
     top: 38px;
     bottom: 0;
     left: 180px;
-    right: 58px; /* שומר מקום לכפתור ה-Export החדש */
+    right: 58px; /* שומר מקום לכפתור ה-Export */
     pointer-events: none;
     z-index: 40;
     overflow: hidden;
-
+    /* 💡 שחרור אינטראקציה לערוצים שמתחת: הרצועה בלתי חוסמת */
     .draggable-cut-band {
         position: absolute;
         top: 28px;
         bottom: 0;
-        background: rgba(6, 182, 212, 0.08); /* ציאן רך */
+        background: rgba(6, 182, 212, 0.08);
         border-top: 1px dashed rgba(6, 182, 212, 0.3);
         border-bottom: 1px dashed rgba(6, 182, 212, 0.3);
-        pointer-events: auto;
-        cursor: grab;
+        pointer-events: none !important;
         z-index: 20;
-
-        &:active {
-            cursor: grabbing;
-            background: rgba(6, 182, 212, 0.15);
-        }
     }
 
     .marker {
         position: absolute;
         top: 28px;
         bottom: 0;
-        width: 14px;
-        margin-left: -7px;
-        pointer-events: auto;
+        width: 18px;
+        margin-left: -9px;
+        pointer-events: auto !important; // ידיות החיתוך פעילות תמיד
         cursor: ew-resize;
         z-index: 35;
         display: flex;
@@ -43,7 +37,8 @@
         .marker-core-line {
             width: 2px;
             height: 100%;
-            background-color: #64748B; /* פס עדין במקום נאון */
+            background-color: #64748B;
+            transition: background-color 0.15s ease;
         }
 
         .handle-badge {
@@ -51,7 +46,7 @@
             top: 0;
             height: 20px;
             padding: 0 8px;
-            background-color: #1E293B; /* צבע אלגנטי (Slate) */
+            background-color: #1E293B;
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: #F8FAFC;
             font-size: 9px;
@@ -64,15 +59,15 @@
             user-select: none;
             transition: all 0.15s ease-out;
         }
-        /* עיגול פינות מותאם כיוון - Soft Geometry */
+
         &.in-marker {
             .handle-badge {
-                right: 7px;
+                right: 9px;
                 border-radius: 6px 0 0 6px;
             }
 
             &.flipped .handle-badge {
-                left: 7px;
+                left: 9px;
                 right: auto;
                 border-radius: 0 6px 6px 0;
             }
@@ -96,19 +91,19 @@
 
         &.out-marker {
             .handle-badge {
-                left: 7px;
+                left: 9px;
                 border-radius: 0 6px 6px 0;
             }
 
             &.flipped .handle-badge {
-                right: 7px;
+                right: 9px;
                 left: auto;
                 border-radius: 6px 0 0 6px;
             }
 
             &.at-edge {
                 left: 100% !important;
-                margin-left: -14px !important;
+                margin-left: -18px !important;
 
                 .marker-core-line {
                     margin-left: auto;
@@ -124,7 +119,14 @@
         }
 
         &:hover .marker-core-line {
-            background-color: #94A3B8;
+            background-color: #06B6D4;
+            box-shadow: 0 0 8px #06B6D4;
+        }
+
+        &:hover .handle-badge {
+            background-color: #06B6D4;
+            color: #020617;
+            border-color: #06B6D4;
         }
     }
 
@@ -134,7 +136,7 @@
         bottom: 0;
         width: 16px;
         margin-left: -8px;
-        pointer-events: auto;
+        pointer-events: auto !important;
         cursor: ew-resize;
         z-index: 45;
         display: flex;
@@ -144,7 +146,7 @@
         .needle-core-line {
             width: 2px;
             height: 100%;
-            background-color: #06B6D4; /* צבע הגיבור Accent Cyan */
+            background-color: #06B6D4;
             box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
         }
 
@@ -163,7 +165,7 @@
             font-size: 10px;
             font-weight: 800;
             padding: 0 8px;
-            border-radius: 6px; /* פינות עגולות רכות */
+            border-radius: 6px;
             box-shadow: 0 4px 10px rgba(6, 182, 212, 0.3);
             white-space: nowrap;
             user-select: none;
@@ -180,7 +182,7 @@
                 transform: translateX(0);
             }
         }
-        /* סעיף האפיון: הידית המעוגלת התחתונה לאחיזה נוחה */
+
         .bottom-handle-node {
             position: absolute;
             bottom: 0;

@@ -1,4 +1,5 @@
-﻿import { useState, useRef, useEffect, useCallback } from 'react';
+﻿// Client/src/components/UI/FleetTabs.jsx
+import { useState, useRef, useEffect, useCallback } from 'react';
 import TabConfigModal from './TabConfigModal';
 import './FleetTabs.scss';
 
@@ -23,7 +24,6 @@ export default function FleetTabs({
     const [renamingTabName, setRenamingTabName] = useState('');
     const renameInputRef = useRef(null);
 
-    // שליפת טאבים מה-DB בעלייה
     const fetchTabsFromDb = useCallback(async () => {
         try {
             const res = await fetch('/api/v1/dashboard/tabs');
@@ -87,6 +87,8 @@ export default function FleetTabs({
 
             if (res.ok) {
                 await fetchTabsFromDb();
+                // 💡 שיגור אירוע סנכרון ל-useDashboardLogic
+                window.dispatchEvent(new CustomEvent('itb-fleet-tabs-updated'));
             }
         } catch (err) {
             console.error('Failed saving tab to DB:', err);
@@ -139,6 +141,8 @@ export default function FleetTabs({
             const res = await fetch(`/api/v1/dashboard/tabs/${tabId}`, { method: 'DELETE' });
             if (res.ok) {
                 await fetchTabsFromDb();
+                // 💡 שיגור אירוע סנכרון ל-useDashboardLogic
+                window.dispatchEvent(new CustomEvent('itb-fleet-tabs-updated'));
                 if (activeTabId === tabId) {
                     onTabChange('ALL');
                 }

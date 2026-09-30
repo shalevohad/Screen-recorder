@@ -1,4 +1,7 @@
-﻿using ITB_SCREEN_RECORDER.Core.Abstractions;
+﻿// ==========================================
+// File: Program.cs
+// ==========================================
+using ITB_SCREEN_RECORDER.Core.Abstractions;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Plugins;
@@ -8,6 +11,7 @@ using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -32,6 +36,14 @@ namespace ITB_SCREEN_RECORDER.Server
         {
             Directory.SetCurrentDirectory(AppContext.BaseDirectory);
             Environment.SetEnvironmentVariable("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", null);
+
+            // 💡 1. כיול ThreadPool להתמודדות חלקה עם 73 תחנות ועשרות בקשות מקביליות
+            int minWorkerThreads = Math.Max(64, Environment.ProcessorCount * 8);
+            int minIoThreads = Math.Max(64, Environment.ProcessorCount * 8);
+            ThreadPool.SetMinThreads(minWorkerThreads, minIoThreads);
+
+            // 💡 2. ניקוי קובצי spool ו-concat זמניים שנותרו פתוחים מקריסות קודמות
+            CleanupOrphanedTempFiles();
 
             string ResolveFeaturesDirectory()
             {
@@ -129,7 +141,15 @@ namespace ITB_SCREEN_RECORDER.Server
                     }
                 }
 
-                builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes);
+                // 💡 3. הגדרת Kestrel עם תמיכת HTTP/1.1 ו-HTTP/2 (Multiplexing)
+                builder.WebHost.ConfigureKestrel(options =>
+                {
+                    options.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
+                    options.ConfigureEndpointDefaults(listenOptions =>
+                    {
+                        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+                    });
+                });
 
                 int? resolvedHttpPort = null;
                 if (OperatingSystem.IsWindows())
@@ -181,11 +201,14 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddEndpointsApiExplorer();
                 builder.Services.AddSwaggerGen();
 
-                // שירותי טלמטריה ומצב
+                // שירותי טלמטריה ומצב שרת
                 builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
                 builder.Services.AddSingleton<OfflineSyncManager>();
                 builder.Services.AddSingleton<TelemetryBroadcastService>();
                 builder.Services.AddSingleton<CustomTabsService>();
+
+                // 💡 4. שירות ניטור האחסון הרוחבי (Cross-Platform Storage & IOPS Telemetry)
+                builder.Services.AddSingleton<IStorageTelemetryService, StorageTelemetryService>();
 
                 builder.Services.AddSignalR(o => o.EnableDetailedErrors = true)
                     .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
@@ -207,7 +230,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<ISystemConfigDbSyncService, SystemConfigDbSyncService>();
                 builder.Services.AddHostedService(sp => (SystemConfigDbSyncService)sp.GetRequiredService<ISystemConfigDbSyncService>());
 
-                // מנוע תחזוקת האחסון והאינדוקס האוטומטי (מאוחד)
+                // מנוע תחזוקת האחסון והאינדוקס האוטומטי
                 builder.Services.AddSingleton<CatalogMaintenanceService>();
                 builder.Services.AddSingleton<ICatalogMaintenanceService>(sp => sp.GetRequiredService<CatalogMaintenanceService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<CatalogMaintenanceService>());
@@ -267,6 +290,31 @@ namespace ITB_SCREEN_RECORDER.Server
             {
                 serverMutex?.Dispose();
             }
+        }
+
+        private static void CleanupOrphanedTempFiles()
+        {
+            try
+            {
+                string tempDir = Path.GetTempPath();
+                var prefixes = new[] { "itb_spool_", "stream_", "cut_" };
+                var files = Directory.EnumerateFiles(tempDir)
+                    .Where(f => prefixes.Any(p => Path.GetFileName(f).StartsWith(p, StringComparison.OrdinalIgnoreCase)));
+
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var fi = new FileInfo(file);
+                        if (DateTime.UtcNow - fi.LastWriteTimeUtc > TimeSpan.FromMinutes(30))
+                        {
+                            File.Delete(file);
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }
     }
 }

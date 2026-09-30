@@ -1,38 +1,84 @@
-﻿// Client/src/components/UI/RadialGauge.scss
+﻿// ==========================================
+// File: Client/src/components/UI/RadialGauge.scss
+// ==========================================
 
-.radial-gauge-wrapper {
-    position: relative;
+.radial-metric-cell {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
+    gap: 6px;
     flex-shrink: 0;
     user-select: none;
 
-    .radial-svg {
-        transform: rotate(-90deg); /* תחילת הקשתות מראש המעגל (שעה 12) */
-        overflow: visible;
+    .radial-gauge-wrapper {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
 
-        .radial-track {
-            fill: none;
-            stroke: rgba(148, 163, 184, 0.12);
-        }
+        .radial-svg {
+            transform: rotate(-90deg);
+            overflow: visible;
 
-        .radial-indicator {
-            fill: none;
-            transition: stroke-dashoffset 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            .radial-track {
+                fill: none;
+                stroke: rgba(148, 163, 184, 0.12);
+            }
 
-            &.multi {
-                transition: stroke-dasharray 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            .radial-indicator {
+                fill: none;
+                transition: stroke-dashoffset 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             }
         }
     }
 
-    .radial-inner-content {
-        position: absolute;
-        inset: 0;
+    .cell-data-stack {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
+        flex-direction: column;
+        gap: 2px;
+        line-height: 1;
+
+        .data-item {
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+
+            .item-lbl {
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-size: 8px;
+                font-weight: 800;
+
+                &.cyan {
+                    color: var(--accent-cyan, #06B6D4);
+                }
+
+                &.blue {
+                    color: var(--accent-cyan-light, #38BDF8);
+                }
+
+                &.green {
+                    color: var(--accent-emerald, #10B981);
+                }
+
+                &.amber {
+                    color: var(--accent-amber-light, #FBBF24);
+                }
+
+                &.purple {
+                    color: #C084FC;
+                }
+
+                &.muted {
+                    color: #64748B;
+                }
+            }
+
+            .item-val {
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                font-size: 8.5px;
+                font-weight: 700;
+                color: var(--text-primary, #F8FAFC);
+            }
+        }
     }
 }

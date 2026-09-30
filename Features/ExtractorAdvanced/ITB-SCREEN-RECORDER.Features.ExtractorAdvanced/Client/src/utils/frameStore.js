@@ -2,13 +2,21 @@
 // File: Features/ExtractorAdvanced/Client/src/utils/frameStore.js
 // ==========================================
 
+const MAX_CACHE_SIZE = 400; // הגבלת פריימים מקסימלית ב-RAM
+const QUANTIZE_MS = 250;    // סנכרון מדרגות מול השרת ל-Scrubbing חלק
+
 const frameCache = new Map();
 const pendingPromises = new Map();
 const listeners = new Set();
 
-const MAX_CONCURRENT = 4;
+const MAX_CONCURRENT = 8;
 let activeRequests = 0;
 const requestQueue = [];
+
+function quantize(epochMs) {
+    if (!epochMs || isNaN(epochMs)) return 0;
+    return Math.round(epochMs / QUANTIZE_MS) * QUANTIZE_MS;
+}
 
 function processQueue() {
     while (activeRequests < MAX_CONCURRENT && requestQueue.length > 0) {
@@ -18,14 +26,45 @@ function processQueue() {
 }
 
 export const frameStore = {
-    get(hostname, epochMs) {
-        return frameCache.get(`${hostname}_${epochMs}`);
+    get(hostname, rawEpochMs) {
+        const epochMs = quantize(rawEpochMs);
+        const key = `${hostname}_${epochMs}`;
+        if (!frameCache.has(key)) return null;
+
+        // רענון מיקום ב-LRU
+        const val = frameCache.get(key);
+        frameCache.delete(key);
+        frameCache.set(key, val);
+        return val;
     },
 
-    set(hostname, epochMs, value) {
+    set(hostname, rawEpochMs, value) {
+        const epochMs = quantize(rawEpochMs);
         const key = `${hostname}_${epochMs}`;
+
+        // פינוי זיכרון LRU אם חורגים מהמגבלה
+        if (frameCache.size >= MAX_CACHE_SIZE) {
+            const oldestKey = frameCache.keys().next().value;
+            const oldestVal = frameCache.get(oldestKey);
+            if (oldestVal && oldestVal.startsWith('blob:')) {
+                URL.revokeObjectURL(oldestVal);
+            }
+            frameCache.delete(oldestKey);
+        }
+
         frameCache.set(key, value);
         listeners.forEach(listener => listener(hostname, epochMs, value));
+    },
+
+    clearAll() {
+        frameCache.forEach((val) => {
+            if (val && val.startsWith('blob:')) {
+                URL.revokeObjectURL(val);
+            }
+        });
+        frameCache.clear();
+        pendingPromises.clear();
+        requestQueue.length = 0;
     },
 
     subscribe(listener) {
@@ -33,10 +72,12 @@ export const frameStore = {
         return () => listeners.delete(listener);
     },
 
-    fetchFrame(hostname, epochMs, signal) {
+    fetchFrame(hostname, rawEpochMs, signal) {
+        const epochMs = quantize(rawEpochMs);
         const key = `${hostname}_${epochMs}`;
+
         if (frameCache.has(key)) {
-            return Promise.resolve(frameCache.get(key));
+            return Promise.resolve(this.get(hostname, epochMs));
         }
 
         if (pendingPromises.has(key)) {
@@ -79,3 +120,9 @@ export const frameStore = {
         return promise;
     }
 };
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('extractor:clear-session', () => {
+        frameStore.clearAll();
+    });
+}

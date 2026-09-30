@@ -24,6 +24,118 @@
         width: 100%;
         height: 100%;
     }
+    /* סרגל הבקרה הצף: Glassmorphism טקטי יוקרתי ועדין מעל הגריד */
+    .viewport-matrix-toolbar {
+        position: absolute;
+        top: 18px;
+        right: 20px;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        user-select: none;
+        pointer-events: auto;
+        opacity: 0.85;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+
+        &:hover {
+            opacity: 1;
+            transform: translateY(-1px);
+        }
+
+        .mode-toggle-pill {
+            display: flex;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-radius: 9999px;
+            padding: 3px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            gap: 2px;
+
+            .btn-mode-toggle {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                background: transparent;
+                border: none;
+                color: #94A3B8;
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                font-size: 9.5px;
+                font-weight: 800;
+                padding: 4px 10px;
+                border-radius: 9999px;
+                cursor: pointer;
+                letter-spacing: 0.5px;
+                transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+                svg {
+                    opacity: 0.8;
+                }
+
+                &:hover {
+                    color: #F8FAFC;
+                    background: rgba(255, 255, 255, 0.08);
+                }
+
+                &.active {
+                    background: #06B6D4;
+                    color: #090D14;
+                    box-shadow: 0 0 12px rgba(6, 182, 212, 0.45);
+
+                    svg {
+                        stroke: #090D14;
+                        opacity: 1;
+                    }
+                }
+            }
+        }
+
+        .paged-nav-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(6, 182, 212, 0.35);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-radius: 9999px;
+            padding: 3px 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+
+            .btn-page-arrow {
+                background: transparent;
+                border: none;
+                color: #38BDF8;
+                font-size: 10px;
+                cursor: pointer;
+                padding: 3px 6px;
+                border-radius: 4px;
+                transition: all 0.18s ease;
+
+                &:hover:not(:disabled) {
+                    background: rgba(6, 182, 212, 0.25);
+                    color: #FFFFFF;
+                }
+
+                &:disabled {
+                    color: rgba(148, 163, 184, 0.3);
+                    cursor: not-allowed;
+                }
+            }
+
+            .page-indicator-text {
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                font-size: 9.5px;
+                font-weight: 800;
+                color: #F8FAFC;
+                letter-spacing: 0.5px;
+                white-space: nowrap;
+            }
+        }
+    }
 
     .multicam-tactical-grid {
         display: grid;

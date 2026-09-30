@@ -47,7 +47,7 @@ export default function ExtractorAdvancedStudio() {
     const timelineBaseEpochMs = useMemo(() => baseEpochMs - bufferMs, [baseEpochMs, bufferMs]);
     const totalTimelineDurationMs = useMemo(() => timeRange.durationMs + (2 * bufferMs), [timeRange.durationMs, bufferMs]);
 
-    const [allStations, setAllStations] = useState(cached.allStations || []);
+    const [allStations, setAllStations] = useState([]);
     const [recordingSegments, setRecordingSegments] = useState({});
     const [isLoadingStations, setIsLoadingStations] = useState(false);
 
@@ -106,7 +106,10 @@ export default function ExtractorAdvancedStudio() {
 
     const updatePlayhead = useCallback((timestamp) => {
         if (!lastTickRef.current) lastTickRef.current = timestamp;
-        const deltaMs = (timestamp - lastTickRef.current) * playbackSpeed;
+
+        // 💡 הגבלת קפיצת זמן מקסימלית (Clamp) למניעת זינוק פתאומי בחזרה מטאב רדום
+        const rawDelta = (timestamp - lastTickRef.current) * playbackSpeed;
+        const deltaMs = Math.min(rawDelta, 250 * playbackSpeed);
         lastTickRef.current = timestamp;
 
         setPlayheadMs((prev) => {
@@ -189,7 +192,6 @@ export default function ExtractorAdvancedStudio() {
     }, [activeStationId]);
 
     const handleSpeedChange = useCallback((speed) => {
-        console.log('[Studio] 🚀 Changing playback speed to:', speed);
         setPlaybackSpeed(speed);
     }, []);
 
@@ -198,23 +200,27 @@ export default function ExtractorAdvancedStudio() {
     );
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
+    // 💡 מניעת עומס Disk I/O: שמירה מושהית (Debounced) ורזה ללא allStations
     useEffect(() => {
-        saveStudioSessionCache({
-            timeRange,
-            timeMode,
-            inPointMs,
-            outPointMs,
-            playheadMs,
-            selectedStationIds,
-            activeStationId,
-            zoomLevel,
-            viewportStartMs,
-            isWorkspaceActive,
-            allStations,
-            isLooping,
-            playbackSpeed
-        });
-    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, viewportStartMs, isWorkspaceActive, allStations, isLooping, playbackSpeed]);
+        const timer = setTimeout(() => {
+            saveStudioSessionCache({
+                timeRange,
+                timeMode,
+                inPointMs,
+                outPointMs,
+                playheadMs: Math.round(playheadMs),
+                selectedStationIds,
+                activeStationId,
+                zoomLevel,
+                viewportStartMs,
+                isWorkspaceActive,
+                isLooping,
+                playbackSpeed
+            });
+        }, 1200);
+
+        return () => clearTimeout(timer);
+    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, viewportStartMs, isWorkspaceActive, isLooping, playbackSpeed]);
 
     const fetchActiveStationsForTimeScope = useCallback(async () => {
         if (isNaN(timelineBaseEpochMs)) return;
@@ -287,7 +293,7 @@ export default function ExtractorAdvancedStudio() {
                     const data = await res.json();
                     setRecordingSegments(data || {});
                 }
-            } catch (e) {
+            } catch {
                 if (isMounted) setRecordingSegments({});
             }
         };
@@ -295,8 +301,6 @@ export default function ExtractorAdvancedStudio() {
         fetchSegments();
         return () => { isMounted = false; };
     }, [stationIdsKey, timelineBaseEpochMs, totalTimelineDurationMs]);
-
-    // 💡 הסרנו את ה-useEffect הכופה כדי לאפשר מעבר ידני חופשי בין Grid ל-Spotlight
 
     useEffect(() => {
         if (activeStationId && !selectedStationIds.includes(activeStationId)) {
@@ -318,13 +322,17 @@ export default function ExtractorAdvancedStudio() {
     const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
     const forceDrawerOpen = isDrawerOpen || isInitialSetup;
 
+    // 💡 מניעת הצפת פריימים: מקש רווח פועל רק אם יש עמדה פעילה (Solo / Spotlight)
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
-            if (isRangeModalOpen || isBookmarksModalOpen || spotlightStationId) return;
+            if (isRangeModalOpen || isBookmarksModalOpen) return;
 
             if (e.code === 'Space') {
                 e.preventDefault();
+                if (!activeStationId && !spotlightStationId) {
+                    return; // חסימת הפעלת ניגון שווא מול 73 תחנות בגריד
+                }
                 handleTogglePlaySmart();
                 return;
             }
@@ -353,7 +361,7 @@ export default function ExtractorAdvancedStudio() {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeStationId, timelineStations, isRangeModalOpen, isBookmarksModalOpen, spotlightStationId, handleTogglePlaySmart]);
+    }, [activeStationId, spotlightStationId, timelineStations, isRangeModalOpen, isBookmarksModalOpen, handleTogglePlaySmart]);
 
     const handleLoadBookmark = (bm) => {
         const startMs = parseSafeEpoch(bm.startTime);
@@ -397,7 +405,7 @@ export default function ExtractorAdvancedStudio() {
         };
 
         try {
-            const response = await fetch('/api/v1/extractor-advanced/jobs', {
+            const response = await fetch('/api/v1/extractor-advanced/cut', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -417,6 +425,31 @@ export default function ExtractorAdvancedStudio() {
         }
     }, []);
 
+    const handleResetStudioSession = useCallback(() => {
+        try {
+            localStorage.removeItem('itb_studio_session_cache');
+            window.dispatchEvent(new CustomEvent('extractor:clear-session'));
+        } catch { }
+
+        const defaultRange = generateDefaultTimeRange();
+        const newBuf = Math.max(60000, Math.round(defaultRange.durationMs * 0.05));
+        const newTotal = defaultRange.durationMs + (2 * newBuf);
+
+        setTimeRange(defaultRange);
+        setInPointMs(0);
+        setOutPointMs(newTotal);
+        setPlayheadMs(0);
+        setSelectedStationIds([]);
+        setActiveStationId(null);
+        setSpotlightStationId(null);
+        setIsPlaying(false);
+        setPlaybackSpeed(1);
+        setZoomLevel(1);
+        setViewportStartMs(0);
+        setIsWorkspaceActive(false);
+        setIsDrawerOpen(true);
+    }, []);
+
     return (
         <div className="extractor-advanced-studio">
             <div className="studio-workspace-area">
@@ -432,6 +465,9 @@ export default function ExtractorAdvancedStudio() {
                     onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
                     onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
                     isInitialSetup={isInitialSetup}
+                    selectedCount={selectedStationIds.length}
+                    totalCount={allStations.length}
+                    onResetStudio={handleResetStudioSession}
                 />
 
                 <div className="studio-lower-body">
@@ -478,6 +514,8 @@ export default function ExtractorAdvancedStudio() {
                                     setIsLooping={setIsLooping}
                                     playbackSpeed={playbackSpeed}
                                     onChangeSpeed={handleSpeedChange}
+                                    onSetInPoint={() => setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)))}
+                                    onSetOutPoint={() => setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)))}
                                 />
                             </div>
 
@@ -524,12 +562,10 @@ export default function ExtractorAdvancedStudio() {
                         onApply={() => {
                             if (selectedStationIds.length > 0) {
                                 if (selectedStationIds.length === 1) {
-                                    // 💡 בחירת תחנה בודדת -> פתיחה ישירה ב-Spotlight
                                     const singleId = selectedStationIds[0];
                                     setActiveStationId(singleId);
                                     setSpotlightStationId(singleId);
                                 } else {
-                                    // 💡 בחירת מספר תחנות -> פתיחה במצב Grid
                                     setActiveStationId(null);
                                     setSpotlightStationId(null);
                                 }

@@ -34,7 +34,7 @@ export default function CameraCardFeed({
     const [streamSrc, setStreamSrc] = useState('');
     const [isVideoReady, setIsVideoReady] = useState(false);
     const [hasError, setHasError] = useState(false);
-    const [isLoadingFrame, setIsLoadingFrame] = useState(false); // 💡 חיווי טעינה לפריים בגריד
+    const [isLoadingFrame, setIsLoadingFrame] = useState(false);
 
     const prevIsPlayingRef = useRef(isPlaying);
     const videoRef = useRef(null);
@@ -43,8 +43,8 @@ export default function CameraCardFeed({
     const isSkippingGapRef = useRef(false);
     currentRelativeMsRef.current = currentEpochMs - baseEpochMs;
 
-    const stationSegments = recordingSegments[station?.id] || station?.segments || [];
-    const isInRecordingSegment = stationSegments.some(seg => {
+    const stationSegments = recordingSegments[station?.id] || recordingSegments[stationName] || station?.segments || [];
+    const isInRecordingSegment = stationSegments.length === 0 || stationSegments.some(seg => {
         const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
         const e = seg.endEpochMs ?? seg.endEpoch ?? 0;
         return currentEpochMs >= s && currentEpochMs <= e;
@@ -68,7 +68,6 @@ export default function CameraCardFeed({
         return () => window.removeEventListener('itb-audio-state-changed', handleAudioChange);
     }, []);
 
-    // 💡 עדכון מהירות הניגון מקומית בלבד (playbackRate)
     useEffect(() => {
         if (videoRef.current) {
             videoRef.current.playbackRate = playbackSpeed;
@@ -97,9 +96,8 @@ export default function CameraCardFeed({
             return;
         }
 
-        // 💡 הפעלת ספינר טעינה כאשר הפריים עדיין לא ב-Cache ונשלף מהשרת
         setIsLoadingFrame(true);
-        const delayMs = wasPlaying ? 50 : 350;
+        const delayMs = wasPlaying ? 40 : 200;
 
         const timer = setTimeout(() => {
             if (!isMounted) return;
@@ -137,32 +135,39 @@ export default function CameraCardFeed({
         };
     }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo]);
 
-    // 💡 הזרמה תמיד ב-speed=1 קבוע לצורך c copy מהיר ורציף
+    // 💡 ניתוק מוחלט של בקשת ה-HTTP וסגירת התהליך בשרת כשיוצאים מ-Solo
     useEffect(() => {
         if (!stationName || !isSolo) return;
 
+        let debounceTimer = null;
         let safetyTimeout = null;
 
         if (isPlaying && !isSpotlightActive && isInRecordingSegment) {
-            const initialSeekMs = currentRelativeMsRef.current;
-            streamStartOffsetMsRef.current = initialSeekMs;
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&speed=1&_t=${Date.now()}`;
-            setStreamSrc(url);
-            setIsVideoReady(false);
+            debounceTimer = setTimeout(() => {
+                const initialSeekMs = currentRelativeMsRef.current;
+                streamStartOffsetMsRef.current = initialSeekMs;
+                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&speed=1&_t=${Date.now()}`;
+                setStreamSrc(url);
+                setIsVideoReady(false);
 
-            safetyTimeout = setTimeout(() => {
-                setIsVideoReady(true);
-            }, 500);
+                safetyTimeout = setTimeout(() => {
+                    setIsVideoReady(true);
+                }, 500);
+            }, 120);
 
         } else if (!isPlaying) {
             setStreamSrc('');
             setIsVideoReady(false);
             if (videoRef.current) {
                 videoRef.current.pause();
+                // 💡 ניתוק אמיתי של ה-Socket מהדפדפן שמביא לקטיעת תהליך ה-FFmpeg בשרת
+                videoRef.current.removeAttribute('src');
+                videoRef.current.load();
             }
         }
 
         return () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
             if (safetyTimeout) clearTimeout(safetyTimeout);
         };
     }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
@@ -256,21 +261,13 @@ export default function CameraCardFeed({
                     muted={getAudioSettings().isMuted}
                     onLoadedData={() => {
                         setIsVideoReady(true);
-                        if (videoRef.current) {
-                            videoRef.current.playbackRate = playbackSpeed;
-                        }
-                        if (isPlaying && videoRef.current) {
-                            videoRef.current.play().catch(err => console.warn("[Video] Play prevented:", err));
-                        }
+                        if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
+                        if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
                     onCanPlay={() => {
                         applyAudioToVideo();
-                        if (videoRef.current) {
-                            videoRef.current.playbackRate = playbackSpeed;
-                        }
-                        if (isPlaying && videoRef.current) {
-                            videoRef.current.play().catch(err => console.warn("[Video] CanPlay prevented:", err));
-                        }
+                        if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
+                        if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
                     onPlaying={() => setIsVideoReady(true)}
                     onTimeUpdate={handleTimeUpdate}
@@ -299,7 +296,6 @@ export default function CameraCardFeed({
                 ) : null}
             </div>
 
-            {/* 💡 אינדיקטור טעינה לפריים כאשר מתבצעת שליפה (Loading Frame) */}
             {isLoadingFrame && (!isSolo || !isPlaying || !isVideoReady) && (
                 <div className="feed-buffering-overlay" style={{ zIndex: 5, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(3px)' }}>
                     <div className="feed-buffer-spinner" style={{ width: '26px', height: '26px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />

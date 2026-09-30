@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Features/ExtractorAdvanced/Services/AdvancedExtractorService.cs
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -26,7 +27,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly ILogger<AdvancedExtractorService> _advancedLogger;
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
-        private static readonly SemaphoreSlim _visualThrottle = new(4, 4);
+        private static readonly SemaphoreSlim _visualThrottle = new(8, 8);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
@@ -100,13 +101,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             CancellationToken ct = default) =>
             _trackCutter.CutSynchronizedTrackAsync(stationId, plan, stationChunks, tempOutputDir, isMultiStation, progress, ct);
 
-        // =========================================================================
-        // חילוץ פריים מהיר (Keyframe Fast-Seek ב-RAM בלבד)
-        // =========================================================================
-
         public async Task<Stream> ExtractFrameAsync(string hostname, long epochMs, CancellationToken ct = default)
         {
-            long quantEpoch = (epochMs / 500) * 500;
+            long quantEpoch = (epochMs / 250) * 250;
             string cacheKey = $"frame_{hostname}_{quantEpoch}";
 
             if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out byte[]? cached) && cached != null)
@@ -116,12 +113,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             DateTime targetUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
 
-            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-5), targetUtc.AddMinutes(5));
+            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-10), targetUtc.AddMinutes(10));
             var matchingChunk = chunks.FirstOrDefault(c =>
                 !string.IsNullOrEmpty(c.FullPath) &&
                 File.Exists(c.FullPath) &&
-                c.StartUtc <= targetUtc &&
-                targetUtc <= c.EndUtc);
+                c.StartUtc <= targetUtc.AddSeconds(1) &&
+                targetUtc.AddSeconds(-1) <= c.EndUtc)
+                ?? chunks.OrderBy(c => Math.Abs((c.StartUtc - targetUtc).TotalSeconds)).FirstOrDefault(c => File.Exists(c.FullPath));
 
             string ffmpegPath = ResolveFfmpegBinary();
 
@@ -143,10 +141,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             byte[] fallback = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
             return new MemoryStream(fallback);
         }
-
-        // =========================================================================
-        // יצירת Spritesheet מבוססת דגימת מפתח ישירה (ללא Concat וללא קבצים בדיסק)
-        // =========================================================================
 
         public async Task<Stream> GenerateSpritesheetAsync(
             string hostname,
@@ -206,7 +200,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             };
 
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linkedCts.CancelAfter(TimeSpan.FromSeconds(4));
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(6));
 
             await _visualThrottle.WaitAsync(linkedCts.Token);
             using var process = new Process { StartInfo = startInfo };
@@ -244,7 +238,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
             using var memoryStream = new MemoryStream(32768);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linkedCts.CancelAfter(TimeSpan.FromSeconds(2));
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(8));
 
             await _visualThrottle.WaitAsync(linkedCts.Token);
             try
@@ -252,8 +246,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate " +
-                                $"-skip_frame nokey -ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                    // 💡 האצת חומרה אוטומטית (hwaccel) אם קיימת, ללא הדגל המכשיל nokey
+                    Arguments = $"-nostdin -loglevel error -hwaccel auto -noautorotate " +
+                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                 $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -vframes 1 -q:v 3 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,

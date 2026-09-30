@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Features/Extractor/Services/StorageScannerService.cs
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -25,6 +26,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         private readonly ILogger<StorageScannerService> _logger;
         private readonly IDummyVideoGenerator _dummyGenerator;
         private readonly TimeZoneInfo _serverLocalTz;
+
+        private static bool _pragmaInitialized = false;
+        private static readonly object _pragmaLock = new();
 
         private static readonly string[] SupportedVideoExtensions = { ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov" };
 
@@ -81,22 +85,35 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 DataSource = dbPath,
                 Mode = SqliteOpenMode.ReadWriteCreate,
-                DefaultTimeout = 5,
+                DefaultTimeout = 15,
                 Cache = SqliteCacheMode.Shared
             };
 
             var conn = new SqliteConnection(csb.ConnectionString);
             conn.Open();
-            using var pragma = conn.CreateCommand();
-            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
-            pragma.ExecuteNonQuery();
+
+            if (!_pragmaInitialized)
+            {
+                lock (_pragmaLock)
+                {
+                    if (!_pragmaInitialized)
+                    {
+                        using var cmd = conn.CreateCommand();
+                        // 💡 אופטימיזציית SQLite: הגדרות WAL, זיכרון ואינדוקס מרוכב מהיר
+                        cmd.CommandText = @"
+                            PRAGMA journal_mode=WAL; 
+                            PRAGMA synchronous=NORMAL; 
+                            PRAGMA temp_store=MEMORY;
+                            CREATE INDEX IF NOT EXISTS idx_chunks_station_range 
+                            ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms);";
+                        cmd.ExecuteNonQuery();
+                        _pragmaInitialized = true;
+                    }
+                }
+            }
 
             return conn;
         }
-
-        // =========================================================================
-        // HOT PATH – שאילתות מסד נתונים מהירות (0 קריאות דיסק / 0 קריאות FFprobe)
-        // =========================================================================
 
         public async Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
         {
@@ -238,10 +255,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return sb.ToString();
         }
 
-        // =========================================================================
-        // COLD PATH – סריקת תחזוקה ידנית של הדיסק ואינדוקס חוסרים
-        // =========================================================================
-
         public async Task<ReindexResult> ScanAndIndexMissingFilesAsync(CancellationToken ct = default)
         {
             var roots = ResolveActiveStorageRoots().Where(Directory.Exists).ToList();
@@ -262,11 +275,14 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 if (ct.IsCancellationRequested) break;
 
                 var files = Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
-                    .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase));
+                    .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                    .OrderBy(f => f)
+                    .ToList();
 
-                foreach (var file in files)
+                for (int i = 0; i < files.Count; i++)
                 {
                     if (ct.IsCancellationRequested) break;
+                    var file = files[i];
                     totalScanned++;
 
                     if (existingPaths.Contains(file))
@@ -282,7 +298,20 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         {
                             var fi = new FileInfo(file);
                             long startMs = new DateTimeOffset(parsed.StartUtc).ToUnixTimeMilliseconds();
+
                             long endMs = startMs + (15 * 60 * 1000);
+                            if (i + 1 < files.Count)
+                            {
+                                var nextParsed = TryParseChunkFast(files[i + 1], null);
+                                if (nextParsed != null && string.Equals(nextParsed.Hostname, parsed.Hostname, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    long nextStartMs = new DateTimeOffset(nextParsed.StartUtc).ToUnixTimeMilliseconds();
+                                    if (nextStartMs > startMs && (nextStartMs - startMs) <= (20 * 60 * 1000))
+                                    {
+                                        endMs = nextStartMs;
+                                    }
+                                }
+                            }
 
                             chunksToAdd.Add((parsed.Hostname, file, startMs, endMs, fi.Length));
                             newlyIndexed++;

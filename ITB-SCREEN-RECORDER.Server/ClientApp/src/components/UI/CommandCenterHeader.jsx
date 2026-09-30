@@ -1,7 +1,10 @@
-// Client/src/components/UI/CommandCenterHeader.jsx
+// ==========================================
+// File: Client/src/components/UI/CommandCenterHeader.jsx
+// ==========================================
 import { useState, useMemo, useEffect } from 'react';
 import ServerClock from './ServerClock';
 import ServerTelemetryWidget from './ServerTelemetryWidget';
+import RadialGauge from './RadialGauge';
 import './CommandCenterHeader.scss';
 
 export default function CommandCenterHeader({
@@ -54,8 +57,11 @@ export default function CommandCenterHeader({
         const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
         const aggregateC2Kbps = stations.reduce((acc, s) => acc + (s.telemetryTxKbps || 0), 0);
 
-        return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps };
-    }, [stations]);
+        const recordingPct = onlineCount > 0 ? Math.round((streamingCount / onlineCount) * 100) : 0;
+        const onlinePct = totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
+
+        return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps, recordingPct, onlinePct };
+    }, [stations, totalCount]);
 
     const activeWorkerCount = stations.filter(s =>
         (s.isOnline || s.status === 1 || s.status === 2) && s.isProcessRunning
@@ -157,13 +163,27 @@ export default function CommandCenterHeader({
             <div className="top-row-telemetry">
                 <div className="header-fleet-summary">
                     <div className="fleet-summary-pill">
-                        <div className="summary-pod">
+                        {/* 💡 RECORDING AGENTS - מבנה זהה ומדויק כמו ה-NET LOAD */}
+                        <div
+                            className="summary-pod recording-agents-pod"
+                            title={`Recording Fleet: ${agentMetrics.streamingCount} recording of ${agentMetrics.onlineCount} online (${agentMetrics.recordingPct}%) | Fleet Total: ${totalCount}`}
+                        >
                             <span className="pod-lbl">RECORDING AGENTS</span>
-                            <div className="pod-val-row">
-                                <span className="pod-primary cyan">{agentMetrics.streamingCount}</span>
-                                <span className="pod-slash">/</span>
-                                <span className="pod-total">{agentMetrics.onlineCount}</span>
-                                <span className="pod-unit">LIVE</span>
+                            <div className="pod-content-row">
+                                <span className="pod-val cyan">{agentMetrics.recordingPct}%</span>
+
+                                <RadialGauge
+                                    size={32}
+                                    strokeWidth={2.4}
+                                    concentricSegments={[
+                                        { pct: agentMetrics.recordingPct, color: 'var(--accent-cyan-light, #38BDF8)' },
+                                        { pct: agentMetrics.onlinePct, color: 'var(--accent-emerald, #10B981)' }
+                                    ]}
+                                    items={[
+                                        { label: 'REC', value: agentMetrics.streamingCount, color: 'cyan' },
+                                        { label: 'LIVE', value: agentMetrics.onlineCount, color: 'green' }
+                                    ]}
+                                />
                             </div>
                         </div>
 

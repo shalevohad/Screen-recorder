@@ -1,10 +1,14 @@
-﻿using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs
+// ==========================================
+using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -35,10 +39,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             _jobManager = jobManager;
             _logger = logger;
         }
-
-        // =========================================================================
-        // 1. איתור תחנות עם מטא-דאטה מאינדקס ה-DB (במהירות של מילישניות בודדות)
-        // =========================================================================
 
         [HttpGet("stations")]
         public async Task<IActionResult> GetStations(
@@ -141,12 +141,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
                 var stationList = stations.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var segmentsMap = new Dictionary<string, List<object>>();
+                var segmentsMap = new ConcurrentDictionary<string, List<object>>();
 
-                foreach (var stationId in stationList)
+                await Parallel.ForEachAsync(stationList, new ParallelOptions { MaxDegreeOfParallelism = 12, CancellationToken = ct }, async (stationId, token) =>
                 {
-                    ct.ThrowIfCancellationRequested();
-
                     var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
 
                     var segList = chunks
@@ -165,7 +163,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         }).ToList();
 
                     segmentsMap[stationId] = segList;
-                }
+                });
 
                 return Ok(segmentsMap);
             }
@@ -179,10 +177,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, "Failed to retrieve timeline segments.");
             }
         }
-
-        // =========================================================================
-        // 2. תהליכי עריכה מתקדמת (NLE Estimate & Cut Jobs)
-        // =========================================================================
 
         [HttpPost("estimate")]
         public async Task<IActionResult> EstimateCutJob([FromBody] AdvanceCutRequestDto request)
@@ -221,10 +215,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, new { message = "Failed to start extraction job." });
             }
         }
-
-        // =========================================================================
-        // 3. מטא-דאטה, תמונות וניגון רציף
-        // =========================================================================
 
         [HttpGet("stream-metadata")]
         public async Task<IActionResult> GetStreamMetadata(
@@ -311,6 +301,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc, rangeEndUtc);
+
+            // 💡 מניעת הרצת FFmpeg ריק שנכשל מיד אם אין הקלטות בטווח
+            if (chunks == null || chunks.Count == 0)
+            {
+                Response.StatusCode = 204;
+                return;
+            }
+
             string manifestContent = await _storageScanner.BuildConcatManifestAsync(chunks, rangeStartUtc, rangeEndUtc);
 
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"stream_{hostname}_{Guid.NewGuid():N}.txt");

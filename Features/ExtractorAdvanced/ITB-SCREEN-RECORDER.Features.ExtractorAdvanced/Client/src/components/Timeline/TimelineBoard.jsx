@@ -11,11 +11,7 @@ import TimelineContextMenu from './TimelineContextMenu.jsx';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './TimelineBoard.scss';
 
-// ==========================================
-// קבועי מקשי קיצור לחיתוך (Shortcut Keybinds)
-// ==========================================
-export const CUT_KEY_IN = 'BracketLeft';   // מקש קביעת נקודת IN (תחילת חיתוך)
-export const CUT_KEY_OUT = 'BracketRight';  // מקש קביעת נקודת OUT (סוף חיתוך)
+const TRACKS_PER_BANK = 8;
 
 function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
@@ -51,6 +47,7 @@ export default function TimelineBoard({
     onEstimateLoaded
 }) {
     const [hoverMs, setHoverMs] = useState(null);
+    const [trackBankIndex, setTrackBankIndex] = useState(0);
 
     const [internalViewportStartMs, setInternalViewportStartMs] = useState(propViewportStartMs || 0);
     const viewportStartMs = propViewportStartMs !== undefined ? propViewportStartMs : internalViewportStartMs;
@@ -92,13 +89,30 @@ export default function TimelineBoard({
     const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
     const viewportDurationMs = totalDurationMs / zoomLevel;
 
+    const totalBanks = Math.ceil(stations.length / TRACKS_PER_BANK) || 1;
+    const currentBankStations = useMemo(() => {
+        const start = trackBankIndex * TRACKS_PER_BANK;
+        return stations.slice(start, start + TRACKS_PER_BANK);
+    }, [stations, trackBankIndex]);
+
+    useEffect(() => {
+        if (!activeStationId) return;
+        const stationIdx = stations.findIndex(s => s.id === activeStationId);
+        if (stationIdx !== -1) {
+            const neededBank = Math.floor(stationIdx / TRACKS_PER_BANK);
+            if (neededBank !== trackBankIndex) {
+                setTrackBankIndex(neededBank);
+            }
+        }
+    }, [activeStationId, stations, trackBankIndex]);
+
     const { earliestMediaMs, latestMediaMs } = useMemo(() => {
         if (!stations.length || !baseEpochMs) return { earliestMediaMs: null, latestMediaMs: null };
         let minEpoch = Infinity;
         let maxEpoch = -Infinity;
 
         stations.forEach(st => {
-            const segs = recordingSegments[st.id] || st.segments || [];
+            const segs = recordingSegments[st.id] || recordingSegments[st.hostname] || st.segments || [];
             segs.forEach(seg => {
                 const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
                 const e = seg.endEpochMs ?? seg.endEpoch ?? 0;
@@ -333,7 +347,6 @@ export default function TimelineBoard({
         }
     }, [draggingTarget]);
 
-    // 💡 שימוש בקבועי החיתוך ב-KeyDown
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
@@ -342,6 +355,8 @@ export default function TimelineBoard({
             const isHighZoom = viewportDurationMs <= 30000;
             const baseStep = isHighZoom ? realFrameMs : 1000;
             const step = baseStep * (e.shiftKey ? 5 : 1);
+
+            const keyUpper = e.key ? e.key.toUpperCase() : '';
 
             if (e.key === 'ArrowRight') {
                 e.preventDefault();
@@ -368,24 +383,68 @@ export default function TimelineBoard({
                     targetVpStart = Math.max(0, Math.min(targetVpStart, totalDurationMs - viewportDurationMs));
                     animateViewportTo(targetVpStart);
                 }
-            } else if (e.key === CUT_KEY_IN) {
-                // 💡 קביעת נקודת IN לפי הקבוע
+            } else if (e.code === 'BracketLeft' || e.key === '[' || keyUpper === 'I') {
                 e.preventDefault();
                 const newIn = Math.min(playheadMs, outPointMs - 1000);
                 const finalIn = Math.max(0, newIn);
                 setInPointMs(finalIn);
-            } else if (e.key === CUT_KEY_OUT) {
-                // 💡 קביעת נקודת OUT לפי הקבוע
+            } else if (e.code === 'BracketRight' || e.key === ']' || keyUpper === 'O') {
                 e.preventDefault();
                 const newOut = Math.max(playheadMs, inPointMs + 1000);
                 const finalOut = Math.min(totalDurationMs, newOut);
                 setOutPointMs(finalOut);
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                setPlayheadMs(inPointMs);
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                setPlayheadMs(outPointMs);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [viewportDurationMs, totalDurationMs, playheadMs, inPointMs, outPointMs, setPlayheadMs, setInPointMs, setOutPointMs, animateViewportTo, activeFps]);
+
+    // 💡 מנגנון עכבר מקצועי: הפרדה בין Zoom (Ctrl/Alt) ל-Pan אופקי (Wheel/Shift)
+    useEffect(() => {
+        const el = trackAreaRef.current;
+        if (!el) return;
+
+        const handleWheel = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const isZoomGesture = e.ctrlKey || e.altKey || Math.abs(e.deltaY) > 0 && !e.shiftKey && Math.abs(e.deltaX) === 0;
+
+            if (e.ctrlKey || e.altKey) {
+                // מצב ZOOM
+                const zoomFactor = e.deltaY < 0 ? 1.25 : 0.8;
+                const newZoom = Math.max(1, Math.min(maxDynamicZoom, +(zoomLevel * zoomFactor).toFixed(2)));
+                if (newZoom === zoomLevel) return;
+
+                const mouseMs = getMsFromClientX(e.clientX);
+                const newViewportDuration = totalDurationMs / newZoom;
+                const cursorRatio = (mouseMs - viewportStartMs) / viewportDurationMs;
+
+                let newStartMs = mouseMs - cursorRatio * newViewportDuration;
+                newStartMs = Math.max(0, Math.min(newStartMs, totalDurationMs - newViewportDuration));
+
+                setViewportStartMs(newStartMs);
+                if (onZoomChange) onZoomChange(newZoom);
+            } else {
+                // מצב PAN (גלילה אופקית בציר הזמן)
+                const scrollDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+                const panStepMs = (scrollDelta / 100) * (viewportDurationMs * 0.15);
+                const newStartMs = Math.max(0, Math.min(totalDurationMs - viewportDurationMs, viewportStartMs + panStepMs));
+
+                setViewportStartMs(Math.round(newStartMs));
+            }
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheel);
+    }, [zoomLevel, viewportStartMs, viewportDurationMs, totalDurationMs, getMsFromClientX, onZoomChange, maxDynamicZoom, setViewportStartMs]);
 
     const handleContextMenu = (e) => {
         e.preventDefault();
@@ -423,33 +482,6 @@ export default function TimelineBoard({
         }
         setContextMenu(null);
     };
-
-    useEffect(() => {
-        const el = trackAreaRef.current;
-        if (!el) return;
-
-        const handleWheel = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const zoomFactor = e.deltaY < 0 ? 1.25 : 0.8;
-            const newZoom = Math.max(1, Math.min(maxDynamicZoom, +(zoomLevel * zoomFactor).toFixed(2)));
-            if (newZoom === zoomLevel) return;
-
-            const mouseMs = getMsFromClientX(e.clientX);
-            const newViewportDuration = totalDurationMs / newZoom;
-            const cursorRatio = (mouseMs - viewportStartMs) / viewportDurationMs;
-
-            let newStartMs = mouseMs - cursorRatio * newViewportDuration;
-            newStartMs = Math.max(0, Math.min(newStartMs, totalDurationMs - newViewportDuration));
-
-            setViewportStartMs(newStartMs);
-            if (onZoomChange) onZoomChange(newZoom);
-        };
-
-        el.addEventListener('wheel', handleWheel, { passive: false });
-        return () => el.removeEventListener('wheel', handleWheel);
-    }, [zoomLevel, viewportStartMs, viewportDurationMs, totalDurationMs, getMsFromClientX, onZoomChange, maxDynamicZoom, setViewportStartMs]);
 
     const handleStartDrag = (target, e) => {
         setContextMenu(null);
@@ -631,6 +663,32 @@ export default function TimelineBoard({
                 </div>
             </div>
 
+            {totalBanks > 1 && (
+                <div className="timeline-bank-nav-bar">
+                    <button
+                        type="button"
+                        disabled={trackBankIndex === 0}
+                        onClick={() => setTrackBankIndex(p => Math.max(0, p - 1))}
+                        className="btn-bank-step"
+                        title="Previous 8 channels"
+                    >
+                        ◀ PREV
+                    </button>
+                    <span className="bank-status-pill">
+                        CHANNELS {trackBankIndex * TRACKS_PER_BANK + 1}–{Math.min(stations.length, (trackBankIndex + 1) * TRACKS_PER_BANK)} OF {stations.length}
+                    </span>
+                    <button
+                        type="button"
+                        disabled={trackBankIndex >= totalBanks - 1}
+                        onClick={() => setTrackBankIndex(p => Math.min(totalBanks - 1, p + 1))}
+                        className="btn-bank-step"
+                        title="Next 8 channels"
+                    >
+                        NEXT ▶
+                    </button>
+                </div>
+            )}
+
             <div
                 className="tracks-with-export-layout"
                 onMouseMove={handleTracksMouseMove}
@@ -638,9 +696,10 @@ export default function TimelineBoard({
             >
                 <div className="tracks-scroll-area">
                     {stations.length > 0 ? (
-                        stations.map(station => {
+                        currentBankStations.map(station => {
                             const fullStationSegments =
                                 recordingSegments[station.id] ||
+                                recordingSegments[station.hostname] ||
                                 station.segments ||
                                 [];
 

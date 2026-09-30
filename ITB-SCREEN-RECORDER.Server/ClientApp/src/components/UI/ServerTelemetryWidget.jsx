@@ -1,4 +1,6 @@
-﻿// Client/src/components/UI/ServerTelemetryWidget.jsx
+﻿// ==========================================
+// File: Client/src/components/UI/ServerTelemetryWidget.jsx
+// ==========================================
 import { useState, useEffect } from 'react';
 import RadialGauge from './RadialGauge';
 import './ServerTelemetryWidget.scss';
@@ -41,9 +43,18 @@ const calcTacticalBarPct = (rateKbps, maxLinkKbps = 1000000) => {
     return Math.min(100, Math.max(6, Math.round(pct)));
 };
 
+const formatStorageBytes = (bytes) => {
+    if (!bytes || bytes <= 0) return '0T';
+    const tb = bytes / (1024 * 1024 * 1024 * 1024);
+    if (tb >= 1) return `${tb.toFixed(1)}T`;
+    const gb = bytes / (1024 * 1024 * 1024);
+    return `${Math.round(gb)}G`;
+};
+
 export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0 }) {
     const historyPoints = 40;
 
+    // CPU & RAM
     const cpuPct = serverTelemetry?.cpuUsagePct ?? serverTelemetry?.hostCpuUsagePct ?? 0;
     const appCpuPct = serverTelemetry?.appCpuUsagePct ?? serverTelemetry?.processCpuUsagePct ?? 0;
 
@@ -55,6 +66,7 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     const totalRamDisplay = `${totalRamGb}G`;
     const hostUsedRamDisplay = `${((hostRamPct / 100) * totalRamGb).toFixed(1)}G`;
 
+    // NET
     const netTxMbps = serverTelemetry?.nicTotalTxMbps ?? 0;
     const netRxMbps = serverTelemetry?.nicTotalRxMbps ?? 0;
     const totalNetMbps = netTxMbps + netRxMbps;
@@ -68,6 +80,32 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     const rxPct = calcTacticalBarPct(netRxMbps * 1000, linkSpeedKbps);
     const netPct = calcTacticalBarPct(totalNetMbps * 1000, linkSpeedKbps);
     const c2Pct = calcTacticalBarPct(c2Kbps, 5000);
+
+    // נתוני אחסון
+    const storageData = serverTelemetry?.storage;
+    const isAccessible = Boolean(storageData?.isAccessible);
+    const isFallback = Boolean(storageData?.isFallbackActive);
+
+    const totalStorageBytes = storageData?.totalSizeBytes ?? 0;
+    const freeStorageBytes = storageData?.freeSizeBytes ?? 0;
+    const usedStorageBytes = storageData?.usedSizeBytes ?? Math.max(0, totalStorageBytes - freeStorageBytes);
+
+    const storageUsedPct = isAccessible && totalStorageBytes > 0
+        ? (storageData?.usedPercent ?? ((usedStorageBytes / totalStorageBytes) * 100))
+        : 0;
+
+    const storageFreePct = isAccessible && totalStorageBytes > 0
+        ? (storageData?.freePercent ?? ((freeStorageBytes / totalStorageBytes) * 100))
+        : 0;
+
+    const totalStorageDisplay = formatStorageBytes(totalStorageBytes);
+    const freeStorageDisplay = formatStorageBytes(freeStorageBytes);
+    const usedStorageDisplay = formatStorageBytes(usedStorageBytes);
+    const currentIops = isAccessible ? Math.round(storageData?.currentIops ?? 0) : 0;
+
+    const storagePath = storageData?.storagePath || '';
+    const primaryPath = storageData?.primaryPath || '';
+    const storageLabel = isFallback ? 'FALLBACK POOL' : (storageData?.storageLabel || 'STORAGE POOL');
 
     const [history, setHistory] = useState({
         cpu: [cpuPct],
@@ -116,9 +154,27 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
         return 'var(--accent-emerald, #10B981)';
     };
 
+    const getStorageColor = (pct) => {
+        if (!isAccessible) return 'rgba(148, 163, 184, 0.25)';
+        if (isFallback) return 'var(--accent-amber, #F59E0B)';
+        if (pct >= 90) return 'var(--accent-rose, #EF4444)';
+        if (pct >= 75) return 'var(--accent-amber, #F59E0B)';
+        return 'var(--accent-emerald, #10B981)';
+    };
+
+    const getStorageTooltip = () => {
+        if (!isAccessible) {
+            return `Storage Unreachable / Disconnected\nPrimary Target: ${primaryPath || 'None'}\nFallback Target: ${storagePath || 'None'}`;
+        }
+        if (isFallback) {
+            return `⚠️ PRIMARY SHARE UNREACHABLE - FALLBACK ACTIVE\nActive Fallback: ${storagePath}\nPrimary Target: ${primaryPath || 'None'}\nAllocated: ${totalStorageDisplay} | Used: ${usedStorageDisplay} (${storageUsedPct.toFixed(1)}%)\nFree Available: ${freeStorageDisplay} (${storageFreePct.toFixed(1)}%)\nDisk IOPS: ${currentIops} IOPS`;
+        }
+        return `Storage Target: ${storagePath}\nAllocated: ${totalStorageDisplay} | Used: ${usedStorageDisplay} (${storageUsedPct.toFixed(1)}%)\nFree Available: ${freeStorageDisplay} (${storageFreePct.toFixed(1)}%)\nDisk IOPS: ${currentIops} IOPS`;
+    };
+
     return (
         <div className="server-telemetry-widget layout-large">
-            {/* CPU Pod המקורי עם ה-Sparkline */}
+            {/* CPU Pod */}
             <div className={`telemetry-pod ${getStatusClass(cpuPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">CPU LOAD</span>
@@ -135,7 +191,7 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 </div>
             </div>
 
-            {/* RAM Pod המקורי עם ה-Sparkline */}
+            {/* RAM Pod */}
             <div
                 className={`telemetry-pod ${getStatusClass(hostRamPct)}`}
                 title={`Host Total: ${hostUsedRamDisplay} / ${totalRamDisplay} (${hostRamPct.toFixed(1)}%) | App: ${appRamDisplay}`}
@@ -155,7 +211,72 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 </div>
             </div>
 
-            {/* NET Pod המשודרג: שני שעונים רדיאליים שכל אחד עם שתי קשתות קונצנטריות */}
+            {/* 💡 STORAGE POOL POD - קבוע ומשתמש ב-RadialGauge המודרני */}
+            <div
+                className={`telemetry-pod storage-pod-radial ${isAccessible
+                        ? (isFallback ? 'is-fallback-active' : getStatusClass(storageUsedPct))
+                        : 'is-disconnected'
+                    }`}
+                title={getStorageTooltip()}
+            >
+                <div className="pod-header">
+                    <div className="pod-title-group">
+                        {isFallback && <span className="fallback-beacon-dot" aria-hidden="true" />}
+                        <span className={`pod-title ${isFallback ? 'fallback-title' : ''}`}>
+                            {storageLabel}
+                        </span>
+                    </div>
+                    <span className="pod-sub">
+                        {isAccessible ? (
+                            isFallback ? (
+                                <span className="fallback-tag-badge">⚠️ FALLBACK</span>
+                            ) : (
+                                `${freeStorageDisplay} FREE`
+                            )
+                        ) : (
+                            'OFFLINE'
+                        )}
+                    </span>
+                </div>
+
+                <div className="pod-content-row">
+                    <span className={`pod-val ${isFallback ? 'fallback-val' : ''}`}>
+                        {isAccessible ? `${storageUsedPct.toFixed(0)}%` : '--'}
+                    </span>
+
+                    <RadialGauge
+                        size={32}
+                        strokeWidth={2.4}
+                        concentricSegments={
+                            isAccessible
+                                ? [
+                                    { pct: storageUsedPct, color: getStorageColor(storageUsedPct) },
+                                    { pct: storageFreePct, color: isFallback ? 'rgba(245, 158, 11, 0.4)' : 'var(--accent-cyan-light, #38BDF8)' }
+                                ]
+                                : [
+                                    { pct: 0, color: 'rgba(148, 163, 184, 0.2)' },
+                                    { pct: 0, color: 'rgba(148, 163, 184, 0.15)' }
+                                ]
+                        }
+                        items={[
+                            { label: isFallback ? 'LOC-FREE' : 'FREE', value: isAccessible ? freeStorageDisplay : '--', color: isAccessible ? (isFallback ? 'amber' : 'green') : 'muted' },
+                            { label: 'TOTAL', value: isAccessible ? totalStorageDisplay : '--', color: isAccessible ? 'cyan' : 'muted' }
+                        ]}
+                    />
+                </div>
+
+                <div className="pod-track">
+                    <div
+                        className="pod-bar storage-bar"
+                        style={{
+                            width: isAccessible ? `${Math.min(100, storageUsedPct)}%` : '0%',
+                            backgroundColor: getStorageColor(storageUsedPct)
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* 💡 NET POD - שימוש ישיר ב-RadialGauge המודרני */}
             <div className={`telemetry-pod net-pod-radial ${getStatusClass(netUtilPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">NET LOAD</span>
@@ -165,49 +286,35 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                     <span className="pod-val">{netUtilPct.toFixed(1)}%</span>
 
                     <div className="net-radials-cluster">
-                        {/* שעון 1: TX (קשת חיצונית) / RX (קשת פנימית) */}
-                        <div className="net-radial-cell" title={`TX: ${formatCurrentRate(netTxMbps)} | RX: ${formatCurrentRate(netRxMbps)}`}>
-                            <RadialGauge
-                                size={32}
-                                strokeWidth={2.4}
-                                concentricSegments={[
-                                    { pct: txPct, color: 'var(--accent-cyan, #06B6D4)' },
-                                    { pct: rxPct, color: 'var(--accent-emerald, #10B981)' }
-                                ]}
-                            />
-                            <div className="cell-data-stack">
-                                <div className="data-item">
-                                    <span className="item-lbl cyan">TX</span>
-                                    <span className="item-val">{formatCurrentRate(netTxMbps)}</span>
-                                </div>
-                                <div className="data-item">
-                                    <span className="item-lbl green">RX</span>
-                                    <span className="item-val">{formatCurrentRate(netRxMbps)}</span>
-                                </div>
-                            </div>
-                        </div>
+                        {/* שעון 1: TX / RX */}
+                        <RadialGauge
+                            size={32}
+                            strokeWidth={2.4}
+                            title={`TX: ${formatCurrentRate(netTxMbps)} | RX: ${formatCurrentRate(netRxMbps)}`}
+                            concentricSegments={[
+                                { pct: txPct, color: 'var(--accent-cyan, #06B6D4)' },
+                                { pct: rxPct, color: 'var(--accent-emerald, #10B981)' }
+                            ]}
+                            items={[
+                                { label: 'TX', value: formatCurrentRate(netTxMbps), color: 'cyan' },
+                                { label: 'RX', value: formatCurrentRate(netRxMbps), color: 'green' }
+                            ]}
+                        />
 
-                        {/* שעון 2: NET (קשת חיצונית) / C2 (קשת פנימית) */}
-                        <div className="net-radial-cell" title={`NET: ${formatCurrentRate(totalNetMbps)} | C2: ${c2Display}`}>
-                            <RadialGauge
-                                size={32}
-                                strokeWidth={2.4}
-                                concentricSegments={[
-                                    { pct: netPct, color: 'var(--accent-cyan-light, #38BDF8)' },
-                                    { pct: c2Pct, color: '#C084FC' }
-                                ]}
-                            />
-                            <div className="cell-data-stack">
-                                <div className="data-item">
-                                    <span className="item-lbl blue">NET</span>
-                                    <span className="item-val">{formatCurrentRate(totalNetMbps)}</span>
-                                </div>
-                                <div className="data-item">
-                                    <span className="item-lbl purple">C2</span>
-                                    <span className="item-val">{c2Display}</span>
-                                </div>
-                            </div>
-                        </div>
+                        {/* שעון 2: NET / C2 */}
+                        <RadialGauge
+                            size={32}
+                            strokeWidth={2.4}
+                            title={`NET: ${formatCurrentRate(totalNetMbps)} | C2: ${c2Display}`}
+                            concentricSegments={[
+                                { pct: netPct, color: 'var(--accent-cyan-light, #38BDF8)' },
+                                { pct: c2Pct, color: '#C084FC' }
+                            ]}
+                            items={[
+                                { label: 'NET', value: formatCurrentRate(totalNetMbps), color: 'blue' },
+                                { label: 'C2', value: c2Display, color: 'purple' }
+                            ]}
+                        />
                     </div>
                 </div>
                 <div className="pod-track">

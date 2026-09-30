@@ -21,7 +21,9 @@ export default function CameraCard({
     globalGaps = [],
     onOpenSpotlight,
     onSelectActiveStation,
-    recordingSegments = {}
+    recordingSegments = {},
+    // 💡 תיקון: קבלת מהירות הניגון מהאב
+    playbackSpeed = 1
 }) {
     const isOffline = (station.hostname || station.name || '').includes('Offline');
     const statusClass = isOffline ? 'offline' : 'live';
@@ -38,7 +40,7 @@ export default function CameraCard({
         e.preventDefault();
         e.stopPropagation();
         if (isSolo && onSelectActiveStation) {
-            if (setIsPlaying) setIsPlaying(false); // עצירת ניגון בחזרה לגריד
+            if (setIsPlaying) setIsPlaying(false);
             onSelectActiveStation(null);
         }
     };
@@ -78,7 +80,7 @@ export default function CameraCard({
                             className={`btn-card-action ${isSolo ? 'active' : ''}`}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (isSolo && setIsPlaying) setIsPlaying(false); // עצירת ניגון בחזרה לגריד
+                                if (isSolo && setIsPlaying) setIsPlaying(false);
                                 onSelectActiveStation(isSolo ? null : station.id);
                             }}
                             title={isSolo ? "Exit Solo Focus (Back to Grid)" : "Solo Focus"}
@@ -106,6 +108,7 @@ export default function CameraCard({
                         isSpotlightActive={isSpotlightActive}
                         globalGaps={globalGaps}
                         recordingSegments={recordingSegments}
+                        playbackSpeed={playbackSpeed}
                     />
 
                     {isSolo && !isPlaying && (

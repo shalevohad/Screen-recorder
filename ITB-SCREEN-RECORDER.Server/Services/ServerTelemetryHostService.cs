@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: Server/Services/ServerTelemetryHostService.cs
+// ==========================================
+using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,16 +15,19 @@ namespace ITB_SCREEN_RECORDER.Server.Services
     {
         private readonly TelemetryBroadcastService _broadcastService;
         private readonly NetworkTelemetry _networkTelemetry;
+        private readonly IStorageTelemetryService _storageService;
         private readonly ILogger<ServerTelemetryHostService> _logger;
         private readonly DateTime _serverStartTime = DateTime.UtcNow;
 
         public ServerTelemetryHostService(
             TelemetryBroadcastService broadcastService,
             NetworkTelemetry networkTelemetry,
+            IStorageTelemetryService storageService,
             ILogger<ServerTelemetryHostService> logger)
         {
             _broadcastService = broadcastService;
             _networkTelemetry = networkTelemetry;
+            _storageService = storageService;
             _logger = logger;
         }
 
@@ -35,6 +41,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 {
                     var hw = HardwareProbe.GetTelemetrySnapshot();
                     var net = _networkTelemetry.GetMetricsSnapshot();
+                    var storage = _storageService.GetCurrentStorageTelemetry();
 
                     var payload = new
                     {
@@ -47,7 +54,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                         nicTotalRxMbps = net.NicTotalRxMbps,
                         linkSpeedMbps = net.NicLinkSpeedMbps,
                         nicUtilizationPct = net.AppLineUtilizationPct,
-                        uptimeSeconds = Math.Round((DateTime.UtcNow - _serverStartTime).TotalSeconds, 0)
+                        uptimeSeconds = Math.Round((DateTime.UtcNow - _serverStartTime).TotalSeconds, 0),
+
+                        // 💡 נתוני האחסון (Storage Pool & IOPS) המשודרים ישירות ל-ServerTelemetryWidget ב-Header
+                        storage = storage
                     };
 
                     await _broadcastService.BroadcastServerTelemetryAsync(payload);

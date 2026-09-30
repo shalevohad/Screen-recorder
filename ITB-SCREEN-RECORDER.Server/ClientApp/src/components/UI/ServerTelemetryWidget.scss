@@ -1,4 +1,6 @@
-﻿// Client/src/components/UI/ServerTelemetryWidget.scss
+﻿// ==========================================
+// File: Client/src/components/UI/ServerTelemetryWidget.scss
+// ==========================================
 
 .server-telemetry-widget.layout-large {
     display: flex;
@@ -21,7 +23,7 @@
         box-shadow: var(--shadow-card, 0 8px 24px rgba(0, 0, 0, 0.55));
         box-sizing: border-box;
         flex-shrink: 0;
-        transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+        transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
 
         .pod-header {
             display: flex;
@@ -29,6 +31,12 @@
             align-items: baseline;
             line-height: 1;
             margin-bottom: 2px;
+
+            .pod-title-group {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
 
             .pod-title {
                 font-family: var(--font-primary, 'Inter', sans-serif);
@@ -97,7 +105,139 @@
                 transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             }
         }
-        /* עיצוב הפוד של ה-NET עם השעונים הרדיאליים כפולי הקשתות */
+        /* 💡 פוד ה-Storage Pool במצב רגיל ובמצב Fallback פעיל */
+        &.storage-pod-radial {
+            width: 215px;
+            min-width: 215px;
+            padding: 6px 10px;
+
+            .storage-radials-cluster {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                border-left: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+                padding-left: 8px;
+                flex: 1;
+                box-sizing: border-box;
+
+                .storage-radial-cell {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex: 1;
+
+                    .cell-data-stack {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 2px;
+                        line-height: 1;
+
+                        .data-item {
+                            display: flex;
+                            align-items: baseline;
+                            gap: 4px;
+
+                            .item-lbl {
+                                font-family: var(--font-primary, 'Inter', sans-serif);
+                                font-size: 8px;
+                                font-weight: 800;
+
+                                &.green {
+                                    color: var(--accent-emerald-light, #34D399);
+                                }
+
+                                &.cyan {
+                                    color: var(--accent-cyan-light, #38BDF8);
+                                }
+
+                                &.amber {
+                                    color: var(--accent-amber-light, #FBBF24);
+                                }
+
+                                &.muted {
+                                    color: #64748B;
+                                }
+                            }
+
+                            .item-val {
+                                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                                font-size: 8.5px;
+                                font-weight: 700;
+                                color: var(--text-primary, #F8FAFC);
+                            }
+                        }
+                    }
+                }
+            }
+            /* 💡 חיווי מודגש כשעובדים על FALLBACK */
+            &.is-fallback-active {
+                border-color: rgba(245, 158, 11, 0.6) !important;
+                background: linear-gradient(180deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 16px rgba(245, 158, 11, 0.25) !important;
+
+                .fallback-beacon-dot {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 50%;
+                    background-color: var(--accent-amber, #F59E0B);
+                    box-shadow: 0 0 8px var(--accent-amber);
+                    animation: fallbackPulse 1.4s infinite ease-in-out;
+                    flex-shrink: 0;
+                }
+
+                .fallback-title {
+                    color: var(--accent-amber-light, #FBBF24) !important;
+                    font-weight: 900 !important;
+                }
+
+                .fallback-tag-badge {
+                    font-family: var(--font-mono, monospace);
+                    font-size: 8px;
+                    font-weight: 900;
+                    padding: 1px 5px;
+                    background: rgba(245, 158, 11, 0.25);
+                    border: 1px solid rgba(245, 158, 11, 0.55);
+                    border-radius: 4px;
+                    color: var(--accent-amber-light, #FBBF24);
+                    letter-spacing: 0.4px;
+                    box-shadow: 0 0 6px rgba(245, 158, 11, 0.2);
+                }
+
+                .fallback-val {
+                    color: var(--accent-amber-light, #FBBF24) !important;
+                    text-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
+                }
+            }
+            /* מצב שקט כאשר שני הנתיבים אינם נגישים */
+            &.is-disconnected {
+                border-color: rgba(148, 163, 184, 0.12) !important;
+                background: rgba(15, 23, 42, 0.45) !important;
+                box-shadow: none !important;
+                opacity: 0.55;
+
+                .pod-val {
+                    color: #64748B !important;
+                    text-shadow: none !important;
+                }
+
+                .pod-sub {
+                    color: #64748B !important;
+                }
+
+                .storage-bar {
+                    background-color: #475569 !important;
+                }
+
+                .item-lbl, .item-val {
+                    color: #64748B !important;
+                }
+
+                &:hover {
+                    opacity: 0.8;
+                }
+            }
+        }
+        /* פוד הרשת */
         &.net-pod-radial {
             width: 275px;
             min-width: 275px;
@@ -173,9 +313,9 @@
                 background-color: var(--accent-emerald, #10B981);
             }
 
-            .pod-bar.net-bar {
-                background-color: var(--accent-cyan, #06B6D4);
-            }
+                .pod-bar.net-bar {
+                    background-color: var(--accent-cyan, #06B6D4);
+                }
         }
 
         &.warn {
@@ -204,5 +344,17 @@
                 background-color: var(--accent-rose, #EF4444);
             }
         }
+    }
+}
+
+@keyframes fallbackPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.35;
+        transform: scale(0.85);
     }
 }
