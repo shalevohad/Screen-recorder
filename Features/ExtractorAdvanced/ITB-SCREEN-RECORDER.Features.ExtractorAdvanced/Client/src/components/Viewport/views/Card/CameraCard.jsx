@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Card/CameraCard.jsx
 // ==========================================
 import React from 'react';
@@ -20,7 +20,8 @@ export default function CameraCard({
     isSpotlightActive,
     globalGaps = [],
     onOpenSpotlight,
-    onSelectActiveStation
+    onSelectActiveStation,
+    recordingSegments = {}
 }) {
     const isOffline = (station.hostname || station.name || '').includes('Offline');
     const statusClass = isOffline ? 'offline' : 'live';
@@ -37,7 +38,7 @@ export default function CameraCard({
         e.preventDefault();
         e.stopPropagation();
         if (isSolo && onSelectActiveStation) {
-            if (setIsPlaying) setIsPlaying(false);
+            if (setIsPlaying) setIsPlaying(false); // עצירת ניגון בחזרה לגריד
             onSelectActiveStation(null);
         }
     };
@@ -52,7 +53,7 @@ export default function CameraCard({
                 <div className="card-topbar">
                     <div className="station-meta">
                         <span className={`status-pulse ${statusClass}`} />
-                        <span className="station-name">{station.hostname || station.name}</span>
+                        <span className="station-name">{station.displayName || station.hostname || station.name}</span>
                     </div>
 
                     <div className="card-header-actions">
@@ -77,7 +78,7 @@ export default function CameraCard({
                             className={`btn-card-action ${isSolo ? 'active' : ''}`}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (isSolo && setIsPlaying) setIsPlaying(false);
+                                if (isSolo && setIsPlaying) setIsPlaying(false); // עצירת ניגון בחזרה לגריד
                                 onSelectActiveStation(isSolo ? null : station.id);
                             }}
                             title={isSolo ? "Exit Solo Focus (Back to Grid)" : "Solo Focus"}
@@ -104,6 +105,7 @@ export default function CameraCard({
                         setPlayheadMs={setPlayheadMs}
                         isSpotlightActive={isSpotlightActive}
                         globalGaps={globalGaps}
+                        recordingSegments={recordingSegments}
                     />
 
                     {isSolo && !isPlaying && (

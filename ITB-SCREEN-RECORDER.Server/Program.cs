@@ -1,6 +1,9 @@
-﻿using ITB_SCREEN_RECORDER.Core.Common;
+﻿using ITB_SCREEN_RECORDER.Core.Abstractions;
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Server.Data;
+using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -28,23 +31,16 @@ namespace ITB_SCREEN_RECORDER.Server
         public static void Main(string[] args)
         {
             Directory.SetCurrentDirectory(AppContext.BaseDirectory);
-
-            // ניקוי משתנה הסביבה למניעת קריסות של מנוע ה-HostingStartup בעת הרצה עם F5
             Environment.SetEnvironmentVariable("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", null);
 
-            // פונקציית עזר לאיתור תיקיית הפיצ'רים תוך שמירה על עמידות ל-Case Sensitivity בלינוקס
             string ResolveFeaturesDirectory()
             {
                 var standardPath = Path.Combine(AppContext.BaseDirectory, "Features");
                 if (Directory.Exists(standardPath)) return standardPath;
-
                 var lowerPath = Path.Combine(AppContext.BaseDirectory, "features");
-                if (Directory.Exists(lowerPath)) return lowerPath;
-
-                return standardPath;
+                return Directory.Exists(lowerPath) ? lowerPath : standardPath;
             }
 
-            // 1. פותר אסמבליז שמטעין ישירות לתוך ה-AssemblyLoadContext הראשי
             AssemblyLoadContext.Default.Resolving += (context, assemblyName) =>
             {
                 var loadedAssembly = AppDomain.CurrentDomain.GetAssemblies()
@@ -73,7 +69,6 @@ namespace ITB_SCREEN_RECORDER.Server
             Logger.Initialize(appConfig, "Server");
             Logger.AlwaysInfo($"[SERVER] ITB-SCREEN-RECORDER Server process starting on {RuntimeInformation.OSDescription}...");
 
-            // ניהול מופע יחיד עמיד לקריסות (AbandonedMutex)
             Mutex? serverMutex = null;
             bool createdNew = false;
             try
@@ -82,7 +77,6 @@ namespace ITB_SCREEN_RECORDER.Server
             }
             catch (AbandonedMutexException)
             {
-                // מופע קודם נהרג ללא שחרור מסודר - המופע הנוכחי מקבל בעלות
                 createdNew = true;
                 Logger.Warn("[SERVER] Acquired ownership of an abandoned server mutex from a previously terminated instance.");
             }
@@ -97,7 +91,6 @@ namespace ITB_SCREEN_RECORDER.Server
 
             try
             {
-                // 2. זיהוי, טעינה ואתחול של כל מודול פיצ'ר שנמצא בתיקיית Features
                 var loadedFeatureAssemblies = new List<Assembly>();
                 var featuresBaseDir = ResolveFeaturesDirectory();
 
@@ -113,110 +106,52 @@ namespace ITB_SCREEN_RECORDER.Server
                             loadedFeatureAssemblies.Add(asm);
 
                             Type[] types;
-                            try
-                            {
-                                types = asm.GetTypes();
-                            }
+                            try { types = asm.GetTypes(); }
                             catch (ReflectionTypeLoadException ex)
                             {
                                 types = ex.Types.Where(t => t != null).ToArray()!;
                                 foreach (var loaderEx in ex.LoaderExceptions.Where(e => e != null))
-                                {
                                     Logger.Error($"[PLUGIN-LOADER] LoaderException in '{fileName}': {loaderEx!.Message}");
-                                }
                             }
 
                             var startupTypes = types.Where(t => typeof(IHostingStartup).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract).ToList();
-
-                            if (startupTypes.Count == 0)
+                            foreach (var startupType in startupTypes)
                             {
-                                Logger.Warn($"[PLUGIN-LOADER] WARNING: '{fileName}' was loaded, but NO class implements IHostingStartup! No services or IFeatureModule registered.");
-                            }
-                            else
-                            {
-                                foreach (var startupType in startupTypes)
-                                {
-                                    var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
-                                    startup.Configure(builder.WebHost);
-                                    Logger.AlwaysInfo($"[PLUGIN-LOADER] Successfully activated startup: {startupType.FullName} ({asm.GetName().Name})");
-                                }
+                                var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
+                                startup.Configure(builder.WebHost);
+                                Logger.AlwaysInfo($"[PLUGIN-LOADER] Activated modular feature: {startupType.FullName}");
                             }
                         }
                         catch (Exception ex)
                         {
-                            var errorMsg = $"[PLUGIN-LOADER] CRITICAL: Failed to load modular feature from '{dllPath}': {ex.Message}";
-                            Console.WriteLine(errorMsg);
-                            Logger.Error(errorMsg);
+                            Logger.Error($"[PLUGIN-LOADER] Failed loading feature '{dllPath}': {ex.Message}");
                         }
                     }
                 }
 
-                // הגדרת תקרת Kestrel
-                builder.WebHost.ConfigureKestrel(serverOptions =>
-                {
-                    serverOptions.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
-                });
+                builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes);
 
-                // קביעת פורט האזנה חוצה-פלטפורמות (Registry -> משתנה סביבה -> הגדרות -> ברירת מחדל 5090)
                 int? resolvedHttpPort = null;
-
                 if (OperatingSystem.IsWindows())
                 {
 #pragma warning disable CA1416
                     try
                     {
-                        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorderServer");
-                        if (key != null)
-                        {
-                            var httpPortVal = key.GetValue("HttpPort");
-                            if (httpPortVal != null && int.TryParse(httpPortVal.ToString(), out int customHttpPort))
-                            {
-                                resolvedHttpPort = customHttpPort;
-                                Logger.AlwaysInfo($"[SERVER] Resolved HttpPort from Windows Registry: {resolvedHttpPort}");
-                            }
-                        }
+                        using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorderServer");
+                        if (key != null && int.TryParse(key.GetValue("HttpPort")?.ToString(), out int customHttpPort))
+                            resolvedHttpPort = customHttpPort;
                     }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn($"[SERVER] Warning: Failed to read HttpPort from Registry: {ex.Message}");
-                    }
+                    catch { }
 #pragma warning restore CA1416
                 }
 
-                if (!resolvedHttpPort.HasValue)
-                {
-                    var envPort = Environment.GetEnvironmentVariable("SERVER_HTTP_PORT")
-                               ?? Environment.GetEnvironmentVariable("HTTP_PORT");
-                    if (!string.IsNullOrEmpty(envPort) && int.TryParse(envPort, out int envPortVal))
-                    {
-                        resolvedHttpPort = envPortVal;
-                        Logger.AlwaysInfo($"[SERVER] Resolved HttpPort from environment variable: {resolvedHttpPort}");
-                    }
-                }
-
-                if (!resolvedHttpPort.HasValue)
-                {
-                    var configPort = builder.Configuration.GetValue<int?>("SystemConfig:HttpPort")
-                                  ?? builder.Configuration.GetValue<int?>("HttpPort");
-                    if (configPort.HasValue)
-                    {
-                        resolvedHttpPort = configPort.Value;
-                        Logger.AlwaysInfo($"[SERVER] Resolved HttpPort from configuration: {resolvedHttpPort}");
-                    }
-                }
-
-                int finalListeningPort = resolvedHttpPort ?? 5090;
+                int finalListeningPort = resolvedHttpPort ?? builder.Configuration.GetValue<int?>("SystemConfig:HttpPort") ?? 5090;
                 builder.WebHost.UseUrls($"http://0.0.0.0:{finalListeningPort}");
-                Logger.AlwaysInfo($"[SERVER] Kestrel listening endpoint bound to: http://0.0.0.0:{finalListeningPort}");
 
-                // אירוח כשירות מערכת
                 if (OperatingSystem.IsWindows())
                 {
 #pragma warning disable CA1416
-                    builder.Host.UseWindowsService(options =>
-                    {
-                        options.ServiceName = "ITB_ServerService";
-                    });
+                    builder.Host.UseWindowsService(options => options.ServiceName = "ITB_ServerService");
 #pragma warning restore CA1416
                 }
                 else if (OperatingSystem.IsLinux())
@@ -225,32 +160,15 @@ namespace ITB_SCREEN_RECORDER.Server
                 }
 
                 builder.Services.AddSingleton(appConfig);
+                builder.Services.AddMemoryCache();
+                builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = BufferLimits.MaxRequestSizeBytes);
+                builder.Services.AddOptions<SystemConfig>().Bind(builder.Configuration.GetSection("SystemConfig")).ValidateDataAnnotations().ValidateOnStart();
 
-                // תמיכה ב-FormReader עבור Multipart
-                builder.Services.Configure<FormOptions>(options =>
-                {
-                    options.MultipartBodyLengthLimit = BufferLimits.MaxRequestSizeBytes;
-                });
-
-                // קשירת הגדרות השרת הראשי
-                builder.Services.AddOptions<SystemConfig>()
-                    .Bind(builder.Configuration.GetSection("SystemConfig"))
-                    .ValidateDataAnnotations()
-                    .ValidateOnStart();
-
-                // מדיניות CORS
                 builder.Services.AddCors(options =>
                 {
-                    options.AddDefaultPolicy(policy =>
-                    {
-                        policy.SetIsOriginAllowed(_ => true)
-                              .AllowAnyMethod()
-                              .AllowAnyHeader()
-                              .AllowCredentials();
-                    });
+                    options.AddDefaultPolicy(p => p.SetIsOriginAllowed(_ => true).AllowAnyMethod().AllowAnyHeader().AllowCredentials());
                 });
 
-                // רישום קונטרולרים ושילוב אסמבליז של מודולים
                 var mvcBuilder = builder.Services.AddControllers()
                     .AddJsonOptions(options =>
                     {
@@ -258,10 +176,7 @@ namespace ITB_SCREEN_RECORDER.Server
                         options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
                     });
 
-                foreach (var featureAsm in loadedFeatureAssemblies)
-                {
-                    mvcBuilder.AddApplicationPart(featureAsm);
-                }
+                foreach (var featureAsm in loadedFeatureAssemblies) mvcBuilder.AddApplicationPart(featureAsm);
 
                 builder.Services.AddEndpointsApiExplorer();
                 builder.Services.AddSwaggerGen();
@@ -270,49 +185,63 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
                 builder.Services.AddSingleton<OfflineSyncManager>();
                 builder.Services.AddSingleton<TelemetryBroadcastService>();
-
-                // שירות ניהול Tabs
                 builder.Services.AddSingleton<CustomTabsService>();
 
-                builder.Services.AddSignalR(options =>
-                {
-                    options.EnableDetailedErrors = true;
-                }).AddJsonProtocol(options =>
-                {
-                    options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-                });
+                builder.Services.AddSignalR(o => o.EnableDetailedErrors = true)
+                    .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
                 builder.Services.AddHttpClient();
                 builder.Services.AddSingleton<StoragePathResolver>();
                 builder.Services.AddSingleton<SettingsFileService>();
-
                 builder.Services.AddSingleton<StationOverridesService>();
                 builder.Services.AddSingleton<MediaMtxApiClient>();
                 builder.Services.AddSingleton<EventLogger>();
-
                 builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Diagnostics.NetworkTelemetry>();
 
+                // תשתית SQLite Core, סריקת אחסון וסנכרון תצורה
+                builder.Services.AddSingleton<ICatalogConnectionFactory, CatalogConnectionFactory>();
+                builder.Services.AddSingleton<IFeatureDbInitializer, CatalogDbInitializer>();
+                builder.Services.AddSingleton<ICatalogRepository, CatalogRepository>();
+                builder.Services.AddSingleton<IVideoProbeService, VideoProbeService>();
+                builder.Services.AddSingleton<IStorageScannerService, StorageScannerService>();
+                builder.Services.AddSingleton<ISystemConfigDbSyncService, SystemConfigDbSyncService>();
+                builder.Services.AddHostedService(sp => (SystemConfigDbSyncService)sp.GetRequiredService<ISystemConfigDbSyncService>());
+
+                // מנוע תחזוקת האחסון והאינדוקס האוטומטי (מאוחד)
+                builder.Services.AddSingleton<CatalogMaintenanceService>();
+                builder.Services.AddSingleton<ICatalogMaintenanceService>(sp => sp.GetRequiredService<CatalogMaintenanceService>());
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<CatalogMaintenanceService>());
+
+                // שירותי הרקע המובנים
                 builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
                 builder.Services.AddHostedService<RecordingChunkScheduler>();
                 builder.Services.AddHostedService<ServerTelemetryHostService>();
+                builder.Services.AddHostedService<StorageRetentionWorker>();
 
                 var app = builder.Build();
 
-                // דיאגנוסטיקה: אימות מודולים רשומים ב-DI
                 using (var scope = app.Services.CreateScope())
                 {
+                    var initializers = scope.ServiceProvider.GetServices<IFeatureDbInitializer>().OrderBy(i => i.ExecutionOrder).ToList();
+                    Logger.AlwaysInfo($"[DATABASE] Discovered {initializers.Count} database initializers.");
+                    foreach (var init in initializers)
+                    {
+                        try
+                        {
+                            init.Initialize();
+                            Logger.AlwaysInfo($"[DATABASE] Initialized schema for '{init.FeatureName}' (Order: {init.ExecutionOrder})");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error($"[DATABASE] CRITICAL: Failed to initialize schema for '{init.FeatureName}': {ex.Message}");
+                            throw;
+                        }
+                    }
+
                     var registeredFeatures = scope.ServiceProvider.GetServices<IFeatureModule>().ToList();
                     Logger.AlwaysInfo($"[PLUGIN-LOADER] Total registered IFeatureModules in DI: {registeredFeatures.Count}");
-
                     foreach (var feat in registeredFeatures)
-                    {
                         Logger.AlwaysInfo($"[PLUGIN-LOADER] -> Active Module: Id='{feat.Id}', Title='{feat.Title}', Script='{feat.ScriptUrl}', Enabled={feat.IsEnabled}");
-                    }
-
-                    if (registeredFeatures.Count == 0)
-                    {
-                        Logger.Warn("[PLUGIN-LOADER] WARNING: Zero IFeatureModules registered! /api/v1/features/active will be empty.");
-                    }
                 }
 
                 if (app.Environment.IsDevelopment())
@@ -323,20 +252,15 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 app.UseDefaultFiles();
                 app.UseStaticFiles();
-
                 app.UseRouting();
-
                 app.UseCors();
                 app.UseAuthorization();
 
                 app.MapHub<TelemetryHub>("/hubs/telemetry");
                 app.MapControllers();
-
-                // SPA Fallback
                 app.MapFallbackToFile("index.html");
 
                 Logger.AlwaysInfo("[SERVER] ITB-SCREEN-RECORDER Middleware initialized successfully.");
-
                 app.Run();
             }
             finally

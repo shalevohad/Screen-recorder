@@ -1,14 +1,18 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Modals/SoloSpotlightModal.jsx
 // ==========================================
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import TimelineBoard from '../Timeline/TimelineBoard.jsx';
 import TransportBar from '../TransportBar/TransportBar.jsx';
 import NoSignalHero from '../Viewport/overlays/NoSignalHero.jsx';
 import { frameStore } from '../../utils/frameStore.js';
+import { getAudioSettings } from '../../utils/studioSessionStore.js';
 import './SoloSpotlightModal.scss';
+
+export const CUT_KEY_IN = '[';
+export const CUT_KEY_OUT = ']';
 
 const formatCutDurationSMPTE = (durationMs, fps = 30) => {
     const totalMs = Math.max(0, durationMs);
@@ -45,7 +49,11 @@ export default function SoloSpotlightModal({
     globalGaps: propGlobalGaps = [],
     onExport,
     isPlaying: propIsPlaying,
-    setIsPlaying: propSetIsPlaying
+    setIsPlaying: propSetIsPlaying,
+    isLooping: propIsLooping = true,
+    setIsLooping: propSetIsLooping,
+    playbackSpeed: propPlaybackSpeed,
+    setPlaybackSpeed: propSetPlaybackSpeed
 }) {
     const [localIsPlaying, setLocalIsPlaying] = useState(false);
     const isPlaying = propIsPlaying !== undefined ? propIsPlaying : localIsPlaying;
@@ -60,7 +68,22 @@ export default function SoloSpotlightModal({
         window.dispatchEvent(new CustomEvent('itb-set-playing', { detail: { isPlaying: nextVal } }));
     }, [isPlaying, propSetIsPlaying]);
 
-    // 💡 ניהול פערים גלובליים לחיתוך בתוך ה-Spotlight
+    const [localIsLooping, setLocalIsLooping] = useState(true);
+    const isLooping = propIsLooping !== undefined ? propIsLooping : localIsLooping;
+    const setIsLooping = propSetIsLooping || setLocalIsLooping;
+
+    const [localPlaybackSpeed, setLocalPlaybackSpeed] = useState(1);
+    const playbackSpeed = propPlaybackSpeed !== undefined ? propPlaybackSpeed : localPlaybackSpeed;
+    const setPlaybackSpeed = propSetPlaybackSpeed || setLocalPlaybackSpeed;
+
+    const prevStationIdRef = useRef(station && station.id);
+    useEffect(() => {
+        if (station && station.id && prevStationIdRef.current !== station.id) {
+            prevStationIdRef.current = station.id;
+            setPlaybackSpeed(1);
+        }
+    }, [station, setPlaybackSpeed]);
+
     const [spotlightGlobalGaps, setSpotlightGlobalGaps] = useState(propGlobalGaps || []);
 
     useEffect(() => {
@@ -71,8 +94,6 @@ export default function SoloSpotlightModal({
 
     const activeGlobalGaps = spotlightGlobalGaps.length > 0 ? spotlightGlobalGaps : propGlobalGaps;
 
-    const [isLooping, setIsLooping] = useState(false);
-    const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [streamSrc, setStreamSrc] = useState('');
     const [exportToast, setExportToast] = useState(null);
     const [isVideoReady, setIsVideoReady] = useState(false);
@@ -84,8 +105,8 @@ export default function SoloSpotlightModal({
     const isSkippingGapRef = useRef(false);
 
     playheadMsRef.current = playheadMs;
-    const hostname = station?.hostname || station?.name || '';
-    const stationSegments = recordingSegments[station?.id] || station?.segments || [];
+    const hostname = (station && (station.hostname || station.name)) || '';
+    const stationSegments = (station && (recordingSegments[station.id] || station.segments)) || [];
 
     const currentEpoch = baseEpochMs + playheadMs;
     const isInRecordingSegment = stationSegments.some(seg => {
@@ -96,12 +117,39 @@ export default function SoloSpotlightModal({
 
     const isNoSignalGap = !isInRecordingSegment;
 
+    const memoizedSoloStations = useMemo(() => (station ? [station] : []), [station]);
+
     const [frameResult, setFrameResult] = useState(() => {
         if (!station) return null;
         const host = station.hostname || station.name || '';
         const targetEpochMs = Math.round(baseEpochMs + playheadMs);
         return frameStore.get(host, targetEpochMs) || null;
     });
+
+    const applyAudioToVideo = useCallback(() => {
+        if (!videoRef.current) return;
+        const audio = getAudioSettings();
+        videoRef.current.volume = audio.volume;
+        videoRef.current.muted = audio.isMuted;
+    }, []);
+
+    useEffect(() => {
+        const handleAudioChange = (e) => {
+            if (videoRef.current && e.detail) {
+                videoRef.current.volume = e.detail.volume;
+                videoRef.current.muted = e.detail.isMuted;
+            }
+        };
+        window.addEventListener('itb-audio-state-changed', handleAudioChange);
+        return () => window.removeEventListener('itb-audio-state-changed', handleAudioChange);
+    }, []);
+
+    // 💡 עדכון מהירות הניגון מקומית בלבד (playbackRate)
+    useEffect(() => {
+        if (videoRef.current) {
+            videoRef.current.playbackRate = playbackSpeed;
+        }
+    }, [playbackSpeed]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -160,6 +208,7 @@ export default function SoloSpotlightModal({
         };
     }, [isOpen, station, hostname, baseEpochMs, playheadMs, isPlaying]);
 
+    // 💡 הזרמה תמיד ב-speed=1 קבוע לצורך c copy מהיר ורציף
     useEffect(() => {
         if (!isOpen || !station) return;
 
@@ -173,14 +222,15 @@ export default function SoloSpotlightModal({
             const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
             const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + currentHead)));
 
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&_t=${Date.now()}`;
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=1&_t=${Date.now()}`;
+            console.log(`[SoloSpotlightModal] 🎥 Loading continuous stream (${hostname}) at 1x:`, url);
 
             setStreamSrc(url);
             setIsVideoReady(false);
 
             safetyTimeout = setTimeout(() => {
                 setIsVideoReady(true);
-            }, 600);
+            }, 500);
         } else if (!isPlaying) {
             setStreamSrc('');
             setIsVideoReady(false);
@@ -194,12 +244,6 @@ export default function SoloSpotlightModal({
         };
     }, [isPlaying, isOpen, station, hostname, baseEpochMs, totalDurationMs, isInRecordingSegment]);
 
-    useEffect(() => {
-        if (videoRef.current) {
-            videoRef.current.playbackRate = playbackSpeed;
-        }
-    }, [playbackSpeed]);
-
     const handleTimeUpdate = () => {
         const video = videoRef.current;
         if (!video || !isPlaying || isSkippingGapRef.current) return;
@@ -209,7 +253,7 @@ export default function SoloSpotlightModal({
         let currentMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * 1000);
         const curEpoch = baseEpochMs + currentMs;
 
-        const activeGlobalGap = activeGlobalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
+        const activeGlobalGap = activeGlobalGaps && activeGlobalGaps.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
         if (activeGlobalGap) {
             isSkippingGapRef.current = true;
             const gapEndMs = activeGlobalGap.endEpochMs - baseEpochMs;
@@ -219,7 +263,8 @@ export default function SoloSpotlightModal({
             const startEpochVal = Math.round(baseEpochMs);
             const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
             const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + gapEndMs)));
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&_t=${Date.now()}`;
+            // 💡 מובטח speed=1 גם בדילוג על Gaps
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=1&_t=${Date.now()}`;
             setStreamSrc(url);
             setIsVideoReady(false);
 
@@ -232,7 +277,7 @@ export default function SoloSpotlightModal({
                 setPlayheadMs(inPointMs);
                 streamStartOffsetMsRef.current = inPointMs;
                 if (videoRef.current) {
-                    videoRef.current.currentTime = Math.max(0, (inPointMs - streamStartOffsetMsRef.current) / 1000);
+                    videoRef.current.currentTime = 0;
                 }
             } else {
                 setIsPlaying(false);
@@ -262,7 +307,8 @@ export default function SoloSpotlightModal({
             const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
             const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + nextMs)));
 
-            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&_t=${Date.now()}`;
+            // 💡 מובטח speed=1 גם במעבר למקטע הבא
+            const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=1&_t=${Date.now()}`;
             setStreamSrc(url);
             setIsVideoReady(false);
 
@@ -284,7 +330,7 @@ export default function SoloSpotlightModal({
             let targetPlayhead = playheadMs;
             const curEpoch = baseEpochMs + targetPlayhead;
 
-            const activeGlobalGap = activeGlobalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
+            const activeGlobalGap = activeGlobalGaps && activeGlobalGaps.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
             if (activeGlobalGap) {
                 targetPlayhead = activeGlobalGap.endEpochMs - baseEpochMs;
             } else if (!isInRecordingSegment) {
@@ -344,7 +390,12 @@ export default function SoloSpotlightModal({
         }
     }, [station, inPointMs, outPointMs, baseEpochMs, onExport]);
 
-    // קיצורי מקלדת
+    const handleEstimateLoaded = useCallback((est) => {
+        if (est && est.removedGlobalGaps) {
+            setSpotlightGlobalGaps(est.removedGlobalGaps);
+        }
+    }, []);
+
     useEffect(() => {
         if (!isOpen || !station || allStations.length === 0) return;
 
@@ -386,13 +437,13 @@ export default function SoloSpotlightModal({
                 return;
             }
 
-            if (e.key === '[') {
+            if (e.key === CUT_KEY_IN) {
                 e.preventDefault();
                 setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)));
                 return;
             }
 
-            if (e.key === ']') {
+            if (e.key === CUT_KEY_OUT) {
                 e.preventDefault();
                 setOutPointMs(Math.min(totalDurationMs, Math.max(playheadMs, inPointMs + 1000)));
                 return;
@@ -417,7 +468,7 @@ export default function SoloSpotlightModal({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, station, allStations, onSelectStation, onClose, playheadMs, inPointMs, outPointMs, totalDurationMs, setInPointMs, setOutPointMs, setPlayheadMs, handleTriggerExport, handleTogglePlaySmart, setIsPlaying]);
 
-    const currentIdx = allStations.findIndex(s => s.id === station?.id);
+    const currentIdx = allStations.findIndex(s => s.id === station && station.id);
     const prevStation = allStations[currentIdx - 1];
     const nextStation = allStations[currentIdx + 1];
 
@@ -456,7 +507,7 @@ export default function SoloSpotlightModal({
                         <video
                             ref={videoRef}
                             src={streamSrc}
-                            className="spotlight-active-video"
+                            className="station-live-frame"
                             style={{
                                 position: 'absolute',
                                 inset: 0,
@@ -467,6 +518,25 @@ export default function SoloSpotlightModal({
                             }}
                             playsInline
                             autoPlay
+                            muted={getAudioSettings().isMuted}
+                            onLoadedData={() => {
+                                setIsVideoReady(true);
+                                if (videoRef.current) {
+                                    videoRef.current.playbackRate = playbackSpeed;
+                                }
+                                if (isPlaying && videoRef.current) {
+                                    videoRef.current.play().catch(err => console.warn("[Video] Play prevented:", err));
+                                }
+                            }}
+                            onCanPlay={() => {
+                                applyAudioToVideo();
+                                if (videoRef.current) {
+                                    videoRef.current.playbackRate = playbackSpeed;
+                                }
+                                if (isPlaying && videoRef.current) {
+                                    videoRef.current.play().catch(err => console.warn("[Video] CanPlay prevented:", err));
+                                }
+                            }}
                             onPlaying={() => setIsVideoReady(true)}
                             onTimeUpdate={handleTimeUpdate}
                             onEnded={handleVideoEnded}
@@ -504,9 +574,22 @@ export default function SoloSpotlightModal({
                     </div>
 
                     {isPlaying && isInRecordingSegment && !isVideoReady && (
-                        <div className="stream-buffering-overlay" style={{ position: 'absolute', zIndex: 4 }}>
-                            <div className="buffer-spinner" />
-                            <span>BUFFERING STREAM...</span>
+                        <div className="stream-buffering-overlay" style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 10,
+                            background: 'rgba(10, 14, 23, 0.75)',
+                            backdropFilter: 'blur(4px)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '12px'
+                        }}>
+                            <div className="buffer-spinner" style={{ width: '36px', height: '36px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                            <span style={{ fontFamily: 'monospace', fontSize: '12px', letterSpacing: '1.5px', color: '#93c5fd', fontWeight: '600' }}>
+                                CONNECTING & BUFFERING STREAM...
+                            </span>
                         </div>
                     )}
 
@@ -579,7 +662,7 @@ export default function SoloSpotlightModal({
 
                 <div className="island-timeline-board-wrap">
                     <TimelineBoard
-                        stations={[station]}
+                        stations={memoizedSoloStations}
                         activeStationId={station.id}
                         onSelectActiveStation={() => { }}
                         baseEpochMs={baseEpochMs}
@@ -597,11 +680,7 @@ export default function SoloSpotlightModal({
                         setOutPointMs={setOutPointMs}
                         recordingSegments={recordingSegments}
                         onExport={handleTriggerExport}
-                        onEstimateLoaded={(est) => {
-                            if (est && est.removedGlobalGaps) {
-                                setSpotlightGlobalGaps(est.removedGlobalGaps);
-                            }
-                        }}
+                        onEstimateLoaded={handleEstimateLoaded}
                     />
                 </div>
             </div>

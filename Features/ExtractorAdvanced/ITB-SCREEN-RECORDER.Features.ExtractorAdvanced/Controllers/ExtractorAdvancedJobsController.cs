@@ -20,16 +20,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
     public class ExtractorAdvancedJobsController : ControllerBase
     {
         private readonly IAdvanceJobManager _advanceJobManager;
-        private readonly IExportJobManager _jobManager;
         private readonly ILogger<ExtractorAdvancedJobsController> _logger;
 
         public ExtractorAdvancedJobsController(
             IAdvanceJobManager advanceJobManager,
-            IExportJobManager jobManager,
             ILogger<ExtractorAdvancedJobsController> logger)
         {
             _advanceJobManager = advanceJobManager;
-            _jobManager = jobManager;
             _logger = logger;
         }
 
@@ -45,12 +42,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             return Accepted(job);
         }
 
-        /// <summary>
-        /// 💡 הערכת גודל ופערים מקדימה בזמן עריכה בציר הזמן (TimelineBoard)
-        /// תומך בפנייה ישירה מ-/api/v1/extractor-advanced/estimate או דרך /jobs/estimate
-        /// </summary>
         [HttpPost("estimate")]
-        [HttpPost("/api/v1/extractor-advanced/estimate")]
         public async Task<IActionResult> EstimateJob([FromBody] AdvanceCutRequestDto request)
         {
             if (request.StationIds == null || request.StationIds.Count == 0 || request.OutEpochMs <= request.InEpochMs)
@@ -75,7 +67,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         {
             try
             {
-                var jobs = _jobManager.GetAllJobs();
+                var jobs = _advanceJobManager.GetAllJobs();
                 return Ok(jobs);
             }
             catch (Exception ex)
@@ -88,7 +80,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         [HttpGet("{jobId}")]
         public IActionResult GetJobById([FromRoute] string jobId)
         {
-            var job = _jobManager.GetJob(jobId);
+            var job = _advanceJobManager.GetJob(jobId);
             if (job == null) return NotFound(new { error = $"Job {jobId} not found." });
             return Ok(job);
         }
@@ -96,30 +88,30 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         [HttpPost("{jobId}/bookmark")]
         public IActionResult ToggleBookmark([FromRoute] string jobId)
         {
-            bool success = _jobManager.ToggleBookmark(jobId);
+            bool success = _advanceJobManager.ToggleBookmark(jobId);
             if (!success) return NotFound();
 
-            var job = _jobManager.GetJob(jobId);
+            var job = _advanceJobManager.GetJob(jobId);
             return Ok(new { jobId, isBookmarked = job?.IsBookmarked, downloadCount = job?.DownloadCount });
         }
 
         [HttpDelete("{jobId}")]
         public IActionResult DismissJob([FromRoute] string jobId)
         {
-            _jobManager.DismissJob(jobId);
+            _advanceJobManager.DismissJob(jobId);
             return NoContent();
         }
 
         [HttpGet("{jobId}/download")]
         public IActionResult DownloadJob([FromRoute] string jobId)
         {
-            var job = _jobManager.GetJob(jobId);
+            var job = _advanceJobManager.GetJob(jobId);
             if (job == null || !job.IsCompleted || string.IsNullOrWhiteSpace(job.OutputFilePath) || !System.IO.File.Exists(job.OutputFilePath))
             {
                 return NotFound(new { error = "Export archive not ready or expired." });
             }
 
-            _jobManager.RegisterDownload(jobId);
+            _advanceJobManager.RegisterDownload(jobId);
 
             var fileName = job.FileName ?? Path.GetFileName(job.OutputFilePath);
             var contentType = fileName.EndsWith(".tar", StringComparison.OrdinalIgnoreCase)

@@ -1,14 +1,14 @@
-﻿// ==========================================
-// File: Features/Extractor/Services/StorageScannerService.cs
-// ==========================================
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
+using Dapper;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,25 +19,17 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     public class StorageScannerService : IStorageScannerService
     {
+        private readonly IConfiguration _configuration;
         private readonly StorageSettings _storageSettings;
         private readonly ExtractorOptions _options;
         private readonly ILogger<StorageScannerService> _logger;
         private readonly IDummyVideoGenerator _dummyGenerator;
         private readonly TimeZoneInfo _serverLocalTz;
 
-        // זיהוי פורמט דחוס: YYYYMMDD_HHMMSS[_ffffff][Z]
-        private static readonly Regex IsoUtcCompactRegex = new(
-            @"^(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?:_\d+)?(?<utc>Z)?\.(mp4|flv)$",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly string[] SupportedVideoExtensions = { ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov" };
 
-        // זיהוי פורמט מקפים: YYYY-MM-DD_HH-MM-SS[-ffffff][Z]
-        private static readonly Regex HyphenatedRegex = new(
-            @"^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})_(?<hour>\d{2})-(?<minute>\d{2})-(?<sec>\d{2})(?:-\d+)?(?<utc>Z)?\.(mp4|flv)$",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-        // תמיכה לאחור בפורמט ישן עם קידומת מחשב
-        private static readonly Regex LegacyHostPrefixRegex = new(
-            @"^(?<host>.+?)_(?<year>\d{4})(?<month>\d{2})(?<day>\d{2})_(?<hour>\d{2})(?<minute>\d{2})(?<sec>\d{2})(?<utc>Z)?\.(mp4|flv)$",
+        private static readonly Regex UniversalChunkRegex = new(
+            @"(?:^(?<host>[a-zA-Z0-9_\-\.]+?)[_-])?(?<year>20\d{2})[-_]?(?<month>\d{2})[-_]?(?<day>\d{2})[-_T](?<hour>\d{2})[-_:]?(?<minute>\d{2})[-_:]?(?<sec>\d{2})(?:[_\-\.]\d+)?(?<utc>Z)?\.(mp4|fmp4|flv|mkv|ts|mov)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public StorageScannerService(
@@ -47,21 +39,18 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             ILogger<StorageScannerService> logger,
             IDummyVideoGenerator dummyGenerator)
         {
+            _configuration = configuration;
             _options = options.Value;
             _logger = logger;
             _dummyGenerator = dummyGenerator;
 
-            string netAppPath = systemConfig.Value?.Storage?.NetAppUncPath;
-            if (string.IsNullOrWhiteSpace(netAppPath))
-            {
-                netAppPath = configuration["SystemConfig:Storage:NetAppUncPath"] ?? @"\\NetAppStorage\CaptureRecordings";
-            }
+            string netAppPath = systemConfig.Value?.Storage?.NetAppUncPath
+                ?? configuration["SystemConfig:Storage:NetAppUncPath"]
+                ?? @"\\NetAppStorage\CaptureRecordings";
 
-            string fallbackPath = systemConfig.Value?.Storage?.LocalFallbackPath;
-            if (string.IsNullOrWhiteSpace(fallbackPath))
-            {
-                fallbackPath = configuration["SystemConfig:Storage:LocalFallbackPath"] ?? @"C:\ProgramData\ITB-SCREEN-RECORDER\Recordings";
-            }
+            string fallbackPath = systemConfig.Value?.Storage?.LocalFallbackPath
+                ?? configuration["SystemConfig:Storage:LocalFallbackPath"]
+                ?? @"C:\ProgramData\ITB-SCREEN-RECORDER\Recordings";
 
             _storageSettings = new StorageSettings
             {
@@ -69,8 +58,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 LocalFallbackPath = fallbackPath
             };
 
-            // קביעת אזור הזמן המקומי של השרת לטיפול בקבצים ללא Z
-            string configuredTz = systemConfig.Value?.DisplayTimezone;
+            string? configuredTz = systemConfig.Value?.DisplayTimezone;
             try
             {
                 _serverLocalTz = !string.IsNullOrWhiteSpace(configuredTz)
@@ -83,112 +71,91 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
         }
 
-        public Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
+        private SqliteConnection OpenCatalogDbConnection()
         {
-            var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var roots = ResolveActiveStorageRoots();
+            string baseDir = _configuration["Database:BaseDirectory"]
+                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ITB-SCREEN-RECORDER", "Data");
+            string dbPath = Path.Combine(baseDir, "system_catalog.db");
 
-            foreach (var root in roots)
+            var csb = new SqliteConnectionStringBuilder
             {
-                if (!Directory.Exists(root)) continue;
+                DataSource = dbPath,
+                Mode = SqliteOpenMode.ReadWriteCreate,
+                DefaultTimeout = 5,
+                Cache = SqliteCacheMode.Shared
+            };
 
-                try
-                {
-                    string liveDir = Path.Combine(root, "live");
-                    if (Directory.Exists(liveDir))
-                    {
-                        foreach (var stationDir in Directory.EnumerateDirectories(liveDir, "*", SearchOption.TopDirectoryOnly))
-                        {
-                            string hostName = Path.GetFileName(stationDir);
-                            if (HasValidRecordingsInRange(stationDir, hostName, startUtc, endUtc))
-                            {
-                                hosts.Add(hostName);
-                            }
-                        }
-                    }
+            var conn = new SqliteConnection(csb.ConnectionString);
+            conn.Open();
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+            pragma.ExecuteNonQuery();
 
-                    foreach (var stationDir in Directory.EnumerateDirectories(root, "*", SearchOption.TopDirectoryOnly))
-                    {
-                        string hostName = Path.GetFileName(stationDir);
-                        if (string.Equals(hostName, "live", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(hostName, "RecordingsBuffer", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(hostName, "Buffer", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(hostName, "Logs", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-
-                        if (HasValidRecordingsInRange(stationDir, hostName, startUtc, endUtc))
-                        {
-                            hosts.Add(hostName);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed fast scanning storage root {Root}", root);
-                }
-            }
-
-            return Task.FromResult(hosts.OrderBy(h => h).ToList());
+            return conn;
         }
 
-        public Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc)
+        // =========================================================================
+        // HOT PATH – שאילתות מסד נתונים מהירות (0 קריאות דיסק / 0 קריאות FFprobe)
+        // =========================================================================
+
+        public async Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc)
         {
+            long startMs = new DateTimeOffset(startUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+            long endMs = new DateTimeOffset(endUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+            using var conn = OpenCatalogDbConnection();
+            const string sql = @"
+                SELECT DISTINCT station_id 
+                FROM recording_chunks 
+                WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs
+                UNION
+                SELECT station_id FROM station_nodes
+                ORDER BY 1 ASC;";
+
+            var hosts = (await conn.QueryAsync<string>(sql, new { startMs, endMs })).ToList();
+            return hosts.Where(h => !string.IsNullOrWhiteSpace(h)).ToList();
+        }
+
+        public async Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc)
+        {
+            long startMs = new DateTimeOffset(startUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+            long endMs = new DateTimeOffset(endUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+            using var conn = OpenCatalogDbConnection();
+            const string sql = @"
+                SELECT file_path AS FullPath, station_id AS Hostname,
+                       start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
+                       file_size_bytes AS FileSizeBytes,
+                       COALESCE(width, 1920) AS Width,
+                       COALESCE(height, 1080) AS Height,
+                       COALESCE(fps, 30) AS Fps,
+                       COALESCE(has_audio, 1) AS HasAudio
+                FROM recording_chunks
+                WHERE station_id = @hostname
+                  AND end_epoch_ms >= @startMs
+                  AND start_epoch_ms <= @endMs
+                ORDER BY start_epoch_ms ASC;";
+
+            var rows = await conn.QueryAsync(sql, new { hostname, startMs, endMs });
             var chunks = new List<RecordingChunkMetadata>();
-            var roots = ResolveActiveStorageRoots();
 
-            foreach (var root in roots)
+            foreach (var r in rows)
             {
-                if (!Directory.Exists(root)) continue;
-
-                try
+                chunks.Add(new RecordingChunkMetadata
                 {
-                    var targetDirs = new List<string>
-                    {
-                        Path.Combine(root, "live", hostname),
-                        Path.Combine(root, hostname)
-                    };
-
-                    foreach (var targetDir in targetDirs)
-                    {
-                        if (Directory.Exists(targetDir))
-                        {
-                            var files = Directory.EnumerateFiles(targetDir, "*.mp4", SearchOption.AllDirectories);
-                            foreach (var file in files)
-                            {
-                                var parsed = TryParseChunk(file, hostname);
-                                if (parsed != null && parsed.EndUtc >= startUtc && parsed.StartUtc <= endUtc)
-                                {
-                                    chunks.Add(parsed);
-                                }
-                            }
-                        }
-                    }
-
-                    var legacyFiles = Directory.EnumerateFiles(root, $"{hostname}_*.mp4", SearchOption.TopDirectoryOnly);
-                    foreach (var file in legacyFiles)
-                    {
-                        var parsed = TryParseChunk(file, hostname);
-                        if (parsed != null && parsed.EndUtc >= startUtc && parsed.StartUtc <= endUtc)
-                        {
-                            chunks.Add(parsed);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed reading station chunks from {Root} for {Host}", root, hostname);
-                }
+                    FullPath = (string)r.FullPath,
+                    Hostname = (string)r.Hostname,
+                    StartUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)r.StartEpochMs).UtcDateTime,
+                    EndUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)r.EndEpochMs).UtcDateTime,
+                    FileSizeBytes = (long)r.FileSizeBytes,
+                    Width = (int)r.Width,
+                    Height = (int)r.Height,
+                    Fps = (double)r.Fps,
+                    HasAudio = (long)r.HasAudio != 0
+                });
             }
 
-            var sortedUniqueChunks = chunks
-                .GroupBy(c => c.FullPath)
-                .Select(g => g.First())
-                .OrderBy(c => c.StartUtc)
-                .ToList();
-
-            return Task.FromResult(sortedUniqueChunks);
+            return chunks;
         }
 
         public async Task<string> BuildConcatManifestAsync(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc)
@@ -271,97 +238,117 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return sb.ToString();
         }
 
-        private bool HasValidRecordingsInRange(string dirPath, string hostName, DateTime startUtc, DateTime endUtc)
+        // =========================================================================
+        // COLD PATH – סריקת תחזוקה ידנית של הדיסק ואינדוקס חוסרים
+        // =========================================================================
+
+        public async Task<ReindexResult> ScanAndIndexMissingFilesAsync(CancellationToken ct = default)
         {
-            try
+            var roots = ResolveActiveStorageRoots().Where(Directory.Exists).ToList();
+            if (roots.Count == 0) return new ReindexResult(0, 0, 0, 0);
+
+            HashSet<string> existingPaths;
+            using (var conn = OpenCatalogDbConnection())
             {
-                var files = Directory.EnumerateFiles(dirPath, "*.mp4", SearchOption.TopDirectoryOnly);
+                var indexed = await conn.QueryAsync<string>("SELECT file_path FROM recording_chunks;");
+                existingPaths = new HashSet<string>(indexed, StringComparer.OrdinalIgnoreCase);
+            }
+
+            int totalScanned = 0, newlyIndexed = 0, skipped = 0, errors = 0;
+            var chunksToAdd = new List<(string StationId, string Path, long StartMs, long EndMs, long Size)>();
+
+            foreach (var root in roots)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                var files = Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
+                    .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase));
+
                 foreach (var file in files)
                 {
-                    var parsed = TryParseChunk(file, hostName);
-                    if (parsed != null && parsed.EndUtc >= startUtc && parsed.StartUtc <= endUtc)
+                    if (ct.IsCancellationRequested) break;
+                    totalScanned++;
+
+                    if (existingPaths.Contains(file))
                     {
-                        return true;
+                        skipped++;
+                        continue;
+                    }
+
+                    try
+                    {
+                        var parsed = TryParseChunkFast(file, null);
+                        if (parsed != null)
+                        {
+                            var fi = new FileInfo(file);
+                            long startMs = new DateTimeOffset(parsed.StartUtc).ToUnixTimeMilliseconds();
+                            long endMs = startMs + (15 * 60 * 1000);
+
+                            chunksToAdd.Add((parsed.Hostname, file, startMs, endMs, fi.Length));
+                            newlyIndexed++;
+                            existingPaths.Add(file);
+                        }
+                    }
+                    catch
+                    {
+                        errors++;
+                    }
+
+                    if (chunksToAdd.Count >= 50)
+                    {
+                        await FlushChunksBatchAsync(chunksToAdd);
+                        chunksToAdd.Clear();
                     }
                 }
             }
-            catch { }
-            return false;
+
+            if (chunksToAdd.Count > 0)
+            {
+                await FlushChunksBatchAsync(chunksToAdd);
+            }
+
+            _logger.LogInformation("[REINDEX] Completed. Scanned: {Total}, Added: {Added}, Skipped: {Skipped}, Errors: {Err}",
+                totalScanned, newlyIndexed, skipped, errors);
+
+            return new ReindexResult(totalScanned, newlyIndexed, skipped, errors);
+        }
+
+        private async Task FlushChunksBatchAsync(List<(string StationId, string Path, long StartMs, long EndMs, long Size)> items)
+        {
+            using var conn = OpenCatalogDbConnection();
+            using var tx = conn.BeginTransaction();
+            const string sql = @"
+                INSERT INTO recording_chunks (
+                    station_id, file_path, start_epoch_ms, end_epoch_ms, 
+                    duration_ms, file_size_bytes, width, height, fps, has_audio, is_finalized, indexed_at_utc
+                ) VALUES (
+                    @StationId, @Path, @StartMs, @EndMs, 
+                    (@EndMs - @StartMs), @Size, 1920, 1080, 30, 1, 1, @Now
+                ) ON CONFLICT(file_path) DO NOTHING;";
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            foreach (var item in items)
+            {
+                await conn.ExecuteAsync(sql, new { item.StationId, item.Path, item.StartMs, item.EndMs, item.Size, Now = now }, tx);
+            }
+            tx.Commit();
         }
 
         private IEnumerable<string> ResolveActiveStorageRoots()
         {
-            var roots = new List<string>();
-            if (!string.IsNullOrWhiteSpace(_storageSettings.NetAppUncPath) && Directory.Exists(_storageSettings.NetAppUncPath))
-            {
-                roots.Add(_storageSettings.NetAppUncPath);
-            }
-            if (!string.IsNullOrWhiteSpace(_storageSettings.LocalFallbackPath) && Directory.Exists(_storageSettings.LocalFallbackPath))
-            {
-                roots.Add(_storageSettings.LocalFallbackPath);
-            }
-            return roots;
+            var list = new List<string>();
+            if (!string.IsNullOrWhiteSpace(_storageSettings.NetAppUncPath)) list.Add(_storageSettings.NetAppUncPath);
+            if (!string.IsNullOrWhiteSpace(_storageSettings.LocalFallbackPath)) list.Add(_storageSettings.LocalFallbackPath);
+            return list;
         }
 
-        private RecordingChunkMetadata? TryParseChunk(string filePath, string? inferredHost)
+        private RecordingChunkMetadata? TryParseChunkFast(string filePath, string? inferredHost)
         {
             string fileName = Path.GetFileName(filePath);
-            DateTime startUtc;
-            string host = inferredHost ?? string.Empty;
+            var match = UniversalChunkRegex.Match(fileName);
+            if (!match.Success) return null;
 
-            var match = IsoUtcCompactRegex.Match(fileName);
-            if (!match.Success)
-            {
-                match = HyphenatedRegex.Match(fileName);
-            }
-
-            if (match.Success)
-            {
-                int year = int.Parse(match.Groups["year"].Value);
-                int month = int.Parse(match.Groups["month"].Value);
-                int day = int.Parse(match.Groups["day"].Value);
-                int hour = int.Parse(match.Groups["hour"].Value);
-                int minute = int.Parse(match.Groups["minute"].Value);
-                int second = int.Parse(match.Groups["sec"].Value);
-
-                bool isExplicitUtc = match.Groups["utc"].Success;
-
-                if (isExplicitUtc)
-                {
-                    startUtc = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
-                }
-                else
-                {
-                    // נרמול חיוני: הקובץ נכתב בזמן מקומי של השרת -> המרה ל-UTC אמיתי
-                    var localTime = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Unspecified);
-                    startUtc = TimeZoneInfo.ConvertTimeToUtc(localTime, _serverLocalTz);
-                }
-            }
-            else
-            {
-                match = LegacyHostPrefixRegex.Match(fileName);
-                if (!match.Success) return null;
-
-                host = match.Groups["host"].Value;
-                int year = int.Parse(match.Groups["year"].Value);
-                int month = int.Parse(match.Groups["month"].Value);
-                int day = int.Parse(match.Groups["day"].Value);
-                int hour = int.Parse(match.Groups["hour"].Value);
-                int minute = int.Parse(match.Groups["minute"].Value);
-                int second = int.Parse(match.Groups["sec"].Value);
-
-                bool isExplicitUtc = match.Groups["utc"].Success;
-                if (isExplicitUtc)
-                {
-                    startUtc = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc);
-                }
-                else
-                {
-                    var localTime = new DateTime(year, month, day, hour, minute, second, DateTimeKind.Unspecified);
-                    startUtc = TimeZoneInfo.ConvertTimeToUtc(localTime, _serverLocalTz);
-                }
-            }
-
+            string host = inferredHost ?? (match.Groups["host"].Success ? match.Groups["host"].Value : string.Empty);
             if (string.IsNullOrWhiteSpace(host))
             {
                 var parentDir = Directory.GetParent(filePath);
@@ -373,44 +360,24 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             if (string.IsNullOrWhiteSpace(host)) return null;
 
-            try
+            int year = int.Parse(match.Groups["year"].Value);
+            int month = int.Parse(match.Groups["month"].Value);
+            int day = int.Parse(match.Groups["day"].Value);
+            int hour = int.Parse(match.Groups["hour"].Value);
+            int minute = int.Parse(match.Groups["minute"].Value);
+            int second = int.Parse(match.Groups["sec"].Value);
+
+            DateTime startUtc = match.Groups["utc"].Success
+                ? new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc)
+                : TimeZoneInfo.ConvertTimeToUtc(new DateTime(year, month, day, hour, minute, second), _serverLocalTz);
+
+            return new RecordingChunkMetadata
             {
-                var fi = new FileInfo(filePath);
-                if (!fi.Exists || fi.Length < 1024) return null;
-
-                DateTime endUtc = startUtc;
-
-                var headerDuration = Mp4HeaderInspector.ExtractDuration(filePath);
-                if (headerDuration.HasValue && headerDuration.Value.TotalSeconds > 1)
-                {
-                    endUtc = startUtc + headerDuration.Value;
-                }
-                else
-                {
-                    DateTime fileWriteUtc = fi.LastWriteTimeUtc;
-                    if (fileWriteUtc > startUtc.AddSeconds(1))
-                    {
-                        endUtc = fileWriteUtc;
-                    }
-                    else
-                    {
-                        endUtc = startUtc.AddSeconds(1);
-                    }
-                }
-
-                return new RecordingChunkMetadata
-                {
-                    FullPath = filePath,
-                    Hostname = host,
-                    StartUtc = startUtc,
-                    EndUtc = endUtc,
-                    FileSizeBytes = fi.Length
-                };
-            }
-            catch
-            {
-                return null;
-            }
+                FullPath = filePath,
+                Hostname = host,
+                StartUtc = startUtc,
+                EndUtc = startUtc.AddMinutes(15)
+            };
         }
     }
 }

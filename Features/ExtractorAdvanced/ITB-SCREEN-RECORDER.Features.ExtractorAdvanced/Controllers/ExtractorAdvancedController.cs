@@ -1,18 +1,17 @@
-﻿// ==========================================
-// File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs
-// ==========================================
+﻿using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using ITB_SCREEN_RECORDER.Features.Extractor.Services;
-using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 {
@@ -22,17 +21,24 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
     {
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
+        private readonly IAdvanceJobManager _jobManager;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
+            IAdvanceJobManager jobManager,
             ILogger<ExtractorAdvancedController> logger)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
+            _jobManager = jobManager;
             _logger = logger;
         }
+
+        // =========================================================================
+        // 1. איתור תחנות עם מטא-דאטה מאינדקס ה-DB (במהירות של מילישניות בודדות)
+        // =========================================================================
 
         [HttpGet("stations")]
         public async Task<IActionResult> GetStations(
@@ -48,50 +54,69 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
                 DateTime startUtc = lStart.HasValue && lStart.Value > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(lStart.Value).UtcDateTime
-                    : DateTime.UtcNow.AddHours(-4);
+                    : DateTime.UtcNow.AddDays(-7);
 
                 DateTime endUtc = lEnd.HasValue && lEnd.Value > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(lEnd.Value).UtcDateTime
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
-                var stations = new List<object>();
+                var stationDtos = new List<object>();
 
                 foreach (var host in availableHosts)
                 {
+                    ct.ThrowIfCancellationRequested();
+
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
-                    // 💡 כיול זמני הצ'אנק לפי ה-PTS והמשך האמיתי גם ברשימת התחנות הראשונית!
-                    await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
+                    var sample = chunks.LastOrDefault();
 
-                    var realSegments = chunks
-                        .Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath))
-                        .OrderBy(c => c.StartUtc)
-                        .Select(c => new
-                        {
-                            startEpoch = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
-                            endEpoch = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds(),
-                            startEpochMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
-                            endEpochMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds()
-                        }).ToList();
+                    int width = sample?.Width ?? 1920;
+                    int height = sample?.Height ?? 1080;
+                    double fps = sample?.Fps ?? 30.0;
+                    bool hasAudio = sample?.HasAudio ?? true;
 
-                    stations.Add(new
+                    string resLabel = FormatResolution(width, height);
+                    string fpsLabel = $"{Math.Round(fps)}fps";
+                    string feedSpec = $"{resLabel} • {fpsLabel}";
+
+                    stationDtos.Add(new
                     {
                         id = host,
                         hostname = host,
                         displayName = host,
                         isOnline = true,
-                        recordingsCount = realSegments.Count,
-                        segments = realSegments
+                        recordingsCount = chunks.Count,
+                        segments = Array.Empty<object>(),
+                        hasAudio = hasAudio,
+                        audioCodec = "AAC",
+                        audioChannels = 2,
+                        audioLabel = hasAudio ? "AAC" : "NONE",
+                        width = width,
+                        height = height,
+                        fps = fps,
+                        isVfr = false,
+                        resolution = resLabel,
+                        feedSpec = feedSpec
                     });
                 }
 
-                return Ok(stations);
+                return Ok(stationDtos.OrderBy(s => ((dynamic)s).hostname).ToList());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[API:Stations] Failed scanning storage for stations.");
-                return StatusCode(500, "Error scanning storage directories.");
+                _logger.LogError(ex, "[API:Stations] Failed scanning database for stations.");
+                return StatusCode(500, "Error scanning database.");
             }
+        }
+
+        private static string FormatResolution(int width, int height)
+        {
+            if (height >= 2100 || width >= 3800) return "4K";
+            if (height >= 1400 || width >= 2500) return "1440p";
+            if (height >= 1050 || width >= 1900) return "1080p";
+            if (height >= 700 || width >= 1260) return "720p";
+            if (width > 0 && height > 0) return $"{width}x{height}";
+            return "1080p";
         }
 
         [HttpGet("timeline-segments")]
@@ -120,28 +145,33 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
                 foreach (var stationId in stationList)
                 {
+                    ct.ThrowIfCancellationRequested();
+
                     var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
-                    await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
 
-                    var segList = new List<object>();
-                    foreach (var chunk in chunks.Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath)).OrderBy(c => c.StartUtc))
-                    {
-                        long sMs = new DateTimeOffset(chunk.StartUtc).ToUnixTimeMilliseconds();
-                        long eMs = new DateTimeOffset(chunk.EndUtc).ToUnixTimeMilliseconds();
-
-                        segList.Add(new
+                    var segList = chunks
+                        .OrderBy(c => c.StartUtc)
+                        .Select(c =>
                         {
-                            startEpoch = sMs,
-                            endEpoch = eMs,
-                            startEpochMs = sMs,
-                            endEpochMs = eMs
-                        });
-                    }
+                            long sMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds();
+                            long eMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds();
+                            return (object)new
+                            {
+                                startEpoch = sMs,
+                                endEpoch = eMs,
+                                startEpochMs = sMs,
+                                endEpochMs = eMs
+                            };
+                        }).ToList();
 
                     segmentsMap[stationId] = segList;
                 }
 
                 return Ok(segmentsMap);
+            }
+            catch (OperationCanceledException)
+            {
+                return NoContent();
             }
             catch (Exception ex)
             {
@@ -149,6 +179,52 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, "Failed to retrieve timeline segments.");
             }
         }
+
+        // =========================================================================
+        // 2. תהליכי עריכה מתקדמת (NLE Estimate & Cut Jobs)
+        // =========================================================================
+
+        [HttpPost("estimate")]
+        public async Task<IActionResult> EstimateCutJob([FromBody] AdvanceCutRequestDto request)
+        {
+            try
+            {
+                var estimation = await _jobManager.EstimateCutJobAsync(request);
+                return Ok(estimation);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Estimate] Error estimating timeline cut");
+                return StatusCode(500, new { message = "Failed to calculate cut estimation." });
+            }
+        }
+
+        [HttpPost("cut")]
+        public IActionResult EnqueueAdvanceCutJob([FromBody] AdvanceCutRequestDto request)
+        {
+            try
+            {
+                var job = _jobManager.EnqueueAdvanceCutJob(request);
+                return Accepted(new { jobId = job.JobId, fileName = job.FileName, status = job.Status });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Cut] Error enqueuing advance cut job");
+                return StatusCode(500, new { message = "Failed to start extraction job." });
+            }
+        }
+
+        // =========================================================================
+        // 3. מטא-דאטה, תמונות וניגון רציף
+        // =========================================================================
 
         [HttpGet("stream-metadata")]
         public async Task<IActionResult> GetStreamMetadata(
@@ -198,7 +274,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (OperationCanceledException)
             {
-                // 💡 ביטול שגרתי של הדפדפן בזמן גרירה מהירה - יציאה שקטה ללא שגיאות בלוג
                 return NoContent();
             }
             catch (Exception ex)
@@ -214,6 +289,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] double startEpoch,
             [FromQuery] double endEpoch,
             [FromQuery] double? seekEpoch = null,
+            [FromQuery] double speed = 1.0,
             CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
@@ -226,6 +302,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return;
             }
 
+            double safeSpeed = speed > 0 ? speed : 1.0;
             long effectiveStartEpoch = lSeek.HasValue && lSeek.Value >= lStart && lSeek.Value < lEnd
                 ? lSeek.Value
                 : lStart;
@@ -234,8 +311,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc, rangeEndUtc);
-            await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
-
             string manifestContent = await _storageScanner.BuildConcatManifestAsync(chunks, rangeStartUtc, rangeEndUtc);
 
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"stream_{hostname}_{Guid.NewGuid():N}.txt");
@@ -245,8 +320,27 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             Response.Headers.Append("X-Content-Type-Options", "nosniff");
 
             string ffmpegPath = _advancedExtractorService.ResolveFfmpegBinary();
-            string arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                               $"-c copy -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+            string arguments;
+
+            if (Math.Abs(safeSpeed - 1.0) < 0.05)
+            {
+                arguments = $"-nostdin -loglevel error -fflags +genpts -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+            }
+            else
+            {
+                int step = (int)Math.Round(safeSpeed);
+                double ptsScale = 1.0 / safeSpeed;
+                string ptsScaleStr = ptsScale.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+
+                string vfFilter = step > 1
+                    ? $"framestep={step},setpts={ptsScaleStr}*PTS"
+                    : $"setpts={ptsScaleStr}*PTS";
+
+                arguments = $"-nostdin -loglevel error -fflags +genpts -flush_packets 1 -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+                            $"-vf \"{vfFilter}\" -an -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p " +
+                            $"-avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+            }
 
             var startInfo = new ProcessStartInfo
             {
@@ -267,7 +361,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("Client closed stream for {Host}", hostname);
+                _logger.LogInformation("[Stream:Stop] Client closed stream for {Host}", hostname);
             }
             finally
             {

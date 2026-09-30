@@ -3,8 +3,13 @@
 // ==========================================
 
 const STORAGE_KEY = 'ITB_STUDIO_SESSION_CACHE_V2';
+const AUDIO_STORAGE_KEY = 'itb_player_audio_settings';
+
 let debounceTimer = null;
 
+/**
+ * טעינת נתוני הסשן השמורים
+ */
 export function getStudioSessionCache() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -16,6 +21,9 @@ export function getStudioSessionCache() {
     }
 }
 
+/**
+ * שמירת נתוני הסשן עם Debounce של 600ms וסינון אובייקטים כבדים
+ */
 export function saveStudioSessionCache(data) {
     if (!data) return;
 
@@ -25,6 +33,7 @@ export function saveStudioSessionCache(data) {
 
     debounceTimer = setTimeout(() => {
         try {
+            // סינון סגמנטים כבדים מהתחנות כדי לא לחרוג ממגבלת ה-Quota
             const sanitizedStations = (data.allStations || []).map(s => ({
                 id: s.id,
                 hostname: s.hostname,
@@ -45,6 +54,8 @@ export function saveStudioSessionCache(data) {
                 viewportStartMs: typeof data.viewportStartMs === 'number' ? data.viewportStartMs : 0,
                 isWorkspaceActive: Boolean(data.isWorkspaceActive),
                 allStations: sanitizedStations,
+                isLooping: typeof data.isLooping === 'boolean' ? data.isLooping : true,
+                playbackSpeed: typeof data.playbackSpeed === 'number' ? data.playbackSpeed : 1,
                 lastSavedAt: Date.now()
             };
 
@@ -53,4 +64,47 @@ export function saveStudioSessionCache(data) {
             console.warn('[SessionStore] Quota exceeded or failed saving session:', err);
         }
     }, 600);
+}
+
+/**
+ * איפוס סשן הסטודיו
+ */
+export function clearStudioSessionCache() {
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+        console.warn('[SessionStore] Failed to clear session storage', e);
+    }
+}
+
+/**
+ * טעינת הגדרות שמע גלובליות (Muted כברירת מחדל)
+ */
+export function getAudioSettings() {
+    try {
+        const raw = localStorage.getItem(AUDIO_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            return {
+                volume: typeof parsed.volume === 'number' ? parsed.volume : 0.8,
+                isMuted: typeof parsed.isMuted === 'boolean' ? parsed.isMuted : true
+            };
+        }
+    } catch (e) {
+        console.warn('[SessionStore] Failed to read audio settings:', e);
+    }
+
+    return { volume: 0.8, isMuted: true };
+}
+
+/**
+ * שמירת הגדרות שמע גלובליות וסנכרון בין כל חלקי המערכת בזמן אמת
+ */
+export function saveAudioSettings(settings) {
+    try {
+        localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(settings));
+        window.dispatchEvent(new CustomEvent('itb-audio-state-changed', { detail: settings }));
+    } catch (e) {
+        console.warn('[SessionStore] Failed to persist audio settings:', e);
+    }
 }

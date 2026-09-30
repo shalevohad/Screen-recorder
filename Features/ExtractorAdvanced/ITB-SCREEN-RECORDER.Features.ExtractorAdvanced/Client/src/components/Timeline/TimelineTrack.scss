@@ -142,16 +142,17 @@
                 align-items: center;
                 justify-content: center;
                 overflow: hidden;
-
+                /* עמעום פערי האות הרגילים כדי שלא יבלעו את המקטעים הירוקים */
                 &.gap-station-signal {
-                    background-color: rgba(225, 29, 72, 0.16);
-                    border-left: 1px solid rgba(244, 63, 94, 0.65);
-                    border-right: 1px solid rgba(244, 63, 94, 0.65);
+                    background-color: rgba(225, 29, 72, 0.07);
+                    border-left: 1px solid rgba(244, 63, 94, 0.35);
+                    border-right: 1px solid rgba(244, 63, 94, 0.35);
 
                     .gap-pattern {
                         position: absolute;
                         inset: 0;
-                        background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.22), rgba(244, 63, 94, 0.22) 10px, rgba(159, 18, 57, 0.38) 10px, rgba(159, 18, 57, 0.38) 20px);
+                        opacity: 0.15;
+                        background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.3), rgba(244, 63, 94, 0.3) 10px, transparent 10px, transparent 20px);
                     }
 
                     .gap-badge {
@@ -162,11 +163,11 @@
                         gap: 6px;
                         padding: 2px 8px;
                         background-color: rgba(15, 23, 42, 0.88);
-                        border: 1px solid rgba(244, 63, 94, 0.55);
+                        border: 1px solid rgba(244, 63, 94, 0.4);
                         border-radius: 4px;
                         color: #FDA4AF;
                         font-family: 'JetBrains Mono', monospace;
-                        font-size: 9px;
+                        font-size: 8.5px;
                         font-weight: 800;
                         letter-spacing: 0.5px;
                         text-transform: uppercase;
@@ -183,16 +184,16 @@
                         }
                     }
                 }
-
+                /* פער גלובלי שמדלג בחיתוך (צהוב זוהר עם מספריים) */
                 &.gap-global-skipped {
-                    background-color: rgba(245, 158, 11, 0.12);
-                    border-left: 1px dashed rgba(245, 158, 11, 0.7);
-                    border-right: 1px dashed rgba(245, 158, 11, 0.7);
+                    background-color: rgba(245, 158, 11, 0.15);
+                    border-left: 1px dashed rgba(245, 158, 11, 0.8);
+                    border-right: 1px dashed rgba(245, 158, 11, 0.8);
 
                     .gap-pattern {
                         position: absolute;
                         inset: 0;
-                        background-image: repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.18) 10px, rgba(180, 83, 9, 0.3) 10px, rgba(180, 83, 9, 0.3) 20px);
+                        background-image: repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.22), rgba(245, 158, 11, 0.22) 10px, rgba(180, 83, 9, 0.35) 10px, rgba(180, 83, 9, 0.35) 20px);
                     }
 
                     .gap-badge.global-badge {
@@ -202,8 +203,8 @@
                         align-items: center;
                         gap: 5px;
                         padding: 2px 8px;
-                        background-color: rgba(15, 23, 42, 0.92);
-                        border: 1px solid rgba(245, 158, 11, 0.65);
+                        background-color: rgba(15, 23, 42, 0.94);
+                        border: 1px solid rgba(245, 158, 11, 0.8);
                         border-radius: 4px;
                         color: #FDE68A;
                         font-family: 'JetBrains Mono', monospace;
@@ -211,7 +212,7 @@
                         font-weight: 800;
                         letter-spacing: 0.5px;
                         text-transform: uppercase;
-                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+                        box-shadow: 0 2px 10px rgba(245, 158, 11, 0.3);
                         white-space: nowrap;
 
                         &::before {
@@ -220,7 +221,7 @@
                             height: 5px;
                             border-radius: 50%;
                             background-color: #F59E0B;
-                            box-shadow: 0 0 6px #F59E0B;
+                            box-shadow: 0 0 8px #F59E0B;
                         }
                     }
                 }
@@ -267,80 +268,24 @@
                     }
                 }
             }
-
-            .filmstrip-cell {
-                position: absolute;
-                top: 0;
-                bottom: 0;
-                box-sizing: border-box;
-                border-right: 1px solid rgba(255, 255, 255, 0.12);
-                overflow: hidden;
-                background-color: rgba(15, 23, 42, 0.6);
-
-                .placeholder-blur {
-                    position: absolute;
-                    inset: 0;
-                    background: linear-gradient(105deg, rgba(30, 41, 59, 0.35) 0%, rgba(51, 65, 85, 0.55) 30%, rgba(14, 165, 233, 0.12) 50%, rgba(30, 41, 59, 0.35) 100%);
-                    background-size: 200% 100%;
-                    animation: placeholderShimmer 1.8s infinite linear;
-                    filter: blur(6px);
-                    opacity: 1;
-                    transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-
-                .frame-image-cover {
-                    position: absolute;
-                    inset: 0;
-                    background-size: cover;
-                    background-position: center;
-                    background-repeat: no-repeat;
-                    opacity: 0;
-                    filter: blur(10px) brightness(0.8);
-                    transform: scale(1.05);
-                    transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1), filter 0.32s cubic-bezier(0.4, 0, 0.2, 1), transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-
-                .frame-no-signal-pattern {
-                    position: absolute;
-                    inset: 0;
-                    background-color: rgba(225, 29, 72, 0.1);
-                    background-image: repeating-linear-gradient(-45deg, rgba(244, 63, 94, 0.2), rgba(244, 63, 94, 0.2) 3px, transparent 3px, transparent 6px);
-                    opacity: 0;
-                    transition: opacity 0.3s ease;
-                }
-
-                &.is-loaded {
-                    .placeholder-blur {
-                        opacity: 0;
-                    }
-
-                    .frame-image-cover {
-                        opacity: 0.95;
-                        filter: blur(0px) brightness(0.96) contrast(1.04);
-                        transform: scale(1);
-                    }
-
-                    .frame-no-signal-pattern {
-                        opacity: 1;
-                    }
-                }
-            }
         }
-
+        /* שכבת ההקלטה הירוקה: אכיפת רוחב מינימלי וזוהר כפול */
         .data-presence-layer {
             position: absolute;
             bottom: 0;
             left: 0;
             right: 0;
             pointer-events: none;
-            z-index: 3;
+            z-index: 5;
 
             .data-presence-bar {
                 position: absolute;
                 top: 0;
                 bottom: 0;
+                min-width: 4px !important; // מונע בליעת מקטעים קצרים
                 background-color: #10B981;
-                box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+                box-shadow: 0 0 10px #10B981, 0 0 18px rgba(52, 211, 153, 0.85);
+                border: 1px solid #6EE7B7;
                 border-radius: 2px;
             }
         }

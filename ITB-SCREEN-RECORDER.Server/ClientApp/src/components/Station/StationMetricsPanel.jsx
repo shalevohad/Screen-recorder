@@ -1,3 +1,4 @@
+﻿// Client/src/components/Station/StationMetricsPanel.jsx
 import './StationMetricsPanel.scss';
 
 export default function StationMetricsPanel({
@@ -25,12 +26,16 @@ export default function StationMetricsPanel({
         ? nicUtilizationPct
         : Math.min(100, (totalNicMbps / effectiveLinkSpeed) * 100);
     const appNetPct = Math.min(100, (mediaTxMbps / effectiveLinkSpeed) * 100);
-    const linkDisplay = effectiveLinkSpeed >= 1000 ? `${Math.round(effectiveLinkSpeed / 1000)}G` : `${Math.round(effectiveLinkSpeed)}M`;
+    const linkDisplay = effectiveLinkSpeed >= 1000
+        ? `${Math.round(effectiveLinkSpeed / 1000)}G`
+        : `${Math.round(effectiveLinkSpeed)}M`;
 
     const appRamMb = processRamMb || 0;
     const totalRamMb = hostTotalRamMb > 0 ? hostTotalRamMb : 16384;
     const appRamPctOfTotal = (appRamMb / totalRamMb) * 100;
-    const appRamDisplay = appRamMb >= 1024 ? `${(appRamMb / 1024).toFixed(1)}G` : `${Math.round(appRamMb)}M`;
+    const appRamDisplay = appRamMb >= 1024
+        ? `${(appRamMb / 1024).toFixed(1)}G`
+        : `${Math.round(appRamMb)}M`;
     const totalRamDisplay = `${Math.round(totalRamMb / 1024)}G`;
 
     return (
@@ -46,11 +51,15 @@ export default function StationMetricsPanel({
                 </div>
                 <div className="stat-box">
                     <span className="stat-label">AUDIO</span>
-                    <span className={`stat-value ${hasAudio ? 'green' : 'red'}`}>{hasAudio ? 'ON' : 'OFF'}</span>
+                    <span className={`stat-value ${hasAudio ? 'green' : 'red'}`}>
+                        {hasAudio ? 'ON' : 'OFF'}
+                    </span>
                 </div>
                 <div className="stat-box">
                     <span className="stat-label">DROP</span>
-                    <span className={`stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>{droppedFrames}</span>
+                    <span className={`stat-value ${droppedFrames > 0 ? 'red' : 'gray'}`}>
+                        {droppedFrames}
+                    </span>
                 </div>
                 <div className="stat-box">
                     <span className="stat-label">QOS</span>
@@ -59,6 +68,7 @@ export default function StationMetricsPanel({
             </div>
 
             <div className="metric-bars-container">
+                {/* מדדי עומס מעבד */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">CPU</span>
@@ -77,6 +87,7 @@ export default function StationMetricsPanel({
                     </div>
                 </div>
 
+                {/* מדדי זיכרון */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">RAM</span>
@@ -95,6 +106,7 @@ export default function StationMetricsPanel({
                     </div>
                 </div>
 
+                {/* מדדי מעבד גרפי */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">GPU</span>
@@ -113,6 +125,7 @@ export default function StationMetricsPanel({
                     </div>
                 </div>
 
+                {/* מדדי תעבורת רשת */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">NET <strong className="link-badge">({linkDisplay})</strong></span>

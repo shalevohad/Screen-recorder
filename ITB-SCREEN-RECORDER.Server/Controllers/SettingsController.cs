@@ -1,8 +1,10 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using ITB_SCREEN_RECORDER.Server.Models;
 using ITB_SCREEN_RECORDER.Server.Services;
-using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
@@ -10,44 +12,64 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     [Route("api/v1/settings")]
     public class SettingsController : ControllerBase
     {
-        private readonly SettingsFileService _settingsFile;
+        private readonly ISystemConfigDbSyncService _syncService;
+        private readonly IOptionsMonitor<SystemConfig> _configMonitor;
 
-        public SettingsController(SettingsFileService settingsFile)
+        public SettingsController(
+            ISystemConfigDbSyncService syncService,
+            IOptionsMonitor<SystemConfig> configMonitor)
         {
-            _settingsFile = settingsFile;
+            _syncService = syncService;
+            _configMonitor = configMonitor;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public IActionResult Get()
         {
-            try
-            {
-                return Ok(await _settingsFile.ReadAsync());
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Problem(ex.Message, statusCode: 500);
-            }
+            return Ok(_configMonitor.CurrentValue);
         }
 
         [HttpPut]
-        public async Task<IActionResult> Put([FromBody] SystemConfigDto dto)
+        public async Task<IActionResult> Put([FromBody] SystemConfig updatedConfig)
         {
-            if (!ModelState.IsValid)
+            if (updatedConfig == null)
             {
-                return ValidationProblem(ModelState);
+                return BadRequest("Invalid configuration payload.");
             }
 
             try
             {
-                await _settingsFile.WriteAsync(dto);
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Problem(ex.Message, statusCode: 500);
-            }
+                await _syncService.UpdateSystemConfigAsync(config =>
+                {
+                    config.DefaultTargetFps = updatedConfig.DefaultTargetFps;
+                    config.DefaultVideoBitrate = updatedConfig.DefaultVideoBitrate;
+                    config.RecordingRetentionDays = updatedConfig.RecordingRetentionDays;
+                    config.MaxStorageQuotaGb = updatedConfig.MaxStorageQuotaGb;
+                    config.DashboardRefreshRateMs = updatedConfig.DashboardRefreshRateMs;
 
-            return Ok(await _settingsFile.ReadAsync());
+                    if (updatedConfig.Storage != null)
+                    {
+                        config.Storage.NetAppUncPath = updatedConfig.Storage.NetAppUncPath;
+                        config.Storage.LocalFallbackPath = updatedConfig.Storage.LocalFallbackPath;
+                        config.Storage.ChunkIntervalMinutes = updatedConfig.Storage.ChunkIntervalMinutes;
+                        config.Storage.RetentionDays = updatedConfig.Storage.RetentionDays;
+                        config.Storage.RecordFormat = updatedConfig.Storage.RecordFormat;
+                    }
+
+                    if (updatedConfig.MediaMtx != null)
+                    {
+                        config.MediaMtx.RtmpPort = updatedConfig.MediaMtx.RtmpPort;
+                        config.MediaMtx.HlsPort = updatedConfig.MediaMtx.HlsPort;
+                        config.MediaMtx.ApiPort = updatedConfig.MediaMtx.ApiPort;
+                    }
+                });
+
+                return Ok(_configMonitor.CurrentValue);
+            }
+            catch (Exception ex)
+            {
+                return Problem($"Failed to synchronize configuration: {ex.Message}", statusCode: 500);
+            }
         }
     }
 }

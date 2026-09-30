@@ -1,3 +1,5 @@
+// Client/src/components/Settings/SettingsModal.scss
+
 /* מעטפת שורש ו-Backdrop */
 .settings-modal-backdrop {
     position: fixed !important;
@@ -22,16 +24,18 @@
     right: 16px !important;
     left: auto !important;
     top: var(--header-bottom-offset, 112px) !important;
-    width: 500px !important;
+    width: 520px !important;
     max-width: calc(100vw - 32px) !important;
     height: auto !important;
     max-height: calc(100vh - var(--header-bottom-offset, 112px) - 20px) !important;
     display: flex !important;
     flex-direction: column !important;
-    background: linear-gradient(180deg, rgba(13, 19, 35, 0.98) 0%, rgba(9, 14, 26, 0.99) 100%) !important;
-    border: 1.5px solid rgba(59, 130, 246, 0.45) !important;
-    border-radius: 12px !important;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.92), 0 0 25px rgba(59, 130, 246, 0.2) !important;
+    background: var(--surface-glass-modal, rgba(15, 23, 42, 0.92)) !important;
+    backdrop-filter: var(--blur-scrim, blur(28px)) !important;
+    -webkit-backdrop-filter: var(--blur-scrim, blur(28px)) !important;
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08)) !important;
+    border-radius: var(--radius-card, 16px) !important;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.92), 0 0 20px rgba(6, 182, 212, 0.15) !important;
     animation: slideInPeekFromRight 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     overflow: hidden;
     box-sizing: border-box;
@@ -42,15 +46,15 @@
         justify-content: space-between;
         align-items: center;
         padding: 0.9rem 1.3rem;
-        background-color: rgba(15, 23, 42, 0.9);
-        border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+        background: rgba(11, 15, 25, 0.5);
+        border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
         flex-shrink: 0;
 
         .header-title-group {
             display: flex;
             align-items: center;
             gap: 10px;
-            color: var(--c2-blue, #38bdf8);
+            color: var(--accent-cyan-light, #38BDF8);
 
             .header-icon {
                 width: 18px !important;
@@ -61,27 +65,27 @@
             }
 
             h2 {
-                color: var(--slate-light, #f8fafc);
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 0.88rem;
+                color: var(--text-primary, #F8FAFC);
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-size: 0.92rem;
                 font-weight: 800;
-                letter-spacing: 0.08em;
+                letter-spacing: 0.04em;
                 margin: 0;
             }
         }
 
         .settings-modal-close-btn {
-            background: rgba(17, 24, 39, 0.8);
-            border: 1px solid rgba(51, 65, 85, 0.6);
-            color: var(--slate-muted, #94a3b8);
-            width: 30px;
-            height: 30px;
+            background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+            border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+            color: var(--text-secondary, #94A3B8);
+            width: 36px;
+            height: 36px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            border-radius: 6px;
-            transition: all 0.2s ease;
+            border-radius: var(--radius-controls, 8px);
+            transition: all 0.18s ease;
 
             svg {
                 width: 15px !important;
@@ -89,17 +93,17 @@
             }
 
             &:hover {
-                color: var(--c2-red-light, #f87171);
-                border-color: rgba(239, 68, 68, 0.5);
-                background-color: rgba(36, 15, 18, 0.7);
+                color: var(--c2-red-light, #F87171);
+                border-color: rgba(239, 68, 68, 0.45);
+                background-color: var(--c2-red-tint);
             }
         }
     }
 
     .settings-tabs-nav {
         display: flex;
-        background-color: rgba(11, 16, 30, 0.95);
-        border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+        background-color: rgba(11, 16, 30, 0.65);
+        border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
         padding: 0 1rem;
         gap: 6px;
         flex-shrink: 0;
@@ -111,13 +115,13 @@
             background: transparent;
             border: none;
             border-bottom: 2px solid transparent;
-            color: var(--slate-muted, #94a3b8);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.76rem;
+            color: var(--text-secondary, #94A3B8);
+            font-family: var(--font-primary, 'Inter', sans-serif);
+            font-size: 0.78rem;
             font-weight: 700;
-            padding: 0.75rem 0.7rem;
+            padding: 0.75rem 0.8rem;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.18s ease;
 
             .tab-icon {
                 width: 15px !important;
@@ -128,19 +132,19 @@
             }
 
             &:hover {
-                color: #f8fafc;
+                color: var(--text-primary, #F8FAFC);
             }
 
             &.active {
-                color: var(--c2-blue, #38bdf8);
-                border-bottom-color: var(--c2-blue, #38bdf8);
-                text-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+                color: var(--accent-cyan-light, #38BDF8);
+                border-bottom-color: var(--accent-cyan, #06B6D4);
+                text-shadow: 0 0 10px var(--accent-cyan-glow);
             }
         }
     }
 
     .settings-modal-body {
-        padding: 1.15rem 1.3rem;
+        padding: 1.25rem 1.4rem;
         overflow-y: auto;
         overflow-x: hidden;
         flex: 1;
@@ -150,8 +154,8 @@
         }
 
         &::-webkit-scrollbar-thumb {
-            background: var(--slate-line, #1e293b);
-            border-radius: 3px;
+            background: var(--slate-line, rgba(148, 163, 184, 0.15));
+            border-radius: var(--radius-full, 9999px);
         }
 
         .settings-loader-box {
@@ -173,7 +177,7 @@
                 .pulse-dot-amber {
                     width: 10px;
                     height: 10px;
-                    background-color: var(--c2-yellow, #eab308);
+                    background-color: var(--accent-amber, #F59E0B);
                     border-radius: 50%;
                 }
 
@@ -181,7 +185,7 @@
                     position: absolute;
                     width: 24px;
                     height: 24px;
-                    border: 2px solid var(--c2-yellow, #eab308);
+                    border: 2px solid var(--accent-amber, #F59E0B);
                     border-radius: 50%;
                     animation: radar-pulse 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
                     opacity: 0;
@@ -189,9 +193,9 @@
             }
 
             .settings-status {
-                font-family: 'JetBrains Mono', monospace;
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
                 font-size: 0.8rem;
-                color: var(--slate-muted, #94a3b8);
+                color: var(--text-muted, #64748B);
             }
         }
 
@@ -202,9 +206,9 @@
             padding: 12px 14px;
             background: rgba(239, 68, 68, 0.12);
             border: 1px solid rgba(239, 68, 68, 0.4);
-            border-radius: 6px;
-            color: var(--c2-red-light, #f87171);
-            font-family: 'JetBrains Mono', monospace;
+            border-radius: var(--radius-controls, 8px);
+            color: var(--c2-red-light, #F87171);
+            font-family: var(--font-mono, 'JetBrains Mono', monospace);
             font-size: 0.8rem;
 
             svg {
@@ -220,8 +224,8 @@
         align-items: center;
         justify-content: space-between;
         padding: 0.85rem 1.3rem;
-        background-color: rgba(15, 23, 42, 0.92);
-        border-top: 1px solid rgba(51, 65, 85, 0.6);
+        background-color: rgba(11, 15, 25, 0.65);
+        border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
         flex-shrink: 0;
         gap: 1rem;
 
@@ -230,17 +234,17 @@
             align-items: center;
 
             .settings-status {
-                font-family: 'JetBrains Mono', monospace;
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
                 font-size: 0.75rem;
                 font-weight: 700;
 
                 &.settings-status-error {
-                    color: var(--c2-red-light, #f87171);
+                    color: var(--c2-red-light, #F87171);
                 }
 
                 &.settings-status-ok {
-                    color: var(--c2-green-light, #4ade80);
-                    text-shadow: 0 0 8px rgba(74, 222, 128, 0.35);
+                    color: var(--accent-emerald-light, #34D399);
+                    text-shadow: 0 0 8px var(--accent-emerald-glow);
                 }
             }
         }
@@ -252,39 +256,41 @@
 
             .settings-cancel-btn {
                 background: transparent;
-                border: 1px solid rgba(51, 65, 85, 0.8);
-                color: var(--slate-muted, #94a3b8);
-                border-radius: 6px;
-                padding: 0.5rem 0.9rem;
+                border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
+                color: var(--text-secondary, #94A3B8);
+                border-radius: var(--radius-controls, 8px);
+                height: 38px;
+                padding: 0 1rem;
                 font-size: 0.82rem;
-                font-family: 'JetBrains Mono', monospace;
-                font-weight: 700;
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-weight: 600;
                 cursor: pointer;
-                transition: all 0.15s ease;
+                transition: all 0.18s ease;
 
                 &:hover {
-                    color: #f8fafc;
-                    border-color: #94a3b8;
+                    color: var(--text-primary, #F8FAFC);
+                    border-color: var(--border-card);
                 }
             }
 
             .settings-save-btn {
-                background-color: rgba(14, 35, 23, 0.9);
-                border: 1.5px solid rgba(34, 197, 94, 0.55);
-                color: var(--c2-green-light, #4ade80);
-                border-radius: 6px;
-                padding: 0.5rem 1.15rem;
+                background-color: var(--c2-green-tint);
+                border: 1px solid var(--accent-emerald, #10B981);
+                color: var(--accent-emerald-light, #34D399);
+                border-radius: var(--radius-controls, 8px);
+                height: 38px;
+                padding: 0 1.25rem;
                 font-size: 0.82rem;
-                font-family: 'JetBrains Mono', monospace;
-                font-weight: 800;
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-weight: 700;
                 cursor: pointer;
-                box-shadow: 0 0 10px rgba(34, 197, 94, 0.2);
-                transition: all 0.2s ease;
+                box-shadow: 0 0 10px var(--accent-emerald-glow);
+                transition: all 0.18s ease;
 
                 &:hover:not(:disabled) {
-                    background-color: rgba(20, 48, 30, 1);
-                    border-color: var(--c2-green, #22c55e);
-                    box-shadow: 0 0 14px rgba(34, 197, 94, 0.4);
+                    background-color: var(--accent-emerald, #10B981);
+                    color: #000;
+                    box-shadow: 0 0 14px var(--accent-emerald-glow);
                     transform: translateY(-1px);
                 }
 
@@ -328,5 +334,3 @@
         opacity: 0;
     }
 }
-
-

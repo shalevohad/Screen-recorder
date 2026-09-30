@@ -5,19 +5,27 @@
 		<RootNamespace>ITB_SCREEN_RECORDER.Core</RootNamespace>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<!-- הזרקה אוטומטית של הדגל WINDOWS בעת קומפילציה על סביבת חלונות לטובת CI/CD -->
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 		<DefineConstants Condition="'$(OS)' == 'Windows_NT'">$(DefineConstants);WINDOWS</DefineConstants>
 	</PropertyGroup>
 
 	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Dapper" Version="2.1.89" />
+		<!-- 💡 גרסה 8.0.12 יציבה ומותאמת ל-.NET 8 עבור SQLite -->
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
+		<!-- 💡 חבילת Native עבור libe_sqlite3.so בלינוקס ו-e_sqlite3.dll בווינדוס -->
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
-		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.10" />
-		<!-- חבילת האבטחה לניהול הרשאות Named Pipes בסביבת Windows -->
+		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
 		<PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" Condition="'$(OS)' == 'Windows_NT' Or $([MSBuild]::IsOSPlatform('Windows'))" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="appsettings.json">
+		<None Update="appsettings*.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Never</CopyToPublishDirectory>
 		</None>

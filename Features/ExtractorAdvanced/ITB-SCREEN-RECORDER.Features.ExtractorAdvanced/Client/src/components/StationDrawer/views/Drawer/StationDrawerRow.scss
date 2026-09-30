@@ -44,11 +44,17 @@
                 stroke: #020617;
             }
         }
-        /* רמזור: ירוק / צהוב / אדום */
+
         .status-dot {
             width: 6px;
             height: 6px;
             border-radius: 50%;
+
+            &.loading {
+                background: #06b6d4;
+                box-shadow: 0 0 6px #06b6d4;
+                animation: pulse 0.8s infinite alternate;
+            }
 
             &.optimal {
                 background: #10b981;
@@ -93,6 +99,10 @@
             font-family: 'JetBrains Mono', monospace;
             font-size: 9.5px;
             font-weight: 700;
+
+            &.loading {
+                color: #22d3ee;
+            }
 
             &.optimal {
                 color: #34d399;

@@ -1,4 +1,4 @@
-// Client/src/components/StationDrawer/views/Hub/StationHubCard.scss
+﻿// Client/src/components/StationDrawer/views/Hub/StationHubCard.scss
 
 .hub-station-card {
     background: rgba(15, 23, 42, 0.7);
@@ -14,7 +14,6 @@
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
     position: relative;
-    /* ביצועי רינדור אופטימליים עבור מאסות של 100 תחנות */
     content-visibility: auto;
     contain-intrinsic-size: 130px;
 
@@ -23,7 +22,6 @@
         border-color: rgba(6, 182, 212, 0.5);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 16px rgba(6, 182, 212, 0.2);
         transform: translateY(-2px);
-        /* מציף את הכרטיסייה מעל אלמנטים שכנים ללא חיתוך */
         z-index: 5;
     }
 
@@ -83,6 +81,12 @@
                     height: 9px;
                 }
 
+                &.loading {
+                    background: rgba(6, 182, 212, 0.1);
+                    border: 1px solid rgba(6, 182, 212, 0.25);
+                    color: #22d3ee;
+                }
+
                 &.has-audio {
                     background: rgba(6, 182, 212, 0.15);
                     border: 1px solid rgba(6, 182, 212, 0.35);
@@ -111,6 +115,18 @@
                     width: 4.5px;
                     height: 4.5px;
                     border-radius: 50%;
+                }
+
+                &.is-loading {
+                    background: rgba(6, 182, 212, 0.12);
+                    border: 1px solid rgba(6, 182, 212, 0.35);
+                    color: #22d3ee;
+
+                    .dot {
+                        background: #06b6d4;
+                        box-shadow: 0 0 6px #06b6d4;
+                        animation: pulse 0.9s infinite alternate;
+                    }
                 }
 
                 &.full-archived {
@@ -188,14 +204,23 @@
 
         .card-gap-track-container {
             width: 100%;
-            height: 7px;
-            background: rgba(10, 15, 29, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            height: 8px;
+            background: rgba(10, 15, 29, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 9999px;
             padding: 1px;
             box-sizing: border-box;
             overflow: hidden;
             margin-top: 1px;
+
+            .track-loading-shimmer {
+                width: 100%;
+                height: 100%;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, rgba(6, 182, 212, 0.1) 0%, rgba(6, 182, 212, 0.5) 50%, rgba(6, 182, 212, 0.1) 100%);
+                background-size: 200% 100%;
+                animation: shimmer 1.4s infinite linear;
+            }
 
             .card-gap-track {
                 position: relative;
@@ -208,15 +233,20 @@
                     position: absolute;
                     top: 0;
                     bottom: 0;
-
+                    /* הבלטת מקטעים קצרים עם רוחב מינימלי וזוהר כפול */
                     &.rec {
+                        min-width: 5px !important; // לעולם לא ייבלע
                         background: #10b981;
-                        box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+                        border-radius: 2px;
+                        z-index: 3;
+                        box-shadow: 0 0 6px #10b981, 0 0 12px rgba(52, 211, 153, 0.9);
+                        border: 0.5px solid #6ee7b7;
                     }
-
+                    /* עמעום פסי ה-Gap כדי שהירוק יבלוט מיד */
                     &.gap {
-                        background: repeating-linear-gradient( -45deg, #f43f5e, #f43f5e 4px, #881337 4px, #881337 8px );
-                        box-shadow: 0 0 6px rgba(244, 63, 94, 0.4);
+                        background: rgba(15, 23, 42, 0.95);
+                        background-image: repeating-linear-gradient( -45deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.12) 4px, rgba(15, 23, 42, 0.95) 4px, rgba(15, 23, 42, 0.95) 8px );
+                        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
                     }
                 }
             }
@@ -244,5 +274,27 @@
                 color: #020617;
             }
         }
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.4;
+        transform: scale(0.9);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1.1);
     }
 }

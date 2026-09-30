@@ -1,0 +1,38 @@
+﻿// Client/src/components/UI/RadialGauge.scss
+
+.radial-gauge-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    user-select: none;
+
+    .radial-svg {
+        transform: rotate(-90deg); /* תחילת הקשתות מראש המעגל (שעה 12) */
+        overflow: visible;
+
+        .radial-track {
+            fill: none;
+            stroke: rgba(148, 163, 184, 0.12);
+        }
+
+        .radial-indicator {
+            fill: none;
+            transition: stroke-dashoffset 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+            &.multi {
+                transition: stroke-dasharray 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+        }
+    }
+
+    .radial-inner-content {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+}

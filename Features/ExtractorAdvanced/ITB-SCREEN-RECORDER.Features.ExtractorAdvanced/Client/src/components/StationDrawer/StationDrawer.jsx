@@ -1,5 +1,5 @@
 ﻿// Client/src/components/StationDrawer/StationDrawer.jsx
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import StationHubCard from './views/Hub/StationHubCard.jsx';
 import StationHubTableRow from './views/Hub/StationHubTableRow.jsx';
 import StationDrawerRow from './views/Drawer/StationDrawerRow.jsx';
@@ -22,12 +22,13 @@ export default function StationDrawer({
     onUpdateSelections,
     isInitialSetup,
     isLoadingStations = false,
+    isLoadingSegments = false,
     onApply,
     onOpenRangeModal,
     systemTabs = DEFAULT_SYSTEM_TABS,
-    recordingSegments = {}, // מילון מקטעים אמיתי מה-API: { [stationId]: [{ startEpoch, endEpoch }] }
-    baseEpochMs = 0,        // נקודת התחלת החלון
-    durationMs = 0          // אורך החלון במילישניות
+    recordingSegments = {},
+    baseEpochMs = 0,
+    durationMs = 0
 }) {
     const [serverTabs, setServerTabs] = useState([]);
     const [selectedTabId, setSelectedTabId] = useState('all');
@@ -37,16 +38,59 @@ export default function StationDrawer({
     const [manualViewMode, setManualViewMode] = useState(null);
     const [isLoadingTabs, setIsLoadingTabs] = useState(false);
 
-    const [tablePageSize, setTablePageSize] = useState(10);
+    const [tablePageSize, setTablePageSize] = useState(15);
     const [gridPageSize, setGridPageSize] = useState(8);
     const [currentPage, setCurrentPage] = useState(1);
 
     const hasFetchedRef = useRef(false);
+    const listContainerRef = useRef(null); // 💡 Ref למדידת גובה הרשימה ב-DOM
+
+    const isInitialDiscovery = isLoadingStations && allStations.length === 0;
     const isEmptyState = allStations.length === 0 && !isLoadingStations;
 
     let panelClass = 'is-closed';
-    if (isInitialSetup || isEmptyState || isLoadingStations) panelClass = 'is-full-width';
+    if (isInitialSetup || isEmptyState || isInitialDiscovery) panelClass = 'is-full-width';
     else if (isOpen) panelClass = 'is-open';
+
+    // 💡 בחירת גודל עמוד אך ורק מתוך קטגוריות תקניות (ללא מספרים שרירותיים וללא סקרול)
+    useLayoutEffect(() => {
+        const calculateOptimalPageSize = () => {
+            if (!listContainerRef.current) return;
+            const containerHeight = listContainerRef.current.clientHeight;
+            if (containerHeight <= 0) return;
+
+            const firstRow = listContainerRef.current.querySelector('.station-row, .hub-table-row');
+            const rowHeight = firstRow ? firstRow.offsetHeight : 40;
+
+            if (rowHeight > 0) {
+                // חישוב מספר השורות המקסימלי שנכנס ללא חריגה
+                const calculatedRows = Math.floor(containerHeight / rowHeight) - 2;
+
+                // קטגוריות הגדלים המותרות לבחירה
+                const standardCategories = [5, 10, 15, 20, 25, 30];
+
+                // מציאת הקטגוריה הגדולה ביותר שלא עוברת את מספר השורות המקסימלי
+                const optimalSize = standardCategories
+                    .filter(cat => cat <= calculatedRows)
+                    .pop() || 5; // ברירת מחדל אם המסך קטן מדי
+
+                setTablePageSize(optimalSize);
+            }
+        };
+
+        calculateOptimalPageSize();
+        window.addEventListener('resize', calculateOptimalPageSize);
+
+        const observer = new ResizeObserver(calculateOptimalPageSize);
+        if (listContainerRef.current) {
+            observer.observe(listContainerRef.current);
+        }
+
+        return () => {
+            window.removeEventListener('resize', calculateOptimalPageSize);
+            observer.disconnect();
+        };
+    }, [manualViewMode, allStations.length]);
 
     useEffect(() => {
         if (systemTabs && systemTabs.length > 0) {
@@ -119,17 +163,46 @@ export default function StationDrawer({
         return activeTab.stationIds || [];
     }, [activeTab, allStations]);
 
-    // חישוב מטא-דאטה טהור ומבוסס נתונים עבור כל תחנה
+    const loadedStationsCount = useMemo(() => {
+        if (!recordingSegments || Object.keys(recordingSegments).length === 0) {
+            return allStations.filter(s => s.isLoaded || (s.segments && s.segments.length > 0)).length;
+        }
+        return allStations.filter(s => (recordingSegments[s.id] !== undefined) || s.isLoaded).length;
+    }, [allStations, recordingSegments]);
+
+    const isSegmentsSyncing = useMemo(() => {
+        if (isLoadingSegments) return true;
+        if (isLoadingStations && allStations.length > 0) return true;
+        if (allStations.length > 0 && loadedStationsCount < allStations.length && Object.keys(recordingSegments).length > 0) return true;
+        return false;
+    }, [isLoadingSegments, isLoadingStations, allStations.length, loadedStationsCount, recordingSegments]);
+
     const stationMetaMap = useMemo(() => {
         const map = new Map();
         const scope = { baseEpochMs, durationMs };
 
         for (const st of allStations) {
-            const segs = recordingSegments[st.id] || st.segments || [];
-            map.set(st.id, getStationDebriefMeta(st, segs, scope));
+            const hasLoadedSegments = (recordingSegments && recordingSegments[st.id] !== undefined) ||
+                st.isLoaded === true ||
+                (st.segments && st.segments.length > 0);
+
+            const isStationLoading = !hasLoadedSegments && (isSegmentsSyncing || isLoadingStations || isLoadingSegments);
+            const segs = (recordingSegments && recordingSegments[st.id]) || st.segments || [];
+            const meta = getStationDebriefMeta(st, segs, scope);
+
+            map.set(st.id, {
+                ...meta,
+                hasAudio: st.hasAudio !== undefined ? st.hasAudio : meta?.hasAudio,
+                audioLabel: st.audioLabel || (st.hasAudio ? 'AAC' : (meta?.audioLabel || 'NONE')),
+                audioChannels: st.audioChannels ? (st.audioChannels === 1 ? 'Mono' : 'Stereo') : meta?.audioChannels,
+                feedSpec: st.feedSpec || meta?.feedSpec || `${st.resolution || '1080p'} • ${st.fps || 30}fps`,
+                resolution: st.resolution || meta?.resolution || '1080p',
+                fps: st.fps || meta?.fps || 30,
+                isLoading: isStationLoading
+            });
         }
         return map;
-    }, [allStations, recordingSegments, baseEpochMs, durationMs]);
+    }, [allStations, recordingSegments, baseEpochMs, durationMs, isSegmentsSyncing, isLoadingStations, isLoadingSegments]);
 
     const filteredStations = useMemo(() => {
         return allStations
@@ -176,44 +249,93 @@ export default function StationDrawer({
 
     const handleSelectAllInScope = () => {
         if (!onUpdateSelections) return;
-        const targetIds = activeTab.id === 'all' ? filteredStations.map(s => s.id) : activeTabStationIds;
+        const targetIds = activeTab.id === 'all'
+            ? filteredStations.map(s => s.id)
+            : activeTabStationIds;
         onUpdateSelections(Array.from(new Set([...selectedStationIds, ...targetIds])));
     };
 
     const handleClearInScope = () => {
         if (!onUpdateSelections) return;
-        const targetIds = activeTab.id === 'all' ? filteredStations.map(s => s.id) : activeTabStationIds;
-        onUpdateSelections(selectedStationIds.filter(id => !targetIds.includes(id)));
+        const targetIds = new Set(
+            activeTab.id === 'all'
+                ? filteredStations.map(s => s.id)
+                : activeTabStationIds
+        );
+        onUpdateSelections(selectedStationIds.filter(id => !targetIds.has(id)));
     };
 
     const selectedInTabCount = activeTabStationIds.filter(id => selectedStationIds.includes(id)).length;
+    const filteredSelectedCount = filteredStations.filter(st => selectedStationIds.includes(st.id)).length;
 
     return (
         <div className={`station-drawer-panel ${panelClass}`}>
             {panelClass !== 'is-full-width' && (
-                <div className="drawer-header" onClick={() => panelClass === 'is-closed' && onToggle && onToggle()}>
-                    <div className="header-title">
-                        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                        <span>Station Pool ({selectedStationIds.length}/{allStations.length})</span>
-                    </div>
-                    {panelClass === 'is-open' && (
-                        <button type="button" className="btn-close" onClick={onClose || onToggle} title="Close Drawer">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                <>
+                    <div className="drawer-header" onClick={() => panelClass === 'is-closed' && onToggle && onToggle()}>
+                        <div className="header-title">
+                            <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
                             </svg>
-                        </button>
+                            <span>
+                                Station Pool ({selectedStationIds.length}/{allStations.length})
+                                {isSegmentsSyncing && <span className="sync-badge-inline"> • Syncing {loadedStationsCount}/{allStations.length}</span>}
+                            </span>
+                        </div>
+                        {panelClass === 'is-open' && (
+                            <button type="button" className="btn-close" onClick={onClose || onToggle} title="Close Drawer">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
+
+                    {panelClass === 'is-open' && (
+                        <div className="drawer-quick-actions-bar">
+                            <button
+                                type="button"
+                                className="btn-quick-action select-all"
+                                onClick={handleSelectAllInScope}
+                                disabled={filteredStations.length === 0}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                <span>Select All ({filteredStations.length})</span>
+                            </button>
+                            <span className="action-sep">•</span>
+                            <button
+                                type="button"
+                                className="btn-quick-action clear"
+                                onClick={handleClearInScope}
+                                disabled={filteredSelectedCount === 0}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                                <span>Clear ({filteredSelectedCount})</span>
+                            </button>
+                        </div>
                     )}
-                </div>
+
+                    {isSegmentsSyncing && (
+                        <div className="drawer-thin-progress-bar">
+                            <div
+                                className="drawer-thin-progress-fill"
+                                style={{ width: `${allStations.length > 0 ? (loadedStationsCount / allStations.length) * 100 : 0}%` }}
+                            />
+                        </div>
+                    )}
+                </>
             )}
 
             <div className="drawer-body">
-                {isLoadingStations ? (
+                {isInitialDiscovery ? (
                     <div className="drawer-loading-state">
                         <div className="tactical-spinner" />
-                        <span className="loading-title">ANALYZING RECORDING TIMELINES & CHUNKS...</span>
-                        <span className="loading-subtitle">Querying recording server for verified segments</span>
+                        <span className="loading-title">DISCOVERING RECORDING STATIONS...</span>
+                        <span className="loading-subtitle">Scanning storage directories and catalog database</span>
                     </div>
                 ) : isEmptyState ? (
                     <div className="empty-state-view">
@@ -244,6 +366,42 @@ export default function StationDrawer({
                             </div>
                         )}
 
+                        {panelClass === 'is-full-width' && allStations.length > 0 && (
+                            <div className={`hub-sync-banner ${isSegmentsSyncing ? 'is-syncing' : 'is-synced'}`}>
+                                <div className="sync-info">
+                                    <div className="sync-icon-wrap">
+                                        {isSegmentsSyncing ? (
+                                            <div className="mini-tactical-spinner" />
+                                        ) : (
+                                            <svg className="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                    <div className="sync-text-group">
+                                        <span className="sync-title">
+                                            {isSegmentsSyncing
+                                                ? `ANALYZING TIMELINE ARCHIVES • ${loadedStationsCount} OF ${allStations.length} STATIONS SYNCED (${Math.min(100, Math.round((loadedStationsCount / allStations.length) * 100))}%)`
+                                                : `ALL WORKSTATION ARCHIVES SYNCED • ${allStations.length} STATIONS READY`}
+                                        </span>
+                                        <span className="sync-subtitle">
+                                            {isSegmentsSyncing
+                                                ? 'Scanning verified recording chunks in background. You can select stations and begin immediately.'
+                                                : 'Continuity analysis and feed specifications are verified and up-to-date.'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="sync-progress-bar-wrap">
+                                    <div
+                                        className="sync-progress-bar-fill"
+                                        style={{
+                                            width: `${allStations.length > 0 ? Math.min(100, Math.round((loadedStationsCount / allStations.length) * 100)) : 0}%`
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <StationFilterBar
                             searchTerm={searchTerm}
                             onSearchChange={setSearchTerm}
@@ -271,6 +429,42 @@ export default function StationDrawer({
                             isDrawerMode={panelClass !== 'is-full-width'}
                         />
 
+                        {panelClass === 'is-full-width' && (
+                            <div className="hub-bulk-actions-bar">
+                                <div className="bulk-actions-left">
+                                    <button
+                                        type="button"
+                                        className="btn-bulk-action select-all"
+                                        onClick={handleSelectAllInScope}
+                                        disabled={filteredStations.length === 0}
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                            <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                        <span>SELECT ALL IN VIEW ({filteredStations.length})</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        className="btn-bulk-action clear"
+                                        onClick={handleClearInScope}
+                                        disabled={filteredSelectedCount === 0}
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                        </svg>
+                                        <span>CLEAR SELECTION ({filteredSelectedCount})</span>
+                                    </button>
+                                </div>
+
+                                <div className="bulk-actions-right">
+                                    <span className="bulk-stats-label">
+                                        Active Selection: <strong>{selectedStationIds.length}</strong> / {allStations.length} Stations
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
                         {panelClass === 'is-full-width' && effectiveViewMode === 'table' && (
                             <div className="hub-table-header-row">
                                 <div className="header-col col-check">SEL</div>
@@ -283,7 +477,11 @@ export default function StationDrawer({
                             </div>
                         )}
 
-                        <div className={`station-list ${panelClass === 'is-full-width' ? (effectiveViewMode === 'grid' ? 'initial-cards-grid' : 'initial-dense-table') : ''}`}>
+                        {/* 💡 חיבור ה-Ref כאן כדי למדוד את גובה ה-DOM בזמן אמת */}
+                        <div
+                            ref={listContainerRef}
+                            className={`station-list ${panelClass === 'is-full-width' ? (effectiveViewMode === 'grid' ? 'initial-cards-grid' : 'initial-dense-table') : ''}`}
+                        >
                             {paginatedStations.map(st => {
                                 const isSelected = selectedStationIds.includes(st.id);
                                 const meta = stationMetaMap.get(st.id);

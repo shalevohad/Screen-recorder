@@ -50,6 +50,13 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("isScreenCapturing")]
         public bool IsScreenCapturing { get; set; }
 
+        // 💡 מידות מסך אמיתיות של התחנה (0 מציין שטרם נקלט דיווח או נדרשת דגימה)
+        [JsonPropertyName("screenWidth")]
+        public int ScreenWidth { get; set; } = 0;
+
+        [JsonPropertyName("screenHeight")]
+        public int ScreenHeight { get; set; } = 0;
+
         [JsonPropertyName("hasActiveSpeakers")]
         public bool HasActiveSpeakers { get; set; }
 

@@ -1,6 +1,8 @@
 ﻿using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -44,6 +46,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly StationOverridesService _overridesService;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly StoragePathResolver _storageResolver;
+        private readonly ICatalogRepository _catalogRepository;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
@@ -52,6 +55,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             StationOverridesService overridesService,
             IOptionsMonitor<SystemConfig> configMonitor,
             StoragePathResolver storageResolver,
+            ICatalogRepository catalogRepository,
             ILogger<AgentController> logger)
         {
             _telemetryState = telemetryState;
@@ -59,6 +63,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _overridesService = overridesService;
             _configMonitor = configMonitor;
             _storageResolver = storageResolver;
+            _catalogRepository = catalogRepository;
             _logger = logger;
         }
 
@@ -96,7 +101,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest("File payload is empty.");
             }
 
-            // אכיפת הגודל נטו מול הקבוע
             if (request.File.Length > BufferLimits.MaxFileSizeBytes)
             {
                 _logger.LogWarning("[SYNC INGEST] Rejected file '{File}' from host '{Host}': Size {SizeMb}MB exceeds {LimitMb}MB limit.",
@@ -116,7 +120,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             IFormFile file = request.File;
             string safeFileName = Path.GetFileName(file.FileName);
 
-            // 1. איתור חותמת ה-UTC משם הקובץ של הסוכן (לדוגמה: STATION1_2026-09-08_06-02-49-097824Z.mp4)
+            // 1. איתור חותמת זמן UTC
             var match = Regex.Match(safeFileName, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})Z", RegexOptions.IgnoreCase);
             if (!match.Success)
             {
@@ -131,10 +135,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest("Failed to parse file UTC timestamp.");
             }
 
-            // 2. המרה מ-UTC לזמן המקומי של השרת (תואם לשעון שבו MediaMTX מייצר שמות קבצים חיים)
             DateTime serverLocalTime = TimeZoneInfo.ConvertTimeFromUtc(chunkUtcTime, TimeZoneInfo.Local);
-
-            // 3. יצירת שם קובץ תקני בפורמט MediaMTX (שעון שרת מקומי, ללא Z מטעה)
             string extension = Path.GetExtension(safeFileName);
             string finalFileName = $"{serverLocalTime:yyyy-MM-dd_HH-mm-ss-ffffff}{extension}";
 
@@ -150,20 +151,49 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
                 string destinationPath = Path.Combine(stationDirectory, finalFileName);
 
-                // 4. כתיבת הקובץ לתיקיית העמדה
                 await using (var stream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
                 {
                     await file.CopyToAsync(stream);
                 }
 
-                _logger.LogInformation("[SYNC INGEST] Synced offline chunk from '{Host}': '{Original}' -> '{Normalized}' (Server Local: {Time})",
-                    hostname, safeFileName, finalFileName, serverLocalTime);
+                long fileSizeBytes = new FileInfo(destinationPath).Length;
+                long startEpochMs = new DateTimeOffset(chunkUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                int chunkMinutes = Math.Max(1, _configMonitor.CurrentValue.Storage.ChunkIntervalMinutes);
+                long endEpochMs = startEpochMs + (chunkMinutes * 60 * 1000);
+
+                // שליפת נתוני טלמטריה חיים או ברירת מחדל 0 המאותתת על צורך בדגימה
+                var agent = _telemetryState.GetAllAgents()
+                    .FirstOrDefault(a => string.Equals(a.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
+
+                int width = agent?.ScreenWidth > 0 ? agent.ScreenWidth : 0;
+                int height = agent?.ScreenHeight > 0 ? agent.ScreenHeight : 0;
+                int fps = agent?.ActualFps > 0 ? agent.ActualFps : (agent?.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0);
+                bool hasAudio = agent?.HasAudio ?? false;
+
+                await _catalogRepository.BulkUpsertChunksAsync(new[]
+                {
+                    new ChunkFinalizedEvent(
+                        StationId: hostname,
+                        FilePath: destinationPath,
+                        StartEpochMs: startEpochMs,
+                        EndEpochMs: endEpochMs,
+                        FileSizeBytes: fileSizeBytes,
+                        IsFinalized: true,
+                        Width: width,
+                        Height: height,
+                        Fps: fps,
+                        HasAudio: hasAudio
+                    )
+                });
+
+                _logger.LogInformation("[SYNC INGEST] Synced & Indexed offline chunk from '{Host}': '{File}' (Size: {Size} bytes)",
+                    hostname, finalFileName, fileSizeBytes);
 
                 return Ok(new { success = true, normalizedFile = finalFileName });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[SYNC INGEST] Failed to write synced chunk for host '{Host}' to disk: {Message}", hostname, ex.Message);
+                _logger.LogError(ex, "[SYNC INGEST] Failed to write and index synced chunk for host '{Host}': {Message}", hostname, ex.Message);
                 return StatusCode(500, "Internal error writing recording file to storage.");
             }
         }
@@ -181,13 +211,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 ? existing
                 : new StationOverride();
 
-            // מינימום 10 FPS, מקסימום 60 FPS
             if (request.Fps.HasValue && request.Fps.Value >= 10 && request.Fps.Value <= 60)
             {
                 stationConfig.TargetFps = request.Fps.Value;
             }
 
-            // מינימום 1000 Kbps
             if (request.BitrateKbps.HasValue && request.BitrateKbps.Value >= 1000)
             {
                 stationConfig.VideoBitrate = $"{request.BitrateKbps.Value}k";
@@ -204,7 +232,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 Hostname = hostname,
                 TargetFps = stationConfig.TargetFps,
                 VideoBitrate = stationConfig.VideoBitrate,
-                Message = "Tuning saved. Policy updated for next heartbeat.",
+                Message = "Tuning saved to SQLite. Policy updated for next heartbeat.",
                 TimestampUtc = DateTime.UtcNow
             });
         }

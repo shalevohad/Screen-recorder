@@ -1,9 +1,16 @@
 ﻿namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -14,26 +21,28 @@ public class RecordingChunkScheduler : BackgroundService
     private readonly StoragePathResolver _storageResolver;
     private readonly MediaMtxApiClient _apiClient;
     private readonly EventLogger _eventLogger;
+    private readonly ICatalogRepository _catalogRepository;
+    private readonly ITelemetryStateService _telemetryState;
     private readonly ILogger<RecordingChunkScheduler> _logger;
     private readonly IDisposable? _configChangeSubscription;
-
-    private string? _lastAppliedRoot;
-    private string? _lastAppliedTimezone;
 
     public RecordingChunkScheduler(
         IOptionsMonitor<SystemConfig> configMonitor,
         StoragePathResolver storageResolver,
         MediaMtxApiClient apiClient,
         EventLogger eventLogger,
+        ICatalogRepository catalogRepository,
+        ITelemetryStateService telemetryState,
         ILogger<RecordingChunkScheduler> logger)
     {
         _configMonitor = configMonitor;
         _storageResolver = storageResolver;
         _apiClient = apiClient;
         _eventLogger = eventLogger;
+        _catalogRepository = catalogRepository;
+        _telemetryState = telemetryState;
         _logger = logger;
 
-        // תיקון סעיף 9: האזנה לעדכון נתיבי אחסון בזמן אמת ללא צורך באיתחול שירות
         _configChangeSubscription = _configMonitor.OnChange(async newConfig =>
         {
             _logger.LogInformation("[CHUNK SCHEDULER] Live configuration change detected. Applying to MediaMTX immediately...");
@@ -50,9 +59,8 @@ public class RecordingChunkScheduler : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("[CHUNK SCHEDULER] Recording chunk scheduler starting...");
+        _logger.LogInformation("[CHUNK SCHEDULER] Recording chunk scheduler starting with SQLite-backed catalog...");
 
-        // החלת תצורה ראשונית על MediaMTX
         await ApplyMediaMtxStorageConfigAsync(_configMonitor.CurrentValue, stoppingToken).ConfigureAwait(false);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -77,11 +85,11 @@ public class RecordingChunkScheduler : BackgroundService
 
             try
             {
-                await OnBoundaryReachedAsync(stoppingToken).ConfigureAwait(false);
+                await OnBoundaryReachedAsync(nextBoundaryUtc, stoppingToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[CHUNK SCHEDULER] Unhandled error while rotating recordings at a chunk boundary.");
+                _logger.LogError(ex, "[CHUNK SCHEDULER] Unhandled error while rotating recordings at clock boundary.");
             }
         }
     }
@@ -89,13 +97,8 @@ public class RecordingChunkScheduler : BackgroundService
     private async Task ApplyMediaMtxStorageConfigAsync(SystemConfig config, CancellationToken ct)
     {
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
-        string currentTimezone = config.MediaMtx?.Timezone ?? "UTC";
-
         string recordPath = _storageResolver.BuildRecordPath(root, config);
-        string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
-            ? "fmp4"
-            : config.Storage.RecordFormat.Trim().ToLowerInvariant();
-
+        string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
         string retentionHours = $"{config.Storage.RetentionDays * 24}h";
 
@@ -109,33 +112,148 @@ public class RecordingChunkScheduler : BackgroundService
 
         if (applied)
         {
-            _lastAppliedRoot = root;
-            _lastAppliedTimezone = currentTimezone;
             _logger.LogInformation("[CHUNK SCHEDULER] MediaMTX patched live: Root='{Root}', Path='{RecordPath}', Format='{Format}', Chunk='{Chunk}'",
                 root, recordPath, recordFormat, chunkDuration);
         }
     }
 
-    private async Task OnBoundaryReachedAsync(CancellationToken stoppingToken)
+    private async Task OnBoundaryReachedAsync(DateTime boundaryUtc, CancellationToken stoppingToken)
     {
         SystemConfig config = _configMonitor.CurrentValue;
-
-        // וידוא שהגדרות האחסון מסונכרנות לפני חיתוך
         await ApplyMediaMtxStorageConfigAsync(config, stoppingToken).ConfigureAwait(false);
 
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         var activePaths = await _apiClient.GetActivePathNamesAsync(config.MediaMtx.ApiPort, stoppingToken).ConfigureAwait(false);
 
+        var finalizedChunksToIndex = new List<ChunkFinalizedEvent>();
+
         foreach (string path in activePaths)
         {
             bool rotated = await _apiClient.RotatePathRecordingAsync(config.MediaMtx.ApiPort, path, stoppingToken).ConfigureAwait(false);
             await _eventLogger.LogChunkCutAsync(config.Storage.ChunkEventLogPath, path, root, rotated, stoppingToken).ConfigureAwait(false);
+
+            if (rotated)
+            {
+                var chunkEvent = await TryResolveFinalizedChunkAsync(root, path, config, boundaryUtc, stoppingToken).ConfigureAwait(false);
+                if (chunkEvent.HasValue)
+                {
+                    finalizedChunksToIndex.Add(chunkEvent.Value);
+                }
+            }
         }
 
-        if (activePaths.Count > 0)
+        if (finalizedChunksToIndex.Count > 0)
         {
-            _logger.LogInformation("[CHUNK SCHEDULER] Rotated {Count} active recording(s) at clock boundary.", activePaths.Count);
+            await _catalogRepository.BulkUpsertChunksAsync(finalizedChunksToIndex).ConfigureAwait(false);
+            _logger.LogInformation("[CHUNK SCHEDULER] Indexed {Count} finalized chunk(s) into SQLite system_catalog.db using live telemetry.", finalizedChunksToIndex.Count);
         }
+    }
+
+    private async Task<ChunkFinalizedEvent?> TryResolveFinalizedChunkAsync(
+        string root,
+        string stationPath,
+        SystemConfig config,
+        DateTime boundaryUtc,
+        CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(400, ct).ConfigureAwait(false);
+
+            string stationDir = Path.Combine(root, stationPath);
+            if (!Directory.Exists(stationDir))
+            {
+                string altStationDir = Path.Combine(root, "live", stationPath);
+                if (Directory.Exists(altStationDir)) stationDir = altStationDir;
+                else return null;
+            }
+
+            string format = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
+            var dirInfo = new DirectoryInfo(stationDir);
+
+            var lastClosedFile = dirInfo.GetFiles($"*.{format}")
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .FirstOrDefault(f => f.Length > 0);
+
+            if (lastClosedFile == null) return null;
+
+            long startEpochMs = 0;
+            long endEpochMs = new DateTimeOffset(boundaryUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+            string fileNameWithoutExt = Path.GetFileNameWithoutExtension(lastClosedFile.Name);
+
+            var matchHyphen = Regex.Match(fileNameWithoutExt, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?)");
+            var matchCompact = Regex.Match(fileNameWithoutExt, @"(\d{8}_\d{6})");
+
+            if (matchHyphen.Success)
+            {
+                string rawDate = matchHyphen.Groups[1].Value;
+                if (DateTime.TryParseExact(rawDate.Length > 19 ? rawDate.Substring(0, 19) : rawDate,
+                    "yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out DateTime localDt))
+                {
+                    startEpochMs = new DateTimeOffset(localDt).ToUnixTimeMilliseconds();
+                }
+            }
+            else if (matchCompact.Success && DateTime.TryParseExact(matchCompact.Groups[1].Value, "yyyyMMdd_HHmmss",
+                CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedStartUtc))
+            {
+                startEpochMs = new DateTimeOffset(parsedStartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+            }
+
+            if (startEpochMs <= 0)
+            {
+                int intervalMinutes = Math.Max(1, config.Storage.ChunkIntervalMinutes);
+                startEpochMs = endEpochMs - (intervalMinutes * 60 * 1000);
+            }
+
+            string stationName = Path.GetFileName(stationPath);
+
+            // 💡 חילוץ מטא-דאטה אמיתי מתוך ה-Telemetry של העמדה ב-RAM ללא נגיעה בדיסק וללא FFprobe
+            var (width, height, fps, hasAudio) = ResolveTelemetryMetadata(stationName, config);
+
+            return new ChunkFinalizedEvent(
+                StationId: stationName,
+                FilePath: lastClosedFile.FullName,
+                StartEpochMs: startEpochMs,
+                EndEpochMs: endEpochMs,
+                FileSizeBytes: lastClosedFile.Length,
+                IsFinalized: true,
+                Width: width,
+                Height: height,
+                Fps: fps,
+                HasAudio: hasAudio
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CHUNK SCHEDULER] Could not parse chunk file metadata for station '{Station}'.", stationPath);
+            return null;
+        }
+    }
+
+    private (int Width, int Height, int Fps, bool HasAudio) ResolveTelemetryMetadata(string stationId, SystemConfig config)
+    {
+        try
+        {
+            var agent = _telemetryState.GetAllAgents()
+                .FirstOrDefault(a => string.Equals(a.Hostname, stationId, StringComparison.OrdinalIgnoreCase));
+
+            if (agent != null)
+            {
+                int width = agent.ScreenWidth > 0 ? agent.ScreenWidth : 0;
+                int height = agent.ScreenHeight > 0 ? agent.ScreenHeight : 0;
+                int fps = agent.ActualFps > 0 ? agent.ActualFps : (agent.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0);
+                bool hasAudio = agent.HasAudio;
+
+                return (width, height, fps, hasAudio);
+            }
+        }
+        catch
+        {
+            // Fallback שקט במקרה של שגיאה
+        }
+
+        return (0, 0, 0, false);
     }
 
     internal static DateTime ComputeNextBoundaryUtc(DateTime nowUtc, int intervalMinutes)

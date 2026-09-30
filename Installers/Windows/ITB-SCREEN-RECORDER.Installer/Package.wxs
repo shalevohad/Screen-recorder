@@ -16,32 +16,17 @@
 		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
 		<MediaTemplate EmbedCab="yes" />
 
-		<!-- 1. סגירה שקטה של התהליכים -->
+		<!-- 💡 שימוש ב-util:CloseApplication לסגירה נעימה ובטוחה של התהליכים בתחילת ההתקנה -->
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentService.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentWorker.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 
-		<!-- 2. עצירת תהליכים מורמת לפני עדכון קבצים -->
-		<CustomAction Id="KillAgentServiceProcElevated"
-					  Directory="System64Folder"
-					  ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentService.exe /T"
-					  Execute="deferred"
-					  Impersonate="no"
-					  Return="ignore" />
-
-		<CustomAction Id="KillAgentWorkerElevated"
-					  Directory="System64Folder"
-					  ExeCommand="taskkill.exe /F /IM ITB-SCREEN-RECORDER.AgentWorker.exe /T"
-					  Execute="deferred"
-					  Impersonate="no"
-					  Return="ignore" />
-
-		<!-- 3. הכנת ארגומנטים לעדכון ה-JSON -->
+		<!-- הכנת ארגומנטים לעדכון ה-JSON -->
 		<CustomAction Id="SetJsonDataArgs"
 					  Property="UpdateAgentJson"
 					  Value="[INSTALLFOLDER]|[SERVER_IP]"
 					  Execute="immediate" />
 
-		<!-- 4. הפעלת סקריפט ה-PowerShell החיצוני (פותר לחלוטין את שגיאת String Overflow ICE03) -->
+		<!-- הפעלת סקריפט ה-PowerShell החיצוני לעדכון הקונפיגורציה -->
 		<CustomAction Id="UpdateAgentJson"
 					  Directory="System64Folder"
 					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -File &quot;[INSTALLFOLDER]UpdateAgentSettings.ps1&quot; &quot;[UpdateAgentJson]&quot;"
@@ -50,8 +35,6 @@
 					  Return="ignore" />
 
 		<InstallExecuteSequence>
-			<Custom Action="KillAgentServiceProcElevated" Before="StopServices" />
-			<Custom Action="KillAgentWorkerElevated" Before="StopServices" />
 			<Custom Action="SetJsonDataArgs" Before="InstallInitialize" Condition="(NOT Installed) AND (NOT WIX_UPGRADE_DETECTED) AND (NOT REMOVE=&quot;ALL&quot;)" />
 			<Custom Action="UpdateAgentJson" Before="StartServices" Condition="(NOT Installed) AND (NOT WIX_UPGRADE_DETECTED) AND (NOT REMOVE=&quot;ALL&quot;)" />
 		</InstallExecuteSequence>
@@ -104,6 +87,7 @@
 								Start="auto"
 								Account="LocalSystem"
 								ErrorControl="normal" />
+				<!-- 💡 ServiceControl עם Wait="yes" מבטיח שה-MSI ממתין עד שהשירות מתרוקן ומשחרר את הקבצים -->
 				<ServiceControl Id="ServiceController"
 								Name="ITB_AgentService"
 								Start="install"

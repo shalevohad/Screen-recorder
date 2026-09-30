@@ -1,12 +1,16 @@
-﻿using System;
-using System.IO;
+﻿// ==========================================
+// File: Features/Extractor/ExtractorHostingStartup.cs
+// ==========================================
+using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
+using ITB_SCREEN_RECORDER.Core.Abstractions;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Features.Extractor.Data;
+using ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
@@ -22,6 +26,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
             {
                 services.Configure<ExtractorOptions>(context.Configuration.GetSection(ExtractorOptions.SectionName));
 
+                // 1. תשתית מסד הנתונים SQLite של הפיצ'ר
+                services.AddSingleton<IExtractorConnectionFactory, ExtractorConnectionFactory>();
+                services.AddSingleton<IFeatureDbInitializer, ExtractorDbInitializer>();
+                services.AddSingleton<IExportJobRepository, ExportJobRepository>();
+
+                // 2. שירות איתור בינאריים תשתיתי (FFmpeg / FFprobe)
+                services.AddSingleton<IFfmpegBinaryResolver, FfmpegBinaryResolver>();
+
+                // 3. שירותי ליבה
                 services.AddSingleton<IStorageScannerService, StorageScannerService>();
                 services.AddSingleton<IFfmpegConcatRunner, FfmpegConcatRunner>();
                 services.AddSingleton<IExtractorService, ExtractorService>();
@@ -32,6 +45,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
                 services.AddControllers()
                     .AddApplicationPart(typeof(ExtractorHostingStartup).Assembly);
 
+                // 4. אתחול אוטונומי וניתוב UI
                 services.AddTransient<IStartupFilter, ExtractorStartupFilter>();
             });
         }
@@ -43,24 +57,23 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
         {
             return app =>
             {
-                string asmLocation = typeof(ExtractorStartupFilter).Assembly.Location;
-                string baseDir = Path.GetDirectoryName(asmLocation) ?? AppContext.BaseDirectory;
-                string featureWwwroot = Path.Combine(baseDir, "wwwroot");
-
-                if (!Directory.Exists(featureWwwroot))
+                // אתחול אוטונומי של extractor.db בעליית המערכת (Stealth מלא)
+                using (var scope = app.ApplicationServices.CreateScope())
                 {
-                    featureWwwroot = Path.Combine(baseDir, "Features", "Extractor", "wwwroot");
-                }
-
-                if (Directory.Exists(featureWwwroot))
-                {
-                    app.UseFileServer(new FileServerOptions
+                    try
                     {
-                        FileProvider = new PhysicalFileProvider(featureWwwroot),
-                        RequestPath = new PathString("/extractor"),
-                        EnableDefaultFiles = false
-                    });
+                        var initializer = scope.ServiceProvider.GetRequiredService<IFeatureDbInitializer>();
+                        initializer.Initialize();
+                    }
+                    catch (Exception ex)
+                    {
+                        var logger = scope.ServiceProvider.GetService<ILogger<ExtractorStartupFilter>>();
+                        logger?.LogError(ex, "[EXTRACTOR] Failed to auto-initialize extractor.db");
+                    }
                 }
+
+                // הגשת נכסי הווב הסטטיים של הווידג'ט ישירות דרך ההרחבה ב-Core
+                app.UseFeatureStaticAssets(typeof(ExtractorStartupFilter).Assembly, "/extractor");
 
                 next(app);
             };

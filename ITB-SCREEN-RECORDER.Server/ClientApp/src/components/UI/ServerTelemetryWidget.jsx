@@ -1,9 +1,11 @@
-﻿import { useState } from 'react';
+﻿// Client/src/components/UI/ServerTelemetryWidget.jsx
+import { useState, useEffect } from 'react';
+import RadialGauge from './RadialGauge';
 import './ServerTelemetryWidget.scss';
 
 function SparklineChart({ data, color, limit = 40 }) {
     if (!data || data.length < 2) {
-        return <div className="sparkline-placeholder"></div>;
+        return <div className="sparkline-placeholder" />;
     }
 
     const width = 80;
@@ -70,28 +72,16 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     const [history, setHistory] = useState({
         cpu: [cpuPct],
         ram: [hostRamPct],
-        net: [netUtilPct],
-        lastCpu: cpuPct,
-        lastRam: hostRamPct,
-        lastNet: netUtilPct
+        net: [netUtilPct]
     });
 
-    const isMetricsChanged = cpuPct !== history.lastCpu || hostRamPct !== history.lastRam || netUtilPct !== history.lastNet;
-
-    const cpuHistory = isMetricsChanged ? [...history.cpu, cpuPct].slice(-historyPoints) : history.cpu;
-    const ramHistory = isMetricsChanged ? [...history.ram, hostRamPct].slice(-historyPoints) : history.ram;
-    const netHistory = isMetricsChanged ? [...history.net, netUtilPct].slice(-historyPoints) : history.net;
-
-    if (isMetricsChanged) {
-        setHistory({
-            cpu: cpuHistory,
-            ram: ramHistory,
-            net: netHistory,
-            lastCpu: cpuPct,
-            lastRam: hostRamPct,
-            lastNet: netUtilPct
-        });
-    }
+    useEffect(() => {
+        setHistory(prev => ({
+            cpu: [...prev.cpu, cpuPct].slice(-historyPoints),
+            ram: [...prev.ram, hostRamPct].slice(-historyPoints),
+            net: [...prev.net, netUtilPct].slice(-historyPoints)
+        }));
+    }, [cpuPct, hostRamPct, netUtilPct]);
 
     const formatCurrentRate = (mbps) => {
         if (mbps >= 1000) return `${(mbps / 1000).toFixed(1)}G`;
@@ -118,13 +108,14 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     };
 
     const getGraphColor = (pct) => {
-        if (pct >= 85) return 'var(--c2-red)';
-        if (pct >= 70) return 'var(--c2-yellow)';
-        return 'var(--c2-green)';
+        if (pct >= 85) return 'var(--accent-rose, #EF4444)';
+        if (pct >= 70) return 'var(--accent-amber, #F59E0B)';
+        return 'var(--accent-emerald, #10B981)';
     };
 
     return (
         <div className="server-telemetry-widget layout-large">
+            {/* CPU Pod המקורי עם ה-Sparkline */}
             <div className={`telemetry-pod ${getStatusClass(cpuPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">CPU LOAD</span>
@@ -133,14 +124,15 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 <div className="pod-content-row">
                     <span className="pod-val">{cpuPct.toFixed(1)}%</span>
                     <div className="pod-graph-slot">
-                        <SparklineChart data={cpuHistory} color={getGraphColor(cpuPct)} limit={historyPoints} />
+                        <SparklineChart data={history.cpu} color={getGraphColor(cpuPct)} limit={historyPoints} />
                     </div>
                 </div>
                 <div className="pod-track">
-                    <div className="pod-bar" style={{ width: `${Math.min(100, cpuPct)}%` }}></div>
+                    <div className="pod-bar" style={{ width: `${Math.min(100, cpuPct)}%` }} />
                 </div>
             </div>
 
+            {/* RAM Pod המקורי עם ה-Sparkline */}
             <div
                 className={`telemetry-pod ${getStatusClass(hostRamPct)}`}
                 title={`Host Total: ${hostUsedRamDisplay} / ${totalRamDisplay} (${hostRamPct.toFixed(1)}%) | App: ${appRamDisplay}`}
@@ -152,15 +144,16 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 <div className="pod-content-row">
                     <span className="pod-val">{hostRamPct.toFixed(1)}%</span>
                     <div className="pod-graph-slot">
-                        <SparklineChart data={ramHistory} color={getGraphColor(hostRamPct)} limit={historyPoints} />
+                        <SparklineChart data={history.ram} color={getGraphColor(hostRamPct)} limit={historyPoints} />
                     </div>
                 </div>
                 <div className="pod-track">
-                    <div className="pod-bar" style={{ width: `${Math.min(100, hostRamPct)}%` }}></div>
+                    <div className="pod-bar" style={{ width: `${Math.min(100, hostRamPct)}%` }} />
                 </div>
             </div>
 
-            <div className={`telemetry-pod net-pod ${getStatusClass(netUtilPct)}`}>
+            {/* NET Pod המשודרג: שני שעונים רדיאליים שכל אחד עם שתי קשתות קונצנטריות */}
+            <div className={`telemetry-pod net-pod-radial ${getStatusClass(netUtilPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">NET LOAD</span>
                     <span className="pod-sub">{linkCapacityDisplay} MAX</span>
@@ -168,42 +161,54 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 <div className="pod-content-row">
                     <span className="pod-val">{netUtilPct.toFixed(1)}%</span>
 
-                    <div className="net-stats-grid">
-                        <div className="net-stat-bar-container" title={`TX Rate: ${formatCurrentRate(netTxMbps)}`}>
-                            <div className="ns-bar-fill" style={{ width: `${txPct}%` }}></div>
-                            <div className="ns-content">
-                                <span className="ns-lbl">TX</span>
-                                <span className="ns-val">{formatCurrentRate(netTxMbps)}</span>
+                    <div className="net-radials-cluster">
+                        {/* שעון 1: TX (קשת חיצונית) / RX (קשת פנימית) */}
+                        <div className="net-radial-cell" title={`TX: ${formatCurrentRate(netTxMbps)} | RX: ${formatCurrentRate(netRxMbps)}`}>
+                            <RadialGauge
+                                size={32}
+                                strokeWidth={2.4}
+                                concentricSegments={[
+                                    { pct: txPct, color: 'var(--accent-cyan, #06B6D4)' },
+                                    { pct: rxPct, color: 'var(--accent-emerald, #10B981)' }
+                                ]}
+                            />
+                            <div className="cell-data-stack">
+                                <div className="data-item">
+                                    <span className="item-lbl cyan">TX</span>
+                                    <span className="item-val">{formatCurrentRate(netTxMbps)}</span>
+                                </div>
+                                <div className="data-item">
+                                    <span className="item-lbl green">RX</span>
+                                    <span className="item-val">{formatCurrentRate(netRxMbps)}</span>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="net-stat-bar-container" title={`Total Net Rate: ${formatCurrentRate(totalNetMbps)}`}>
-                            <div className="ns-bar-fill" style={{ width: `${netPct}%` }}></div>
-                            <div className="ns-content">
-                                <span className="ns-lbl">NET</span>
-                                <span className="ns-val">{formatCurrentRate(totalNetMbps)}</span>
-                            </div>
-                        </div>
-
-                        <div className="net-stat-bar-container" title={`RX Rate: ${formatCurrentRate(netRxMbps)}`}>
-                            <div className="ns-bar-fill" style={{ width: `${rxPct}%` }}></div>
-                            <div className="ns-content">
-                                <span className="ns-lbl">RX</span>
-                                <span className="ns-val">{formatCurrentRate(netRxMbps)}</span>
-                            </div>
-                        </div>
-
-                        <div className="net-stat-bar-container" title={`C2 Telemetry Rate: ${c2Display}`}>
-                            <div className="ns-bar-fill" style={{ width: `${c2Pct}%` }}></div>
-                            <div className="ns-content">
-                                <span className="ns-lbl">C2</span>
-                                <span className="ns-val">{c2Display}</span>
+                        {/* שעון 2: NET (קשת חיצונית) / C2 (קשת פנימית) */}
+                        <div className="net-radial-cell" title={`NET: ${formatCurrentRate(totalNetMbps)} | C2: ${c2Display}`}>
+                            <RadialGauge
+                                size={32}
+                                strokeWidth={2.4}
+                                concentricSegments={[
+                                    { pct: netPct, color: 'var(--accent-cyan-light, #38BDF8)' },
+                                    { pct: c2Pct, color: '#C084FC' }
+                                ]}
+                            />
+                            <div className="cell-data-stack">
+                                <div className="data-item">
+                                    <span className="item-lbl blue">NET</span>
+                                    <span className="item-val">{formatCurrentRate(totalNetMbps)}</span>
+                                </div>
+                                <div className="data-item">
+                                    <span className="item-lbl purple">C2</span>
+                                    <span className="item-val">{c2Display}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div className="pod-track">
-                    <div className="pod-bar net-bar" style={{ width: `${Math.min(100, netUtilPct)}%` }}></div>
+                    <div className="pod-bar net-bar" style={{ width: `${Math.min(100, netUtilPct)}%` }} />
                 </div>
             </div>
         </div>

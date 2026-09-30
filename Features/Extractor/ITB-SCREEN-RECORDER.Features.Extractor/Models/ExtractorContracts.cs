@@ -44,6 +44,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public DateTime EndUtc { get; set; }
         public TimeSpan Duration => EndUtc - StartUtc;
         public long FileSizeBytes { get; set; }
+
+        // נתוני מדיה הנשלפים ישירות מהאינדקס ב-DB (מונעים שימוש ב-FFprobe)
+        public int Width { get; set; } = 1920;
+        public int Height { get; set; } = 1080;
+        public double Fps { get; set; } = 30.0;
+        public bool HasAudio { get; set; } = true;
     }
 
     public class SessionManifest

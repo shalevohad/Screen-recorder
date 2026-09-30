@@ -20,7 +20,8 @@ export default function MulticamViewport({
     inPointMs,
     outPointMs,
     setPlayheadMs,
-    globalGaps = []
+    globalGaps = [],
+    recordingSegments = {}
 }) {
     const containerRef = useRef(null);
     const [gridStyle, setGridStyle] = useState({ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' });
@@ -94,6 +95,7 @@ export default function MulticamViewport({
                     globalGaps={globalGaps}
                     onOpenSpotlight={onOpenSpotlight}
                     onSelectActiveStation={onSelectActiveStation}
+                    recordingSegments={recordingSegments}
                 />
             </div>
         );
@@ -119,6 +121,7 @@ export default function MulticamViewport({
                         globalGaps={globalGaps}
                         onOpenSpotlight={onOpenSpotlight}
                         onSelectActiveStation={onSelectActiveStation}
+                        recordingSegments={recordingSegments}
                     />
                 ))}
             </div>

@@ -4,11 +4,12 @@ import './StationHubCard.scss';
 
 export default function StationHubCard({ station, isSelected, onToggle, meta }) {
     const hostNameStr = station.displayName || station.hostname || station.name || '';
+    const isLoading = meta?.isLoading;
 
     return (
         <div
             onClick={() => onToggle(station.id)}
-            className={`hub-station-card ${isSelected ? 'is-selected' : ''}`}
+            className={`hub-station-card ${isSelected ? 'is-selected' : ''} ${isLoading ? 'is-syncing' : ''}`}
         >
             <div className="card-top">
                 <div className="monitor-icon-wrap">
@@ -20,8 +21,10 @@ export default function StationHubCard({ station, isSelected, onToggle, meta }) 
                 </div>
 
                 <div className="card-top-badges">
-                    <span className={`audio-pill ${meta.hasAudio ? 'has-audio' : 'no-audio'}`} title={meta.audioChannels}>
-                        {meta.hasAudio ? (
+                    <span className={`audio-pill ${isLoading ? 'loading' : (meta.hasAudio ? 'has-audio' : 'no-audio')}`} title={meta.audioChannels}>
+                        {isLoading ? (
+                            <span>CHECKING...</span>
+                        ) : meta.hasAudio ? (
                             <>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                     <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
@@ -42,9 +45,9 @@ export default function StationHubCard({ station, isSelected, onToggle, meta }) 
                         )}
                     </span>
 
-                    <span className={`status-indicator-badge ${meta.hasGaps ? 'gap-warning' : 'full-archived'}`}>
+                    <span className={`status-indicator-badge ${isLoading ? 'is-loading' : (meta.hasGaps ? 'gap-warning' : 'full-archived')}`}>
                         <span className="dot" />
-                        {meta.hasGaps ? 'GAPS DETECTED' : '100% COVERAGE'}
+                        {isLoading ? 'SCANNING...' : (meta.hasGaps ? 'GAPS DETECTED' : '100% COVERAGE')}
                     </span>
                 </div>
             </div>
@@ -55,35 +58,39 @@ export default function StationHubCard({ station, isSelected, onToggle, meta }) 
                 <div className="recording-specs-grid">
                     <div className="spec-item">
                         <span className="spec-label">RECORDED</span>
-                        <span className="spec-value highlight">{meta.recordedDuration}</span>
+                        <span className="spec-value highlight">{isLoading ? '...' : meta.recordedDuration}</span>
                     </div>
                     <div className="spec-item">
                         <span className="spec-label">COVERAGE</span>
-                        <span className="spec-value">{meta.coveragePct}%</span>
+                        <span className="spec-value">{isLoading ? '...' : `${meta.coveragePct}%`}</span>
                     </div>
                     <div className="spec-item">
                         <span className="spec-label">VIDEO FEED</span>
-                        <span className="spec-value">{meta.resolution} • {meta.fps}fps</span>
+                        <span className="spec-value">{isLoading ? 'Scanning...' : `${meta.resolution} • ${meta.fps}fps`}</span>
                     </div>
                     <div className="spec-item">
                         <span className="spec-label">SIZE</span>
-                        <span className="spec-value">{meta.fileSize}</span>
+                        <span className="spec-value">{isLoading ? '...' : meta.fileSize}</span>
                     </div>
                 </div>
 
-                <div className="card-gap-track-container" title={`Recorded: ${meta.recordedDuration} (${meta.coveragePct}%)`}>
-                    <div className="card-gap-track">
-                        {meta.segments.map((seg, idx) => (
-                            <div
-                                key={idx}
-                                className={`track-segment ${seg.type === 'rec' ? 'rec' : 'gap'}`}
-                                style={{
-                                    left: `${seg.startPct}%`,
-                                    width: `${seg.widthPct}%`
-                                }}
-                            />
-                        ))}
-                    </div>
+                <div className="card-gap-track-container" title={isLoading ? 'Scanning chunks...' : `Recorded: ${meta.recordedDuration} (${meta.coveragePct}%)`}>
+                    {isLoading ? (
+                        <div className="track-loading-shimmer" />
+                    ) : (
+                        <div className="card-gap-track">
+                            {meta.segments.map((seg, idx) => (
+                                <div
+                                    key={idx}
+                                    className={`track-segment ${seg.type === 'rec' ? 'rec' : 'gap'}`}
+                                    style={{
+                                        left: `${seg.startPct}%`,
+                                        width: `${seg.widthPct}%`
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 

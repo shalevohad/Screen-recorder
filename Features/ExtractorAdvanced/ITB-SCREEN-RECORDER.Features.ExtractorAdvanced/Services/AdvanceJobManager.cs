@@ -12,8 +12,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
 using AdvancedModels = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
@@ -28,20 +30,51 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
     {
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
+        private readonly IAdvanceJobRepository _advanceRepository;
         private readonly ILogger<AdvanceJobManager> _advLogger;
 
         public AdvanceJobManager(
             IExtractorService extractorService,
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
+            IExportJobRepository exportJobRepository,
+            IAdvanceJobRepository advanceRepository,
             IOptions<ExtractorOptions> options,
             ILogger<ExportJobManager> baseLogger,
             ILogger<AdvanceJobManager> advLogger)
-            : base(extractorService, options, baseLogger)
+            : base(extractorService, exportJobRepository, options, baseLogger)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
+            _advanceRepository = advanceRepository;
             _advLogger = advLogger;
+
+            _ = LoadAndRecoverAdvanceJobsAsync();
+        }
+
+        private async Task LoadAndRecoverAdvanceJobsAsync()
+        {
+            try
+            {
+                var dbJobs = await _advanceRepository.GetAllJobsAsync();
+                foreach (var job in dbJobs)
+                {
+                    if (job.Status == "Processing" || job.Status == "Queued")
+                    {
+                        job.Status = "Failed";
+                        job.ErrorMessage = "Task terminated unexpectedly due to server restart.";
+                        job.CompletedAtUtc = DateTime.UtcNow;
+                        await _advanceRepository.UpsertJobAsync(job);
+                    }
+
+                    _jobs[job.JobId] = job;
+                }
+                _advLogger.LogInformation("[AdvanceJobManager] Restored {Count} jobs from advance_extractor.db", dbJobs.Count);
+            }
+            catch (Exception ex)
+            {
+                _advLogger.LogError(ex, "[AdvanceJobManager] Failed to restore jobs from advance_extractor.db");
+            }
         }
 
         public async Task<object> EstimateCutJobAsync(AdvancedModels.AdvanceCutRequestDto request)
@@ -55,14 +88,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             foreach (var sId in request.StationIds)
             {
                 var chunks = await _storageScanner.GetChunksForStationAsync(sId, startUtc, endUtc);
-                await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks);
                 allStationChunks[sId] = chunks;
 
                 foreach (var c in chunks)
                 {
                     if (!string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
                     {
-                        totalRawBytes += new FileInfo(c.FullPath).Length;
+                        totalRawBytes += c.FileSizeBytes > 0 ? c.FileSizeBytes : new FileInfo(c.FullPath).Length;
                     }
                 }
             }
@@ -147,17 +179,34 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             };
 
             _jobs[job.JobId] = job;
-            PersistJobsToDisk();
+            _ = _advanceRepository.UpsertJobAsync(job);
 
             _ = Task.Run(() => ProcessSynchronizedExportAsync(job, startUtc, endUtc));
             return job;
+        }
+
+        public override bool DismissJob(string jobId)
+        {
+            bool removed = base.DismissJob(jobId);
+            _ = _advanceRepository.DeleteJobAsync(jobId);
+            return removed;
+        }
+
+        public override bool ToggleBookmark(string jobId)
+        {
+            bool toggled = base.ToggleBookmark(jobId);
+            if (_jobs.TryGetValue(jobId, out var job) && job is AdvancedModels.AdvanceJobInfo advJob)
+            {
+                _ = _advanceRepository.UpsertJobAsync(advJob);
+            }
+            return toggled;
         }
 
         private async Task ProcessSynchronizedExportAsync(AdvancedModels.AdvanceJobInfo job, DateTime startUtc, DateTime endUtc)
         {
             job.Status = "Processing";
             job.StatusMessage = $"Synchronizing {job.StationIds.Count} stations...";
-            job.CreatedAtUtc = DateTime.UtcNow;
+            _ = _advanceRepository.UpsertJobAsync(job);
 
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
             Directory.CreateDirectory(tempStagingDir);
@@ -172,14 +221,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 foreach (var sId in job.StationIds)
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(sId, startUtc, endUtc);
-                    await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks);
                     allStationChunks[sId] = chunks;
 
                     foreach (var c in chunks)
                     {
                         if (!string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
                         {
-                            rawBytes += new FileInfo(c.FullPath).Length;
+                            rawBytes += c.FileSizeBytes > 0 ? c.FileSizeBytes : new FileInfo(c.FullPath).Length;
                         }
                     }
                 }
@@ -241,7 +289,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         if ((DateTime.UtcNow - lastPersistUtc).TotalSeconds >= 1.0)
                         {
                             lastPersistUtc = DateTime.UtcNow;
-                            PersistJobsToDisk();
+                            _ = _advanceRepository.UpsertJobAsync(job);
                         }
                     });
 
@@ -263,7 +311,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.StatusMessage = "Bundling synchronized archive (Tar)...";
                 job.ProgressPercent = 85;
                 job.EstimatedSecondsRemaining = 2;
-                PersistJobsToDisk();
+                _ = _advanceRepository.UpsertJobAsync(job);
 
                 await using (var tarStream = new FileStream(finalTarPath, FileMode.Create, FileAccess.Write, FileShare.None))
                 await using (var tarWriter = new TarWriter(tarStream, TarEntryFormat.Pax, leaveOpen: false))
@@ -319,6 +367,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.StatusMessage = "Ready for download";
                 job.CompletedAtUtc = DateTime.UtcNow;
 
+                _ = _advanceRepository.UpsertJobAsync(job);
                 _advLogger.LogInformation("[AdvanceJobManager] Archive ready: {Path} ({Size} bytes)", finalTarPath, job.FileSizeBytes);
             }
             catch (Exception ex)
@@ -327,11 +376,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 job.ErrorMessage = ex.Message;
                 job.StatusMessage = "Export failed";
                 job.EstimatedSecondsRemaining = 0;
+                _ = _advanceRepository.UpsertJobAsync(job);
                 _advLogger.LogError(ex, "[AdvanceJobManager] Export failed for job {JobId}", job.JobId);
             }
             finally
             {
-                PersistJobsToDisk();
+                _ = _advanceRepository.UpsertJobAsync(job);
+
                 if (Directory.Exists(tempStagingDir))
                 {
                     try { Directory.Delete(tempStagingDir, true); } catch { }

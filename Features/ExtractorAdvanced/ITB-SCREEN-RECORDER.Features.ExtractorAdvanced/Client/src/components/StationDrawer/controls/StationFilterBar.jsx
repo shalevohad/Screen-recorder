@@ -23,14 +23,17 @@ export default function StationFilterBar({
     onClearInScope,
     viewMode = 'grid',
     onViewModeChange,
-    isDrawerMode = false // האם הרכיב מוצג בתוך מגירה צרה
+    isDrawerMode = false
 }) {
     const [isFilterTrayOpen, setIsFilterTrayOpen] = useState(false);
     const hasActiveSubFilter = filterMode !== 'all';
 
+    const isAllTab = !activeTabName || activeTabName.toLowerCase() === 'all';
+    const selectAllLabel = isAllTab ? 'Select All' : `Select ${activeTabName}`;
+    const clearLabel = isAllTab ? 'Clear All' : `Clear ${activeTabName}`;
+
     return (
         <div className={`station-filter-bar-root ${isDrawerMode ? 'is-drawer-compact' : ''}`}>
-            {/* שורת חיפוש ובקרה ראשית */}
             <div className="search-bar-row">
                 <div className="search-input-wrap">
                     <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -44,7 +47,6 @@ export default function StationFilterBar({
                     />
                 </div>
 
-                {/* במצב מגירה: כפתור לפתיחת/סגירת גלולות הסינון */}
                 {isDrawerMode && (
                     <button
                         type="button"
@@ -59,7 +61,6 @@ export default function StationFilterBar({
                     </button>
                 )}
 
-                {/* בורר מצב תצוגה (Grid / Table) מופיע רק במסך מלא */}
                 {!isDrawerMode && onViewModeChange && (
                     <div className="view-mode-toggle-group">
                         <button
@@ -100,7 +101,6 @@ export default function StationFilterBar({
                 </button>
             </div>
 
-            {/* בחירת טאבים: Dropdown קומפקטי במגירה צרה / רצועה רחבה במסך מלא */}
             {effectiveTabs.length > 1 && (
                 isDrawerMode ? (
                     <div className="drawer-tabs-dropdown-row">
@@ -158,7 +158,6 @@ export default function StationFilterBar({
                 )
             )}
 
-            {/* גלולות הסינון: נפתחות בלחיצה במגירה צרה / מוצגות קבוע במסך מלא */}
             {(!isDrawerMode || isFilterTrayOpen) && (
                 <div className={`filter-controls-row ${isDrawerMode ? 'is-collapsed-tray' : ''}`}>
                     <div className="filter-pills-group">
@@ -204,11 +203,11 @@ export default function StationFilterBar({
                     {!isDrawerMode && (
                         <div className="bulk-actions-group">
                             <button type="button" className="btn-bulk" onClick={onSelectAllInScope}>
-                                + Select Tab
+                                + {selectAllLabel}
                             </button>
                             <span className="divider" />
                             <button type="button" className="btn-bulk clear-btn" onClick={onClearInScope}>
-                                ✕ Clear Tab
+                                ✕ {clearLabel}
                             </button>
                         </div>
                     )}

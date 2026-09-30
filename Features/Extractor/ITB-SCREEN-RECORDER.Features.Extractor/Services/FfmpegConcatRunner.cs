@@ -8,8 +8,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
@@ -18,10 +16,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         private readonly string _ffmpegPath;
         private readonly ILogger<FfmpegConcatRunner> _logger;
 
-        public FfmpegConcatRunner(IOptions<ExtractorOptions> options, ILogger<FfmpegConcatRunner> logger)
+        public FfmpegConcatRunner(
+            IFfmpegBinaryResolver binaryResolver,
+            ILogger<FfmpegConcatRunner> logger)
         {
             _logger = logger;
-            _ffmpegPath = ResolveFfmpegBinary(options.Value.FfmpegPath, _logger);
+            _ffmpegPath = binaryResolver.ResolveFfmpeg();
             _logger.LogInformation("Extractor initialized FFmpeg at: {Path}", _ffmpegPath);
         }
 
@@ -101,70 +101,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 {
                     try { File.Delete(tempManifestPath); } catch { }
                 }
-            }
-        }
-
-        private static string ResolveFfmpegBinary(string? configuredPath, ILogger logger)
-        {
-            string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
-
-            if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
-            {
-                EnsureLinuxExecutablePermissions(configuredPath, logger);
-                return configuredPath;
-            }
-
-            string featureRootPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", binaryName);
-            if (File.Exists(featureRootPath))
-            {
-                EnsureLinuxExecutablePermissions(featureRootPath, logger);
-                return featureRootPath;
-            }
-
-            string featureBinPath = Path.Combine(AppContext.BaseDirectory, "Features", "Extractor", "Bin", binaryName);
-            if (File.Exists(featureBinPath))
-            {
-                EnsureLinuxExecutablePermissions(featureBinPath, logger);
-                return featureBinPath;
-            }
-
-            string serverRootPath = Path.Combine(AppContext.BaseDirectory, binaryName);
-            if (File.Exists(serverRootPath))
-            {
-                EnsureLinuxExecutablePermissions(serverRootPath, logger);
-                return serverRootPath;
-            }
-
-            if (OperatingSystem.IsLinux())
-            {
-                string[] standardPaths = ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg"];
-                foreach (var path in standardPaths)
-                {
-                    if (File.Exists(path))
-                        return path;
-                }
-            }
-
-            return binaryName;
-        }
-
-        private static void EnsureLinuxExecutablePermissions(string filePath, ILogger logger)
-        {
-            if (!OperatingSystem.IsLinux() || !File.Exists(filePath))
-                return;
-
-            try
-            {
-                File.SetUnixFileMode(filePath,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-
-                logger.LogInformation("Applied Linux execution permissions (0755) to: {Path}", filePath);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning("Failed to set Unix permissions on {Path}: {Message}", filePath, ex.Message);
             }
         }
     }

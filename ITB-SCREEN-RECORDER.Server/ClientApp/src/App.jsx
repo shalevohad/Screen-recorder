@@ -1,10 +1,26 @@
-﻿// App.jsx
+﻿// Client/src/App.jsx
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/UI/CommandCenterHeader';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
 import SettingsModal from './components/Settings/SettingsModal';
+import GlobalJobIndicator from './components/UI/GlobalJobIndicator';
 import './App.scss';
+
+const LOCAL_WALLPAPERS = {
+    dawn: '/images/wallpapers/dawn.jpg',
+    day: '/images/wallpapers/day.jpg',
+    dusk: '/images/wallpapers/dusk.jpg',
+    night: '/images/wallpapers/night.jpg'
+};
+
+const resolveTimeOfDay = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 8) return 'dawn';
+    if (hour >= 8 && hour < 17) return 'day';
+    if (hour >= 17 && hour < 20) return 'dusk';
+    return 'night';
+};
 
 export default function App() {
     const [stations, setStations] = useState([]);
@@ -15,26 +31,23 @@ export default function App() {
     const [hideOffline, setHideOffline] = useState(true);
     const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [timeOfDay, setTimeOfDay] = useState(resolveTimeOfDay);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const current = resolveTimeOfDay();
+            setTimeOfDay(prev => (prev !== current ? current : prev));
+        }, 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
     const apiBaseUrl = `http://${window.location.hostname}:${apiPort}`;
 
-    // =========================================================================
-    // GLOBAL CONTEXT MENU GUARD: ביטול גלובלי של קליק ימני בכל המערכת
-    // =========================================================================
     useEffect(() => {
         const handleGlobalContextMenu = (e) => {
-            // 1. החרגת שדות קלט כדי לאפשר העתקה/הדבקה סטנדרטית
-            if (e.target.closest('input, textarea, [contenteditable="true"]')) {
-                return;
-            }
-
-            // 2. החרגת אלמנטים שמבקשים במפורש לאפשר קליק ימני מקורי
-            if (e.target.closest('[data-allow-context="true"]')) {
-                return;
-            }
-
-            // 3. ביטול תפריט הדפדפן המובנה בכל שאר חלקי המערכת
+            if (e.target.closest('input, textarea, [contenteditable="true"]')) return;
+            if (e.target.closest('[data-allow-context="true"]')) return;
             e.preventDefault();
         };
 
@@ -76,7 +89,6 @@ export default function App() {
 
     useEffect(() => {
         let isMounted = true;
-
         const loadInitialData = async () => {
             try {
                 const [agentsRes, cfgRes] = await Promise.allSettled([
@@ -100,10 +112,7 @@ export default function App() {
         };
 
         loadInitialData();
-
-        return () => {
-            isMounted = false;
-        };
+        return () => { isMounted = false; };
     }, [apiBaseUrl]);
 
     useEffect(() => {
@@ -131,13 +140,8 @@ export default function App() {
             });
         });
 
-        connection.start()
-            .then(() => console.log('[App] SignalR Connected to Hub'))
-            .catch(err => console.error('[App] SignalR Connection Error:', err));
-
-        return () => {
-            connection.stop();
-        };
+        connection.start().catch(err => console.error('[App] SignalR Connection Error:', err));
+        return () => { connection.stop(); };
     }, [apiBaseUrl]);
 
     const sortedStations = useMemo(() => {
@@ -156,7 +160,6 @@ export default function App() {
     const handleToggleStream = async (hostname, isCurrentlyStreaming, policy = {}) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
         const targetEnable = !isCurrentlyStreaming;
-
         const queryParams = new URLSearchParams({ enable: targetEnable });
         if (targetEnable && policy.bitrate) queryParams.append('bitrate', policy.bitrate);
         if (targetEnable && policy.fps) queryParams.append('fps', policy.fps);
@@ -168,12 +171,7 @@ export default function App() {
             });
 
             if (res.ok) {
-                setStations(prev => prev.map(st => {
-                    if (st.hostname === hostname) {
-                        return { ...st, isStreaming: targetEnable };
-                    }
-                    return st;
-                }));
+                setStations(prev => prev.map(st => st.hostname === hostname ? { ...st, isStreaming: targetEnable } : st));
             }
         } catch (err) {
             console.error(`[App] Error toggling stream for ${hostname}:`, err);
@@ -229,41 +227,53 @@ export default function App() {
     };
 
     return (
-        <div className="itb-command-center-app" dir="ltr">
-            <CommandCenterHeader
-                stations={sortedStations}
-                serverTelemetry={serverTelemetry}
-                systemConfig={systemConfig}
-                isSettingsOpen={isSettingsOpen}
-                onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
-                hideOffline={hideOffline}
-                isFaultFilterActive={isFaultFilterActive}
-                onToggleFaultFilter={() => setIsFaultFilterActive(prev => !prev)}
+        <div className="itb-command-center-root" dir="ltr">
+            <div
+                className="dynamic-wallpaper-layer"
+                style={{ backgroundImage: `url(${LOCAL_WALLPAPERS[timeOfDay]})` }}
+                aria-hidden="true"
             />
+            <div className="dynamic-scrim-overlay" aria-hidden="true" />
 
-            <DashboardGrid
-                key={sortedStations.length}
-                stations={sortedStations}
-                actionPending={actionPending}
-                onToggleStream={handleToggleStream}
-                onBulkStart={handleBulkStart}
-                onBulkStop={handleBulkStop}
-                onUpdateStationSettings={setStations}
-                systemConfig={systemConfig}
-                onSystemConfigUpdate={setSystemConfig}
-                direction="ltr"
-                hideOffline={hideOffline}
-                onToggleHideOffline={() => setHideOffline(prev => !prev)}
-                isFaultFilterActive={isFaultFilterActive}
-                onExitFaultFilter={() => setIsFaultFilterActive(false)}
-            />
-
-            {isSettingsOpen && (
-                <SettingsModal
-                    onClose={() => setIsSettingsOpen(false)}
-                    onSettingsSaved={handleSettingsSaved}
+            <div className="itb-command-center-app">
+                <CommandCenterHeader
+                    stations={sortedStations}
+                    serverTelemetry={serverTelemetry}
+                    systemConfig={systemConfig}
+                    isSettingsOpen={isSettingsOpen}
+                    onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
+                    hideOffline={hideOffline}
+                    isFaultFilterActive={isFaultFilterActive}
+                    onToggleFaultFilter={() => setIsFaultFilterActive(prev => !prev)}
                 />
-            )}
+
+                <DashboardGrid
+                    key={sortedStations.length}
+                    stations={sortedStations}
+                    actionPending={actionPending}
+                    onToggleStream={handleToggleStream}
+                    onBulkStart={handleBulkStart}
+                    onBulkStop={handleBulkStop}
+                    onUpdateStationSettings={setStations}
+                    systemConfig={systemConfig}
+                    onSystemConfigUpdate={setSystemConfig}
+                    direction="ltr"
+                    hideOffline={hideOffline}
+                    onToggleHideOffline={() => setHideOffline(prev => !prev)}
+                    isFaultFilterActive={isFaultFilterActive}
+                    onExitFaultFilter={() => setIsFaultFilterActive(false)}
+                />
+
+                {isSettingsOpen && (
+                    <SettingsModal
+                        onClose={() => setIsSettingsOpen(false)}
+                        onSettingsSaved={handleSettingsSaved}
+                    />
+                )}
+
+                {/* קפסולת משימות מערכתית צפה - חיה מעל כל המסכים והמודולים */}
+                <GlobalJobIndicator />
+            </div>
         </div>
     );
 }
