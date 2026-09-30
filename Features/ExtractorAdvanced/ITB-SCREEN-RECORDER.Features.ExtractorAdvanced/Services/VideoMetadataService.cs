@@ -57,6 +57,21 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 return new StreamMetadataDto { Fps = 30.0, FrameDurationMs = 33.333 };
             }
 
+            // 💡 אם המטא-דאטה כבר נשלף מה-DB, מחזירים אותו מיד ללא הרצת תהליך חיצוני
+            if (matchingChunk.Width > 0 && matchingChunk.Fps > 0)
+            {
+                var instantMeta = new StreamMetadataDto
+                {
+                    Width = matchingChunk.Width,
+                    Height = matchingChunk.Height,
+                    Fps = Math.Round(matchingChunk.Fps, 2),
+                    FrameDurationMs = Math.Round(1000.0 / matchingChunk.Fps, 3)
+                };
+
+                _memoryCache?.Set(cacheKey, instantMeta, TimeSpan.FromMinutes(10));
+                return instantMeta;
+            }
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = ffprobePath,

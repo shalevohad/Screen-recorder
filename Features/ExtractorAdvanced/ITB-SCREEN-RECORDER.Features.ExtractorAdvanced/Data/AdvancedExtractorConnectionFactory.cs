@@ -10,13 +10,5 @@ public interface IAdvancedExtractorConnectionFactory
     string DatabasePath { get; }
 }
 
-public sealed class AdvancedExtractorConnectionFactory : BaseSqliteConnectionFactory, IAdvancedExtractorConnectionFactory
-{
-    public AdvancedExtractorConnectionFactory(IConfiguration configuration)
-        : base(
-            dbFileName: "advance_extractor.db",
-            customDirectory: configuration["Database:BaseDirectory"],
-            busyTimeoutSeconds: configuration.GetValue<int>("Database:BusyTimeoutSeconds", 5))
-    {
-    }
-}
+public sealed class AdvancedExtractorConnectionFactory(IConfiguration config)
+    : BaseSqliteConnectionFactory(config, "advance_extractor.db"), IAdvancedExtractorConnectionFactory;

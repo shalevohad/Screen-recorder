@@ -6,5 +6,9 @@ public readonly record struct ChunkFinalizedEvent(
     long StartEpochMs,
     long EndEpochMs,
     long FileSizeBytes,
-    bool IsFinalized
+    bool IsFinalized,
+    int Width = 1920,
+    int Height = 1080,
+    int Fps = 30,
+    bool HasAudio = true
 );

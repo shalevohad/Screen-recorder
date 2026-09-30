@@ -1,10 +1,11 @@
 ﻿namespace ITB_SCREEN_RECORDER.Server.Services;
 
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Plugins;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,19 +16,19 @@ public sealed class StorageRetentionWorker : BackgroundService
 {
     private readonly ICatalogRepository _repository;
     private readonly IEnumerable<IRetentionShieldProvider> _shieldProviders;
-    private readonly int _retentionDays;
+    private readonly IOptionsMonitor<SystemConfig> _configMonitor;
     private readonly ILogger<StorageRetentionWorker> _logger;
 
     public StorageRetentionWorker(
         ICatalogRepository repository,
         IEnumerable<IRetentionShieldProvider> shieldProviders,
-        IConfiguration configuration,
+        IOptionsMonitor<SystemConfig> configMonitor,
         ILogger<StorageRetentionWorker> logger)
     {
         _repository = repository;
         _shieldProviders = shieldProviders;
+        _configMonitor = configMonitor;
         _logger = logger;
-        _retentionDays = configuration.GetValue<int>("SystemConfig:Storage:RetentionDays", 30);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -36,7 +37,8 @@ public sealed class StorageRetentionWorker : BackgroundService
         {
             try
             {
-                var cutoffUtc = DateTimeOffset.UtcNow.AddDays(-_retentionDays).ToUnixTimeMilliseconds();
+                int retentionDays = Math.Max(1, _configMonitor.CurrentValue?.Storage?.RetentionDays ?? 30);
+                var cutoffUtc = DateTimeOffset.UtcNow.AddDays(-retentionDays).ToUnixTimeMilliseconds();
                 var candidates = await _repository.GetExpiredCandidateChunksAsync(cutoffUtc, batchLimit: 100);
 
                 var filesToDelete = new List<string>();
@@ -56,18 +58,25 @@ public sealed class StorageRetentionWorker : BackgroundService
 
                     if (!isShielded)
                     {
-                        if (File.Exists(chunk.FilePath))
+                        try
                         {
-                            File.Delete(chunk.FilePath);
+                            if (File.Exists(chunk.FilePath))
+                            {
+                                File.Delete(chunk.FilePath);
+                            }
+                            filesToDelete.Add(chunk.FilePath);
                         }
-                        filesToDelete.Add(chunk.FilePath);
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[RETENTION] Could not delete expired chunk '{Path}'. Will retry next cycle.", chunk.FilePath);
+                        }
                     }
                 }
 
                 if (filesToDelete.Count > 0)
                 {
                     await _repository.RemoveChunksAsync(filesToDelete);
-                    _logger.LogInformation("Retention sweep purged {Count} unshielded chunks older than {Days} days.", filesToDelete.Count, _retentionDays);
+                    _logger.LogInformation("Retention sweep purged {Count} unshielded chunks older than {Days} days.", filesToDelete.Count, retentionDays);
                 }
             }
             catch (Exception ex)

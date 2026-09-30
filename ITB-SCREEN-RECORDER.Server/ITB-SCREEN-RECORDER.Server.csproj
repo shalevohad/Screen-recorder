@@ -114,6 +114,13 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
+
+		<!-- 💡 העתקת ffprobe עבור שרת Windows -->
+		<None Include="Tools\Win\ffprobe.exe" Condition="Exists('Tools\Win\ffprobe.exe')">
+			<TargetPath>Tools\Win\ffprobe.exe</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
 	</ItemGroup>
 
 	<!-- התאמות ייעודיות ל-Linux -->
@@ -122,6 +129,13 @@
 			<TargetPath>MediaMTX/mediamtx</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</None>
+
+		<!-- 💡 העתקת ffprobe עבור שרת Linux -->
+		<None Include="Tools/Linux/ffprobe" Condition="Exists('Tools/Linux/ffprobe')">
+			<TargetPath>Tools/Linux/ffprobe</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
 

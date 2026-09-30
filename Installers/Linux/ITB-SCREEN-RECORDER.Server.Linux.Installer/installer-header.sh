@@ -1,8 +1,8 @@
-#!/bin/bash
+﻿#!/bin/bash
 set -e
 
 echo "========================================================"
-echo "  ITB Screen Recorder Server (Podman) - Linux Setup"
+echo "  ITB Screen Recorder Server - Linux Setup"
 echo "========================================================"
 
 if [ "$EUID" -ne 0 ]; then
@@ -18,7 +18,8 @@ tail -n +$ARCHIVE_LINE "$0" | tar -xz -C "$TMP_DIR"
 
 echo "==> Running deployment engine..."
 chmod +x "$TMP_DIR/setup.sh"
-bash "$TMP_DIR/setup.sh"
+# העברת כלל הארגומנטים (כולל --silent, -s, -y) ישירות למנוע ההתקנה
+bash "$TMP_DIR/setup.sh" "$@"
 
 echo "==> Cleaning temporary cache..."
 rm -rf "$TMP_DIR"

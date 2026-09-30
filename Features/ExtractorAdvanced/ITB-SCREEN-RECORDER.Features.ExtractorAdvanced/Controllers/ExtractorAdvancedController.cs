@@ -1,7 +1,4 @@
-﻿// ==========================================
-// File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs
-// ==========================================
-using ITB_SCREEN_RECORDER.Features.Extractor.Services;
+﻿using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 using Microsoft.AspNetCore.Http;
@@ -40,7 +37,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         // =========================================================================
-        // 1. איתור תחנות עם מטא-דאטה אמיתי של אודיו ו-Feed Specs
+        // 1. איתור תחנות עם מטא-דאטה מאינדקס ה-DB (במהירות של מילישניות בודדות)
         // =========================================================================
 
         [HttpGet("stations")]
@@ -64,46 +61,51 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
+                var stationDtos = new List<object>();
 
-                // 💡 שליפת מטא-דאטה אמיתי במקביל ומבוקר לכלל העמדות (Cached & Throttled)
-                var probeTasks = availableHosts.Select(async host =>
+                foreach (var host in availableHosts)
                 {
-                    var meta = await _advancedExtractorService.GetOrProbeStationMetadataAsync(host, startUtc, endUtc, ct);
-                    string resLabel = FormatResolution(meta.Width, meta.Height);
-                    string fpsLabel = meta.IsVfr ? $"~{Math.Round(meta.Fps)}fps" : $"{Math.Round(meta.Fps)}fps";
-                    string feedSpec = $"{resLabel} • {fpsLabel}";
-                    string audioLabel = meta.HasAudio
-                        ? (meta.AudioCodec.ToUpperInvariant() == "AAC" ? "AAC" : meta.AudioCodec.ToUpperInvariant())
-                        : "NONE";
+                    ct.ThrowIfCancellationRequested();
 
-                    return new
+                    var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
+                    var sample = chunks.LastOrDefault();
+
+                    int width = sample?.Width ?? 1920;
+                    int height = sample?.Height ?? 1080;
+                    double fps = sample?.Fps ?? 30.0;
+                    bool hasAudio = sample?.HasAudio ?? true;
+
+                    string resLabel = FormatResolution(width, height);
+                    string fpsLabel = $"{Math.Round(fps)}fps";
+                    string feedSpec = $"{resLabel} • {fpsLabel}";
+
+                    stationDtos.Add(new
                     {
                         id = host,
                         hostname = host,
                         displayName = host,
                         isOnline = true,
-                        recordingsCount = 0,
+                        recordingsCount = chunks.Count,
                         segments = Array.Empty<object>(),
-                        hasAudio = meta.HasAudio,
-                        audioCodec = meta.AudioCodec,
-                        audioChannels = meta.AudioChannels,
-                        audioLabel = audioLabel,
-                        width = meta.Width,
-                        height = meta.Height,
-                        fps = meta.Fps,
-                        isVfr = meta.IsVfr,
+                        hasAudio = hasAudio,
+                        audioCodec = "AAC",
+                        audioChannels = 2,
+                        audioLabel = hasAudio ? "AAC" : "NONE",
+                        width = width,
+                        height = height,
+                        fps = fps,
+                        isVfr = false,
                         resolution = resLabel,
                         feedSpec = feedSpec
-                    };
-                });
+                    });
+                }
 
-                var stations = await Task.WhenAll(probeTasks);
-                return Ok(stations.OrderBy(s => s.hostname).ToList());
+                return Ok(stationDtos.OrderBy(s => ((dynamic)s).hostname).ToList());
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[API:Stations] Failed scanning storage for stations.");
-                return StatusCode(500, "Error scanning storage directories.");
+                _logger.LogError(ex, "[API:Stations] Failed scanning database for stations.");
+                return StatusCode(500, "Error scanning database.");
             }
         }
 
@@ -148,7 +150,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
 
                     var segList = chunks
-                        .Where(c => !string.IsNullOrEmpty(c.FullPath) && System.IO.File.Exists(c.FullPath))
                         .OrderBy(c => c.StartUtc)
                         .Select(c =>
                         {
@@ -222,7 +223,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         // =========================================================================
-        // 3. מטא-דאטה, תמונות וניגון רציף (Stream, Frame & Spritesheet)
+        // 3. מטא-דאטה, תמונות וניגון רציף
         // =========================================================================
 
         [HttpGet("stream-metadata")]
@@ -284,12 +285,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
         [HttpGet("stream")]
         public async Task StreamContinuousStationVideo(
-    [FromQuery] string hostname,
-    [FromQuery] double startEpoch,
-    [FromQuery] double endEpoch,
-    [FromQuery] double? seekEpoch = null,
-    [FromQuery] double speed = 1.0,
-    CancellationToken ct = default)
+            [FromQuery] string hostname,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
+            [FromQuery] double? seekEpoch = null,
+            [FromQuery] double speed = 1.0,
+            CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
             long lEnd = (long)Math.Round(endEpoch);
@@ -302,10 +303,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
 
             double safeSpeed = speed > 0 ? speed : 1.0;
-
-            _logger.LogInformation("[Stream:Start] Host: {Host}, Speed: {Speed}x, Start: {Start}, Seek: {Seek}, End: {End}",
-                hostname, safeSpeed, lStart, lSeek, lEnd);
-
             long effectiveStartEpoch = lSeek.HasValue && lSeek.Value >= lStart && lSeek.Value < lEnd
                 ? lSeek.Value
                 : lStart;
@@ -314,8 +311,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc, rangeEndUtc);
-            await _advancedExtractorService.AdjustChunksToAccuratePtsAsync(chunks, ct);
-
             string manifestContent = await _storageScanner.BuildConcatManifestAsync(chunks, rangeStartUtc, rangeEndUtc);
 
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"stream_{hostname}_{Guid.NewGuid():N}.txt");
@@ -329,7 +324,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             if (Math.Abs(safeSpeed - 1.0) < 0.05)
             {
-                // 💡 הוספת -fflags +genpts ו- -avoid_negative_ts make_zero לאיפוס זמנים נקי לדפדפן
                 arguments = $"-nostdin -loglevel error -fflags +genpts -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
                             $"-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
@@ -347,8 +341,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                             $"-vf \"{vfFilter}\" -an -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p " +
                             $"-avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
-
-            _logger.LogInformation("[Stream:FFmpeg] Running command: {Binary} {Args}", ffmpegPath, arguments);
 
             var startInfo = new ProcessStartInfo
             {

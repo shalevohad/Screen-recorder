@@ -5,10 +5,12 @@ using System.Data;
 using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 
 public abstract class BaseSqliteConnectionFactory
 {
     private readonly string _connectionString;
+    private readonly int _busyTimeoutMs;
     public string DatabasePath { get; }
 
     static BaseSqliteConnectionFactory()
@@ -50,14 +52,44 @@ public abstract class BaseSqliteConnectionFactory
         }
     }
 
+    /// <summary>
+    /// קונסטרקטור מבוסס IConfiguration - שולף נתיבים וזמני Timeout מתוך הקונפיגורציה
+    /// </summary>
+    protected BaseSqliteConnectionFactory(IConfiguration configuration, string dbFileName)
+        : this(
+            dbFileName: dbFileName,
+            customDirectory: configuration?["Database:BaseDirectory"],
+            busyTimeoutSeconds: configuration?.GetValue<int>("Database:BusyTimeoutSeconds", 5) ?? 5)
+    {
+    }
+
+    /// <summary>
+    /// קונסטרקטור בסיסי - תומך בנתיב ישיר ומטפל בברירות מחדל חוצות-פלטפורמות
+    /// </summary>
     protected BaseSqliteConnectionFactory(string dbFileName, string? customDirectory = null, int busyTimeoutSeconds = 5)
     {
+        if (string.IsNullOrWhiteSpace(dbFileName))
+        {
+            throw new ArgumentNullException(nameof(dbFileName));
+        }
+
         var targetDirectory = !string.IsNullOrWhiteSpace(customDirectory)
             ? customDirectory
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ITB-ScreenRecorder", "Data");
+            : ResolveDefaultDataDirectory();
 
-        Directory.CreateDirectory(targetDirectory);
+        try
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
+        catch
+        {
+            // Fallback: במקרה של חוסר הרשאות בנתיב היעד (כגון סביבת Linux מוגבלת), שימוש בתיקיית הריצה
+            targetDirectory = AppContext.BaseDirectory;
+            Directory.CreateDirectory(targetDirectory);
+        }
+
         DatabasePath = Path.Combine(targetDirectory, dbFileName);
+        _busyTimeoutMs = Math.Max(1000, busyTimeoutSeconds * 1000);
 
         var builder = new SqliteConnectionStringBuilder
         {
@@ -70,16 +102,29 @@ public abstract class BaseSqliteConnectionFactory
         _connectionString = builder.ToString();
     }
 
+    private static string ResolveDefaultDataDirectory()
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            return "/var/lib/itb-screen-recorder/data";
+        }
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "ITB-SCREEN-RECORDER",
+            "Data");
+    }
+
     public IDbConnection CreateConnection()
     {
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
         using var cmd = connection.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
-            PRAGMA busy_timeout = 5000;
+            PRAGMA busy_timeout = {_busyTimeoutMs};
         ";
         cmd.ExecuteNonQuery();
 

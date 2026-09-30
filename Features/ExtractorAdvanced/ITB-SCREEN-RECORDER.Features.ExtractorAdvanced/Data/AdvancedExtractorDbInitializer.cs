@@ -22,12 +22,19 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
     {
         try
         {
-            // רישום ממיר גנרי עבור שדה ה-StationIds
             SqlMapper.AddTypeHandler(new JsonTypeHandler<List<string>>());
 
             using var db = _factory.CreateConnection();
+
+            // הפעלת WAL Mode למניעת נעילות בזמן עריכת ויצוא NLE מקביל
             db.Execute(@"
-                -- 1. טבלת משימות עריכה מתקדמות
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous = NORMAL;
+                PRAGMA temp_store = MEMORY;
+            ");
+
+            // 1. יצירת טבלאות במידה ואינן קיימות
+            db.Execute(@"
                 CREATE TABLE IF NOT EXISTS advance_jobs (
                     JobId TEXT PRIMARY KEY,
                     FileName TEXT NOT NULL,
@@ -51,13 +58,6 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
                     EstimatedSecondsRemaining REAL NOT NULL DEFAULT 0
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_advance_jobs_created 
-                ON advance_jobs (CreatedAtUtc DESC);
-
-                CREATE INDEX IF NOT EXISTS idx_advance_jobs_status 
-                ON advance_jobs (Status);
-
-                -- 2. טבלת סימניות להגנת מחיקה (Retention Shield)
                 CREATE TABLE IF NOT EXISTS bookmarks (
                     Id TEXT PRIMARY KEY,
                     StationId TEXT NOT NULL,
@@ -70,10 +70,6 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
                     CreatedAtUtc TEXT NOT NULL
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_bookmarks_station_range 
-                ON bookmarks (StationId, StartUtc, EndUtc);
-
-                -- 3. טבלת טיוטות עריכת ציר זמן
                 CREATE TABLE IF NOT EXISTS editing_drafts (
                     DraftId TEXT PRIMARY KEY,
                     Title TEXT NOT NULL,
@@ -81,6 +77,43 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
                     CreatedAtUtc TEXT NOT NULL,
                     UpdatedAtUtc TEXT NOT NULL
                 );
+            ");
+
+            // 2. מיגרציה רציפה - וידוא קיום עמודות שנוספו עם הזמן עבור מסדים קיימים
+            // advance_jobs
+            db.EnsureColumn("advance_jobs", "NetworkFolderPath", "TEXT NOT NULL DEFAULT ''");
+            db.EnsureColumn("advance_jobs", "DownloadCount", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "IsBookmarked", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "StationIds", "TEXT NOT NULL DEFAULT '[]'");
+            db.EnsureColumn("advance_jobs", "InEpochMs", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "OutEpochMs", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "CutMode", "TEXT NOT NULL DEFAULT 'SynchronizedMultiTrack'");
+            db.EnsureColumn("advance_jobs", "EstimatedSecondsRemaining", "REAL NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "FileSizeBytes", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "SpeedMBps", "REAL NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "EtaSeconds", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("advance_jobs", "ErrorMessage", "TEXT");
+            db.EnsureColumn("advance_jobs", "OutputFilePath", "TEXT");
+            db.EnsureColumn("advance_jobs", "CompletedAtUtc", "TEXT");
+
+            // bookmarks
+            db.EnsureColumn("bookmarks", "Description", "TEXT");
+            db.EnsureColumn("bookmarks", "Tags", "TEXT");
+            db.EnsureColumn("bookmarks", "CreatedBy", "TEXT");
+
+            // editing_drafts
+            db.EnsureColumn("editing_drafts", "StateJson", "TEXT NOT NULL DEFAULT '{}'");
+
+            // 3. אינדקסים
+            db.Execute(@"
+                CREATE INDEX IF NOT EXISTS idx_advance_jobs_created 
+                ON advance_jobs (CreatedAtUtc DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_advance_jobs_status 
+                ON advance_jobs (Status);
+
+                CREATE INDEX IF NOT EXISTS idx_bookmarks_station_range 
+                ON bookmarks (StationId, StartUtc, EndUtc);
 
                 CREATE INDEX IF NOT EXISTS idx_drafts_updated 
                 ON editing_drafts (UpdatedAtUtc DESC);
@@ -93,7 +126,7 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
             {
                 root = root.InnerException;
             }
-            throw new InvalidOperationException($"[{FeatureName}] Database init failure: {root.Message}", ex);
+            throw new InvalidOperationException($"[{FeatureName}] Database init/migration failure: {root.Message}", ex);
         }
     }
 }

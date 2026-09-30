@@ -1,18 +1,16 @@
 ﻿// ==========================================
 // File: Features/Extractor/Services/ExportJobManager.cs
-// מנגנון ניהול משימות עם שרידות מלאה לאחר Restart (State Persistence)
 // ==========================================
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
@@ -20,8 +18,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     public interface IExportJobManager
     {
         ExportJobInfo EnqueueExportJob(ExtractionRequestDto request);
-        List<ExportJobInfo> GetAllJobs();
         ExportJobInfo? GetJob(string jobId);
+        IEnumerable<ExportJobInfo> GetAllJobs();
+        bool ClearCompletedJob(string jobId);
         bool DismissJob(string jobId);
         bool ToggleBookmark(string jobId);
         void RegisterDownload(string jobId);
@@ -31,21 +30,20 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     {
         protected readonly ConcurrentDictionary<string, ExportJobInfo> _jobs = new();
         protected readonly IExtractorService _extractorService;
+        protected readonly IExportJobRepository _jobRepository;
         protected readonly ExtractorOptions _options;
         protected readonly ILogger<ExportJobManager> _logger;
-        protected readonly Timer _retentionTimer;
         protected readonly string _exportDirectory;
-        protected readonly string _stateFilePath;
-        protected readonly object _stateLock = new();
-
-        protected static readonly TimeSpan RetentionPeriod = TimeSpan.FromHours(24);
+        private readonly Timer _retentionTimer;
 
         public ExportJobManager(
             IExtractorService extractorService,
+            IExportJobRepository jobRepository,
             IOptions<ExtractorOptions> options,
             ILogger<ExportJobManager> logger)
         {
             _extractorService = extractorService;
+            _jobRepository = jobRepository;
             _options = options.Value;
             _logger = logger;
 
@@ -54,42 +52,61 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 : Path.Combine(AppContext.BaseDirectory, "Exports");
 
             Directory.CreateDirectory(_exportDirectory);
-            _stateFilePath = Path.Combine(_exportDirectory, "jobs_state.json");
 
-            LoadJobsFromDisk();
+            // שחזור משימות מ-extractor.db בעליית השרת
+            _ = RecoverJobsFromDatabaseAsync();
 
-            _retentionTimer = new Timer(ExecuteRetentionCleanup, null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(30));
+            // טיימר לניקוי קובצי ארכיון שחלפו 24 שעות מסיומם (מוגן מפני מחיקה אם מסומן כ-Bookmark)
+            _retentionTimer = new Timer(ExecuteRetentionPurge, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(30));
+        }
+
+        private async Task RecoverJobsFromDatabaseAsync()
+        {
+            try
+            {
+                var dbJobs = await _jobRepository.GetAllJobsAsync();
+                foreach (var job in dbJobs)
+                {
+                    if (job.Status == "Processing" || job.Status == "Queued")
+                    {
+                        job.Status = "Failed";
+                        job.ErrorMessage = "Task interrupted by server restart.";
+                        job.CompletedAtUtc = DateTime.UtcNow;
+                        await _jobRepository.UpsertJobAsync(job);
+                    }
+
+                    _jobs[job.JobId] = job;
+                }
+                _logger.LogInformation("[ExportJobManager] Recovered {Count} export jobs from SQLite extractor.db", dbJobs.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[ExportJobManager] Failed to restore jobs from extractor.db");
+            }
         }
 
         public virtual ExportJobInfo EnqueueExportJob(ExtractionRequestDto request)
         {
-            var job = CreateJobInstance(request);
-            job.NetworkFolderPath = _exportDirectory;
+            string hostnamesSummary = string.Join("_", request.Hostnames.Take(2));
+            if (request.Hostnames.Count > 2) hostnamesSummary += $"_and_{request.Hostnames.Count - 2}_more";
+
+            var job = new ExportJobInfo
+            {
+                Request = request,
+                FileName = $"Investigation_{hostnamesSummary}_{request.StartTimeUtc:yyyyMMdd_HHmm}_to_{request.EndTimeUtc:yyyyMMdd_HHmm}.tar",
+                NetworkFolderPath = _exportDirectory,
+                Status = "Queued",
+                StatusMessage = "Queued for packaging...",
+                ProgressPercent = 0,
+                CreatedAtUtc = DateTime.UtcNow
+            };
 
             _jobs[job.JobId] = job;
-            PersistJobsToDisk();
+            _ = _jobRepository.UpsertJobAsync(job);
 
             _ = Task.Run(() => ProcessJobAsync(job));
             return job;
         }
-
-        protected virtual ExportJobInfo CreateJobInstance(ExtractionRequestDto request)
-        {
-            string hostSummary = string.Join("_", request.Hostnames.Take(2));
-            if (request.Hostnames.Count > 2)
-            {
-                hostSummary += $"_and_{request.Hostnames.Count - 2}_more";
-            }
-
-            return new ExportJobInfo
-            {
-                Request = request,
-                FileName = $"Export_{hostSummary}_{request.StartTimeUtc:yyyyMMdd_HHmm}_to_{request.EndTimeUtc:yyyyMMdd_HHmm}.tar"
-            };
-        }
-
-        public virtual List<ExportJobInfo> GetAllJobs() =>
-            _jobs.Values.OrderByDescending(j => j.CreatedAtUtc).ToList();
 
         public virtual ExportJobInfo? GetJob(string jobId)
         {
@@ -97,12 +114,23 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return job;
         }
 
+        public virtual IEnumerable<ExportJobInfo> GetAllJobs()
+        {
+            return _jobs.Values.OrderByDescending(j => j.CreatedAtUtc);
+        }
+
+        public virtual bool ClearCompletedJob(string jobId) => DismissJob(jobId);
+
         public virtual bool DismissJob(string jobId)
         {
             if (_jobs.TryRemove(jobId, out var job))
             {
-                DeleteJobArtifacts(job);
-                PersistJobsToDisk();
+                if (!string.IsNullOrWhiteSpace(job.OutputFilePath) && File.Exists(job.OutputFilePath))
+                {
+                    try { File.Delete(job.OutputFilePath); } catch { }
+                }
+
+                _ = _jobRepository.DeleteJobAsync(jobId);
                 return true;
             }
             return false;
@@ -110,208 +138,157 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
         public virtual bool ToggleBookmark(string jobId)
         {
-            var job = GetJob(jobId);
-            if (job == null) return false;
-
-            lock (job)
+            if (_jobs.TryGetValue(jobId, out var job))
             {
                 job.IsBookmarked = !job.IsBookmarked;
+                _ = _jobRepository.UpdateBookmarkAsync(jobId, job.IsBookmarked);
+                return true;
             }
-            PersistJobsToDisk();
-            return true;
+            return false;
         }
 
         public virtual void RegisterDownload(string jobId)
         {
-            var job = GetJob(jobId);
-            if (job == null) return;
-
-            lock (job)
+            if (_jobs.TryGetValue(jobId, out var job))
             {
                 job.DownloadCount++;
+                _ = _jobRepository.IncrementDownloadCountAsync(jobId);
             }
-            PersistJobsToDisk();
         }
 
         protected virtual async Task ProcessJobAsync(ExportJobInfo job)
         {
+            if (job.Request == null) return;
+
             job.Status = "Processing";
-            job.StatusMessage = "Packaging archive...";
+            job.StatusMessage = "Estimating archive payload...";
+            await _jobRepository.UpsertJobAsync(job);
 
-            string tempTarget = Path.Combine(_exportDirectory, $"{job.JobId}.tmp.tar");
-            string finalTarget = Path.Combine(_exportDirectory, job.FileName);
-
-            using var progressCts = new CancellationTokenSource();
-            var progressTask = MonitorPackagingProgressAsync(job, tempTarget, progressCts.Token);
+            job.OutputFilePath = Path.Combine(_exportDirectory, job.FileName);
 
             try
             {
-                await using (var fileStream = new FileStream(tempTarget, FileMode.Create, FileAccess.Write, FileShare.None, 1048576, useAsync: true))
+                var preview = await _extractorService.GetPreviewAsync(job.Request);
+                long totalEstimatedBytes = preview.EstimatedTotalSizeBytes > 0
+                    ? preview.EstimatedTotalSizeBytes
+                    : (5L * 1024 * 1024 * 1024);
+
+                job.FileSizeBytes = totalEstimatedBytes;
+                DateTime transferStartTime = DateTime.UtcNow;
+                DateTime lastDbUpdate = DateTime.UtcNow;
+
+                await using var fileStream = new FileStream(
+                    job.OutputFilePath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.Read,
+                    bufferSize: 1048576,
+                    useAsync: true);
+
+                await using var progressStream = new ProgressReportingStream(fileStream, bytesWritten =>
                 {
-                    await _extractorService.StreamTarArchiveAsync(job.Request!, fileStream, CancellationToken.None);
-                }
+                    double elapsedSec = Math.Max(0.5, (DateTime.UtcNow - transferStartTime).TotalSeconds);
+                    double bytesPerSec = bytesWritten / elapsedSec;
+                    job.SpeedMBps = Math.Round(bytesPerSec / (1024 * 1024), 1);
 
-                progressCts.Cancel();
-                try { await progressTask; } catch { }
+                    int pct = (int)Math.Min(99, (bytesWritten * 100) / Math.Max(1, totalEstimatedBytes));
+                    job.ProgressPercent = pct;
 
-                if (File.Exists(finalTarget)) File.Delete(finalTarget);
-                File.Move(tempTarget, finalTarget);
+                    long remainingBytes = Math.Max(0, totalEstimatedBytes - bytesWritten);
+                    job.EtaSeconds = bytesPerSec > 0 ? (int)(remainingBytes / bytesPerSec) : 0;
+                    job.StatusMessage = $"Packaging: {pct}% ({(bytesWritten / (1024 * 1024)):F0}MB / {(totalEstimatedBytes / (1024 * 1024)):F0}MB) | {job.SpeedMBps:F1} MB/s";
 
-                job.OutputFilePath = finalTarget;
-                job.FileSizeBytes = new FileInfo(finalTarget).Length;
-                job.ProgressPercent = 100;
+                    if ((DateTime.UtcNow - lastDbUpdate).TotalSeconds >= 1.5)
+                    {
+                        lastDbUpdate = DateTime.UtcNow;
+                        _ = _jobRepository.UpsertJobAsync(job);
+                    }
+                });
+
+                await _extractorService.StreamTarArchiveAsync(job.Request, progressStream, CancellationToken.None);
+                await fileStream.FlushAsync();
+
+                var fi = new FileInfo(job.OutputFilePath);
+                job.FileSizeBytes = fi.Exists ? fi.Length : job.FileSizeBytes;
                 job.Status = "Completed";
-                job.StatusMessage = "Ready for download";
+                job.ProgressPercent = 100;
+                job.EtaSeconds = 0;
+                job.StatusMessage = "Archive ready for download";
                 job.CompletedAtUtc = DateTime.UtcNow;
 
-                PersistJobsToDisk();
+                await _jobRepository.UpsertJobAsync(job);
+                _logger.LogInformation("[ExportJobManager] Job {JobId} completed: {Path} ({Size} MB)",
+                    job.JobId, job.OutputFilePath, job.FileSizeBytes / (1024 * 1024));
             }
             catch (Exception ex)
             {
-                progressCts.Cancel();
                 job.Status = "Failed";
                 job.ErrorMessage = ex.Message;
-                _logger.LogError(ex, "Job {JobId} failed", job.JobId);
-
-                try { if (File.Exists(tempTarget)) File.Delete(tempTarget); } catch { }
-                PersistJobsToDisk();
+                job.StatusMessage = "Packaging failed";
+                await _jobRepository.UpsertJobAsync(job);
+                _logger.LogError(ex, "[ExportJobManager] Job {JobId} failed", job.JobId);
             }
         }
 
-        protected virtual async Task MonitorPackagingProgressAsync(ExportJobInfo job, string tempFilePath, CancellationToken ct)
+        private void ExecuteRetentionPurge(object? state)
         {
-            long lastBytes = 0;
-            while (!ct.IsCancellationRequested)
-            {
-                try
-                {
-                    await Task.Delay(1000, ct);
-                    if (File.Exists(tempFilePath))
-                    {
-                        var fi = new FileInfo(tempFilePath);
-                        long currentBytes = fi.Length;
-                        long delta = currentBytes - lastBytes;
-                        lastBytes = currentBytes;
+            var cutoff = DateTime.UtcNow.AddHours(-24);
+            var expiredJobs = _jobs.Values
+                .Where(j => j.IsCompleted && !j.IsBookmarked && j.CompletedAtUtc.HasValue && j.CompletedAtUtc.Value < cutoff)
+                .ToList();
 
-                        job.FileSizeBytes = currentBytes;
-                        job.SpeedMBps = Math.Round((double)delta / (1024 * 1024), 1);
-                        if (job.ProgressPercent < 95) job.ProgressPercent += 5;
-                        job.StatusMessage = $"Streaming • {Math.Round((double)currentBytes / (1024 * 1024), 1)} MB";
-                    }
-                }
-                catch { }
+            foreach (var expired in expiredJobs)
+            {
+                _logger.LogInformation("[ExportJobManager:Retention] Auto-purging 24h expired export archive: {File}", expired.FileName);
+                DismissJob(expired.JobId);
             }
         }
+    }
 
-        protected virtual void DeleteJobArtifacts(ExportJobInfo job)
+    public class ProgressReportingStream : Stream
+    {
+        private readonly Stream _inner;
+        private readonly Action<long> _onProgress;
+        private long _totalBytesWritten;
+
+        public ProgressReportingStream(Stream inner, Action<long> onProgress)
         {
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(job.OutputFilePath) && File.Exists(job.OutputFilePath))
-                {
-                    File.Delete(job.OutputFilePath);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error deleting artifacts for job {JobId}", job.JobId);
-            }
+            _inner = inner;
+            _onProgress = onProgress;
         }
 
-        protected virtual void ExecuteRetentionCleanup(object? state)
+        public override bool CanRead => _inner.CanRead;
+        public override bool CanSeek => _inner.CanSeek;
+        public override bool CanWrite => _inner.CanWrite;
+        public override long Length => _inner.Length;
+        public override long Position { get => _inner.Position; set => _inner.Position = value; }
+
+        public override void Flush() => _inner.Flush();
+        public override Task FlushAsync(CancellationToken cancellationToken) => _inner.FlushAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count) => _inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => _inner.Seek(offset, origin);
+        public override void SetLength(long value) => _inner.SetLength(value);
+
+        public override void Write(byte[] buffer, int offset, int count)
         {
-            var now = DateTime.UtcNow;
-            var cutoffUtc = now - RetentionPeriod;
-
-            var jobsToPurge = _jobs.Values.Where(job =>
-            {
-                if (job.IsBookmarked) return false;
-                if (job.IsCompleted)
-                {
-                    var baselineTime = job.CompletedAtUtc ?? job.CreatedAtUtc;
-                    return baselineTime < cutoffUtc;
-                }
-                if (job.IsFailed && job.CreatedAtUtc < now.AddHours(-2)) return true;
-                return false;
-            }).ToList();
-
-            if (jobsToPurge.Count > 0)
-            {
-                foreach (var job in jobsToPurge)
-                {
-                    DeleteJobArtifacts(job);
-                    _jobs.TryRemove(job.JobId, out _);
-                }
-                PersistJobsToDisk();
-            }
+            _inner.Write(buffer, offset, count);
+            _totalBytesWritten += count;
+            _onProgress(_totalBytesWritten);
         }
 
-        protected virtual void LoadJobsFromDisk()
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            lock (_stateLock)
-            {
-                if (!File.Exists(_stateFilePath)) return;
-
-                try
-                {
-                    string json = File.ReadAllText(_stateFilePath);
-                    var savedJobs = JsonSerializer.Deserialize<List<ExportJobInfo>>(json);
-
-                    if (savedJobs != null)
-                    {
-                        foreach (var job in savedJobs)
-                        {
-                            if (job.Status == "Processing" || job.Status == "Queued")
-                            {
-                                job.Status = "Failed";
-                                job.ErrorMessage = "Interrupted by server restart";
-                                _jobs[job.JobId] = job;
-                                continue;
-                            }
-
-                            if (job.IsCompleted)
-                            {
-                                if (!string.IsNullOrWhiteSpace(job.OutputFilePath) && File.Exists(job.OutputFilePath))
-                                {
-                                    _jobs[job.JobId] = job;
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("Purging job {JobId} metadata - target file missing from disk", job.JobId);
-                                }
-                            }
-                            else
-                            {
-                                _jobs[job.JobId] = job;
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed loading export jobs state from disk");
-                }
-            }
+            await _inner.WriteAsync(buffer, cancellationToken);
+            _totalBytesWritten += buffer.Length;
+            _onProgress(_totalBytesWritten);
         }
 
-        protected virtual void PersistJobsToDisk()
+        public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
-            lock (_stateLock)
-            {
-                try
-                {
-                    var jobsList = _jobs.Values.ToList();
-                    string tempPath = _stateFilePath + ".tmp";
-                    string json = JsonSerializer.Serialize(jobsList, new JsonSerializerOptions { WriteIndented = true });
-
-                    File.WriteAllText(tempPath, json);
-                    File.Move(tempPath, _stateFilePath, overwrite: true);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed persisting export jobs state to disk");
-                }
-            }
+            await _inner.WriteAsync(buffer, offset, count, cancellationToken);
+            _totalBytesWritten += count;
+            _onProgress(_totalBytesWritten);
         }
     }
 }

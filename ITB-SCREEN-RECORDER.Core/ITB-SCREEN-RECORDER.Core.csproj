@@ -17,6 +17,8 @@
 		<PackageReference Include="Dapper" Version="2.1.89" />
 		<!-- 💡 גרסה 8.0.12 יציבה ומותאמת ל-.NET 8 עבור SQLite -->
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
+		<!-- 💡 חבילת Native עבור libe_sqlite3.so בלינוקס ו-e_sqlite3.dll בווינדוס -->
+		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
 		<PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" Condition="'$(OS)' == 'Windows_NT' Or $([MSBuild]::IsOSPlatform('Windows'))" />

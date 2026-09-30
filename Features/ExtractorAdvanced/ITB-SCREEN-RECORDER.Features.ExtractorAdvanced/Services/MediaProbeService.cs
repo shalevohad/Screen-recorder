@@ -96,6 +96,21 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     return new ProbedStationMetadata();
                 }
 
+                // 💡 שימוש ישיר בערכי האינדקס מה-DB אם קיימים
+                if (sampleChunk.Width > 0 && sampleChunk.Fps > 0)
+                {
+                    var metaFromDb = new ProbedStationMetadata
+                    {
+                        Width = sampleChunk.Width,
+                        Height = sampleChunk.Height,
+                        Fps = sampleChunk.Fps,
+                        HasAudio = sampleChunk.HasAudio,
+                        AudioCodec = sampleChunk.HasAudio ? "aac" : "none"
+                    };
+                    _memoryCache?.Set(cacheKey, metaFromDb, TimeSpan.FromMinutes(30));
+                    return metaFromDb;
+                }
+
                 var probed = await ProbeMediaFileDirectlyAsync(sampleChunk.FullPath, hostname, ct);
                 _memoryCache?.Set(cacheKey, probed, TimeSpan.FromMinutes(15));
                 return probed;

@@ -1,8 +1,6 @@
-﻿// ==========================================
-// File: Features/Extractor/Controllers/ExtractorController.cs
-// ==========================================
-using System;
+﻿using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -38,6 +36,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
         {
             var hosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
             return Ok(hosts);
+        }
+
+        [HttpPost("reindex")]
+        public virtual async Task<IActionResult> ReindexStorage(CancellationToken ct)
+        {
+            var res = await _storageScanner.ScanAndIndexMissingFilesAsync(ct);
+            return Ok(res);
         }
 
         [HttpPost("preview")]

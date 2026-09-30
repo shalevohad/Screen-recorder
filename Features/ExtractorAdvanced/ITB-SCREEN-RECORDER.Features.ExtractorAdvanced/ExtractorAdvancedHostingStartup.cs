@@ -25,7 +25,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
         {
             builder.ConfigureServices((context, services) =>
             {
-                // הבטחת טעינת הגדרות ExtractorOptions גם אם מודול ה-Advanced נטען קודם
                 services.Configure<ExtractorOptions>(context.Configuration.GetSection(ExtractorOptions.SectionName));
 
                 // 1. תשתית מסד הנתונים advance_extractor.db (SQLite ב-WAL Mode)
@@ -43,7 +42,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                 // 4. רישום המודול עבור מערך הפלאגינים וממשק ה-UI הראשי
                 services.AddSingleton<IFeatureModule, ExtractorAdvancedModule>();
 
-                // 5. שירותי מנוע העריכה המתקדם (ארכיטקטורה מודולרית)
+                // 5. מטמון RAM עבור פריימים ו-LOD
+                services.AddMemoryCache();
+
+                // 6. שירותי מנוע העריכה המתקדם
                 services.AddSingleton<IFfmpegBinaryResolver, AdvancedFfmpegBinaryResolver>();
                 services.AddSingleton<IDummyVideoGenerator, AdvancedDummyVideoGenerator>();
                 services.AddSingleton<INoSignalPatternService, NoSignalPatternService>();
@@ -54,7 +56,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                 services.AddSingleton<ISynchronizedTrackCutter, SynchronizedTrackCutter>();
                 services.AddSingleton<AdvancedExtractorService>();
 
-                // 6. ניהול משימות NLE וניקוי רקע
+                // 7. ניהול משימות NLE וניקוי רקע
                 services.AddSingleton<AdvanceJobManager>();
                 services.AddSingleton<IAdvanceJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());
                 services.AddSingleton<IExportJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());
@@ -63,7 +65,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
                 services.AddControllers()
                     .AddApplicationPart(typeof(ExtractorAdvancedHostingStartup).Assembly);
 
-                // 7. פילטר לאתחול עצמאי של מסד הנתונים והגשת נכסי ה-UI
                 services.AddTransient<IStartupFilter, ExtractorAdvancedStartupFilter>();
             });
         }

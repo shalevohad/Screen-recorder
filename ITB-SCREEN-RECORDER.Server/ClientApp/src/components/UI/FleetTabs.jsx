@@ -1,22 +1,16 @@
-﻿import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect, useCallback } from 'react';
 import TabConfigModal from './TabConfigModal';
 import './FleetTabs.scss';
-
-// פונקציית עזר להפקת מזהה ייחודי לטאב
-const generateTabId = () => 'tab_' + Date.now();
 
 export default function FleetTabs({
     activeTabId,
     onTabChange,
     allStations = [],
     onApplyPolicyToStations,
-    systemConfig,
-    onSystemConfigUpdate,
     openFeatureTabs = [],
     onCloseFeature
 }) {
-    const fleetTabsList = systemConfig?.dashboard?.fleetTabs || [];
-
+    const [fleetTabsList, setFleetTabsList] = useState([]);
     const [isTabConfigOpen, setIsTabConfigOpen] = useState(false);
     const [editingTab, setEditingTab] = useState(null);
     const [pendingTabSave, setPendingTabSave] = useState(null);
@@ -28,6 +22,23 @@ export default function FleetTabs({
     const [renamingTabId, setRenamingTabId] = useState(null);
     const [renamingTabName, setRenamingTabName] = useState('');
     const renameInputRef = useRef(null);
+
+    // שליפת טאבים מה-DB בעלייה
+    const fetchTabsFromDb = useCallback(async () => {
+        try {
+            const res = await fetch('/api/v1/dashboard/tabs');
+            if (res.ok) {
+                const data = await res.json();
+                setFleetTabsList(data.filter(t => !t.isDefault));
+            }
+        } catch (err) {
+            console.error('Failed fetching fleet tabs from DB:', err);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchTabsFromDb();
+    }, [fetchTabsFromDb]);
 
     useEffect(() => {
         if (renamingTabId && renameInputRef.current) {
@@ -43,14 +54,12 @@ export default function FleetTabs({
         setRenamingTabName(tab.name || '');
     };
 
-    const handleCommitRename = (tabId) => {
+    const handleCommitRename = async (tab) => {
         if (!renamingTabId) return;
         const trimmed = renamingTabName.trim();
-        if (trimmed) {
-            const updatedTabs = fleetTabsList.map(t =>
-                t.id === tabId ? { ...t, name: trimmed } : t
-            );
-            saveTabsToBackend(updatedTabs);
+        if (trimmed && trimmed !== tab.name) {
+            const updated = { ...tab, name: trimmed };
+            await saveTabToBackend(updated);
         }
         setRenamingTabId(null);
     };
@@ -65,31 +74,19 @@ export default function FleetTabs({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const saveTabsToBackend = async (newTabsList) => {
-        const baseConfig = systemConfig || { dashboard: {} };
-        const updatedConfig = {
-            ...baseConfig,
-            dashboard: {
-                ...(baseConfig.dashboard || {}),
-                fleetTabs: newTabsList
-            }
-        };
-
+    const saveTabToBackend = async (tabData) => {
         try {
-            const res = await fetch('/api/v1/settings', {
-                method: 'PUT',
+            const res = await fetch('/api/v1/dashboard/tabs', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedConfig)
+                body: JSON.stringify(tabData)
             });
 
             if (res.ok) {
-                const savedData = await res.json();
-                onSystemConfigUpdate?.(savedData);
-            } else {
-                onSystemConfigUpdate?.(updatedConfig);
+                await fetchTabsFromDb();
             }
-        } catch {
-            onSystemConfigUpdate?.(updatedConfig);
+        } catch (err) {
+            console.error('Failed saving tab to DB:', err);
         }
     };
 
@@ -116,24 +113,13 @@ export default function FleetTabs({
         }
     };
 
-    const commitSave = (tabData, overrideCustomSettings) => {
-        const finalId = tabData.id || generateTabId();
-        const finalTabData = { ...tabData, id: finalId };
-
-        let updatedTabs = [...fleetTabsList];
-        const existsIdx = updatedTabs.findIndex(t => t.id === finalId);
-        if (existsIdx > -1) {
-            updatedTabs[existsIdx] = finalTabData;
-        } else {
-            updatedTabs.push(finalTabData);
-        }
-
-        saveTabsToBackend(updatedTabs);
+    const commitSave = async (tabData, overrideCustomSettings) => {
+        await saveTabToBackend(tabData);
 
         if (onApplyPolicyToStations) {
             onApplyPolicyToStations({
-                tabId: finalId,
-                tabData: finalTabData,
+                tabId: tabData.id,
+                tabData,
                 overrideCustomSettings
             });
         }
@@ -142,15 +128,20 @@ export default function FleetTabs({
         setConflictStations([]);
         setEditingTab(null);
         setIsTabConfigOpen(false);
-        onTabChange(finalId);
+        if (tabData.id) onTabChange(tabData.id);
     };
 
-    const handleDeleteTab = (tabId) => {
-        const updatedTabs = fleetTabsList.filter(t => t.id !== tabId);
-        saveTabsToBackend(updatedTabs);
-
-        if (activeTabId === tabId) {
-            onTabChange('ALL');
+    const handleDeleteTab = async (tabId) => {
+        try {
+            const res = await fetch(`/api/v1/dashboard/tabs/${tabId}`, { method: 'DELETE' });
+            if (res.ok) {
+                await fetchTabsFromDb();
+                if (activeTabId === tabId) {
+                    onTabChange('ALL');
+                }
+            }
+        } catch (err) {
+            console.error('Failed deleting tab from DB:', err);
         }
         setEditingTab(null);
         setIsTabConfigOpen(false);
@@ -167,7 +158,6 @@ export default function FleetTabs({
         <div className="dashboard-tabs-bar-wrapper">
             <div className="tabs-navigation-container">
                 <div className="active-tabs-cluster unified-flow">
-                    {/* טאב ALL – עטוף במבנה טאב מלא ואחיד */}
                     <div
                         className={`fleet-tab-wrapper all-tab ${activeTabId === 'ALL' ? 'active' : ''}`}
                         title="View All Stations"
@@ -188,7 +178,6 @@ export default function FleetTabs({
                         </button>
                     </div>
 
-                    {/* טאבים מותאמים של קבוצות / OUs */}
                     {fleetTabsList.map(tab => {
                         const isEditing = renamingTabId === tab.id;
                         return (
@@ -206,10 +195,10 @@ export default function FleetTabs({
                                         value={renamingTabName}
                                         onChange={(e) => setRenamingTabName(e.target.value)}
                                         onKeyDown={(e) => {
-                                            if (e.key === 'Enter') handleCommitRename(tab.id);
+                                            if (e.key === 'Enter') handleCommitRename(tab);
                                             if (e.key === 'Escape') setRenamingTabId(null);
                                         }}
-                                        onBlur={() => handleCommitRename(tab.id)}
+                                        onBlur={() => handleCommitRename(tab)}
                                         onClick={(e) => e.stopPropagation()}
                                     />
                                 ) : (
@@ -234,7 +223,6 @@ export default function FleetTabs({
                         );
                     })}
 
-                    {/* כפתור יצירת טאב חדש */}
                     <button
                         type="button"
                         className="fleet-tab-add-btn"
@@ -244,12 +232,10 @@ export default function FleetTabs({
                         +
                     </button>
 
-                    {/* מפריד טקטי במידה ומודולי סטודיו / פיצ'רים פתוחים */}
                     {visibleFeatureTabs.length > 0 && (
                         <div className="tab-cluster-separator" />
                     )}
 
-                    {/* טאבי מודולים (כמו Advanced Studio) */}
                     {visibleFeatureTabs.map(feat => (
                         <div
                             key={feat.id}
@@ -274,7 +260,6 @@ export default function FleetTabs({
                         </div>
                     ))}
 
-                    {/* תפריט Overflow עודפים */}
                     {hasOverflow && (
                         <div className="windows-overflow-dropdown-wrapper" ref={overflowContainerRef}>
                             <button
@@ -352,7 +337,7 @@ function ConflictResolutionModal({ conflictStations, tabName, onResolve, onCance
                     <span className="warning-badge">CONFLICT DETECTED</span>
                     <h3>Individual Station Settings Found</h3>
                 </div>
-                <p className="conflict-desc">The following <strong>{conflictStations.length} station(s)</strong> assigned to <strong>"{tabName}"</strong> already have custom Bitrate/FPS settings defined:</p>
+                <p className="conflict-desc">The following <strong>{conflictStations.length} station(s)</strong> assigned to <strong>"{tabName}"</strong> already have custom settings:</p>
                 <div className="conflict-stations-list">
                     {conflictStations.map(st => (
                         <div key={st.hostname} className="conflict-station-row">
@@ -361,7 +346,7 @@ function ConflictResolutionModal({ conflictStations, tabName, onResolve, onCance
                         </div>
                     ))}
                 </div>
-                <p className="conflict-question">Would you like to overwrite their individual settings with the tab's policy, or preserve their custom values?</p>
+                <p className="conflict-question">Overwrite individual settings or keep custom values?</p>
                 <div className="conflict-actions">
                     <button type="button" className="btn-cancel" onClick={onCancel}>Cancel</button>
                     <button type="button" className="btn-preserve" onClick={() => onResolve(false)}>Keep Custom Settings</button>

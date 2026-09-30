@@ -37,8 +37,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startUtc = DateTimeOffset.FromUnixTimeMilliseconds(startEpochMs).UtcDateTime;
                 var endUtc = DateTimeOffset.FromUnixTimeMilliseconds(endEpochMs).UtcDateTime;
 
-                // בדיקת חפיפה מול טבלת ה-bookmarks ב-advance_extractor.db
+                // 1. בדיקת חפיפה ספציפית לתחנה ב-advance_extractor.db
                 bool isShielded = await _bookmarkRepository.HasOverlapAsync(stationId, startUtc, endUtc);
+
+                // 2. בדיקת חפיפה לסימניות מערכתיות/גלובליות (ALL)
+                if (!isShielded)
+                {
+                    isShielded = await _bookmarkRepository.HasOverlapAsync("ALL", startUtc, endUtc);
+                }
 
                 if (isShielded)
                 {

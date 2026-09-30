@@ -4,6 +4,7 @@ import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/UI/CommandCenterHeader';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
 import SettingsModal from './components/Settings/SettingsModal';
+import GlobalJobIndicator from './components/UI/GlobalJobIndicator';
 import './App.scss';
 
 const LOCAL_WALLPAPERS = {
@@ -269,6 +270,9 @@ export default function App() {
                         onSettingsSaved={handleSettingsSaved}
                     />
                 )}
+
+                {/* קפסולת משימות מערכתית צפה - חיה מעל כל המסכים והמודולים */}
+                <GlobalJobIndicator />
             </div>
         </div>
     );

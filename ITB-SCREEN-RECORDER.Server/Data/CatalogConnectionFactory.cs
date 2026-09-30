@@ -10,13 +10,5 @@ public interface ICatalogConnectionFactory
     string DatabasePath { get; }
 }
 
-public sealed class CatalogConnectionFactory : BaseSqliteConnectionFactory, ICatalogConnectionFactory
-{
-    public CatalogConnectionFactory(IConfiguration configuration)
-        : base(
-            dbFileName: "system_catalog.db",
-            customDirectory: configuration["Database:BaseDirectory"],
-            busyTimeoutSeconds: configuration.GetValue<int>("Database:BusyTimeoutSeconds", 5))
-    {
-    }
-}
+public sealed class CatalogConnectionFactory(IConfiguration config)
+    : BaseSqliteConnectionFactory(config, "system_catalog.db"), ICatalogConnectionFactory;
