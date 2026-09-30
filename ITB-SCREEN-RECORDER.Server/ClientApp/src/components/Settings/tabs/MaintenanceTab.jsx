@@ -20,9 +20,14 @@ export default function MaintenanceTab() {
     }, []);
 
     useEffect(() => {
-        fetchStats();
+        const timer = setTimeout(() => {
+            fetchStats();
+        }, 0);
         const interval = setInterval(fetchStats, 2000);
-        return () => clearInterval(interval);
+        return () => {
+            clearTimeout(timer);
+            clearInterval(interval);
+        };
     }, [fetchStats]);
 
     const handleTriggerReindex = async (force = false) => {

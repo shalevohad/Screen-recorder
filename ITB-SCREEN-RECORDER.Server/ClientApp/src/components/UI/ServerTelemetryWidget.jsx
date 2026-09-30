@@ -76,12 +76,15 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     });
 
     useEffect(() => {
-        setHistory(prev => ({
-            cpu: [...prev.cpu, cpuPct].slice(-historyPoints),
-            ram: [...prev.ram, hostRamPct].slice(-historyPoints),
-            net: [...prev.net, netUtilPct].slice(-historyPoints)
-        }));
-    }, [cpuPct, hostRamPct, netUtilPct]);
+        const timer = setTimeout(() => {
+            setHistory(prev => ({
+                cpu: [...prev.cpu, cpuPct].slice(-historyPoints),
+                ram: [...prev.ram, hostRamPct].slice(-historyPoints),
+                net: [...prev.net, netUtilPct].slice(-historyPoints)
+            }));
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [cpuPct, hostRamPct, netUtilPct, historyPoints]);
 
     const formatCurrentRate = (mbps) => {
         if (mbps >= 1000) return `${(mbps / 1000).toFixed(1)}G`;

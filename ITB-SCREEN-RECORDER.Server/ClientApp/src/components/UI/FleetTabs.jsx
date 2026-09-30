@@ -37,7 +37,10 @@ export default function FleetTabs({
     }, []);
 
     useEffect(() => {
-        fetchTabsFromDb();
+        const timer = setTimeout(() => {
+            fetchTabsFromDb();
+        }, 0);
+        return () => clearTimeout(timer);
     }, [fetchTabsFromDb]);
 
     useEffect(() => {

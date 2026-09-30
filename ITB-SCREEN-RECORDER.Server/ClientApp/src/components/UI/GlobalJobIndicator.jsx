@@ -24,7 +24,10 @@ export default function GlobalJobIndicator() {
                         }
                     }
                 }
-            } catch { }
+            } catch (err) {
+                // Silently ignore polling network errors
+                void err;
+            }
         };
 
         const interval = setInterval(checkStatus, 1500);
