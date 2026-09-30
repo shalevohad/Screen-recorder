@@ -1,23 +1,26 @@
+// Client/src/components/Station/StationTuningFlyout.scss
+
 .station-tuning-flyout {
     position: absolute;
     top: calc(100% + 8px);
     left: 0;
-    width: 270px;
-    background-color: #0b1329 !important;
-    background: #0b1329 !important;
-    border: 1.5px solid var(--c2-cyan-border);
-    border-radius: 8px;
+    width: 285px;
+    background: var(--surface-glass-modal, rgba(15, 23, 42, 0.94)) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-lg, 12px);
     padding: 14px 16px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95), 0 0 16px rgba(6, 182, 212, 0.25);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95), 0 0 16px rgba(6, 182, 212, 0.18);
     z-index: 10000 !important;
     user-select: none;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-primary, 'Inter', sans-serif);
     display: flex;
     flex-direction: column;
     gap: 14px;
     animation: flyout-appear 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     transition: opacity 0.25s ease, transform 0.25s ease;
-    /* 💡 אנימציית דעיכה חלקה בעת אישור ההגדרות */
+
     &.fade-out {
         opacity: 0 !important;
         transform: translateY(-6px) scale(0.97) !important;
@@ -28,10 +31,10 @@
         content: '';
         position: absolute;
         bottom: 100%;
-        left: 9px;
+        left: 12px;
         border-width: 6px;
         border-style: solid;
-        border-color: transparent transparent #0b1329 transparent;
+        border-color: transparent transparent rgba(15, 23, 42, 0.94) transparent;
     }
 
     .tuning-header {
@@ -39,41 +42,42 @@
         align-items: center;
         justify-content: space-between;
         padding-bottom: 8px;
-        border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+        border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
 
         .tuning-title {
-            font-size: 11px;
+            font-size: 11.5px;
             font-weight: 800;
-            color: var(--slate-light);
-            letter-spacing: 0.8px;
+            color: var(--text-primary, #F8FAFC);
+            letter-spacing: 0.5px;
 
             .tuning-loading-dots {
-                color: var(--c2-cyan-light);
+                color: var(--accent-cyan-light, #38BDF8);
                 animation: dots-blink 1s infinite steps(1);
             }
         }
 
         .tuning-status-tag {
+            font-family: var(--font-mono, 'JetBrains Mono', monospace);
             font-size: 9px;
             font-weight: 800;
-            color: var(--c2-green-light);
+            color: var(--accent-emerald-light, #34D399);
             background: var(--c2-green-tint);
-            border: 1px solid var(--c2-green);
+            border: 1px solid rgba(16, 185, 129, 0.4);
             padding: 1px 6px;
-            border-radius: 3px;
+            border-radius: var(--radius-full, 9999px);
         }
 
         .tuning-close {
             background: transparent;
             border: none;
-            color: var(--slate-muted);
-            font-size: 11px;
+            color: var(--text-secondary, #94A3B8);
+            font-size: 12px;
             cursor: pointer;
             padding: 2px 4px;
             line-height: 1;
 
             &:hover {
-                color: var(--c2-red-light);
+                color: var(--accent-rose, #EF4444);
             }
         }
     }
@@ -89,17 +93,18 @@
             justify-content: space-between;
 
             .tuning-label {
-                font-size: 9px;
+                font-size: 10px;
                 font-weight: 700;
-                color: var(--slate-dark);
-                letter-spacing: 0.5px;
+                color: var(--text-secondary, #94A3B8);
+                letter-spacing: 0.3px;
                 display: flex;
                 align-items: baseline;
                 gap: 5px;
 
                 .mbps-hint {
-                    color: var(--c2-cyan-light);
-                    font-size: 8.5px;
+                    color: var(--accent-cyan-light, #38BDF8);
+                    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                    font-size: 9px;
                     font-weight: 700;
                 }
             }
@@ -107,31 +112,31 @@
             .tuning-input-wrap {
                 display: flex;
                 align-items: center;
-                background: #060b18;
-                border: 1px solid rgba(71, 85, 105, 0.8);
-                border-radius: 4px;
-                padding: 3px 6px;
+                background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+                border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
+                border-radius: var(--radius-controls, 8px);
+                padding: 3px 8px;
                 gap: 4px;
 
                 &:focus-within {
-                    border-color: var(--c2-cyan);
-                    box-shadow: 0 0 6px var(--c2-cyan-glow);
+                    border-color: var(--border-active-cyan);
+                    box-shadow: 0 0 6px var(--accent-cyan-glow);
                 }
 
                 .tuning-num-input {
                     background: transparent;
                     border: none;
                     outline: none;
-                    color: var(--c2-cyan-light);
-                    font-family: 'JetBrains Mono', monospace;
-                    font-size: 11px;
+                    color: var(--accent-cyan-light, #38BDF8);
+                    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                    font-size: 11.5px;
                     font-weight: 800;
-                    width: 32px;
+                    width: 34px;
                     text-align: right;
                     padding: 0;
 
                     &.bitrate {
-                        width: 50px;
+                        width: 52px;
                     }
 
                     &::-webkit-inner-spin-button,
@@ -146,9 +151,9 @@
                 }
 
                 .tuning-unit {
-                    font-size: 8px;
-                    color: var(--slate-muted);
-                    font-weight: 800;
+                    font-size: 8.5px;
+                    color: var(--text-muted, #64748B);
+                    font-weight: 700;
                 }
             }
         }
@@ -160,9 +165,9 @@
 
             .tuning-range-slider {
                 width: 100%;
-                height: 8px;
-                background: #111c38;
-                border-radius: 9999px;
+                height: 4px; /* גובה 4px תקני */
+                background: rgba(148, 163, 184, 0.15);
+                border-radius: var(--radius-full, 9999px);
                 appearance: none;
                 outline: none;
                 cursor: pointer;
@@ -171,12 +176,12 @@
 
                 &::-webkit-slider-thumb {
                     appearance: none;
-                    width: 24px;
-                    height: 24px;
-                    background-color: var(--c2-cyan);
-                    border: 2.5px solid #060b18;
+                    width: 18px;
+                    height: 18px;
+                    background-color: var(--accent-cyan, #06B6D4);
+                    border: 2px solid #060B18;
                     border-radius: 50%;
-                    box-shadow: 0 0 10px var(--c2-cyan-glow);
+                    box-shadow: 0 0 8px var(--accent-cyan-glow);
                     cursor: pointer;
                     transition: transform 0.1s ease;
 
@@ -186,12 +191,12 @@
                 }
 
                 &::-moz-range-thumb {
-                    width: 24px;
-                    height: 24px;
-                    background-color: var(--c2-cyan);
-                    border: 2.5px solid #060b18;
+                    width: 18px;
+                    height: 18px;
+                    background-color: var(--accent-cyan, #06B6D4);
+                    border: 2px solid #060B18;
                     border-radius: 50%;
-                    box-shadow: 0 0 10px var(--c2-cyan-glow);
+                    box-shadow: 0 0 8px var(--accent-cyan-glow);
                     cursor: pointer;
                 }
 
@@ -222,28 +227,28 @@
                     .tick-pip {
                         width: 2px;
                         height: 4px;
-                        background: #334155;
+                        background: var(--border-subtle, rgba(148, 163, 184, 0.2));
                         margin-bottom: 2px;
                         transition: background-color 0.15s ease;
                     }
 
                     .tick-text {
-                        font-family: 'JetBrains Mono', monospace;
+                        font-family: var(--font-mono, 'JetBrains Mono', monospace);
                         font-size: 8px;
                         font-weight: 700;
-                        color: #64748b;
+                        color: var(--text-muted, #64748B);
                         transition: color 0.15s ease;
                     }
 
                     &:hover:not(:disabled),
                     &.is-active {
                         .tick-pip {
-                            background-color: var(--c2-cyan-light);
+                            background-color: var(--accent-cyan-light);
                             height: 5px;
                         }
 
                         .tick-text {
-                            color: var(--c2-cyan-light);
+                            color: var(--accent-cyan-light);
                             font-weight: 800;
                         }
                     }
@@ -258,23 +263,23 @@
 
     .tuning-apply-btn {
         width: 100%;
-        height: 32px;
+        height: 36px;
         background: var(--c2-cyan-tint);
-        border: 1px solid var(--c2-cyan-border);
-        border-radius: 6px;
-        color: var(--c2-cyan-light);
-        font-family: 'JetBrains Mono', monospace;
+        border: 1px solid var(--accent-cyan, #06B6D4);
+        border-radius: var(--radius-controls, 8px);
+        color: var(--accent-cyan-light, #38BDF8);
+        font-family: var(--font-primary, 'Inter', sans-serif);
         font-size: 11px;
         font-weight: 800;
         cursor: pointer;
-        letter-spacing: 0.8px;
+        letter-spacing: 0.5px;
         margin-top: 4px;
-        transition: all 0.2s ease;
+        transition: all 0.18s ease;
 
         &:hover:not(:disabled) {
-            background: var(--c2-cyan);
+            background: var(--accent-cyan, #06B6D4);
             color: #000;
-            box-shadow: 0 0 12px var(--c2-cyan-glow);
+            box-shadow: 0 0 12px var(--accent-cyan-glow);
         }
 
         &:disabled {

@@ -1,11 +1,20 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+using ITB_SCREEN_RECORDER.Server.Data.Repositories;
+using ITB_SCREEN_RECORDER.Server.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using ITB_SCREEN_RECORDER.Server.Services;
-using ITB_SCREEN_RECORDER.Core.Contracts.Network;
-using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
@@ -22,6 +31,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public string? Bitrate { get; set; }
     }
 
+    public class UploadBufferRequest
+    {
+        public string Hostname { get; set; } = string.Empty;
+        public IFormFile File { get; set; } = null!;
+    }
+
     [ApiController]
     [Route("api/v1/agent")]
     public class AgentController : ControllerBase
@@ -29,15 +44,27 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly ITelemetryStateService _telemetryState;
         private readonly TelemetryBroadcastService _broadcastService;
         private readonly StationOverridesService _overridesService;
+        private readonly IOptionsMonitor<SystemConfig> _configMonitor;
+        private readonly StoragePathResolver _storageResolver;
+        private readonly ICatalogRepository _catalogRepository;
+        private readonly ILogger<AgentController> _logger;
 
         public AgentController(
             ITelemetryStateService telemetryState,
             TelemetryBroadcastService broadcastService,
-            StationOverridesService overridesService)
+            StationOverridesService overridesService,
+            IOptionsMonitor<SystemConfig> configMonitor,
+            StoragePathResolver storageResolver,
+            ICatalogRepository catalogRepository,
+            ILogger<AgentController> logger)
         {
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
             _overridesService = overridesService;
+            _configMonitor = configMonitor;
+            _storageResolver = storageResolver;
+            _catalogRepository = catalogRepository;
+            _logger = logger;
         }
 
         [HttpPost("telemetry")]
@@ -64,6 +91,113 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(response);
         }
 
+        [HttpPost("upload-buffer")]
+        [Consumes("multipart/form-data")]
+        [RequestSizeLimit(BufferLimits.MaxRequestSizeBytes)]
+        public async Task<IActionResult> UploadBuffer([FromForm] UploadBufferRequest request)
+        {
+            if (request == null || request.File == null || request.File.Length == 0)
+            {
+                return BadRequest("File payload is empty.");
+            }
+
+            if (request.File.Length > BufferLimits.MaxFileSizeBytes)
+            {
+                _logger.LogWarning("[SYNC INGEST] Rejected file '{File}' from host '{Host}': Size {SizeMb}MB exceeds {LimitMb}MB limit.",
+                    request.File.FileName, request.Hostname,
+                    Math.Round(request.File.Length / (1024.0 * 1024.0), 2),
+                    BufferLimits.MaxBufferFileSizeMb);
+
+                return BadRequest($"File size exceeds the maximum allowed limit of {BufferLimits.MaxBufferFileSizeMb}MB.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Hostname))
+            {
+                return BadRequest("Hostname parameter is required.");
+            }
+
+            string hostname = request.Hostname;
+            IFormFile file = request.File;
+            string safeFileName = Path.GetFileName(file.FileName);
+
+            // 1. איתור חותמת זמן UTC
+            var match = Regex.Match(safeFileName, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})Z", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                _logger.LogWarning("[SYNC INGEST] Received buffer file '{File}' from host '{Host}' without valid UTC signature.", safeFileName, hostname);
+                return BadRequest("Invalid file name format. Expected UTC timestamp signature ('..._YYYY-MM-DD_HH-mm-ss-ffffffZ.ext').");
+            }
+
+            string utcString = match.Groups[1].Value;
+            if (!DateTime.TryParseExact(utcString, "yyyy-MM-dd_HH-mm-ss-ffffff",
+                CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime chunkUtcTime))
+            {
+                return BadRequest("Failed to parse file UTC timestamp.");
+            }
+
+            DateTime serverLocalTime = TimeZoneInfo.ConvertTimeFromUtc(chunkUtcTime, TimeZoneInfo.Local);
+            string extension = Path.GetExtension(safeFileName);
+            string finalFileName = $"{serverLocalTime:yyyy-MM-dd_HH-mm-ss-ffffff}{extension}";
+
+            try
+            {
+                string storageRoot = await _storageResolver.ResolveActiveRootAsync(_configMonitor.CurrentValue.Storage, _logger);
+                string stationDirectory = Path.Combine(storageRoot, hostname);
+
+                if (!Directory.Exists(stationDirectory))
+                {
+                    Directory.CreateDirectory(stationDirectory);
+                }
+
+                string destinationPath = Path.Combine(stationDirectory, finalFileName);
+
+                await using (var stream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                long fileSizeBytes = new FileInfo(destinationPath).Length;
+                long startEpochMs = new DateTimeOffset(chunkUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                int chunkMinutes = Math.Max(1, _configMonitor.CurrentValue.Storage.ChunkIntervalMinutes);
+                long endEpochMs = startEpochMs + (chunkMinutes * 60 * 1000);
+
+                // שליפת נתוני טלמטריה חיים או ברירת מחדל 0 המאותתת על צורך בדגימה
+                var agent = _telemetryState.GetAllAgents()
+                    .FirstOrDefault(a => string.Equals(a.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
+
+                int width = agent?.ScreenWidth > 0 ? agent.ScreenWidth : 0;
+                int height = agent?.ScreenHeight > 0 ? agent.ScreenHeight : 0;
+                int fps = agent?.ActualFps > 0 ? agent.ActualFps : (agent?.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0);
+                bool hasAudio = agent?.HasAudio ?? false;
+
+                await _catalogRepository.BulkUpsertChunksAsync(new[]
+                {
+                    new ChunkFinalizedEvent(
+                        StationId: hostname,
+                        FilePath: destinationPath,
+                        StartEpochMs: startEpochMs,
+                        EndEpochMs: endEpochMs,
+                        FileSizeBytes: fileSizeBytes,
+                        IsFinalized: true,
+                        Width: width,
+                        Height: height,
+                        Fps: fps,
+                        HasAudio: hasAudio
+                    )
+                });
+
+                _logger.LogInformation("[SYNC INGEST] Synced & Indexed offline chunk from '{Host}': '{File}' (Size: {Size} bytes)",
+                    hostname, finalFileName, fileSizeBytes);
+
+                return Ok(new { success = true, normalizedFile = finalFileName });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[SYNC INGEST] Failed to write and index synced chunk for host '{Host}': {Message}", hostname, ex.Message);
+                return StatusCode(500, "Internal error writing recording file to storage.");
+            }
+        }
+
         [HttpPost("tuning/{hostname}")]
         public async Task<IActionResult> UpdateStationTuning(string hostname, [FromBody] AgentTuningRequest request)
         {
@@ -77,13 +211,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 ? existing
                 : new StationOverride();
 
-            // מינימום 10 FPS, מקסימום 60 FPS
             if (request.Fps.HasValue && request.Fps.Value >= 10 && request.Fps.Value <= 60)
             {
                 stationConfig.TargetFps = request.Fps.Value;
             }
 
-            // מינימום 1000 Kbps
             if (request.BitrateKbps.HasValue && request.BitrateKbps.Value >= 1000)
             {
                 stationConfig.VideoBitrate = $"{request.BitrateKbps.Value}k";
@@ -100,7 +232,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 Hostname = hostname,
                 TargetFps = stationConfig.TargetFps,
                 VideoBitrate = stationConfig.VideoBitrate,
-                Message = "Tuning saved. Policy updated for next heartbeat.",
+                Message = "Tuning saved to SQLite. Policy updated for next heartbeat.",
                 TimestampUtc = DateTime.UtcNow
             });
         }

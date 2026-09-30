@@ -29,40 +29,43 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public int LogRetentionDays { get; set; } = 30;
 
         // 2. פונקציה מפורשת שה-Worker קורא לה כדי לוודא ש-FFmpeg קיים
-        public string GetResolvedFFmpegPath()
+        public static string GetResolvedFFmpegPath()
         {
-            string configuredPath = string.IsNullOrWhiteSpace(FFmpegPath) ? "ffmpeg" : FFmpegPath;
+            string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+            string ridSubFolder = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
+            string baseDir = AppContext.BaseDirectory;
 
-            if (Path.IsPathRooted(configuredPath))
+            // 1. ישירות בשורש תיקיית הריצה
+            string directPath = Path.Combine(baseDir, binaryName);
+            if (File.Exists(directPath)) return directPath;
+
+            // 2. בתוך תת-תיקיית ה-RID (win-x64 / linux-x64)
+            string ridPath = Path.Combine(baseDir, ridSubFolder, binaryName);
+            if (File.Exists(ridPath)) return ridPath;
+
+            // 3. בתיקיית האב (אם התהליך רץ מתוך win-x64 והקובץ בשורש)
+            string parentPath = Path.GetFullPath(Path.Combine(baseDir, "..", binaryName));
+            if (File.Exists(parentPath)) return parentPath;
+
+            // 4. בתיקיית Tools המרכזית בפתרון (גיבוי לפיתוח)
+            string toolsSubFolder = OperatingSystem.IsWindows() ? "Win" : "Linux";
+            string devToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Tools", toolsSubFolder, binaryName));
+            if (File.Exists(devToolsPath)) return devToolsPath;
+
+            // 5. חיפוש ב-PATH של מערכת ההפעלה
+            string? pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
             {
-                if (OperatingSystem.IsWindows() && !configuredPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                char separator = OperatingSystem.IsWindows() ? ';' : ':';
+                foreach (string entry in pathEnv.Split(separator, StringSplitOptions.RemoveEmptyEntries))
                 {
-                    configuredPath += ".exe";
+                    string candidate = Path.Combine(entry.Trim(), binaryName);
+                    if (File.Exists(candidate)) return candidate;
                 }
-
-                if (File.Exists(configuredPath))
-                {
-                    return configuredPath;
-                }
-
-                throw new FileNotFoundException($"CRITICAL: Custom FFmpeg executable not found at specified path: {configuredPath}");
             }
 
-            string fileName = Path.GetFileName(configuredPath);
-
-            if (OperatingSystem.IsWindows() && !fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            {
-                fileName += ".exe";
-            }
-
-            string absolutePath = Path.Combine(AppContext.BaseDirectory, fileName);
-
-            if (File.Exists(absolutePath))
-            {
-                return absolutePath;
-            }
-
-            throw new FileNotFoundException($"CRITICAL: FFmpeg executable is missing from the application root directory. Expected at: {absolutePath}");
+            throw new FileNotFoundException(
+                $"CRITICAL: FFmpeg executable is missing. Probed '{directPath}', '{ridPath}', and '{devToolsPath}'. Expected: {binaryName}");
         }
     }
 }

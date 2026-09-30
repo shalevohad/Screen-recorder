@@ -29,11 +29,9 @@ export default function StationInspectorDrawer({
     onToggleFullscreen,
     ...tuningProps
 }) {
-    // 1. כל ה-Hooks מוגדרים ראשונים ברמת הרכיב ללא תנאי
     const [activeTab, setActiveTab] = useState('telemetry');
     const [confirmStop, setConfirmStop] = useState(false);
 
-    // סנכרון Target FPS לפי תבנית React הרשמית המונעת cascading renders
     const [prevStationId, setPrevStationId] = useState(station?.hostname);
     const [overrideTargetFps, setOverrideTargetFps] = useState(null);
 
@@ -50,7 +48,6 @@ export default function StationInspectorDrawer({
         return () => clearTimeout(timer);
     }, [confirmStop]);
 
-    // 2. Early Return מתבצע אך ורק לאחר ריצת כל ה-Hooks
     if (!station) return null;
 
     const isLive = station.isStreaming;
@@ -315,6 +312,7 @@ export default function StationInspectorDrawer({
 
                                 {!isLive ? (
                                     <button
+                                        type="button"
                                         className="action-stream-btn start"
                                         onClick={() => onToggleStream?.(stationId, false)}
                                     >
@@ -322,6 +320,7 @@ export default function StationInspectorDrawer({
                                     </button>
                                 ) : !confirmStop ? (
                                     <button
+                                        type="button"
                                         className="action-stream-btn prepare-stop"
                                         onClick={() => setConfirmStop(true)}
                                     >
@@ -332,12 +331,14 @@ export default function StationInspectorDrawer({
                                         <span className="confirmation-warning">CONFIRM STREAM TERMINATION?</span>
                                         <div className="confirmation-buttons-row">
                                             <button
+                                                type="button"
                                                 className="action-stream-btn execute-stop"
                                                 onClick={handleExecuteStop}
                                             >
                                                 YES, STOP STREAM
                                             </button>
                                             <button
+                                                type="button"
                                                 className="action-stream-btn cancel-stop"
                                                 onClick={() => setConfirmStop(false)}
                                             >
@@ -352,9 +353,11 @@ export default function StationInspectorDrawer({
                                 <span className="card-section-title">TACTICAL ACTIONS</span>
                                 <div className="quick-actions-grid">
                                     <button
-                                        className="quick-act-btn"
-                                        onClick={() => onToggleFullscreen?.()}
-                                        title="Open Fullscreen View"
+                                        type="button"
+                                        className={`quick-act-btn ${!isLive ? 'disabled' : ''}`}
+                                        onClick={isLive ? () => onToggleFullscreen?.() : undefined}
+                                        disabled={!isLive}
+                                        title={isLive ? "Open Fullscreen View" : "Fullscreen unavailable while idle or offline"}
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
@@ -363,6 +366,7 @@ export default function StationInspectorDrawer({
                                     </button>
 
                                     <button
+                                        type="button"
                                         className="quick-act-btn"
                                         onClick={() => onQuickBookmark?.(stationId)}
                                         title="Insert Tactical Bookmark"
@@ -374,6 +378,7 @@ export default function StationInspectorDrawer({
                                     </button>
 
                                     <button
+                                        type="button"
                                         className="quick-act-btn"
                                         onClick={() => onQuickPlayback?.(stationId)}
                                         title="Open Playback Window"
@@ -385,6 +390,7 @@ export default function StationInspectorDrawer({
                                     </button>
 
                                     <button
+                                        type="button"
                                         className="quick-act-btn"
                                         onClick={() => onQuickExport?.(stationId)}
                                         title="Export Video Segment"

@@ -1,10 +1,9 @@
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace ITB_SCREEN_RECORDER.Server.Models
 {
-    // Editable subset of SystemConfig exposed through the Settings UI.
-    // MediaMtx and Security are intentionally excluded (infra/secrets, not user-facing settings).
     public class SystemConfigDto
     {
         [Range(1, 365, ErrorMessage = "RecordingRetentionDays must be between 1 and 365")]
@@ -21,16 +20,39 @@ namespace ITB_SCREEN_RECORDER.Server.Models
         public string DefaultVideoBitrate { get; set; } = "2500k";
 
         [Required]
-        [Range(15, 60, ErrorMessage = "DefaultTargetFps must be between 15 and 60.")]
-        public int DefaultTargetFps { get; set; } = 30;
+        [Range(10, 60, ErrorMessage = "DefaultTargetFps must be between 10 and 60.")]
+        public int DefaultTargetFps { get; set; } = 20;
 
-        // אינם נדרשים עוד בטופס ה-UI - שומרים על ערך דיפולטיבי
         public string DisplayTimezone { get; set; } = "Asia/Jerusalem";
 
         public string DisplayLocale { get; set; } = "en-US";
 
         [Required]
         public StorageSettingsDto Storage { get; set; } = null!;
+
+        // 💡 הוספת הגדרות ה-Dashboard הכוללות את הטאבים ל-DTO
+        public DashboardSettingsDto Dashboard { get; set; } = new DashboardSettingsDto();
+    }
+
+    public class DashboardSettingsDto
+    {
+        public int SnapshotMinDelayMs { get; set; } = 1500;
+        public int SnapshotMaxDelayMs { get; set; } = 4500;
+        public int SnapshotBufferMarginPx { get; set; } = 250;
+        public int MaxConcurrentLiveStreams { get; set; } = 9;
+
+        // 💡 רשימת הטאבים שלנו
+        public List<FleetTabDto> FleetTabs { get; set; } = new List<FleetTabDto>();
+    }
+
+    public class FleetTabDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public List<string> AssignedHostnames { get; set; } = new List<string>();
+        public List<string> AssignedOus { get; set; } = new List<string>();
+        public int? DefaultBitrate { get; set; }
+        public int? DefaultFps { get; set; }
     }
 
     public class StorageSettingsDto

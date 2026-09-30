@@ -3,11 +3,13 @@ import { createPortal } from 'react-dom';
 import AgentOperationsTab from './tabs/AgentOperationsTab';
 import StorageRetentionTab from './tabs/StorageRetentionTab';
 import StationOverridesTab from './tabs/StationOverridesTab';
+import MaintenanceTab from './tabs/MaintenanceTab';
 import './SettingsModal.scss';
 import './styles/_commonControls.scss';
 import './styles/_agentOperations.scss';
 import './styles/_storageRetention.scss';
 import './styles/_stationOverrides.scss';
+import './styles/_maintenanceTab.scss';
 
 export default function SettingsModal({ onClose, onSettingsSaved }) {
     const modalBoxRef = useRef(null);
@@ -209,6 +211,18 @@ export default function SettingsModal({ onClose, onSettingsSaved }) {
                         </svg>
                         Station Overrides
                     </button>
+                    <button
+                        type="button"
+                        className={`tab-btn ${activeTab === 'maintenance' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('maintenance')}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="tab-icon">
+                            <ellipse cx="12" cy="5" rx="9" ry="3" />
+                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+                        </svg>
+                        Maintenance
+                    </button>
                 </div>
 
                 <div className="settings-modal-body">
@@ -251,6 +265,9 @@ export default function SettingsModal({ onClose, onSettingsSaved }) {
                                     onResetOverride={handleResetOverride}
                                 />
                             )}
+                            {activeTab === 'maintenance' && (
+                                <MaintenanceTab />
+                            )}
                         </form>
                     )}
                 </div>
@@ -264,7 +281,7 @@ export default function SettingsModal({ onClose, onSettingsSaved }) {
                         <button type="button" className="settings-cancel-btn" onClick={onClose}>
                             Close
                         </button>
-                        {activeTab !== 'stations' && (
+                        {activeTab !== 'stations' && activeTab !== 'maintenance' && (
                             <button
                                 type="submit"
                                 form="settingsForm"

@@ -1,4 +1,5 @@
-﻿import './CategoryMetricBars.scss';
+﻿// Client/src/components/UI/CategoryMetricBars.jsx
+import './CategoryMetricBars.scss';
 
 const formatVal = (val, type) => {
     if (val === null || val === undefined || isNaN(val)) return '0';
@@ -13,14 +14,24 @@ function SingleMetricBar({ label, appVal, hostVal, appFormatted, hostFormatted }
             <div className="metric-label">
                 <span className="metric-name">{label}</span>
                 <span className="metric-values">
-                    <span className="app-val" title="App Contribution">{appFormatted}</span> / <span className="host-val" title="Total Host Load">{hostFormatted}</span>
+                    <span className="app-val" title="App Contribution">{appFormatted}</span>
+                    <span className="metric-divider">/</span>
+                    <span className="host-val" title="Total Host Load">{hostFormatted}</span>
                 </span>
             </div>
+            {/* פס ייעודי לאפליקציה (ירוק) */}
             <div className="metric-bar-bg">
-                <div className="metric-bar-fill app-fill" style={{ width: `${Math.min(100, Math.max(0, appVal))}%` }} />
+                <div
+                    className="metric-bar-fill app-fill"
+                    style={{ width: `${Math.min(100, Math.max(0, appVal))}%` }}
+                />
             </div>
+            {/* פס ייעודי למארח (כחול) */}
             <div className="metric-bar-bg">
-                <div className="metric-bar-fill host-fill" style={{ width: `${Math.min(100, Math.max(0, hostVal))}%` }} />
+                <div
+                    className="metric-bar-fill host-fill"
+                    style={{ width: `${Math.min(100, Math.max(0, hostVal))}%` }}
+                />
             </div>
         </div>
     );
@@ -39,7 +50,6 @@ export default function CategoryMetricBars({
     linkSpeedMbps = 1000,
     compact = false
 }) {
-    // 💡 שימוש אוטומטי בנפח הפיזי, אם חסר מניח 128GB המותקנים בתחנת העבודה Z2 G9 שלך
     const totalRamMb = hostTotalRamMb > 0 ? hostTotalRamMb : 131072;
     const appRamPct = (processRamMb / totalRamMb) * 100;
 

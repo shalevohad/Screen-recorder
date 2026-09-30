@@ -1,0 +1,199 @@
+﻿// Client/src/components/Timeline/Playhead.scss
+
+.playhead-overlay-pane {
+    position: absolute;
+    top: 38px;
+    bottom: 0;
+    left: 180px;
+    right: 58px; /* שומר מקום לכפתור ה-Export החדש */
+    pointer-events: none;
+    z-index: 40;
+    overflow: hidden;
+
+    .draggable-cut-band {
+        position: absolute;
+        top: 28px;
+        bottom: 0;
+        background: rgba(6, 182, 212, 0.08); /* ציאן רך */
+        border-top: 1px dashed rgba(6, 182, 212, 0.3);
+        border-bottom: 1px dashed rgba(6, 182, 212, 0.3);
+        pointer-events: auto;
+        cursor: grab;
+        z-index: 20;
+
+        &:active {
+            cursor: grabbing;
+            background: rgba(6, 182, 212, 0.15);
+        }
+    }
+
+    .marker {
+        position: absolute;
+        top: 28px;
+        bottom: 0;
+        width: 14px;
+        margin-left: -7px;
+        pointer-events: auto;
+        cursor: ew-resize;
+        z-index: 35;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        .marker-core-line {
+            width: 2px;
+            height: 100%;
+            background-color: #64748B; /* פס עדין במקום נאון */
+        }
+
+        .handle-badge {
+            position: absolute;
+            top: 0;
+            height: 20px;
+            padding: 0 8px;
+            background-color: #1E293B; /* צבע אלגנטי (Slate) */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #F8FAFC;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+            user-select: none;
+            transition: all 0.15s ease-out;
+        }
+        /* עיגול פינות מותאם כיוון - Soft Geometry */
+        &.in-marker {
+            .handle-badge {
+                right: 7px;
+                border-radius: 6px 0 0 6px;
+            }
+
+            &.flipped .handle-badge {
+                left: 7px;
+                right: auto;
+                border-radius: 0 6px 6px 0;
+            }
+
+            &.at-edge {
+                left: 0% !important;
+                margin-left: 0 !important;
+
+                .marker-core-line {
+                    margin-left: 0;
+                    margin-right: auto;
+                }
+
+                .handle-badge {
+                    left: 2px;
+                    right: auto;
+                    border-radius: 0 6px 6px 0;
+                }
+            }
+        }
+
+        &.out-marker {
+            .handle-badge {
+                left: 7px;
+                border-radius: 0 6px 6px 0;
+            }
+
+            &.flipped .handle-badge {
+                right: 7px;
+                left: auto;
+                border-radius: 6px 0 0 6px;
+            }
+
+            &.at-edge {
+                left: 100% !important;
+                margin-left: -14px !important;
+
+                .marker-core-line {
+                    margin-left: auto;
+                    margin-right: 0;
+                }
+
+                .handle-badge {
+                    left: auto;
+                    right: 2px;
+                    border-radius: 6px 0 0 6px;
+                }
+            }
+        }
+
+        &:hover .marker-core-line {
+            background-color: #94A3B8;
+        }
+    }
+
+    .playhead-needle {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 16px;
+        margin-left: -8px;
+        pointer-events: auto;
+        cursor: ew-resize;
+        z-index: 45;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        .needle-core-line {
+            width: 2px;
+            height: 100%;
+            background-color: #06B6D4; /* צבע הגיבור Accent Cyan */
+            box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+        }
+
+        .head-badge {
+            position: absolute;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #06B6D4;
+            color: #090D14;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 0 8px;
+            border-radius: 6px; /* פינות עגולות רכות */
+            box-shadow: 0 4px 10px rgba(6, 182, 212, 0.3);
+            white-space: nowrap;
+            user-select: none;
+            z-index: 50;
+
+            &.edge-left {
+                left: 0;
+                transform: translateX(0);
+            }
+
+            &.edge-right {
+                left: auto;
+                right: 0;
+                transform: translateX(0);
+            }
+        }
+        /* סעיף האפיון: הידית המעוגלת התחתונה לאחיזה נוחה */
+        .bottom-handle-node {
+            position: absolute;
+            bottom: 0;
+            width: 8px;
+            height: 8px;
+            background-color: #06B6D4;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+        }
+
+        &:hover .head-badge {
+            background-color: #22D3EE;
+            transform: translateX(-50%) scale(1.05);
+        }
+    }
+}

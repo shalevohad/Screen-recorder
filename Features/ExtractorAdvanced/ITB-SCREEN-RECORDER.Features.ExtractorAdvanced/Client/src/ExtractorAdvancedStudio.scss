@@ -1,0 +1,74 @@
+﻿// Client/src/components/Extractor/ExtractorAdvancedStudio.scss
+
+.extractor-advanced-studio {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    /* שקיפות מלאה לחשיפת הגריד הטקטי של המערכת הראשית */
+    background: transparent !important;
+    background-color: transparent !important;
+    /* ירושת רדיוס מלאה וחיתוך פינות חלק */
+    border-radius: inherit;
+    overflow: hidden !important;
+    isolation: isolate;
+    /* הגנת SCSS: כאשר המגירה תופסת את כל המסך, נעלים הרמטית את כפתור פתיחת המגירה */
+    &:has(.station-drawer-panel.is-full-width) {
+        .btn-toggle-drawer {
+            display: none !important;
+        }
+    }
+
+    .studio-workspace-area {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        width: 100%;
+        background: transparent !important;
+        border-radius: inherit;
+        overflow: hidden !important;
+    }
+
+    .studio-lower-body {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: row;
+        min-height: 0;
+        width: 100%;
+        background: transparent !important;
+        border-radius: inherit;
+        overflow: hidden !important;
+    }
+
+    .studio-left-content {
+        flex: 1 1 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        width: 100%;
+        background: transparent !important;
+        border-radius: inherit;
+        overflow: hidden !important;
+        /* אזור המסכים: תופס 100% מהגובה העודף מעל הטיים-ליין */
+        .studio-main-viewport-container {
+            flex: 1 1 0;
+            min-height: 0;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: transparent;
+        }
+        /* אזור הטיים-ליין: שומר על גובהו הטבעי ומעוגן לתחתית */
+        .studio-bottom-timeline {
+            flex: 0 0 auto;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            background: transparent;
+        }
+    }
+}

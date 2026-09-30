@@ -1,0 +1,189 @@
+// Client/src/components/Dashboard/DashboardDock.scss
+
+.dashboard-vertical-dock.tactical-c2-dock {
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    background: var(--surface-glass, rgba(15, 23, 42, 0.75));
+    backdrop-filter: var(--blur-header, blur(16px));
+    -webkit-backdrop-filter: var(--blur-header, blur(16px));
+    border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+    border-radius: var(--radius-lg, 12px);
+    padding: 8px 5px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+    user-select: none;
+    align-self: flex-start;
+
+    .dock-divider {
+        width: 24px;
+        height: 1px;
+        background-color: var(--border-subtle, rgba(148, 163, 184, 0.12));
+        margin: 2px 0;
+    }
+
+    .dock-icon-btn {
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--radius-controls, 8px);
+        cursor: pointer;
+        position: relative;
+        box-sizing: border-box;
+        transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+        flex-shrink: 0;
+        background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+        border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+        color: var(--text-secondary, #94A3B8);
+
+        svg {
+            width: 19px;
+            height: 19px;
+            stroke-width: 2.2;
+            transition: all 0.18s ease;
+        }
+
+        .filter-dock-alert-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent-amber, #F59E0B);
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
+            animation: radar-pulse 1.8s infinite ease-out;
+        }
+
+        &.tactical-btn-search {
+            &.has-active-filter:not(.is-engaged) {
+                border-color: rgba(245, 158, 11, 0.5);
+                color: var(--accent-amber-light, #FBBF24);
+            }
+
+            &:hover:not(.is-engaged) {
+                background: var(--surface-card-hover, #1B273D);
+                border-color: var(--border-active-cyan, rgba(56, 189, 248, 0.45));
+                color: var(--text-primary, #F8FAFC);
+                box-shadow: 0 0 10px var(--accent-cyan-glow);
+                transform: translateY(-1px);
+            }
+        }
+
+        &.tactical-btn-viewmode:hover:not(.is-engaged),
+        &.tactical-btn-wall:hover:not(.is-engaged) {
+            background: var(--c2-cyan-tint);
+            border-color: var(--accent-cyan, #06B6D4);
+            color: var(--accent-cyan-light, #38BDF8);
+            box-shadow: 0 0 10px var(--accent-cyan-glow);
+            transform: translateY(-1px);
+        }
+
+        &.tactical-btn-filter:hover:not(.is-engaged):not(:disabled) {
+            background: var(--surface-card-hover, #1B273D);
+            border-color: var(--border-active-cyan);
+            color: var(--accent-cyan-light);
+            box-shadow: 0 0 10px var(--accent-cyan-glow);
+            transform: translateY(-1px);
+        }
+
+        &.tactical-btn-feature:hover:not(.is-engaged) {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: rgba(56, 189, 248, 0.45);
+            color: var(--accent-cyan-light, #38BDF8);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+            transform: translateY(-1px);
+        }
+
+        &.tactical-btn-start {
+            &.is-actionable {
+                background: rgba(16, 185, 129, 0.15);
+                border-color: rgba(16, 185, 129, 0.4);
+                color: var(--accent-emerald-light, #34D399);
+
+                &:hover {
+                    background: var(--accent-emerald, #10B981);
+                    color: #000;
+                    box-shadow: var(--glow-green);
+                    transform: translateY(-1px);
+                }
+            }
+        }
+
+        &.tactical-btn-stop {
+            &.is-actionable {
+                background: rgba(239, 68, 68, 0.15);
+                border-color: rgba(239, 68, 68, 0.4);
+                color: var(--c2-red-light, #F87171);
+
+                &:hover {
+                    background: var(--accent-rose, #EF4444);
+                    color: #fff;
+                    box-shadow: var(--glow-red);
+                    transform: translateY(-1px);
+                }
+            }
+        }
+
+        &.is-engaged,
+        &.active,
+        &.is-reversed {
+            border-width: 1.5px !important;
+
+            &.tactical-btn-search {
+                border-color: var(--accent-cyan) !important;
+                background: var(--c2-cyan-tint) !important;
+                color: var(--accent-cyan-light) !important;
+                box-shadow: 0 0 10px var(--accent-cyan-glow) !important;
+            }
+
+            &.tactical-btn-viewmode,
+            &.tactical-btn-wall {
+                border-color: var(--accent-cyan) !important;
+                background: var(--c2-cyan-tint) !important;
+                color: var(--accent-cyan-light) !important;
+                box-shadow: 0 0 10px var(--accent-cyan-glow) !important;
+            }
+
+            &.tactical-btn-filter {
+                border-color: var(--accent-emerald) !important;
+                background: rgba(16, 185, 129, 0.15) !important;
+                color: var(--accent-emerald-light) !important;
+                box-shadow: var(--glow-green) !important;
+            }
+
+            &.tactical-btn-sort.is-reversed {
+                border-color: var(--accent-amber) !important;
+                background: var(--c2-yellow-tint) !important;
+                color: var(--accent-amber-light) !important;
+                box-shadow: var(--glow-yellow) !important;
+            }
+
+            &.tactical-btn-feature {
+                border-color: var(--border-active-cyan) !important;
+                background: rgba(56, 189, 248, 0.2) !important;
+                color: var(--accent-cyan-light) !important;
+                box-shadow: 0 0 12px rgba(56, 189, 248, 0.35) !important;
+            }
+        }
+
+        &:disabled,
+        &.disabled {
+            opacity: 0.22 !important;
+            cursor: not-allowed !important;
+            pointer-events: none !important;
+            border-color: var(--border-subtle) !important;
+            background: rgba(15, 23, 42, 0.4) !important;
+            color: var(--text-muted) !important;
+            box-shadow: none !important;
+            transform: none !important;
+        }
+    }
+}

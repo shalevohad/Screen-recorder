@@ -1,3 +1,4 @@
+// Client/src/components/Station/StationTuningFlyout.jsx
 import { useState, useEffect, useRef } from 'react';
 import './StationTuningFlyout.scss';
 
@@ -165,7 +166,7 @@ export default function StationTuningFlyout(props) {
                     STATION TUNING {isLoadingConfig && <span className="tuning-loading-dots">...</span>}
                 </span>
                 {statusText && <span className="tuning-status-tag">{statusText}</span>}
-                <button className="tuning-close" onClick={onClose} title="Close">✕</button>
+                <button type="button" className="tuning-close" onClick={onClose} title="Close">✕</button>
             </div>
 
             <div className="tuning-section">
@@ -212,7 +213,7 @@ export default function StationTuningFlyout(props) {
                                     title={`Set ${tick.val} FPS`}
                                     disabled={isSaving || isFadingOut}
                                 >
-                                    <span className="tick-pip"></span>
+                                    <span className="tick-pip" />
                                     <span className="tick-text">{tick.label}</span>
                                 </button>
                             );
@@ -271,7 +272,7 @@ export default function StationTuningFlyout(props) {
                                     title={`Set ${tick.label}`}
                                     disabled={isSaving || isFadingOut}
                                 >
-                                    <span className="tick-pip"></span>
+                                    <span className="tick-pip" />
                                     <span className="tick-text">{tick.label}</span>
                                 </button>
                             );
@@ -281,6 +282,7 @@ export default function StationTuningFlyout(props) {
             </div>
 
             <button
+                type="button"
                 className="tuning-apply-btn"
                 onClick={handleApply}
                 disabled={isSaving || isFadingOut}

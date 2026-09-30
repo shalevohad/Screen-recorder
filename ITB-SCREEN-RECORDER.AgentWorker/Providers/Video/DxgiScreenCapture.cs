@@ -1,12 +1,13 @@
 ﻿#if WINDOWS
+using ITB_SCREEN_RECORDER.Core.Common;
+using ITBRecorderAgent;
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
-using ITBRecorderAgent;
-using ITB_SCREEN_RECORDER.Core.Common;
 
 namespace ITBRecorderAgent.Providers.Video
 {

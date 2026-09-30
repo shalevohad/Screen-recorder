@@ -5,9 +5,12 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RootNamespace>ITB_SCREEN_RECORDER.AgentService</RootNamespace>
+		<DebugType>none</DebugType>
+		<DebugSymbols>false</DebugSymbols>
 	</PropertyGroup>
 
-	<PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+	<!-- הגדרת WINDOWS מותנית ב-RuntimeIdentifier של היעד לקרוס-קומפילציה נקייה -->
+	<PropertyGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
 		<DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
 	</PropertyGroup>
 
@@ -15,16 +18,29 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
+		<!-- 💡 הוספת ההפניה המפורשת למניעת שגיאת טעינת ה-EventLog בסביבה מבודדת -->
+		<PackageReference Include="System.Diagnostics.EventLog" Version="8.0.1" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
 	</ItemGroup>
 
-	<ItemGroup>
-		<None Include="..\ITB-SCREEN-RECORDER.Core\appsettings.json">
+	<!-- קישור מותנה: Windows קורא ל-appsettings.Windows.json ומייצר appsettings.json -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
+		<None Include="..\ITB-SCREEN-RECORDER.Core\appsettings.Windows.json">
 			<Link>appsettings.json</Link>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- קישור מותנה: Linux קורא ל-appsettings.Linux.json ומייצר appsettings.json -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<None Include="..\ITB-SCREEN-RECORDER.Core\appsettings.Linux.json">
+			<Link>appsettings.json</Link>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
 

@@ -1,39 +1,47 @@
+﻿// Client/src/components/UI/ServerTelemetryWidget.scss
+
 .server-telemetry-widget.layout-large {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 10px;
-    font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
     user-select: none;
     box-sizing: border-box;
 
     .telemetry-pod {
         display: flex;
         flex-direction: column;
+        justify-content: space-between;
         width: 148px;
-        padding: 6px 10px 7px 10px;
-        background: rgba(13, 20, 36, 0.88);
-        border: 1.5px solid var(--slate-border);
-        border-radius: 8px;
+        height: 56px;
+        padding: 6px 10px;
+        background: var(--surface-card, #151E2E);
+        border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+        border-radius: var(--radius-lg, 12px);
+        box-shadow: var(--shadow-card, 0 8px 24px rgba(0, 0, 0, 0.55));
         box-sizing: border-box;
-        gap: 3px;
-        transition: border-color 0.25s ease;
+        flex-shrink: 0;
+        transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
 
         .pod-header {
             display: flex;
             justify-content: space-between;
             align-items: baseline;
             line-height: 1;
+            margin-bottom: 2px;
 
             .pod-title {
+                font-family: var(--font-primary, 'Inter', sans-serif);
                 font-size: 10px;
                 font-weight: 800;
-                color: var(--slate-muted);
+                color: var(--text-secondary, #94A3B8);
                 letter-spacing: 0.5px;
             }
 
             .pod-sub {
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
                 font-size: 9px;
-                color: var(--slate-dim);
+                color: var(--text-muted, #64748B);
                 font-weight: 600;
             }
         }
@@ -43,14 +51,15 @@
             justify-content: space-between;
             align-items: center;
             gap: 8px;
-            margin: 1px 0;
+            margin: 0;
 
             .pod-val {
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
                 font-size: 18px;
                 font-weight: 900;
                 letter-spacing: -0.8px;
                 line-height: 1;
-                min-width: 58px;
+                min-width: 54px;
             }
 
             .pod-graph-slot {
@@ -69,63 +78,130 @@
                 .sparkline-placeholder {
                     width: 100%;
                     height: 2px;
-                    background: var(--slate-line);
+                    background: var(--slate-line, rgba(148, 163, 184, 0.15));
                 }
             }
         }
 
         .pod-track {
             width: 100%;
-            height: 3px;
-            background-color: var(--slate-line);
-            border-radius: 1.5px;
+            height: 4px;
+            background-color: rgba(148, 163, 184, 0.12);
+            border-radius: var(--radius-full, 9999px);
             overflow: hidden;
+            margin-top: 2px;
 
             .pod-bar {
                 height: 100%;
-                border-radius: 1.5px;
-                transition: width 0.3s ease;
+                border-radius: var(--radius-full, 9999px);
+                transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+        }
+        /* עיצוב הפוד של ה-NET עם השעונים הרדיאליים כפולי הקשתות */
+        &.net-pod-radial {
+            width: 275px;
+            min-width: 275px;
+            padding: 6px 10px;
+
+            .net-radials-cluster {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                border-left: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+                padding-left: 8px;
+                flex: 1;
+                box-sizing: border-box;
+
+                .net-radial-cell {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex: 1;
+
+                    .cell-data-stack {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 2px;
+                        line-height: 1;
+
+                        .data-item {
+                            display: flex;
+                            align-items: baseline;
+                            gap: 4px;
+
+                            .item-lbl {
+                                font-family: var(--font-primary, 'Inter', sans-serif);
+                                font-size: 8px;
+                                font-weight: 800;
+
+                                &.cyan {
+                                    color: var(--accent-cyan, #06B6D4);
+                                }
+
+                                &.green {
+                                    color: var(--accent-emerald, #10B981);
+                                }
+
+                                &.blue {
+                                    color: var(--accent-cyan-light, #38BDF8);
+                                }
+
+                                &.purple {
+                                    color: #C084FC;
+                                }
+                            }
+
+                            .item-val {
+                                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                                font-size: 8.5px;
+                                font-weight: 700;
+                                color: var(--text-primary, #F8FAFC);
+                            }
+                        }
+                    }
+                }
             }
         }
 
         &.ok {
             .pod-val {
-                color: var(--c2-green);
-                text-shadow: 0 0 10px rgba(34, 197, 94, 0.35);
+                color: var(--accent-emerald-light, #34D399);
+                text-shadow: 0 0 10px var(--accent-emerald-glow, rgba(16, 185, 129, 0.25));
             }
 
             .pod-bar {
-                background-color: var(--c2-green);
+                background-color: var(--accent-emerald, #10B981);
             }
 
-                .pod-bar.net-bar {
-                    background-color: var(--c2-blue);
-                }
+            .pod-bar.net-bar {
+                background-color: var(--accent-cyan, #06B6D4);
+            }
         }
 
         &.warn {
-            border-color: rgba(234, 179, 8, 0.6);
+            border-color: rgba(245, 158, 11, 0.45);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 12px rgba(245, 158, 11, 0.15);
 
             .pod-val {
-                color: var(--c2-yellow);
-                text-shadow: 0 0 10px rgba(234, 179, 8, 0.35);
+                color: var(--accent-amber-light, #FBBF24);
             }
 
             .pod-bar {
-                background-color: var(--c2-yellow);
+                background-color: var(--accent-amber, #F59E0B);
             }
         }
 
         &.crit {
-            border-color: rgba(239, 68, 68, 0.7);
+            border-color: rgba(239, 68, 68, 0.50);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 12px rgba(239, 68, 68, 0.2);
 
             .pod-val {
-                color: var(--c2-red);
-                text-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+                color: var(--c2-red-light, #F87171);
+                text-shadow: 0 0 10px var(--accent-rose-glow, rgba(239, 68, 68, 0.3));
             }
 
             .pod-bar {
-                background-color: var(--c2-red);
+                background-color: var(--accent-rose, #EF4444);
             }
         }
     }

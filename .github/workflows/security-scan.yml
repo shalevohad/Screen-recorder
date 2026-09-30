@@ -24,12 +24,12 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Restore NuGet packages
-      run: dotnet restore
+      run: dotnet restore ITB-Screen-Recorder.sln
 
     - name: Scan .NET packages for known vulnerabilities
-      run: dotnet list package --vulnerable
+      run: dotnet list ITB-Screen-Recorder.sln package --vulnerable
 
-    # --- סריקת חולשות עבור ה-Frontend (NPM) ---
+# --- סריקת חולשות עבור כלל סביבות ה-Frontend (NPM) ---
     - name: Use Node.js 20.x
       uses: actions/setup-node@v4
       with:
@@ -37,10 +37,44 @@ jobs:
         cache: 'npm'
         cache-dependency-path: '**/package-lock.json'
 
-    - name: Install dependencies
-      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
-      run: npm ci --include=optional
+    - name: Scan all NPM projects for vulnerabilities
+      run: |
+        # רשימת התיקיות שבהן יש קובצי package.json / package-lock.json
+        PROJECTS=(
+          "./ITB-SCREEN-RECORDER.Server/ClientApp"
+          "./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Client"
+          "./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client"
+        )
+        
+        for dir in "${PROJECTS[@]}"; do
+          if [ -d "$dir" ]; then
+            echo "=================================================="
+            echo "Processing NPM project in: $dir"
+            echo "=================================================="
+            
+            cd "$dir"
+            
+            echo "-> Installing dependencies..."
+            npm ci --include=optional
+            
+            echo "-> Running security audit..."
+            npm audit --audit-level=high
+            
+            # חזרה חזרה לתיקיית השורש של הריפו
+            cd - > /dev/null
+            echo ""
+          else
+            echo "::warning:: Directory $dir not found, skipping."
+          fi
+        done
+```[cite: 15]
 
-    - name: Scan NPM packages for known vulnerabilities (Audit)
-      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
-      run: npm audit --audit-level=high
+---
+
+### הודעת Commit מומלצת:
+
+```git
+fix(ci): correct solution file name casing in security-scan.yml
+
+- Update dependency security architecture workflow to reference 'ITB-Screen-Recorder.sln' with exact casing.
+- Prevent MSBuild MSB1009 file not found errors during scheduled and PR security scans on Ubuntu runners.

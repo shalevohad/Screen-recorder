@@ -1,0 +1,80 @@
+.timeline-floating-hud {
+    position: absolute;
+    top: 36px;
+    right: 56px;
+    z-index: 45;
+    background: rgba(11, 19, 37, 0.92);
+    border: 1px solid #2a3d66;
+    border-radius: 6px;
+    padding: 6px 10px;
+    width: 220px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    user-select: none;
+
+    .hud-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+
+        .hud-title {
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #00e5ff;
+        }
+
+        .hud-controls {
+            display: flex;
+            gap: 4px;
+
+            button {
+                background: #16223b;
+                border: 1px solid #233559;
+                color: #cbd5e1;
+                border-radius: 3px;
+                padding: 1px 6px;
+                font-size: 10px;
+                cursor: pointer;
+
+                &:hover {
+                    background: #223761;
+                    color: #fff;
+                }
+
+                &.btn-fit {
+                    font-size: 9px;
+                    color: #00e676;
+                    font-weight: 700;
+                }
+            }
+        }
+    }
+
+    .hud-track-mini {
+        position: relative;
+        height: 10px;
+        background: #060b17;
+        border: 1px solid #1a2844;
+        border-radius: 3px;
+        overflow: hidden;
+
+        .hud-cut-range {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background: rgba(0, 229, 255, 0.25);
+            border-left: 1px solid #00e5ff;
+            border-right: 1px solid #00e5ff;
+        }
+
+        .hud-playhead-needle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #f43f5e;
+        }
+    }
+}
