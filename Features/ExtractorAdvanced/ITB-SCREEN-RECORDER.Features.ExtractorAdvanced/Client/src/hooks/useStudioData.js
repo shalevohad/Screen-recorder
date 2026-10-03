@@ -48,7 +48,39 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
                         feedSpec: item.feedSpec || '1080p • 30fps'
                     }));
 
-                    setAllStations(normalized);
+                    // 💡 פיוס נתונים חכם (Smart Reconciliation):
+                    // שומרים על אותם אובייקטים בזיכרון עבור תחנות קיימות כדי למנוע רינדורי-סווק
+                    setAllStations(prevStations => {
+                        if (!prevStations || prevStations.length === 0) return normalized;
+
+                        const prevMap = new Map(prevStations.map(s => [s.id, s]));
+                        let hasAnyChange = prevStations.length !== normalized.length;
+
+                        const merged = normalized.map(nextItem => {
+                            const prevItem = prevMap.get(nextItem.id);
+                            if (!prevItem) {
+                                hasAnyChange = true;
+                                return nextItem;
+                            }
+
+                            // בדיקה האם משהו מהותי השתנה בתחנה
+                            const isIdentical =
+                                prevItem.isOnline === nextItem.isOnline &&
+                                prevItem.displayName === nextItem.displayName &&
+                                prevItem.feedSpec === nextItem.feedSpec &&
+                                prevItem.recordingsCount === nextItem.recordingsCount &&
+                                prevItem.fps === nextItem.fps;
+
+                            if (isIdentical) {
+                                return prevItem; // שמירה על אותו אובייקט בדיוק בזיכרון!
+                            }
+
+                            hasAnyChange = true;
+                            return { ...prevItem, ...nextItem };
+                        });
+
+                        return hasAnyChange ? merged : prevStations;
+                    });
                 }
             }
         } catch (err) {
@@ -77,7 +109,19 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
                 const res = await fetch(`/api/v1/extractor/timeline-segments?stations=${stationIdsKey}&startEpoch=${timelineBaseEpochMs}&endEpoch=${endEpochMs}`);
                 if (res.ok && isMounted) {
                     const data = await res.json();
-                    setRecordingSegments(data || {});
+
+                    // 💡 מיזוג חכם של סגמנטים: לא דורסים את ה-state אם התוכן זהה
+                    setRecordingSegments(prev => {
+                        const nextData = data || {};
+                        const prevKeys = Object.keys(prev);
+                        const nextKeys = Object.keys(nextData);
+
+                        if (prevKeys.length === nextKeys.length &&
+                            prevKeys.every(k => prev[k]?.length === nextData[k]?.length)) {
+                            return prev;
+                        }
+                        return nextData;
+                    });
                 }
             } catch {
                 if (isMounted) setRecordingSegments({});

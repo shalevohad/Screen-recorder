@@ -33,6 +33,8 @@ export default function StudioVideoFeed({
 
     playheadMsRef.current = playheadMs;
 
+    // 💡 שימוש במזהים פרימיטיביים למניעת רינדורי-סרק ושבירת רפרנסים
+    const stationId = station?.id;
     const hostname = (station && (station.hostname || station.name)) || '';
     const stationSegments = (station && (recordingSegments[station.id] || station.segments)) || [];
 
@@ -50,10 +52,9 @@ export default function StudioVideoFeed({
     const [isBufferingStall, setIsBufferingStall] = useState(false);
 
     const [frameResult, setFrameResult] = useState(() => {
-        if (!station) return null;
-        const host = station.hostname || station.name || '';
+        if (!hostname) return null;
         const targetEpochMs = Math.round(baseEpochMs + playheadMs);
-        return frameStore.get(host, targetEpochMs) || null;
+        return frameStore.get(hostname, targetEpochMs) || null;
     });
 
     const applyAudioSettings = useCallback(() => {
@@ -80,8 +81,9 @@ export default function StudioVideoFeed({
         }
     }, [playbackSpeed]);
 
+    // 💡 שליפת פריים: תלוי ב-stationId ו-hostname ולא באובייקט station כולו
     useEffect(() => {
-        if (!station) return;
+        if (!stationId || !hostname) return;
 
         if (isPlaying) {
             prevIsPlayingRef.current = true;
@@ -123,10 +125,11 @@ export default function StudioVideoFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [station, hostname, baseEpochMs, playheadMs, isPlaying]);
+    }, [stationId, hostname, baseEpochMs, playheadMs, isPlaying]);
 
+    // 💡 הפעלת הווידאו: נמנעת מפירוק הווידאו כשתחנות אחרות מתעדכנות
     useEffect(() => {
-        if (!station) return;
+        if (!stationId || !hostname) return;
 
         if (isPlaying && isInRecordingSegment) {
             const currentHead = playheadMsRef.current;
@@ -149,7 +152,7 @@ export default function StudioVideoFeed({
                 videoRef.current.pause();
             }
         }
-    }, [isPlaying, station, hostname, baseEpochMs, totalDurationMs, isInRecordingSegment]);
+    }, [isPlaying, stationId, hostname, baseEpochMs, totalDurationMs, isInRecordingSegment]);
 
     // 💡 מנוע סנכרון חלק ב-60fps עם פילטר מונוטוני למניעת קפיצות אחורה
     useEffect(() => {
@@ -166,13 +169,11 @@ export default function StudioVideoFeed({
                 const now = performance.now();
                 const currentVideoSec = video.currentTime;
 
-                // אם הווידאו התקדם בפועל, מאפסים את נקודת העיגון
                 if (Math.abs(currentVideoSec - syncVideoSec) > 0.0005) {
                     syncVideoSec = currentVideoSec;
                     syncWallTime = now;
                 }
 
-                // אינטרפולציה רציפה בין פריימים
                 const elapsedSec = Math.max(0, (now - syncWallTime) / 1000);
                 const rate = video.playbackRate || playbackSpeed || 1;
                 const estimatedVideoSec = syncVideoSec + (elapsedSec * rate);
@@ -223,7 +224,6 @@ export default function StudioVideoFeed({
                     return;
                 }
 
-                // עדכון הסמן רק כאשר הערך השתנה בפועל
                 if (calculatedMs !== lastEmittedMs) {
                     lastEmittedMs = calculatedMs;
                     setPlayheadMs?.(calculatedMs);
@@ -372,7 +372,7 @@ export default function StudioVideoFeed({
                                 <span>INITIALIZING STREAM PIPELINE</span>
                             </div>
                             <span className="meta-sub">
-                                BUFFERING // {station.hostname || station.name}
+                                BUFFERING // {hostname}
                             </span>
                         </div>
                     </div>
@@ -381,7 +381,7 @@ export default function StudioVideoFeed({
 
             {showWatermark && (
                 <div className="feed-brand-watermark">
-                    <span>ARCHIVE RECORDING // {station.hostname || station.name}</span>
+                    <span>ARCHIVE RECORDING // {hostname}</span>
                 </div>
             )}
         </div>

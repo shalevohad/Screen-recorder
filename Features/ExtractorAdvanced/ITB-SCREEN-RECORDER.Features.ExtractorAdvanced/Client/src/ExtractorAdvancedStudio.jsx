@@ -69,9 +69,19 @@ export default function ExtractorAdvancedStudio() {
         activeStationId
     );
 
-    const activeStation = allStations.find(s => s.id === activeStationId);
-    const timelineStations = allStations.filter(s => selectedStationIds.includes(s.id));
-    const spotlightStation = allStations.find(s => s.id === spotlightStationId);
+    // 💡 ייצוב רפרנסים (useMemo) למניעת קפיצות כשתחנות חדשות מתגלות ברקע
+    const activeStation = useMemo(() => {
+        return allStations.find(s => s.id === activeStationId) || null;
+    }, [allStations, activeStationId]);
+
+    const timelineStations = useMemo(() => {
+        if (!selectedStationIds || selectedStationIds.length === 0) return [];
+        return allStations.filter(s => selectedStationIds.includes(s.id));
+    }, [allStations, selectedStationIds]);
+
+    const spotlightStation = useMemo(() => {
+        return allStations.find(s => s.id === spotlightStationId) || null;
+    }, [allStations, spotlightStationId]);
 
     const lastViewBeforeFullscreenRef = useRef('grid');
     const timelineContainerRef = useRef(null);
