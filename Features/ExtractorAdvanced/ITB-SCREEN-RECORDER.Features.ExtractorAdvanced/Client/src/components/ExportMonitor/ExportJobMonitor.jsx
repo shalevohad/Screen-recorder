@@ -6,16 +6,12 @@ import { createPortal } from 'react-dom';
 import './ExportJobMonitor.scss';
 
 export default function ExportJobMonitor({ isGlobalHost = false }) {
-    const hasGlobalHost = typeof document !== 'undefined' && !!document.getElementById('itb-global-export-job-monitor-root');
-    if (!isGlobalHost && hasGlobalHost) {
-        return null;
-    }
-
+    // 💡 כל ה-Hooks מוגדרים ללא תנאים בראש הקומפוננטה (Rules of Hooks)
     const [jobs, setJobs] = useState([]);
     const [dismissingIds, setDismissingIds] = useState(new Set());
     const drawerRef = useRef(null);
+    const isFetchingRef = useRef(false);
 
-    // טעינת מצב Pinned מ-localStorage
     const [isPinned, setIsPinned] = useState(() => {
         try {
             return localStorage.getItem('itb_export_drawer_pinned') === 'true';
@@ -31,8 +27,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
             return false;
         }
     });
-
-    const isFetchingRef = useRef(false);
 
     const fetchJobs = useCallback(async () => {
         if (isFetchingRef.current) return;
@@ -83,6 +77,12 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
         document.addEventListener('pointerdown', handleOutsideClick);
         return () => document.removeEventListener('pointerdown', handleOutsideClick);
     }, [isOpen, isPinned]);
+
+    // 💡 תנאי בדיקת Host גלובלי — מתבצע אך ורק לאחר שכל ה-Hooks הוגדרו במלואם
+    const hasGlobalHost = typeof document !== 'undefined' && !!document.getElementById('itb-global-export-job-monitor-root');
+    if (!isGlobalHost && hasGlobalHost) {
+        return null;
+    }
 
     const activeJobs = jobs.filter(j => j.status === 'Processing' || j.status === 'Queued');
     const readyJobs = jobs.filter(j => j.status === 'Completed' || j.isCompleted);
@@ -171,7 +171,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
 
     return createPortal(
         <div className="export-job-monitor-root" dir="ltr">
-            {/* כפתור HUD צף */}
             {jobs.length > 0 && !isOpen && (
                 <div
                     className={`export-floating-hud ${activeJobs.length > 0 ? 'has-active' : 'all-ready'}`}
@@ -190,11 +189,9 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                 </div>
             )}
 
-            {/* מגירת המשימות */}
             {isOpen && (
                 <div className="export-drawer-backdrop" onClick={() => !isPinned && setIsOpen(false)}>
                     <aside ref={drawerRef} className={`export-drawer-panel ${isPinned ? 'pinned' : ''}`} onClick={e => e.stopPropagation()}>
-
                         <div className="drawer-header">
                             <div className="header-left">
                                 <span className="header-icon">📦</span>
@@ -259,7 +256,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                                     <div className="progress-fill" style={{ width: `${Math.max(3, currentPct)}%` }} />
                                                 </div>
                                                 <div className="progress-bottom-meta">
-                                                    {/* 💡 הצגת הגודל המשוער של הארכיון, כאשר הגודל שנבנה בפועל מוצג ב-phase-lbl מעל */}
                                                     <span className="size-streamed">EST: {formatSize(job.fileSizeBytes)}</span>
                                                     <div className="telemetry-tags">
                                                         <span className="speed">{job.speedMBps > 0 ? `${job.speedMBps.toFixed(1)} MB/s` : 'Analyzing'}</span>
@@ -271,7 +267,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                             </div>
                                         )}
 
-                                        {/* קוביית נתונים מתקדמת זהה למערכת הבסיסית */}
                                         {isReady && (
                                             <div className="job-ready-meta-box">
                                                 <div className="meta-item">
@@ -295,7 +290,6 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                             </div>
                                         )}
 
-                                        {/* סרגל פעולות מלא ותואם */}
                                         {isReady && (
                                             <div className="card-actions-bar">
                                                 <div className="sub-actions">

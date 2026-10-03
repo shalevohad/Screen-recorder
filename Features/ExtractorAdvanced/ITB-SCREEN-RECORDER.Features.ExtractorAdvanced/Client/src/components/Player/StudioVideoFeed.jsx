@@ -16,7 +16,7 @@ export default function StudioVideoFeed({
     isPlaying = false,
     setIsPlaying,
     playbackSpeed = 1,
-    timeMode = 'LOCAL',
+    _timeMode = 'LOCAL',
     inPointMs = 0,
     outPointMs = 3600000,
     isLooping = true,

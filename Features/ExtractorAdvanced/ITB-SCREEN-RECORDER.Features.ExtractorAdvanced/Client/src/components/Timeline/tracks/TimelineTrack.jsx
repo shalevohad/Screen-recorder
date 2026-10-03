@@ -149,7 +149,7 @@ export default function TimelineTrack({
             clearTimeout(debounceTimer);
             abortController.abort();
         };
-    }, [timelineTiles, hostname]);
+    }, [timelineTiles, hostname, tilesMap]);
 
     const inPercent = ((inPointMs - viewportStartMs) / viewportDurationMs) * 100;
     const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;

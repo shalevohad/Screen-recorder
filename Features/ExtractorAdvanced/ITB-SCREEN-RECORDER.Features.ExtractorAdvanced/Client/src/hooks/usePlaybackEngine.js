@@ -1,7 +1,7 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/hooks/usePlaybackEngine.js
 // ==========================================
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 export function usePlaybackEngine({
     timelineBaseEpochMs,
@@ -25,9 +25,12 @@ export function usePlaybackEngine({
     const requestRef = useRef(null);
 
     const currentStationToCheck = spotlightStation || activeStation;
-    const stationSegmentsToCheck = currentStationToCheck
-        ? (recordingSegments[currentStationToCheck.id] || currentStationToCheck.segments || [])
-        : [];
+
+    // 💡 ייצוב רפרנס הסגמנטים ב-useMemo כדי למנוע טריגר מיותר ל-useCallback
+    const stationSegmentsToCheck = useMemo(() => {
+        if (!currentStationToCheck) return [];
+        return recordingSegments[currentStationToCheck.id] || currentStationToCheck.segments || [];
+    }, [currentStationToCheck, recordingSegments]);
 
     const isCurrentInValidSegment = stationSegmentsToCheck.some(seg => {
         const s = seg.startEpochMs ?? seg.startEpoch ?? 0;
@@ -49,6 +52,7 @@ export function usePlaybackEngine({
         });
     }, [inPointMs, outPointMs]);
 
+    // 💡 1. קודם כל מגדירים את ה-updatePlayhead
     const updatePlayhead = useCallback((timestamp) => {
         if (!lastTickRef.current) lastTickRef.current = timestamp;
 
@@ -83,6 +87,7 @@ export function usePlaybackEngine({
         }
     }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs, isVideoDirectlyDrivingClock, playbackSpeed]);
 
+    // 💡 2. ה-useEffect שמפעיל את ה-requestAnimationFrame ממוקם לאחר שהפונקציה הוצהרה
     useEffect(() => {
         if (isPlaying && !isVideoDirectlyDrivingClock) {
             lastTickRef.current = performance.now();

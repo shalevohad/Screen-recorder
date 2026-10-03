@@ -13,7 +13,7 @@ export default function TransportBar({
     setIsPlaying,
     isLooping = true,
     setIsLooping,
-    playheadMs = 0,
+    _playheadMs = 0,
     setPlayheadMs,
     inPointMs = 0,
     outPointMs = 3600000,
@@ -110,7 +110,7 @@ export default function TransportBar({
             } else if (direction === 'backward' && onStepFrameBackward) {
                 onStepFrameBackward();
             }
-        }, [direction, setIsPlaying, setPlayheadMs, totalDurationMs, onStepFrameForward, onStepFrameBackward]);
+        }, [direction]);
 
         const start = useCallback((e) => {
             e.preventDefault();
@@ -129,7 +129,7 @@ export default function TransportBar({
                     doStep(multiplier);
                 }, 50);
             }, 280);
-        }, [isEnabled, doStep, stop]);
+        }, [doStep, stop]);
 
         useEffect(() => stop, [stop]);
 

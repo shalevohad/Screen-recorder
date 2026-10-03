@@ -35,7 +35,7 @@ export default function TimelineBoard({
     timeMode = 'LOCAL',
     totalDurationMs = 3600000,
     zoomLevel = 1,
-    onZoomChange,
+    _onZoomChange,
     onZoomReset,
     playheadMs = 0,
     setPlayheadMs,

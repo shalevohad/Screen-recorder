@@ -34,7 +34,7 @@ export default function CameraCardFeed({
     const [streamSrc, setStreamSrc] = useState('');
     const [isVideoReady, setIsVideoReady] = useState(false);
     const [hasError, setHasError] = useState(false);
-    const [isLoadingFrame, setIsLoadingFrame] = useState(false);
+    const [_isLoadingFrame, setIsLoadingFrame] = useState(false);
 
     const prevIsPlayingRef = useRef(isPlaying);
     const videoRef = useRef(null);

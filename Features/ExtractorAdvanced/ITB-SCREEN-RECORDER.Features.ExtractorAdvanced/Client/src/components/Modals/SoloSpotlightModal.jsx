@@ -72,7 +72,7 @@ export default function SoloSpotlightModal({
     const playbackSpeed = propPlaybackSpeed !== undefined ? propPlaybackSpeed : localPlaybackSpeed;
     const setPlaybackSpeed = propSetPlaybackSpeed || setLocalPlaybackSpeed;
 
-    const [exportToast, setExportToast] = useState(null);
+    const [exportToast, _setExportToast] = useState(null);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [activeGaps, setActiveGaps] = useState(globalGaps);
 

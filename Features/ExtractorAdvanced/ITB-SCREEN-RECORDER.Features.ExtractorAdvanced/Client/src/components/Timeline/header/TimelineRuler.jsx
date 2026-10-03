@@ -1,7 +1,7 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineRuler.jsx
 // ==========================================
-import React, { useRef, useMemo, useState, useEffect } from 'react';
+import React, { useRef, useMemo, useState, useEffect, useCallback } from 'react';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './TimelineRuler.scss';
 
@@ -21,8 +21,8 @@ export default function TimelineRuler({
     hoverMs = null,
     onHoverChange,
     onSeek,
-    inPointMs,
-    outPointMs,
+    _inPointMs,
+    _outPointMs,
     earliestMediaMs = null,
     movieBoundaries = null,
     activeStationName = ''
@@ -43,14 +43,19 @@ export default function TimelineRuler({
         return () => ro.disconnect();
     }, []);
 
-    const toPercent = (ms) => {
-        if (!viewportDurationMs) return 0;
-        return ((ms - viewportStartMs) / viewportDurationMs) * 100;
-    };
+    // בתוך TimelineRuler.jsx
 
-    const isVisibleInViewport = (ms) => {
-        return ms !== null && ms !== undefined && ms >= viewportStartMs && ms <= (viewportStartMs + viewportDurationMs);
-    };
+    const toPercent = useCallback((ms) => {
+        if (!viewportDurationMs || viewportDurationMs <= 0) return '0%';
+        const offset = ms - viewportStartMs;
+        return `${(offset / viewportDurationMs) * 100}%`;
+    }, [viewportDurationMs, viewportStartMs]);
+
+    const isVisibleInViewport = useCallback((ms) => {
+        const offset = ms - viewportStartMs;
+        const pct = (offset / viewportDurationMs) * 100;
+        return pct >= -5 && pct <= 105;
+    }, [viewportStartMs, viewportDurationMs]);
 
     const handleMouseMove = (e) => {
         if (!rulerRef.current) return;
@@ -219,11 +224,11 @@ export default function TimelineRuler({
         currentLastMs,
         isFirstOverlapping,
         isLastOverlapping,
-        viewportStartMs,
-        viewportDurationMs,
         baseEpochMs,
         timeMode,
-        activeStationName
+        activeStationName,
+        isVisibleInViewport,
+        toPercent
     ]);
 
     const hoverPercent = hoverMs !== null ? toPercent(hoverMs) : null;
