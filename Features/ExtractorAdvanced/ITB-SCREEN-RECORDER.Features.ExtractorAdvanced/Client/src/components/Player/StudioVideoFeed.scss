@@ -1,28 +1,171 @@
 // ==========================================
-// File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Feed/CameraCardFeed.scss
+// File: Features/ExtractorAdvanced/Client/src/components/Player/StudioVideoFeed.scss
 // ==========================================
 
-@keyframes radarOuterSpin {
-    to {
-        transform: rotate(360deg);
-    }
-}
+.studio-video-feed-root {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #020617;
+    overflow: hidden;
+    user-select: none;
 
-@keyframes radarInnerSpin {
-    to {
-        transform: rotate(-360deg);
-    }
-}
-
-@keyframes beaconBlink {
-    0% {
-        opacity: 0.35;
-        transform: scale(0.85);
+    .feed-video-element {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background-color: #020617;
+        transition: opacity 0.25s ease-out;
     }
 
-    100% {
-        opacity: 1;
-        transform: scale(1.15);
+    .feed-static-layer {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+
+        .feed-static-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background-color: #020617;
+        }
+
+        .feed-decode-pending {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            span {
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                font-size: 11px;
+                font-weight: 700;
+                color: #F59E0B;
+                background: rgba(245, 158, 11, 0.15);
+                padding: 4px 10px;
+                border-radius: 4px;
+                border: 1px solid rgba(245, 158, 11, 0.3);
+                letter-spacing: 0.5px;
+            }
+        }
+    }
+
+    .feed-buffering-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        background: rgba(2, 6, 23, 0.65);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        animation: fadeInOverlay 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+        .buffering-glass-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 24px;
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            border-radius: 9999px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 24px rgba(6, 182, 212, 0.2);
+
+            .radar-spinner-cluster {
+                position: relative;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+
+                .spinner-outer-ring {
+                    position: absolute;
+                    inset: 0;
+                    border: 2px solid rgba(56, 189, 248, 0.15);
+                    border-top-color: #38BDF8;
+                    border-radius: 50%;
+                    animation: radarOuterSpin 0.9s linear infinite;
+                }
+
+                .spinner-inner-ring {
+                    position: absolute;
+                    inset: 5px;
+                    border: 2px dashed rgba(6, 182, 212, 0.4);
+                    border-bottom-color: #06B6D4;
+                    border-radius: 50%;
+                    animation: radarInnerSpin 1.4s linear infinite reverse;
+                }
+
+                .spinner-center-dot {
+                    width: 5px;
+                    height: 5px;
+                    border-radius: 50%;
+                    background: #38BDF8;
+                    box-shadow: 0 0 8px #38BDF8;
+                }
+            }
+
+            .buffering-meta-stack {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                line-height: 1.2;
+
+                .meta-headline {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-family: var(--font-primary, 'Inter', sans-serif);
+                    font-size: 11px;
+                    font-weight: 800;
+                    color: #F8FAFC;
+                    letter-spacing: 0.8px;
+
+                    .beacon-pulse {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: 50%;
+                        background-color: #38BDF8;
+                        box-shadow: 0 0 8px #38BDF8;
+                        animation: beaconBlink 1s infinite alternate;
+                    }
+                }
+
+                .meta-sub {
+                    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                    font-size: 9.5px;
+                    font-weight: 600;
+                    color: #94A3B8;
+                    letter-spacing: 0.5px;
+                }
+            }
+        }
+    }
+
+    .feed-brand-watermark {
+        position: absolute;
+        top: 20px;
+        left: 24px;
+        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+        font-size: 10px;
+        font-weight: 700;
+        color: rgba(255, 255, 255, 0.28);
+        letter-spacing: 1.8px;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+        z-index: 5;
     }
 }
 
@@ -38,146 +181,26 @@
     }
 }
 
-.camera-card-feed-root {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    background: #020617;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+@keyframes radarOuterSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
 
-    .station-live-frame {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        background-color: #020617;
-        pointer-events: none;
+@keyframes radarInnerSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes beaconBlink {
+    0% {
+        opacity: 0.3;
+        transform: scale(0.85);
     }
 
-    .tactical-feed-buffering-overlay {
-        position: absolute;
-        inset: 0;
-        z-index: 10;
-        background: rgba(2, 6, 23, 0.65);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        pointer-events: none;
-        animation: fadeInOverlay 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-
-        .buffering-glass-hud {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 10px 22px;
-            background: rgba(15, 23, 42, 0.88);
-            border: 1px solid rgba(56, 189, 248, 0.35);
-            border-radius: 9999px;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 24px rgba(6, 182, 212, 0.2);
-
-            .radar-dual-ring {
-                position: relative;
-                width: 28px;
-                height: 28px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex-shrink: 0;
-
-                .ring-outer {
-                    position: absolute;
-                    inset: 0;
-                    border: 2px solid rgba(56, 189, 248, 0.15);
-                    border-top-color: #38BDF8;
-                    border-radius: 50%;
-                    animation: radarOuterSpin 0.9s linear infinite;
-                }
-
-                .ring-inner {
-                    position: absolute;
-                    inset: 4px;
-                    border: 2px dashed rgba(6, 182, 212, 0.4);
-                    border-bottom-color: #06B6D4;
-                    border-radius: 50%;
-                    animation: radarInnerSpin 1.3s linear infinite;
-                }
-
-                .radar-blip {
-                    width: 4px;
-                    height: 4px;
-                    border-radius: 50%;
-                    background: #38BDF8;
-                    box-shadow: 0 0 8px #38BDF8;
-                }
-            }
-
-            .hud-meta-stack {
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-                line-height: 1.2;
-
-                .hud-headline {
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    font-family: var(--font-primary, 'Inter', sans-serif);
-                    font-size: 10.5px;
-                    font-weight: 800;
-                    color: #F8FAFC;
-                    letter-spacing: 0.8px;
-
-                    .beacon-pulse {
-                        width: 5px;
-                        height: 5px;
-                        border-radius: 50%;
-                        background-color: #38BDF8;
-                        box-shadow: 0 0 8px #38BDF8;
-                        animation: beaconBlink 1s infinite alternate;
-                    }
-                }
-
-                .hud-sub {
-                    font-family: var(--font-mono, 'JetBrains Mono', monospace);
-                    font-size: 9px;
-                    font-weight: 600;
-                    color: #94A3B8;
-                    letter-spacing: 0.5px;
-                }
-            }
-        }
-    }
-
-    .offline-state-overlay {
-        position: absolute;
-        inset: 0;
-        z-index: 5;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        background: rgba(2, 6, 23, 0.95);
-        color: #f43f5e;
-
-        svg {
-            width: 32px;
-            height: 32px;
-            opacity: 0.8;
-        }
-
-        span {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 2px;
-        }
+    100% {
+        opacity: 1;
+        transform: scale(1.15);
     }
 }

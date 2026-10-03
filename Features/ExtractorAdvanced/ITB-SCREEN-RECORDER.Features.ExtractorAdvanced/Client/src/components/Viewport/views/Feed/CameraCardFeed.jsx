@@ -135,32 +135,26 @@ export default function CameraCardFeed({
         };
     }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo]);
 
-    // 💡 ניתוק מוחלט של בקשת ה-HTTP וסגירת התהליך בשרת כשיוצאים מ-Solo
     useEffect(() => {
         if (!stationName || !isSolo) return;
 
         let debounceTimer = null;
-        let safetyTimeout = null;
 
         if (isPlaying && !isSpotlightActive && isInRecordingSegment) {
             debounceTimer = setTimeout(() => {
                 const initialSeekMs = currentRelativeMsRef.current;
                 streamStartOffsetMsRef.current = initialSeekMs;
                 const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&speed=1&_t=${Date.now()}`;
-                setStreamSrc(url);
-                setIsVideoReady(false);
 
-                safetyTimeout = setTimeout(() => {
-                    setIsVideoReady(true);
-                }, 500);
-            }, 120);
+                setIsVideoReady(false);
+                setStreamSrc(url);
+            }, 100);
 
         } else if (!isPlaying) {
             setStreamSrc('');
             setIsVideoReady(false);
             if (videoRef.current) {
                 videoRef.current.pause();
-                // 💡 ניתוק אמיתי של ה-Socket מהדפדפן שמביא לקטיעת תהליך ה-FFmpeg בשרת
                 videoRef.current.removeAttribute('src');
                 videoRef.current.load();
             }
@@ -168,40 +162,91 @@ export default function CameraCardFeed({
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
-            if (safetyTimeout) clearTimeout(safetyTimeout);
         };
     }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
 
-    const handleTimeUpdate = () => {
-        const video = videoRef.current;
-        if (!video || !isPlaying || !setPlayheadMs || isSpotlightActive || isSkippingGapRef.current) return;
+    // 💡 מנוע 60fps מונוטוני כאשר כרטיסיית פיד מנוגנת במצב Solo
+    useEffect(() => {
+        if (!isSolo || !isPlaying || !streamSrc || !isVideoReady || isSpotlightActive) return;
 
-        if (!isVideoReady) setIsVideoReady(true);
+        let rafId = null;
+        let syncVideoSec = videoRef.current ? videoRef.current.currentTime : 0;
+        let syncWallTime = performance.now();
+        let lastEmittedMs = streamStartOffsetMsRef.current + Math.round(syncVideoSec * 1000);
 
-        let calculatedMs = streamStartOffsetMsRef.current + Math.round(video.currentTime * 1000);
-        const curEpoch = baseEpochMs + calculatedMs;
+        const smoothTick = () => {
+            const video = videoRef.current;
+            if (video && !video.paused && !video.ended && !isSkippingGapRef.current) {
+                const now = performance.now();
+                const currentVideoSec = video.currentTime;
 
-        const activeGap = globalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
-        if (activeGap) {
-            isSkippingGapRef.current = true;
-            const gapEndOffsetMs = activeGap.endEpochMs - baseEpochMs;
-            setPlayheadMs(gapEndOffsetMs);
-            streamStartOffsetMsRef.current = gapEndOffsetMs;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&speed=1&_t=${Date.now()}`;
-            setStreamSrc(newUrl);
-            setIsVideoReady(false);
+                if (Math.abs(currentVideoSec - syncVideoSec) > 0.0005) {
+                    syncVideoSec = currentVideoSec;
+                    syncWallTime = now;
+                }
 
-            setTimeout(() => { isSkippingGapRef.current = false; }, 300);
-            return;
-        }
+                const elapsedSec = Math.max(0, (now - syncWallTime) / 1000);
+                const rate = video.playbackRate || playbackSpeed || 1;
+                const estimatedVideoSec = syncVideoSec + (elapsedSec * rate);
 
-        if (calculatedMs >= outPointMs) {
-            if (setIsPlaying) setIsPlaying(false);
-            setPlayheadMs(outPointMs);
-        } else {
-            setPlayheadMs(calculatedMs);
-        }
-    };
+                let calculatedMs = streamStartOffsetMsRef.current + Math.round(estimatedVideoSec * 1000);
+
+                const delta = calculatedMs - lastEmittedMs;
+                if (delta < 0 && delta > -300) {
+                    calculatedMs = lastEmittedMs;
+                }
+
+                if (calculatedMs >= outPointMs) {
+                    setIsPlaying?.(false);
+                    setPlayheadMs?.(outPointMs);
+                    return;
+                }
+
+                const curEpoch = baseEpochMs + calculatedMs;
+                const activeGap = globalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
+                if (activeGap) {
+                    isSkippingGapRef.current = true;
+                    const gapEndOffsetMs = activeGap.endEpochMs - baseEpochMs;
+                    setPlayheadMs(gapEndOffsetMs);
+                    streamStartOffsetMsRef.current = gapEndOffsetMs;
+                    lastEmittedMs = gapEndOffsetMs;
+
+                    const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&speed=1&_t=${Date.now()}`;
+                    setIsVideoReady(false);
+                    setStreamSrc(newUrl);
+
+                    setTimeout(() => { isSkippingGapRef.current = false; }, 300);
+                    return;
+                }
+
+                if (calculatedMs !== lastEmittedMs) {
+                    lastEmittedMs = calculatedMs;
+                    setPlayheadMs?.(calculatedMs);
+                }
+            }
+
+            rafId = requestAnimationFrame(smoothTick);
+        };
+
+        rafId = requestAnimationFrame(smoothTick);
+        return () => {
+            if (rafId) cancelAnimationFrame(rafId);
+        };
+    }, [
+        isSolo,
+        isPlaying,
+        streamSrc,
+        isVideoReady,
+        isSpotlightActive,
+        playbackSpeed,
+        outPointMs,
+        baseEpochMs,
+        totalDurationMs,
+        stationName,
+        globalGaps,
+        setPlayheadMs,
+        setIsPlaying
+    ]);
 
     const handleVideoEnded = () => {
         if (isSkippingGapRef.current) return;
@@ -218,8 +263,9 @@ export default function CameraCardFeed({
             setPlayheadMs(nextMs);
             streamStartOffsetMsRef.current = nextMs;
             const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + nextMs}&speed=1&_t=${Date.now()}`;
-            setStreamSrc(newUrl);
+
             setIsVideoReady(false);
+            setStreamSrc(newUrl);
 
             setTimeout(() => { isSkippingGapRef.current = false; }, 300);
             return;
@@ -254,23 +300,32 @@ export default function CameraCardFeed({
                         width: '100%',
                         height: '100%',
                         objectFit: 'contain',
+                        opacity: isVideoReady ? 1 : 0,
+                        transition: 'opacity 0.2s ease-out',
                         zIndex: isVideoReady ? 3 : 1
                     }}
                     playsInline
                     autoPlay
                     muted={getAudioSettings().isMuted}
                     onLoadedData={() => {
-                        setIsVideoReady(true);
                         if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
-                        if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
                     onCanPlay={() => {
                         applyAudioToVideo();
                         if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
                         if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
-                    onPlaying={() => setIsVideoReady(true)}
-                    onTimeUpdate={handleTimeUpdate}
+                    onPlaying={() => {
+                        setIsVideoReady(true);
+                    }}
+                    onWaiting={() => {
+                        setIsVideoReady(false);
+                    }}
+                    onTimeUpdate={() => {
+                        if (!isVideoReady && videoRef.current?.currentTime > 0) {
+                            setIsVideoReady(true);
+                        }
+                    }}
                     onEnded={handleVideoEnded}
                 />
             )}
@@ -296,19 +351,24 @@ export default function CameraCardFeed({
                 ) : null}
             </div>
 
-            {isLoadingFrame && (!isSolo || !isPlaying || !isVideoReady) && (
-                <div className="feed-buffering-overlay" style={{ zIndex: 5, background: 'rgba(10, 14, 23, 0.75)', backdropFilter: 'blur(3px)' }}>
-                    <div className="feed-buffer-spinner" style={{ width: '26px', height: '26px', border: '3px solid rgba(59, 130, 246, 0.2)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                    <span className="feed-buffer-badge" style={{ fontFamily: 'monospace', fontSize: '10px', letterSpacing: '1px', color: '#93c5fd', marginTop: '6px' }}>
-                        LOADING FRAME...
-                    </span>
-                </div>
-            )}
-
             {isSolo && isPlaying && isInRecordingSegment && !isVideoReady && !isSpotlightActive && (
-                <div className="feed-buffering-overlay" style={{ zIndex: 4 }}>
-                    <div className="feed-buffer-spinner" />
-                    <span className="feed-buffer-badge">BUFFERING...</span>
+                <div className="tactical-feed-buffering-overlay">
+                    <div className="buffering-glass-hud">
+                        <div className="radar-dual-ring">
+                            <div className="ring-outer" />
+                            <div className="ring-inner" />
+                            <div className="radar-blip" />
+                        </div>
+                        <div className="hud-meta-stack">
+                            <div className="hud-headline">
+                                <span className="beacon-pulse" />
+                                <span>INITIALIZING STREAM PIPELINE</span>
+                            </div>
+                            <span className="hud-sub">
+                                BUFFERING // {stationName}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

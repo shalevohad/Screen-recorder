@@ -1,7 +1,7 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/TransportBar/TransportBar.jsx
 // ==========================================
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getAudioSettings, saveAudioSettings } from '../../utils/studioSessionStore.js';
 import './TransportBar.scss';
 
@@ -13,11 +13,15 @@ export default function TransportBar({
     setIsPlaying,
     isLooping = true,
     setIsLooping,
+    playheadMs = 0,
+    setPlayheadMs,
+    inPointMs = 0,
+    outPointMs = 3600000,
+    totalDurationMs = 3600000,
     onStepFrameForward,
     onStepFrameBackward,
     playbackSpeed = 1,
     onChangeSpeed,
-    // 💡 כפתורי Cut In ו-Cut Out ייעודיים
     onSetInPoint,
     onSetOutPoint
 }) {
@@ -79,6 +83,88 @@ export default function TransportBar({
         }
     };
 
+    // 💡 מנגנון לחיצה רציפה ומאיצה על כפתורי הפריים
+    const useContinuousStep = (direction) => {
+        const timerRef = useRef(null);
+        const intervalRef = useRef(null);
+        const holdStartRef = useRef(0);
+
+        const stop = useCallback(() => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            timerRef.current = null;
+            intervalRef.current = null;
+        }, []);
+
+        const doStep = useCallback((multiplier = 1) => {
+            if (setIsPlaying) setIsPlaying(false);
+
+            if (setPlayheadMs) {
+                const stepMs = 33 * multiplier;
+                setPlayheadMs(prev => {
+                    const next = direction === 'forward' ? prev + stepMs : prev - stepMs;
+                    return Math.max(0, Math.min(totalDurationMs, next));
+                });
+            } else if (direction === 'forward' && onStepFrameForward) {
+                onStepFrameForward();
+            } else if (direction === 'backward' && onStepFrameBackward) {
+                onStepFrameBackward();
+            }
+        }, [direction, setIsPlaying, setPlayheadMs, totalDurationMs, onStepFrameForward, onStepFrameBackward]);
+
+        const start = useCallback((e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isEnabled) return;
+            stop();
+
+            doStep(1);
+            holdStartRef.current = performance.now();
+
+            timerRef.current = setTimeout(() => {
+                intervalRef.current = setInterval(() => {
+                    const elapsed = performance.now() - holdStartRef.current;
+                    // האצה הדרגתית: רגיל -> פי 2 אחרי שנייה -> פי 4 אחרי 2.5 שניות
+                    const multiplier = elapsed > 2500 ? 4 : (elapsed > 1000 ? 2 : 1);
+                    doStep(multiplier);
+                }, 50);
+            }, 280);
+        }, [isEnabled, doStep, stop]);
+
+        useEffect(() => stop, [stop]);
+
+        return {
+            onMouseDown: start,
+            onMouseUp: stop,
+            onMouseLeave: stop,
+            onTouchStart: start,
+            onTouchEnd: stop
+        };
+    };
+
+    const stepBackwardHandlers = useContinuousStep('backward');
+    const stepForwardHandlers = useContinuousStep('forward');
+
+    // 💡 קפיצה ישירה לתחילת החיתוך (IN)
+    const handleJumpToIn = (e) => {
+        e.stopPropagation();
+        if (!isEnabled) return;
+        if (setIsPlaying) setIsPlaying(false);
+        if (setPlayheadMs) {
+            setPlayheadMs(inPointMs);
+        }
+    };
+
+    // 💡 קפיצה ישירה לסוף החיתוך (OUT)
+    const handleJumpToOut = (e) => {
+        e.stopPropagation();
+        if (!isEnabled) return;
+        if (setIsPlaying) setIsPlaying(false);
+        if (setPlayheadMs) {
+            setPlayheadMs(outPointMs);
+        }
+    };
+
     const renderSpeakerIcon = () => {
         if (isMuted || volume === 0) {
             return (
@@ -123,18 +209,19 @@ export default function TransportBar({
                 {playbackSpeed}x
             </button>
 
-            {/* 💡 כפתור CUT IN */}
+            {/* כפתור CUT IN */}
             <button
                 type="button"
                 className="btn-cut-action cut-in"
                 disabled={!onSetInPoint}
                 onClick={(e) => { e.stopPropagation(); onSetInPoint?.(); }}
-                title="Set CUT IN to current Playhead (Key: [ )"
+                title="Set CUT IN to current Playhead (Key: I)"
             >
                 [ IN
             </button>
 
             <div className="transport-controls-cluster">
+                {/* Loop */}
                 <button
                     type="button"
                     className={`btn-ctrl-action btn-loop ${isLooping ? 'active-loop' : ''}`}
@@ -155,32 +242,34 @@ export default function TransportBar({
 
                 <div className="divider" />
 
+                {/* 1. קפיצה לתחילת החיתוך IN (הכפתור החיצוני) */}
                 <button
                     type="button"
-                    className="btn-ctrl-action"
+                    className="btn-ctrl-action btn-jump-cut accent-in"
                     disabled={!isEnabled}
-                    onClick={(e) => { e.stopPropagation(); onStepFrameBackward && onStepFrameBackward(); }}
-                    title="Jump Back (5s)"
+                    onClick={handleJumpToIn}
+                    title="Jump to Start of Cut (IN Point)"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polygon points="11 19 2 12 11 5 11 19" fill="currentColor" />
-                        <polygon points="22 19 13 12 22 5 22 19" fill="currentColor" />
-                    </svg>
-                </button>
-
-                <button
-                    type="button"
-                    className="btn-ctrl-action"
-                    disabled={!isEnabled}
-                    onClick={(e) => { e.stopPropagation(); onStepFrameBackward && onStepFrameBackward(); }}
-                    title="Step 1 Frame Back"
-                >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <line x1="5" y1="5" x2="5" y2="19" />
+                        <line x1="5" y1="5" x2="5" y2="19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                         <polygon points="19 19 8 12 19 5 19 19" fill="currentColor" />
                     </svg>
                 </button>
 
+                {/* 2. צעד פריים אחורה (הכפתור הפנימי בצמוד ל-Play, תומך לחיצה רציפה ומאיצה) */}
+                <button
+                    type="button"
+                    className="btn-ctrl-action btn-step"
+                    disabled={!isEnabled}
+                    {...stepBackwardHandlers}
+                    title="Step 1 Frame Back (Hold to continuous scrub)"
+                >
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="16 5 7 12 16 19 16 5" />
+                    </svg>
+                </button>
+
+                {/* 3. כפתור Play / Pause */}
                 <button
                     type="button"
                     className={`btn-play-hero ${isPlaying ? 'playing' : ''}`}
@@ -200,40 +289,41 @@ export default function TransportBar({
                     )}
                 </button>
 
+                {/* 4. צעד פריים קדימה (הכפתור הפנימי בצמוד ל-Play, תומך לחיצה רציפה ומאיצה) */}
                 <button
                     type="button"
-                    className="btn-ctrl-action"
+                    className="btn-ctrl-action btn-step"
                     disabled={!isEnabled}
-                    onClick={(e) => { e.stopPropagation(); onStepFrameForward && onStepFrameForward(); }}
-                    title="Step 1 Frame Forward"
+                    {...stepForwardHandlers}
+                    title="Step 1 Frame Forward (Hold to continuous scrub)"
                 >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <line x1="19" y1="5" x2="19" y2="19" />
-                        <polygon points="5 5 16 12 5 19 5 5" fill="currentColor" />
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="8 5 17 12 8 19 8 5" />
                     </svg>
                 </button>
 
+                {/* 5. קפיצה לסוף החיתוך OUT (הכפתור החיצוני) */}
                 <button
                     type="button"
-                    className="btn-ctrl-action"
+                    className="btn-ctrl-action btn-jump-cut accent-out"
                     disabled={!isEnabled}
-                    onClick={(e) => { e.stopPropagation(); onStepFrameForward && onStepFrameForward(); }}
-                    title="Jump Forward (5s)"
+                    onClick={handleJumpToOut}
+                    title="Jump to End of Cut (OUT Point)"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polygon points="13 19 22 12 13 5 13 19" fill="currentColor" />
-                        <polygon points="2 19 11 12 2 5 2 19" fill="currentColor" />
+                        <polygon points="5 5 16 12 5 19 5 5" fill="currentColor" />
+                        <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                     </svg>
                 </button>
             </div>
 
-            {/* 💡 כפתור CUT OUT */}
+            {/* כפתור CUT OUT */}
             <button
                 type="button"
                 className="btn-cut-action cut-out"
                 disabled={!onSetOutPoint}
                 onClick={(e) => { e.stopPropagation(); onSetOutPoint?.(); }}
-                title="Set CUT OUT to current Playhead (Key: ] )"
+                title="Set CUT OUT to current Playhead (Key: O)"
             >
                 OUT ]
             </button>

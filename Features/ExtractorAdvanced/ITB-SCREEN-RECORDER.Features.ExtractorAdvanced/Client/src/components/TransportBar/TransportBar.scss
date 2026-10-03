@@ -113,7 +113,7 @@
                 background: rgba(6, 182, 212, 0.15);
             }
         }
-        /* כפתורי Cut In ו-Cut Out ייעודיים בסרגל */
+
         .btn-cut-action {
             background: rgba(15, 23, 42, 0.7);
             border: 1px solid rgba(6, 182, 212, 0.3);
@@ -184,11 +184,16 @@
                     height: 12px;
                 }
 
-                &:hover {
+                &:hover:not(:disabled) {
                     background: rgba(6, 182, 212, 0.2);
                     border-color: #06b6d4;
                     color: #22d3ee;
                     transform: scale(1.08);
+                }
+
+                &:disabled {
+                    opacity: 0.35;
+                    cursor: not-allowed;
                 }
 
                 &.btn-loop.active-loop {
@@ -200,6 +205,33 @@
                     &:hover {
                         background: rgba(16, 185, 129, 0.3);
                         color: #34D399;
+                    }
+                }
+                // 💡 כפתורי קפיצה ישירה ל-IN ול-OUT (הכפתורים החיצוניים)
+                &.btn-jump-cut {
+                    &.accent-in:hover:not(:disabled) {
+                        background: rgba(0, 229, 255, 0.2);
+                        border-color: #00E5FF;
+                        color: #00E5FF;
+                        box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+                    }
+
+                    &.accent-out:hover:not(:disabled) {
+                        background: rgba(245, 158, 11, 0.2);
+                        border-color: #F59E0B;
+                        color: #FBBF24;
+                        box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+                    }
+                }
+                // 💡 כפתורי צעד פריים צמודים ל-Play (בלחיצה רציפה)
+                &.btn-step {
+                    user-select: none;
+                    -webkit-user-select: none;
+
+                    &:active:not(:disabled) {
+                        transform: scale(0.92);
+                        background: rgba(6, 182, 212, 0.3);
+                        color: #38BDF8;
                     }
                 }
             }
@@ -224,10 +256,15 @@
                     margin-left: 1px;
                 }
 
-                &:hover {
+                &:hover:not(:disabled) {
                     background: #22d3ee;
                     box-shadow: 0 0 24px rgba(6, 182, 212, 0.6);
                     transform: scale(1.06);
+                }
+
+                &:disabled {
+                    opacity: 0.35;
+                    cursor: not-allowed;
                 }
 
                 &.playing {
@@ -238,7 +275,7 @@
                         margin-left: 0;
                     }
 
-                    &:hover {
+                    &:hover:not(:disabled) {
                         background: #fbbf24;
                         box-shadow: 0 0 24px rgba(245, 158, 11, 0.6);
                     }

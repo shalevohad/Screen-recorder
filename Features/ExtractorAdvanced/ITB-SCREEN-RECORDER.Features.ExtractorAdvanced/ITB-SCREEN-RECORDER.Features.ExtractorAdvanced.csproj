@@ -80,13 +80,13 @@
 	<ItemGroup>
 		<Folder Include="Client\src\components\Modals\" />
 		<Folder Include="Client\src\components\ExportMonitor\" />
+		<Folder Include="Client\src\components\Player\" />
 		<Folder Include="Client\src\components\StationDrawer\views\Hub\" />
 		<Folder Include="Client\src\components\StationDrawer\views\Drawer\" />
+		<Folder Include="Client\src\components\Timeline\export\" />
 		<Folder Include="Client\src\components\TransportBar\" />
 		<Folder Include="Client\src\components\TopScopeBar\" />
-		<Folder Include="Client\src\components\Timeline\" />
 		<Folder Include="Client\src\components\Viewport\utils\" />
-		<Folder Include="Client\src\hooks\" />
 		<Folder Include="Tools\Linux\" />
 		<Folder Include="Tools\Win\" />
 		<Folder Include="Client\public\assets\" />
@@ -111,20 +111,17 @@
 	<!-- ========================================================================= -->
 	<Target Name="RemoveReferencedExtractorContentDuplicates" BeforeTargets="ComputeResolvedFilesToPublishList">
 		<ItemGroup>
-			<_ExtractorContentFiles1 Include="@(_SourceItemsToCopyToPublishDirectory)"
-				Condition="$([System.String]::Copy('%(_SourceItemsToCopyToPublishDirectory.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(_SourceItemsToCopyToPublishDirectory.Extension)' != '.dll' And '%(_SourceItemsToCopyToPublishDirectory.Extension)' != '.pdb'" />
+			<_ExtractorContentFiles1 Include="@(_SourceItemsToCopyToPublishDirectory)" Condition="$([System.String]::Copy('%(_SourceItemsToCopyToPublishDirectory.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(_SourceItemsToCopyToPublishDirectory.Extension)' != '.dll' And '%(_SourceItemsToCopyToPublishDirectory.Extension)' != '.pdb'" />
 			<_SourceItemsToCopyToPublishDirectory Remove="@(_ExtractorContentFiles1)" />
 
-			<_ExtractorContentFiles2 Include="@(_SourceItemsToCopyToPublishDirectoryAlways)"
-				Condition="$([System.String]::Copy('%(_SourceItemsToCopyToPublishDirectoryAlways.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(_SourceItemsToCopyToPublishDirectoryAlways.Extension)' != '.dll' And '%(_SourceItemsToCopyToPublishDirectoryAlways.Extension)' != '.pdb'" />
+			<_ExtractorContentFiles2 Include="@(_SourceItemsToCopyToPublishDirectoryAlways)" Condition="$([System.String]::Copy('%(_SourceItemsToCopyToPublishDirectoryAlways.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(_SourceItemsToCopyToPublishDirectoryAlways.Extension)' != '.dll' And '%(_SourceItemsToCopyToPublishDirectoryAlways.Extension)' != '.pdb'" />
 			<_SourceItemsToCopyToPublishDirectoryAlways Remove="@(_ExtractorContentFiles2)" />
 		</ItemGroup>
 	</Target>
 
 	<Target Name="FilterDuplicatePublishOutput" AfterTargets="ComputeResolvedFilesToPublishList" BeforeTargets="_CheckForDuplicatePublishOutputFiles">
 		<ItemGroup>
-			<_DuplicatePublishItems Include="@(ResolvedFileToPublish)"
-				Condition="$([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(ResolvedFileToPublish.Extension)' != '.dll' And '%(ResolvedFileToPublish.Extension)' != '.pdb'" />
+			<_DuplicatePublishItems Include="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(ResolvedFileToPublish.FullPath)').Replace('\', '/').ToLower().Contains('/features/extractor/')) And '%(ResolvedFileToPublish.Extension)' != '.dll' And '%(ResolvedFileToPublish.Extension)' != '.pdb'" />
 			<ResolvedFileToPublish Remove="@(_DuplicatePublishItems)" />
 		</ItemGroup>
 	</Target>

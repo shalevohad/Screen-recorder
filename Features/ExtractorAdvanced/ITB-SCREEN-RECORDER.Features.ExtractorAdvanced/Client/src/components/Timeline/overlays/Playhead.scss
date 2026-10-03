@@ -1,15 +1,17 @@
-﻿// Client/src/components/Timeline/Playhead.scss
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/overlays/Playhead.scss
+// ==========================================
 
 .playhead-overlay-pane {
     position: absolute;
     top: 38px;
     bottom: 0;
     left: 180px;
-    right: 58px; /* שומר מקום לכפתור ה-Export */
+    right: 58px;
     pointer-events: none;
     z-index: 40;
     overflow: hidden;
-    /* 💡 שחרור אינטראקציה לערוצים שמתחת: הרצועה בלתי חוסמת */
+
     .draggable-cut-band {
         position: absolute;
         top: 28px;
@@ -27,7 +29,7 @@
         bottom: 0;
         width: 18px;
         margin-left: -9px;
-        pointer-events: auto !important; // ידיות החיתוך פעילות תמיד
+        pointer-events: auto !important;
         cursor: ew-resize;
         z-index: 35;
         display: flex;
@@ -129,7 +131,7 @@
             border-color: #06B6D4;
         }
     }
-
+    /* 💡 מחט Playhead חלקה עם האצת חומרה מלאה */
     .playhead-needle {
         position: absolute;
         top: 0;
@@ -142,12 +144,19 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        /* האצת חומרה ובידוד חישובים מה-DOM הראשי */
+        will-change: left;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        contain: layout style;
+        transition: none !important; // שולל כל מעבר CSS שעלול ליצור Rubber-banding בריצות 60fps
 
         .needle-core-line {
             width: 2px;
             height: 100%;
             background-color: #06B6D4;
             box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+            pointer-events: none;
         }
 
         .head-badge {
@@ -170,6 +179,9 @@
             white-space: nowrap;
             user-select: none;
             z-index: 50;
+            pointer-events: none;
+            /* החלקה רכה במקום קפיצה חדה כשנצמדים לקצוות המסך */
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease;
 
             &.edge-left {
                 left: 0;
@@ -191,11 +203,12 @@
             background-color: #06B6D4;
             border-radius: 50%;
             box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
+            pointer-events: none;
         }
 
         &:hover .head-badge {
             background-color: #22D3EE;
-            transform: translateX(-50%) scale(1.05);
+            box-shadow: 0 0 14px rgba(34, 211, 238, 0.6);
         }
     }
 }

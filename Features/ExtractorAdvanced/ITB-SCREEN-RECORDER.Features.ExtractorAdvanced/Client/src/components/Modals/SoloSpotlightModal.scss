@@ -44,7 +44,7 @@
     user-select: none;
     direction: ltr !important;
     animation: spotlightFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-    // 💡 עיצוב ה-Toast הטקטי של אישור ייצוא ג'וב
+
     .spotlight-export-toast {
         position: absolute;
         top: 76px;
@@ -288,6 +288,91 @@
             pointer-events: auto;
         }
 
+        .top-hud-left-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+
+            .btn-exit-spotlight {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: rgba(10, 15, 29, 0.92);
+                backdrop-filter: blur(24px);
+                border: 1px solid rgba(244, 63, 94, 0.45);
+                color: #f43f5e;
+                padding: 6px 14px;
+                border-radius: 9999px;
+                font-size: 10.5px;
+                font-weight: 800;
+                letter-spacing: 0.8px;
+                cursor: pointer;
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+                transition: all 0.2s ease;
+
+                kbd {
+                    background: rgba(244, 63, 94, 0.15);
+                    border: 1px solid rgba(244, 63, 94, 0.35);
+                    padding: 2px 5px;
+                    border-radius: 4px;
+                    font-size: 9px;
+                }
+
+                &:hover {
+                    background: #f43f5e;
+                    color: #020617;
+                    box-shadow: 0 0 20px rgba(244, 63, 94, 0.6);
+
+                    kbd {
+                        background: rgba(0, 0, 0, 0.3);
+                        color: #fff;
+                    }
+                }
+            }
+
+            .btn-spotlight-help {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                background: rgba(10, 15, 29, 0.92);
+                backdrop-filter: blur(24px);
+                border: 1px solid rgba(56, 189, 248, 0.35);
+                color: #38BDF8;
+                padding: 6px 14px;
+                border-radius: 9999px;
+                font-size: 10.5px;
+                font-weight: 800;
+                letter-spacing: 0.6px;
+                cursor: pointer;
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+                transition: all 0.2s ease;
+
+                .help-icon-symbol {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 50%;
+                    background: rgba(56, 189, 248, 0.2);
+                    font-size: 9.5px;
+                    font-weight: 900;
+                    font-family: var(--font-mono, monospace);
+                }
+
+                &:hover {
+                    background: #38BDF8;
+                    color: #020617;
+                    box-shadow: 0 0 16px rgba(56, 189, 248, 0.5);
+
+                    .help-icon-symbol {
+                        background: #020617;
+                        color: #38BDF8;
+                    }
+                }
+            }
+        }
+
         .station-brand-pill {
             display: flex;
             align-items: center;
@@ -435,10 +520,63 @@
             z-index: 2;
             opacity: 1 !important;
 
-            .clock-timecode, .cut-duration-pill {
+            .cut-actions-cluster {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+
+                .cut-duration-pill {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    text-align: left;
+
+                    .label {
+                        font-size: 8.5px;
+                        font-weight: 800;
+                        letter-spacing: 0.8px;
+                        color: #64748b;
+                    }
+
+                    .val {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 12.5px;
+                        font-weight: 800;
+                        color: #10b981;
+                        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+                    }
+                }
+
+                .btn-export-cut-hero {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    background: #10B981;
+                    border: 1px solid #059669;
+                    color: #020617;
+                    padding: 6px 14px;
+                    border-radius: 9999px;
+                    font-family: var(--font-primary, 'Inter', sans-serif);
+                    font-size: 10px;
+                    font-weight: 900;
+                    letter-spacing: 0.6px;
+                    cursor: pointer;
+                    box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+                    transition: all 0.2s ease;
+
+                    &:hover {
+                        background: #34D399;
+                        box-shadow: 0 0 20px rgba(16, 185, 129, 0.55);
+                        transform: translateY(-1px);
+                    }
+                }
+            }
+
+            .clock-timecode {
                 display: flex;
                 flex-direction: column;
                 gap: 2px;
+                text-align: right;
 
                 .label {
                     font-size: 8.5px;
@@ -447,24 +585,12 @@
                     color: #64748b;
                 }
 
-                .digits, .val {
+                .digits {
                     font-family: 'JetBrains Mono', monospace;
                     font-size: 12.5px;
                     font-weight: 800;
                     color: #06b6d4;
                     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-                }
-            }
-
-            .clock-timecode {
-                text-align: right;
-            }
-
-            .cut-duration-pill {
-                text-align: left;
-
-                .val {
-                    color: #10b981;
                 }
             }
 

@@ -14,6 +14,7 @@ export default function TopScopeBar({
     onResetActiveStation,
     onOpenRangeModal,
     onOpenBookmarksModal,
+    onOpenHelpModal, // 💡 פתיחת מודאל המקשים
     onToggleDrawer,
     isInitialSetup = false,
     selectedCount = 0,
@@ -23,25 +24,44 @@ export default function TopScopeBar({
     const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false);
 
     const formattedScopeRange = useMemo(() => {
-        const startEpoch = baseEpochMs;
-        const endEpoch = baseEpochMs + timeRange.durationMs;
+        const startEpoch = baseEpochMs || (timeRange?.start ? new Date(timeRange.start).getTime() : Date.now());
+        const durationMs = timeRange?.durationMs || 0;
+        const endEpoch = startEpoch + durationMs;
         const pad = (n) => String(n).padStart(2, '0');
 
         const dStart = new Date(startEpoch);
         const dEnd = new Date(endEpoch);
 
         if (timeMode === 'UTC') {
-            const dateStr = `${dStart.getUTCFullYear()}-${pad(dStart.getUTCMonth() + 1)}-${pad(dStart.getUTCDate())}`;
+            const sDate = `${dStart.getUTCFullYear()}-${pad(dStart.getUTCMonth() + 1)}-${pad(dStart.getUTCDate())}`;
             const sTime = `${pad(dStart.getUTCHours())}:${pad(dStart.getUTCMinutes())}:${pad(dStart.getUTCSeconds())}`;
+            
+            const eDate = `${dEnd.getUTCFullYear()}-${pad(dEnd.getUTCMonth() + 1)}-${pad(dEnd.getUTCDate())}`;
             const eTime = `${pad(dEnd.getUTCHours())}:${pad(dEnd.getUTCMinutes())}:${pad(dEnd.getUTCSeconds())}`;
-            return `${dateStr} ${sTime} ➔ ${eTime} (UTC)`;
+
+            const endFormatted = sDate === eDate ? eTime : `${eDate} ${eTime}`;
+            return `${sDate} ${sTime} ➔ ${endFormatted} (UTC)`;
         }
 
-        const dateStr = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
+        const sDate = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
         const sTime = `${pad(dStart.getHours())}:${pad(dStart.getMinutes())}:${pad(dStart.getSeconds())}`;
+        
+        const eDate = `${dEnd.getFullYear()}-${pad(dEnd.getMonth() + 1)}-${pad(dEnd.getDate())}`;
         const eTime = `${pad(dEnd.getHours())}:${pad(dEnd.getMinutes())}:${pad(dEnd.getSeconds())}`;
-        return `${dateStr} ${sTime} ➔ ${eTime} (LOCAL)`;
-    }, [baseEpochMs, timeRange.durationMs, timeMode]);
+
+        const endFormatted = sDate === eDate ? eTime : `${eDate} ${eTime}`;
+        return `${sDate} ${sTime} ➔ ${endFormatted} (LOCAL)`;
+    }, [baseEpochMs, timeRange?.start, timeRange?.durationMs, timeMode]);
+
+    const formattedDuration = useMemo(() => {
+        const totalMinutes = Math.floor((timeRange?.durationMs || 0) / 60000);
+        if (totalMinutes >= 1440) {
+            const days = (totalMinutes / 1440).toFixed(1);
+            const cleanDays = days.endsWith('.0') ? parseInt(days, 10) : days;
+            return `(${cleanDays}d / ${totalMinutes}m Total)`;
+        }
+        return `(${totalMinutes}m Total)`;
+    }, [timeRange?.durationMs]);
 
     const handleConfirmReset = () => {
         setIsConfirmResetOpen(false);
@@ -59,7 +79,7 @@ export default function TopScopeBar({
                     title="Click to modify mission time window"
                 >
                     <span className="time-string">{formattedScopeRange}</span>
-                    <span className="total-duration">({Math.floor(timeRange.durationMs / 60000)}m Total)</span>
+                    <span className="total-duration">{formattedDuration}</span>
                 </div>
 
                 <div className="time-mode-toggle-group">
@@ -117,6 +137,17 @@ export default function TopScopeBar({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                     </svg>
                     <span>BOOKMARKS</span>
+                </button>
+
+                {/* 💡 כפתור חלון מקשי הקיצור והעזרה */}
+                <button
+                    type="button"
+                    onClick={onOpenHelpModal}
+                    className="btn-help-shortcuts"
+                    title="Keyboard Shortcuts & Controls Cheat Sheet (Press ?)"
+                >
+                    <span className="help-icon-symbol">?</span>
+                    <span>SHORTCUTS</span>
                 </button>
 
                 <button

@@ -1,7 +1,7 @@
 // Client/src/components/Timeline/TimelineContextMenu.jsx
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { formatTimelineClock } from '../../utils/timeFormat.js';
+import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './TimelineContextMenu.scss';
 
 export default function TimelineContextMenu({

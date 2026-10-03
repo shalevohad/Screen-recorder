@@ -1,6 +1,6 @@
 ﻿// Client/src/components/Timeline/TimelineMinimap.jsx
 import React from 'react';
-import { formatTimelineClock } from '../../utils/timeFormat.js';
+import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './TimelineMinimap.scss';
 
 export default function TimelineMinimap({

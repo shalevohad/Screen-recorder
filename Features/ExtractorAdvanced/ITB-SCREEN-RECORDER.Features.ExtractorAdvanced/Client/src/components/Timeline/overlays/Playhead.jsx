@@ -1,5 +1,7 @@
-﻿// Client/src/components/Timeline/Playhead.jsx
-import React from 'react';
+﻿// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/overlays/Playhead.jsx
+// ==========================================
+import React, { useMemo } from 'react';
 import './Playhead.scss';
 
 const formatTimelineClock = (epochMs, mode = 'LOCAL') => {
@@ -14,7 +16,7 @@ const formatTimelineClock = (epochMs, mode = 'LOCAL') => {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
-export default function Playhead({
+function Playhead({
     baseEpochMs = 0,
     timeMode = 'LOCAL',
     viewportStartMs = 0,
@@ -54,12 +56,16 @@ export default function Playhead({
     const isInAtEdge = inPercent <= 0.2 && inPercent >= -0.2;
     const isOutAtEdge = outPercent >= 99.8 && outPercent <= 100.2;
 
-    const isPlayheadNearLeft = rawPlayheadPercent >= -0.2 && rawPlayheadPercent < 4.5;
-    const isPlayheadNearRight = rawPlayheadPercent > 95.5 && rawPlayheadPercent <= 100.2;
+    // 💡 זיהוי הגעה לקצוות (למניעת חיתוך התגית מחוץ למסך)
+    const isPlayheadNearLeft = rawPlayheadPercent >= -0.2 && rawPlayheadPercent < 3.5;
+    const isPlayheadNearRight = rawPlayheadPercent > 96.5 && rawPlayheadPercent <= 100.2;
+
+    const formattedTime = useMemo(() => {
+        return formatTimelineClock(baseEpochMs + playheadMs, timeMode);
+    }, [baseEpochMs, playheadMs, timeMode]);
 
     return (
         <div className="playhead-overlay-pane">
-
             {visibleRangeWidth > 0 && (
                 <div
                     className="draggable-cut-band"
@@ -91,7 +97,7 @@ export default function Playhead({
                 <div className="marker-core-line" />
             </div>
 
-            {/* מחט Playhead */}
+            {/* 💡 מחט Playhead מואצת חומרה (GPU-driven) */}
             {isPlayheadInViewport && (
                 <div
                     className="playhead-needle"
@@ -100,13 +106,15 @@ export default function Playhead({
                     title="Drag Playhead"
                 >
                     <div className={`head-badge ${isPlayheadNearLeft ? 'edge-left' : ''} ${isPlayheadNearRight ? 'edge-right' : ''}`}>
-                        {formatTimelineClock(baseEpochMs + playheadMs, timeMode)}
+                        {formattedTime}
                     </div>
                     <div className="needle-core-line" />
-                    {/* ידית אחיזה תחתונה מעוגלת */}
                     <div className="bottom-handle-node" />
                 </div>
             )}
         </div>
     );
 }
+
+// 💡 עטיפה ב-memo כדי למנוע רינדורי סרק כשהלוח מסביב מתעדכן
+export default React.memo(Playhead);

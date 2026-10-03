@@ -3,11 +3,10 @@
 // ==========================================
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import CameraCard from './views/Card/CameraCard.jsx';
+import StudioVideoFeed from '../Player/StudioVideoFeed.jsx';
 import { calculateOptimalGrid } from './utils/viewportLayoutCalculator.js';
 import './MulticamViewport.scss';
 
-// 💡 חישוב קיבולת עמוד דינמית: מוצא את גריד ה-(cols x rows) המקסימלי
-// שבו הכרטיסיות נשארות גדולות וקריאות וממלאות 100% מהחלל ללא משבצות ריקות
 function computeOptimalPageCapacity(width, height, gap = 14) {
     if (!width || !height) return 12;
 
@@ -17,7 +16,6 @@ function computeOptimalPageCapacity(width, height, gap = 14) {
     const maxCols = Math.max(1, Math.floor((width + gap) / (minCardWidth + gap)));
     const maxRows = Math.max(1, Math.floor((height + gap) / (minCardHeight + gap)));
 
-    // הגבלת תקרה למניעת דחיסות יתר במסכי ענק
     const effectiveCols = Math.min(maxCols, width > 2200 ? 5 : 4);
     const effectiveRows = Math.min(maxRows, height > 1100 ? 4 : 3);
 
@@ -91,7 +89,6 @@ export default function MulticamViewport({
         return Math.round(baseEpochMs + playheadMs);
     }, [baseEpochMs, playheadMs]);
 
-    // מעקב ממדי הקונטיינר בזמן אמת
     useEffect(() => {
         if (!containerRef.current) return;
         const updateDims = () => {
@@ -108,7 +105,6 @@ export default function MulticamViewport({
         return () => observer.disconnect();
     }, []);
 
-    // חישוב קיבולת העמוד על פי האלגוריתם והשטח הפנוי
     const dynamicPageCapacity = useMemo(() => {
         return computeOptimalPageCapacity(containerDimensions.width, containerDimensions.height, 14);
     }, [containerDimensions.width, containerDimensions.height]);
@@ -121,7 +117,6 @@ export default function MulticamViewport({
         }
     }, [totalPages, currentPage]);
 
-    // גזירת התחנות להצגה (כולן במצב WALL, או קבוצה מלאה במצב PAGED)
     const visibleStations = useMemo(() => {
         if (viewMode === 'wall' || timelineStations.length <= dynamicPageCapacity) {
             return timelineStations;
@@ -130,10 +125,9 @@ export default function MulticamViewport({
         return timelineStations.slice(start, start + dynamicPageCapacity);
     }, [timelineStations, viewMode, dynamicPageCapacity, currentPage]);
 
-    // הפעלת אלגוריתם הפריסה האופטימלי על התחנות הנבחרות
     useEffect(() => {
         const count = visibleStations.length;
-        if (count === 0 || activeStation) return;
+        if (count <= 1 || activeStation) return;
 
         const { width, height } = containerDimensions;
         if (width <= 0 || height <= 0) return;
@@ -148,28 +142,74 @@ export default function MulticamViewport({
 
     if (timelineStations.length === 0 && !activeStation) return null;
 
-    if (activeStation) {
+    const isSingleStationMode = timelineStations.length === 1;
+    const soloStationToRender = activeStation || (isSingleStationMode ? timelineStations[0] : null);
+
+    if (soloStationToRender) {
         return (
             <div className="multicam-viewport-root solo">
-                <CameraCard
-                    key={activeStation.id || 'solo'}
-                    station={activeStation}
-                    isSolo={true}
-                    currentEpochMs={currentEpochMs}
-                    timeMode={timeMode}
-                    isPlaying={isPlaying}
-                    setIsPlaying={setIsPlaying}
-                    baseEpochMs={baseEpochMs}
-                    totalDurationMs={totalDurationMs}
-                    outPointMs={outPointMs}
-                    setPlayheadMs={setPlayheadMs}
-                    isSpotlightActive={isSpotlightActive}
-                    globalGaps={globalGaps}
-                    onOpenSpotlight={onOpenSpotlight}
-                    onSelectActiveStation={onSelectActiveStation}
-                    recordingSegments={recordingSegments}
-                    playbackSpeed={playbackSpeed}
-                />
+                <div
+                    className="spotlight-workspace-viewport"
+                    onClick={() => onOpenSpotlight && onOpenSpotlight(soloStationToRender.id)}
+                    onContextMenu={(e) => {
+                        e.preventDefault();
+                        if (!isSingleStationMode && onSelectActiveStation) {
+                            onSelectActiveStation(null);
+                        }
+                    }}
+                >
+                    <div className="spotlight-viewport-header">
+                        <div className="header-meta-group">
+                            <span className="status-dot live" />
+                            <span className="station-name">
+                                {soloStationToRender.hostname || soloStationToRender.displayName || soloStationToRender.name}
+                            </span>
+                            <span className="feed-spec">
+                                {soloStationToRender.feedSpec || `${soloStationToRender.resolution || '1080p'} • ${soloStationToRender.fps || 30}fps`}
+                            </span>
+                        </div>
+
+                        <button
+                            type="button"
+                            className="btn-fullscreen-trigger"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenSpotlight && onOpenSpotlight(soloStationToRender.id);
+                            }}
+                            title="Expand to Fullscreen"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="14" height="14">
+                                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div className="spotlight-feed-wrapper">
+                        <StudioVideoFeed
+                            station={soloStationToRender}
+                            baseEpochMs={baseEpochMs}
+                            totalDurationMs={totalDurationMs}
+                            playheadMs={playheadMs}
+                            setPlayheadMs={setPlayheadMs}
+                            isPlaying={isPlaying}
+                            setIsPlaying={setIsPlaying}
+                            playbackSpeed={playbackSpeed}
+                            timeMode={timeMode}
+                            inPointMs={inPointMs}
+                            outPointMs={outPointMs}
+                            isLooping={true}
+                            recordingSegments={recordingSegments}
+                            globalGaps={globalGaps}
+                            showWatermark={false}
+                        />
+
+                        <div className="spotlight-interaction-hint">
+                            <span className="hint-pill">
+                                {isSingleStationMode ? 'L-Click: Fullscreen' : 'L-Click: Fullscreen • R-Click: Back to Grid'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -180,7 +220,6 @@ export default function MulticamViewport({
 
     return (
         <div className="multicam-viewport-root multicam">
-            {/* סרגל בקרה צף לבחירה בין WALL ל-PAGED ודפדוף מהיר */}
             {showControls && (
                 <div className="viewport-matrix-toolbar">
                     <div className="mode-toggle-pill">

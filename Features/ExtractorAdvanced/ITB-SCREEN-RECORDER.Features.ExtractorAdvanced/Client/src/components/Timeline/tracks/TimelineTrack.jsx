@@ -2,7 +2,7 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineTrack.jsx
 // ==========================================
 import React, { useMemo, useState, useEffect } from 'react';
-import { spritesheetStore } from '../../utils/spritesheetStore.js';
+import { spritesheetStore } from '../../../utils/spritesheetStore.js';
 import './TimelineTrack.scss';
 
 const getLodConfig = (viewportDurationMs) => {

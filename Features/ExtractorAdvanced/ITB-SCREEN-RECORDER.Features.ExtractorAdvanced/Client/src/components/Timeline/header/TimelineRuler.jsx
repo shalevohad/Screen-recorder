@@ -2,15 +2,14 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineRuler.jsx
 // ==========================================
 import React, { useRef, useMemo, useState, useEffect } from 'react';
-import { formatTimelineClock } from '../../utils/timeFormat.js';
+import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './TimelineRuler.scss';
 
-// מרווחי זמן עגולים ומסודרים
 const NICE_INTERVALS_MS = [
-    1000, 2000, 5000, 10000, 15000, 30000,             // שניות
-    60000, 120000, 300000, 600000, 900000, 1800000,    // 1, 2, 5, 10, 15, 30 דקות
-    3600000, 7200000, 14400000, 21600000, 43200000,    // 1, 2, 4, 6, 12 שעות
-    86400000                                           // 24 שעות
+    1000, 2000, 5000, 10000, 15000, 30000,
+    60000, 120000, 300000, 600000, 900000, 1800000,
+    3600000, 7200000, 14400000, 21600000, 43200000,
+    86400000
 ];
 
 export default function TimelineRuler({
@@ -24,7 +23,9 @@ export default function TimelineRuler({
     onSeek,
     inPointMs,
     outPointMs,
-    earliestMediaMs = null
+    earliestMediaMs = null,
+    movieBoundaries = null,
+    activeStationName = ''
 }) {
     const rulerRef = useRef(null);
     const [pixelWidth, setPixelWidth] = useState(1000);
@@ -45,6 +46,10 @@ export default function TimelineRuler({
     const toPercent = (ms) => {
         if (!viewportDurationMs) return 0;
         return ((ms - viewportStartMs) / viewportDurationMs) * 100;
+    };
+
+    const isVisibleInViewport = (ms) => {
+        return ms !== null && ms !== undefined && ms >= viewportStartMs && ms <= (viewportStartMs + viewportDurationMs);
     };
 
     const handleMouseMove = (e) => {
@@ -125,11 +130,101 @@ export default function TimelineRuler({
         return boundaries;
     }, [baseEpochMs, viewportStartMs, viewportDurationMs, timeMode]);
 
-    // בדיקה האם נקודת ההקלטה הראשונה גלויה בחלון הזום הנוכחי
-    const isFirstMediaVisible = earliestMediaMs !== null &&
-        earliestMediaMs >= viewportStartMs &&
-        earliestMediaMs <= (viewportStartMs + viewportDurationMs);
-    const firstMediaPct = isFirstMediaVisible ? toPercent(earliestMediaMs) : null;
+    const {
+        globalFirstMs = earliestMediaMs,
+        globalLastMs = null,
+        currentFirstMs = null,
+        currentLastMs = null
+    } = movieBoundaries || { globalFirstMs: earliestMediaMs };
+
+    const isFirstOverlapping = globalFirstMs !== null && currentFirstMs !== null && Math.abs(globalFirstMs - currentFirstMs) < 1000;
+    const isLastOverlapping = globalLastMs !== null && currentLastMs !== null && Math.abs(globalLastMs - currentLastMs) < 1000;
+
+    const mediaPins = useMemo(() => {
+        const list = [];
+
+        if (isFirstOverlapping) {
+            if (isVisibleInViewport(globalFirstMs)) {
+                list.push({
+                    id: 'first-combined',
+                    ms: globalFirstMs,
+                    pct: toPercent(globalFirstMs),
+                    className: 'ruler-media-pin global-first combined',
+                    badge: 'FIRST (ALL & ACTIVE)',
+                    title: `First Media (All & Active Station): ${formatTimelineClock(baseEpochMs + globalFirstMs, timeMode)} (Click to jump)`
+                });
+            }
+        } else {
+            if (isVisibleInViewport(globalFirstMs)) {
+                list.push({
+                    id: 'first-global',
+                    ms: globalFirstMs,
+                    pct: toPercent(globalFirstMs),
+                    className: 'ruler-media-pin global-first',
+                    badge: 'FIRST (ALL)',
+                    title: `Global First Media: ${formatTimelineClock(baseEpochMs + globalFirstMs, timeMode)} (Click to jump)`
+                });
+            }
+            if (isVisibleInViewport(currentFirstMs)) {
+                list.push({
+                    id: 'first-current',
+                    ms: currentFirstMs,
+                    pct: toPercent(currentFirstMs),
+                    className: 'ruler-media-pin current-first',
+                    badge: activeStationName ? `FIRST (${activeStationName})` : 'FIRST (ACTIVE)',
+                    title: `Active Station First Media: ${formatTimelineClock(baseEpochMs + currentFirstMs, timeMode)} (Click to jump)`
+                });
+            }
+        }
+
+        if (isLastOverlapping) {
+            if (isVisibleInViewport(globalLastMs)) {
+                list.push({
+                    id: 'last-combined',
+                    ms: globalLastMs,
+                    pct: toPercent(globalLastMs),
+                    className: 'ruler-media-pin global-last combined',
+                    badge: 'LAST (ALL & ACTIVE)',
+                    title: `Last Media (All & Active Station): ${formatTimelineClock(baseEpochMs + globalLastMs, timeMode)} (Click to jump)`
+                });
+            }
+        } else {
+            if (isVisibleInViewport(currentLastMs)) {
+                list.push({
+                    id: 'last-current',
+                    ms: currentLastMs,
+                    pct: toPercent(currentLastMs),
+                    className: 'ruler-media-pin current-last',
+                    badge: activeStationName ? `LAST (${activeStationName})` : 'LAST (ACTIVE)',
+                    title: `Active Station Last Media: ${formatTimelineClock(baseEpochMs + currentLastMs, timeMode)} (Click to jump)`
+                });
+            }
+            if (isVisibleInViewport(globalLastMs)) {
+                list.push({
+                    id: 'last-global',
+                    ms: globalLastMs,
+                    pct: toPercent(globalLastMs),
+                    className: 'ruler-media-pin global-last',
+                    badge: 'LAST (ALL)',
+                    title: `Global Last Media: ${formatTimelineClock(baseEpochMs + globalLastMs, timeMode)} (Click to jump)`
+                });
+            }
+        }
+
+        return list;
+    }, [
+        globalFirstMs,
+        globalLastMs,
+        currentFirstMs,
+        currentLastMs,
+        isFirstOverlapping,
+        isLastOverlapping,
+        viewportStartMs,
+        viewportDurationMs,
+        baseEpochMs,
+        timeMode,
+        activeStationName
+    ]);
 
     const hoverPercent = hoverMs !== null ? toPercent(hoverMs) : null;
     const isHoverVisible = hoverPercent !== null && hoverPercent >= 0 && hoverPercent <= 100;
@@ -176,17 +271,18 @@ export default function TimelineRuler({
                     </div>
                 ))}
 
-                {/* 💡 סמן סיכה טקטי נקי ומדויק לנקודת ההקלטה המוקדמת ביותר */}
-                {isFirstMediaVisible && (
+                {mediaPins.map(pin => (
                     <div
-                        className="ruler-first-media-pin"
-                        style={{ left: `${firstMediaPct}%` }}
+                        key={pin.id}
+                        className={pin.className}
+                        style={{ left: `${pin.pct}%` }}
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (onSeek) onSeek(earliestMediaMs);
+                            if (onSeek) onSeek(pin.ms);
                         }}
-                        title={`First Media Recorded: ${formatTimelineClock(baseEpochMs + earliestMediaMs, timeMode)} (Click to jump)`}
+                        title={pin.title}
                     >
+                        <div className="pin-badge">{pin.badge}</div>
                         <div className="pin-head">
                             <svg viewBox="0 0 24 24" fill="currentColor">
                                 <polygon points="12 18 6 6 18 6 12 18" />
@@ -194,7 +290,7 @@ export default function TimelineRuler({
                         </div>
                         <div className="pin-line" />
                     </div>
-                )}
+                ))}
             </div>
 
             {isHoverVisible && (
