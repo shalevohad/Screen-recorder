@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import RangeSlider from './RangeSlider';
+import RangeSlider from '../UI/RangeSlider';
 import './TabConfigModal.scss';
 
 export default function TabConfigModal({

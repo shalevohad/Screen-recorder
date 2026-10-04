@@ -1,5 +1,5 @@
 import StationThumbnail from '../Station/StationThumbnail';
-import RemoteWidgetHost from '../UI/RemoteWidgetHost';
+import RemoteWidgetHost from '../Plugins/RemoteWidgetHost';
 import './StationsGridView.scss';
 
 export default function StationsGridView({
