@@ -1,7 +1,7 @@
 // ==========================================
 // File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
 // ==========================================
-import { useMemo, useCallback, useRef } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useDashboardLogic } from './useDashboardLogic';
 
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
@@ -20,7 +20,7 @@ export default function DashboardGrid(props) {
     const logic = useDashboardLogic(props);
 
     const {
-        stations, actionPending, onToggleStream,
+        stations = [], actionPending, onToggleStream,
         onQuickBookmark, onQuickPlayback, systemConfig, onSystemConfigUpdate,
         direction, hideOffline, onToggleHideOffline,
         isFaultFilterActive, onExitFaultFilter
@@ -36,13 +36,8 @@ export default function DashboardGrid(props) {
         logic.handleCloseFeature(featId);
     }, [logic]);
 
-    // שמירת ה-Hostname האחרון ברפרנס יציב כדי למנוע היבהוב גם אם stations מתרוקן רגעית ב-Reconnect
-    const lastKnownHostRef = useRef('OHAD-DESKTOP');
-    if (stations && stations.length > 0 && stations[0]?.hostname) {
-        lastKnownHostRef.current = stations[0].hostname;
-    }
-
-    const activeTargetHost = logic.focusedWidgetHost || lastKnownHostRef.current;
+    // 💡 גזירה ישירה ונקייה של ה-Host הפעיל ללא שימוש ב-ref בזמן רינדור
+    const activeTargetHost = logic.focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP';
     const activeFeatureId = logic.activeFeatureObject?.id;
 
     const extractorWidgetProps = useMemo(() => ({
