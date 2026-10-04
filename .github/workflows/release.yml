@@ -12,6 +12,7 @@ on:
         description: 'גרסה מותאמת אישית (לדוגמה: 2.1.4)'
         required: false
         default: ''
+        type: string
 
 jobs:
   version:
@@ -70,6 +71,11 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
+    - name: Setup Node.js (for Feature Client widgets)
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
     - name: Shutdown .NET Build Server
       run: dotnet build-server shutdown
 
@@ -77,9 +83,11 @@ jobs:
       shell: pwsh
       run: |
         $toolsDir = "Tools/Win"
-        New-Item -ItemType Directory -Force -Path $toolsDir
+        New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
         $agentDir = "ITB-SCREEN-RECORDER.AgentWorker"
-        New-Item -ItemType Directory -Force -Path $agentDir
+        New-Item -ItemType Directory -Force -Path $agentDir | Out-Null
+        $serverMtxDir = "ITB-SCREEN-RECORDER.Server/MediaMTX"
+        New-Item -ItemType Directory -Force -Path $serverMtxDir | Out-Null
         
         # 1. הורדת FFmpeg & FFprobe
         $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
@@ -104,10 +112,10 @@ jobs:
         $ffmpegExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
         $ffprobeExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
 
-        Copy-Item $ffmpegExe.FullName -Destination "$toolsDir\ffmpeg.exe"
-        Copy-Item $ffmpegExe.FullName -Destination "$agentDir\ffmpeg.exe"
-        Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe"
-        Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe"
+        Copy-Item $ffmpegExe.FullName -Destination "$toolsDir\ffmpeg.exe" -Force
+        Copy-Item $ffmpegExe.FullName -Destination "$agentDir\ffmpeg.exe" -Force
+        Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe" -Force
+        Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe" -Force
 
         # 2. הורדת MediaMTX עבור Windows
         Write-Host "Downloading MediaMTX for Windows..."
@@ -115,7 +123,18 @@ jobs:
         $mediamtxZip = "mediamtx_win.zip"
         Invoke-WebRequest -Uri $mediamtxUrl -OutFile $mediamtxZip
         Expand-Archive -Path $mediamtxZip -DestinationPath "mediamtx_win_extracted" -Force
-        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$toolsDir\mediamtx.exe"
+        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$toolsDir\mediamtx.exe" -Force
+        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$serverMtxDir\mediamtx.exe" -Force
+
+    - name: Install Feature Node Dependencies
+      shell: pwsh
+      run: |
+        Get-ChildItem -Path "Features" -Filter "package.json" -Recurse | Where-Object { $_.FullName -notmatch "node_modules" } | ForEach-Object {
+            Write-Host "Installing dependencies for $($_.DirectoryName)..."
+            Push-Location $_.DirectoryName
+            npm ci --prefer-offline --no-audit || npm install
+            Pop-Location
+        }
 
     - name: Restore NuGet dependencies
       run: dotnet restore ITB-Screen-Recorder.sln
@@ -140,6 +159,8 @@ jobs:
   build-linux:
     needs: version
     runs-on: ubuntu-latest
+    env:
+      CI: 'true'
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -149,12 +170,23 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
+    - name: Setup Node.js (for Feature Client widgets)
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Ensure Shell Scripts Execution Permissions
+      run: |
+        find Installers/Linux -type f -name "*.sh" -exec chmod +x {} +
+
     - name: Download FFmpeg, FFprobe & MediaMTX for Linux
       run: |
         TOOLS_DIR="Tools/Linux"
         AGENT_DIR="ITB-SCREEN-RECORDER.AgentWorker"
+        SERVER_MTX_DIR="ITB-SCREEN-RECORDER.Server/MediaMTX"
         mkdir -p "$TOOLS_DIR"
         mkdir -p "$AGENT_DIR"
+        mkdir -p "$SERVER_MTX_DIR"
         
         # 1. FFmpeg & FFprobe
         curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
@@ -173,7 +205,16 @@ jobs:
         curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
         tar -xzf mediamtx_linux.tar.gz mediamtx
         cp mediamtx "$TOOLS_DIR/mediamtx"
-        chmod +x "$TOOLS_DIR/mediamtx"
+        cp mediamtx "$SERVER_MTX_DIR/mediamtx"
+        chmod +x "$TOOLS_DIR/mediamtx" "$SERVER_MTX_DIR/mediamtx"
+
+    - name: Install Feature Node Dependencies
+      run: |
+        find Features -name "package.json" -not -path "*/node_modules/*" | while read -r pkg; do
+          dir=$(dirname "$pkg")
+          echo "Installing dependencies for $dir..."
+          (cd "$dir" && (npm ci --prefer-offline --no-audit || npm install))
+        done
 
     - name: Restore NuGet dependencies
       run: dotnet restore ITB-Screen-Recorder.sln
@@ -185,6 +226,9 @@ jobs:
         
         # פריסה ובניית מתקין ה-Agent ללינוקס
         dotnet build Installers/Linux/ITB-SCREEN-RECORDER.Agent.Linux.Installer/ITB-SCREEN-RECORDER.Agent.Linux.Installer.csproj -c Release -p:Version=${{ needs.version.outputs.version }}
+        
+        # וידוא הרשאות ריצה לחבילות ה-run הנוצרות
+        chmod +x Publish/Server/linux/*.run Publish/Agent/linux/*.run || true
 
     - name: Upload Linux Artifacts (.run packages)
       uses: actions/upload-artifact@v4
@@ -204,15 +248,17 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: all-artifacts
-        merge-by: true
+        merge-multiple: true
 
     - name: Create GitHub Release and Upload All Assets
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ needs.version.outputs.tag }}
         name: Release ${{ needs.version.outputs.tag }}
         draft: false
         prerelease: false
-        files: all-artifacts/*
+        files: |
+          all-artifacts/*.msi
+          all-artifacts/*.run
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
