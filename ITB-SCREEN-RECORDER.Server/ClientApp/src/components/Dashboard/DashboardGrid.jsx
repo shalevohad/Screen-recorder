@@ -1,10 +1,12 @@
-// Client/src/components/Dashboard/DashboardGrid.jsx
+// ==========================================
+// File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
+// ==========================================
 import { useDashboardLogic } from './useDashboardLogic';
 
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
 import FullscreenModal from '../Station/FullscreenModal';
-import RemoteWidgetHost from '../UI/RemoteWidgetHost';
-import FleetTabs from '../UI/FleetTabs';
+import RemoteWidgetHost from '../Plugins/RemoteWidgetHost';
+import FleetTabs from '../Fleet/FleetTabs';
 
 import DashboardDock from './DashboardDock';
 import SearchShelf from './SearchShelf';

@@ -1,10 +1,12 @@
-﻿// Client/src/App.jsx
+﻿// ==========================================
+// File: ClientApp/src/App.jsx
+// ==========================================
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as signalR from '@microsoft/signalr';
-import CommandCenterHeader from './components/UI/CommandCenterHeader';
+import CommandCenterHeader from './components/Layout/CommandCenterHeader';
+import GlobalJobIndicator from './components/Layout/GlobalJobIndicator';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
 import SettingsModal from './components/Settings/SettingsModal';
-import GlobalJobIndicator from './components/UI/GlobalJobIndicator';
 import './App.scss';
 
 const LOCAL_WALLPAPERS = {
@@ -271,7 +273,6 @@ export default function App() {
                     />
                 )}
 
-                {/* קפסולת משימות מערכתית צפה - חיה מעל כל המסכים והמודולים */}
                 <GlobalJobIndicator />
             </div>
         </div>

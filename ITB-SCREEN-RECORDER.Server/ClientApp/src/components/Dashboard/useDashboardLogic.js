@@ -45,10 +45,15 @@ export function useDashboardLogic({
     }, []);
 
     useEffect(() => {
-        fetchTabsFromDb();
+        const timer = setTimeout(() => {
+            fetchTabsFromDb();
+        }, 0);
         const handleTabsChanged = () => fetchTabsFromDb();
         window.addEventListener('itb-fleet-tabs-updated', handleTabsChanged);
-        return () => window.removeEventListener('itb-fleet-tabs-updated', handleTabsChanged);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('itb-fleet-tabs-updated', handleTabsChanged);
+        };
     }, [fetchTabsFromDb]);
 
     const activeFleetTabConfig = useMemo(() => {

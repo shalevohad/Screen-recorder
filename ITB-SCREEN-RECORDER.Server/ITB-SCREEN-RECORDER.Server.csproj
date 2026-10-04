@@ -146,8 +146,7 @@
 	<!-- 1. בעת Publish: שכפול קובץ ה-Native משורת ה-NuGet ישירות לשורש תיקיית ה-Publish -->
 	<Target Name="PublishSqliteNativeToRoot" AfterTargets="ComputeResolvedFilesToPublishList">
 		<ItemGroup>
-			<_SqliteNativeToPublish Include="@(ResolvedFileToPublish)"
-			                        Condition="'%(Filename)' == 'e_sqlite3' or '%(Filename)' == 'libe_sqlite3'" />
+			<_SqliteNativeToPublish Include="@(ResolvedFileToPublish)" Condition="'%(Filename)' == 'e_sqlite3' or '%(Filename)' == 'libe_sqlite3'" />
 			<ResolvedFileToPublish Include="@(_SqliteNativeToPublish)">
 				<RelativePath>%(Filename)%(Extension)</RelativePath>
 				<CopyToPublishDirectory>Always</CopyToPublishDirectory>
@@ -159,8 +158,7 @@
 	<!-- 2. בעת Build רגיל: העתקת ה-DLL לשורש ה-bin להרצה חלקה מ-Visual Studio -->
 	<Target Name="CopySqliteNativeToOutputRoot" AfterTargets="CopyFilesToOutputDirectory">
 		<ItemGroup>
-			<_SqliteNativeBuildFiles Include="@(ReferenceCopyLocalPaths)"
-			                         Condition="'%(Filename)' == 'e_sqlite3' or '%(Filename)' == 'libe_sqlite3'" />
+			<_SqliteNativeBuildFiles Include="@(ReferenceCopyLocalPaths)" Condition="'%(Filename)' == 'e_sqlite3' or '%(Filename)' == 'libe_sqlite3'" />
 		</ItemGroup>
 		<Copy SourceFiles="@(_SqliteNativeBuildFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
 	</Target>

@@ -1,5 +1,7 @@
-// Client/src/components/Dashboard/StationsDenseView.jsx
-import RemoteWidgetHost from '../UI/RemoteWidgetHost';
+// ==========================================
+// File: ClientApp/src/components/Dashboard/StationsDenseView.jsx
+// ==========================================
+import RemoteWidgetHost from '../Plugins/RemoteWidgetHost';
 import './StationsDenseView.scss';
 
 export default function StationsDenseView({

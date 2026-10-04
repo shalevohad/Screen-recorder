@@ -1,7 +1,6 @@
 ﻿// ==========================================
-// File: Client/src/components/UI/RadialGauge.jsx
+// File: ClientApp/src/components/UI/RadialGauge.jsx
 // ==========================================
-import React from 'react';
 import './RadialGauge.scss';
 
 export default function RadialGauge({

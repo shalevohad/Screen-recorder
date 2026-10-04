@@ -1,10 +1,10 @@
 // ==========================================
-// File: Client/src/components/UI/CommandCenterHeader.jsx
+// File: ClientApp/src/components/Layout/CommandCenterHeader.jsx
 // ==========================================
 import { useState, useMemo, useEffect } from 'react';
-import ServerClock from './ServerClock';
-import ServerTelemetryWidget from './ServerTelemetryWidget';
-import RadialGauge from './RadialGauge';
+import ServerClock from '../Telemetry/ServerClock';
+import ServerTelemetryWidget from '../Telemetry/ServerTelemetryWidget';
+import RadialGauge from '../Telemetry/RadialGauge';
 import './CommandCenterHeader.scss';
 
 export default function CommandCenterHeader({
@@ -163,7 +163,6 @@ export default function CommandCenterHeader({
             <div className="top-row-telemetry">
                 <div className="header-fleet-summary">
                     <div className="fleet-summary-pill">
-                        {/* 💡 RECORDING AGENTS - מבנה זהה ומדויק כמו ה-NET LOAD */}
                         <div
                             className="summary-pod recording-agents-pod"
                             title={`Recording Fleet: ${agentMetrics.streamingCount} recording of ${agentMetrics.onlineCount} online (${agentMetrics.recordingPct}%) | Fleet Total: ${totalCount}`}
