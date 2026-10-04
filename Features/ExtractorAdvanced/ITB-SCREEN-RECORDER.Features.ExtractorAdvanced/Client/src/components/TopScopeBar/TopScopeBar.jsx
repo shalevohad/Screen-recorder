@@ -1,7 +1,8 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/TopScopeBar/TopScopeBar.jsx
 // ==========================================
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import './TopScopeBar.scss';
 
 export default function TopScopeBar({
@@ -14,7 +15,7 @@ export default function TopScopeBar({
     onResetActiveStation,
     onOpenRangeModal,
     onOpenBookmarksModal,
-    onOpenHelpModal, // 💡 פתיחת מודאל המקשים
+    onOpenHelpModal,
     onToggleDrawer,
     isInitialSetup = false,
     selectedCount = 0,
@@ -22,6 +23,15 @@ export default function TopScopeBar({
     onResetStudio
 }) {
     const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false);
+
+    useEffect(() => {
+        if (!isConfirmResetOpen) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setIsConfirmResetOpen(false);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isConfirmResetOpen]);
 
     const formattedScopeRange = useMemo(() => {
         const startEpoch = baseEpochMs || (timeRange?.start ? new Date(timeRange.start).getTime() : Date.now());
@@ -35,7 +45,7 @@ export default function TopScopeBar({
         if (timeMode === 'UTC') {
             const sDate = `${dStart.getUTCFullYear()}-${pad(dStart.getUTCMonth() + 1)}-${pad(dStart.getUTCDate())}`;
             const sTime = `${pad(dStart.getUTCHours())}:${pad(dStart.getUTCMinutes())}:${pad(dStart.getUTCSeconds())}`;
-            
+
             const eDate = `${dEnd.getUTCFullYear()}-${pad(dEnd.getUTCMonth() + 1)}-${pad(dEnd.getUTCDate())}`;
             const eTime = `${pad(dEnd.getUTCHours())}:${pad(dEnd.getUTCMinutes())}:${pad(dEnd.getUTCSeconds())}`;
 
@@ -45,7 +55,7 @@ export default function TopScopeBar({
 
         const sDate = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
         const sTime = `${pad(dStart.getHours())}:${pad(dStart.getMinutes())}:${pad(dStart.getSeconds())}`;
-        
+
         const eDate = `${dEnd.getFullYear()}-${pad(dEnd.getMonth() + 1)}-${pad(dEnd.getDate())}`;
         const eTime = `${pad(dEnd.getHours())}:${pad(dEnd.getMinutes())}:${pad(dEnd.getSeconds())}`;
 
@@ -67,6 +77,63 @@ export default function TopScopeBar({
         setIsConfirmResetOpen(false);
         onResetStudio?.();
     };
+
+    const resetModal = isConfirmResetOpen ? (
+        <div className="studio-reset-modal-backdrop" onClick={() => setIsConfirmResetOpen(false)}>
+            <div className="studio-reset-modal-card" onClick={(e) => e.stopPropagation()} dir="ltr">
+                <div className="reset-modal-header">
+                    <div className="reset-header-title-group">
+                        <div className="warning-icon-badge">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                <line x1="12" y1="9" x2="12" y2="13" />
+                                <line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                        </div>
+                        <div className="reset-header-text">
+                            <h3>RESET STUDIO SESSION</h3>
+                            <span className="reset-header-sub">WORKSPACE CACHE CLEAR</span>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        className="btn-modal-close"
+                        onClick={() => setIsConfirmResetOpen(false)}
+                        title="Close (ESC)"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div className="reset-modal-body">
+                    <p className="reset-modal-lead">
+                        Are you sure you want to reset the entire studio workspace?
+                    </p>
+                    <ul className="reset-impact-list">
+                        <li>All station selections and multicam views will be unpinned</li>
+                        <li>Cut In / Out points and playhead timeline markers will reset</li>
+                        <li>Playback speeds, zoom parameters, and local caches will clear</li>
+                    </ul>
+                </div>
+
+                <div className="reset-modal-actions">
+                    <button type="button" className="btn-cancel" onClick={() => setIsConfirmResetOpen(false)}>
+                        CANCEL
+                    </button>
+                    <button type="button" className="btn-confirm-danger" onClick={handleConfirmReset}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="14" height="14">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                            <path d="M3 3v5h5" />
+                        </svg>
+                        YES, RESET EVERYTHING
+                    </button>
+                </div>
+            </div>
+        </div>
+    ) : null;
 
     return (
         <div className="studio-top-scope-bar">
@@ -139,7 +206,6 @@ export default function TopScopeBar({
                     <span>BOOKMARKS</span>
                 </button>
 
-                {/* 💡 כפתור חלון מקשי הקיצור והעזרה */}
                 <button
                     type="button"
                     onClick={onOpenHelpModal}
@@ -177,29 +243,7 @@ export default function TopScopeBar({
                 )}
             </div>
 
-            {isConfirmResetOpen && (
-                <div className="studio-reset-modal-backdrop" onClick={() => setIsConfirmResetOpen(false)}>
-                    <div className="studio-reset-modal-card" onClick={(e) => e.stopPropagation()}>
-                        <div className="reset-modal-header">
-                            <span className="warning-icon">⚠</span>
-                            <h3>RESET STUDIO SESSION</h3>
-                        </div>
-                        <p className="reset-modal-desc">
-                            Are you sure you want to reset the entire studio workspace?
-                            <br />
-                            All station selections, cut in/out markers, playhead position, and local timeline caches will be permanently cleared.
-                        </p>
-                        <div className="reset-modal-actions">
-                            <button type="button" className="btn-cancel" onClick={() => setIsConfirmResetOpen(false)}>
-                                CANCEL
-                            </button>
-                            <button type="button" className="btn-confirm-danger" onClick={handleConfirmReset}>
-                                YES, RESET EVERYTHING
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {typeof document !== 'undefined' && resetModal && createPortal(resetModal, document.body)}
         </div>
     );
 }

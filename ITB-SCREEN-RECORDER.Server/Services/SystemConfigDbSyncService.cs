@@ -1,6 +1,10 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services;
+﻿// ==========================================
+// File: ITB-SCREEN-RECORDER.Server/Services/SystemConfigDbSyncService.cs
+// ==========================================
+namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -22,7 +26,6 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
     private readonly ICatalogRepository _catalogRepo;
     private readonly IOptionsMonitor<SystemConfig> _configMonitor;
     private readonly ILogger<SystemConfigDbSyncService> _logger;
-    private readonly string _appSettingsPath;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public SystemConfigDbSyncService(
@@ -33,24 +36,6 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         _catalogRepo = catalogRepo;
         _configMonitor = configMonitor;
         _logger = logger;
-        _appSettingsPath = ResolveActiveSettingsFilePath();
-    }
-
-    private static string ResolveActiveSettingsFilePath()
-    {
-        string baseDir = AppContext.BaseDirectory;
-        if (OperatingSystem.IsLinux())
-        {
-            string linuxPath = Path.Combine(baseDir, "appsettings.Linux.json");
-            if (File.Exists(linuxPath)) return linuxPath;
-        }
-        else if (OperatingSystem.IsWindows())
-        {
-            string winPath = Path.Combine(baseDir, "appsettings.Windows.json");
-            if (File.Exists(winPath)) return winPath;
-        }
-
-        return Path.Combine(baseDir, "appsettings.json");
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -58,26 +43,33 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("[CONFIG SYNC] Verifying system configuration state between DB and '{File}'...", Path.GetFileName(_appSettingsPath));
-
-            var currentFileConfig = _configMonitor.CurrentValue;
-            string fileConfigJson = JsonSerializer.Serialize(currentFileConfig);
+            _logger.LogInformation("[CONFIG SYNC] Verifying system configuration state between SQLite DB and JSON settings...");
 
             string? dbConfigJson = await _catalogRepo.GetConfigurationAsync("SystemConfig");
 
-            if (string.IsNullOrWhiteSpace(dbConfigJson))
+            if (!string.IsNullOrWhiteSpace(dbConfigJson))
             {
-                _logger.LogInformation("[CONFIG SYNC] No config found in SQLite. Initializing DB from settings file...");
-                await _catalogRepo.SetConfigurationAsync("SystemConfig", fileConfigJson);
-            }
-            else if (!AreJsonEqual(fileConfigJson, dbConfigJson))
-            {
-                _logger.LogInformation("[CONFIG SYNC] Difference detected between settings file and DB. Synchronizing DB with current file state...");
-                await _catalogRepo.SetConfigurationAsync("SystemConfig", fileConfigJson);
+                // 💡 מסד הנתונים מכיל את ההגדרות שנשמרו - הוא ה-Source of Truth
+                _logger.LogInformation("[CONFIG SYNC] Discovered persistent configuration in SQLite DB. Syncing settings to disk & runtime...");
+
+                var dbConfig = JsonSerializer.Deserialize<SystemConfig>(dbConfigJson, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (dbConfig != null)
+                {
+                    UpdateConfigInMemory(_configMonitor.CurrentValue, dbConfig);
+                    await WriteConfigToDiskFilesAsync(dbConfigJson);
+                }
             }
             else
             {
-                _logger.LogInformation("[CONFIG SYNC] Configuration state between DB and JSON is synchronized.");
+                // 💡 עלייה ראשונה - אין עדיין רשומה ב-DB, מאתחלים מתוך הקובץ
+                _logger.LogInformation("[CONFIG SYNC] Initializing SQLite configuration from active settings file...");
+                var currentFileConfig = _configMonitor.CurrentValue;
+                string fileConfigJson = JsonSerializer.Serialize(currentFileConfig, new JsonSerializerOptions { WriteIndented = true });
+                await _catalogRepo.SetConfigurationAsync("SystemConfig", fileConfigJson);
             }
         }
         catch (Exception ex)
@@ -100,22 +92,13 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
             string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
 
-            // 1. עדכון מסד הנתונים SQLite
+            // 1. שמירה במסד הנתונים SQLite
             await _catalogRepo.SetConfigurationAsync("SystemConfig", updatedJson);
 
-            // 2. עדכון קובץ ה-appsettings הרלוונטי בדיסק
-            if (File.Exists(_appSettingsPath))
-            {
-                string originalFullJson = await File.ReadAllTextAsync(_appSettingsPath);
-                var rootNode = JsonNode.Parse(originalFullJson)?.AsObject();
-                if (rootNode != null)
-                {
-                    rootNode["SystemConfig"] = JsonNode.Parse(updatedJson);
-                    await File.WriteAllTextAsync(_appSettingsPath, rootNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-                }
-            }
+            // 2. שמירה בכל קובצי ה-appsettings הרלוונטיים (כולל תיקיית המקור בפיתוח)
+            await WriteConfigToDiskFilesAsync(updatedJson);
 
-            _logger.LogInformation("[CONFIG SYNC] System configuration successfully updated in DB and '{File}'.", Path.GetFileName(_appSettingsPath));
+            _logger.LogInformation("[CONFIG SYNC] System configuration successfully updated in DB and disk configuration files.");
         }
         finally
         {
@@ -125,17 +108,97 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private static bool AreJsonEqual(string json1, string json2)
+    private static void UpdateConfigInMemory(SystemConfig target, SystemConfig source)
     {
+        target.DefaultTargetFps = source.DefaultTargetFps;
+        target.DefaultVideoBitrate = source.DefaultVideoBitrate;
+        target.RecordingRetentionDays = source.RecordingRetentionDays;
+        target.MaxStorageQuotaGb = source.MaxStorageQuotaGb;
+        target.DashboardRefreshRateMs = source.DashboardRefreshRateMs;
+        target.DisplayTimezone = source.DisplayTimezone;
+        target.DisplayLocale = source.DisplayLocale;
+
+        if (source.Storage != null)
+        {
+            target.Storage ??= new StorageSettings();
+            target.Storage.NetAppUncPath = source.Storage.NetAppUncPath;
+            target.Storage.LocalFallbackPath = source.Storage.LocalFallbackPath;
+            target.Storage.ChunkIntervalMinutes = source.Storage.ChunkIntervalMinutes;
+            target.Storage.RetentionDays = source.Storage.RetentionDays;
+            target.Storage.ChunkEventLogPath = source.Storage.ChunkEventLogPath;
+            target.Storage.RecordFormat = source.Storage.RecordFormat;
+        }
+
+        if (source.MediaMtx != null)
+        {
+            target.MediaMtx ??= new MediaMtxSettings();
+            target.MediaMtx.RtmpPort = source.MediaMtx.RtmpPort;
+            target.MediaMtx.HlsPort = source.MediaMtx.HlsPort;
+            target.MediaMtx.ApiPort = source.MediaMtx.ApiPort;
+        }
+
+        if (source.Dashboard != null)
+        {
+            target.Dashboard ??= new DashboardSettings();
+            target.Dashboard.SnapshotMinDelayMs = source.Dashboard.SnapshotMinDelayMs;
+            target.Dashboard.SnapshotMaxDelayMs = source.Dashboard.SnapshotMaxDelayMs;
+            target.Dashboard.SnapshotBufferMarginPx = source.Dashboard.SnapshotBufferMarginPx;
+            target.Dashboard.MaxConcurrentLiveStreams = source.Dashboard.MaxConcurrentLiveStreams;
+        }
+    }
+
+    private async Task WriteConfigToDiskFilesAsync(string updatedJson)
+    {
+        var candidatePaths = new List<string>();
+
+        string baseDir = AppContext.BaseDirectory;
+        string mainBinFile = Path.Combine(baseDir, "appsettings.json");
+        if (File.Exists(mainBinFile)) candidatePaths.Add(mainBinFile);
+
+        if (OperatingSystem.IsWindows())
+        {
+            string winBinFile = Path.Combine(baseDir, "appsettings.Windows.json");
+            if (File.Exists(winBinFile)) candidatePaths.Add(winBinFile);
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            string linuxBinFile = Path.Combine(baseDir, "appsettings.Linux.json");
+            if (File.Exists(linuxBinFile)) candidatePaths.Add(linuxBinFile);
+        }
+
+        // 💡 כתיבה גם לקובץ המקור בפרויקט כדי ש-Rebuild עתידי לא ידרוס את ההגדרות
         try
         {
-            var node1 = JsonNode.Parse(json1);
-            var node2 = JsonNode.Parse(json2);
-            return JsonNode.DeepEquals(node1, node2);
+            string projectRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));
+            string projectAppSettings = Path.Combine(projectRoot, "appsettings.json");
+            if (File.Exists(projectAppSettings) && !candidatePaths.Contains(projectAppSettings, StringComparer.OrdinalIgnoreCase))
+            {
+                candidatePaths.Add(projectAppSettings);
+            }
         }
-        catch
+        catch { }
+
+        foreach (var filePath in candidatePaths)
         {
-            return false;
+            try
+            {
+                string original = await File.ReadAllTextAsync(filePath);
+                var rootNode = JsonNode.Parse(original)?.AsObject();
+                if (rootNode != null)
+                {
+                    string sectionKey = rootNode.ContainsKey("SystemConfig") ? "SystemConfig"
+                        : rootNode.ContainsKey("systemConfig") ? "systemConfig"
+                        : "SystemConfig";
+
+                    rootNode[sectionKey] = JsonNode.Parse(updatedJson);
+                    await File.WriteAllTextAsync(filePath, rootNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                    _logger.LogInformation("[CONFIG SYNC] Synced updated configuration into '{Path}'", filePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[CONFIG SYNC] Could not write configuration to '{Path}'.", filePath);
+            }
         }
     }
 }

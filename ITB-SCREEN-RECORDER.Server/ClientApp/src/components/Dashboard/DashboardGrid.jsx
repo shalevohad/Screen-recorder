@@ -1,6 +1,7 @@
 // ==========================================
 // File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
 // ==========================================
+import { useMemo, useCallback, useRef } from 'react';
 import { useDashboardLogic } from './useDashboardLogic';
 
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
@@ -30,10 +31,25 @@ export default function DashboardGrid(props) {
 
     const isFeatureMode = Boolean(logic.activeFeatureObject);
 
-    const handleCloseFeatureWithReset = (featId) => {
+    const handleCloseFeatureWithReset = useCallback((featId) => {
         window.dispatchEvent(new CustomEvent('extractor:clear-session'));
         logic.handleCloseFeature(featId);
-    };
+    }, [logic]);
+
+    // שמירת ה-Hostname האחרון ברפרנס יציב כדי למנוע היבהוב גם אם stations מתרוקן רגעית ב-Reconnect
+    const lastKnownHostRef = useRef('OHAD-DESKTOP');
+    if (stations && stations.length > 0 && stations[0]?.hostname) {
+        lastKnownHostRef.current = stations[0].hostname;
+    }
+
+    const activeTargetHost = logic.focusedWidgetHost || lastKnownHostRef.current;
+    const activeFeatureId = logic.activeFeatureObject?.id;
+
+    const extractorWidgetProps = useMemo(() => ({
+        activeHost: activeTargetHost,
+        defaultWindowHours: 24,
+        onClose: () => handleCloseFeatureWithReset(activeFeatureId)
+    }), [activeTargetHost, activeFeatureId, handleCloseFeatureWithReset]);
 
     const hasNoAgentsInView = logic.processedStations.length === 0 && logic.activeInlineFeatures.length === 0;
 
@@ -156,11 +172,7 @@ export default function DashboardGrid(props) {
                             <div className="feature-stealth-container">
                                 <RemoteWidgetHost
                                     scriptUrl={logic.activeFeatureObject.scriptUrl}
-                                    widgetProps={{
-                                        activeHost: logic.focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP',
-                                        defaultWindowHours: 24,
-                                        onClose: () => handleCloseFeatureWithReset(logic.activeFeatureObject.id)
-                                    }}
+                                    widgetProps={extractorWidgetProps}
                                 />
                             </div>
                         ) : (

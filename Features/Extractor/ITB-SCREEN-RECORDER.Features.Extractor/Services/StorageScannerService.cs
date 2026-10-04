@@ -1,4 +1,6 @@
-﻿// Features/Extractor/Services/StorageScannerService.cs
+﻿// ==========================================
+// File: Features/Extractor/Services/StorageScannerService.cs
+// ==========================================
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -21,11 +23,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     public class StorageScannerService : IStorageScannerService
     {
         private readonly IConfiguration _configuration;
-        private readonly StorageSettings _storageSettings;
+        private readonly IOptionsMonitor<SystemConfig> _systemConfigMonitor;
         private readonly ExtractorOptions _options;
         private readonly ILogger<StorageScannerService> _logger;
         private readonly IDummyVideoGenerator _dummyGenerator;
-        private readonly TimeZoneInfo _serverLocalTz;
 
         private static bool _pragmaInitialized = false;
         private static readonly object _pragmaLock = new();
@@ -38,40 +39,30 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
         public StorageScannerService(
             IConfiguration configuration,
-            IOptions<SystemConfig> systemConfig,
+            IOptionsMonitor<SystemConfig> systemConfigMonitor,
             IOptions<ExtractorOptions> options,
             ILogger<StorageScannerService> logger,
             IDummyVideoGenerator dummyGenerator)
         {
             _configuration = configuration;
+            _systemConfigMonitor = systemConfigMonitor;
             _options = options.Value;
             _logger = logger;
             _dummyGenerator = dummyGenerator;
+        }
 
-            string netAppPath = systemConfig.Value?.Storage?.NetAppUncPath
-                ?? configuration["SystemConfig:Storage:NetAppUncPath"]
-                ?? @"\\NetAppStorage\CaptureRecordings";
-
-            string fallbackPath = systemConfig.Value?.Storage?.LocalFallbackPath
-                ?? configuration["SystemConfig:Storage:LocalFallbackPath"]
-                ?? @"C:\ProgramData\ITB-SCREEN-RECORDER\Recordings";
-
-            _storageSettings = new StorageSettings
-            {
-                NetAppUncPath = netAppPath,
-                LocalFallbackPath = fallbackPath
-            };
-
-            string? configuredTz = systemConfig.Value?.DisplayTimezone;
+        private TimeZoneInfo GetCurrentTimezone()
+        {
+            string? configuredTz = _systemConfigMonitor.CurrentValue?.DisplayTimezone;
             try
             {
-                _serverLocalTz = !string.IsNullOrWhiteSpace(configuredTz)
+                return !string.IsNullOrWhiteSpace(configuredTz)
                     ? TimeZoneInfo.FindSystemTimeZoneById(configuredTz)
                     : TimeZoneInfo.Local;
             }
             catch
             {
-                _serverLocalTz = TimeZoneInfo.Local;
+                return TimeZoneInfo.Local;
             }
         }
 
@@ -85,7 +76,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 DataSource = dbPath,
                 Mode = SqliteOpenMode.ReadWriteCreate,
-                DefaultTimeout = 15,
+                DefaultTimeout = 30,
                 Cache = SqliteCacheMode.Shared
             };
 
@@ -99,11 +90,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     if (!_pragmaInitialized)
                     {
                         using var cmd = conn.CreateCommand();
-                        // 💡 אופטימיזציית SQLite: הגדרות WAL, זיכרון ואינדוקס מרוכב מהיר
                         cmd.CommandText = @"
                             PRAGMA journal_mode=WAL; 
                             PRAGMA synchronous=NORMAL; 
                             PRAGMA temp_store=MEMORY;
+                            PRAGMA busy_timeout=30000;
                             CREATE INDEX IF NOT EXISTS idx_chunks_station_range 
                             ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms);";
                         cmd.ExecuteNonQuery();
@@ -274,10 +265,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 if (ct.IsCancellationRequested) break;
 
-                var files = Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
-                    .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
-                    .OrderBy(f => f)
-                    .ToList();
+                var files = await Task.Run(() =>
+                {
+                    return Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
+                        .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                        .OrderBy(f => f)
+                        .ToList();
+                }, ct);
 
                 for (int i = 0; i < files.Count; i++)
                 {
@@ -325,7 +319,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
                     if (chunksToAdd.Count >= 50)
                     {
-                        await FlushChunksBatchAsync(chunksToAdd);
+                        await FlushChunksBatchAsync(chunksToAdd, ct);
                         chunksToAdd.Clear();
                     }
                 }
@@ -333,7 +327,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             if (chunksToAdd.Count > 0)
             {
-                await FlushChunksBatchAsync(chunksToAdd);
+                await FlushChunksBatchAsync(chunksToAdd, ct);
             }
 
             _logger.LogInformation("[REINDEX] Completed. Scanned: {Total}, Added: {Added}, Skipped: {Skipped}, Errors: {Err}",
@@ -342,7 +336,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return new ReindexResult(totalScanned, newlyIndexed, skipped, errors);
         }
 
-        private async Task FlushChunksBatchAsync(List<(string StationId, string Path, long StartMs, long EndMs, long Size)> items)
+        private async Task FlushChunksBatchAsync(List<(string StationId, string Path, long StartMs, long EndMs, long Size)> items, CancellationToken ct = default)
         {
             using var conn = OpenCatalogDbConnection();
             using var tx = conn.BeginTransaction();
@@ -358,16 +352,27 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             foreach (var item in items)
             {
-                await conn.ExecuteAsync(sql, new { item.StationId, item.Path, item.StartMs, item.EndMs, item.Size, Now = now }, tx);
+                await conn.ExecuteAsync(new CommandDefinition(sql, new { item.StationId, item.Path, item.StartMs, item.EndMs, item.Size, Now = now }, tx, cancellationToken: ct));
             }
-            tx.Commit();
+            await tx.CommitAsync(ct);
         }
 
+        // 💡 קריאה דינמית מה-OptionsMonitor בכל סריקה
         private IEnumerable<string> ResolveActiveStorageRoots()
         {
             var list = new List<string>();
-            if (!string.IsNullOrWhiteSpace(_storageSettings.NetAppUncPath)) list.Add(_storageSettings.NetAppUncPath);
-            if (!string.IsNullOrWhiteSpace(_storageSettings.LocalFallbackPath)) list.Add(_storageSettings.LocalFallbackPath);
+            var cfg = _systemConfigMonitor.CurrentValue;
+
+            string netApp = cfg?.Storage?.NetAppUncPath
+                ?? _configuration["SystemConfig:Storage:NetAppUncPath"]
+                ?? @"\\NetAppStorage\CaptureRecordings";
+
+            string fallback = cfg?.Storage?.LocalFallbackPath
+                ?? _configuration["SystemConfig:Storage:LocalFallbackPath"]
+                ?? @"C:\ProgramData\ITB-SCREEN-RECORDER\Recordings";
+
+            if (!string.IsNullOrWhiteSpace(netApp)) list.Add(netApp);
+            if (!string.IsNullOrWhiteSpace(fallback)) list.Add(fallback);
             return list;
         }
 
@@ -398,7 +403,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             DateTime startUtc = match.Groups["utc"].Success
                 ? new DateTime(year, month, day, hour, minute, second, DateTimeKind.Utc)
-                : TimeZoneInfo.ConvertTimeToUtc(new DateTime(year, month, day, hour, minute, second), _serverLocalTz);
+                : TimeZoneInfo.ConvertTimeToUtc(new DateTime(year, month, day, hour, minute, second), GetCurrentTimezone());
 
             return new RecordingChunkMetadata
             {

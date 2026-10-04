@@ -124,8 +124,29 @@ export default function App() {
             .withAutomaticReconnect([0, 2000, 5000, 10000])
             .build();
 
+        // 💡 מיזוג שאינו מוחק נתונים קיימים אם מגיע שידור חלקי
         connection.on('ReceiveServerTelemetry', (telemetry) => {
-            setServerTelemetry(telemetry);
+            if (!telemetry) return;
+            setServerTelemetry(prev => {
+                if (!prev) return telemetry;
+                return {
+                    ...prev,
+                    ...telemetry,
+                    uptimeSeconds: telemetry.uptimeSeconds ?? telemetry.systemUptimeSeconds ?? prev.uptimeSeconds ?? prev.systemUptimeSeconds,
+                    cpuPct: telemetry.cpuPct !== undefined ? telemetry.cpuPct : prev.cpuPct,
+                    hostRamPct: telemetry.hostRamPct !== undefined ? telemetry.hostRamPct : prev.hostRamPct,
+                    storagePool: telemetry.storagePool !== undefined ? telemetry.storagePool : prev.storagePool,
+                    netUtilPct: telemetry.netUtilPct !== undefined ? telemetry.netUtilPct : prev.netUtilPct
+                };
+            });
+        });
+
+        // 💡 ערוץ ייעודי למשימות קטלוג ותחזוקה
+        connection.on('ReceiveMaintenanceJob', (job) => {
+            setServerTelemetry(prev => ({
+                ...prev,
+                maintenanceJob: job
+            }));
         });
 
         connection.on('ReceiveAgentMetrics', (report) => {
@@ -250,7 +271,6 @@ export default function App() {
                 />
 
                 <DashboardGrid
-                    key={sortedStations.length}
                     stations={sortedStations}
                     actionPending={actionPending}
                     onToggleStream={handleToggleStream}

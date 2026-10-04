@@ -210,8 +210,16 @@ namespace ITB_SCREEN_RECORDER.Server
                 // 💡 4. שירות ניטור האחסון הרוחבי (Cross-Platform Storage & IOPS Telemetry)
                 builder.Services.AddSingleton<IStorageTelemetryService, StorageTelemetryService>();
 
-                builder.Services.AddSignalR(o => o.EnableDetailedErrors = true)
-                    .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+                // 💡 5. כיול SignalR עם Timeouts מורחבים למניעת ניתוקי סרק בעומסי I/O
+                builder.Services.AddSignalR(options =>
+                {
+                    options.EnableDetailedErrors = true;
+                    options.KeepAliveInterval = TimeSpan.FromSeconds(10);
+                    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+                    options.HandshakeTimeout = TimeSpan.FromSeconds(30);
+                    options.MaximumReceiveMessageSize = 1024 * 1024;
+                })
+                .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 
                 builder.Services.AddHttpClient();
                 builder.Services.AddSingleton<StoragePathResolver>();

@@ -1,4 +1,7 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services;
+﻿// ==========================================
+// File: ITB-SCREEN-RECORDER.Server/Services/CatalogMaintenanceService.cs
+// ==========================================
+namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
 using System.Collections.Generic;
@@ -12,6 +15,7 @@ using Dapper;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Server.Data;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -44,11 +48,14 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
     private readonly ICatalogRepository _catalogRepo;
     private readonly StoragePathResolver _storageResolver;
     private readonly IOptionsMonitor<SystemConfig> _configMonitor;
-    private readonly TelemetryBroadcastService _broadcastService;
+    private readonly IHubContext<TelemetryHub> _hubContext;
     private readonly IVideoProbeService _probeService;
     private readonly ILogger<CatalogMaintenanceService> _logger;
 
     private readonly SemaphoreSlim _jobLock = new(1, 1);
+    private readonly object _stateLock = new();
+    private DateTime _lastBroadcastTime = DateTime.MinValue;
+
     private MaintenanceJobState _state = new(
         JobId: string.Empty,
         JobType: "Idle",
@@ -83,7 +90,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         ICatalogRepository catalogRepo,
         StoragePathResolver storageResolver,
         IOptionsMonitor<SystemConfig> configMonitor,
-        TelemetryBroadcastService broadcastService,
+        IHubContext<TelemetryHub> hubContext,
         IVideoProbeService probeService,
         ILogger<CatalogMaintenanceService> logger)
     {
@@ -91,12 +98,18 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         _catalogRepo = catalogRepo;
         _storageResolver = storageResolver;
         _configMonitor = configMonitor;
-        _broadcastService = broadcastService;
+        _hubContext = hubContext;
         _probeService = probeService;
         _logger = logger;
     }
 
-    public MaintenanceJobState GetCurrentJobState() => _state;
+    public MaintenanceJobState GetCurrentJobState()
+    {
+        lock (_stateLock)
+        {
+            return _state;
+        }
+    }
 
     public async Task<object> GetCatalogStatsAsync()
     {
@@ -114,7 +127,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             totalStations,
             oldestRecordingUtc = oldestEpoch.HasValue ? DateTimeOffset.FromUnixTimeMilliseconds(oldestEpoch.Value).UtcDateTime : (DateTime?)null,
             newestRecordingUtc = newestEpoch.HasValue ? DateTimeOffset.FromUnixTimeMilliseconds(newestEpoch.Value).UtcDateTime : (DateTime?)null,
-            activeJob = _state
+            activeJob = GetCurrentJobState()
         };
     }
 
@@ -122,11 +135,11 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
     {
         if (!await _jobLock.WaitAsync(0))
         {
-            return _state;
+            return GetCurrentJobState();
         }
 
         string jobId = Guid.NewGuid().ToString("N")[..8];
-        _state = new MaintenanceJobState(
+        UpdateState(s => new MaintenanceJobState(
             JobId: jobId,
             JobType: "CatalogReindex",
             IsRunning: true,
@@ -139,7 +152,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             StatusMessage: "Locating storage roots...",
             StartedAtUtc: DateTime.UtcNow,
             CompletedAtUtc: null
-        );
+        ), forceBroadcast: true);
 
         _ = Task.Run(async () =>
         {
@@ -153,7 +166,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             }
         });
 
-        return _state;
+        return GetCurrentJobState();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -223,13 +236,12 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 IsRunning = false,
                 StatusMessage = "Storage root unavailable.",
                 CompletedAtUtc = DateTime.UtcNow
-            });
+            }, forceBroadcast: true);
             return;
         }
 
         try
         {
-            // שליפת כל הקבצים שכבר מאונדקסים עם רוחב וגובה תקינים (width > 0)
             HashSet<string> existingValidPaths;
             using (var db = _factory.CreateConnection())
             {
@@ -272,7 +284,6 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             {
                 scanned++;
 
-                // אם לא נדרש Full Recheck והקובץ כבר קיים ב-DB עם נתוני וידאו תקינים - מדלגים
                 if (!forceFullRecheck && existingValidPaths.Contains(item.FilePath))
                 {
                     skipped++;
@@ -290,7 +301,6 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
                             if (fileSize > 0)
                             {
-                                // דגימה מדויקת באמצעות FFprobe
                                 var probe = await _probeService.ProbeFileAsync(item.FilePath, CancellationToken.None);
 
                                 int width = 0;
@@ -355,19 +365,17 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 }
 
                 int pct = total > 0 ? (int)Math.Min(99, (scanned * 100.0) / total) : 100;
-                if (!isSilentScheduled || scanned % 50 == 0 || scanned == total)
+
+                UpdateState(s => s with
                 {
-                    UpdateState(s => s with
-                    {
-                        ProgressPercent = pct,
-                        TotalFilesScanned = scanned,
-                        NewlyIndexedCount = added,
-                        SkippedCount = skipped,
-                        ErrorsCount = errors,
-                        CurrentTarget = item.StationName,
-                        StatusMessage = $"Scanned {scanned}/{total} files ({added} indexed with probe)"
-                    });
-                }
+                    ProgressPercent = pct,
+                    TotalFilesScanned = scanned,
+                    NewlyIndexedCount = added,
+                    SkippedCount = skipped,
+                    ErrorsCount = errors,
+                    CurrentTarget = item.StationName,
+                    StatusMessage = $"Scanned {scanned}/{total} files ({added} indexed)"
+                }, forceBroadcast: (scanned == total));
             }
 
             if (batch.Count > 0)
@@ -386,7 +394,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 CurrentTarget = string.Empty,
                 StatusMessage = $"Completed. Indexed {added} new file(s) with media probe.",
                 CompletedAtUtc = DateTime.UtcNow
-            });
+            }, forceBroadcast: true);
 
             _logger.LogInformation("[MAINTENANCE] Reindex finished. Scanned: {Scanned}, Added: {Added}, Skipped: {Skipped}", scanned, added, skipped);
         }
@@ -398,13 +406,17 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 IsRunning = false,
                 StatusMessage = $"Failed: {ex.Message}",
                 CompletedAtUtc = DateTime.UtcNow
-            });
+            }, forceBroadcast: true);
         }
     }
 
     private async Task FlushBatchAsync(List<ChunkInsertItem> batch)
     {
         using var db = _factory.CreateConnection();
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = "PRAGMA busy_timeout = 30000;";
+        cmd.ExecuteNonQuery();
+
         using var tx = db.BeginTransaction();
         const string sql = @"
             INSERT INTO recording_chunks (
@@ -441,10 +453,29 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         tx.Commit();
     }
 
-    private void UpdateState(Func<MaintenanceJobState, MaintenanceJobState> update)
+    // 💡 שידור מבוקר לערוץ ייעודי ללא דריסת מדדי השרת וה-Uptime
+    private void UpdateState(Func<MaintenanceJobState, MaintenanceJobState> update, bool forceBroadcast = false)
     {
-        _state = update(_state);
-        _ = _broadcastService.BroadcastServerTelemetryAsync(new { maintenanceJob = _state });
+        MaintenanceJobState stateSnapshot;
+        bool shouldBroadcast = false;
+
+        lock (_stateLock)
+        {
+            _state = update(_state);
+            stateSnapshot = _state;
+
+            var now = DateTime.UtcNow;
+            if (forceBroadcast || (now - _lastBroadcastTime).TotalMilliseconds >= 250)
+            {
+                _lastBroadcastTime = now;
+                shouldBroadcast = true;
+            }
+        }
+
+        if (shouldBroadcast)
+        {
+            _ = _hubContext.Clients.All.SendAsync("ReceiveMaintenanceJob", stateSnapshot);
+        }
     }
 
     private static long? TryParseFileTimestamp(string fileName, string? configuredTzId)
