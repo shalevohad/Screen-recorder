@@ -28,7 +28,6 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
         private volatile bool _isInitialized;
         private XRecordInterceptProc? _callback;
 
-        // מעקב אחר מצב ה-Modifiers ב-Linux X11
         private static bool _ctrlDown;
         private static bool _altDown;
         private static bool _shiftDown;
@@ -58,9 +57,8 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
                 IntPtr range = XRecordAllocRange();
                 if (range != IntPtr.Zero)
                 {
-                    // האזנה לאירועי KeyPress (2) ועד KeyRelease (3)
-                    Marshal.WriteByte(range, 14, 2);
-                    Marshal.WriteByte(range, 15, 3);
+                    Marshal.WriteByte(range, 14, 2); // KeyPress
+                    Marshal.WriteByte(range, 15, 3); // KeyRelease
 
                     ulong allClients = 1;
                     IntPtr context = XRecordCreateContext(dpy, 0, ref allClients, 1, ref range, 1);
@@ -78,7 +76,7 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
                                     IntPtr dataPtr = Marshal.ReadIntPtr(recorded_data, 24);
                                     if (dataPtr != IntPtr.Zero)
                                     {
-                                        byte eventType = Marshal.ReadByte(dataPtr, 0); // 2 = KeyPress, 3 = KeyRelease
+                                        byte eventType = Marshal.ReadByte(dataPtr, 0);
                                         byte keycode = Marshal.ReadByte(dataPtr, 1);
                                         ulong keysym = XKeycodeToKeysym(dpy, keycode, 0);
 
@@ -105,18 +103,16 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
         {
             bool isPress = (eventType == 2);
 
-            // עדכון Modifiers
             switch (keysym)
             {
-                case 0xFFE3: case 0xFFE4: _ctrlDown = isPress; return;  // Control_L, Control_R
-                case 0xFFE9: case 0xFFEA: _altDown = isPress; return;   // Alt_L, Alt_R
-                case 0xFFE1: case 0xFFE2: _shiftDown = isPress; return; // Shift_L, Shift_R
-                case 0xFFEB: case 0xFFEC: _superDown = isPress; return; // Super_L, Super_R (Win)
+                case 0xFFE3: case 0xFFE4: _ctrlDown = isPress; return;
+                case 0xFFE9: case 0xFFEA: _altDown = isPress; return;
+                case 0xFFE1: case 0xFFE2: _shiftDown = isPress; return;
+                case 0xFFEB: case 0xFFEC: _superDown = isPress; return;
             }
 
             if (!isPress) return;
 
-            // סינון: מציגים רק קיצורים עם Modifiers או מקשי מערכת ייעודיים
             bool hasModifier = _ctrlDown || _altDown || _superDown;
             bool isSpecial = IsLinuxSpecialKey(keysym);
 
@@ -142,9 +138,9 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
             return keysym switch
             {
                 >= 0xFFBE and <= 0xFFC9 => true, // F1 - F12
-                0xFF1B or 0xFF0D or 0xFF09 or 0xFF08 or 0xFFFF => true, // Esc, Enter, Tab, Backspace, Delete
-                0xFF50 or 0xFF57 or 0xFF55 or 0xFF56 => true, // Home, End, PgUp, PgDown
-                0xFF51 or 0xFF52 or 0xFF53 or 0xFF54 => true, // Left, Up, Right, Down
+                0xFF1B or 0xFF0D or 0xFF09 or 0xFF08 or 0xFFFF => true,
+                0xFF50 or 0xFF57 or 0xFF55 or 0xFF56 => true,
+                0xFF51 or 0xFF52 or 0xFF53 or 0xFF54 => true,
                 _ => false
             };
         }
@@ -168,7 +164,7 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
                 0xFF52 => "UP",
                 0xFF53 => "RIGHT",
                 0xFF54 => "DOWN",
-                >= 0x0061 and <= 0x007A => ((char)(keysym - 0x20)).ToString(), // A - Z
+                >= 0x0061 and <= 0x007A => ((char)(keysym - 0x20)).ToString(),
                 >= 0x0041 and <= 0x005A => ((char)keysym).ToString(),
                 >= 0x0030 and <= 0x0039 => ((char)keysym).ToString(),
                 _ => string.Empty

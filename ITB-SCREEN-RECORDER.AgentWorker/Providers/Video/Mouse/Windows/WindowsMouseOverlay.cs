@@ -34,6 +34,18 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         }
 
         [StructLayout(LayoutKind.Sequential)]
+        private struct BITMAP
+        {
+            public int bmType;
+            public int bmWidth;
+            public int bmHeight;
+            public int bmWidthBytes;
+            public ushort bmPlanes;
+            public ushort bmBitsPixel;
+            public IntPtr bmBits;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
         private struct MSLLHOOKSTRUCT
         {
             public POINT pt;
@@ -94,6 +106,12 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         private static extern bool DrawIconEx(IntPtr hdc, int xLeft, int yTop, IntPtr hIcon, int cxWidth, int cyHeight, int istepIfAniCur, IntPtr hbrFlickerFreeDraw, int diFlags);
 
         [DllImport("gdi32.dll")]
+        private static extern int GetObject(IntPtr hgdiobj, int cbBuffer, out BITMAP lpvObject);
+
+        [DllImport("gdi32.dll")]
+        private static extern int GetBitmapBits(IntPtr hbmp, int cbBuffer, byte[] lpvBits);
+
+        [DllImport("gdi32.dll")]
         private static extern bool DeleteObject(IntPtr hObject);
 
         [DllImport("kernel32.dll")]
@@ -107,7 +125,8 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         private volatile bool _isInitialized;
 
         private Bitmap? _cursorBmp;
-        private readonly int[] _cursorPixels = new int[64 * 64];
+        // באפר 128x128 תומך בכל רזולוציות הסמנים ב-High DPI
+        private static readonly int[] _cursorPixels = new int[128 * 128];
 
         public void Initialize()
         {
@@ -174,13 +193,13 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         {
             Initialize();
 
-            // 1. שכבת רקע: טבעות מתפשטות וחיצי גלגול
+            // 1. רינדור טבעות הרחבה וחיצי גלגול
             MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height);
 
-            // 2. שכבת סמן: ציור סמן המערכת (כולל הגדלה בזמן קליק ודגימת בהירות)
+            // 2. רינדור הסמן (כולל I-Beam וסמנים מונוכרומטיים באפס אובדן)
             bool isCursorBright = DrawSystemCursorWithPulse(frameBuffer, width, height);
 
-            // 3. שכבה עליונה: תגית L / R מותאמת לבהירות הסמן (לעולם אינה נבלעת)
+            // 3. רינדור תגית L / R מותאמת
             MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
         }
 
@@ -196,37 +215,123 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
             {
                 int hotspotX = iconInfo.xHotspot;
                 int hotspotY = iconInfo.yHotspot;
+                int cursorW = 32;
+                int cursorH = 32;
 
-                _cursorBmp ??= new Bitmap(64, 64, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                Array.Clear(_cursorPixels, 0, _cursorPixels.Length);
 
-                using (var g = Graphics.FromImage(_cursorBmp))
+                // --- טיפול קריטי 1: סמנים מונוכרומטיים (I-Beam, Crosshair, Sizing Arrows) ---
+                if (iconInfo.hbmColor == IntPtr.Zero)
                 {
-                    g.Clear(Color.Transparent);
-                    IntPtr hdc = g.GetHdc();
-                    DrawIconEx(hdc, 0, 0, pci.hCursor, 0, 0, 0, IntPtr.Zero, DI_NORMAL);
-                    g.ReleaseHdc(hdc);
+                    GetObject(iconInfo.hbmMask, Marshal.SizeOf<BITMAP>(), out BITMAP bmMask);
+                    cursorW = Math.Min(128, bmMask.bmWidth);
+                    cursorH = Math.Min(128, bmMask.bmHeight / 2); // מחצית עליונה = AND, תחתונה = XOR
+                    int stride = bmMask.bmWidthBytes;
+
+                    byte[] maskBytes = new byte[bmMask.bmHeight * stride];
+                    GetBitmapBits(iconInfo.hbmMask, maskBytes.Length, maskBytes);
+
+                    for (int y = 0; y < cursorH; y++)
+                    {
+                        int andRow = y * stride;
+                        int xorRow = (y + cursorH) * stride;
+
+                        for (int x = 0; x < cursorW; x++)
+                        {
+                            int byteIdx = x / 8;
+                            byte bit = (byte)(0x80 >> (x % 8));
+
+                            bool andBit = (maskBytes[andRow + byteIdx] & bit) != 0;
+                            bool xorBit = (maskBytes[xorRow + byteIdx] & bit) != 0;
+
+                            int idx = y * 128 + x;
+
+                            if (andBit && !xorBit)
+                            {
+                                _cursorPixels[idx] = 0; // שקוף
+                            }
+                            else if (!andBit && !xorBit)
+                            {
+                                _cursorPixels[idx] = unchecked((int)0xFF000000); // שחור אטום
+                            }
+                            else if (!andBit && xorBit)
+                            {
+                                _cursorPixels[idx] = unchecked((int)0xFFFFFFFF); // לבן אטום
+                            }
+                            else
+                            {
+                                // Inverting XOR Pixel (קו ה-I-Beam הקלאסי)
+                                // מקודד ערך מיוחד 0xFE בערוץ האלפא עבור היפוך קונטרסט
+                                _cursorPixels[idx] = unchecked((int)0xFEFFFFFF);
+                            }
+                        }
+                    }
+                }
+                // --- טיפול 2: סמני צבע (32bpp Alpha או 24bpp צבע מלא) ---
+                else
+                {
+                    cursorW = 64;
+                    cursorH = 64;
+                    _cursorBmp ??= new Bitmap(64, 64, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+
+                    using (var g = Graphics.FromImage(_cursorBmp))
+                    {
+                        g.Clear(Color.Transparent);
+                        IntPtr hdc = g.GetHdc();
+                        DrawIconEx(hdc, 0, 0, pci.hCursor, 0, 0, 0, IntPtr.Zero, DI_NORMAL);
+                        g.ReleaseHdc(hdc);
+                    }
+
+                    var rect = new Rectangle(0, 0, 64, 64);
+                    var bmpData = _cursorBmp.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+
+                    int[] tempBits = new int[64 * 64];
+                    Marshal.Copy(bmpData.Scan0, tempBits, 0, tempBits.Length);
+                    _cursorBmp.UnlockBits(bmpData);
+
+                    bool hasAlpha = false;
+                    for (int i = 0; i < tempBits.Length; i++)
+                    {
+                        if (((tempBits[i] >> 24) & 0xFF) > 0)
+                        {
+                            hasAlpha = true;
+                            break;
+                        }
+                    }
+
+                    // העתקה לבאפר 128
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 64; x++)
+                        {
+                            int px = tempBits[y * 64 + x];
+                            if (!hasAlpha && (px & 0x00FFFFFF) != 0)
+                            {
+                                px |= unchecked((int)0xFF000000); // תיקון Alpha לסמני 24bpp
+                            }
+                            _cursorPixels[y * 128 + x] = px;
+                        }
+                    }
                 }
 
-                var rect = new Rectangle(0, 0, 64, 64);
-                var bmpData = _cursorBmp.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
-                Marshal.Copy(bmpData.Scan0, _cursorPixels, 0, _cursorPixels.Length);
-                _cursorBmp.UnlockBits(bmpData);
-
-                // --- דגימת בהירות הסמן (Luminance Detection) ---
+                // --- חישוב בהירות סמן (Luma) ---
                 long totalLuma = 0;
                 int nonTransparentCount = 0;
 
-                for (int i = 0; i < _cursorPixels.Length; i++)
+                for (int y = 0; y < cursorH; y++)
                 {
-                    int p = _cursorPixels[i];
-                    byte a = (byte)((p >> 24) & 0xFF);
-                    if (a > 50)
+                    for (int x = 0; x < cursorW; x++)
                     {
-                        byte b = (byte)(p & 0xFF);
-                        byte gCol = (byte)((p >> 8) & 0xFF);
-                        byte r = (byte)((p >> 16) & 0xFF);
-                        totalLuma += (long)(0.299 * r + 0.587 * gCol + 0.114 * b);
-                        nonTransparentCount++;
+                        int p = _cursorPixels[y * 128 + x];
+                        byte a = (byte)((p >> 24) & 0xFF);
+                        if (a >= 250)
+                        {
+                            byte b = (byte)(p & 0xFF);
+                            byte gCol = (byte)((p >> 8) & 0xFF);
+                            byte r = (byte)((p >> 16) & 0xFF);
+                            totalLuma += (long)(0.299 * r + 0.587 * gCol + 0.114 * b);
+                            nonTransparentCount++;
+                        }
                     }
                 }
 
@@ -235,62 +340,76 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                     isBright = (totalLuma / nonTransparentCount) > 120;
                 }
 
-                // --- בדיקה האם יש קליק פעיל להפעלת הגדלת הסמן (1.35x Scale) ---
+                // --- ציור הסמן על הפריים כולל Pulse Scale ---
                 float scale = MouseVisualRasterizer.IsClickActive() ? 1.35f : 1.0f;
+                int drawW = (int)(cursorW * scale);
+                int drawH = (int)(cursorH * scale);
+                int startX = pci.ptScreenPos.x - (int)(hotspotX * scale);
+                int startY = pci.ptScreenPos.y - (int)(hotspotY * scale);
 
-                int cursorBaseX = pci.ptScreenPos.x;
-                int cursorBaseY = pci.ptScreenPos.y;
-
-                if (scale > 1.01f)
+                for (int dy = 0; dy < drawH; dy++)
                 {
-                    // הגדלה סביב ה-Hotspot כך שהשפיץ נשאר מדויק
-                    int drawW = (int)(64 * scale);
-                    int drawH = (int)(64 * scale);
-                    int startX = cursorBaseX - (int)(hotspotX * scale);
-                    int startY = cursorBaseY - (int)(hotspotY * scale);
+                    int targetY = startY + dy;
+                    if (targetY < 0 || targetY >= height) continue;
 
-                    for (int y = 0; y < drawH; y++)
+                    int srcY = Math.Min(cursorH - 1, (int)(dy / scale));
+
+                    for (int dx = 0; dx < drawW; dx++)
                     {
-                        int targetY = startY + y;
-                        if (targetY < 0 || targetY >= height) continue;
+                        int targetX = startX + dx;
+                        if (targetX < 0 || targetX >= width) continue;
 
-                        int srcY = Math.Min(63, (int)(y / scale));
+                        int srcX = Math.Min(cursorW - 1, (int)(dx / scale));
+                        int pixel = _cursorPixels[srcY * 128 + srcX];
+                        byte alpha = (byte)((pixel >> 24) & 0xFF);
+                        if (alpha == 0) continue;
 
-                        for (int x = 0; x < drawW; x++)
+                        int bufferIdx = (targetY * width + targetX) * 4;
+
+                        // 💡 מנגנון ייעודי עבור סמן I-Beam: היפוך צבע עם אכיפת קונטרסט
+                        if (alpha == 254)
                         {
-                            int targetX = startX + x;
-                            if (targetX < 0 || targetX >= width) continue;
+                            byte origB = frameBuffer[bufferIdx];
+                            byte origG = frameBuffer[bufferIdx + 1];
+                            byte origR = frameBuffer[bufferIdx + 2];
 
-                            int srcX = Math.Min(63, (int)(x / scale));
-                            int pixel = _cursorPixels[srcY * 64 + srcX];
-                            byte alpha = (byte)((pixel >> 24) & 0xFF);
-                            if (alpha == 0) continue;
+                            int bgLuma = (int)(0.299 * origR + 0.587 * origG + 0.114 * origB);
 
-                            BlendPixel(frameBuffer, width, targetX, targetY, pixel, alpha);
+                            // אם הרקע אפור בינוני (שבו היפוך מתמטי נבלע), כופים שחור או לבן מלא
+                            if (Math.Abs(bgLuma - 128) < 35)
+                            {
+                                byte forced = bgLuma > 128 ? (byte)0 : (byte)255;
+                                frameBuffer[bufferIdx] = forced;
+                                frameBuffer[bufferIdx + 1] = forced;
+                                frameBuffer[bufferIdx + 2] = forced;
+                            }
+                            else
+                            {
+                                frameBuffer[bufferIdx] = (byte)(255 - origB);
+                                frameBuffer[bufferIdx + 1] = (byte)(255 - origG);
+                                frameBuffer[bufferIdx + 2] = (byte)(255 - origR);
+                            }
+                            continue;
                         }
-                    }
-                }
-                else
-                {
-                    // העתקה ישירה 1:1 (בזמן ריחוף רגיל)
-                    int startX = cursorBaseX - hotspotX;
-                    int startY = cursorBaseY - hotspotY;
 
-                    for (int y = 0; y < 64; y++)
-                    {
-                        int targetY = startY + y;
-                        if (targetY < 0 || targetY >= height) continue;
+                        // ציור רגיל עם Alpha Blending
+                        byte b = (byte)(pixel & 0xFF);
+                        byte gCol = (byte)((pixel >> 8) & 0xFF);
+                        byte r = (byte)((pixel >> 16) & 0xFF);
 
-                        for (int x = 0; x < 64; x++)
+                        if (alpha == 255)
                         {
-                            int targetX = startX + x;
-                            if (targetX < 0 || targetX >= width) continue;
-
-                            int pixel = _cursorPixels[y * 64 + x];
-                            byte alpha = (byte)((pixel >> 24) & 0xFF);
-                            if (alpha == 0) continue;
-
-                            BlendPixel(frameBuffer, width, targetX, targetY, pixel, alpha);
+                            frameBuffer[bufferIdx] = b;
+                            frameBuffer[bufferIdx + 1] = gCol;
+                            frameBuffer[bufferIdx + 2] = r;
+                        }
+                        else
+                        {
+                            float a = alpha / 255.0f;
+                            float invA = 1.0f - a;
+                            frameBuffer[bufferIdx] = (byte)((b * a) + (frameBuffer[bufferIdx] * invA));
+                            frameBuffer[bufferIdx + 1] = (byte)((gCol * a) + (frameBuffer[bufferIdx + 1] * invA));
+                            frameBuffer[bufferIdx + 2] = (byte)((r * a) + (frameBuffer[bufferIdx + 2] * invA));
                         }
                     }
                 }
@@ -301,29 +420,6 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
             {
                 if (iconInfo.hbmMask != IntPtr.Zero) DeleteObject(iconInfo.hbmMask);
                 if (iconInfo.hbmColor != IntPtr.Zero) DeleteObject(iconInfo.hbmColor);
-            }
-        }
-
-        private static void BlendPixel(byte[] frameBuffer, int width, int targetX, int targetY, int pixel, byte alpha)
-        {
-            int bufferIdx = (targetY * width + targetX) * 4;
-            byte b = (byte)(pixel & 0xFF);
-            byte gCol = (byte)((pixel >> 8) & 0xFF);
-            byte r = (byte)((pixel >> 16) & 0xFF);
-
-            if (alpha == 255)
-            {
-                frameBuffer[bufferIdx] = b;
-                frameBuffer[bufferIdx + 1] = gCol;
-                frameBuffer[bufferIdx + 2] = r;
-            }
-            else
-            {
-                float a = alpha / 255.0f;
-                float invA = 1.0f - a;
-                frameBuffer[bufferIdx] = (byte)((b * a) + (frameBuffer[bufferIdx] * invA));
-                frameBuffer[bufferIdx + 1] = (byte)((gCol * a) + (frameBuffer[bufferIdx + 1] * invA));
-                frameBuffer[bufferIdx + 2] = (byte)((r * a) + (frameBuffer[bufferIdx + 2] * invA));
             }
         }
 

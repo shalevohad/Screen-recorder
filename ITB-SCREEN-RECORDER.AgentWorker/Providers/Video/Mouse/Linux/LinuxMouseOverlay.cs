@@ -25,9 +25,10 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
         {
             public short x, y;
             public ushort width, height, xhot, yhot;
-            public ulong cursor_serial;
-            public IntPtr pixels;
-            public IntPtr atom, name;
+            public UIntPtr cursor_serial;
+            public IntPtr pixels; // מצביע ל-unsigned long[] ב-X11
+            public UIntPtr atom;
+            public IntPtr name;
         }
 
         [DllImport(XtstLib)] private static extern IntPtr XRecordAllocRange();
@@ -41,7 +42,6 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
         private volatile bool _isInitialized;
         private XRecordInterceptProc? _xRecordCallback;
 
-        // Display ייעודי עבור ת'רד הציור למניעת התנגשויות X11 Multi-threading
         private IntPtr _renderDisplay = IntPtr.Zero;
         private readonly object _renderLock = new();
 
@@ -122,7 +122,6 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                 recordStarted = false;
             }
 
-            // Fallback מבוסס Polling אם libXtst אינו זמין
             if (!recordStarted)
             {
                 int lastMask = 0;
@@ -151,17 +150,17 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
         {
             Initialize();
 
-            // 1. שכבת רקע: טבעות מתפשטות וחיצי גלילה ממורכזים
+            // 1. רינדור טבעות הרחבה וחיצי גלגול
             MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height);
 
-            // 2. שכבת סמן: ציור סמן X11 עם Pulse Scale של 1.35x בלחיצה וחישוב בהירות
-            bool isCursorBright = DrawX11CursorWithPulse(frameBuffer, width, height);
+            // 2. רינדור סמן X11 (כולל טיפול ב-I-Beam וב-64-bit)
+            bool isCursorBright = DrawX11CursorWithPulseAndContrast(frameBuffer, width, height);
 
-            // 3. שכבה עליונה: תגית L / R מותאמת ניגודיות למניעת בליעה
+            // 3. רינדור תגית L / R
             MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
         }
 
-        private bool DrawX11CursorWithPulse(byte[] frameBuffer, int width, int height)
+        private bool DrawX11CursorWithPulseAndContrast(byte[] frameBuffer, int width, int height)
         {
             if (_renderDisplay == IntPtr.Zero) return true;
 
@@ -178,19 +177,57 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                     var cur = Marshal.PtrToStructure<XFixesCursorImage>(curPtr);
                     int curW = cur.width;
                     int curH = cur.height;
-                    if (curW <= 0 || curH <= 0) return true;
+                    if (curW <= 0 || curH <= 0 || cur.pixels == IntPtr.Zero) return true;
 
                     int pixelCount = curW * curH;
-                    int[] cursorPixels = new int[pixelCount];
-                    Marshal.Copy(cur.pixels, cursorPixels, 0, pixelCount);
+                    uint[] cursorPixels = new uint[pixelCount];
 
-                    // --- דגימת בהירות הסמן ב-Linux (Luminance Sensing) ---
+                    // 💡 תיקון קריטי 1: פריסת זיכרון תואמת 64-bit במערכות לינוקס (unsigned long = 8 bytes)
+                    if (IntPtr.Size == 8)
+                    {
+                        long[] raw64 = new long[pixelCount];
+                        Marshal.Copy(cur.pixels, raw64, 0, pixelCount);
+                        for (int i = 0; i < pixelCount; i++)
+                        {
+                            cursorPixels[i] = (uint)(raw64[i] & 0xFFFFFFFF);
+                        }
+                    }
+                    else
+                    {
+                        int[] raw32 = new int[pixelCount];
+                        Marshal.Copy(cur.pixels, raw32, 0, pixelCount);
+                        for (int i = 0; i < pixelCount; i++)
+                        {
+                            cursorPixels[i] = (uint)raw32[i];
+                        }
+                    }
+
+                    // 💡 תיקון קריטי 2: זיהוי סמן מונוכרומטי שבו Alpha = 0 בטעות
+                    uint maxAlpha = 0;
+                    for (int i = 0; i < pixelCount; i++)
+                    {
+                        uint a = (cursorPixels[i] >> 24) & 0xFF;
+                        if (a > maxAlpha) maxAlpha = a;
+                    }
+
+                    if (maxAlpha == 0)
+                    {
+                        for (int i = 0; i < pixelCount; i++)
+                        {
+                            if ((cursorPixels[i] & 0x00FFFFFF) != 0)
+                            {
+                                cursorPixels[i] |= 0xFF000000; // אכיפת Alpha
+                            }
+                        }
+                    }
+
+                    // חישוב בהירות סמן (Luma)
                     long totalLuma = 0;
                     int nonTransparentCount = 0;
 
                     for (int i = 0; i < pixelCount; i++)
                     {
-                        uint p = (uint)cursorPixels[i];
+                        uint p = cursorPixels[i];
                         byte a = (byte)((p >> 24) & 0xFF);
                         if (a > 50)
                         {
@@ -207,15 +244,64 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                         isBright = (totalLuma / nonTransparentCount) > 120;
                     }
 
-                    // --- קביעת יחס הגדלה (1.35x Scale בעת קליק) ---
-                    float scale = MouseVisualRasterizer.IsClickActive() ? 1.35f : 1.0f;
+                    // 💡 תיקון קריטי 3: זיהוי סמן I-Beam (סמן טקסט צר)
+                    bool isIBeam = (curW <= 16 && curH >= 12);
 
+                    float scale = MouseVisualRasterizer.IsClickActive() ? 1.35f : 1.0f;
+                    int drawW = (int)(curW * scale);
+                    int drawH = (int)(curH * scale);
                     int startX = cur.x - (int)(cur.xhot * scale);
                     int startY = cur.y - (int)(cur.yhot * scale);
 
-                    int drawW = (int)(curW * scale);
-                    int drawH = (int)(curH * scale);
+                    // שלב א': אם מדובר בסמן I-Beam, ציור הילת קונטרסט מקיפה סביבו
+                    if (isIBeam)
+                    {
+                        byte haloColor = isBright ? (byte)15 : (byte)245;
+                        byte haloAlpha = 220;
 
+                        for (int dy = -1; dy <= drawH; dy++)
+                        {
+                            int targetY = startY + dy;
+                            if (targetY < 0 || targetY >= height) continue;
+                            int rowOffset = targetY * width * 4;
+
+                            for (int dx = -1; dx <= drawW; dx++)
+                            {
+                                int targetX = startX + dx;
+                                if (targetX < 0 || targetX >= width) continue;
+
+                                int srcX = Math.Clamp((int)(dx / scale), 0, curW - 1);
+                                int srcY = Math.Clamp((int)(dy / scale), 0, curH - 1);
+
+                                uint p = cursorPixels[srcY * curW + srcX];
+                                if (((p >> 24) & 0xFF) > 40)
+                                {
+                                    // יציקת הילה סביב הפיקסל
+                                    for (int oy = -1; oy <= 1; oy++)
+                                    {
+                                        int hy = targetY + oy;
+                                        if (hy < 0 || hy >= height) continue;
+                                        int hRow = hy * width * 4;
+
+                                        for (int ox = -1; ox <= 1; ox++)
+                                        {
+                                            int hx = targetX + ox;
+                                            if (hx < 0 || hx >= width) continue;
+
+                                            int bIdx = hRow + hx * 4;
+                                            float a = haloAlpha / 255.0f;
+                                            float invA = 1.0f - a;
+                                            frameBuffer[bIdx] = (byte)(haloColor * a + frameBuffer[bIdx] * invA);
+                                            frameBuffer[bIdx + 1] = (byte)(haloColor * a + frameBuffer[bIdx + 1] * invA);
+                                            frameBuffer[bIdx + 2] = (byte)(haloColor * a + frameBuffer[bIdx + 2] * invA);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // שלב ב': רינדור גוף הסמן
                     for (int dy = 0; dy < drawH; dy++)
                     {
                         int targetY = startY + dy;
@@ -230,7 +316,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                             if (targetX < 0 || targetX >= width) continue;
 
                             int srcX = Math.Min(curW - 1, (int)(dx / scale));
-                            uint pixel = (uint)cursorPixels[srcY * curW + srcX];
+                            uint pixel = cursorPixels[srcY * curW + srcX];
                             byte alpha = (byte)((pixel >> 24) & 0xFF);
                             if (alpha == 0) continue;
 

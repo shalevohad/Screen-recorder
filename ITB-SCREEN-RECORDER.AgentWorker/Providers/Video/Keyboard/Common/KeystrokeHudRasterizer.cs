@@ -6,31 +6,32 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
     public static class KeystrokeHudRasterizer
     {
         private const double DISPLAY_DURATION_MS = 2200.0;
-        private const double FADE_DURATION_MS = 450.0;
+        private const double FADE_DURATION_MS = 400.0;
 
-        // מידות פונט מוגדל פי 3 (3x Scale)
         private const int SCALE = 3;
         private const int BASE_CHAR_W = 7;
         private const int BASE_CHAR_H = 11;
         private const int CHAR_W = BASE_CHAR_W * SCALE; // 21px
         private const int CHAR_H = BASE_CHAR_H * SCALE; // 33px
-        private const int CHAR_SPACING = 2 * SCALE;     // 6px
+        private const int CHAR_SPACING = 4;
 
-        private const int PADDING_X = 26;
-        private const int PADDING_Y = 18;
-        private const int SHADOW_RADIUS = 8; // רדיוס הילת הצל החיצונית
+        private const int KEYCAP_HEIGHT = 62;
+        private const int KEYCAP_PAD_X = 22;
+        private const int PLUS_WIDTH = 30;
+        private const int GAP = 14;
+        private const int SHADOW_RADIUS = 10;
 
         private static readonly object _syncLock = new();
-        private static string? _currentText;
-        private static long _lastTick;
+        public static string? CurrentShortcutText { get; private set; }
+        public static long LastShortcutTick { get; private set; }
 
         public static void SetShortcut(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return;
             lock (_syncLock)
             {
-                _currentText = text;
-                _lastTick = Stopwatch.GetTimestamp();
+                CurrentShortcutText = text;
+                LastShortcutTick = Stopwatch.GetTimestamp();
             }
         }
 
@@ -41,8 +42,8 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
 
             lock (_syncLock)
             {
-                text = _currentText;
-                tick = _lastTick;
+                text = CurrentShortcutText;
+                tick = LastShortcutTick;
             }
 
             if (string.IsNullOrEmpty(text) || tick == 0) return;
@@ -50,7 +51,6 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
             double elapsed = Stopwatch.GetElapsedTime(tick).TotalMilliseconds;
             if (elapsed > DISPLAY_DURATION_MS) return;
 
-            // חישוב שקיפות עם Fade-Out רך בסיום
             int alpha = 255;
             if (elapsed > (DISPLAY_DURATION_MS - FADE_DURATION_MS))
             {
@@ -59,49 +59,71 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
             }
             if (alpha <= 10) return;
 
-            // חישוב מימדים
-            int textWidth = text.Length * (CHAR_W + CHAR_SPACING) - CHAR_SPACING;
-            int boxWidth = textWidth + (PADDING_X * 2);
-            int boxHeight = CHAR_H + (PADDING_Y * 2);
+            string[] keys = text.Split(new[] { " + " }, StringSplitOptions.RemoveEmptyEntries);
+            if (keys.Length == 0) return;
 
-            // 🎯 מיקום במרכז המוחלט של המסך (Center Screen)
-            int originX = (frameWidth - boxWidth) / 2;
-            int originY = (frameHeight - boxHeight) / 2;
+            int[] keycapWidths = new int[keys.Length];
+            int clusterWidth = 0;
 
-            if (originX < 0 || originY < 0) return;
-
-            // 1. הילת צל עמוקה סביב הכרטיס (מונעת בליעה במסכים לבנים/בהירים)
-            DrawOuterShadow(buffer, frameWidth, frameHeight, originX, originY, boxWidth, boxHeight, alpha);
-
-            // 2. כרטיס טקטי מוגן (#090D1A) עם מסגרת כפולה וניאון ציאן (#00F0FF)
-            DrawCenterKeycapPlate(buffer, frameWidth, frameHeight, originX, originY, boxWidth, boxHeight, alpha);
-
-            // 3. רינדור האותיות המוגדלות (כולל צל פנימי לאותיות)
-            int textX = originX + PADDING_X;
-            int textY = originY + PADDING_Y;
-
-            for (int i = 0; i < text.Length; i++)
+            for (int i = 0; i < keys.Length; i++)
             {
-                DrawScaledGlyph(buffer, frameWidth, frameHeight, textX, textY, text[i], alpha);
-                textX += CHAR_W + CHAR_SPACING;
+                int textW = keys[i].Length * (CHAR_W + CHAR_SPACING) - CHAR_SPACING;
+                int kw = Math.Max(64, textW + (KEYCAP_PAD_X * 2));
+                keycapWidths[i] = kw;
+                clusterWidth += kw;
+                if (i < keys.Length - 1) clusterWidth += PLUS_WIDTH + (GAP * 2);
+            }
+
+            int originX = (frameWidth - clusterWidth) / 2;
+            int originY = (frameHeight - KEYCAP_HEIGHT) / 2;
+
+            int currentX = originX;
+
+            for (int i = 0; i < keys.Length; i++)
+            {
+                int kw = keycapWidths[i];
+
+                // 1. צל רך מקיף
+                DrawKeycapShadow(buffer, frameWidth, frameHeight, currentX, originY, kw, KEYCAP_HEIGHT, (alpha * 130) / 255);
+
+                // 2. גוף המקש הפיזי
+                DrawKeycapBody(buffer, frameWidth, frameHeight, currentX, originY, kw, KEYCAP_HEIGHT, alpha);
+
+                // 3. כיתוב המקש במרכז
+                int textW = keys[i].Length * (CHAR_W + CHAR_SPACING) - CHAR_SPACING;
+                int textX = currentX + (kw - textW) / 2;
+                int textY = originY + (KEYCAP_HEIGHT - CHAR_H) / 2;
+
+                for (int c = 0; c < keys[i].Length; c++)
+                {
+                    DrawScaledChar(buffer, frameWidth, frameHeight, textX, textY, keys[i][c], alpha);
+                    textX += CHAR_W + CHAR_SPACING;
+                }
+
+                currentX += kw;
+
+                // 4. סימן '+' זוהר בין המקשים
+                if (i < keys.Length - 1)
+                {
+                    currentX += GAP;
+                    int plusX = currentX + (PLUS_WIDTH - CHAR_W) / 2;
+                    int plusY = originY + (KEYCAP_HEIGHT - CHAR_H) / 2;
+
+                    DrawScaledChar(buffer, frameWidth, frameHeight, plusX, plusY, '+', alpha, isCyan: true);
+                    currentX += PLUS_WIDTH + GAP;
+                }
             }
         }
 
-        /// <summary>
-        /// שכבת צל שחור עמוקה המבודדת את הכרטיס מכל סוג של רקע
-        /// </summary>
-        private static void DrawOuterShadow(byte[] buffer, int width, int height, int x0, int y0, int w, int h, int alpha)
+        private static void DrawKeycapShadow(byte[] buffer, int width, int height, int x0, int y0, int w, int h, int shadowAlpha)
         {
             int minX = Math.Max(0, x0 - SHADOW_RADIUS);
             int maxX = Math.Min(width - 1, x0 + w + SHADOW_RADIUS);
-            int minY = Math.Max(0, y0 - SHADOW_RADIUS);
-            int maxY = Math.Min(height - 1, y0 + h + SHADOW_RADIUS);
-
-            int baseShadowAlpha = (alpha * 160) / 255;
+            int minY = Math.Max(0, y0 - SHADOW_RADIUS + 3);
+            int maxY = Math.Min(height - 1, y0 + h + SHADOW_RADIUS + 3);
 
             for (int y = minY; y <= maxY; y++)
             {
-                // חישוב מרחק מחוץ לגבולות התיבה
                 int dy = 0;
                 if (y < y0) dy = y0 - y;
                 else if (y >= y0 + h) dy = y - (y0 + h - 1);
@@ -114,20 +136,17 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
                     if (x < x0) dx = x0 - x;
                     else if (x >= x0 + w) dx = x - (x0 + w - 1);
 
-                    // אם הנקודה בתוך גוף התיבה עצמה – מדלגים (הכרטיס ייצבע עליה)
                     if (dx == 0 && dy == 0) continue;
 
                     float dist = (float)Math.Sqrt(dx * dx + dy * dy);
                     if (dist > SHADOW_RADIUS) continue;
 
-                    float factor = 1.0f - (dist / SHADOW_RADIUS);
-                    int curA = (int)(baseShadowAlpha * factor);
+                    int curA = (int)(shadowAlpha * (1.0f - (dist / SHADOW_RADIUS)));
                     if (curA <= 0) continue;
 
                     int idx = rowIdx + x * 4;
                     int invA = 255 - curA;
 
-                    // החשכה הדרגתית של פיקסלי הרקע (Shadow Blend)
                     buffer[idx] = (byte)((buffer[idx] * invA) / 255);
                     buffer[idx + 1] = (byte)((buffer[idx + 1] * invA) / 255);
                     buffer[idx + 2] = (byte)((buffer[idx + 2] * invA) / 255);
@@ -135,17 +154,13 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
             }
         }
 
-        /// <summary>
-        /// רינדור גוף הכרטיס עם מסגרת כפולה: קו מתאר שחור חיצוני + פס ציאן זוהר
-        /// </summary>
-        private static void DrawCenterKeycapPlate(byte[] buffer, int width, int height, int x0, int y0, int w, int h, int alpha)
+        private static void DrawKeycapBody(byte[] buffer, int width, int height, int x0, int y0, int w, int h, int alpha)
         {
-            byte bgR = 9, bgG = 13, bgB = 26;          // שחור-אובסידיאן עמוק (#090D1A)
-            byte borderR = 0, borderG = 240, borderB = 255; // ציאן ניאון חשמלי (#00F0FF)
-            byte darkBorderR = 0, darkBorderG = 0, darkBorderB = 0;
+            byte bgR = 14, bgG = 18, bgB = 28;
+            byte borderR = 0, borderG = 240, borderB = 255;
+            byte bevelR = 80, bevelG = 100, bevelB = 130;
 
-            int bgAlpha = (alpha * 235) / 255;
-
+            int bgAlpha = (alpha * 245) / 255;
             int x1 = x0 + w;
             int y1 = y0 + h;
 
@@ -157,29 +172,17 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
                 for (int x = x0; x < x1 && x < width; x++)
                 {
                     int distX = Math.Min(x - x0, x1 - 1 - x);
-                    int borderDist = Math.Min(distX, distY);
 
-                    byte curR, curG, curB;
-                    int curA;
+                    if ((distX == 0 && distY <= 4) || (distY == 0 && distX <= 4)) continue;
+                    if (distX == 1 && distY == 1) continue;
 
-                    if (borderDist == 0)
-                    {
-                        // קו מתאר שחור חיצוני של 1px
-                        curR = darkBorderR; curG = darkBorderG; curB = darkBorderB;
-                        curA = alpha;
-                    }
-                    else if (borderDist >= 1 && borderDist <= 3)
-                    {
-                        // מסגרת ציאן בעובי 3px
-                        curR = borderR; curG = borderG; curB = borderB;
-                        curA = alpha;
-                    }
-                    else
-                    {
-                        // מילוי פנימי כהה
-                        curR = bgR; curG = bgG; curB = bgB;
-                        curA = bgAlpha;
-                    }
+                    bool isBorder = (distX <= 1 || distY <= 1);
+                    bool isBevel = (!isBorder && y == y0 + 2 && distX > 4);
+
+                    byte curR = isBorder ? borderR : (isBevel ? bevelR : bgR);
+                    byte curG = isBorder ? borderG : (isBevel ? bevelG : bgG);
+                    byte curB = isBorder ? borderB : (isBevel ? bevelB : bgB);
+                    int curA = isBorder ? alpha : bgAlpha;
 
                     int idx = rowIdx + x * 4;
                     int invA = 255 - curA;
@@ -191,22 +194,22 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
             }
         }
 
-        /// <summary>
-        /// רינדור אות מוגדלת פי 3 עם צל פנימי מובנה (3x Scaled Glyph with Self-Shadow)
-        /// </summary>
-        private static void DrawScaledGlyph(byte[] buffer, int frameWidth, int frameHeight, int x0, int y0, char c, int alpha)
+        private static void DrawScaledChar(byte[] buffer, int width, int height, int x0, int y0, char c, int alpha, bool isCyan = false)
         {
             ushort[]? bitmap = Font7x11.Get(c);
             if (bitmap == null) return;
 
-            // 1. צל פנימי שחור לאות בהיסט של 2px למטה וימינה
-            DrawGlyphPass(buffer, frameWidth, frameHeight, x0 + 2, y0 + 2, bitmap, 0, 0, 0, (alpha * 180) / 255);
+            byte textR = isCyan ? (byte)0 : (byte)255;
+            byte textG = isCyan ? (byte)240 : (byte)255;
+            byte textB = isCyan ? (byte)255 : (byte)255;
 
-            // 2. גוף האות הלבן הבוהק (#FFFFFF)
-            DrawGlyphPass(buffer, frameWidth, frameHeight, x0, y0, bitmap, 255, 255, 255, alpha);
+            // 1. צל פנימי שחור לאות
+            DrawGlyphPass(buffer, width, height, x0 + 2, y0 + 2, bitmap, 0, 0, 0, (alpha * 180) / 255);
+            // 2. גוף האות הראשי
+            DrawGlyphPass(buffer, width, height, x0, y0, bitmap, textR, textG, textB, alpha);
         }
 
-        private static void DrawGlyphPass(byte[] buffer, int frameWidth, int frameHeight, int x0, int y0, ushort[] bitmap, byte rCol, byte gCol, byte bCol, int passAlpha)
+        private static void DrawGlyphPass(byte[] buffer, int width, int height, int x0, int y0, ushort[] bitmap, byte rCol, byte gCol, byte bCol, int passAlpha)
         {
             for (int r = 0; r < BASE_CHAR_H; r++)
             {
@@ -221,14 +224,14 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
                     for (int dy = 0; dy < SCALE; dy++)
                     {
                         int targetY = startY + dy;
-                        if (targetY < 0 || targetY >= frameHeight) continue;
+                        if (targetY < 0 || targetY >= height) continue;
 
-                        int rowIdx = targetY * frameWidth * 4;
+                        int rowIdx = targetY * width * 4;
 
                         for (int dx = 0; dx < SCALE; dx++)
                         {
                             int targetX = startX + dx;
-                            if (targetX < 0 || targetX >= frameWidth) continue;
+                            if (targetX < 0 || targetX >= width) continue;
 
                             int idx = rowIdx + targetX * 4;
                             int invA = 255 - passAlpha;
@@ -242,7 +245,7 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
             }
         }
 
-        #region Embedded 7x11 Monospace Matrix
+        #region Embedded Monospace Matrix
         private static class Font7x11
         {
             public static ushort[]? Get(char c)
@@ -287,7 +290,6 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Common
                     '9' => new ushort[] { 0x1C, 0x22, 0x22, 0x1E, 0x02, 0x02, 0x22, 0x1C, 0x00, 0x00, 0x00 },
                     '+' => new ushort[] { 0x00, 0x08, 0x08, 0x3E, 0x08, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00 },
                     '-' => new ushort[] { 0x00, 0x00, 0x00, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
-                    ' ' => new ushort[] { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
                     _ => null
                 };
             }
