@@ -1,4 +1,9 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿// ==========================================
+// File: Core/Configuration/SystemConfig.cs
+// ==========================================
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace ITB_SCREEN_RECORDER.Core.Configuration
 {
@@ -19,6 +24,9 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public string DisplayLocale { get; set; } = "en-US";
 
+        // 💡 מעברי שעון ידניים בקונפיגורציה (Cross-Platform)
+        public List<DstTransitionRule> ManualDstTransitions { get; set; } = new();
+
         // 💡 הגדרות תצוגת הדשבורד (זמני Snapshot ומכסת סטרים חי)
         public DashboardSettings Dashboard { get; set; } = new DashboardSettings();
 
@@ -38,6 +46,16 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Required]
         [Range(10, 60, ErrorMessage = "DefaultTargetFps must be between 10 and 60.")]
         public int DefaultTargetFps { get; set; } = 20;
+    }
+
+    public class DstTransitionRule
+    {
+        public DateTime SwitchUtc { get; set; }
+        public int OffsetBeforeMinutes { get; set; }
+        public int OffsetAfterMinutes { get; set; }
+        public string LabelBefore { get; set; } = "IDT";
+        public string LabelAfter { get; set; } = "IST";
+        public string Description { get; set; } = string.Empty;
     }
 
     public class DashboardSettings

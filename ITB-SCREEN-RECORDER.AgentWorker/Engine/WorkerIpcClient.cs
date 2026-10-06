@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: AgentWorker/Engine/WorkerIpcClient.cs
+// ==========================================
+using System;
 using System.IO;
 using System.IO.Pipes;
 using System.Text.Json;
@@ -11,9 +14,9 @@ namespace ITBRecorderAgent.Engine
     {
         public event Action<string, TimeSpan, int, string>? StartRequested;
         public event Action? StopRequested;
-        // תיקון קריטי: העברת הפרמטרים המעודכנים באירוע ה-Restart
         public event Action<string, TimeSpan, int, string>? RestartRequested;
         public event Action<int>? CaptureFpsRequested;
+        public event Action<TimeSpan>? ClockSyncRequested;
         public event Action? ServerDisconnected;
         public event Action? ServerConnected;
 
@@ -72,6 +75,14 @@ namespace ITBRecorderAgent.Engine
             {
                 ServerConnected?.Invoke();
             }
+            else if (cmd.Equals("SyncClock", StringComparison.OrdinalIgnoreCase))
+            {
+                // 💡 קליטת עדכון סטיית שעון בזמן אמת מהסופרווייזר
+                if (parts.Length > 1 && long.TryParse(parts[1], out long ticks))
+                {
+                    ClockSyncRequested?.Invoke(TimeSpan.FromTicks(ticks));
+                }
+            }
             else if (cmd.Equals("SetCaptureFps", StringComparison.OrdinalIgnoreCase))
             {
                 if (parts.Length > 1 && int.TryParse(parts[1], out int requestedFps))
@@ -83,8 +94,8 @@ namespace ITBRecorderAgent.Engine
             {
                 string dest = parts.Length > 1 ? parts[1] : string.Empty;
                 TimeSpan offset = (parts.Length > 2 && long.TryParse(parts[2], out long ticks)) ? TimeSpan.FromTicks(ticks) : TimeSpan.Zero;
-                int targetFps = (parts.Length > 3 && int.TryParse(parts[3], out int parsedFps)) ? parsedFps : 30;
-                string bitrate = parts.Length > 4 ? parts[4] : "5000k";
+                int targetFps = (parts.Length > 3 && int.TryParse(parts[3], out int parsedFps)) ? parsedFps : 15;
+                string bitrate = parts.Length > 4 ? parts[4] : "2000k";
 
                 if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase))
                 {
@@ -92,7 +103,6 @@ namespace ITBRecorderAgent.Engine
                 }
                 else
                 {
-                    // תיקון: העברת הפרמטרים החדשים כדי שיתעדכנו בצינור ה-FFmpeg
                     RestartRequested?.Invoke(dest, offset, targetFps, bitrate);
                 }
             }

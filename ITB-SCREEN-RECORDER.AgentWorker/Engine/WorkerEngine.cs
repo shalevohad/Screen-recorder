@@ -1,4 +1,7 @@
-﻿using ITB_SCREEN_RECORDER.Core.Common;
+﻿// ==========================================
+// File: ITB-SCREEN-RECORDER.AgentWorker/WorkerEngine.cs
+// ==========================================
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
@@ -6,7 +9,7 @@ using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITBRecorderAgent.Engine;
 using ITBRecorderAgent.Providers.Audio;
 using ITBRecorderAgent.Providers.Video;
-using ITB_SCREEN_RECORDER.AgentWorker.Providers.Video; // הוסף כדי לפתור את שגיאת CS0246
+using ITB_SCREEN_RECORDER.AgentWorker.Providers.Video;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -37,7 +40,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private int _baselineFps;
         private string _videoBitrate;
 
-        // חותמת זמן קבועה של תחילת ההקלטה
+        // חותמת זמן קבועה של תחילת ההקלטה (מסונכרנת באופן מוחלט מול השרת)
         private DateTime? _sessionStartTimeUtc = null;
 
         private VideoPipeline? _videoPipe;
@@ -66,7 +69,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                 if (!_isStreaming)
                 {
-                    _sessionStartTimeUtc = DateTime.UtcNow;
+                    // 💡 קביעת תחילת הסשן לפי שעת השרת המסונכרנת
+                    _sessionStartTimeUtc = DateTime.UtcNow + _serverUtcOffset;
                 }
 
                 _isStreaming = true;
@@ -80,7 +84,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 _sessionStartTimeUtc = null;
             };
 
-            // תיקון: קליטה והחלה מיידית של שינויי FPS ו-Bitrate על-חם
             _ipc.RestartRequested += (dest, offset, fps, bitrate) =>
             {
                 Logger.Info($"[WORKER:IPC] RESTART_COMMAND received -> Dest: '{dest}', Fps: {fps}, Bitrate: {bitrate}");
@@ -89,9 +92,21 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 _baselineFps = fps > 0 ? fps : _baselineFps;
                 _videoBitrate = !string.IsNullOrWhiteSpace(bitrate) ? bitrate : _videoBitrate;
 
+                if (!_isStreaming)
+                {
+                    _sessionStartTimeUtc = DateTime.UtcNow + _serverUtcOffset;
+                }
+
                 _isStreaming = true;
                 _requiresRestart = true;
                 if (_permission.CurrentCount == 0) _permission.Release();
+            };
+
+            // 💡 עדכון סטיית שעון בזמן אמת מהסופרווייזר (NTP-Lite) ללא צורך באיתחול ה-Pipeline
+            _ipc.ClockSyncRequested += offset =>
+            {
+                _serverUtcOffset = offset;
+                Logger.Info($"[WORKER:CLOCK] Synchronized clock offset with master server: {offset.TotalMilliseconds:F1}ms");
             };
 
             _ipc.CaptureFpsRequested += fps => _videoPipe?.SetCaptureFps(fps, _baselineFps);
@@ -136,7 +151,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
             }
 
-            // עדכון הקריאה כדי להשתמש ב-Factory Pattern החדש במקום מחלקה ישירה
             using var guard = SessionGuardFactory.Create(() =>
             {
                 if (_isStreaming)
@@ -192,8 +206,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _audioPacer = new AudioPacer();
 
             bool sessionActive = true;
-
-            // אתחול פריים בסיס ריק למניעת הזנות Null לצינור הווידאו
             byte[]? latestFrame = new byte[screen.Width * screen.Height * 4];
 
             audio.AudioDataAvailable += (s, data) =>
@@ -209,7 +221,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             string destination = ResolveDestination();
             Logger.Info($"[WORKER:LIFECYCLE] Launching FFmpeg native process -> Destination: {destination}");
 
-            bool started = await ffmpeg.StartAsync(destination, DateTime.UtcNow + _serverUtcOffset,
+            // 💡 העברת זמן תחילת ההקלטה המכויל מול השרת לטובת הזרקת המטא-דאטה לקובץ
+            DateTime calibratedUtc = DateTime.UtcNow + _serverUtcOffset;
+
+            bool started = await ffmpeg.StartAsync(destination, calibratedUtc,
                 screen.Width, screen.Height, 48000, 2, "f32le", _baselineFps, _videoBitrate, ct).ConfigureAwait(false);
 
             if (!started)
@@ -235,7 +250,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _audioPacer.Start(startTicks);
             Logger.Info("[WORKER:LIFECYCLE] Media pipeline active. Streaming fully engaged.");
 
-            // 1. Thread כתיבה לצינור
+            // 1. Thread כתיבה לצינור FFmpeg
             var writerTask = _videoPipe.StartWriterAsync(
                 ffmpeg,
                 () =>
@@ -247,7 +262,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 bytes => _netTelemetry.TrackMediaBytes(bytes),
                 ct);
 
-            // 2. Thread לכידת מסך - תיקון מלא לכשל ה-Timeout של DXGI!
+            // 2. Thread דגימת מסך (עם הגנת Timeout מובנית)
             var captureTask = Task.Run(async () =>
             {
                 Logger.Info("[WORKER:LIFECYCLE] Screen capture sampling thread started.");
@@ -265,7 +280,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                 Interlocked.Exchange(ref latestFrame, f);
                                 consecutiveHardErrors = 0;
                             }
-                            // במקרה של Timeout (המסך לא השתנה), משמרים את הפריים הקודם ללא השבתת ה-Thread!
                         }
                         catch (Exception ex)
                         {
@@ -289,14 +303,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
             }, ct);
 
-            // 3. Thread הזרקת שמע
+            // 3. Thread הזרקת שמע מסונכרן
             var audioTask = _audioPacer.RunPacerLoopAsync(
                 ffmpeg,
                 bytes => _netTelemetry.TrackMediaBytes(bytes),
                 () => sessionActive,
                 ct);
 
-            // 4. לולאת תזמון ראשית
+            // 4. לולאת תזמון קצב פריימים ראשית
             _videoPipe.RunPacerLoop(
                 () => Volatile.Read(ref latestFrame),
                 screen.Width, screen.Height,
@@ -326,7 +340,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 : _config.LocalBufferPath;
 
             Directory.CreateDirectory(buf);
-            return Path.Combine(buf, $"{Uri.EscapeDataString(Environment.MachineName)}_{DateTime.UtcNow:yyyy-MM-dd_HH-mm-ss-ffffff}Z.mp4");
+
+            // 💡 יצירת שם קובץ לפי Epoch מכויל מול השרת (למשל: DESKTOP-PC_1759583561000.mp4)
+            long syncedEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds;
+            return Path.Combine(buf, $"{Uri.EscapeDataString(Environment.MachineName)}_{syncedEpochMs}.mp4");
         }
 
         private object BuildTelemetrySnapshot()

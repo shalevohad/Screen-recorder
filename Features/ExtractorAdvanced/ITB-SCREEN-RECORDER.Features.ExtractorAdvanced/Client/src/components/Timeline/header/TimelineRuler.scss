@@ -1,5 +1,5 @@
 // ==========================================
-// File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineRuler.scss
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/TimelineRuler.scss
 // ==========================================
 
 .timeline-ruler-root {
@@ -44,13 +44,59 @@
 
             .tick-label {
                 font-family: 'JetBrains Mono', monospace;
-                font-size: 8.5px;
+                font-size: 8px;
                 font-weight: 600;
                 color: #64748b;
                 margin-top: 3px;
                 user-select: none;
                 white-space: nowrap;
                 letter-spacing: -0.2px;
+            }
+        }
+
+        .ruler-dst-boundary {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            pointer-events: auto;
+            z-index: 20;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+
+            .dst-datum-line {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 2px;
+                background: linear-gradient(180deg, #c084fc 0%, rgba(192, 132, 252, 0.2) 100%);
+                box-shadow: 0 0 8px rgba(192, 132, 252, 0.7);
+            }
+
+            .dst-tactical-chip {
+                position: absolute;
+                top: 2px;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 1.5px 6px;
+                background: rgba(24, 16, 45, 0.95);
+                border: 1px solid #c084fc;
+                border-radius: 4px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 10px rgba(192, 132, 252, 0.3);
+                white-space: nowrap;
+                user-select: none;
+                color: #e9d5ff;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 8px;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+
+                .dst-icon {
+                    color: #c084fc;
+                    font-size: 9px;
+                }
             }
         }
 

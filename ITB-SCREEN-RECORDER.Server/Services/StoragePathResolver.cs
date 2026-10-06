@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: ITB-SCREEN-RECORDER.Server/Services/StoragePathResolver.cs
+// ==========================================
+using System;
 using System.IO;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
@@ -36,12 +39,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         public string BuildRecordPath(string root, SystemConfig config)
         {
             string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
-            string targetTz = string.IsNullOrWhiteSpace(config.MediaMtx?.Timezone) ? "UTC" : config.MediaMtx.Timezone.Trim();
-            bool isUtc = string.Equals(targetTz, "UTC", StringComparison.OrdinalIgnoreCase);
-            string timeFormat = isUtc ? "%Y%m%d_%H%M%S_%fZ" : "%Y%m%d_%H%M%S_%f";
 
-            // מובטח נתיב נקי לחלוטין עם לוכסנים קדמיים בלבד
-            return $"{cleanRoot}/%path/{timeFormat}";
+            // 💡 כפיית Epoch ומיקרו-שניות (%s_%f)
+            // משתנה %s ב-MediaMTX מחושב מ-Unix Time (UTC טהור) ואדיש לאזור הזמן או לשעון המקומי של Windows
+            return $"{cleanRoot}/%path/%s_%f";
         }
 
         private static async Task<bool> IsNetAppReachableAsync(string uncPath)

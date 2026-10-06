@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: AgentService/Infrastructure/OfflineBufferDrainingService.cs
+// ==========================================
+using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -32,7 +35,6 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
                 : config.LocalBufferPath;
 
-            // גזירת כתובת השרת מהקונפיגורציה או ממשתנה סביבה במקום כתובת קשיחה
             string serverBase = !string.IsNullOrWhiteSpace(config.DashboardApiUrl)
                 ? config.DashboardApiUrl.TrimEnd('/')
                 : (Environment.GetEnvironmentVariable("ITB_SERVER_IP") ?? "http://127.0.0.1:5090");
@@ -76,12 +78,13 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
         {
             if (!Directory.Exists(_bufferPath)) return;
 
-            // איתור קבצי mp4 ו-flv שסיימו להיכתב (עברו לפחות 15 שניות מסיום הכתיבה)
+            // 💡 בדיקת גיל הקובץ ב-UTC (עברו 15 שניות לפחות מסיום הכתיבה) ומיונים לפי זמן יצירה UTC
+            var nowUtc = DateTime.UtcNow;
             var files = new DirectoryInfo(_bufferPath).GetFiles()
                 .Where(f => (f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
                              f.Extension.Equals(".flv", StringComparison.OrdinalIgnoreCase)) &&
-                            (DateTime.Now - f.LastWriteTime).TotalSeconds > 15)
-                .OrderBy(f => f.CreationTime)
+                            (nowUtc - f.LastWriteTimeUtc).TotalSeconds > 15)
+                .OrderBy(f => f.CreationTimeUtc)
                 .ToList();
 
             foreach (var file in files)

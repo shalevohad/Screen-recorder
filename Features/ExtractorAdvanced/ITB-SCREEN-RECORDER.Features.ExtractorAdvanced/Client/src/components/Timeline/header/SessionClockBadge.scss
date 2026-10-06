@@ -1,4 +1,6 @@
-// Client/src/components/Timeline/SessionClockBadge.scss
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/SessionClockBadge.scss
+// ==========================================
 
 .tactical-timecode-console {
     width: 100%;
@@ -29,8 +31,8 @@
             font-size: 9px;
             font-weight: 900;
             letter-spacing: 0.6px;
-            width: 28px;
-            padding: 1px 4px;
+            width: 26px;
+            padding: 1px 3px;
             border-radius: 3px;
             text-align: center;
             line-height: 1.2;
@@ -53,30 +55,49 @@
         }
 
         .console-digits {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
+            font-size: 11.5px;
             font-weight: 800;
             color: #ffffff;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
             cursor: pointer;
             padding: 1px 4px;
             border-radius: 3px;
             transition: all 0.15s ease;
 
+            .console-zone-tag {
+                font-size: 7.5px;
+                font-weight: 900;
+                padding: 1px 3px;
+                border-radius: 2px;
+                background: rgba(255, 255, 255, 0.08);
+                color: #94a3b8;
+                letter-spacing: 0.3px;
+                line-height: 1;
+            }
+
             &:hover {
                 background: rgba(255, 255, 255, 0.1);
                 color: #38bdf8;
+
+                .console-zone-tag {
+                    color: #38bdf8;
+                    background: rgba(56, 189, 248, 0.2);
+                }
             }
         }
 
         .console-input {
-            width: 82px;
+            width: 84px;
             height: 20px;
             background: #020617;
             border: 1px solid #00e5ff;
             border-radius: 3px;
             color: #00e5ff;
-            font-size: 12px;
+            font-size: 11.5px;
             font-family: 'JetBrains Mono', monospace;
             font-weight: 800;
             padding: 0 4px;

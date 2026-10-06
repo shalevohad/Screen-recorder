@@ -1,4 +1,7 @@
-﻿using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+﻿// ==========================================
+// File: AgentService/AgentSupervisorService.cs
+// ==========================================
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
@@ -12,7 +15,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Runtime.InteropServices;
 
 #if WINDOWS
 using ITB_SCREEN_RECORDER.AgentService.Infrastructure;
@@ -234,6 +236,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     _workerCommandWriter = writer;
 
+                    // 💡 סנכרון ראשוני מיידי ל-Worker ברגע החיבור
+                    if (_serverUtcOffset != TimeSpan.Zero)
+                    {
+                        await writer.WriteLineAsync($"SyncClock|{_serverUtcOffset.Ticks}");
+                    }
+
                     while (pipeServer.IsConnected && !ct.IsCancellationRequested)
                     {
                         string? line = await reader.ReadLineAsync(ct);
@@ -317,8 +325,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     HasAudio = isStreaming ? _lastWorkerHasAudio : (_lastWorkerHasActiveSpeakers || _lastWorkerHasActiveMicrophone),
                     IsAudioStreaming = isStreaming && _lastWorkerIsAudioStreaming,
 
-                    ClientTimestamp = DateTime.UtcNow,
-                    Timestamp = DateTime.UtcNow,
+                    // 💡 דיווח ה-Timestamp המכויל מול השרת
+                    ClientTimestamp = DateTime.UtcNow + _serverUtcOffset,
+                    Timestamp = DateTime.UtcNow + _serverUtcOffset,
 
                     ActualFps = isStreaming ? (_lastTelemetry?.ActualFps ?? 0) : 0,
                     DroppedFrames = isStreaming ? (_lastTelemetry?.DroppedFrames ?? 0) : 0,
@@ -355,7 +364,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     : $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
 
                 using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                // 💡 מדידת זמני תקשורת לצורך סנכרון NTP-Lite
+                long tSendMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 var response = await _httpClient.PostAsync(targetEndpoint, content, ct);
+                long tReceiveMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -368,9 +381,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                         if (heartbeatResponse != null)
                         {
-                            if (heartbeatResponse.ServerUtcTime != default)
+                            // 💡 חישוב סטיית שעון מדויקת בפיצוי RTT
+                            long rtt = Math.Max(0, tReceiveMs - tSendMs);
+                            long serverTimeAtReceive = heartbeatResponse.ServerUtcEpochMs + (rtt / 2);
+                            TimeSpan newOffset = TimeSpan.FromMilliseconds(serverTimeAtReceive - tReceiveMs);
+
+                            // עדכון ה-Offset ושידור ל-Worker במידה ויש סטייה מעל 25ms
+                            if (Math.Abs((newOffset - _serverUtcOffset).TotalMilliseconds) > 25)
                             {
-                                _serverUtcOffset = heartbeatResponse.ServerUtcTime - DateTime.UtcNow;
+                                _serverUtcOffset = newOffset;
+                                _logger.LogInformation("[CLOCK SYNC] Calibrated clock offset: {OffsetMs:F1}ms (RTT: {Rtt}ms)", _serverUtcOffset.TotalMilliseconds, rtt);
+                                await SendCommandToWorkerAsync($"SyncClock|{_serverUtcOffset.Ticks}");
                             }
 
                             try
@@ -411,7 +432,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 }
                             }
 
-                            // פקודות שליטה מפורשות מהשרת
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
                                 await SendCommandToWorkerAsync("Stop");

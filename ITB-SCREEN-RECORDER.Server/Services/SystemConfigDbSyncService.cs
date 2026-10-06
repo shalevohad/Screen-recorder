@@ -49,7 +49,6 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
             if (!string.IsNullOrWhiteSpace(dbConfigJson))
             {
-                // 💡 מסד הנתונים מכיל את ההגדרות שנשמרו - הוא ה-Source of Truth
                 _logger.LogInformation("[CONFIG SYNC] Discovered persistent configuration in SQLite DB. Syncing settings to disk & runtime...");
 
                 var dbConfig = JsonSerializer.Deserialize<SystemConfig>(dbConfigJson, new JsonSerializerOptions
@@ -59,13 +58,23 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
                 if (dbConfig != null)
                 {
+                    // הגנה מפני דריסה: אם ב-DB אין עדיין מעברי שעון אך בקובץ ישנם, מאמצים את הגדרות הקובץ
+                    if ((dbConfig.ManualDstTransitions == null || dbConfig.ManualDstTransitions.Count == 0) &&
+                        _configMonitor.CurrentValue.ManualDstTransitions != null &&
+                        _configMonitor.CurrentValue.ManualDstTransitions.Count > 0)
+                    {
+                        dbConfig.ManualDstTransitions = new List<DstTransitionRule>(_configMonitor.CurrentValue.ManualDstTransitions);
+                    }
+
                     UpdateConfigInMemory(_configMonitor.CurrentValue, dbConfig);
-                    await WriteConfigToDiskFilesAsync(dbConfigJson);
+
+                    string mergedJson = JsonSerializer.Serialize(_configMonitor.CurrentValue, new JsonSerializerOptions { WriteIndented = true });
+                    await _catalogRepo.SetConfigurationAsync("SystemConfig", mergedJson);
+                    await WriteConfigToDiskFilesAsync(mergedJson);
                 }
             }
             else
             {
-                // 💡 עלייה ראשונה - אין עדיין רשומה ב-DB, מאתחלים מתוך הקובץ
                 _logger.LogInformation("[CONFIG SYNC] Initializing SQLite configuration from active settings file...");
                 var currentFileConfig = _configMonitor.CurrentValue;
                 string fileConfigJson = JsonSerializer.Serialize(currentFileConfig, new JsonSerializerOptions { WriteIndented = true });
@@ -92,10 +101,7 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
             string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
 
-            // 1. שמירה במסד הנתונים SQLite
             await _catalogRepo.SetConfigurationAsync("SystemConfig", updatedJson);
-
-            // 2. שמירה בכל קובצי ה-appsettings הרלוונטיים (כולל תיקיית המקור בפיתוח)
             await WriteConfigToDiskFilesAsync(updatedJson);
 
             _logger.LogInformation("[CONFIG SYNC] System configuration successfully updated in DB and disk configuration files.");
@@ -118,6 +124,15 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         target.DisplayTimezone = source.DisplayTimezone;
         target.DisplayLocale = source.DisplayLocale;
 
+        if (source.ManualDstTransitions != null && source.ManualDstTransitions.Count > 0)
+        {
+            target.ManualDstTransitions = new List<DstTransitionRule>(source.ManualDstTransitions);
+        }
+        else if (target.ManualDstTransitions == null)
+        {
+            target.ManualDstTransitions = new List<DstTransitionRule>();
+        }
+
         if (source.Storage != null)
         {
             target.Storage ??= new StorageSettings();
@@ -132,9 +147,20 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         if (source.MediaMtx != null)
         {
             target.MediaMtx ??= new MediaMtxSettings();
+            target.MediaMtx.ExecutablePath = source.MediaMtx.ExecutablePath;
             target.MediaMtx.RtmpPort = source.MediaMtx.RtmpPort;
             target.MediaMtx.HlsPort = source.MediaMtx.HlsPort;
             target.MediaMtx.ApiPort = source.MediaMtx.ApiPort;
+            target.MediaMtx.PlaybackPort = source.MediaMtx.PlaybackPort;
+            target.MediaMtx.MetricsPort = source.MediaMtx.MetricsPort;
+            target.MediaMtx.PprofPort = source.MediaMtx.PprofPort;
+            target.MediaMtx.EnableMetrics = source.MediaMtx.EnableMetrics;
+            target.MediaMtx.EnablePprof = source.MediaMtx.EnablePprof;
+            target.MediaMtx.EnablePlayback = source.MediaMtx.EnablePlayback;
+            target.MediaMtx.HlsAlwaysRemux = source.MediaMtx.HlsAlwaysRemux;
+            target.MediaMtx.HlsVariant = source.MediaMtx.HlsVariant;
+            target.MediaMtx.HlsSegmentDuration = source.MediaMtx.HlsSegmentDuration;
+            target.MediaMtx.Timezone = source.MediaMtx.Timezone;
         }
 
         if (source.Dashboard != null)
@@ -144,6 +170,14 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
             target.Dashboard.SnapshotMaxDelayMs = source.Dashboard.SnapshotMaxDelayMs;
             target.Dashboard.SnapshotBufferMarginPx = source.Dashboard.SnapshotBufferMarginPx;
             target.Dashboard.MaxConcurrentLiveStreams = source.Dashboard.MaxConcurrentLiveStreams;
+        }
+
+        if (source.Security != null)
+        {
+            target.Security ??= new SecuritySettings();
+            target.Security.AllowedAdAdminGroup = source.Security.AllowedAdAdminGroup;
+            target.Security.JwtSecretKey = source.Security.JwtSecretKey;
+            target.Security.TokenExpirationHours = source.Security.TokenExpirationHours;
         }
     }
 
@@ -166,7 +200,6 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
             if (File.Exists(linuxBinFile)) candidatePaths.Add(linuxBinFile);
         }
 
-        // 💡 כתיבה גם לקובץ המקור בפרויקט כדי ש-Rebuild עתידי לא ידרוס את ההגדרות
         try
         {
             string projectRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));

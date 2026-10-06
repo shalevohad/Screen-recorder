@@ -1,8 +1,9 @@
 ﻿// ==========================================
-// File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineRuler.jsx
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/TimelineRuler.jsx
 // ==========================================
 import React, { useRef, useMemo, useState, useEffect, useCallback } from 'react';
-import { formatTimelineClock } from '../../../utils/timeFormat.js';
+import { formatTimelineClock } from '../../../../utils/timeFormat.js';
+import { findTransitionsInRange, formatLocalClockWithDst } from '../../../../utils/dstEngine.js';
 import './TimelineRuler.scss';
 
 const NICE_INTERVALS_MS = [
@@ -43,8 +44,6 @@ export default function TimelineRuler({
         return () => ro.disconnect();
     }, []);
 
-    // בתוך TimelineRuler.jsx
-
     const toPercent = useCallback((ms) => {
         if (!viewportDurationMs || viewportDurationMs <= 0) return '0%';
         const offset = ms - viewportStartMs;
@@ -78,7 +77,7 @@ export default function TimelineRuler({
     };
 
     const tickIntervalMs = useMemo(() => {
-        const maxLabels = Math.max(3, Math.floor(pixelWidth / 85));
+        const maxLabels = Math.max(3, Math.floor(pixelWidth / 95));
         const targetInterval = viewportDurationMs / maxLabels;
 
         for (let interval of NICE_INTERVALS_MS) {
@@ -97,6 +96,17 @@ export default function TimelineRuler({
         }
         return result;
     }, [viewportStartMs, viewportDurationMs, tickIntervalMs]);
+
+    const visibleDstTransitions = useMemo(() => {
+        if (timeMode === 'UTC' || !baseEpochMs) return [];
+        const startEpoch = baseEpochMs + viewportStartMs;
+        const endEpoch = startEpoch + viewportDurationMs;
+
+        return findTransitionsInRange(startEpoch, endEpoch).map(tr => ({
+            ...tr,
+            pct: ((tr.switchEpochMs - baseEpochMs - viewportStartMs) / viewportDurationMs) * 100
+        }));
+    }, [baseEpochMs, viewportStartMs, viewportDurationMs, timeMode]);
 
     const dateBoundaries = useMemo(() => {
         if (!viewportDurationMs || !baseEpochMs) return [];
@@ -245,15 +255,33 @@ export default function TimelineRuler({
             <div className="ruler-ticks-track">
                 {ticks.map(tickMs => {
                     const pct = toPercent(tickMs);
+                    const epoch = baseEpochMs + tickMs;
+                    const label = timeMode === 'LOCAL'
+                        ? formatLocalClockWithDst(epoch)
+                        : formatTimelineClock(epoch, 'UTC');
+
                     return (
                         <div key={tickMs} className="ruler-tick" style={{ left: `${pct}%` }}>
                             <div className="tick-line" />
-                            <span className="tick-label">
-                                {formatTimelineClock(baseEpochMs + tickMs, timeMode)}
-                            </span>
+                            <span className="tick-label">{label}</span>
                         </div>
                     );
                 })}
+
+                {visibleDstTransitions.map(tr => (
+                    <div
+                        key={tr.switchEpochMs}
+                        className="ruler-dst-boundary"
+                        style={{ left: `${tr.pct}%` }}
+                        title={`${tr.description} (${tr.labelBefore} ➔ ${tr.labelAfter})`}
+                    >
+                        <div className="dst-datum-line" />
+                        <div className="dst-tactical-chip">
+                            <span className="dst-icon">⚡</span>
+                            <span className="dst-text">{tr.description}</span>
+                        </div>
+                    </div>
+                ))}
 
                 {dateBoundaries.map(boundary => (
                     <div
@@ -301,7 +329,7 @@ export default function TimelineRuler({
             {isHoverVisible && (
                 <div className="ruler-hover-cursor" style={{ left: `${hoverPercent}%` }}>
                     <div className="hover-time-badge">
-                        {formatTimelineClock(baseEpochMs + hoverMs, timeMode)}
+                        {timeMode === 'LOCAL' ? formatLocalClockWithDst(baseEpochMs + hoverMs) : formatTimelineClock(baseEpochMs + hoverMs, 'UTC')}
                     </div>
                     <div className="hover-guide-line" />
                 </div>

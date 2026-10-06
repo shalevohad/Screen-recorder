@@ -1,4 +1,6 @@
-// _variables.scss
+// ==========================================
+// File: ClientApp/src/styles/_variables.scss
+// ==========================================
 
 :root {
     /* --- 1. משטחים והיררכיית עומק וזכוכית (Surface Elevation & Ambient Glass Hierarchy) --- */
@@ -107,4 +109,24 @@
     --feature-theme-tint: rgba(234, 179, 8, 0.12);
     --feature-theme-bg: #0F172A;
     --feature-theme-grid-lines: rgba(234, 179, 8, 0.03);
+    /* --- 8. שעון טקטי ומחוונים אנלוגיים (Tactical Clock & Analog Dials) --- */
+    --clock-dial-bg: #090E1A;
+    --clock-dial-border: rgba(255, 255, 255, 0.10);
+    --clock-dial-ring: rgba(255, 255, 255, 0.05);
+    --clock-tick-minor: rgba(148, 163, 184, 0.22);
+    --clock-tick-major: rgba(148, 163, 184, 0.50);
+    --clock-hand-hour-start: var(--accent-cyan);
+    --clock-hand-hour-start-light: var(--accent-cyan-light);
+    --clock-hand-hour-start-glow: rgba(6, 182, 212, 0.80);
+    --clock-hand-hour-start-tint: rgba(6, 182, 212, 0.22);
+    --clock-hand-hour-end: var(--accent-amber);
+    --clock-hand-hour-end-light: var(--accent-amber-light);
+    --clock-hand-hour-end-glow: rgba(245, 158, 11, 0.80);
+    --clock-hand-hour-end-tint: rgba(245, 158, 11, 0.22);
+    --clock-hand-minute: var(--accent-cyan-light);
+    --clock-hand-minute-glow: rgba(56, 189, 248, 0.70);
+    --clock-hand-second: #F43F5E;
+    --clock-hand-second-glow: rgba(244, 63, 94, 0.80);
+    --clock-hud-bg: rgba(15, 23, 42, 0.95);
+    --clock-input-bg: rgba(2, 6, 23, 0.85);
 }
