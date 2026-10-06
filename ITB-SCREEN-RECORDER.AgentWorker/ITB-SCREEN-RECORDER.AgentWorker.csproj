@@ -92,10 +92,7 @@
 			<_DirectPublishFfmpeg Condition="'$(_DirectPublishFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg</_DirectPublishFfmpeg>
 		</PropertyGroup>
 
-		<Copy SourceFiles="$(_DirectPublishFfmpeg)"
-		      DestinationFolder="$(PublishDir)"
-		      SkipUnchangedFiles="false"
-		      Condition="'$(_DirectPublishFfmpeg)' != '' And Exists('$(_DirectPublishFfmpeg)')" />
+		<Copy SourceFiles="$(_DirectPublishFfmpeg)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="false" Condition="'$(_DirectPublishFfmpeg)' != '' And Exists('$(_DirectPublishFfmpeg)')" />
 	</Target>
 
 	<!-- ======================================================== -->
@@ -112,10 +109,7 @@
 			<_DirectBuildFfmpeg Condition="'$(_DirectBuildFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg</_DirectBuildFfmpeg>
 		</PropertyGroup>
 
-		<Copy SourceFiles="$(_DirectBuildFfmpeg)"
-		      DestinationFolder="$(TargetDir)"
-		      SkipUnchangedFiles="true"
-		      Condition="'$(_DirectBuildFfmpeg)' != '' And Exists('$(_DirectBuildFfmpeg)')" />
+		<Copy SourceFiles="$(_DirectBuildFfmpeg)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'$(_DirectBuildFfmpeg)' != '' And Exists('$(_DirectBuildFfmpeg)')" />
 	</Target>
 
 </Project>
