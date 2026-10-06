@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITBRecorderAgent.Providers.Video.Mouse.Common;
 
 namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
@@ -26,7 +27,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
             public short x, y;
             public ushort width, height, xhot, yhot;
             public UIntPtr cursor_serial;
-            public IntPtr pixels; // מצביע ל-unsigned long[] ב-X11
+            public IntPtr pixels;
             public UIntPtr atom;
             public IntPtr name;
         }
@@ -40,129 +41,196 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
 
         private Thread? _listenerThread;
         private volatile bool _isInitialized;
-        private XRecordInterceptProc? _xRecordCallback;
+        private volatile bool _isFeatureEnabled = true;
+        private bool _warnedUnavailable = false;
 
         private IntPtr _renderDisplay = IntPtr.Zero;
         private readonly object _renderLock = new();
 
         public void Initialize()
         {
-            if (_isInitialized) return;
+            if (_isInitialized || !_isFeatureEnabled) return;
+
+            lock (_renderLock)
+            {
+                if (_isInitialized || !_isFeatureEnabled) return;
+
+                try
+                {
+                    string? displayName = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0.0";
+                    _renderDisplay = XOpenDisplay(displayName);
+
+                    if (_renderDisplay == IntPtr.Zero)
+                    {
+                        DisableFeature("Cannot connect to X11 Display. No active graphical session found ($DISPLAY is unset or invalid).");
+                        return;
+                    }
+
+                    _listenerThread = new Thread(ListenLoop)
+                    {
+                        IsBackground = true,
+                        Name = "ITB_LinuxMouseListener"
+                    };
+                    _listenerThread.Start();
+                    _isInitialized = true;
+                }
+                catch (DllNotFoundException ex)
+                {
+                    DisableFeature($"Native dependency missing: '{ex.Message}'. Please install packages: 'sudo apt install libx11-6 libxfixes3 libxtst6'.");
+                }
+                catch (Exception ex)
+                {
+                    DisableFeature($"Initialization error: {ex.Message}");
+                }
+            }
+        }
+
+        private void DisableFeature(string reason)
+        {
+            _isFeatureEnabled = false;
             _isInitialized = true;
 
-            string? displayName = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0.0";
-            _renderDisplay = XOpenDisplay(displayName);
-
-            _listenerThread = new Thread(ListenLoop)
+            if (!_warnedUnavailable)
             {
-                IsBackground = true,
-                Name = "ITB_LinuxMouseListener"
-            };
-            _listenerThread.Start();
+                _warnedUnavailable = true;
+                Logger.Warn($"[OVERLAY:MOUSE] Linux mouse interaction overlay gracefully disabled: {reason} Screen recording continues uninterrupted.");
+            }
+
+            if (_renderDisplay != IntPtr.Zero)
+            {
+                try { XCloseDisplay(_renderDisplay); } catch { }
+                _renderDisplay = IntPtr.Zero;
+            }
         }
 
         private void ListenLoop()
         {
-            string? displayName = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0.0";
-            IntPtr dpy = XOpenDisplay(displayName);
-            if (dpy == IntPtr.Zero) return;
+            if (!_isFeatureEnabled) return;
 
-            IntPtr rootWin = XDefaultRootWindow(dpy);
-            bool recordStarted = false;
-
+            IntPtr dpy = IntPtr.Zero;
             try
             {
-                IntPtr range = XRecordAllocRange();
-                if (range != IntPtr.Zero)
+                string? displayName = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0.0";
+                dpy = XOpenDisplay(displayName);
+                if (dpy == IntPtr.Zero) return;
+
+                IntPtr rootWin = XDefaultRootWindow(dpy);
+                bool recordStarted = false;
+
+                try
                 {
-                    Marshal.WriteByte(range, 14, 4); // ButtonPress
-                    Marshal.WriteByte(range, 15, 5); // ButtonRelease
-
-                    ulong allClients = 1;
-                    IntPtr context = XRecordCreateContext(dpy, 0, ref allClients, 1, ref range, 1);
-                    XFree(range);
-
-                    if (context != IntPtr.Zero)
+                    IntPtr range = XRecordAllocRange();
+                    if (range != IntPtr.Zero)
                     {
-                        _xRecordCallback = (closure, recorded_data) =>
-                        {
-                            try
-                            {
-                                int category = Marshal.ReadInt32(recorded_data, 16);
-                                if (category == 0)
-                                {
-                                    IntPtr dataPtr = Marshal.ReadIntPtr(recorded_data, 24);
-                                    if (dataPtr != IntPtr.Zero)
-                                    {
-                                        byte type = Marshal.ReadByte(dataPtr, 0);
-                                        byte detail = Marshal.ReadByte(dataPtr, 1);
+                        Marshal.WriteByte(range, 14, 4); // ButtonPress
+                        Marshal.WriteByte(range, 15, 5); // ButtonRelease
 
-                                        if (type == 4) // ButtonPress
+                        ulong allClients = 1;
+                        IntPtr context = XRecordCreateContext(dpy, 0, ref allClients, 1, ref range, 1);
+                        XFree(range);
+
+                        if (context != IntPtr.Zero)
+                        {
+                            XRecordInterceptProc callback = (closure, recorded_data) =>
+                            {
+                                try
+                                {
+                                    int category = Marshal.ReadInt32(recorded_data, 16);
+                                    if (category == 0)
+                                    {
+                                        IntPtr dataPtr = Marshal.ReadIntPtr(recorded_data, 24);
+                                        if (dataPtr != IntPtr.Zero)
                                         {
-                                            XQueryPointer(dpy, rootWin, out _, out _, out int px, out int py, out _, out _, out _);
-                                            if (detail == 1) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.LeftClick);
-                                            else if (detail == 3) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.RightClick);
-                                            else if (detail == 4) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.ScrollUp);
-                                            else if (detail == 5) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.ScrollDown);
+                                            byte type = Marshal.ReadByte(dataPtr, 0);
+                                            byte detail = Marshal.ReadByte(dataPtr, 1);
+
+                                            if (type == 4) // ButtonPress
+                                            {
+                                                XQueryPointer(dpy, rootWin, out _, out _, out int px, out int py, out _, out _, out _);
+                                                if (detail == 1) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.LeftClick);
+                                                else if (detail == 3) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.RightClick);
+                                                else if (detail == 4) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.ScrollUp);
+                                                else if (detail == 5) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.ScrollDown);
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            catch { }
-                        };
+                                catch { }
+                            };
 
-                        recordStarted = true;
-                        XRecordEnableContext(dpy, context, _xRecordCallback, IntPtr.Zero);
-                        XRecordFreeContext(dpy, context);
+                            recordStarted = true;
+                            XRecordEnableContext(dpy, context, callback, IntPtr.Zero);
+                            XRecordFreeContext(dpy, context);
+                        }
                     }
                 }
-            }
-            catch
-            {
-                recordStarted = false;
-            }
-
-            if (!recordStarted)
-            {
-                int lastMask = 0;
-                while (_isInitialized)
+                catch (DllNotFoundException)
                 {
-                    if (XQueryPointer(dpy, rootWin, out _, out _, out int px, out int py, out _, out _, out int mask))
+                    // libXtst חסר - מודיעים וממשיכים ל-Polling דרך libX11 בלבד
+                    Logger.Info("[OVERLAY:MOUSE] libXtst.so.6 not found. Falling back to XQueryPointer polling for mouse click detection.");
+                    recordStarted = false;
+                }
+
+                if (!recordStarted && _isFeatureEnabled)
+                {
+                    int lastMask = 0;
+                    while (_isFeatureEnabled)
                     {
-                        bool leftDown = (mask & (1 << 8)) != 0;
-                        bool prevLeft = (lastMask & (1 << 8)) != 0;
-                        if (leftDown && !prevLeft) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.LeftClick);
+                        if (XQueryPointer(dpy, rootWin, out _, out _, out int px, out int py, out _, out _, out int mask))
+                        {
+                            bool leftDown = (mask & (1 << 8)) != 0;
+                            bool prevLeft = (lastMask & (1 << 8)) != 0;
+                            if (leftDown && !prevLeft) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.LeftClick);
 
-                        bool rightDown = (mask & (1 << 10)) != 0;
-                        bool prevRight = (lastMask & (1 << 10)) != 0;
-                        if (rightDown && !prevRight) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.RightClick);
+                            bool rightDown = (mask & (1 << 10)) != 0;
+                            bool prevRight = (lastMask & (1 << 10)) != 0;
+                            if (rightDown && !prevRight) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.RightClick);
 
-                        lastMask = mask;
+                            lastMask = mask;
+                        }
+                        Thread.Sleep(10);
                     }
-                    Thread.Sleep(10);
                 }
             }
-
-            XCloseDisplay(dpy);
+            catch (Exception ex)
+            {
+                Logger.Warn($"[OVERLAY:MOUSE] Linux background hook thread stopped: {ex.Message}");
+            }
+            finally
+            {
+                if (dpy != IntPtr.Zero)
+                {
+                    try { XCloseDisplay(dpy); } catch { }
+                }
+            }
         }
 
         public void DrawMouseToFrame(byte[] frameBuffer, int width, int height)
         {
-            Initialize();
+            if (!_isFeatureEnabled) return;
 
-            // 1. רינדור טבעות הרחבה וחיצי גלגול
-            MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height);
+            try
+            {
+                Initialize();
+                if (!_isFeatureEnabled) return;
 
-            // 2. רינדור סמן X11 (כולל טיפול ב-I-Beam וב-64-bit)
-            bool isCursorBright = DrawX11CursorWithPulseAndContrast(frameBuffer, width, height);
-
-            // 3. רינדור תגית L / R
-            MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
+                MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height);
+                bool isCursorBright = DrawX11CursorSafe(frameBuffer, width, height);
+                MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
+            }
+            catch (DllNotFoundException ex)
+            {
+                DisableFeature($"Missing library '{ex.Message}' during render cycle. Install with: 'sudo apt install libxfixes3'.");
+            }
+            catch (Exception ex)
+            {
+                DisableFeature($"Render failure: {ex.Message}");
+            }
         }
 
-        private bool DrawX11CursorWithPulseAndContrast(byte[] frameBuffer, int width, int height)
+        private bool DrawX11CursorSafe(byte[] frameBuffer, int width, int height)
         {
-            if (_renderDisplay == IntPtr.Zero) return true;
+            if (_renderDisplay == IntPtr.Zero || !_isFeatureEnabled) return true;
 
             IntPtr curPtr = IntPtr.Zero;
             bool isBright = true;
@@ -182,7 +250,6 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                     int pixelCount = curW * curH;
                     uint[] cursorPixels = new uint[pixelCount];
 
-                    // 💡 תיקון קריטי 1: פריסת זיכרון תואמת 64-bit במערכות לינוקס (unsigned long = 8 bytes)
                     if (IntPtr.Size == 8)
                     {
                         long[] raw64 = new long[pixelCount];
@@ -202,7 +269,6 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                         }
                     }
 
-                    // 💡 תיקון קריטי 2: זיהוי סמן מונוכרומטי שבו Alpha = 0 בטעות
                     uint maxAlpha = 0;
                     for (int i = 0; i < pixelCount; i++)
                     {
@@ -215,13 +281,10 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                         for (int i = 0; i < pixelCount; i++)
                         {
                             if ((cursorPixels[i] & 0x00FFFFFF) != 0)
-                            {
-                                cursorPixels[i] |= 0xFF000000; // אכיפת Alpha
-                            }
+                                cursorPixels[i] |= 0xFF000000;
                         }
                     }
 
-                    // חישוב בהירות סמן (Luma)
                     long totalLuma = 0;
                     int nonTransparentCount = 0;
 
@@ -232,9 +295,9 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                         if (a > 50)
                         {
                             byte b = (byte)(p & 0xFF);
-                            byte g = (byte)((p >> 8) & 0xFF);
+                            byte gCol = (byte)((p >> 8) & 0xFF);
                             byte r = (byte)((p >> 16) & 0xFF);
-                            totalLuma += (long)(0.299 * r + 0.587 * g + 0.114 * b);
+                            totalLuma += (long)(0.299 * r + 0.587 * gCol + 0.114 * b);
                             nonTransparentCount++;
                         }
                     }
@@ -244,16 +307,13 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                         isBright = (totalLuma / nonTransparentCount) > 120;
                     }
 
-                    // 💡 תיקון קריטי 3: זיהוי סמן I-Beam (סמן טקסט צר)
                     bool isIBeam = (curW <= 16 && curH >= 12);
-
                     float scale = MouseVisualRasterizer.IsClickActive() ? 1.35f : 1.0f;
                     int drawW = (int)(curW * scale);
                     int drawH = (int)(curH * scale);
                     int startX = cur.x - (int)(cur.xhot * scale);
                     int startY = cur.y - (int)(cur.yhot * scale);
 
-                    // שלב א': אם מדובר בסמן I-Beam, ציור הילת קונטרסט מקיפה סביבו
                     if (isIBeam)
                     {
                         byte haloColor = isBright ? (byte)15 : (byte)245;
@@ -276,7 +336,6 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                                 uint p = cursorPixels[srcY * curW + srcX];
                                 if (((p >> 24) & 0xFF) > 40)
                                 {
-                                    // יציקת הילה סביב הפיקסל
                                     for (int oy = -1; oy <= 1; oy++)
                                     {
                                         int hy = targetY + oy;
@@ -301,7 +360,6 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                         }
                     }
 
-                    // שלב ב': רינדור גוף הסמן
                     for (int dy = 0; dy < drawH; dy++)
                     {
                         int targetY = startY + dy;
@@ -343,10 +401,14 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                         }
                     }
                 }
-                catch { }
+                catch (DllNotFoundException) { throw; }
+                catch (Exception) { }
                 finally
                 {
-                    if (curPtr != IntPtr.Zero) XFree(curPtr);
+                    if (curPtr != IntPtr.Zero)
+                    {
+                        try { XFree(curPtr); } catch { }
+                    }
                 }
             }
 
@@ -355,12 +417,12 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
 
         public void Dispose()
         {
-            _isInitialized = false;
+            _isFeatureEnabled = false;
             lock (_renderLock)
             {
                 if (_renderDisplay != IntPtr.Zero)
                 {
-                    XCloseDisplay(_renderDisplay);
+                    try { XCloseDisplay(_renderDisplay); } catch { }
                     _renderDisplay = IntPtr.Zero;
                 }
             }

@@ -2,6 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITBRecorderAgent.Providers.Video.Keyboard.Common;
 
 namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
@@ -26,7 +27,8 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
 
         private Thread? _thread;
         private volatile bool _isInitialized;
-        private XRecordInterceptProc? _callback;
+        private volatile bool _isFeatureEnabled = true;
+        private bool _warnedUnavailable = false;
 
         private static bool _ctrlDown;
         private static bool _altDown;
@@ -35,25 +37,60 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
 
         public void Initialize()
         {
-            if (_isInitialized) return;
+            if (_isInitialized || !_isFeatureEnabled) return;
+
+            try
+            {
+                string? displayName = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0.0";
+                IntPtr testDpy = XOpenDisplay(displayName);
+                if (testDpy == IntPtr.Zero)
+                {
+                    DisableFeature("No active graphical session ($DISPLAY is invalid).");
+                    return;
+                }
+                XCloseDisplay(testDpy);
+
+                _thread = new Thread(ListenLoop)
+                {
+                    IsBackground = true,
+                    Name = "ITB_LinuxKeyboardHook"
+                };
+                _thread.Start();
+                _isInitialized = true;
+            }
+            catch (DllNotFoundException ex)
+            {
+                DisableFeature($"Missing library: '{ex.Message}'. Please install packages: 'sudo apt install libx11-6 libxtst6'.");
+            }
+            catch (Exception ex)
+            {
+                DisableFeature($"Initialization failed: {ex.Message}");
+            }
+        }
+
+        private void DisableFeature(string reason)
+        {
+            _isFeatureEnabled = false;
             _isInitialized = true;
 
-            _thread = new Thread(ListenLoop)
+            if (!_warnedUnavailable)
             {
-                IsBackground = true,
-                Name = "ITB_LinuxKeyboardHook"
-            };
-            _thread.Start();
+                _warnedUnavailable = true;
+                Logger.Warn($"[OVERLAY:KEYSTROKE] Linux keystroke overlay gracefully disabled: {reason} Screen recording continues uninterrupted.");
+            }
         }
 
         private void ListenLoop()
         {
-            string? displayName = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0.0";
-            IntPtr dpy = XOpenDisplay(displayName);
-            if (dpy == IntPtr.Zero) return;
+            if (!_isFeatureEnabled) return;
 
+            IntPtr dpy = IntPtr.Zero;
             try
             {
+                string? displayName = Environment.GetEnvironmentVariable("DISPLAY") ?? ":0.0";
+                dpy = XOpenDisplay(displayName);
+                if (dpy == IntPtr.Zero) return;
+
                 IntPtr range = XRecordAllocRange();
                 if (range != IntPtr.Zero)
                 {
@@ -66,7 +103,7 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
 
                     if (context != IntPtr.Zero)
                     {
-                        _callback = (closure, recorded_data) =>
+                        XRecordInterceptProc callback = (closure, recorded_data) =>
                         {
                             try
                             {
@@ -87,15 +124,25 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
                             catch { }
                         };
 
-                        XRecordEnableContext(dpy, context, _callback, IntPtr.Zero);
+                        XRecordEnableContext(dpy, context, callback, IntPtr.Zero);
                         XRecordFreeContext(dpy, context);
                     }
                 }
             }
-            catch { }
+            catch (DllNotFoundException ex)
+            {
+                DisableFeature($"Required library missing during execution: '{ex.Message}'. Install with: 'sudo apt install libxtst6'.");
+            }
+            catch (Exception ex)
+            {
+                DisableFeature($"Listener error: {ex.Message}");
+            }
             finally
             {
-                XCloseDisplay(dpy);
+                if (dpy != IntPtr.Zero)
+                {
+                    try { XCloseDisplay(dpy); } catch { }
+                }
             }
         }
 
@@ -137,7 +184,7 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
         {
             return keysym switch
             {
-                >= 0xFFBE and <= 0xFFC9 => true, // F1 - F12
+                >= 0xFFBE and <= 0xFFC9 => true,
                 0xFF1B or 0xFF0D or 0xFF09 or 0xFF08 or 0xFFFF => true,
                 0xFF50 or 0xFF57 or 0xFF55 or 0xFF56 => true,
                 0xFF51 or 0xFF52 or 0xFF53 or 0xFF54 => true,
@@ -173,13 +220,23 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard.Linux
 
         public void DrawKeystrokesToFrame(byte[] frameBuffer, int width, int height)
         {
-            Initialize();
-            KeystrokeHudRasterizer.RenderHud(frameBuffer, width, height);
+            if (!_isFeatureEnabled) return;
+
+            try
+            {
+                Initialize();
+                if (!_isFeatureEnabled) return;
+                KeystrokeHudRasterizer.RenderHud(frameBuffer, width, height);
+            }
+            catch (Exception ex)
+            {
+                DisableFeature(ex.Message);
+            }
         }
 
         public void Dispose()
         {
-            _isInitialized = false;
+            _isFeatureEnabled = false;
         }
     }
 }

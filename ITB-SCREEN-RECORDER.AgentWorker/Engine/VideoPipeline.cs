@@ -115,10 +115,10 @@ namespace ITBRecorderAgent.Engine
 
                         Buffer.BlockCopy(raw, 0, buffer, 0, raw.Length);
 
-                        // 1. הזרקת סמן העכבר, הקליקים והגלגול
+                        // 1. הזרקת סמן העכבר, חיווי קליקים (L/R) וגלגול
                         MouseCursorOverlay.DrawMouseToFrame(buffer, width, height);
 
-                        // 2. הזרקת מקשי הקיצור בפינת המסך (Zero Overhead כשאף מקש לא נלחץ)
+                        // 2. הזרקת Keycaps של מקשי הקיצור במרכז המסך (Zero Overhead כשאף מקש לא נלחץ)
                         KeystrokeOverlay.DrawKeystrokesToFrame(buffer, width, height);
 
                         if (_channel.Writer.TryWrite(buffer))
