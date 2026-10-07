@@ -9,6 +9,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
@@ -41,7 +42,9 @@ public class MediaMtxSupervisorWorker : BackgroundService
         _logger.LogInformation("[MediaMTX Supervisor] Service starting on {OS}...",
             OperatingSystem.IsWindows() ? "Windows" : "Linux");
 
+        var initialConfig = _configMonitor.CurrentValue;
         CleanupOrphanedMediaMtxProcesses();
+        EnsureMediaMtxPortsAvailable(initialConfig.MediaMtx);
         await Task.Delay(1000, stoppingToken);
 
         using var changeListener = _configMonitor.OnChange(async _ =>
@@ -75,7 +78,8 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
                     EnsureExecutablePermissions(mtxBinaryPath);
                     CleanupOrphanedMediaMtxProcesses();
-                    await Task.Delay(1000, stoppingToken);
+                    EnsureMediaMtxPortsAvailable(currentConfig.MediaMtx);
+                    await Task.Delay(500, stoppingToken);
 
                     string mtxFolder = Path.GetDirectoryName(mtxBinaryPath) ?? AppContext.BaseDirectory;
                     string ymlPath = Path.Combine(mtxFolder, "mediamtx.yml");
@@ -300,8 +304,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
             return;
         }
 
-        // 💡 שימוש ישיר ב-Epoch (%s) ומיקרו-שניות (%f) בפורמט שם הקובץ.
-        // %s ב-MediaMTX מחושב מ-Unix Time (UTC טהור) ואדיש לשעון המקומי או להגדרות Timezone בווינדוס
+        // 💡 שימוש ישיר ב-Epoch (%s) ומיקרו-שניות (%f) בפורמט שם הקובץ[cite: 10]
         string recordPath = $"{cleanRoot}/%path/%s_%f";
 
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
@@ -332,12 +335,102 @@ public class MediaMtxSupervisorWorker : BackgroundService
         }
     }
 
+    private void EnsureMediaMtxPortsAvailable(MediaMtxSettings? config)
+    {
+        if (config == null) return;
+
+        var portsToCheck = new HashSet<int>();
+        if (config.ApiPort > 0) portsToCheck.Add(config.ApiPort);
+        if (config.RtmpPort > 0) portsToCheck.Add(config.RtmpPort);
+        if (config.HlsPort > 0) portsToCheck.Add(config.HlsPort);
+        if (config.PlaybackPort > 0) portsToCheck.Add(config.PlaybackPort);
+        if (config.EnableMetrics && config.MetricsPort > 0) portsToCheck.Add(config.MetricsPort);
+        if (config.EnablePprof && config.PprofPort > 0) portsToCheck.Add(config.PprofPort);
+        portsToCheck.Add(8889); // WebRTC WHEP
+
+        foreach (var port in portsToCheck)
+        {
+            FreePortIfOccupied(port);
+        }
+    }
+
+    private void FreePortIfOccupied(int port)
+    {
+        if (port <= 0) return;
+
+        try
+        {
+            if (!IsPortInUse(port)) return;
+
+            _logger.LogWarning("[MediaMTX Supervisor] Port {Port} is in use. Terminating occupying process...", port);
+
+            if (OperatingSystem.IsWindows())
+            {
+                var psInfo = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -Command \"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | ForEach-Object {{ try {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }} catch {{}} }}\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                using var ps = Process.Start(psInfo);
+                ps?.WaitForExit(3000);
+
+                if (IsPortInUse(port))
+                {
+                    var cmdInfo = new ProcessStartInfo
+                    {
+                        FileName = "cmd.exe",
+                        Arguments = $"/c for /f \"tokens=5\" %a in ('netstat -aon ^| findstr \":{port} \"') do taskkill /F /PID %a",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    };
+                    using var cmd = Process.Start(cmdInfo);
+                    cmd?.WaitForExit(2000);
+                }
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                var bashInfo = new ProcessStartInfo
+                {
+                    FileName = "bash",
+                    Arguments = $"-c \"fuser -k -9 {port}/tcp || true\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                using var bash = Process.Start(bashInfo);
+                bash?.WaitForExit(3000);
+            }
+
+            Thread.Sleep(300);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("[MediaMTX Supervisor] Could not free port {Port}: {Message}", port, ex.Message);
+        }
+    }
+
+    private static bool IsPortInUse(int port)
+    {
+        try
+        {
+            var listeners = IPGlobalProperties
+                .GetIPGlobalProperties()
+                .GetActiveTcpListeners();
+            return listeners.Any(ep => ep.Port == port);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private void CleanupOrphanedMediaMtxProcesses()
     {
         try
         {
             var orphanedProcesses = Process.GetProcessesByName("mediamtx");
-            if (orphanedProcesses.Any())
+            if (orphanedProcesses.Length > 0)
             {
                 _logger.LogWarning("[MediaMTX Supervisor] Found {Count} running mediamtx processes. Terminating...", orphanedProcesses.Length);
                 foreach (var proc in orphanedProcesses)
