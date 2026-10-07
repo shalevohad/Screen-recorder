@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Server/Services/SystemConfigDbSyncService.cs
 // ==========================================
 namespace ITB_SCREEN_RECORDER.Server.Services;
@@ -43,43 +43,15 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("[CONFIG SYNC] Verifying system configuration state between SQLite DB and JSON settings...");
+            _logger.LogInformation("[CONFIG SYNC] Aligning system configuration across installation, files, and SQLite...");
 
-            string? dbConfigJson = await _catalogRepo.GetConfigurationAsync("SystemConfig");
+            // 💡 ההגדרות מקובצי הקונפיגורציה (שהוגדרו בהתקנה) הן הסמכות העליונה (SSOT) בעליית השירות
+            var currentFileConfig = _configMonitor.CurrentValue;
+            string fileConfigJson = JsonSerializer.Serialize(currentFileConfig, new JsonSerializerOptions { WriteIndented = true });
 
-            if (!string.IsNullOrWhiteSpace(dbConfigJson))
-            {
-                _logger.LogInformation("[CONFIG SYNC] Discovered persistent configuration in SQLite DB. Syncing settings to disk & runtime...");
-
-                var dbConfig = JsonSerializer.Deserialize<SystemConfig>(dbConfigJson, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (dbConfig != null)
-                {
-                    // הגנה מפני דריסה: אם ב-DB אין עדיין מעברי שעון אך בקובץ ישנם, מאמצים את הגדרות הקובץ
-                    if ((dbConfig.ManualDstTransitions == null || dbConfig.ManualDstTransitions.Count == 0) &&
-                        _configMonitor.CurrentValue.ManualDstTransitions != null &&
-                        _configMonitor.CurrentValue.ManualDstTransitions.Count > 0)
-                    {
-                        dbConfig.ManualDstTransitions = new List<DstTransitionRule>(_configMonitor.CurrentValue.ManualDstTransitions);
-                    }
-
-                    UpdateConfigInMemory(_configMonitor.CurrentValue, dbConfig);
-
-                    string mergedJson = JsonSerializer.Serialize(_configMonitor.CurrentValue, new JsonSerializerOptions { WriteIndented = true });
-                    await _catalogRepo.SetConfigurationAsync("SystemConfig", mergedJson);
-                    await WriteConfigToDiskFilesAsync(mergedJson);
-                }
-            }
-            else
-            {
-                _logger.LogInformation("[CONFIG SYNC] Initializing SQLite configuration from active settings file...");
-                var currentFileConfig = _configMonitor.CurrentValue;
-                string fileConfigJson = JsonSerializer.Serialize(currentFileConfig, new JsonSerializerOptions { WriteIndented = true });
-                await _catalogRepo.SetConfigurationAsync("SystemConfig", fileConfigJson);
-            }
+            // סנכרון ישיר ל-SQLite: יוצר רשומה בהתקנה נקייה או מעדכן התקנה קיימת
+            await _catalogRepo.SetConfigurationAsync("SystemConfig", fileConfigJson);
+            _logger.LogInformation("[CONFIG SYNC] Successfully synchronized active file settings into SQLite database.");
         }
         catch (Exception ex)
         {
@@ -101,10 +73,13 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
             string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
 
+            // 1. עדכון מסד הנתונים SQLite
             await _catalogRepo.SetConfigurationAsync("SystemConfig", updatedJson);
+
+            // 2. שמירה ויישור קו בכל קובצי ה-JSON בדיסק
             await WriteConfigToDiskFilesAsync(updatedJson);
 
-            _logger.LogInformation("[CONFIG SYNC] System configuration successfully updated in DB and disk configuration files.");
+            _logger.LogInformation("[CONFIG SYNC] System configuration updated in SQLite and flushed to disk configuration files.");
         }
         finally
         {
@@ -113,73 +88,6 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private static void UpdateConfigInMemory(SystemConfig target, SystemConfig source)
-    {
-        target.DefaultTargetFps = source.DefaultTargetFps;
-        target.DefaultVideoBitrate = source.DefaultVideoBitrate;
-        target.RecordingRetentionDays = source.RecordingRetentionDays;
-        target.MaxStorageQuotaGb = source.MaxStorageQuotaGb;
-        target.DashboardRefreshRateMs = source.DashboardRefreshRateMs;
-        target.DisplayTimezone = source.DisplayTimezone;
-        target.DisplayLocale = source.DisplayLocale;
-
-        if (source.ManualDstTransitions != null && source.ManualDstTransitions.Count > 0)
-        {
-            target.ManualDstTransitions = new List<DstTransitionRule>(source.ManualDstTransitions);
-        }
-        else if (target.ManualDstTransitions == null)
-        {
-            target.ManualDstTransitions = new List<DstTransitionRule>();
-        }
-
-        if (source.Storage != null)
-        {
-            target.Storage ??= new StorageSettings();
-            target.Storage.NetAppUncPath = source.Storage.NetAppUncPath;
-            target.Storage.LocalFallbackPath = source.Storage.LocalFallbackPath;
-            target.Storage.ChunkIntervalMinutes = source.Storage.ChunkIntervalMinutes;
-            target.Storage.RetentionDays = source.Storage.RetentionDays;
-            target.Storage.ChunkEventLogPath = source.Storage.ChunkEventLogPath;
-            target.Storage.RecordFormat = source.Storage.RecordFormat;
-        }
-
-        if (source.MediaMtx != null)
-        {
-            target.MediaMtx ??= new MediaMtxSettings();
-            target.MediaMtx.ExecutablePath = source.MediaMtx.ExecutablePath;
-            target.MediaMtx.RtmpPort = source.MediaMtx.RtmpPort;
-            target.MediaMtx.HlsPort = source.MediaMtx.HlsPort;
-            target.MediaMtx.ApiPort = source.MediaMtx.ApiPort;
-            target.MediaMtx.PlaybackPort = source.MediaMtx.PlaybackPort;
-            target.MediaMtx.MetricsPort = source.MediaMtx.MetricsPort;
-            target.MediaMtx.PprofPort = source.MediaMtx.PprofPort;
-            target.MediaMtx.EnableMetrics = source.MediaMtx.EnableMetrics;
-            target.MediaMtx.EnablePprof = source.MediaMtx.EnablePprof;
-            target.MediaMtx.EnablePlayback = source.MediaMtx.EnablePlayback;
-            target.MediaMtx.HlsAlwaysRemux = source.MediaMtx.HlsAlwaysRemux;
-            target.MediaMtx.HlsVariant = source.MediaMtx.HlsVariant;
-            target.MediaMtx.HlsSegmentDuration = source.MediaMtx.HlsSegmentDuration;
-            target.MediaMtx.Timezone = source.MediaMtx.Timezone;
-        }
-
-        if (source.Dashboard != null)
-        {
-            target.Dashboard ??= new DashboardSettings();
-            target.Dashboard.SnapshotMinDelayMs = source.Dashboard.SnapshotMinDelayMs;
-            target.Dashboard.SnapshotMaxDelayMs = source.Dashboard.SnapshotMaxDelayMs;
-            target.Dashboard.SnapshotBufferMarginPx = source.Dashboard.SnapshotBufferMarginPx;
-            target.Dashboard.MaxConcurrentLiveStreams = source.Dashboard.MaxConcurrentLiveStreams;
-        }
-
-        if (source.Security != null)
-        {
-            target.Security ??= new SecuritySettings();
-            target.Security.AllowedAdAdminGroup = source.Security.AllowedAdAdminGroup;
-            target.Security.JwtSecretKey = source.Security.JwtSecretKey;
-            target.Security.TokenExpirationHours = source.Security.TokenExpirationHours;
-        }
-    }
 
     private async Task WriteConfigToDiskFilesAsync(string updatedJson)
     {
@@ -200,6 +108,7 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
             if (File.Exists(linuxBinFile)) candidatePaths.Add(linuxBinFile);
         }
 
+        // סנכרון לתיקיית המקור בסביבת פיתוח (אם קיימת)
         try
         {
             string projectRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));
@@ -225,7 +134,7 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
                     rootNode[sectionKey] = JsonNode.Parse(updatedJson);
                     await File.WriteAllTextAsync(filePath, rootNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-                    _logger.LogInformation("[CONFIG SYNC] Synced updated configuration into '{Path}'", filePath);
+                    _logger.LogInformation("[CONFIG SYNC] Flushed updated configuration into '{Path}'", filePath);
                 }
             }
             catch (Exception ex)

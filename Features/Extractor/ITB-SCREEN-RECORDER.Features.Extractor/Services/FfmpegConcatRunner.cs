@@ -14,6 +14,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     public class FfmpegConcatRunner : IFfmpegConcatRunner
     {
         private readonly string _ffmpegPath;
+        private readonly IFfmpegBinaryResolver _binaryResolver;
         private readonly ILogger<FfmpegConcatRunner> _logger;
 
         public FfmpegConcatRunner(
@@ -21,6 +22,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             ILogger<FfmpegConcatRunner> logger)
         {
             _logger = logger;
+            _binaryResolver = binaryResolver;
             _ffmpegPath = binaryResolver.ResolveFfmpeg();
             _logger.LogInformation("Extractor initialized FFmpeg at: {Path}", _ffmpegPath);
         }
@@ -42,9 +44,14 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             string arguments;
             if (hasDummyGaps)
             {
-                _logger.LogInformation("[FFmpeg Runner] Gaps/Dummy segments detected in manifest. Switching to synchronized re-encoding pipeline.");
+                var caps = _binaryResolver.GetCapabilities();
+                string encoderArgs = _binaryResolver.GetOptimalVideoEncoderArgs();
+
+                _logger.LogInformation("[FFmpeg Runner] Gaps/Dummy segments detected. Re-encoding using: {Hardware} ({Encoder})",
+                    caps.HardwareType, caps.VideoEncoder);
+
                 arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
-                            $"-c:v libx264 -preset veryfast -crf 20 -c:a aac -b:a 128k " +
+                            $"{encoderArgs} -c:a aac -b:a 128k " +
                             $"-metadata creation_time=\"{creationUtcIso}\" " +
                             $"-movflags frag_keyframe+empty_moov+default_base_moof " +
                             $"-f mp4 pipe:1";
