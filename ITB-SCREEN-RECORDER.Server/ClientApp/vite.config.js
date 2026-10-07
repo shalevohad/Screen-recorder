@@ -23,6 +23,16 @@ export default defineConfig({
     },
     server: {
         port: 3100,
-        strictPort: true
+        strictPort: true,
+        proxy: {
+            '/api': {
+                target: `http://127.0.0.1:${process.env.VITE_SERVER_PORT || 5090}`,
+                changeOrigin: true
+            },
+            '/hubs': {
+                target: `http://127.0.0.1:${process.env.VITE_SERVER_PORT || 5090}`,
+                ws: true
+            }
+        }
     }
 })

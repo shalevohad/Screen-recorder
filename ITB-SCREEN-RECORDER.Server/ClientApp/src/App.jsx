@@ -43,8 +43,10 @@ export default function App() {
         return () => clearInterval(interval);
     }, []);
 
-    const apiPort = import.meta.env?.VITE_SERVER_PORT || '5090';
-    const apiBaseUrl = `http://${window.location.hostname}:${apiPort}`;
+    // 💡 בייצור (Production build) כל הקריאות יחסיות לחלוטין ('') ופונות אוטומטית לפורט שממנו נטען הדף.
+    // בפיתוח (Vite dev server) הפניות עוברות דרך הפרוקסי ב-vite.config.js.
+    const isDev = import.meta.env.DEV;
+    const apiBaseUrl = isDev ? (import.meta.env?.VITE_API_BASE_URL || '') : '';
 
     useEffect(() => {
         const handleGlobalContextMenu = (e) => {
@@ -59,29 +61,32 @@ export default function App() {
         };
     }, []);
 
+    // 💡 משיכת תחנות עם נתיב ה-Dashboard התקני
     const fetchStations = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/agents`);
+            let res = await fetch(`${apiBaseUrl}/api/v1/dashboard/stations`);
+            if (!res.ok) {
+                res = await fetch(`${apiBaseUrl}/api/agents`);
+            }
             if (res.ok) {
                 const data = await res.json();
-                setStations(data);
+                if (Array.isArray(data)) {
+                    setStations(data);
+                }
             }
         } catch (err) {
-            console.error('[App] Failed to fetch agents:', err);
+            console.error('[App] Failed to fetch stations:', err);
         }
     }, [apiBaseUrl]);
 
     const fetchSystemConfig = useCallback(async () => {
         try {
-            const res = await fetch(`${apiBaseUrl}/api/settings`);
+            let res = await fetch(`${apiBaseUrl}/api/v1/settings`);
+            if (!res.ok) {
+                res = await fetch(`${apiBaseUrl}/api/system/config`);
+            }
             if (res.ok) {
                 const data = await res.json();
-                setSystemConfig(data);
-                return;
-            }
-            const altRes = await fetch(`${apiBaseUrl}/api/system/config`);
-            if (altRes.ok) {
-                const data = await altRes.json();
                 setSystemConfig(data);
             }
         } catch (err) {
@@ -93,29 +98,18 @@ export default function App() {
         let isMounted = true;
         const loadInitialData = async () => {
             try {
-                const [agentsRes, cfgRes] = await Promise.allSettled([
-                    fetch(`${apiBaseUrl}/api/agents`),
-                    fetch(`${apiBaseUrl}/api/settings`)
+                await Promise.allSettled([
+                    fetchStations(),
+                    fetchSystemConfig()
                 ]);
-
-                if (isMounted) {
-                    if (agentsRes.status === 'fulfilled' && agentsRes.value.ok) {
-                        const data = await agentsRes.value.json();
-                        setStations(data);
-                    }
-                    if (cfgRes.status === 'fulfilled' && cfgRes.value.ok) {
-                        const cfg = await cfgRes.value.json();
-                        setSystemConfig(cfg);
-                    }
-                }
             } catch (err) {
                 console.error('[App] Failed to load initial data:', err);
             }
         };
 
-        loadInitialData();
+        if (isMounted) loadInitialData();
         return () => { isMounted = false; };
-    }, [apiBaseUrl]);
+    }, [fetchStations, fetchSystemConfig]);
 
     useEffect(() => {
         const hubUrl = `${apiBaseUrl}/hubs/telemetry`;
@@ -124,7 +118,7 @@ export default function App() {
             .withAutomaticReconnect([0, 2000, 5000, 10000])
             .build();
 
-        // 💡 מיזוג שאינו מוחק נתונים קיימים אם מגיע שידור חלקי
+        // מיזוג נתוני טלמטריה ללא דריסת מדדי שרת קיימים
         connection.on('ReceiveServerTelemetry', (telemetry) => {
             if (!telemetry) return;
             setServerTelemetry(prev => {
@@ -141,7 +135,6 @@ export default function App() {
             });
         });
 
-        // 💡 ערוץ ייעודי למשימות קטלוג ותחזוקה
         connection.on('ReceiveMaintenanceJob', (job) => {
             setServerTelemetry(prev => ({
                 ...prev,
@@ -149,10 +142,13 @@ export default function App() {
             }));
         });
 
+        // קליטת עדכוני מדדים של עמדה בודדת
         connection.on('ReceiveAgentMetrics', (report) => {
+            if (!report) return;
             setStations(prev => {
-                const idx = prev.findIndex(s => s.hostname === report.hostname);
-                const isOnline = report.status === 1 || report.status === 2 || report.isProcessRunning;
+                const host = (report.hostname || report.stationId || '').toLowerCase();
+                const idx = prev.findIndex(s => (s.hostname || s.stationId || '').toLowerCase() === host);
+                const isOnline = report.status === 1 || report.status === 2 || report.isProcessRunning || report.isOnline;
 
                 if (idx > -1) {
                     const copy = [...prev];
@@ -161,6 +157,12 @@ export default function App() {
                 }
                 return [...prev, { ...report, isOnline }];
             });
+        });
+
+        connection.on('ReceiveAllStations', (allStations) => {
+            if (Array.isArray(allStations)) {
+                setStations(allStations);
+            }
         });
 
         connection.start().catch(err => console.error('[App] SignalR Connection Error:', err));

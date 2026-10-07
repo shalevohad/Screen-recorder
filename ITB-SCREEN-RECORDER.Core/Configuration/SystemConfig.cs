@@ -1,10 +1,17 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿// ==========================================
+// File: ITB-SCREEN-RECORDER.Core/Configuration/SystemConfig.cs
+// ==========================================
+using System.ComponentModel.DataAnnotations;
 
 namespace ITB_SCREEN_RECORDER.Core.Configuration
 {
     public class SystemConfig
     {
         public const string SectionName = "SystemConfig";
+
+        // 💡 פורט ההאזנה של שרת ה-HTTP והדשבורד
+        [Range(1, 65535)]
+        public int HttpPort { get; set; } = 5090;
 
         [Range(1, 365, ErrorMessage = "RecordingRetentionDays must be between 1 and 365")]
         public int RecordingRetentionDays { get; set; }
