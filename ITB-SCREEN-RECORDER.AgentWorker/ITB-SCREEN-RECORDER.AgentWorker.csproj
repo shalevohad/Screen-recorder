@@ -21,6 +21,16 @@
 		<DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
 	</PropertyGroup>
 
+	<!-- הגדרת LINUX מותנית ב-RuntimeIdentifier של היעד -->
+	<PropertyGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+	</PropertyGroup>
+
+	<!-- החרגת קובצי Windows (GDI/Win32) מקומפילציה כאשר בונים ללינוקס למניעת שגיאות System.Drawing -->
+	<ItemGroup Condition="'$(RuntimeIdentifier)' != '' And $(RuntimeIdentifier.StartsWith('linux'))">
+		<Compile Remove="Providers\Video\**\Windows\*.cs" />
+	</ItemGroup>
+
 	<!-- תלויות ספציפיות ל-Windows (מוחרגות בבנייה ל-Linux) -->
 	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
 		<PackageReference Include="Microsoft.Win32.SystemEvents" Version="8.0.0" />

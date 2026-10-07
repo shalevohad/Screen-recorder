@@ -2,7 +2,7 @@
 // File: ITBRecorderAgent/Engine/VideoPipeline.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
-using ITBRecorderAgent.Providers.Video;
+using ITBRecorderAgent.Providers.Video.Mouse;
 using ITBRecorderAgent.Providers.Video.Keyboard;
 using System;
 using System.Diagnostics;

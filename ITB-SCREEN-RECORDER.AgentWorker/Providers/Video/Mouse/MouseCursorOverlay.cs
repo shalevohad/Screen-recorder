@@ -1,10 +1,15 @@
 ﻿using System;
 using ITB_SCREEN_RECORDER.Core.Common;
-using ITBRecorderAgent.Providers.Video.Mouse;
-using ITBRecorderAgent.Providers.Video.Mouse.Linux;
-using ITBRecorderAgent.Providers.Video.Mouse.Windows;
 
-namespace ITBRecorderAgent.Providers.Video
+#if LINUX
+using ITBRecorderAgent.Providers.Video.Mouse.Linux;
+#endif
+
+#if WINDOWS
+using ITBRecorderAgent.Providers.Video.Mouse.Windows;
+#endif
+
+namespace ITBRecorderAgent.Providers.Video.Mouse
 {
     public static class MouseCursorOverlay
     {
@@ -15,21 +20,22 @@ namespace ITBRecorderAgent.Providers.Video
         {
             try
             {
+#if WINDOWS
                 if (OperatingSystem.IsWindows())
                 {
                     _provider = new WindowsMouseOverlay();
                 }
-                else if (OperatingSystem.IsLinux())
+#elif LINUX
+                if (OperatingSystem.IsLinux())
                 {
                     _provider = new LinuxMouseOverlay();
                 }
-                else
-                {
-                    Logger.Warn("[OVERLAY:MOUSE] Operating system is not supported for mouse visual overlays. Recording continues without overlay.");
-                    return;
-                }
+#else
+                Logger.Warn("[OVERLAY:MOUSE] Operating system is not supported for mouse visual overlays. Recording continues without overlay.");
+                return;
+#endif
 
-                _provider.Initialize();
+                _provider?.Initialize();
             }
             catch (DllNotFoundException ex)
             {

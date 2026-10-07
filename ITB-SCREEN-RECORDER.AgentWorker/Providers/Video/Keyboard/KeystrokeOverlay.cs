@@ -1,7 +1,13 @@
 ﻿using System;
 using ITB_SCREEN_RECORDER.Core.Common;
+
+#if LINUX
 using ITBRecorderAgent.Providers.Video.Keyboard.Linux;
+#endif
+
+#if WINDOWS
 using ITBRecorderAgent.Providers.Video.Keyboard.Windows;
+#endif
 
 namespace ITBRecorderAgent.Providers.Video.Keyboard
 {
@@ -14,21 +20,22 @@ namespace ITBRecorderAgent.Providers.Video.Keyboard
         {
             try
             {
+#if WINDOWS
                 if (OperatingSystem.IsWindows())
                 {
                     _provider = new WindowsKeystrokeOverlay();
                 }
-                else if (OperatingSystem.IsLinux())
+#elif LINUX
+                if (OperatingSystem.IsLinux())
                 {
                     _provider = new LinuxKeystrokeOverlay();
                 }
-                else
-                {
-                    Logger.Warn("[OVERLAY:KEYSTROKE] Operating system is not supported for keystroke overlay. Recording continues without overlay.");
-                    return;
-                }
+#else
+                Logger.Warn("[OVERLAY:KEYSTROKE] Operating system is not supported for keystroke overlay. Recording continues without overlay.");
+                return;
+#endif
 
-                _provider.Initialize();
+                _provider?.Initialize();
             }
             catch (DllNotFoundException ex)
             {

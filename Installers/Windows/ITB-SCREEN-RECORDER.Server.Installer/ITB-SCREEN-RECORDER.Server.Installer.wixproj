@@ -8,7 +8,7 @@
 		<!-- נרמול גרסה ל-3 מקטעים תקניים -->
 		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
 		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
-		<RawVersion Condition="'$(RawVersion)' == ''">1.0.34</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.35</RawVersion>
 		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
 		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
 		<OutputName>ITB-ScreenRecorder-Server-Setup-$(Version)</OutputName>
