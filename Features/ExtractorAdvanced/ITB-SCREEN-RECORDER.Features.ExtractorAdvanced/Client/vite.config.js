@@ -8,13 +8,36 @@ import { dirname, resolve } from 'node:path';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
+// 💡 נתיב אבסולוטי ישיר לקובץ המקור היחיד בשרת
+const sharedDstEnginePath = resolve(currentDir, '../../../../ITB-SCREEN-RECORDER.Server/ClientApp/src/utils/dstEngine.js');
+const localTimeFormatPath = resolve(currentDir, 'src/utils/timeFormat.js');
+
+// 💡 תוסף ייעודי שמיירט את כל קריאות ה-Import עוד לפני בדיקת מערכת הקבצים
+function sharedModuleResolverPlugin() {
+    return {
+        name: 'shared-dst-resolver-plugin',
+        enforce: 'pre',
+        resolveId(source) {
+            // תופס כל ייבוא שמסתיים ב-dstEngine (בין אם './utils/dstEngine', './dstEngine.js', וכו')
+            if (/dstEngine(\.js)?$/.test(source)) {
+                return sharedDstEnginePath;
+            }
+            // מתקן כל נתיב יחסי ארוך או שבור של timeFormat
+            if (/timeFormat(\.js)?$/.test(source)) {
+                return localTimeFormatPath;
+            }
+            return null;
+        }
+    };
+}
+
 export default defineConfig({
     plugins: [
+        sharedModuleResolverPlugin(),
         react({
             include: '**/*.{jsx,js}',
         })
     ],
-    // הגדרת ספריית המקור לקבצים סטטיים (Client/public)
     publicDir: resolve(currentDir, 'public'),
     esbuild: {
         loader: 'jsx',
@@ -27,8 +50,13 @@ export default defineConfig({
     resolve: {
         extensions: ['.mjs', '.js', '.jsx', '.json']
     },
+    server: {
+        fs: {
+            // מאפשר ל-Vite לטעון קבצים מחוץ לתיקיית הפרויקט
+            allow: [resolve(currentDir, '../../../../')]
+        }
+    },
     build: {
-        // 💡 מאפשר ל-Vite להעתיק את public/ ל-wwwroot גם ב-Library Mode
         copyPublicDir: true,
         lib: {
             entry: resolve(currentDir, 'src/index.js'),

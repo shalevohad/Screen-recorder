@@ -1,5 +1,9 @@
-﻿using ITB_SCREEN_RECORDER.Core.Common;
+﻿// ==========================================
+// File: ITBRecorderAgent/Engine/VideoPipeline.cs
+// ==========================================
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITBRecorderAgent.Providers.Video;
+using ITBRecorderAgent.Providers.Video.Keyboard;
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -111,12 +115,11 @@ namespace ITBRecorderAgent.Engine
 
                         Buffer.BlockCopy(raw, 0, buffer, 0, raw.Length);
 
-#if WINDOWS
-                        if (OperatingSystem.IsWindows())
-                        {
-                            MouseCursorOverlay.DrawMouseToFrame(buffer, width, height);
-                        }
-#endif
+                        // 1. הזרקת סמן העכבר, חיווי קליקים (L/R) וגלגול
+                        MouseCursorOverlay.DrawMouseToFrame(buffer, width, height);
+
+                        // 2. הזרקת Keycaps של מקשי הקיצור במרכז המסך (Zero Overhead כשאף מקש לא נלחץ)
+                        KeystrokeOverlay.DrawKeystrokesToFrame(buffer, width, height);
 
                         if (_channel.Writer.TryWrite(buffer))
                         {

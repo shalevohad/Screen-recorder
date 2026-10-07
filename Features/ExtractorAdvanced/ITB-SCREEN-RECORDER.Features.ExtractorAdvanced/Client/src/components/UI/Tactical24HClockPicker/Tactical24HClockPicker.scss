@@ -1,0 +1,278 @@
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/UI/Tactical24HClockPicker/Tactical24HClockPicker.scss
+// ==========================================
+
+.tactical-24h-clock-picker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+
+    &.is-dragging {
+        user-select: none;
+        cursor: grabbing !important;
+
+        * {
+            cursor: grabbing !important;
+        }
+    }
+
+    .clock-header-shelf {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        background: var(--surface-controls, rgba(30, 41, 59, 0.45));
+        border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+        border-radius: var(--radius-controls, 8px);
+        padding: 5px 12px;
+        margin-bottom: 12px;
+        box-sizing: border-box;
+        transition: all 0.2s ease;
+
+        .shelf-label {
+            font-family: var(--font-mono, monospace);
+            font-size: 8.5px;
+            font-weight: 800;
+            color: var(--text-secondary, #94A3B8);
+            letter-spacing: 0.6px;
+        }
+
+        .shelf-controls-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            /* בורר AM / PM טקטי */
+            .am-pm-toggle-pill {
+                display: flex;
+                background: rgba(0, 0, 0, 0.45);
+                border: 1px solid var(--border-card, rgba(255, 255, 255, 0.1));
+                border-radius: var(--radius-full, 9999px);
+                padding: 2px;
+                gap: 2px;
+
+                .btn-period {
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted, #64748B);
+                    font-family: var(--font-mono, monospace);
+                    font-size: 8.5px;
+                    font-weight: 800;
+                    padding: 2px 7px;
+                    border-radius: var(--radius-full, 9999px);
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover:not(.active) {
+                        color: var(--text-primary, #F8FAFC);
+                    }
+
+                    &.active {
+                        color: var(--bg-void, #020617);
+                        font-weight: 900;
+                    }
+                }
+            }
+
+            .shelf-digital-input {
+                width: 90px;
+                background: var(--clock-input-bg, rgba(2, 6, 23, 0.85));
+                border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
+                border-radius: var(--radius-xs, 4px);
+                color: var(--text-primary, #F8FAFC);
+                font-family: var(--font-mono, monospace);
+                font-size: 13.5px;
+                font-weight: 900;
+                text-align: center;
+                padding: 2.5px 0;
+                outline: none;
+                transition: all 0.2s ease;
+
+                &:focus {
+                    background: var(--bg-void, #020617);
+                    box-shadow: 0 0 10px var(--accent-cyan-glow, rgba(56, 189, 248, 0.3));
+                }
+            }
+        }
+    }
+
+    .clock-dial-container {
+        position: relative;
+        width: 205px;
+        height: 205px;
+        user-select: none;
+
+        .clock-dial-svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+
+            .dial-background {
+                fill: var(--clock-dial-bg, #090E1A);
+                stroke: var(--clock-dial-border, rgba(255, 255, 255, 0.1));
+                stroke-width: 1.5;
+            }
+
+            .dial-track-ring {
+                fill: none;
+                stroke: var(--clock-dial-ring, rgba(255, 255, 255, 0.05));
+                stroke-dasharray: 2 4;
+                stroke-width: 1;
+            }
+
+            .dial-ticks-layer {
+                .dial-tick {
+                    stroke-linecap: round;
+
+                    &.minor {
+                        stroke: var(--clock-tick-minor, rgba(148, 163, 184, 0.22));
+                        stroke-width: 1;
+                    }
+
+                    &.major {
+                        stroke: var(--clock-tick-major, rgba(148, 163, 184, 0.45));
+                        stroke-width: 1.6;
+                    }
+                }
+            }
+
+            .dial-num {
+                fill: var(--text-secondary, #94A3B8);
+                font-family: var(--font-mono, monospace);
+                font-size: 8px;
+                font-weight: 700;
+                pointer-events: none;
+                transition: fill 0.15s, font-size 0.15s;
+
+                &.selected {
+                    fill: var(--text-primary, #FFFFFF);
+                    font-weight: 900;
+                    font-size: 9.5px;
+                }
+            }
+
+            .interactive-hand-group {
+                cursor: grab;
+
+                &:hover, &.dragging {
+                    cursor: grabbing;
+
+                    .hand-grab-ring {
+                        transform: scale(1.22);
+                    }
+                }
+
+                .dial-hand {
+                    stroke-linecap: round;
+                    pointer-events: none;
+
+                    &.hand-hour {
+                        stroke-width: 4;
+                    }
+
+                    &.hand-minute {
+                        stroke-width: 2.5;
+                        stroke: var(--clock-hand-minute, #38BDF8);
+                        filter: drop-shadow(0 0 5px var(--clock-hand-minute-glow, rgba(56, 189, 248, 0.7)));
+                    }
+
+                    &.hand-second {
+                        stroke-width: 1.2;
+                        stroke: var(--clock-hand-second, #F43F5E);
+                        filter: drop-shadow(0 0 4px var(--clock-hand-second-glow, rgba(244, 63, 94, 0.8)));
+                    }
+                }
+
+                .hand-grab-ring {
+                    fill: var(--clock-hud-bg, rgba(15, 23, 42, 0.85));
+                    stroke-width: 2.2;
+                    transform-origin: center;
+                    transition: transform 0.15s ease;
+
+                    &.ring-minute {
+                        stroke: var(--clock-hand-minute, #38BDF8);
+                    }
+
+                    &.ring-second {
+                        stroke: var(--clock-hand-second, #F43F5E);
+                    }
+                }
+
+                .hand-hitbox {
+                    fill: transparent;
+                    stroke: transparent;
+                    cursor: grab;
+                }
+            }
+
+            .dial-center-pin {
+                fill: var(--text-primary, #F8FAFC);
+                pointer-events: none;
+            }
+
+            .dial-center-dot {
+                fill: var(--clock-hand-second, #F43F5E);
+                pointer-events: none;
+            }
+        }
+    }
+    /* ערכת CYAN (Start Time) */
+    &.cyan {
+        .am-pm-toggle-pill .btn-period.active {
+            background: var(--accent-cyan, #06B6D4);
+            box-shadow: 0 0 8px var(--accent-cyan-glow, rgba(6, 182, 212, 0.4));
+        }
+
+        .clock-header-shelf {
+            border-color: var(--c2-cyan-border, rgba(6, 182, 212, 0.3));
+
+            .shelf-digital-input {
+                color: var(--accent-cyan-light, #22D3EE);
+                border-color: var(--accent-cyan, #06B6D4);
+            }
+        }
+
+        .dial-num.selected {
+            fill: var(--accent-cyan-light, #22D3EE);
+        }
+
+        .hand-hour {
+            stroke: var(--clock-hand-hour-start, #06B6D4);
+            filter: drop-shadow(0 0 6px var(--clock-hand-hour-start-glow, rgba(6, 182, 212, 0.8)));
+        }
+
+        .ring-hour {
+            stroke: var(--clock-hand-hour-start, #06B6D4);
+        }
+    }
+    /* ערכת AMBER (End Time) */
+    &.amber {
+        .am-pm-toggle-pill .btn-period.active {
+            background: var(--accent-amber, #F59E0B);
+            box-shadow: 0 0 8px var(--glow-yellow, rgba(245, 158, 11, 0.4));
+        }
+
+        .clock-header-shelf {
+            border-color: var(--c2-yellow-border, rgba(245, 158, 11, 0.3));
+
+            .shelf-digital-input {
+                color: var(--accent-amber-light, #FBBF24);
+                border-color: var(--accent-amber, #F59E0B);
+            }
+        }
+
+        .dial-num.selected {
+            fill: var(--accent-amber-light, #FBBF24);
+        }
+
+        .hand-hour {
+            stroke: var(--clock-hand-hour-end, #F59E0B);
+            filter: drop-shadow(0 0 6px var(--clock-hand-hour-end-glow, rgba(245, 158, 11, 0.8)));
+        }
+
+        .ring-hour {
+            stroke: var(--clock-hand-hour-end, #F59E0B);
+        }
+    }
+}

@@ -1,4 +1,7 @@
-﻿using ITB_SCREEN_RECORDER.Core.Common;
+﻿// ==========================================
+// File: Server/Controllers/AgentController.cs
+// ==========================================
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
@@ -86,6 +89,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             string requestHost = Request.Host.Host;
             var response = await _telemetryState.ProcessHeartbeatAsync(report, requestHost);
+
+            // 💡 הבטחת חותמת Epoch עדכנית ברמת המילי-שנייה עבור ה-Agent
+            if (response != null)
+            {
+                response.ServerUtcEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                response.ServerUtcTime = DateTime.UtcNow;
+            }
+
             _ = _broadcastService.BroadcastAgentUpdateAsync(report);
 
             return Ok(response);
@@ -120,24 +131,34 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             IFormFile file = request.File;
             string safeFileName = Path.GetFileName(file.FileName);
 
-            // 1. איתור חותמת זמן UTC
-            var match = Regex.Match(safeFileName, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})Z", RegexOptions.IgnoreCase);
-            if (!match.Success)
+            // 1. איתור חותמת זמן UTC או Epoch מתוך שם הקובץ המקורי
+            long startEpochMs = 0;
+            var matchUtc = Regex.Match(safeFileName, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})Z", RegexOptions.IgnoreCase);
+            var matchEpoch = Regex.Match(safeFileName, @"(\d{10,13})", RegexOptions.IgnoreCase);
+
+            if (matchUtc.Success)
             {
-                _logger.LogWarning("[SYNC INGEST] Received buffer file '{File}' from host '{Host}' without valid UTC signature.", safeFileName, hostname);
-                return BadRequest("Invalid file name format. Expected UTC timestamp signature ('..._YYYY-MM-DD_HH-mm-ss-ffffffZ.ext').");
+                string utcString = matchUtc.Groups[1].Value;
+                if (DateTime.TryParseExact(utcString, "yyyy-MM-dd_HH-mm-ss-ffffff",
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime chunkUtcTime))
+                {
+                    startEpochMs = new DateTimeOffset(chunkUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                }
+            }
+            else if (matchEpoch.Success && long.TryParse(matchEpoch.Groups[1].Value, out long parsedEpoch))
+            {
+                startEpochMs = parsedEpoch > 100000000000L ? parsedEpoch : parsedEpoch * 1000;
             }
 
-            string utcString = match.Groups[1].Value;
-            if (!DateTime.TryParseExact(utcString, "yyyy-MM-dd_HH-mm-ss-ffffff",
-                CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime chunkUtcTime))
+            if (startEpochMs <= 0)
             {
-                return BadRequest("Failed to parse file UTC timestamp.");
+                _logger.LogWarning("[SYNC INGEST] Received buffer file '{File}' from host '{Host}' without valid UTC/Epoch signature.", safeFileName, hostname);
+                return BadRequest("Invalid file name format. Expected UTC timestamp signature ('..._YYYY-MM-DD_HH-mm-ss-ffffffZ.ext') or Epoch timestamp.");
             }
 
-            DateTime serverLocalTime = TimeZoneInfo.ConvertTimeFromUtc(chunkUtcTime, TimeZoneInfo.Local);
+            // 💡 תיקון קריטי: שמירת הקובץ לפי ה-Epoch המוחלט שלו ללא שום המרה לשעון מקומי
             string extension = Path.GetExtension(safeFileName);
-            string finalFileName = $"{serverLocalTime:yyyy-MM-dd_HH-mm-ss-ffffff}{extension}";
+            string finalFileName = $"{startEpochMs}{extension}";
 
             try
             {
@@ -157,11 +178,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 }
 
                 long fileSizeBytes = new FileInfo(destinationPath).Length;
-                long startEpochMs = new DateTimeOffset(chunkUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
                 int chunkMinutes = Math.Max(1, _configMonitor.CurrentValue.Storage.ChunkIntervalMinutes);
                 long endEpochMs = startEpochMs + (chunkMinutes * 60 * 1000);
 
-                // שליפת נתוני טלמטריה חיים או ברירת מחדל 0 המאותתת על צורך בדגימה
                 var agent = _telemetryState.GetAllAgents()
                     .FirstOrDefault(a => string.Equals(a.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
 
@@ -186,10 +205,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     )
                 });
 
-                _logger.LogInformation("[SYNC INGEST] Synced & Indexed offline chunk from '{Host}': '{File}' (Size: {Size} bytes)",
-                    hostname, finalFileName, fileSizeBytes);
+                _logger.LogInformation("[SYNC INGEST] Synced & Indexed offline chunk from '{Host}': '{File}' (Epoch: {Epoch}, Size: {Size} bytes)",
+                    hostname, finalFileName, startEpochMs, fileSizeBytes);
 
-                return Ok(new { success = true, normalizedFile = finalFileName });
+                return Ok(new { success = true, normalizedFile = finalFileName, startEpochMs });
             }
             catch (Exception ex)
             {

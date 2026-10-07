@@ -1,4 +1,7 @@
-﻿using System;
+﻿// ==========================================
+// File: Core/Contracts/Network/CommunicationModels.cs
+// ==========================================
+using System;
 using System.Text.Json.Serialization;
 
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
@@ -50,7 +53,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("isScreenCapturing")]
         public bool IsScreenCapturing { get; set; }
 
-        // 💡 מידות מסך אמיתיות של התחנה (0 מציין שטרם נקלט דיווח או נדרשת דגימה)
         [JsonPropertyName("screenWidth")]
         public int ScreenWidth { get; set; } = 0;
 
@@ -72,11 +74,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("isStreaming")]
         public bool IsStreaming { get; set; }
 
-        // חיווי הקלטה רשמי
         [JsonPropertyName("isRecording")]
         public bool IsRecording { get; set; }
 
-        // חותמת זמן UTC לתחילת ההקלטה (אינה מתאפסת בריענון)
         [JsonPropertyName("recordingStartedAtUtc")]
         public DateTime? RecordingStartedAtUtc { get; set; }
 
@@ -154,6 +154,10 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("serverUtcTime")]
         public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
+
+        // 💡 סנכרון זמנים ב-Epoch מדויק (UTC במילי-שניות) לנטרול בעיות אזורי זמן
+        [JsonPropertyName("serverUtcEpochMs")]
+        public long ServerUtcEpochMs { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
         [JsonPropertyName("policy")]
         public AgentStreamPolicy? Policy { get; set; }

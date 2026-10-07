@@ -1,5 +1,8 @@
-// Client/src/components/Timeline/SessionClockBadge.jsx
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/SessionClockBadge.jsx
+// ==========================================
 import React, { useState, useMemo, useCallback } from 'react';
+import { getLocalOffsetMinutes, checkTimeAmbiguity } from '../../../utils/dstEngine.js';
 import './SessionClockBadge.scss';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -18,13 +21,28 @@ export default function SessionClockBadge({
     const [inInputText, setInInputText] = useState('');
     const [outInputText, setOutInputText] = useState('');
 
+    // 💡 עיצוב שעה מדויק ומכויל מול מנוע ה-DST של השרת
     const formatEpochTime = useCallback((epochMs) => {
-        if (!epochMs || isNaN(epochMs)) return '--:--:--';
-        const d = new Date(epochMs);
-        if (timeMode === 'UTC') {
-            return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+        if (!epochMs || isNaN(epochMs) || epochMs <= 0) {
+            return { timeStr: '--:--:--', zoneLabel: '' };
         }
-        return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+        if (timeMode === 'UTC') {
+            const d = new Date(epochMs);
+            return {
+                timeStr: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`,
+                zoneLabel: 'UTC'
+            };
+        }
+
+        // שימוש בסטיית ה-DST המנוהלת מהשרת
+        const { offsetMin, label } = getLocalOffsetMinutes(epochMs);
+        const localDate = new Date(epochMs + (offsetMin * 60 * 1000));
+
+        return {
+            timeStr: `${pad(localDate.getUTCHours())}:${pad(localDate.getUTCMinutes())}:${pad(localDate.getUTCSeconds())}`,
+            zoneLabel: label
+        };
     }, [timeMode]);
 
     const formatDuration = useCallback((durMs) => {
@@ -36,47 +54,74 @@ export default function SessionClockBadge({
         return `${pad(h)}:${pad(m)}:${pad(s)}`;
     }, []);
 
-    const inDisplayStr = useMemo(() => formatEpochTime(baseEpochMs + inPointMs), [formatEpochTime, baseEpochMs, inPointMs]);
-    const outDisplayStr = useMemo(() => formatEpochTime(baseEpochMs + outPointMs), [formatEpochTime, baseEpochMs, outPointMs]);
+    const inInfo = useMemo(() => formatEpochTime(baseEpochMs + inPointMs), [formatEpochTime, baseEpochMs, inPointMs]);
+    const outInfo = useMemo(() => formatEpochTime(baseEpochMs + outPointMs), [formatEpochTime, baseEpochMs, outPointMs]);
     const durationDisplayStr = useMemo(() => formatDuration(Math.max(0, outPointMs - inPointMs)), [formatDuration, inPointMs, outPointMs]);
 
+    // 💡 פענוח קלט ידני מבוסס Epoch ו-dstEngine (כולל פתרון חכם לשעות כפולות)
     const parseTimeStringToMs = useCallback((inputStr, fallbackMs) => {
         if (!inputStr || !inputStr.trim()) return fallbackMs;
-        const parts = inputStr.trim().split(':').map(Number);
+        const cleanInput = inputStr.trim().split(' ')[0]; // הסרת תגית אזור זמן אם הוקלדה בטעות
+        const parts = cleanInput.split(':').map(Number);
         if (parts.length < 2 || parts.some(isNaN)) return fallbackMs;
 
         const [h, m, s = 0] = parts;
-        const d = new Date(baseEpochMs);
 
         if (timeMode === 'UTC') {
+            const d = new Date(baseEpochMs);
             d.setUTCHours(h, m, s, 0);
+            let targetEpoch = d.getTime();
+
+            while (targetEpoch < baseEpochMs) targetEpoch += 86400000;
+            while (targetEpoch > baseEpochMs + totalDurationMs + 1000) targetEpoch -= 86400000;
+
+            const offset = targetEpoch - baseEpochMs;
+            return isNaN(offset) ? fallbackMs : Math.max(0, Math.min(totalDurationMs, offset));
+        }
+
+        // חישוב זמן מקומי מכויל מול dstEngine
+        const { offsetMin: baseOffset } = getLocalOffsetMinutes(baseEpochMs);
+        const baseLocalDate = new Date(baseEpochMs + (baseOffset * 60000));
+        const y = baseLocalDate.getUTCFullYear();
+        const mo = baseLocalDate.getUTCMonth();
+        const day = baseLocalDate.getUTCDate();
+
+        const dateStr = `${y}-${pad(mo + 1)}-${pad(day)}`;
+        const timeStr = `${pad(h)}:${pad(m)}:${pad(s)}`;
+
+        // בדיקת שעה עמומה (מעבר חורף)
+        const ambiguity = checkTimeAmbiguity(dateStr, timeStr);
+        let candidateEpoch;
+
+        if (ambiguity.isAmbiguous) {
+            // בחירת המופע הקרוב ביותר לערך הנוכחי (inPoint / outPoint)
+            const currentEpoch = baseEpochMs + fallbackMs;
+            const diff1 = Math.abs(ambiguity.firstOccurrenceEpoch - currentEpoch);
+            const diff2 = Math.abs(ambiguity.secondOccurrenceEpoch - currentEpoch);
+            candidateEpoch = diff1 <= diff2 ? ambiguity.firstOccurrenceEpoch : ambiguity.secondOccurrenceEpoch;
         } else {
-            d.setHours(h, m, s, 0);
+            const localTargetUtcMs = Date.UTC(y, mo, day, h, m, s);
+            const { offsetMin: targetOffset } = getLocalOffsetMinutes(localTargetUtcMs - (baseOffset * 60000));
+            candidateEpoch = localTargetUtcMs - (targetOffset * 60000);
         }
 
-        let targetEpoch = d.getTime();
+        while (candidateEpoch < baseEpochMs) candidateEpoch += 86400000;
+        while (candidateEpoch > baseEpochMs + totalDurationMs + 1000) candidateEpoch -= 86400000;
 
-        while (targetEpoch < baseEpochMs) {
-            targetEpoch += 24 * 60 * 60 * 1000;
-        }
-        while (targetEpoch > baseEpochMs + totalDurationMs + 1000) {
-            targetEpoch -= 24 * 60 * 60 * 1000;
-        }
-
-        const calculatedOffsetMs = targetEpoch - baseEpochMs;
+        const calculatedOffsetMs = candidateEpoch - baseEpochMs;
         if (isNaN(calculatedOffsetMs)) return fallbackMs;
 
         return Math.max(0, Math.min(totalDurationMs, calculatedOffsetMs));
     }, [baseEpochMs, timeMode, totalDurationMs]);
 
     const handleStartEditIn = () => {
-        setInInputText(inDisplayStr);
+        setInInputText(inInfo.timeStr);
         setIsEditingIn(true);
     };
 
     const handleCommitIn = () => {
         setIsEditingIn(false);
-        if (!inInputText || !inInputText.trim() || inInputText.trim() === inDisplayStr) {
+        if (!inInputText || !inInputText.trim() || inInputText.trim() === inInfo.timeStr) {
             return;
         }
         const parsedMs = parseTimeStringToMs(inInputText.trim(), inPointMs);
@@ -86,13 +131,13 @@ export default function SessionClockBadge({
     };
 
     const handleStartEditOut = () => {
-        setOutInputText(outDisplayStr);
+        setOutInputText(outInfo.timeStr);
         setIsEditingOut(true);
     };
 
     const handleCommitOut = () => {
         setIsEditingOut(false);
-        if (!outInputText || !outInputText.trim() || outInputText.trim() === outDisplayStr) {
+        if (!outInputText || !outInputText.trim() || outInputText.trim() === outInfo.timeStr) {
             return;
         }
         const parsedMs = parseTimeStringToMs(outInputText.trim(), outPointMs);
@@ -120,8 +165,13 @@ export default function SessionClockBadge({
                         }}
                     />
                 ) : (
-                    <span className="console-digits" onClick={handleStartEditIn} title="Click to edit IN time">
-                        {inDisplayStr}
+                    <span
+                        className="console-digits"
+                        onClick={handleStartEditIn}
+                        title={`Click to edit IN time (${inInfo.zoneLabel})`}
+                    >
+                        {inInfo.timeStr}
+                        <span className="console-zone-tag">{inInfo.zoneLabel}</span>
                     </span>
                 )}
             </div>
@@ -143,8 +193,13 @@ export default function SessionClockBadge({
                         }}
                     />
                 ) : (
-                    <span className="console-digits" onClick={handleStartEditOut} title="Click to edit OUT time">
-                        {outDisplayStr}
+                    <span
+                        className="console-digits"
+                        onClick={handleStartEditOut}
+                        title={`Click to edit OUT time (${outInfo.zoneLabel})`}
+                    >
+                        {outInfo.timeStr}
+                        <span className="console-zone-tag">{outInfo.zoneLabel}</span>
                     </span>
                 )}
             </div>

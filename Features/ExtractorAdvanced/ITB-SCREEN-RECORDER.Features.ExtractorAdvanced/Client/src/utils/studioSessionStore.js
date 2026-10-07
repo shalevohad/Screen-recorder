@@ -7,9 +7,6 @@ const AUDIO_STORAGE_KEY = 'itb_player_audio_settings';
 
 let debounceTimer = null;
 
-/**
- * טעינת נתוני הסשן השמורים
- */
 export function getStudioSessionCache() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -21,9 +18,6 @@ export function getStudioSessionCache() {
     }
 }
 
-/**
- * שמירת נתוני הסשן עם Debounce של 600ms וסינון אובייקטים כבדים
- */
 export function saveStudioSessionCache(data) {
     if (!data) return;
 
@@ -33,7 +27,6 @@ export function saveStudioSessionCache(data) {
 
     debounceTimer = setTimeout(() => {
         try {
-            // סינון סגמנטים כבדים מהתחנות כדי לא לחרוג ממגבלת ה-Quota
             const sanitizedStations = (data.allStations || []).map(s => ({
                 id: s.id,
                 hostname: s.hostname,
@@ -48,6 +41,10 @@ export function saveStudioSessionCache(data) {
                 inPointMs: typeof data.inPointMs === 'number' ? data.inPointMs : null,
                 outPointMs: typeof data.outPointMs === 'number' ? data.outPointMs : null,
                 playheadMs: typeof data.playheadMs === 'number' ? data.playheadMs : null,
+                // 💡 שמירת ערכי Epoch מוחלטים עבור נקודות ה-Cut
+                inEpochMs: typeof data.inEpochMs === 'number' ? data.inEpochMs : null,
+                outEpochMs: typeof data.outEpochMs === 'number' ? data.outEpochMs : null,
+                playheadEpochMs: typeof data.playheadEpochMs === 'number' ? data.playheadEpochMs : null,
                 selectedStationIds: Array.isArray(data.selectedStationIds) ? data.selectedStationIds : [],
                 activeStationId: data.activeStationId || null,
                 zoomLevel: data.zoomLevel || 1,
@@ -63,12 +60,9 @@ export function saveStudioSessionCache(data) {
         } catch (err) {
             console.warn('[SessionStore] Quota exceeded or failed saving session:', err);
         }
-    }, 600);
+    }, 300);
 }
 
-/**
- * איפוס סשן הסטודיו
- */
 export function clearStudioSessionCache() {
     try {
         localStorage.removeItem(STORAGE_KEY);
@@ -77,9 +71,6 @@ export function clearStudioSessionCache() {
     }
 }
 
-/**
- * טעינת הגדרות שמע גלובליות (Muted כברירת מחדל)
- */
 export function getAudioSettings() {
     try {
         const raw = localStorage.getItem(AUDIO_STORAGE_KEY);
@@ -97,9 +88,6 @@ export function getAudioSettings() {
     return { volume: 0.8, isMuted: true };
 }
 
-/**
- * שמירת הגדרות שמע גלובליות וסנכרון בין כל חלקי המערכת בזמן אמת
- */
 export function saveAudioSettings(settings) {
     try {
         localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(settings));

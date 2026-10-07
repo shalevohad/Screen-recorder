@@ -3,6 +3,7 @@
 // ==========================================
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { formatLocalClockWithDst } from '../../utils/dstEngine.js';
 import './TopScopeBar.scss';
 
 export default function TopScopeBar({
@@ -33,9 +34,12 @@ export default function TopScopeBar({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isConfirmResetOpen]);
 
+    // 💡 חישוב טווח זמנים נקי וללא קריאה לפונקציות לא-טהורות (Pure Rendering)
     const formattedScopeRange = useMemo(() => {
-        const startEpoch = baseEpochMs || (timeRange?.start ? new Date(timeRange.start).getTime() : Date.now());
+        const startEpoch = baseEpochMs || (timeRange?.start ? new Date(timeRange.start).getTime() : 0);
         const durationMs = timeRange?.durationMs || 0;
+        if (!startEpoch || durationMs <= 0) return '-- ➔ --';
+
         const endEpoch = startEpoch + durationMs;
         const pad = (n) => String(n).padStart(2, '0');
 
@@ -54,13 +58,13 @@ export default function TopScopeBar({
         }
 
         const sDate = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
-        const sTime = `${pad(dStart.getHours())}:${pad(dStart.getMinutes())}:${pad(dStart.getSeconds())}`;
+        const sTime = formatLocalClockWithDst(startEpoch, true);
 
         const eDate = `${dEnd.getFullYear()}-${pad(dEnd.getMonth() + 1)}-${pad(dEnd.getDate())}`;
-        const eTime = `${pad(dEnd.getHours())}:${pad(dEnd.getMinutes())}:${pad(dEnd.getSeconds())}`;
+        const eTime = formatLocalClockWithDst(endEpoch, true);
 
         const endFormatted = sDate === eDate ? eTime : `${eDate} ${eTime}`;
-        return `${sDate} ${sTime} ➔ ${endFormatted} (LOCAL)`;
+        return `${sDate} ${sTime} ➔ ${endFormatted}`;
     }, [baseEpochMs, timeRange?.start, timeRange?.durationMs, timeMode]);
 
     const formattedDuration = useMemo(() => {

@@ -1,4 +1,7 @@
-﻿using ITB_SCREEN_RECORDER.Core.Common;
+﻿// ==========================================
+// File: AgentWorker/Engine/FfmpegProcessManager.cs
+// ==========================================
+using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using System;
@@ -69,10 +72,8 @@ namespace ITBRecorderAgent.Engine
 
                 string ffmpegPath = AppConfig.GetResolvedFFmpegPath();
 
-                // התאמת נתיב דינמית והרשאות ריצה בסביבת Linux
                 if (OperatingSystem.IsLinux())
                 {
-                    // 1. הגנה מפני קונפיגורציה שגויה (קובץ appsettings.json שהועתק מווינדוס)
                     if (ffmpegPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                     {
                         string fallbackPath = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
@@ -80,7 +81,6 @@ namespace ITBRecorderAgent.Engine
                         ffmpegPath = fallbackPath;
                     }
 
-                    // 2. אם עדיין לא מצאנו קובץ, ניסיון אחרון בתיקייה המקומית
                     if (!File.Exists(ffmpegPath))
                     {
                         var localCandidate = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
@@ -90,7 +90,6 @@ namespace ITBRecorderAgent.Engine
                         }
                     }
 
-                    // 3. אכיפת הרשאות הרצה (0755) על הבינארי הסטטי כדי למנוע שגיאות Permission Denied
                     if (File.Exists(ffmpegPath))
                     {
                         try
@@ -221,10 +220,16 @@ namespace ITBRecorderAgent.Engine
             }
             string bufferSizeStr = normalizedBitrate;
 
-            // נעילת GOP מדויקת לשנייה אחת עבור שידור WebRTC/RTMP חי ללא שיהוי
             int gopSize = effectiveFps;
             int keyintMin = effectiveFps;
-            string utcTimestampIso = calibratedStartTime.ToString("o");
+
+            // 💡 הבטחת UTC וחישוב Epoch מוחלט במילי-שניות
+            DateTime calibratedUtc = calibratedStartTime.Kind == DateTimeKind.Utc
+                ? calibratedStartTime
+                : calibratedStartTime.ToUniversalTime();
+
+            long startEpochMs = new DateTimeOffset(calibratedUtc).ToUnixTimeMilliseconds();
+            string utcIso = calibratedUtc.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
 
             // 1. קלט וידאו דרך צינור הקלט (Stdin)
             ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
@@ -234,7 +239,7 @@ namespace ITBRecorderAgent.Engine
 
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // 3. קידוד וידאו - הזרקת IDR כפוי לכל שנייה
+            // 3. קידוד וידאו - IDR כפוי
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
                 ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
@@ -249,12 +254,15 @@ namespace ITBRecorderAgent.Engine
                 ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
             }
 
-            // 4. כפיית Keyframe כל שנייה (n_forced*1)
+            // 4. כפיית Keyframe כל שנייה
             ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*1)\" -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
 
-            // 5. סנכרון רציף של אודיו
+            // 5. סנכרון רציף של אודיו והטבעת METADATA (UTC ו-Epoch)
             ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
-            ffmpegArgs.Append($"-metadata utc_start_time=\"{utcTimestampIso}\" -metadata hostname=\"{Environment.MachineName}\" ");
+            ffmpegArgs.Append($"-metadata creation_time=\"{utcIso}\" ");
+            ffmpegArgs.Append($"-metadata itb_start_epoch_ms=\"{startEpochMs}\" ");
+            ffmpegArgs.Append($"-metadata comment=\"ITB_EPOCH:{startEpochMs}\" ");
+            ffmpegArgs.Append($"-metadata hostname=\"{Environment.MachineName}\" ");
 
             // 6. פלט
             bool isRtmp = destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase);

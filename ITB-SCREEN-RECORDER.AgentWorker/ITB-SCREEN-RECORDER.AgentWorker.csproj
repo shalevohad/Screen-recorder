@@ -35,6 +35,14 @@
 		<ProjectReference Include="..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
 	</ItemGroup>
 
+	<!-- הכללת קובץ הפונט arial.ttf לפלט הבנייה ולחבילת ה-Publish -->
+	<ItemGroup>
+		<None Update="arial.ttf">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
 	<!-- קישור מותנה: Windows קורא ל-appsettings.Windows.json ומייצר appsettings.json -->
 	<ItemGroup Condition="'$(RuntimeIdentifier)' == '' Or $(RuntimeIdentifier.StartsWith('win'))">
 		<None Include="..\ITB-SCREEN-RECORDER.Core\appsettings.Windows.json">
@@ -92,10 +100,7 @@
 			<_DirectPublishFfmpeg Condition="'$(_DirectPublishFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg</_DirectPublishFfmpeg>
 		</PropertyGroup>
 
-		<Copy SourceFiles="$(_DirectPublishFfmpeg)"
-		      DestinationFolder="$(PublishDir)"
-		      SkipUnchangedFiles="false"
-		      Condition="'$(_DirectPublishFfmpeg)' != '' And Exists('$(_DirectPublishFfmpeg)')" />
+		<Copy SourceFiles="$(_DirectPublishFfmpeg)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="false" Condition="'$(_DirectPublishFfmpeg)' != '' And Exists('$(_DirectPublishFfmpeg)')" />
 	</Target>
 
 	<!-- ======================================================== -->
@@ -112,10 +117,7 @@
 			<_DirectBuildFfmpeg Condition="'$(_DirectBuildFfmpeg)' == '' And Exists('$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg')">$(MSBuildProjectDirectory)\Tools\Linux\ffmpeg</_DirectBuildFfmpeg>
 		</PropertyGroup>
 
-		<Copy SourceFiles="$(_DirectBuildFfmpeg)"
-		      DestinationFolder="$(TargetDir)"
-		      SkipUnchangedFiles="true"
-		      Condition="'$(_DirectBuildFfmpeg)' != '' And Exists('$(_DirectBuildFfmpeg)')" />
+		<Copy SourceFiles="$(_DirectBuildFfmpeg)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'$(_DirectBuildFfmpeg)' != '' And Exists('$(_DirectBuildFfmpeg)')" />
 	</Target>
 
 </Project>

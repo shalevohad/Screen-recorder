@@ -1,4 +1,7 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services;
+﻿// ==========================================
+// File: Server/Services/MediaMtxSupervisorWorker.cs
+// ==========================================
+namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
 using System.Collections.Generic;
@@ -81,7 +84,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
                         ymlPath = Path.Combine(AppContext.BaseDirectory, "mediamtx.yml");
                     }
 
-                    // סנכרון אוטומטי של קובץ ה-YAML הנקי מתיקיית המקור בפיתוח לדריסת כל קובץ פגום ב-bin
                     string devSourceYml = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "MediaMTX", "mediamtx.yml"));
                     if (File.Exists(devSourceYml) && File.Exists(ymlPath) && !string.Equals(Path.GetFullPath(devSourceYml), Path.GetFullPath(ymlPath), StringComparison.OrdinalIgnoreCase))
                     {
@@ -144,9 +146,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     startInfo.Environment["MTX_HLSSEGMENTDURATION"] = currentConfig.MediaMtx.HlsSegmentDuration;
 
                     // 7. Timezone
-                    startInfo.Environment["TZ"] = string.IsNullOrWhiteSpace(currentConfig.MediaMtx.Timezone)
-                        ? "UTC"
-                        : currentConfig.MediaMtx.Timezone;
+                    startInfo.Environment["TZ"] = "UTC";
 
                     _mtxProcess = new Process
                     {
@@ -217,7 +217,6 @@ public class MediaMtxSupervisorWorker : BackgroundService
                 .Replace('\\', Path.DirectorySeparatorChar)
                 .Replace('/', Path.DirectorySeparatorChar);
 
-            // בלינוקס - הסרת סיומת .exe אם נרשמה ב-appsettings.json
             if (!OperatingSystem.IsWindows() && normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
                 normalized = normalized[..^4];
@@ -233,15 +232,12 @@ public class MediaMtxSupervisorWorker : BackgroundService
             }
         }
 
-        // גיבוי לתיקיית המשנה MediaMTX
         string fallbackMtx = Path.Combine(baseDir, "MediaMTX", defaultBinaryName);
         if (File.Exists(fallbackMtx)) return fallbackMtx;
 
-        // גיבוי לשורש הריצה
         string fallbackRoot = Path.Combine(baseDir, defaultBinaryName);
         if (File.Exists(fallbackRoot)) return fallbackRoot;
 
-        // גיבוי לסביבת פיתוח (Debug / VS)
         string devFallback = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "MediaMTX", defaultBinaryName));
         if (File.Exists(devFallback)) return devFallback;
 
@@ -304,7 +300,10 @@ public class MediaMtxSupervisorWorker : BackgroundService
             return;
         }
 
-        string recordPath = _storageResolver.BuildRecordPath(cleanRoot, config);
+        // 💡 שימוש ישיר ב-Epoch (%s) ומיקרו-שניות (%f) בפורמט שם הקובץ.
+        // %s ב-MediaMTX מחושב מ-Unix Time (UTC טהור) ואדיש לשעון המקומי או להגדרות Timezone בווינדוס
+        string recordPath = $"{cleanRoot}/%path/%s_%f";
+
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
         string retentionHours = $"{config.Storage.RetentionDays * 24}h";
 
@@ -312,7 +311,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
             ? "fmp4"
             : config.Storage.RecordFormat.Trim().ToLowerInvariant();
 
-        _logger.LogInformation("[INJECTING CONFIG] Pushing recording parameters -> RecordPath: '{Path}', Format: '{Format}', SegmentDuration: '{Chunk}', Retention: '{Retention}'",
+        _logger.LogInformation("[INJECTING CONFIG] Pushing Epoch-aligned parameters -> RecordPath: '{Path}', Format: '{Format}', SegmentDuration: '{Chunk}', Retention: '{Retention}'",
             recordPath, recordFormat, chunkDuration, retentionHours);
 
         bool applied = await _apiClient.PatchPathDefaultsAsync(
@@ -325,7 +324,7 @@ public class MediaMtxSupervisorWorker : BackgroundService
 
         if (applied)
         {
-            _logger.LogInformation("[STORAGE CONFIGURED] Successfully applied recording parameters to MediaMTX via API.");
+            _logger.LogInformation("[STORAGE CONFIGURED] Successfully applied Epoch recording parameters to MediaMTX via API.");
         }
         else
         {

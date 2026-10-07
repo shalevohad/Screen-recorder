@@ -1,10 +1,14 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services;
+﻿// ==========================================
+// File: Server/Services/RecordingChunkScheduler.cs
+// ==========================================
+namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -97,7 +101,10 @@ public class RecordingChunkScheduler : BackgroundService
     private async Task ApplyMediaMtxStorageConfigAsync(SystemConfig config, CancellationToken ct)
     {
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
-        string recordPath = _storageResolver.BuildRecordPath(root, config);
+        string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
+
+        // 💡 שימוש בתבנית Epoch (%s_%f) למניעת בעיות אזורי זמן ושעוני מערכת הפעלה
+        string recordPath = $"{cleanRoot}/%path/%s_%f";
         string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
         string retentionHours = $"{config.Storage.RetentionDays * 24}h";
@@ -112,7 +119,7 @@ public class RecordingChunkScheduler : BackgroundService
 
         if (applied)
         {
-            _logger.LogInformation("[CHUNK SCHEDULER] MediaMTX patched live: Root='{Root}', Path='{RecordPath}', Format='{Format}', Chunk='{Chunk}'",
+            _logger.LogInformation("[CHUNK SCHEDULER] MediaMTX patched live with Epoch path: Root='{Root}', Path='{RecordPath}', Format='{Format}', Chunk='{Chunk}'",
                 root, recordPath, recordFormat, chunkDuration);
         }
     }
@@ -168,10 +175,11 @@ public class RecordingChunkScheduler : BackgroundService
                 else return null;
             }
 
-            string format = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
             var dirInfo = new DirectoryInfo(stationDir);
+            var supportedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".mp4", ".fmp4", ".flv", ".mkv", ".ts" };
 
-            var lastClosedFile = dirInfo.GetFiles($"*.{format}")
+            var lastClosedFile = dirInfo.GetFiles("*.*")
+                .Where(f => supportedExtensions.Contains(f.Extension))
                 .OrderByDescending(f => f.LastWriteTimeUtc)
                 .FirstOrDefault(f => f.Length > 0);
 
@@ -180,35 +188,68 @@ public class RecordingChunkScheduler : BackgroundService
             long startEpochMs = 0;
             long endEpochMs = new DateTimeOffset(boundaryUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-            string fileNameWithoutExt = Path.GetFileNameWithoutExtension(lastClosedFile.Name);
-
-            var matchHyphen = Regex.Match(fileNameWithoutExt, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?)");
-            var matchCompact = Regex.Match(fileNameWithoutExt, @"(\d{8}_\d{6})");
-
-            if (matchHyphen.Success)
+            // 1. קריאת מטא-דאטה מוטבע מתוך הקובץ (In-Band Metadata) כעדיפות עליונה
+            var fileMeta = TryExtractFileMetadata(lastClosedFile.FullName);
+            if (fileMeta.HasValue)
             {
-                string rawDate = matchHyphen.Groups[1].Value;
-                if (DateTime.TryParseExact(rawDate.Length > 19 ? rawDate.Substring(0, 19) : rawDate,
-                    "yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out DateTime localDt))
+                startEpochMs = fileMeta.Value.StartEpochMs;
+                if (fileMeta.Value.DurationMs > 0)
                 {
-                    startEpochMs = new DateTimeOffset(localDt).ToUnixTimeMilliseconds();
+                    endEpochMs = startEpochMs + fileMeta.Value.DurationMs;
                 }
             }
-            else if (matchCompact.Success && DateTime.TryParseExact(matchCompact.Groups[1].Value, "yyyyMMdd_HHmmss",
-                CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedStartUtc))
-            {
-                startEpochMs = new DateTimeOffset(parsedStartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-            }
 
+            // 2. אם המטא-דאטה לא זמין, חילוץ משם הקובץ (Epoch או תאריך)
             if (startEpochMs <= 0)
             {
-                int intervalMinutes = Math.Max(1, config.Storage.ChunkIntervalMinutes);
+                string fileNameWithoutExt = Path.GetFileNameWithoutExtension(lastClosedFile.Name);
+
+                // א. בדיקת תבנית Epoch (%s_%f או %s)
+                var matchEpoch = Regex.Match(fileNameWithoutExt, @"(?:^|[_-])(?<sec>\d{10})(?:[_-](?<micro>\d{1,6}))?");
+                if (matchEpoch.Success && long.TryParse(matchEpoch.Groups["sec"].Value, out long sec))
+                {
+                    long ms = sec * 1000;
+                    if (matchEpoch.Groups["micro"].Success && long.TryParse(matchEpoch.Groups["micro"].Value, out long micro))
+                    {
+                        ms += (micro / 1000);
+                    }
+                    startEpochMs = ms;
+                }
+                else
+                {
+                    // ב. בדיקת תבניות תאריך קודמות
+                    var matchHyphen = Regex.Match(fileNameWithoutExt, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?)");
+                    var matchCompact = Regex.Match(fileNameWithoutExt, @"(\d{8}_\d{6})");
+
+                    if (matchHyphen.Success)
+                    {
+                        string rawDate = matchHyphen.Groups[1].Value;
+                        if (DateTime.TryParseExact(rawDate.Length > 19 ? rawDate.Substring(0, 19) : rawDate,
+                            "yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out DateTime localDt))
+                        {
+                            startEpochMs = new DateTimeOffset(localDt).ToUnixTimeMilliseconds();
+                        }
+                    }
+                    else if (matchCompact.Success && DateTime.TryParseExact(matchCompact.Groups[1].Value, "yyyyMMdd_HHmmss",
+                        CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedStartUtc))
+                    {
+                        startEpochMs = new DateTimeOffset(parsedStartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                    }
+                }
+            }
+
+            // ג. ברירת מחדל אם טרם חולץ
+            int intervalMinutes = Math.Max(1, config.Storage.ChunkIntervalMinutes);
+            if (startEpochMs <= 0)
+            {
                 startEpochMs = endEpochMs - (intervalMinutes * 60 * 1000);
+            }
+            if (endEpochMs <= startEpochMs)
+            {
+                endEpochMs = startEpochMs + (intervalMinutes * 60 * 1000);
             }
 
             string stationName = Path.GetFileName(stationPath);
-
-            // 💡 חילוץ מטא-דאטה אמיתי מתוך ה-Telemetry של העמדה ב-RAM ללא נגיעה בדיסק וללא FFprobe
             var (width, height, fps, hasAudio) = ResolveTelemetryMetadata(stationName, config);
 
             return new ChunkFinalizedEvent(
@@ -231,6 +272,46 @@ public class RecordingChunkScheduler : BackgroundService
         }
     }
 
+    private static (long StartEpochMs, long DurationMs)? TryExtractFileMetadata(string filePath)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            byte[] buffer = new byte[65536];
+            int read = fs.Read(buffer, 0, buffer.Length);
+            if (read < 32) return null;
+
+            string headerText = Encoding.ASCII.GetString(buffer, 0, read);
+
+            // בדיקת תגית ITB_EPOCH:1759583561000 שהוטבעה ע"י הסוכן
+            var matchEpoch = Regex.Match(headerText, @"ITB_EPOCH:(\d{10,13})");
+            if (matchEpoch.Success && long.TryParse(matchEpoch.Groups[1].Value, out long epoch))
+            {
+                long startMs = epoch < 100000000000L ? epoch * 1000 : epoch;
+                return (startMs, 0);
+            }
+
+            // בדיקת תגית itb_start_epoch_ms
+            var matchStartEpoch = Regex.Match(headerText, @"itb_start_epoch_ms[^\d]*(\d{10,13})");
+            if (matchStartEpoch.Success && long.TryParse(matchStartEpoch.Groups[1].Value, out long startEpoch))
+            {
+                long startMs = startEpoch < 100000000000L ? startEpoch * 1000 : startEpoch;
+                return (startMs, 0);
+            }
+
+            // בדיקת תגית creation_time בפורמט ISO
+            var matchIso = Regex.Match(headerText, @"creation_time[^\d]*(\d{4}-\d{2}-\d{2}[T_ ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)");
+            if (matchIso.Success && DateTime.TryParse(matchIso.Groups[1].Value, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime dtUtc))
+            {
+                long startMs = new DateTimeOffset(dtUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                return (startMs, 0);
+            }
+        }
+        catch { }
+        return null;
+    }
+
     private (int Width, int Height, int Fps, bool HasAudio) ResolveTelemetryMetadata(string stationId, SystemConfig config)
     {
         try
@@ -250,7 +331,6 @@ public class RecordingChunkScheduler : BackgroundService
         }
         catch
         {
-            // Fallback שקט במקרה של שגיאה
         }
 
         return (0, 0, 0, false);

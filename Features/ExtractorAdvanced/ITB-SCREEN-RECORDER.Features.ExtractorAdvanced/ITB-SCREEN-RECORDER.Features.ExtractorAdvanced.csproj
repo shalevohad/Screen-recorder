@@ -27,6 +27,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Remove="Client\src\ExtractorAdvancedStudio.jsx~RF1064e574.TMP" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
 
@@ -86,6 +90,7 @@
 		<Folder Include="Client\src\components\Timeline\export\" />
 		<Folder Include="Client\src\components\TransportBar\" />
 		<Folder Include="Client\src\components\TopScopeBar\" />
+		<Folder Include="Client\src\components\UI\Tactical24HClockPicker\" />
 		<Folder Include="Client\src\components\Viewport\utils\" />
 		<Folder Include="Tools\Linux\" />
 		<Folder Include="Tools\Win\" />

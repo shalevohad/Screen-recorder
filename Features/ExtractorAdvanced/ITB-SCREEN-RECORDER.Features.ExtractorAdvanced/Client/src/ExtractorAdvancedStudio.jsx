@@ -17,7 +17,8 @@ import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
 import { useTimelineNavigation } from './hooks/useTimelineNavigation.js';
 import { useStudioHotkeys } from './hooks/useStudioHotkeys.js';
-import { getStudioSessionCache, saveStudioSessionCache } from './utils/studioSessionStore.js';
+import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache } from './utils/studioSessionStore.js';
+import { initDstEngineAsync } from './utils/dstEngine.js';
 
 import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
@@ -48,7 +49,16 @@ export default function ExtractorAdvancedStudio() {
     const [timeRange, setTimeRange] = useState(cached.timeRange || generateDefaultTimeRange());
     const [timeMode, setTimeMode] = useState(cached.timeMode || 'LOCAL');
 
-    const baseEpochMs = useMemo(() => parseSafeEpoch(timeRange.start), [timeRange.start]);
+    // אתחול מנוע ה-DST מול טבלת ההגדרות בשרת
+    useEffect(() => {
+        initDstEngineAsync().catch(err => console.warn('[Studio] DST init error:', err));
+    }, []);
+
+    const baseEpochMs = useMemo(() => {
+        if (timeRange.startEpochMs) return timeRange.startEpochMs;
+        return parseSafeEpoch(timeRange.start);
+    }, [timeRange.start, timeRange.startEpochMs]);
+
     const bufferMs = useMemo(() => Math.max(60000, Math.round(timeRange.durationMs * 0.05)), [timeRange.durationMs]);
     const timelineBaseEpochMs = useMemo(() => baseEpochMs - bufferMs, [baseEpochMs, bufferMs]);
     const totalTimelineDurationMs = useMemo(() => timeRange.durationMs + (2 * bufferMs), [timeRange.durationMs, bufferMs]);
@@ -58,8 +68,39 @@ export default function ExtractorAdvancedStudio() {
     const [spotlightStationId, setSpotlightStationId] = useState(null);
     const [globalGaps, setGlobalGaps] = useState([]);
 
-    const [inPointMs, setInPointMs] = useState(cached.inPointMs !== null && cached.inPointMs !== undefined ? cached.inPointMs : 0);
-    const [outPointMs, setOutPointMs] = useState(cached.outPointMs !== null && cached.outPointMs !== undefined ? cached.outPointMs : totalTimelineDurationMs);
+    // 💡 שחזור נקודות ה-CUT על בסיס Epoch מוחלט מזיכרון הדפדפן (מבטל סטיות באפר במעבר טאבים)
+    const initialInPointMs = useMemo(() => {
+        if (typeof cached.inEpochMs === 'number') {
+            return Math.max(0, Math.min(totalTimelineDurationMs, cached.inEpochMs - timelineBaseEpochMs));
+        }
+        if (typeof cached.inPointMs === 'number') {
+            return Math.max(0, Math.min(totalTimelineDurationMs, cached.inPointMs));
+        }
+        return bufferMs; // תחילת המשימה המקורית
+    }, [cached.inEpochMs, cached.inPointMs, timelineBaseEpochMs, totalTimelineDurationMs, bufferMs]);
+
+    const initialOutPointMs = useMemo(() => {
+        if (typeof cached.outEpochMs === 'number') {
+            return Math.max(initialInPointMs + 1000, Math.min(totalTimelineDurationMs, cached.outEpochMs - timelineBaseEpochMs));
+        }
+        if (typeof cached.outPointMs === 'number') {
+            return Math.max(initialInPointMs + 1000, Math.min(totalTimelineDurationMs, cached.outPointMs));
+        }
+        return bufferMs + timeRange.durationMs; // סיום המשימה המקורית
+    }, [cached.outEpochMs, cached.outPointMs, timelineBaseEpochMs, totalTimelineDurationMs, bufferMs, timeRange.durationMs, initialInPointMs]);
+
+    const initialPlayheadMs = useMemo(() => {
+        if (typeof cached.playheadEpochMs === 'number') {
+            return Math.max(0, Math.min(totalTimelineDurationMs, cached.playheadEpochMs - timelineBaseEpochMs));
+        }
+        if (typeof cached.playheadMs === 'number') {
+            return Math.max(0, Math.min(totalTimelineDurationMs, cached.playheadMs));
+        }
+        return initialInPointMs;
+    }, [cached.playheadEpochMs, cached.playheadMs, timelineBaseEpochMs, totalTimelineDurationMs, initialInPointMs]);
+
+    const [inPointMs, setInPointMs] = useState(initialInPointMs);
+    const [outPointMs, setOutPointMs] = useState(initialOutPointMs);
 
     const { allStations, recordingSegments, isLoadingStations, movieBoundaries } = useStudioData(
         timelineBaseEpochMs,
@@ -69,7 +110,6 @@ export default function ExtractorAdvancedStudio() {
         activeStationId
     );
 
-    // 💡 ייצוב רפרנסים (useMemo) למניעת קפיצות כשתחנות חדשות מתגלות ברקע
     const activeStation = useMemo(() => {
         return allStations.find(s => s.id === activeStationId) || null;
     }, [allStations, activeStationId]);
@@ -104,7 +144,7 @@ export default function ExtractorAdvancedStudio() {
         activeStation,
         spotlightStation,
         recordingSegments,
-        initialPlayheadMs: cached.playheadMs || 0,
+        initialPlayheadMs,
         initialIsPlaying: false,
         initialIsLooping: cached.isLooping !== undefined ? cached.isLooping : true,
         initialPlaybackSpeed: cached.playbackSpeed || 1
@@ -191,26 +231,116 @@ export default function ExtractorAdvancedStudio() {
         isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen
     });
 
+    // 💡 שמירת סשן רציפה ואמינה ל-localStorage (כולל Epoch אבסולוטי)
     useEffect(() => {
-        const timer = setTimeout(() => {
-            saveStudioSessionCache({
-                timeRange,
-                timeMode,
-                inPointMs,
-                outPointMs,
-                playheadMs: Math.round(playheadMs),
-                selectedStationIds,
-                activeStationId,
-                zoomLevel,
-                viewportStartMs,
-                isWorkspaceActive,
-                isLooping,
-                playbackSpeed
-            });
-        }, 1200);
+        const inEpochMs = timelineBaseEpochMs + inPointMs;
+        const outEpochMs = timelineBaseEpochMs + outPointMs;
+        const playheadEpochMs = timelineBaseEpochMs + playheadMs;
 
-        return () => clearTimeout(timer);
-    }, [timeRange, timeMode, inPointMs, outPointMs, playheadMs, selectedStationIds, activeStationId, zoomLevel, viewportStartMs, isWorkspaceActive, isLooping, playbackSpeed]);
+        saveStudioSessionCache({
+            timeRange,
+            timeMode,
+            inPointMs,
+            outPointMs,
+            playheadMs: Math.round(playheadMs),
+            inEpochMs,
+            outEpochMs,
+            playheadEpochMs,
+            selectedStationIds,
+            activeStationId,
+            zoomLevel,
+            viewportStartMs,
+            isWorkspaceActive,
+            isLooping,
+            playbackSpeed
+        });
+    }, [
+        timeRange,
+        timeMode,
+        inPointMs,
+        outPointMs,
+        playheadMs,
+        selectedStationIds,
+        activeStationId,
+        zoomLevel,
+        viewportStartMs,
+        isWorkspaceActive,
+        isLooping,
+        playbackSpeed,
+        timelineBaseEpochMs
+    ]);
+
+    // 💡 טעינת Bookmark: שחזור ה-CUT המדויק ללא הכפלת באפר, וטעינת כלל התחנות עם מוקד הפוקוס
+    const handleLoadBookmark = useCallback((bm) => {
+        const startMs = parseSafeEpoch(bm.startTime);
+        const endMs = parseSafeEpoch(bm.endTime);
+        const durationMs = Math.max(0, endMs - startMs) || 14400000;
+        const newRange = {
+            start: bm.startTime,
+            end: bm.endTime,
+            durationMs,
+            startEpochMs: startMs,
+            endEpochMs: endMs
+        };
+        const newBuf = Math.max(60000, Math.round(durationMs * 0.05));
+        const newTimelineBase = startMs - newBuf;
+        const newTotal = durationMs + (2 * newBuf);
+
+        setTimeRange(newRange);
+
+        // שחזור ה-CUT לפי Epoch מוחלט (מנטרל כל סטייה)
+        if (bm.inEpochMs && bm.outEpochMs) {
+            const targetIn = Math.max(0, Math.min(newTotal, bm.inEpochMs - newTimelineBase));
+            const targetOut = Math.max(targetIn + 1000, Math.min(newTotal, bm.outEpochMs - newTimelineBase));
+            const targetPlayhead = bm.playheadEpochMs
+                ? Math.max(0, Math.min(newTotal, bm.playheadEpochMs - newTimelineBase))
+                : targetIn;
+
+            setInPointMs(targetIn);
+            setOutPointMs(targetOut);
+            setPlayheadMs(targetPlayhead);
+        } else {
+            // תמיכה בסימניות ישנות ללא הוספת newBuf כפולה
+            const rawIn = typeof bm.inPointMs === 'number' ? bm.inPointMs : newBuf;
+            const rawOut = typeof bm.outPointMs === 'number' ? bm.outPointMs : (newBuf + durationMs);
+            const rawPlay = typeof bm.playheadMs === 'number' ? bm.playheadMs : rawIn;
+
+            setInPointMs(Math.max(0, Math.min(newTotal, rawIn)));
+            setOutPointMs(Math.max(0, Math.min(newTotal, rawOut)));
+            setPlayheadMs(Math.max(0, Math.min(newTotal, rawPlay)));
+        }
+
+        // שחזור התחנות המדויקות: תחנה בודדת, תת-קבוצה או כלל התחנות
+        const stationsToSelect = (bm.selectedStationIds?.length > 0)
+            ? bm.selectedStationIds
+            : (bm.cutStationIds?.length > 0 ? bm.cutStationIds : bm.stationIds);
+
+        if (stationsToSelect?.length > 0) {
+            setSelectedStationIds(stationsToSelect);
+            if (bm.activeStationId && stationsToSelect.includes(bm.activeStationId)) {
+                setActiveStationId(bm.activeStationId);
+            } else if (stationsToSelect.length === 1) {
+                setActiveStationId(stationsToSelect[0]);
+            } else {
+                setActiveStationId(null);
+            }
+            setSpotlightStationId(null);
+        }
+
+        setIsWorkspaceActive(true);
+        setIsDrawerOpen(false);
+    }, []);
+
+    // 💡 החלת טווח זמנים חדש: הצבת ה-CUT בדיוק על שעות המשימה שנבחרו (ולא על שולי הבאפר)
+    const handleApplyRange = useCallback((newRange) => {
+        const durationMs = newRange.durationMs || 14400000;
+        const newBuf = Math.max(60000, Math.round(durationMs * 0.05));
+
+        setTimeRange(newRange);
+        setInPointMs(newBuf); // IN מתחיל בדיוק בסוף הבאפר (תחילת המשימה)
+        setOutPointMs(newBuf + durationMs); // OUT מסתיים בסוף המשימה
+        setPlayheadMs(newBuf);
+    }, []);
 
     const handleExportSmartCut = async () => {
         const targetStationIds = timelineStations.map(s => s.id);
@@ -235,19 +365,18 @@ export default function ExtractorAdvancedStudio() {
     };
 
     const handleResetStudioSession = useCallback(() => {
+        clearStudioSessionCache();
         try {
-            localStorage.removeItem('itb_studio_session_cache');
             window.dispatchEvent(new CustomEvent('extractor:clear-session'));
         } catch { }
 
         const defaultRange = generateDefaultTimeRange();
         const newBuf = Math.max(60000, Math.round(defaultRange.durationMs * 0.05));
-        const newTotal = defaultRange.durationMs + (2 * newBuf);
 
         setTimeRange(defaultRange);
-        setInPointMs(0);
-        setOutPointMs(newTotal);
-        setPlayheadMs(0);
+        setInPointMs(newBuf);
+        setOutPointMs(newBuf + defaultRange.durationMs);
+        setPlayheadMs(newBuf);
         setSelectedStationIds([]);
         setActiveStationId(null);
         setSpotlightStationId(null);
@@ -392,40 +521,29 @@ export default function ExtractorAdvancedStudio() {
                 currentRange={timeRange}
                 timeMode={timeMode}
                 onTimeModeChange={setTimeMode}
-                onApplyRange={(newRange) => {
-                    const newBuf = Math.max(60000, Math.round(newRange.durationMs * 0.05));
-                    const newTotal = newRange.durationMs + (2 * newBuf);
-                    setTimeRange(newRange);
-                    setInPointMs(0);
-                    setOutPointMs(newTotal);
-                    setPlayheadMs(0);
-                }}
+                onLoadBookmark={handleLoadBookmark}
+                onApplyRange={handleApplyRange}
             />
 
             <BookmarksModal
                 isOpen={isBookmarksModalOpen}
                 onClose={() => setIsBookmarksModalOpen(false)}
-                currentState={{ timeRange, playheadMs, inPointMs, outPointMs, selectedStationIds }}
-                onLoadBookmark={(bm) => {
-                    const startMs = parseSafeEpoch(bm.startTime);
-                    const endMs = parseSafeEpoch(bm.endTime);
-                    const durationMs = Math.max(0, endMs - startMs);
-                    const newRange = { start: bm.startTime, end: bm.endTime, durationMs: durationMs > 0 ? durationMs : 14400000 };
-                    const newBuf = Math.max(60000, Math.round(newRange.durationMs * 0.05));
-
-                    setTimeRange(newRange);
-                    setInPointMs(bm.inPointMs !== undefined ? bm.inPointMs + newBuf : 0);
-                    setOutPointMs(bm.outPointMs !== undefined ? bm.outPointMs + newBuf : (newRange.durationMs + 2 * newBuf));
-                    setPlayheadMs(bm.playheadMs !== undefined ? bm.playheadMs + newBuf : 0);
-
-                    if (bm.stationIds?.length > 0) {
-                        setSelectedStationIds(bm.stationIds);
-                        setActiveStationId(bm.stationIds.length === 1 ? bm.stationIds[0] : null);
-                        setSpotlightStationId(null);
-                    }
-                    setIsWorkspaceActive(true);
-                    setIsDrawerOpen(false);
+                currentState={{
+                    timeRange,
+                    baseEpochMs: timelineBaseEpochMs,
+                    timelineBaseEpochMs,
+                    playheadMs,
+                    inPointMs,
+                    outPointMs,
+                    selectedStationIds,
+                    selectedStationNames: allStations
+                        .filter(s => selectedStationIds.includes(s.id))
+                        .map(s => s.displayName || s.hostname || s.id),
+                    allStationIds: allStations.map(s => s.id),
+                    activeStationId,
+                    activeStationName: activeStation?.displayName || activeStation?.hostname || null
                 }}
+                onLoadBookmark={handleLoadBookmark}
             />
 
             <ShortcutsHelpModal

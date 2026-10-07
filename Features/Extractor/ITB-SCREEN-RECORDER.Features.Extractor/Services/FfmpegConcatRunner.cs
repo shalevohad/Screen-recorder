@@ -34,11 +34,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 throw new ArgumentException("Concat manifest content cannot be empty.", nameof(concatManifestContent));
             }
 
-            // בדיקה חכמה: האם המניפסט מכיל שקופיות Dummy (פערי Gaps)?
             bool hasDummyGaps = concatManifestContent.Contains("dummy", StringComparison.OrdinalIgnoreCase);
 
             string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{Guid.NewGuid():N}.txt");
             await File.WriteAllTextAsync(tempManifestPath, concatManifestContent, new UTF8Encoding(false), ct);
+
+            string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
             string arguments;
             if (hasDummyGaps)
@@ -51,6 +52,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
                 arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
                             $"{encoderArgs} -c:a aac -b:a 128k " +
+                            $"-metadata creation_time=\"{creationUtcIso}\" " +
                             $"-movflags frag_keyframe+empty_moov+default_base_moof " +
                             $"-f mp4 pipe:1";
             }
@@ -58,6 +60,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 arguments = $"-f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
                             $"-c copy -avoid_negative_ts make_zero " +
+                            $"-metadata creation_time=\"{creationUtcIso}\" " +
                             $"-movflags frag_keyframe+empty_moov " +
                             $"-f mp4 pipe:1";
             }

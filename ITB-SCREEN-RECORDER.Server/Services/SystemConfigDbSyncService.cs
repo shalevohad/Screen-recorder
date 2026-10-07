@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Server/Services/SystemConfigDbSyncService.cs
 // ==========================================
 namespace ITB_SCREEN_RECORDER.Server.Services;

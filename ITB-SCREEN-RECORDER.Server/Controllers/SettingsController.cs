@@ -2,6 +2,7 @@
 // File: ITB-SCREEN-RECORDER.Server/Controllers/SettingsController.cs
 // ==========================================
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using ITB_SCREEN_RECORDER.Server.Services;
@@ -33,6 +34,20 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(_configMonitor.CurrentValue);
         }
 
+        /// <summary>
+        /// נקודת קצה ייעודית לשליפת מעברי השעון עבור ממשק המשתמש (Studio & Timeline)
+        /// </summary>
+        [HttpGet("dst-transitions")]
+        public IActionResult GetDstTransitions()
+        {
+            var config = _configMonitor.CurrentValue;
+            return Ok(new
+            {
+                timezone = config.DisplayTimezone,
+                transitions = config.ManualDstTransitions ?? new List<DstTransitionRule>()
+            });
+        }
+
         [HttpPut]
         [HttpPost]
         public async Task<IActionResult> Save([FromBody] SystemConfig updatedConfig)
@@ -62,6 +77,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         config.DisplayLocale = updatedConfig.DisplayLocale;
                     }
 
+                    // 💡 סנכרון רשימת מעברי השעון
+                    if (updatedConfig.ManualDstTransitions != null)
+                    {
+                        config.ManualDstTransitions = new List<DstTransitionRule>(updatedConfig.ManualDstTransitions);
+                    }
+
                     if (updatedConfig.Storage != null)
                     {
                         config.Storage ??= new StorageSettings();
@@ -80,9 +101,20 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     if (updatedConfig.MediaMtx != null)
                     {
                         config.MediaMtx ??= new MediaMtxSettings();
+                        config.MediaMtx.ExecutablePath = updatedConfig.MediaMtx.ExecutablePath;
                         config.MediaMtx.RtmpPort = updatedConfig.MediaMtx.RtmpPort;
                         config.MediaMtx.HlsPort = updatedConfig.MediaMtx.HlsPort;
                         config.MediaMtx.ApiPort = updatedConfig.MediaMtx.ApiPort;
+                        config.MediaMtx.PlaybackPort = updatedConfig.MediaMtx.PlaybackPort;
+                        config.MediaMtx.MetricsPort = updatedConfig.MediaMtx.MetricsPort;
+                        config.MediaMtx.PprofPort = updatedConfig.MediaMtx.PprofPort;
+                        config.MediaMtx.EnableMetrics = updatedConfig.MediaMtx.EnableMetrics;
+                        config.MediaMtx.EnablePprof = updatedConfig.MediaMtx.EnablePprof;
+                        config.MediaMtx.EnablePlayback = updatedConfig.MediaMtx.EnablePlayback;
+                        config.MediaMtx.HlsAlwaysRemux = updatedConfig.MediaMtx.HlsAlwaysRemux;
+                        config.MediaMtx.HlsVariant = updatedConfig.MediaMtx.HlsVariant;
+                        config.MediaMtx.HlsSegmentDuration = updatedConfig.MediaMtx.HlsSegmentDuration;
+                        config.MediaMtx.Timezone = updatedConfig.MediaMtx.Timezone;
                     }
 
                     if (updatedConfig.Dashboard != null)
@@ -92,6 +124,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         config.Dashboard.SnapshotMaxDelayMs = updatedConfig.Dashboard.SnapshotMaxDelayMs;
                         config.Dashboard.SnapshotBufferMarginPx = updatedConfig.Dashboard.SnapshotBufferMarginPx;
                         config.Dashboard.MaxConcurrentLiveStreams = updatedConfig.Dashboard.MaxConcurrentLiveStreams;
+                    }
+
+                    if (updatedConfig.Security != null)
+                    {
+                        config.Security ??= new SecuritySettings();
+                        config.Security.AllowedAdAdminGroup = updatedConfig.Security.AllowedAdAdminGroup;
+                        config.Security.JwtSecretKey = updatedConfig.Security.JwtSecretKey;
+                        config.Security.TokenExpirationHours = updatedConfig.Security.TokenExpirationHours;
                     }
                 });
 
