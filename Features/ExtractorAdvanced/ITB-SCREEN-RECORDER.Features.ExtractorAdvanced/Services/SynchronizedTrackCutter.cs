@@ -226,11 +226,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 vfFilters.Add($"fade=t=out:st={endStartStr}:d=0.3:enable='between(t,{endStartStr},{totalStr})'");
             }
 
-            // 💡 הזרקת רצועת כתוביות רכה לסרטון באמצעות מחולל ה-SRT
+            // 💡 ניתוב מדויק לפי KeystrokeMode (None / Caption / BurnIn)
             string? srtPath = null;
-            string subArgs = "";
+            string subInputArgs = "";
 
-            if (_srtGenerator != null)
+            if (plan.KeystrokeMode != KeystrokeExportMode.None && _srtGenerator != null)
             {
                 long startEpochMs = new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds();
                 long endEpochMs = new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds();
@@ -238,7 +238,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 if (srtPath != null && File.Exists(srtPath))
                 {
-                    subArgs = $"-i \"{srtPath}\" -c:s mov_text -metadata:s:s:0 title=\"Keystroke Audit\"";
+                    if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn)
+                    {
+                        // צריבה קשיחה: הוספה ל-Filter Graph
+                        string escapedSrt = srtPath.Replace("\\", "/").Replace(":", "\\:");
+                        vfFilters.Add($"subtitles='{escapedSrt}':force_style='FontSize=22,PrimaryColour=&H00FFFF,BackColour=&H80000000,BorderStyle=4'");
+                    }
+                    else if (plan.KeystrokeMode == KeystrokeExportMode.Caption)
+                    {
+                        // כתוביות רכות: הזרקת רצועת mov_text
+                        subInputArgs = $"-i \"{srtPath}\" -c:s mov_text -metadata:s:s:0 title=\"Keystroke Audit\"";
+                    }
                 }
             }
 
@@ -251,7 +261,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             string ffmpegPath = _binaryResolver.ResolveFfmpeg();
 
-            string arguments = $"-nostdin -v error -progress pipe:1 -fflags +genpts+discardcorrupt -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" {subArgs} " +
+            string arguments = $"-nostdin -v error -progress pipe:1 -fflags +genpts+discardcorrupt -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" {subInputArgs} " +
                                $"-vf \"{videoFilterArg}\" " +
                                $"-c:v libx264 -preset veryfast -crf 20 -avoid_negative_ts make_zero {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
 

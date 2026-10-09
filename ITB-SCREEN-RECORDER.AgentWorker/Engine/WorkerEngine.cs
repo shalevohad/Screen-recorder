@@ -1,19 +1,23 @@
 ﻿// ==========================================
 // File: ITB-SCREEN-RECORDER.AgentWorker/WorkerEngine.cs
 // ==========================================
+using ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard;
+using ITB_SCREEN_RECORDER.AgentWorker.Providers.Video;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITBRecorderAgent.Engine;
 using ITBRecorderAgent.Providers.Audio;
 using ITBRecorderAgent.Providers.Video;
-using ITB_SCREEN_RECORDER.AgentWorker.Providers.Video;
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,12 +44,17 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private int _baselineFps;
         private string _videoBitrate;
 
-        // חותמת זמן קבועה של תחילת ההקלטה (מסונכרנת באופן מוחלט מול השרת)
         private DateTime? _sessionStartTimeUtc = null;
 
         private VideoPipeline? _videoPipe;
         private AudioPacer? _audioPacer;
         private IAudioCaptureProvider? _audioCapture;
+
+        // 💡 שימוש ב-Provider וב-Factory חוצי-פלטפורמות
+        private readonly IKeyboardCaptureProvider _keyboardCapture;
+        private readonly ConcurrentQueue<KeystrokeEventDto> _onlineKeystrokes = new();
+        private string? _currentOfflineKeysPath = null;
+        private readonly object _offlineWriteLock = new();
 
         public WorkerEngine(AppConfig config)
         {
@@ -54,7 +63,35 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _videoBitrate = string.IsNullOrWhiteSpace(config.VideoBitrate) ? "5000k" : config.VideoBitrate;
 
             Logger.Info($"[WORKER:LIFECYCLE] Engine created. TargetFPS: {_baselineFps}, VideoBitrate: {_videoBitrate}");
+
+            // יצירת ה-Provider דרך ה-Factory (Windows / Linux)
+            _keyboardCapture = KeyboardCaptureFactory.Create(() =>
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds);
+
+            _keyboardCapture.KeystrokeCaptured += OnKeystrokeCaptured;
+            _keyboardCapture.Start();
+
             WireIpcEvents();
+        }
+
+        private void OnKeystrokeCaptured(KeystrokeEventDto k)
+        {
+            if (_isOffline && !string.IsNullOrEmpty(_currentOfflineKeysPath))
+            {
+                lock (_offlineWriteLock)
+                {
+                    try
+                    {
+                        string line = JsonSerializer.Serialize(new { epoch = k.EpochMs, key = k.KeyCombination }) + Environment.NewLine;
+                        File.AppendAllText(_currentOfflineKeysPath, line);
+                    }
+                    catch { }
+                }
+            }
+            else
+            {
+                _onlineKeystrokes.Enqueue(k);
+            }
         }
 
         private void WireIpcEvents()
@@ -69,7 +106,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                 if (!_isStreaming)
                 {
-                    // 💡 קביעת תחילת הסשן לפי שעת השרת המסונכרנת
                     _sessionStartTimeUtc = DateTime.UtcNow + _serverUtcOffset;
                 }
 
@@ -102,7 +138,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 if (_permission.CurrentCount == 0) _permission.Release();
             };
 
-            // 💡 עדכון סטיית שעון בזמן אמת מהסופרווייזר (NTP-Lite) ללא צורך באיתחול ה-Pipeline
             _ipc.ClockSyncRequested += offset =>
             {
                 _serverUtcOffset = offset;
@@ -180,6 +215,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             }
             finally
             {
+                _keyboardCapture.Dispose();
                 if (OperatingSystem.IsWindows())
                 {
                     try { WindowsNative.TimeEndPeriod(1); } catch { }
@@ -221,7 +257,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             string destination = ResolveDestination();
             Logger.Info($"[WORKER:LIFECYCLE] Launching FFmpeg native process -> Destination: {destination}");
 
-            // 💡 העברת זמן תחילת ההקלטה המכויל מול השרת לטובת הזרקת המטא-דאטה לקובץ
             DateTime calibratedUtc = DateTime.UtcNow + _serverUtcOffset;
 
             bool started = await ffmpeg.StartAsync(destination, calibratedUtc,
@@ -250,7 +285,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _audioPacer.Start(startTicks);
             Logger.Info("[WORKER:LIFECYCLE] Media pipeline active. Streaming fully engaged.");
 
-            // 1. Thread כתיבה לצינור FFmpeg
             var writerTask = _videoPipe.StartWriterAsync(
                 ffmpeg,
                 () =>
@@ -262,7 +296,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 bytes => _netTelemetry.TrackMediaBytes(bytes),
                 ct);
 
-            // 2. Thread דגימת מסך (עם הגנת Timeout מובנית)
             var captureTask = Task.Run(async () =>
             {
                 Logger.Info("[WORKER:LIFECYCLE] Screen capture sampling thread started.");
@@ -303,14 +336,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
             }, ct);
 
-            // 3. Thread הזרקת שמע מסונכרן
             var audioTask = _audioPacer.RunPacerLoopAsync(
                 ffmpeg,
                 bytes => _netTelemetry.TrackMediaBytes(bytes),
                 () => sessionActive,
                 ct);
 
-            // 4. לולאת תזמון קצב פריימים ראשית
             _videoPipe.RunPacerLoop(
                 () => Volatile.Read(ref latestFrame),
                 screen.Width, screen.Height,
@@ -330,6 +361,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         {
             if (!_isOffline)
             {
+                _currentOfflineKeysPath = null;
                 return string.IsNullOrWhiteSpace(_targetRtmp)
                     ? $"{_config.RtmpServerBaseUrl.TrimEnd('/')}/{Uri.EscapeDataString(Environment.MachineName.Replace(" ", "_"))}"
                     : _targetRtmp;
@@ -341,9 +373,13 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
             Directory.CreateDirectory(buf);
 
-            // 💡 יצירת שם קובץ לפי Epoch מכויל מול השרת (למשל: DESKTOP-PC_1759583561000.mp4)
             long syncedEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds;
-            return Path.Combine(buf, $"{Uri.EscapeDataString(Environment.MachineName)}_{syncedEpochMs}.mp4");
+            string videoPath = Path.Combine(buf, $"{Uri.EscapeDataString(Environment.MachineName)}_{syncedEpochMs}.mp4");
+
+            // 💡 הגדרת קובץ ה-Sidecar המקומי במקביל לקובץ הווידאו
+            _currentOfflineKeysPath = Path.ChangeExtension(videoPath, ".keys.jsonl");
+
+            return videoPath;
         }
 
         private object BuildTelemetrySnapshot()
@@ -351,6 +387,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             var hw = HardwareProbe.GetTelemetrySnapshot();
             var net = _netTelemetry.GetMetricsSnapshot();
             bool flowing = _audioPacer?.IsAudioFlowing() ?? false;
+
+            var keysToSend = new System.Collections.Generic.List<KeystrokeEventDto>();
+            while (_onlineKeystrokes.TryDequeue(out var k) && keysToSend.Count < 200)
+            {
+                keysToSend.Add(k);
+            }
 
             return new
             {
@@ -361,6 +403,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 RecordingStartedAtUtc = _isStreaming ? _sessionStartTimeUtc : null,
                 IsOfflineMode = _isOffline,
                 HasAudio = flowing,
+                Keystrokes = keysToSend.Count > 0 ? keysToSend : null,
                 Telemetry = _isStreaming ? new
                 {
                     ActualFps = _videoPipe?.RealFps ?? 0,

@@ -1,5 +1,9 @@
-﻿using System;
+﻿// ==========================================
+// File: Features/Extractor/Models/ExtractorContracts.cs
+// ==========================================
+using System;
 using System.Collections.Generic;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 {
@@ -9,6 +13,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public DateTime EndTimeUtc { get; set; }
         public List<string> Hostnames { get; set; } = new();
         public bool ExportRawChunks { get; set; } = false;
+
+        // 💡 אופן הצגת המקשים בייצוא ה-TAR
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
     }
 
     public class ExtractionPreviewResponseDto
