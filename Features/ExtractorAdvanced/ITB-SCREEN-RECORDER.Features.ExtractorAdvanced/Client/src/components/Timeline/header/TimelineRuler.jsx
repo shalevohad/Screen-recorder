@@ -30,6 +30,7 @@ export default function TimelineRuler({
 }) {
     const rulerRef = useRef(null);
     const [pixelWidth, setPixelWidth] = useState(1000);
+    const [keystrokes, setKeystrokes] = useState([]);
 
     useEffect(() => {
         if (!rulerRef.current) return;
@@ -43,6 +44,22 @@ export default function TimelineRuler({
         ro.observe(rulerRef.current);
         return () => ro.disconnect();
     }, []);
+
+    // 💡 שליפת נתוני המקלדת עבור התחנה הפעילה ב-Viewport הנוכחי
+    useEffect(() => {
+        if (!activeStationName || !baseEpochMs) {
+            setKeystrokes([]);
+            return;
+        }
+
+        const startEp = baseEpochMs + viewportStartMs;
+        const endEp = startEp + viewportDurationMs;
+
+        fetch(`/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(activeStationName)}&startEpoch=${startEp}&endEpoch=${endEp}`)
+            .then(res => res.ok ? res.json() : [])
+            .then(data => setKeystrokes(data || []))
+            .catch(() => setKeystrokes([]));
+    }, [activeStationName, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
     const toPercent = useCallback((ms) => {
         if (!viewportDurationMs || viewportDurationMs <= 0) return '0%';
@@ -261,9 +278,32 @@ export default function TimelineRuler({
                         : formatTimelineClock(epoch, 'UTC');
 
                     return (
-                        <div key={tickMs} className="ruler-tick" style={{ left: `${pct}%` }}>
+                        <div key={tickMs} className="ruler-tick" style={{ left: `${pct}` }}>
                             <div className="tick-line" />
                             <span className="tick-label">{label}</span>
+                        </div>
+                    );
+                })}
+
+                {/* 💡 שנתות אירועי מקלדת ציאן טקטיות על גבי הסרגל */}
+                {keystrokes.map((k, idx) => {
+                    const offsetMs = k.epochMs - baseEpochMs;
+                    if (!isVisibleInViewport(offsetMs)) return null;
+                    const pct = toPercent(offsetMs);
+
+                    return (
+                        <div
+                            key={`k_${idx}`}
+                            className="ruler-keystroke-tick"
+                            style={{ left: `${pct}` }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onSeek) onSeek(offsetMs);
+                            }}
+                            title={`[KEYSTROKE] ${k.keyCombination} (Click to jump)`}
+                        >
+                            <div className="keystroke-tick-dot" />
+                            <div className="keystroke-tick-tooltip">{k.keyCombination}</div>
                         </div>
                     );
                 })}
@@ -308,7 +348,7 @@ export default function TimelineRuler({
                     <div
                         key={pin.id}
                         className={pin.className}
-                        style={{ left: `${pin.pct}%` }}
+                        style={{ left: `${pin.pct}` }}
                         onClick={(e) => {
                             e.stopPropagation();
                             if (onSeek) onSeek(pin.ms);

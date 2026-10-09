@@ -12,6 +12,7 @@ import BookmarksModal from './components/Modals/BookmarksModal.jsx';
 import SoloSpotlightModal from './components/Modals/SoloSpotlightModal.jsx';
 import ShortcutsHelpModal from './components/Modals/ShortcutsHelpModal.jsx';
 import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
+import ExportOptionsModal from './components/Modals/ExportOptionsModal.jsx';
 
 import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
@@ -49,7 +50,6 @@ export default function ExtractorAdvancedStudio() {
     const [timeRange, setTimeRange] = useState(cached.timeRange || generateDefaultTimeRange());
     const [timeMode, setTimeMode] = useState(cached.timeMode || 'LOCAL');
 
-    // אתחול מנוע ה-DST מול טבלת ההגדרות בשרת
     useEffect(() => {
         initDstEngineAsync().catch(err => console.warn('[Studio] DST init error:', err));
     }, []);
@@ -68,7 +68,6 @@ export default function ExtractorAdvancedStudio() {
     const [spotlightStationId, setSpotlightStationId] = useState(null);
     const [globalGaps, setGlobalGaps] = useState([]);
 
-    // 💡 שחזור נקודות ה-CUT על בסיס Epoch מוחלט מזיכרון הדפדפן (מבטל סטיות באפר במעבר טאבים)
     const initialInPointMs = useMemo(() => {
         if (typeof cached.inEpochMs === 'number') {
             return Math.max(0, Math.min(totalTimelineDurationMs, cached.inEpochMs - timelineBaseEpochMs));
@@ -76,7 +75,7 @@ export default function ExtractorAdvancedStudio() {
         if (typeof cached.inPointMs === 'number') {
             return Math.max(0, Math.min(totalTimelineDurationMs, cached.inPointMs));
         }
-        return bufferMs; // תחילת המשימה המקורית
+        return bufferMs;
     }, [cached.inEpochMs, cached.inPointMs, timelineBaseEpochMs, totalTimelineDurationMs, bufferMs]);
 
     const initialOutPointMs = useMemo(() => {
@@ -86,7 +85,7 @@ export default function ExtractorAdvancedStudio() {
         if (typeof cached.outPointMs === 'number') {
             return Math.max(initialInPointMs + 1000, Math.min(totalTimelineDurationMs, cached.outPointMs));
         }
-        return bufferMs + timeRange.durationMs; // סיום המשימה המקורית
+        return bufferMs + timeRange.durationMs;
     }, [cached.outEpochMs, cached.outPointMs, timelineBaseEpochMs, totalTimelineDurationMs, bufferMs, timeRange.durationMs, initialInPointMs]);
 
     const initialPlayheadMs = useMemo(() => {
@@ -172,6 +171,7 @@ export default function ExtractorAdvancedStudio() {
     const [isWorkspaceActive, setIsWorkspaceActive] = useState(
         Boolean(cached.isWorkspaceActive && cached.selectedStationIds?.length > 0)
     );
+    const [isExportOptionsOpen, setIsExportOptionsOpen] = useState(false);
 
     useEffect(() => {
         if (selectedStationIds.length === 1) {
@@ -231,7 +231,6 @@ export default function ExtractorAdvancedStudio() {
         isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen
     });
 
-    // 💡 שמירת סשן רציפה ואמינה ל-localStorage (כולל Epoch אבסולוטי)
     useEffect(() => {
         const inEpochMs = timelineBaseEpochMs + inPointMs;
         const outEpochMs = timelineBaseEpochMs + outPointMs;
@@ -270,7 +269,6 @@ export default function ExtractorAdvancedStudio() {
         timelineBaseEpochMs
     ]);
 
-    // 💡 טעינת Bookmark: שחזור ה-CUT המדויק ללא הכפלת באפר, וטעינת כלל התחנות עם מוקד הפוקוס
     const handleLoadBookmark = useCallback((bm) => {
         const startMs = parseSafeEpoch(bm.startTime);
         const endMs = parseSafeEpoch(bm.endTime);
@@ -288,7 +286,6 @@ export default function ExtractorAdvancedStudio() {
 
         setTimeRange(newRange);
 
-        // שחזור ה-CUT לפי Epoch מוחלט (מנטרל כל סטייה)
         if (bm.inEpochMs && bm.outEpochMs) {
             const targetIn = Math.max(0, Math.min(newTotal, bm.inEpochMs - newTimelineBase));
             const targetOut = Math.max(targetIn + 1000, Math.min(newTotal, bm.outEpochMs - newTimelineBase));
@@ -300,7 +297,6 @@ export default function ExtractorAdvancedStudio() {
             setOutPointMs(targetOut);
             setPlayheadMs(targetPlayhead);
         } else {
-            // תמיכה בסימניות ישנות ללא הוספת newBuf כפולה
             const rawIn = typeof bm.inPointMs === 'number' ? bm.inPointMs : newBuf;
             const rawOut = typeof bm.outPointMs === 'number' ? bm.outPointMs : (newBuf + durationMs);
             const rawPlay = typeof bm.playheadMs === 'number' ? bm.playheadMs : rawIn;
@@ -310,7 +306,6 @@ export default function ExtractorAdvancedStudio() {
             setPlayheadMs(Math.max(0, Math.min(newTotal, rawPlay)));
         }
 
-        // שחזור התחנות המדויקות: תחנה בודדת, תת-קבוצה או כלל התחנות
         const stationsToSelect = (bm.selectedStationIds?.length > 0)
             ? bm.selectedStationIds
             : (bm.cutStationIds?.length > 0 ? bm.cutStationIds : bm.stationIds);
@@ -331,18 +326,17 @@ export default function ExtractorAdvancedStudio() {
         setIsDrawerOpen(false);
     }, []);
 
-    // 💡 החלת טווח זמנים חדש: הצבת ה-CUT בדיוק על שעות המשימה שנבחרו (ולא על שולי הבאפר)
     const handleApplyRange = useCallback((newRange) => {
         const durationMs = newRange.durationMs || 14400000;
         const newBuf = Math.max(60000, Math.round(durationMs * 0.05));
 
         setTimeRange(newRange);
-        setInPointMs(newBuf); // IN מתחיל בדיוק בסוף הבאפר (תחילת המשימה)
-        setOutPointMs(newBuf + durationMs); // OUT מסתיים בסוף המשימה
+        setInPointMs(newBuf);
+        setOutPointMs(newBuf + durationMs);
         setPlayheadMs(newBuf);
     }, []);
 
-    const handleExportSmartCut = async () => {
+    const handleExecuteExport = async (keystrokeMode) => {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return alert('No active stations selected in timeline.');
 
@@ -353,7 +347,8 @@ export default function ExtractorAdvancedStudio() {
                 body: JSON.stringify({
                     stationIds: targetStationIds,
                     inEpochMs: timelineBaseEpochMs + inPointMs,
-                    outEpochMs: timelineBaseEpochMs + outPointMs
+                    outEpochMs: timelineBaseEpochMs + outPointMs,
+                    keystrokeMode: keystrokeMode
                 })
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -476,7 +471,7 @@ export default function ExtractorAdvancedStudio() {
                                     setOutPointMs={setOutPointMs}
                                     viewportStartMs={viewportStartMs}
                                     onViewportStartChange={setViewportStartMs}
-                                    onExport={handleExportSmartCut}
+                                    onExport={() => setIsExportOptionsOpen(true)}
                                     recordingSegments={recordingSegments}
                                     movieBoundaries={movieBoundaries}
                                     onEstimateLoaded={(est) => est?.removedGlobalGaps && setGlobalGaps(est.removedGlobalGaps)}
@@ -582,7 +577,15 @@ export default function ExtractorAdvancedStudio() {
                 setIsLooping={setIsLooping}
                 playbackSpeed={playbackSpeed}
                 setPlaybackSpeed={setPlaybackSpeed}
-                onExport={handleExportSmartCut}
+                onExport={() => setIsExportOptionsOpen(true)}
+            />
+
+            <ExportOptionsModal
+                isOpen={isExportOptionsOpen}
+                onClose={() => setIsExportOptionsOpen(false)}
+                onConfirm={handleExecuteExport}
+                title="ADVANCED STUDIO - SMART CUT"
+                summaryText={`Stations: ${timelineStations.length} | Range: ${((outPointMs - inPointMs) / 1000).toFixed(1)}s`}
             />
 
             <ExportJobMonitor />

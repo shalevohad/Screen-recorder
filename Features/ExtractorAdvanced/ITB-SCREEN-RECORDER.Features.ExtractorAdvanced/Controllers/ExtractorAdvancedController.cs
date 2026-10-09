@@ -1,6 +1,7 @@
 ﻿// ==========================================
 // File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs
 // ==========================================
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
@@ -26,18 +27,49 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
         private readonly IAdvanceJobManager _jobManager;
+        private readonly IKeystrokeRepository _keystrokeRepository;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
             IStorageScannerService storageScanner,
             IAdvanceJobManager jobManager,
+            IKeystrokeRepository keystrokeRepository,
             ILogger<ExtractorAdvancedController> logger)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
             _jobManager = jobManager;
+            _keystrokeRepository = keystrokeRepository;
             _logger = logger;
+        }
+
+        // 💡 שליפת אירועי המקלדת עבור ה-Timeline Ruler דרך IKeystrokeRepository מ-Core
+        [HttpGet("keystrokes")]
+        public async Task<IActionResult> GetKeystrokes(
+            [FromQuery] string stationId,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
+            CancellationToken ct = default)
+        {
+            long lStart = (long)Math.Round(startEpoch);
+            long lEnd = (long)Math.Round(endEpoch);
+
+            if (string.IsNullOrWhiteSpace(stationId) || lEnd <= lStart)
+            {
+                return BadRequest("Invalid stationId or epoch window.");
+            }
+
+            try
+            {
+                var events = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, lStart, lEnd);
+                return Ok(events);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Keystrokes] Failed fetching keystrokes for station {Station}", stationId);
+                return StatusCode(500, "Error retrieving keystrokes.");
+            }
         }
 
         [HttpGet("stations")]
@@ -302,7 +334,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc, rangeEndUtc);
 
-            // 💡 מניעת הרצת FFmpeg ריק שנכשל מיד אם אין הקלטות בטווח
             if (chunks == null || chunks.Count == 0)
             {
                 Response.StatusCode = 204;
