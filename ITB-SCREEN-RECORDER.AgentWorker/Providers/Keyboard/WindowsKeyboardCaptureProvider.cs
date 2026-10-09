@@ -138,7 +138,18 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
             {
                 int vkCode = Marshal.ReadInt32(lParam);
 
-                if (vkCode != VK_SHIFT && vkCode != VK_CONTROL && vkCode != VK_MENU && vkCode != VK_LWIN && vkCode != VK_RWIN)
+                // סינון מקיף לכל מקשי ה-Modifiers (כלליים, שמאל וימין) למניעת רעשי Key(162) וכד'
+                bool isModifierKey = vkCode switch
+                {
+                    0x10 or 0xA0 or 0xA1 => true, // Shift, LShift, RShift
+                    0x11 or 0xA2 or 0xA3 => true, // Ctrl, LControl (162), RControl (163)
+                    0x12 or 0xA4 or 0xA5 => true, // Alt, LAlt (164), RAlt (165)
+                    0x5B or 0x5C => true, // LWin, RWin
+                    0x14 => true, // CapsLock
+                    _ => false
+                };
+
+                if (!isModifierKey)
                 {
                     string keyCombo = FormatKeyStroke(vkCode);
                     if (!string.IsNullOrEmpty(keyCombo))

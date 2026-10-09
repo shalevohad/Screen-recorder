@@ -52,12 +52,31 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] double endEpoch,
             CancellationToken ct = default)
         {
+            if (string.IsNullOrWhiteSpace(stationId))
+            {
+                return BadRequest("stationId is required.");
+            }
+
+            stationId = stationId.Trim();
+
             long lStart = (long)Math.Round(startEpoch);
             long lEnd = (long)Math.Round(endEpoch);
 
-            if (string.IsNullOrWhiteSpace(stationId) || lEnd <= lStart)
+            // 💡 Auto-Detection: אם חותמת הזמן הועברה בשניות (10 ספרות), נמיר אוטומטית למילישניות
+            const long SecondsThreshold = 100_000_000_000L;
+            if (lStart > 0 && lStart < SecondsThreshold) lStart *= 1000;
+            if (lEnd > 0 && lEnd < SecondsThreshold) lEnd *= 1000;
+
+            if (lEnd <= lStart)
             {
-                return BadRequest("Invalid stationId or epoch window.");
+                return BadRequest("Invalid epoch window: endEpoch must be strictly greater than startEpoch.");
+            }
+
+            // 💡 הגנת זיכרון: הגבלת חלון השאילתה המקסימלי (למשל: עד 48 שעות לבקשה בודדת)
+            const long MaxWindowMs = 48L * 60 * 60 * 1000;
+            if (lEnd - lStart > MaxWindowMs)
+            {
+                return BadRequest("Requested time window exceeds maximum allowed limit (48 hours).");
             }
 
             try
@@ -67,7 +86,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[API:Keystrokes] Failed fetching keystrokes for station {Station}", stationId);
+                _logger.LogError(ex, "[API:Keystrokes] Failed fetching keystrokes for station {Station} ({Start}..{End})", stationId, lStart, lEnd);
                 return StatusCode(500, "Error retrieving keystrokes.");
             }
         }
