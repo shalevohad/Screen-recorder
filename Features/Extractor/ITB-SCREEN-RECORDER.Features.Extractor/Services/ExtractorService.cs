@@ -14,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
@@ -22,6 +23,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     {
         protected readonly IStorageScannerService _storageScanner;
         protected readonly IFfmpegConcatRunner _ffmpegRunner;
+        protected readonly IKeystrokeSrtGenerator? _srtGenerator;
         protected readonly ExtractorOptions _options;
         protected readonly ILogger _logger;
 
@@ -41,12 +43,14 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             IStorageScannerService storageScanner,
             IFfmpegConcatRunner ffmpegRunner,
             IOptions<ExtractorOptions> extractorOptions,
-            ILogger<ExtractorService> logger)
+            ILogger<ExtractorService> logger,
+            IKeystrokeSrtGenerator? srtGenerator = null)
         {
             _storageScanner = storageScanner;
             _ffmpegRunner = ffmpegRunner;
             _options = extractorOptions.Value;
             _logger = logger;
+            _srtGenerator = srtGenerator;
 
             int maxConcurrency = _options.MaxConcurrentFfmpegProcesses > 0
                 ? _options.MaxConcurrentFfmpegProcesses
@@ -159,6 +163,32 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         };
 
                         await tarWriter.WriteEntryAsync(entry, ct);
+                    }
+
+                    // 💡 יצירה והזרקה של קובץ כתוביות SRT לתוך ה-TAR
+                    if (request.KeystrokeMode != KeystrokeExportMode.None && _srtGenerator != null)
+                    {
+                        long inEp = new DateTimeOffset(request.StartTimeUtc).ToUnixTimeMilliseconds();
+                        long outEp = new DateTimeOffset(request.EndTimeUtc).ToUnixTimeMilliseconds();
+
+                        string? srtPath = await _srtGenerator.CreateSrtFileAsync(hostname, inEp, outEp, ct);
+                        if (srtPath != null && File.Exists(srtPath))
+                        {
+                            try
+                            {
+                                string srtEntryName = $"recordings/{hostname}_{request.StartTimeUtc:yyyyMMdd_HHmmss}.srt";
+                                await using var srtFs = new FileStream(srtPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                                var srtEntry = new PaxTarEntry(TarEntryType.RegularFile, srtEntryName)
+                                {
+                                    DataStream = srtFs
+                                };
+                                await tarWriter.WriteEntryAsync(srtEntry, ct);
+                            }
+                            finally
+                            {
+                                try { File.Delete(srtPath); } catch { }
+                            }
+                        }
                     }
 
                     sessionManifest.Tracks.Add(new SessionTrackInfo

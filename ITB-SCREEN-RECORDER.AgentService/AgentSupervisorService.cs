@@ -1,6 +1,7 @@
 ﻿// ==========================================
 // File: AgentService/AgentSupervisorService.cs
 // ==========================================
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
@@ -8,6 +9,8 @@ using ITB_SCREEN_RECORDER.Core.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
@@ -50,6 +53,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private long _lastTelemetryPayloadSizeBytes = 0;
         private DateTime _lastTelemetrySendTime = DateTime.UtcNow;
 
+        // 💡 תור צבירה של אירועי מקלדת לדיווח ברפורט הטלמטריה
+        private readonly ConcurrentQueue<KeystrokeEventDto> _pendingKeystrokes = new();
+
         private class IpcMessageDto
         {
             public bool IsStreaming { get; set; }
@@ -61,6 +67,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public bool HasActiveMicrophone { get; set; }
             public bool IsAudioStreaming { get; set; }
             public IpcTelemetryDto? Telemetry { get; set; }
+            public List<KeystrokeEventDto>? Keystrokes { get; set; }
         }
 
         private class IpcTelemetryDto
@@ -236,7 +243,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     _workerCommandWriter = writer;
 
-                    // 💡 סנכרון ראשוני מיידי ל-Worker ברגע החיבור
                     if (_serverUtcOffset != TimeSpan.Zero)
                     {
                         await writer.WriteLineAsync($"SyncClock|{_serverUtcOffset.Ticks}");
@@ -261,6 +267,15 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     _lastWorkerHasActiveSpeakers = status.HasActiveSpeakers || (status.Telemetry?.HasActiveSpeakers ?? false);
                                     _lastWorkerHasActiveMicrophone = status.HasActiveMicrophone || (status.Telemetry?.HasActiveMicrophone ?? false);
                                     _lastWorkerIsAudioStreaming = status.IsAudioStreaming || (status.Telemetry?.IsAudioStreaming ?? false);
+
+                                    // 💡 קליטת מקשים חיים שנשלחו מה-Worker
+                                    if (status.Keystrokes != null && status.Keystrokes.Count > 0)
+                                    {
+                                        foreach (var k in status.Keystrokes)
+                                        {
+                                            _pendingKeystrokes.Enqueue(k);
+                                        }
+                                    }
                                 }
                             }
                             catch (Exception ex)
@@ -302,11 +317,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 try
                 {
-                    var bufferStats = ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.GetBufferStats(_localBufferPath);
+                    var bufferStats = OfflineBufferDrainingService.GetBufferStats(_localBufferPath);
                     offlineFilesCount = bufferStats.Item1;
                     offlineFilesSizeMb = bufferStats.Item2;
                 }
                 catch { }
+
+                // 💡 שליפת מקשים מתוך התור לשידור בטיק הנוכחי
+                var keysBatch = new List<KeystrokeEventDto>();
+                while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
+                {
+                    keysBatch.Add(k);
+                }
 
                 var report = new AgentTelemetryReport
                 {
@@ -325,7 +347,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     HasAudio = isStreaming ? _lastWorkerHasAudio : (_lastWorkerHasActiveSpeakers || _lastWorkerHasActiveMicrophone),
                     IsAudioStreaming = isStreaming && _lastWorkerIsAudioStreaming,
 
-                    // 💡 דיווח ה-Timestamp המכויל מול השרת
                     ClientTimestamp = DateTime.UtcNow + _serverUtcOffset,
                     Timestamp = DateTime.UtcNow + _serverUtcOffset,
 
@@ -353,7 +374,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     NicTotalRxMbps = Math.Round(_lastTelemetry?.NicTotalRxMbps ?? 0, 2),
 
                     OfflineFilesCount = offlineFilesCount,
-                    OfflineFilesTotalSizeMb = offlineFilesSizeMb
+                    OfflineFilesTotalSizeMb = offlineFilesSizeMb,
+
+                    Keystrokes = keysBatch.Count > 0 ? keysBatch : null
                 };
 
                 string jsonPayload = JsonSerializer.Serialize(report);
@@ -365,7 +388,6 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
-                // 💡 מדידת זמני תקשורת לצורך סנכרון NTP-Lite
                 long tSendMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 var response = await _httpClient.PostAsync(targetEndpoint, content, ct);
                 long tReceiveMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -381,12 +403,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         var heartbeatResponse = JsonSerializer.Deserialize<AgentHeartbeatResponse>(responseJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                         if (heartbeatResponse != null)
                         {
-                            // 💡 חישוב סטיית שעון מדויקת בפיצוי RTT
                             long rtt = Math.Max(0, tReceiveMs - tSendMs);
                             long serverTimeAtReceive = heartbeatResponse.ServerUtcEpochMs + (rtt / 2);
                             TimeSpan newOffset = TimeSpan.FromMilliseconds(serverTimeAtReceive - tReceiveMs);
 
-                            // עדכון ה-Offset ושידור ל-Worker במידה ויש סטייה מעל 25ms
                             if (Math.Abs((newOffset - _serverUtcOffset).TotalMilliseconds) > 25)
                             {
                                 _serverUtcOffset = newOffset;
@@ -396,7 +416,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                             try
                             {
-                                ITB_SCREEN_RECORDER.AgentService.Infrastructure.OfflineBufferDrainingService.CurrentCommand = heartbeatResponse.OfflineBufferAction;
+                                OfflineBufferDrainingService.CurrentCommand = heartbeatResponse.OfflineBufferAction;
                             }
                             catch { }
 
@@ -447,6 +467,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     {
                         _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
+                }
+                else
+                {
+                    // שחזור המקשים לתור אם השרת החזיר שגיאה
+                    foreach (var k in keysBatch) _pendingKeystrokes.Enqueue(k);
                 }
             }
             catch (Exception ex)

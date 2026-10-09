@@ -56,6 +56,14 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
                     indexed_at_utc INTEGER NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS keystroke_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    station_id TEXT NOT NULL,
+                    epoch_ms INTEGER NOT NULL,
+                    key_combination TEXT NOT NULL,
+                    timestamp_utc TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS custom_tabs (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -83,7 +91,6 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             ");
 
             // 2. מיגרציה רציפה של שדות שנוספו לטבלאות קיימות
-            // custom_tabs
             db.EnsureColumn("custom_tabs", "ous_json", "TEXT NOT NULL DEFAULT '[]'");
             db.EnsureColumn("custom_tabs", "target_fps", "INTEGER");
             db.EnsureColumn("custom_tabs", "target_bitrate_kbps", "INTEGER");
@@ -91,7 +98,6 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             db.EnsureColumn("custom_tabs", "display_order", "INTEGER NOT NULL DEFAULT 0");
             db.EnsureColumn("custom_tabs", "updated_at_utc", "INTEGER NOT NULL DEFAULT 0");
 
-            // recording_chunks
             db.EnsureColumn("recording_chunks", "duration_ms", "INTEGER NOT NULL DEFAULT 0");
             db.EnsureColumn("recording_chunks", "width", "INTEGER NOT NULL DEFAULT 0");
             db.EnsureColumn("recording_chunks", "height", "INTEGER NOT NULL DEFAULT 0");
@@ -100,7 +106,6 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             db.EnsureColumn("recording_chunks", "is_finalized", "INTEGER NOT NULL DEFAULT 0");
             db.EnsureColumn("recording_chunks", "indexed_at_utc", "INTEGER NOT NULL DEFAULT 0");
 
-            // station_nodes
             db.EnsureColumn("station_nodes", "ip_address", "TEXT");
             db.EnsureColumn("station_nodes", "agent_version", "TEXT");
             db.EnsureColumn("station_nodes", "is_active", "INTEGER NOT NULL DEFAULT 1");
@@ -110,6 +115,9 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             db.Execute(@"
                 CREATE INDEX IF NOT EXISTS idx_chunks_station_window_covering 
                 ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms, is_finalized, file_path, file_size_bytes, fps, width, height, has_audio);
+
+                CREATE INDEX IF NOT EXISTS idx_keystrokes_station_epoch
+                ON keystroke_events (station_id, epoch_ms ASC);
 
                 CREATE INDEX IF NOT EXISTS idx_chunks_retention_lookup
                 ON recording_chunks (end_epoch_ms, is_finalized);

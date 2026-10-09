@@ -2,6 +2,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
 
 public record StationOverrideRecord(string Hostname, string? VideoBitrate, int? TargetFps, long UpdatedAtUtc);
@@ -18,7 +19,7 @@ public record CustomTabRecord(
     long UpdatedAtUtc
 );
 
-public interface ICatalogRepository
+public interface ICatalogRepository : IKeystrokeRepository
 {
     // Recording Chunks
     Task BulkUpsertChunksAsync(IEnumerable<ChunkFinalizedEvent> chunks);

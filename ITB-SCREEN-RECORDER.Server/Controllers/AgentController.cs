@@ -3,6 +3,7 @@
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
@@ -34,10 +35,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public string? Bitrate { get; set; }
     }
 
+    // 💡 מודל טופס מאוחד: מונע קריסה של Swagger Generator ב-multipart/form-data
     public class UploadBufferRequest
     {
         public string Hostname { get; set; } = string.Empty;
         public IFormFile File { get; set; } = null!;
+        public IFormFile? KeysFile { get; set; }
     }
 
     [ApiController]
@@ -87,10 +90,22 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(errors);
             }
 
+            // 💡 קליטת Keystrokes חיים שנשלחו בדוח הטלמטריה השוטף
+            if (report.Keystrokes != null && report.Keystrokes.Count > 0)
+            {
+                try
+                {
+                    await _catalogRepository.BulkInsertKeystrokesAsync(report.Hostname, report.Keystrokes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[TELEMETRY] Failed to insert live keystrokes for {Host}", report.Hostname);
+                }
+            }
+
             string requestHost = Request.Host.Host;
             var response = await _telemetryState.ProcessHeartbeatAsync(report, requestHost);
 
-            // 💡 הבטחת חותמת Epoch עדכנית ברמת המילי-שנייה עבור ה-Agent
             if (response != null)
             {
                 response.ServerUtcEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -131,7 +146,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             IFormFile file = request.File;
             string safeFileName = Path.GetFileName(file.FileName);
 
-            // 1. איתור חותמת זמן UTC או Epoch מתוך שם הקובץ המקורי
             long startEpochMs = 0;
             var matchUtc = Regex.Match(safeFileName, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})Z", RegexOptions.IgnoreCase);
             var matchEpoch = Regex.Match(safeFileName, @"(\d{10,13})", RegexOptions.IgnoreCase);
@@ -153,10 +167,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             if (startEpochMs <= 0)
             {
                 _logger.LogWarning("[SYNC INGEST] Received buffer file '{File}' from host '{Host}' without valid UTC/Epoch signature.", safeFileName, hostname);
-                return BadRequest("Invalid file name format. Expected UTC timestamp signature ('..._YYYY-MM-DD_HH-mm-ss-ffffffZ.ext') or Epoch timestamp.");
+                return BadRequest("Invalid file name format. Expected UTC timestamp signature or Epoch timestamp.");
             }
 
-            // 💡 תיקון קריטי: שמירת הקובץ לפי ה-Epoch המוחלט שלו ללא שום המרה לשעון מקומי
             string extension = Path.GetExtension(safeFileName);
             string finalFileName = $"{startEpochMs}{extension}";
 
@@ -204,6 +217,40 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         HasAudio: hasAudio
                     )
                 });
+
+                // 💡 קליטת קובץ ה-Sidecar של המקשים שנשלח כחלק מהטופס
+                if (request.KeysFile != null && request.KeysFile.Length > 0)
+                {
+                    var keysList = new List<KeystrokeEventDto>();
+                    using var reader = new StreamReader(request.KeysFile.OpenReadStream());
+                    string? line;
+                    while ((line = await reader.ReadLineAsync()) != null)
+                    {
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        try
+                        {
+                            using var doc = System.Text.Json.JsonDocument.Parse(line);
+                            long ep = doc.RootElement.GetProperty("epoch").GetInt64();
+                            string k = doc.RootElement.GetProperty("key").GetString() ?? "";
+                            if (!string.IsNullOrEmpty(k))
+                            {
+                                keysList.Add(new KeystrokeEventDto
+                                {
+                                    EpochMs = ep,
+                                    KeyCombination = k,
+                                    TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(ep).UtcDateTime
+                                });
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (keysList.Count > 0)
+                    {
+                        await _catalogRepository.BulkInsertKeystrokesAsync(hostname, keysList);
+                        _logger.LogInformation("[SYNC INGEST] Ingested {Count} offline keys for {Host}", keysList.Count, hostname);
+                    }
+                }
 
                 _logger.LogInformation("[SYNC INGEST] Synced & Indexed offline chunk from '{Host}': '{File}' (Epoch: {Epoch}, Size: {Size} bytes)",
                     hostname, finalFileName, startEpochMs, fileSizeBytes);

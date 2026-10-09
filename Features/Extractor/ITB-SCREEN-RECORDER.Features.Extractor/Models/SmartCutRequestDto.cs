@@ -1,6 +1,8 @@
 ﻿// ==========================================
 // File: Features/Extractor/Models/SmartCutRequestDto.cs
 // ==========================================
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 {
     public class SmartCutRequestDto
@@ -19,5 +21,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         /// נקודת יציאה (Epoch MS ב-UTC)
         /// </summary>
         public long OutEpochMs { get; set; }
+
+        /// <summary>
+        /// אופן ייצוא מקשי המקלדת (Caption / BurnIn / None)
+        /// </summary>
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
     }
 }

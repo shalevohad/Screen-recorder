@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
@@ -29,13 +31,25 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         // 💡 הוספת שדות טלמטריה מתקדמים לניהול ETA ומהירות
         public double EstimatedSecondsRemaining { get; set; }
         public double SpeedMBps { get; set; }
+
+        // 💡 אופן הצגת המקשים בייצוא
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
     }
 
     public class AdvanceCutRequestDto
     {
+        [JsonPropertyName("stationIds")]
         public List<string> StationIds { get; set; } = new();
+
+        [JsonPropertyName("inEpochMs")]
         public long InEpochMs { get; set; }
+
+        [JsonPropertyName("outEpochMs")]
         public long OutEpochMs { get; set; }
+
+        // 💡 אופן הצגת המקשים שנשלח מהמודאל ב-UI
+        [JsonPropertyName("keystrokeMode")]
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
     }
 
     public class SessionManifest

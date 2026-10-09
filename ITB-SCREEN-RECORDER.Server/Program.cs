@@ -4,6 +4,7 @@
 using ITB_SCREEN_RECORDER.Core.Abstractions;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Plugins;
 using ITB_SCREEN_RECORDER.Server.Data;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
@@ -37,12 +38,10 @@ namespace ITB_SCREEN_RECORDER.Server
             Directory.SetCurrentDirectory(AppContext.BaseDirectory);
             Environment.SetEnvironmentVariable("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", null);
 
-            // 💡 1. כיול ThreadPool להתמודדות חלקה עם עומס תחנות
             int minWorkerThreads = Math.Max(64, Environment.ProcessorCount * 8);
             int minIoThreads = Math.Max(64, Environment.ProcessorCount * 8);
             ThreadPool.SetMinThreads(minWorkerThreads, minIoThreads);
 
-            // 💡 2. ניקוי קבצים זמניים
             CleanupOrphanedTempFiles();
 
             string ResolveFeaturesDirectory()
@@ -68,7 +67,6 @@ namespace ITB_SCREEN_RECORDER.Server
 
             var builder = WebApplication.CreateBuilder(args);
 
-            // 💡 3. טעינה מפורשת של קובצי הקונפיגורציה
             builder.Configuration
                 .SetBasePath(AppContext.BaseDirectory)
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
@@ -119,7 +117,6 @@ namespace ITB_SCREEN_RECORDER.Server
 
             try
             {
-                // 💡 4. חילוץ הפורט מתוך ה-Configuration של קובצי ה-JSON
                 int? kestrelPort = null;
                 string? kestrelUrl = builder.Configuration["Kestrel:Endpoints:Http:Url"];
                 if (!string.IsNullOrWhiteSpace(kestrelUrl))
@@ -136,7 +133,6 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.WebHost.UseUrls($"http://0.0.0.0:{finalListeningPort}");
                 builder.Configuration["SystemConfig:HttpPort"] = finalListeningPort.ToString();
 
-                // 💡 וידוא ותיקון mediamtx.yml ללא יצירת מפתחות כפולים
                 int mtxApiPort = builder.Configuration.GetValue<int?>("SystemConfig:MediaMtx:ApiPort") ?? 9997;
                 EnsureMediaMtxConfiguration(mtxApiPort);
 
@@ -252,6 +248,8 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<ICatalogConnectionFactory, CatalogConnectionFactory>();
                 builder.Services.AddSingleton<IFeatureDbInitializer, CatalogDbInitializer>();
                 builder.Services.AddSingleton<ICatalogRepository, CatalogRepository>();
+                builder.Services.AddSingleton<IKeystrokeRepository>(sp => sp.GetRequiredService<ICatalogRepository>());
+                builder.Services.AddSingleton<IKeystrokeSrtGenerator, KeystrokeSrtGenerator>();
                 builder.Services.AddSingleton<IVideoProbeService, VideoProbeService>();
                 builder.Services.AddSingleton<IStorageScannerService, StorageScannerService>();
                 builder.Services.AddSingleton<ISystemConfigDbSyncService, SystemConfigDbSyncService>();
@@ -323,7 +321,6 @@ namespace ITB_SCREEN_RECORDER.Server
                     AppContext.BaseDirectory
                 };
 
-                // סינון נתיבים כפולים למניעת ריצה כפולה על אותו קובץ ב-Windows
                 var distinctPaths = possibleDirs
                     .Select(d => Path.Combine(d, "mediamtx.yml"))
                     .Where(File.Exists)
@@ -337,7 +334,6 @@ namespace ITB_SCREEN_RECORDER.Server
                     var lines = yaml.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None).ToList();
                     bool changed = false;
 
-                    // 1. ניקוי שורות שהוזרקו בטעות לראש הקובץ (Lines 0..10)
                     for (int i = Math.Min(lines.Count - 1, 10); i >= 0; i--)
                     {
                         var trimmed = lines[i].Trim();
@@ -352,7 +348,6 @@ namespace ITB_SCREEN_RECORDER.Server
                         }
                     }
 
-                    // 2. עדכון מפתח ה-api במקומו הטבעי בקובץ
                     bool apiFound = false;
                     for (int i = 0; i < lines.Count; i++)
                     {
@@ -382,7 +377,6 @@ namespace ITB_SCREEN_RECORDER.Server
                         changed = true;
                     }
 
-                    // 3. עדכון מפתח apiAddress במקומו הטבעי
                     bool apiAddrFound = false;
                     string targetApiAddr = $"apiAddress: :{apiPort}";
                     for (int i = 0; i < lines.Count; i++)

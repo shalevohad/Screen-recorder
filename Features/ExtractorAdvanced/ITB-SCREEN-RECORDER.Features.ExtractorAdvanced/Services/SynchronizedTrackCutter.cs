@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
@@ -22,6 +23,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly IBridgeVideoGenerator _bridgeGenerator;
         private readonly IMediaProbeService _mediaProbeService;
         private readonly IFfmpegBinaryResolver _binaryResolver;
+        private readonly IKeystrokeSrtGenerator? _srtGenerator;
         private readonly ILogger<SynchronizedTrackCutter> _logger;
         private static readonly SemaphoreSlim _concurrencyThrottle = new(2, 2);
 
@@ -29,12 +31,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             IBridgeVideoGenerator bridgeGenerator,
             IMediaProbeService mediaProbeService,
             IFfmpegBinaryResolver binaryResolver,
-            ILogger<SynchronizedTrackCutter> logger)
+            ILogger<SynchronizedTrackCutter> logger,
+            IKeystrokeSrtGenerator? srtGenerator = null)
         {
             _bridgeGenerator = bridgeGenerator;
             _mediaProbeService = mediaProbeService;
             _binaryResolver = binaryResolver;
             _logger = logger;
+            _srtGenerator = srtGenerator;
         }
 
         public async Task<(string OutputFilePath, bool HasAudio)> CutSynchronizedTrackAsync(
@@ -77,7 +81,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
             else
             {
-                // 💡 עבור תחנה ללא הקלטות בטווח הנבחר: מנסים לדגום היסטוריה או ברירת מחדל
                 baselineProbe = await _mediaProbeService.GetOrProbeStationMetadataAsync(stationId, cutStartUtc, cutEndUtc, ct);
             }
 
@@ -116,7 +119,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     .Where(c => c.EndUtc > seg.StartUtc && c.StartUtc < seg.EndUtc)
                     .OrderBy(c => c.StartUtc).ToList();
 
-                // 💡 אם לתחנה זו אין צ'אנקים בסגמנט הפעיל (פער מלא)
                 if (segChunks.Count == 0)
                 {
                     double gapDur = seg.DurationSeconds;
@@ -224,6 +226,32 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 vfFilters.Add($"fade=t=out:st={endStartStr}:d=0.3:enable='between(t,{endStartStr},{totalStr})'");
             }
 
+            // 💡 ניתוב מדויק לפי KeystrokeMode (None / Caption / BurnIn)
+            string? srtPath = null;
+            string subInputArgs = "";
+
+            if (plan.KeystrokeMode != KeystrokeExportMode.None && _srtGenerator != null)
+            {
+                long startEpochMs = new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds();
+                long endEpochMs = new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds();
+                srtPath = await _srtGenerator.CreateSrtFileAsync(stationId, startEpochMs, endEpochMs, ct);
+
+                if (srtPath != null && File.Exists(srtPath))
+                {
+                    if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn)
+                    {
+                        // צריבה קשיחה: הוספה ל-Filter Graph
+                        string escapedSrt = srtPath.Replace("\\", "/").Replace(":", "\\:");
+                        vfFilters.Add($"subtitles='{escapedSrt}':force_style='FontSize=22,PrimaryColour=&H00FFFF,BackColour=&H80000000,BorderStyle=4'");
+                    }
+                    else if (plan.KeystrokeMode == KeystrokeExportMode.Caption)
+                    {
+                        // כתוביות רכות: הזרקת רצועת mov_text
+                        subInputArgs = $"-i \"{srtPath}\" -c:s mov_text -metadata:s:s:0 title=\"Keystroke Audit\"";
+                    }
+                }
+            }
+
             vfFilters.Add("format=yuv420p");
             string videoFilterArg = string.Join(",", vfFilters);
 
@@ -233,7 +261,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             string ffmpegPath = _binaryResolver.ResolveFfmpeg();
 
-            string arguments = $"-nostdin -v error -progress pipe:1 -fflags +genpts+discardcorrupt -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" " +
+            string arguments = $"-nostdin -v error -progress pipe:1 -fflags +genpts+discardcorrupt -f concat -safe 0 -i \"{tempManifestPath.Replace('\\', '/')}\" {subInputArgs} " +
                                $"-vf \"{videoFilterArg}\" " +
                                $"-c:v libx264 -preset veryfast -crf 20 -avoid_negative_ts make_zero {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
 
@@ -291,6 +319,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 _concurrencyThrottle.Release();
                 if (File.Exists(tempManifestPath)) try { File.Delete(tempManifestPath); } catch { }
+                if (srtPath != null && File.Exists(srtPath)) try { File.Delete(srtPath); } catch { }
             }
         }
     }
