@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
@@ -54,6 +54,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly StoragePathResolver _storageResolver;
         private readonly ICatalogRepository _catalogRepository;
+        private readonly IVideoProbeService _probeService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
@@ -63,6 +64,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             IOptionsMonitor<SystemConfig> configMonitor,
             StoragePathResolver storageResolver,
             ICatalogRepository catalogRepository,
+            IVideoProbeService probeService,
             ILogger<AgentController> logger)
         {
             _telemetryState = telemetryState;
@@ -71,6 +73,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _configMonitor = configMonitor;
             _storageResolver = storageResolver;
             _catalogRepository = catalogRepository;
+            _probeService = probeService;
             _logger = logger;
         }
 
@@ -192,16 +195,32 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 }
 
                 long fileSizeBytes = new FileInfo(destinationPath).Length;
-                int chunkMinutes = Math.Max(1, _configMonitor.CurrentValue.Storage.ChunkIntervalMinutes);
-                long endEpochMs = startEpochMs + (chunkMinutes * 60 * 1000);
+                if (fileSizeBytes < 1024)
+                {
+                    _logger.LogWarning("[SYNC INGEST] Discarding corrupt/empty buffer '{File}' ({Bytes} bytes) from host '{Host}'.", safeFileName, fileSizeBytes, hostname);
+                    try { System.IO.File.Delete(destinationPath); } catch { }
+                    return BadRequest("Uploaded file is too small or corrupt.");
+                }
+
+                // 💡 בדיקת משך זמן אמיתי של הסרטון באמצעות FFprobe כדי למנוע זיוף זמינות ו-Gaps שגויים
+                var probe = await _probeService.ProbeFileAsync(destinationPath);
+                if (probe == null || probe.DurationSeconds <= 0.05)
+                {
+                    _logger.LogWarning("[SYNC INGEST] Uploaded buffer '{File}' failed ffprobe validation (zero/invalid duration). Discarding.", safeFileName);
+                    try { System.IO.File.Delete(destinationPath); } catch { }
+                    return BadRequest("Uploaded file could not be verified as a valid video stream.");
+                }
+
+                long durationMs = (long)Math.Round(probe.DurationSeconds * 1000.0);
+                long endEpochMs = startEpochMs + durationMs;
 
                 var agentSnapshot = _telemetryState.GetAllAgents()
                     .FirstOrDefault(agent => string.Equals(agent.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
 
-                int screenWidth = agentSnapshot?.ScreenWidth > 0 ? agentSnapshot.ScreenWidth : 0;
-                int screenHeight = agentSnapshot?.ScreenHeight > 0 ? agentSnapshot.ScreenHeight : 0;
-                int captureFps = agentSnapshot?.ActualFps > 0 ? agentSnapshot.ActualFps : (agentSnapshot?.InternalCaptureFps > 0 ? agentSnapshot.InternalCaptureFps : 0);
-                bool hasAudio = agentSnapshot?.HasAudio ?? false;
+                int screenWidth = probe.Width > 0 ? probe.Width : (agentSnapshot?.ScreenWidth > 0 ? agentSnapshot.ScreenWidth : 1920);
+                int screenHeight = probe.Height > 0 ? probe.Height : (agentSnapshot?.ScreenHeight > 0 ? agentSnapshot.ScreenHeight : 1080);
+                int captureFps = probe.Fps > 0 ? probe.Fps : (agentSnapshot?.ActualFps > 0 ? agentSnapshot.ActualFps : 30);
+                bool hasAudio = probe.HasAudio || (agentSnapshot?.HasAudio ?? false);
 
                 await _catalogRepository.BulkUpsertChunksAsync(new[]
                 {

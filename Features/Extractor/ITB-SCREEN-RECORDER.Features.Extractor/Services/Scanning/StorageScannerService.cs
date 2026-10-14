@@ -300,7 +300,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         if (fEnd >= startMs && fStart <= endMs)
                         {
                             var fi = new FileInfo(file);
-                            if (fi.Exists && fi.Length > 0)
+                            if (fi.Exists && fi.Length >= 1024)
                             {
                                 missing.Add((hostname, file, fStart, fEnd, fi.Length));
                             }
@@ -553,6 +553,27 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         host = parentDir.Name;
                     }
                 }
+            }
+
+            // בדיקת תבנית Epoch ישירה במילישניות (13 ספרות)
+            var matchEpochMs = Regex.Match(fileName, @"(?:^(?<host>[a-zA-Z0-9_\-\.]+?)[_-])?(?<epoch>\d{13})\.(mp4|fmp4|flv|mkv|ts|mov)$", RegexOptions.IgnoreCase);
+            if (matchEpochMs.Success)
+            {
+                if (string.IsNullOrWhiteSpace(host) && matchEpochMs.Groups["host"].Success)
+                {
+                    host = matchEpochMs.Groups["host"].Value;
+                }
+
+                long ms = long.Parse(matchEpochMs.Groups["epoch"].Value);
+                DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
+
+                return new RecordingChunkMetadata
+                {
+                    FullPath = filePath,
+                    Hostname = host ?? "Station",
+                    StartUtc = startUtc,
+                    EndUtc = startUtc.AddMinutes(15)
+                };
             }
 
             var matchEpoch = EpochChunkRegex.Match(fileName);

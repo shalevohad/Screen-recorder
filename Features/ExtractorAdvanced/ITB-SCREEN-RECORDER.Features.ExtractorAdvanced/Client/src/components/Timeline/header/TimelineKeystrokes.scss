@@ -9,7 +9,7 @@
     right: 0;
     bottom: 0;
     pointer-events: none;
-    z-index: 28;
+    z-index: 100;
     overflow: visible;
 
     .keystroke-tick-node {
@@ -22,7 +22,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        transition: transform 0.1s ease;
+        transition: transform 0.12s ease;
 
         .keystroke-tick-line {
             width: 1.5px;
@@ -34,100 +34,144 @@
 
         .keystroke-tick-cap {
             position: absolute;
-            top: 1px;
-            width: 5px;
-            height: 5px;
-            border-radius: 50%;
-            background: #00f0ff;
-            box-shadow: 0 0 6px #00f0ff;
+            top: 0;
+            width: auto;
+            min-width: 14px;
+            height: 12px;
+            padding: 0 4px;
+            border-radius: 3px;
+            background: rgba(8, 51, 68, 0.95);
+            border: 1px solid #00f0ff;
+            box-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.15s ease;
+            white-space: nowrap;
 
-            .cluster-count {
-                display: none;
+            .keystroke-badge-text {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 7.5px;
+                font-weight: 800;
+                color: #e0f2fe;
+                line-height: 1;
+                letter-spacing: -0.2px;
             }
         }
+
         // עיצוב אשכול מרובה אירועים
         &.is-cluster {
             .keystroke-tick-line {
-                width: 2.5px;
+                width: 2px;
                 background: #38bdf8;
                 box-shadow: 0 0 8px rgba(56, 189, 248, 0.85);
             }
 
             .keystroke-tick-cap {
-                top: 0;
-                width: auto;
-                min-width: 13px;
-                height: 11px;
-                padding: 0 3px;
-                border-radius: 4px;
                 background: rgba(14, 116, 144, 0.95);
-                border: 1px solid #38bdf8;
-                box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+                border-color: #38bdf8;
+                box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
 
-                .cluster-count {
-                    display: block;
-                    font-family: 'JetBrains Mono', monospace;
-                    font-size: 7.5px;
-                    font-weight: 800;
+                .keystroke-badge-text {
                     color: #ffffff;
-                    line-height: 1;
                 }
             }
         }
-        // טולטיפ צף
+
+        // טולטיפ צף מתחת לשנתת (לא מוסתר ע"י ה-Overview Strip)
         .keystroke-tooltip {
             position: absolute;
-            bottom: calc(100% + 4px);
+            top: calc(100% + 6px);
             left: 50%;
-            transform: translateX(-50%) translateY(4px);
+            transform: translateX(-50%) translateY(-4px);
             display: flex;
             flex-direction: column;
-            gap: 2px;
-            padding: 3px 6px;
-            background: rgba(9, 14, 26, 0.96);
-            backdrop-filter: blur(8px);
+            gap: 4px;
+            padding: 5px 8px;
+            background: rgba(9, 14, 26, 0.98);
+            backdrop-filter: blur(12px);
             border: 1px solid #00f0ff;
-            border-radius: 4px;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 240, 255, 0.25);
+            border-radius: 5px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 240, 255, 0.35);
             pointer-events: none;
             opacity: 0;
             white-space: nowrap;
-            z-index: 60;
-            transition: opacity 0.12s ease, transform 0.12s ease;
+            z-index: 9999;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+
+            // חץ קטן המצביע מעלה לעבר השנתת
+            &::before {
+                content: '';
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                border-width: 4px;
+                border-style: solid;
+                border-color: transparent transparent #00f0ff transparent;
+            }
 
             .tooltip-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+
                 .tooltip-type {
                     font-family: 'JetBrains Mono', monospace;
-                    font-size: 7px;
-                    font-weight: 700;
+                    font-size: 7.5px;
+                    font-weight: 800;
                     color: #38bdf8;
                     letter-spacing: 0.5px;
+                    text-transform: uppercase;
+                }
+
+                .tooltip-time {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 8px;
+                    font-weight: 700;
+                    color: #94a3b8;
                 }
             }
 
-            .tooltip-keys {
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 9px;
-                font-weight: 800;
-                color: #ffffff;
-                letter-spacing: 0.2px;
+            .tooltip-keys-list {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 3px;
+                max-width: 260px;
+
+                .tooltip-key-pill {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 8.5px;
+                    font-weight: 800;
+                    color: #ffffff;
+                    background: rgba(14, 116, 144, 0.45);
+                    border: 1px solid rgba(56, 189, 248, 0.4);
+                    padding: 1px 4px;
+                    border-radius: 3px;
+                }
+
+                .tooltip-more {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 7.5px;
+                    color: #94a3b8;
+                    font-style: italic;
+                }
             }
 
             .tooltip-hint {
                 font-family: 'JetBrains Mono', monospace;
-                font-size: 6.5px;
+                font-size: 7px;
                 color: #64748b;
                 text-transform: uppercase;
+                letter-spacing: 0.3px;
             }
         }
 
         &:hover {
-            z-index: 50;
-            transform: translateX(-50%) scale(1.15);
+            z-index: 9999;
+            transform: translateX(-50%) scale(1.1);
 
             .keystroke-tick-line {
                 background: #ffffff;

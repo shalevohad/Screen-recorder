@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services;
+namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
 using System.Collections.Concurrent;
@@ -311,31 +311,25 @@ public class StorageScannerService : IStorageScannerService
         CancellationToken ct)
     {
         var fileInfo = new FileInfo(filePath);
-        if (fileInfo.Length == 0) return null;
+        if (fileInfo.Length < 1024) return null;
 
         long startEpochMs = TryParseStartEpoch(fileInfo.Name, fileInfo.CreationTimeUtc, config.DisplayTimezone);
+        if (startEpochMs <= 0) return null;
 
         var probe = await _probeService.ProbeFileAsync(filePath, ct);
 
-        long endEpochMs;
-        int width = 1920;
-        int height = 1080;
-        int fps = config.DefaultTargetFps > 0 ? config.DefaultTargetFps : 30;
-        bool hasAudio = true;
+        // 💡 אם לא ניתן לבצע בדיקת תקינות או שהסרטון באורך 0 - מדובר בקובץ מושחת/קטוע. אין לאנדקס אותו כסרטון באורך 15 דקות!
+        if (probe == null || probe.DurationSeconds <= 0.05)
+        {
+            _logger.LogWarning("[STORAGE INDEXER] Skipping corrupt or zero-duration media file: '{Path}'", filePath);
+            return null;
+        }
 
-        if (probe != null && probe.DurationSeconds > 0)
-        {
-            endEpochMs = startEpochMs + (long)(probe.DurationSeconds * 1000);
-            width = probe.Width;
-            height = probe.Height;
-            fps = probe.Fps;
-            hasAudio = probe.HasAudio;
-        }
-        else
-        {
-            int intervalMinutes = Math.Max(1, config.Storage.ChunkIntervalMinutes);
-            endEpochMs = startEpochMs + (intervalMinutes * 60 * 1000);
-        }
+        long endEpochMs = startEpochMs + (long)Math.Round(probe.DurationSeconds * 1000.0);
+        int width = probe.Width > 0 ? probe.Width : 1920;
+        int height = probe.Height > 0 ? probe.Height : 1080;
+        int fps = probe.Fps > 0 ? probe.Fps : (config.DefaultTargetFps > 0 ? config.DefaultTargetFps : 30);
+        bool hasAudio = probe.HasAudio;
 
         return new ChunkFinalizedEvent(
             StationId: stationId,
@@ -354,6 +348,25 @@ public class StorageScannerService : IStorageScannerService
     private static long TryParseStartEpoch(string fileName, DateTime fallbackCreationTimeUtc, string? configuredTzId)
     {
         string nameOnly = Path.GetFileNameWithoutExtension(fileName);
+
+        // 1. תבנית Epoch (שניות ומיקרו-שניות MediaMTX, למשל 1791582402_381843)
+        var matchEpoch = Regex.Match(nameOnly, @"(?:^|[_-])(?<sec>\d{10})(?:[_-](?<micro>\d{1,6}))?");
+        if (matchEpoch.Success && long.TryParse(matchEpoch.Groups["sec"].Value, out long sec))
+        {
+            long ms = sec * 1000;
+            if (matchEpoch.Groups["micro"].Success && long.TryParse(matchEpoch.Groups["micro"].Value, out long micro))
+            {
+                ms += (micro / 1000);
+            }
+            return ms;
+        }
+
+        // 2. תבנית Epoch ישירה במילישניות (13 ספרות, למשל 1791583050601)
+        var matchDirectMs = Regex.Match(nameOnly, @"^(\d{13})$");
+        if (matchDirectMs.Success && long.TryParse(matchDirectMs.Groups[1].Value, out long directMs))
+        {
+            return directMs;
+        }
 
         TimeZoneInfo tz;
         try
