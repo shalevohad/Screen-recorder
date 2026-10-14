@@ -505,7 +505,7 @@ export default function SoloSpotlightModal({
                     </div>
                 </div>
 
-                <div className="island-timeline-board-wrap" ref={timelineWrapRef}>
+                <div className="island-timeline-board-wrap">
                     <TimelineBoard
                         stations={memoizedSoloStations}
                         activeStationId={station.id}
