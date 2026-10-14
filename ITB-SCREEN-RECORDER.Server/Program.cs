@@ -265,6 +265,8 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<ISecurityService, SecurityService>();
                 builder.Services.AddSingleton<StationRolesService>();
 
+                builder.Services.AddAuthentication(BearerPassthroughAuthenticationHandler.SchemeName)
+                    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, BearerPassthroughAuthenticationHandler>(BearerPassthroughAuthenticationHandler.SchemeName, null);
                 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
                 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
                 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
