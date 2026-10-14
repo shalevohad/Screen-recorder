@@ -648,6 +648,9 @@ export default function ExtractorAdvancedStudio() {
                 totalDurationMs={totalTimelineDurationMs}
                 zoomLevel={zoomLevel}
                 onZoomChange={setZoomLevel}
+                onZoomReset={resetZoom}
+                onFitRange={fitRange}
+                onJumpViewportTo={jumpViewportTo}
                 viewportStartMs={viewportStartMs}
                 onViewportStartChange={setViewportStartMs}
                 playheadMs={playheadMs}

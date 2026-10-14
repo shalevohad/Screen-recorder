@@ -34,6 +34,9 @@ export default function SoloSpotlightModal({
     totalDurationMs = 3600000,
     zoomLevel = 1,
     onZoomChange,
+    onZoomReset,
+    onFitRange,
+    onJumpViewportTo,
     viewportStartMs = 0,
     onViewportStartChange,
     playheadMs = 0,
@@ -179,6 +182,53 @@ export default function SoloSpotlightModal({
         el.addEventListener('wheel', handleWheel, { passive: false, capture: true });
         return () => el.removeEventListener('wheel', handleWheel, { capture: true });
     }, [isOpen, station, onZoomChange, onViewportStartChange]);
+
+    const handleZoomReset = useCallback(() => {
+        if (onZoomReset) {
+            onZoomReset();
+        } else {
+            viewportStartRef.current = 0;
+            zoomLevelRef.current = 1;
+            onViewportStartChange?.(0);
+            onZoomChange?.(1);
+        }
+    }, [onZoomReset, onViewportStartChange, onZoomChange]);
+
+    const handleFitRange = useCallback((startMs, endMs) => {
+        if (onFitRange) {
+            onFitRange(startMs, endMs);
+        } else {
+            const cutDur = Math.max(1000, endMs - startMs);
+            const paddingMs = Math.max(500, cutDur * 0.05);
+            const targetStart = Math.max(0, startMs - paddingMs);
+            const targetEnd = Math.min(totalDurationMs, endMs + paddingMs);
+            const effectiveDur = targetEnd - targetStart;
+
+            const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
+            const targetZoom = Math.max(1, Math.min(maxDynamicZoom, Number((totalDurationMs / effectiveDur).toFixed(1))));
+            const newVpDur = totalDurationMs / targetZoom;
+            const newStart = Math.max(0, Math.min(targetStart, totalDurationMs - newVpDur));
+
+            viewportStartRef.current = newStart;
+            zoomLevelRef.current = targetZoom;
+            onViewportStartChange?.(newStart);
+            onZoomChange?.(targetZoom);
+        }
+    }, [onFitRange, totalDurationMs, onViewportStartChange, onZoomChange]);
+
+    const handleJumpViewportTo = useCallback((targetMs, align = 'center') => {
+        if (onJumpViewportTo) {
+            onJumpViewportTo(targetMs, align);
+        } else {
+            if (targetMs === null || targetMs === undefined) return;
+            const currentZoom = zoomLevelRef.current || 1;
+            const vpDur = totalDurationMs / Math.max(1, currentZoom);
+            const offset = align === 'start' ? vpDur / 4 : (vpDur * 0.75);
+            const targetStart = Math.max(0, Math.min(targetMs - offset, totalDurationMs - vpDur));
+            viewportStartRef.current = targetStart;
+            onViewportStartChange?.(targetStart);
+        }
+    }, [onJumpViewportTo, totalDurationMs, onViewportStartChange]);
 
     const handleTogglePlaySmart = useCallback(() => {
         setIsPlaying(prev => !prev);
@@ -515,6 +565,9 @@ export default function SoloSpotlightModal({
                         totalDurationMs={totalDurationMs}
                         zoomLevel={zoomLevel}
                         onZoomChange={onZoomChange}
+                        onZoomReset={handleZoomReset}
+                        onFitRange={handleFitRange}
+                        onJumpViewportTo={handleJumpViewportTo}
                         viewportStartMs={viewportStartMs}
                         onViewportStartChange={onViewportStartChange}
                         playheadMs={playheadMs}
