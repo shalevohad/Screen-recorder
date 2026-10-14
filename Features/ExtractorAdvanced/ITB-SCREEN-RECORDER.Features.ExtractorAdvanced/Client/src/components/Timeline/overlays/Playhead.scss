@@ -63,9 +63,18 @@
         }
 
         &.in-marker {
+            .marker-core-line {
+                background-color: #10B981;
+                box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+            }
+
             .handle-badge {
                 right: 9px;
                 border-radius: 6px 0 0 6px;
+                background-color: #064E3B;
+                border-color: #10B981;
+                color: #A7F3D0;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), 0 0 8px rgba(16, 185, 129, 0.35);
             }
 
             &.flipped .handle-badge {
@@ -89,12 +98,35 @@
                     border-radius: 0 6px 6px 0;
                 }
             }
+
+            &:hover {
+                .marker-core-line {
+                    background-color: #34D399;
+                    box-shadow: 0 0 12px #10B981;
+                }
+
+                .handle-badge {
+                    background-color: #10B981;
+                    color: #022C22;
+                    border-color: #34D399;
+                    box-shadow: 0 0 14px rgba(16, 185, 129, 0.85);
+                }
+            }
         }
 
         &.out-marker {
+            .marker-core-line {
+                background-color: #F43F5E;
+                box-shadow: 0 0 8px rgba(244, 63, 94, 0.6);
+            }
+
             .handle-badge {
                 left: 9px;
                 border-radius: 0 6px 6px 0;
+                background-color: #4C0519;
+                border-color: #F43F5E;
+                color: #FECDD3;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), 0 0 8px rgba(244, 63, 94, 0.35);
             }
 
             &.flipped .handle-badge {
@@ -118,17 +150,20 @@
                     border-radius: 6px 0 0 6px;
                 }
             }
-        }
 
-        &:hover .marker-core-line {
-            background-color: #06B6D4;
-            box-shadow: 0 0 8px #06B6D4;
-        }
+            &:hover {
+                .marker-core-line {
+                    background-color: #FB7185;
+                    box-shadow: 0 0 12px #F43F5E;
+                }
 
-        &:hover .handle-badge {
-            background-color: #06B6D4;
-            color: #020617;
-            border-color: #06B6D4;
+                .handle-badge {
+                    background-color: #F43F5E;
+                    color: #4C0519;
+                    border-color: #FB7185;
+                    box-shadow: 0 0 14px rgba(244, 63, 94, 0.85);
+                }
+            }
         }
     }
     /* 💡 מחט Playhead חלקה עם האצת חומרה מלאה */

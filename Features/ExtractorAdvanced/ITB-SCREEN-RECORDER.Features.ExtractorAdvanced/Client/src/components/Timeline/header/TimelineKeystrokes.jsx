@@ -168,8 +168,9 @@ function groupClusterEvents(events) {
                         }}
                     >
                         <div className="keystroke-tick-line" />
-                        <div className="keystroke-tick-cap" title={`${badgeText} at ${timeLabel}`}>
-                            <span className="keystroke-badge-text">{badgeText}</span>
+                        <div className="keystroke-pip-anchor" title={`${badgeText} at ${timeLabel}`}>
+                            <div className="keystroke-pip-glyph" />
+                            {isCluster && <span className="keystroke-pip-count">{count > 9 ? '9+' : count}</span>}
                         </div>
 
                         {/* תגית Tooltip טקטית */}

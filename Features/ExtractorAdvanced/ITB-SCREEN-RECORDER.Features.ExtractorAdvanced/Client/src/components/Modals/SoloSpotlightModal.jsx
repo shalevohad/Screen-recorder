@@ -57,7 +57,9 @@ export default function SoloSpotlightModal({
     setPlaybackSpeed: propSetPlaybackSpeed,
     keystrokeMode = 'BURN_IN',
     onChangeKeystrokeMode,
-    keystrokes = []
+    keystrokes = [],
+    showRulerKeystrokes = false,
+    onToggleRulerKeystrokes
 }) {
     const [localIsPlaying, setLocalIsPlaying] = useState(false);
     const isPlaying = propIsPlaying !== undefined ? propIsPlaying : localIsPlaying;
@@ -583,7 +585,9 @@ export default function SoloSpotlightModal({
                         }}
                         keystrokeMode={keystrokeMode}
                         onChangeKeystrokeMode={onChangeKeystrokeMode}
-                        showKeystrokes={keystrokeMode !== 'NONE' && keystrokeMode !== 'OFF'}
+                        showKeystrokes={showRulerKeystrokes}
+                        showRulerKeystrokes={showRulerKeystrokes}
+                        onToggleRulerKeystrokes={onToggleRulerKeystrokes}
                     />
                 </div>
             </div>

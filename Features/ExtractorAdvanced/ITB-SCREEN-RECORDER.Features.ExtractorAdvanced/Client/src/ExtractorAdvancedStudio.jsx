@@ -59,6 +59,9 @@ export default function ExtractorAdvancedStudio() {
 
     const [timeMode, setTimeMode] = useState(cached.timeMode || 'LOCAL');
     const [keystrokeMode, setKeystrokeMode] = useState(cached.keystrokeMode || 'BURN_IN');
+    const [showRulerKeystrokes, setShowRulerKeystrokes] = useState(() => {
+        return typeof cached.showRulerKeystrokes === 'boolean' ? cached.showRulerKeystrokes : false;
+    });
 
     useEffect(() => {
         initDstEngineAsync().catch(err => console.warn('[Studio] DST init error:', err));
@@ -310,7 +313,8 @@ export default function ExtractorAdvancedStudio() {
             isWorkspaceActive,
             isLooping,
             playbackSpeed,
-            keystrokeMode
+            keystrokeMode,
+            showRulerKeystrokes
         });
     }, [
         timeRange,
@@ -326,7 +330,8 @@ export default function ExtractorAdvancedStudio() {
         isLooping,
         playbackSpeed,
         timelineBaseEpochMs,
-        keystrokeMode
+        keystrokeMode,
+        showRulerKeystrokes
     ]);
 
     const handleLoadBookmark = useCallback((bm) => {
@@ -560,7 +565,9 @@ export default function ExtractorAdvancedStudio() {
                                     onEstimateLoaded={(est) => est?.removedGlobalGaps && setGlobalGaps(est.removedGlobalGaps)}
                                     keystrokeMode={keystrokeMode}
                                     onChangeKeystrokeMode={setKeystrokeMode}
-                                    showKeystrokes={keystrokeMode !== 'NONE' && keystrokeMode !== 'OFF'}
+                                    showKeystrokes={showRulerKeystrokes}
+                                    showRulerKeystrokes={showRulerKeystrokes}
+                                    onToggleRulerKeystrokes={() => setShowRulerKeystrokes(prev => !prev)}
                                 />
                             </div>
                         </div>
@@ -672,6 +679,8 @@ export default function ExtractorAdvancedStudio() {
                 keystrokeMode={keystrokeMode}
                 onChangeKeystrokeMode={setKeystrokeMode}
                 keystrokes={activeStationKeystrokes}
+                showRulerKeystrokes={showRulerKeystrokes}
+                onToggleRulerKeystrokes={() => setShowRulerKeystrokes(prev => !prev)}
             />
 
             <StationContextMenu
