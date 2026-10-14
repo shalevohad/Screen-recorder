@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvancedExtractorService.cs
 // ==========================================
 using System;
@@ -134,7 +134,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             if (frameData != null && frameData.Length > 0)
             {
-                _memoryCache?.Set(cacheKey, frameData, TimeSpan.FromMinutes(3));
+                _memoryCache?.Set(cacheKey, frameData, TimeSpan.FromMinutes(30));
                 return new MemoryStream(frameData);
             }
 
@@ -189,7 +189,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             var startInfo = new ProcessStartInfo
             {
                 FileName = ffmpegPath,
-                Arguments = $"-nostdin -loglevel error -noautorotate " +
+                Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
                             $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
                             $"-i \"{sampleChunk.FullPath.Replace('\\', '/')}\" " +
                             $"-vf \"{filter}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
@@ -216,7 +216,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 if (memoryStream.Length > 0)
                 {
                     byte[] sheetBytes = memoryStream.ToArray();
-                    _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(5));
+                    _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(30));
                     return new MemoryStream(sheetBytes);
                 }
             }
@@ -238,7 +238,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
             using var memoryStream = new MemoryStream(32768);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linkedCts.CancelAfter(TimeSpan.FromSeconds(5));
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(4));
 
             await _visualThrottle.WaitAsync(linkedCts.Token);
             try
@@ -246,9 +246,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate " +
-                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                                $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -frames:v 1 -q:v 2 -f image2pipe -vcodec mjpeg pipe:1",
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 32768 -analyzeduration 0 -flags2 +fast " +
+                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} -noaccurate_seek " +
+                                $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -frames:v 1 -q:v 3 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,
                     UseShellExecute = false,

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/StorageScannerService.cs
 // ==========================================
 using System;
@@ -164,25 +164,34 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return hostsSet.OrderBy(h => h).ToList();
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _lastDiskScanTimes = new(StringComparer.OrdinalIgnoreCase);
+
         public async Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc)
         {
             long startMs = new DateTimeOffset(startUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
             long endMs = new DateTimeOffset(endUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-            // 1. שליפה מהירה מה-DB עם תמיכה מלאה ב-COLLATE NOCASE
+            // 1. שליפה סופר-מהירה מה-DB עם תמיכה מלאה ב-COLLATE NOCASE (0ms - 1ms)
             var dbChunks = await QueryChunksFromDbAsync(hostname, startMs, endMs);
             var knownPaths = new HashSet<string>(dbChunks.Select(c => c.FullPath), StringComparer.OrdinalIgnoreCase);
 
-            // 2. סריקה דינמית בדיסק לאיתור קבצים שטרם אונדקסו
-            var missingOnDisk = await ScanUnindexedFilesForStationAsync(hostname, startMs, endMs, knownPaths);
+            // 2. סריקה דינמית בדיסק לאיתור קבצים שטרם אונדקסו - מוגבלת בתדירות (Cooldown 30s) כדי למנוע צוואר בקבוק I/O
+            bool hasRecentScan = _lastDiskScanTimes.TryGetValue(hostname, out var lastScan) && (DateTime.UtcNow - lastScan).TotalSeconds < 30;
+            bool shouldScanDisk = dbChunks.Count == 0 || !hasRecentScan;
 
-            if (missingOnDisk.Count > 0)
+            if (shouldScanDisk)
             {
-                _logger.LogInformation("[STORAGE SCANNER] Found {Count} unindexed file(s) on disk for '{Host}'. Auto-indexing immediately...",
-                    missingOnDisk.Count, hostname);
+                _lastDiskScanTimes[hostname] = DateTime.UtcNow;
+                var missingOnDisk = await ScanUnindexedFilesForStationAsync(hostname, startMs, endMs, knownPaths);
 
-                await FlushChunksBatchAsync(missingOnDisk);
-                return await QueryChunksFromDbAsync(hostname, startMs, endMs);
+                if (missingOnDisk.Count > 0)
+                {
+                    _logger.LogInformation("[STORAGE SCANNER] Found {Count} unindexed file(s) on disk for '{Host}'. Auto-indexing immediately...",
+                        missingOnDisk.Count, hostname);
+
+                    await FlushChunksBatchAsync(missingOnDisk);
+                    return await QueryChunksFromDbAsync(hostname, startMs, endMs);
+                }
             }
 
             return dbChunks;

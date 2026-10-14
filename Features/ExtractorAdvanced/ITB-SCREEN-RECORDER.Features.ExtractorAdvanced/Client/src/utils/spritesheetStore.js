@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/utils/spritesheetStore.js
 // ==========================================
 
@@ -7,10 +7,10 @@ const pendingTiles = new Map();
 let requestQueue = [];
 let activeWorkers = 0;
 
-// 💡 שמירה על משאבי ה-CPU של השרת בריבוי משתמשים במקביל
-const MAX_CONCURRENT = 2;
-const TASK_TIMEOUT_MS = 8000;
-const MAX_CACHE_ENTRIES = 250; // מניעת דליפות זיכרון ב-RAM בדפדפן
+// 💡 מקביליות מיטבית לטעינה מהירה של ה-Filmstrip ללא חנק המעבד
+const MAX_CONCURRENT = 4;
+const TASK_TIMEOUT_MS = 6000;
+const MAX_CACHE_ENTRIES = 500; // הגדלת מטמון אריחים ב-RAM
 
 function scheduleQueueProcessing() {
     setTimeout(processQueue, 0);
@@ -23,8 +23,8 @@ function processQueue() {
     requestQueue = requestQueue.filter(task => !task.signal?.aborted);
 
     while (activeWorkers < MAX_CONCURRENT && requestQueue.length > 0) {
-        // 💡 FIFO: שליפת המשימה הראשונה (מההתחלה לסוף כרונולוגית)
-        const task = requestQueue.shift();
+        // 💡 LIFO: שליפת האריחים שנוספו אחרונים (האזור שהמשתמש מביט בו כעת ב-Viewport)
+        const task = requestQueue.pop();
         if (!task || task.signal?.aborted) continue;
 
         activeWorkers++;

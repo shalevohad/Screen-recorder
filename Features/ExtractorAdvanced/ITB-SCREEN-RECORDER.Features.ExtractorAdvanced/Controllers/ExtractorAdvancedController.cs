@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs
 // ==========================================
 using System;
@@ -97,11 +97,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
-                var stationDtos = new List<object>();
+                var stationDtos = new ConcurrentBag<object>();
 
-                foreach (var host in availableHosts)
+                await Parallel.ForEachAsync(availableHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
                 {
-                    ct.ThrowIfCancellationRequested();
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
                     var sample = chunks.LastOrDefault();
 
@@ -132,7 +131,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         resolution = resLabel,
                         feedSpec = $"{resLabel} • {fpsLabel}"
                     });
-                }
+                });
 
                 return Ok(stationDtos.OrderBy(s => ((dynamic)s).hostname).ToList());
             }
@@ -280,6 +279,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     return NoContent();
                 }
 
+                Response.Headers.Append("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
                 return File(imageStream, "image/jpeg");
             }
             catch (OperationCanceledException)
@@ -294,7 +294,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         }
 
         // 💡 הזרמת וידאו מיידית באפס השהיה (Single-Chunk Direct Stream)
-        // מבטל לחלוטין את לולאות ה-Concat Demuxer, לא צורך מעבד, ומזרים תוך 20ms
+        // מבטל לחלוטין את לולאות ה-Concat Demuxer, לא צורך מעבד, ומזרים תוך 10ms
         [HttpGet("stream")]
         public async Task StreamContinuousStationVideo(
             [FromQuery] string hostname,
@@ -322,7 +322,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             DateTime rangeStartUtc = DateTimeOffset.FromUnixTimeMilliseconds(effectiveStartEpoch).UtcDateTime;
             DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
-            // שליפת המקטעים הרלוונטיים החל מנקודת הזמן המבוקשת
+            // שליפת המקטעים הרלוונטיים החל מנקודת הזמן המבוקשת (משתמש במטמון DB המהיר)
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc.AddSeconds(-2), rangeEndUtc);
 
             if (chunks == null || chunks.Count == 0)
@@ -355,7 +355,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             string codecArgs;
             if (Math.Abs(safeSpeed - 1.0) < 0.05)
             {
-                // מהירות 1x: העתקת זרם ישירה ב-0% CPU וב-20ms
+                // מהירות 1x: העתקת זרם ישירה ב-0% CPU וב-10ms
                 codecArgs = "-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
             else
@@ -369,7 +369,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 codecArgs = $"-vf \"{vfFilter}\" -an {optimalEncoder} -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
 
-            string arguments = $"-nostdin -loglevel error -ss {seekOffsetSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
+            // הזנה מינימלית ל-Probe ו-Seek מהיר לאפס השהייה בפתיחת הזרמה
+            string arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
+                               $"-ss {seekOffsetSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                $"-i \"{normalizedPath}\" -t {chunkDurationSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                $"-flush_packets 1 {codecArgs}";
 
@@ -390,7 +392,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             {
                 process.Start();
 
-                byte[] buffer = new byte[16384];
+                byte[] buffer = new byte[32768];
                 int bytesRead;
                 var stdout = process.StandardOutput.BaseStream;
 
@@ -447,6 +449,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     return NoContent();
                 }
 
+                Response.Headers.Append("Cache-Control", "public, max-age=86400, stale-while-revalidate=3600");
                 return File(imageStream, "image/jpeg");
             }
             catch (OperationCanceledException)

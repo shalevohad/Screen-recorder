@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Feed/CameraCardFeed.jsx
 // ==========================================
 import React, { useRef, useState, useEffect, useCallback } from 'react';
@@ -97,7 +97,8 @@ export default function CameraCardFeed({
         }
 
         setIsLoadingFrame(true);
-        const delayMs = wasPlaying ? 40 : 200;
+        // 💡 תגובה סופר-מהירה (40ms במקום 200ms) לעדכון כרטיסי המצלמה
+        const delayMs = wasPlaying ? 25 : 40;
 
         const timer = setTimeout(() => {
             if (!isMounted) return;

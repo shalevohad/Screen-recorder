@@ -109,7 +109,7 @@
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 
-		<None Include="Tools\Win\mediamtx.exe">
+		<None Include="Tools\Win\mediamtx.exe" Condition="Exists('Tools\Win\mediamtx.exe')">
 			<TargetPath>MediaMTX\mediamtx.exe</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>

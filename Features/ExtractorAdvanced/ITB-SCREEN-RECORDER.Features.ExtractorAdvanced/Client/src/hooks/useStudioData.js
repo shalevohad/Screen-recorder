@@ -1,12 +1,14 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/hooks/useStudioData.js
 // ==========================================
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, timeRange, timeMode, activeStationId = null) {
     const [allStations, setAllStations] = useState([]);
     const [recordingSegments, setRecordingSegments] = useState({});
     const [isLoadingStations, setIsLoadingStations] = useState(false);
+    const allStationsRef = useRef(allStations);
+    allStationsRef.current = allStations;
 
     const fetchActiveStationsForTimeScope = useCallback(async () => {
         if (isNaN(timelineBaseEpochMs)) return;
@@ -117,7 +119,7 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
 
                     // 💡 מיפוי כפול (Dual Keying): הנגשת המקטעים גם לפי station.id וגם לפי station.hostname
                     const normalizedMap = {};
-                    allStations.forEach(st => {
+                    (allStationsRef.current || []).forEach(st => {
                         const segs = rawData[st.id] || rawData[st.hostname] || rawData[st.displayName] || [];
                         normalizedMap[st.id] = segs;
                         normalizedMap[st.hostname] = segs;
@@ -137,7 +139,7 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
 
         fetchSegments();
         return () => { isMounted = false; };
-    }, [stationQueryKeys, timelineBaseEpochMs, totalTimelineDurationMs, allStations]);
+    }, [stationQueryKeys, timelineBaseEpochMs, totalTimelineDurationMs]);
 
     const movieBoundaries = useMemo(() => {
         if (!allStations.length || !timelineBaseEpochMs) {

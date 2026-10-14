@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Server/Program.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Abstractions;
@@ -210,6 +210,11 @@ namespace ITB_SCREEN_RECORDER.Server
                     options.AddDefaultPolicy(p => p.SetIsOriginAllowed(_ => true).AllowAnyMethod().AllowAnyHeader().AllowCredentials());
                 });
 
+                builder.Services.AddResponseCompression(options =>
+                {
+                    options.EnableForHttps = true;
+                });
+
                 var mvcBuilder = builder.Services.AddControllers()
                     .AddJsonOptions(options =>
                     {
@@ -296,6 +301,7 @@ namespace ITB_SCREEN_RECORDER.Server
                     app.UseSwaggerUI();
                 }
 
+                app.UseResponseCompression();
                 app.UseDefaultFiles();
                 app.UseStaticFiles();
                 app.UseRouting();

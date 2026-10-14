@@ -1,7 +1,7 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineTrack.jsx
 // ==========================================
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { spritesheetStore } from '../../../utils/spritesheetStore.js';
 import './TimelineTrack.scss';
 
@@ -33,6 +33,9 @@ export default function TimelineTrack({
     disableFilmstrip = false
 }) {
     const [tilesMap, setTilesMap] = useState({});
+    const tilesMapRef = useRef(tilesMap);
+    tilesMapRef.current = tilesMap;
+
     const hostname = station?.hostname || station?.name || '';
     const stationId = station?.id || hostname;
 
@@ -102,7 +105,7 @@ export default function TimelineTrack({
         timelineTiles.forEach(tile => {
             const cached = spritesheetStore.get(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile);
             if (cached) {
-                if (tilesMap[tile.key] !== cached) {
+                if (tilesMapRef.current[tile.key] !== cached) {
                     immediateUpdates[tile.key] = cached;
                     hasImmediate = true;
                 }
@@ -111,27 +114,32 @@ export default function TimelineTrack({
             }
         });
 
-        if (hasImmediate) setTilesMap(prev => ({ ...prev, ...immediateUpdates }));
+        if (hasImmediate) {
+            Object.assign(tilesMapRef.current, immediateUpdates);
+            setTilesMap(prev => ({ ...prev, ...immediateUpdates }));
+        }
 
         if (missingTiles.length === 0) return () => { isMounted = false; };
 
+        // 💡 דיבאונס קצר ומהיר (45ms במקום 140ms)
         const debounceTimer = setTimeout(() => {
             missingTiles.forEach(tile => {
                 spritesheetStore.fetchTile(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile, abortController.signal)
                     .then(blobUrl => {
                         if (isMounted && blobUrl) {
+                            tilesMapRef.current[tile.key] = blobUrl;
                             setTilesMap(prev => ({ ...prev, [tile.key]: blobUrl }));
                         }
                     });
             });
-        }, 140);
+        }, 45);
 
         return () => {
             isMounted = false;
             clearTimeout(debounceTimer);
             abortController.abort();
         };
-    }, [timelineTiles, hostname, tilesMap]);
+    }, [timelineTiles, hostname]);
 
     const inPercent = ((inPointMs - viewportStartMs) / viewportDurationMs) * 100;
     const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;
