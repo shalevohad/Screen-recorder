@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.scss
 // ==========================================
 
@@ -9,11 +9,13 @@
     display: flex;
     flex-direction: column;
     flex: 0 0 auto;
-    overflow: hidden;
+    overflow: visible;
     user-select: none;
 
     .timeline-top-deck {
         display: flex;
+        position: relative;
+        z-index: 100;
         width: 100%;
         margin-bottom: 4px;
         box-sizing: border-box;
@@ -54,6 +56,8 @@
             }
 
             .ruler-container-offset {
+                position: relative;
+                z-index: 110;
                 width: 100%;
                 height: 26px;
                 box-sizing: border-box;
@@ -116,6 +120,7 @@
 .tracks-with-export-layout {
     display: block !important;
     position: relative !important;
+    z-index: 10 !important;
     width: 100% !important;
     background: transparent !important;
     padding-right: 58px !important;

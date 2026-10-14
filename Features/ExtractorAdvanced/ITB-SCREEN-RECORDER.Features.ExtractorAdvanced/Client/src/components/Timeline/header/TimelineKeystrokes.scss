@@ -96,7 +96,7 @@
             pointer-events: none;
             opacity: 0;
             white-space: nowrap;
-            z-index: 9999;
+            z-index: 99999;
             transition: opacity 0.15s ease, transform 0.15s ease;
 
             // חץ קטן המצביע מעלה לעבר השנתת
@@ -170,7 +170,7 @@
         }
 
         &:hover {
-            z-index: 9999;
+            z-index: 99999;
             transform: translateX(-50%) scale(1.1);
 
             .keystroke-tick-line {
