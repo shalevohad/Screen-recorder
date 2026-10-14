@@ -4,12 +4,12 @@
 
 .playhead-overlay-pane {
     position: absolute;
-    top: 38px;
+    top: 44px;
     bottom: 0;
     left: 180px;
     right: 58px;
     pointer-events: none;
-    z-index: 40;
+    z-index: 500;
     overflow: hidden;
 
     .draggable-cut-band {
@@ -161,7 +161,7 @@
 
         .head-badge {
             position: absolute;
-            top: 36px;
+            top: 29px;
             left: 50%;
             transform: translateX(-50%);
             height: 18px;

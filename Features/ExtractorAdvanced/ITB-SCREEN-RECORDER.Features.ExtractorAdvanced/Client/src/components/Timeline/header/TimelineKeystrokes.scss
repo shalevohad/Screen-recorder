@@ -78,37 +78,60 @@
             }
         }
 
-        // טולטיפ צף מתחת לשנתת (לא מוסתר ע"י ה-Overview Strip)
+        // טולטיפ צף מעל השנתת (נפתח כלפי מעלה כדי למנוע חיתוך בתחתית המסך)
         .keystroke-tooltip {
             position: absolute;
-            top: calc(100% + 5px);
+            bottom: calc(100% + 5px);
+            top: auto;
             left: 50%;
-            transform: translateX(-50%) translateY(-3px);
+            transform: translateX(-50%) translateY(3px);
             display: flex;
             flex-direction: column;
             gap: 2.5px;
             padding: 3px 6px;
             background: rgba(9, 14, 26, 0.98);
-            backdrop-filter: blur(12px);
+            backdrop-filter: blur(14px);
             border: 1px solid #00f0ff;
             border-radius: 4px;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 240, 255, 0.3);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 240, 255, 0.35);
             pointer-events: none;
             opacity: 0;
             white-space: nowrap;
             z-index: 99999;
             transition: opacity 0.15s ease, transform 0.15s ease;
 
-            // חץ קטן המצביע מעלה לעבר השנתת
+            // חץ קטן המצביע כלפי מטה לעבר השנתת
             &::before {
                 content: '';
                 position: absolute;
-                bottom: 100%;
+                top: 100%;
                 left: 50%;
                 transform: translateX(-50%);
                 border-width: 3.5px;
                 border-style: solid;
-                border-color: transparent transparent #00f0ff transparent;
+                border-color: #00f0ff transparent transparent transparent;
+            }
+
+            &.edge-left {
+                left: 0;
+                transform: translateX(0) translateY(3px);
+
+                &::before {
+                    left: 12px;
+                    transform: translateX(0);
+                }
+            }
+
+            &.edge-right {
+                left: auto;
+                right: 0;
+                transform: translateX(0) translateY(3px);
+
+                &::before {
+                    left: auto;
+                    right: 12px;
+                    transform: translateX(0);
+                }
             }
 
             .tooltip-header {
@@ -182,6 +205,14 @@
             .keystroke-tooltip {
                 opacity: 1;
                 transform: translateX(-50%) translateY(0);
+
+                &.edge-left {
+                    transform: translateX(0) translateY(0);
+                }
+
+                &.edge-right {
+                    transform: translateX(0) translateY(0);
+                }
             }
         }
     }

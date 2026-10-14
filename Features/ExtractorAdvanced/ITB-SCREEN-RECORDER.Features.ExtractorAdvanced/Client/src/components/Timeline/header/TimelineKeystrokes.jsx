@@ -155,6 +155,7 @@ function groupClusterEvents(events) {
                 const badgeText = formatBadgeText(cluster);
                 const timeLabel = formatTooltipTime(cluster.startEpochMs);
                 const groups = groupClusterEvents(cluster.events);
+                const edgeClass = cluster.pct < 10 ? 'edge-left' : (cluster.pct > 90 ? 'edge-right' : '');
 
                 return (
                     <div
@@ -172,7 +173,7 @@ function groupClusterEvents(events) {
                         </div>
 
                         {/* תגית Tooltip טקטית */}
-                        <div className="keystroke-tooltip">
+                        <div className={`keystroke-tooltip ${edgeClass}`}>
                             <div className="tooltip-header">
                                 <span className="tooltip-type">
                                     {isCluster ? `KEYSTROKE BURST (${count})` : 'KEYSTROKE'}
