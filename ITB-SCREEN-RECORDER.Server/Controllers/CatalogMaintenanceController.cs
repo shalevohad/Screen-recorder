@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Controllers;
+namespace ITB_SCREEN_RECORDER.Server.Controllers;
 
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -31,7 +31,7 @@ public class CatalogMaintenanceController : ControllerBase
     /// קבלת סטטוס תהליך האינדוקס הנוכחי (Polling עבור הווידג'ט הצף GlobalJobIndicator ולשונית Maintenance)
     /// </summary>
     [HttpGet("reindex/status")]
-    [AuthorizePermission(PermissionKeys.SettingsView)]
+    [AuthorizePermission(PermissionKeys.StationsView)]
     public IActionResult GetReindexStatus()
     {
         var status = _maintenanceService.GetCurrentJobState();

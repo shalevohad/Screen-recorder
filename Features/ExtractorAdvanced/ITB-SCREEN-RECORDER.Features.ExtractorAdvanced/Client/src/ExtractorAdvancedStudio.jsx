@@ -152,6 +152,9 @@ export default function ExtractorAdvancedStudio() {
         return allStations.find(s => s.id === spotlightStationId) || null;
     }, [allStations, spotlightStationId]);
 
+    // 💡 האם Spotlight מוצג כעת במסך מלא
+    const isSpotlightOpen = Boolean(spotlightStationId && spotlightStation);
+
     const lastViewBeforeFullscreenRef = useRef('grid');
     const timelineContainerRef = useRef(null);
 
@@ -457,9 +460,6 @@ export default function ExtractorAdvancedStudio() {
 
     const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
     const currentPlayheadEpochMs = timelineBaseEpochMs + playheadMs;
-
-    // 💡 האם Spotlight מוצג כעת במסך מלא
-    const isSpotlightOpen = Boolean(spotlightStationId && spotlightStation);
 
     return (
         <div className="extractor-advanced-studio">

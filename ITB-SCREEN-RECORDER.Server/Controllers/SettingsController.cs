@@ -46,10 +46,39 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpGet]
-        [AuthorizePermission(PermissionKeys.SettingsView)]
+        [AuthorizePermission(PermissionKeys.StationsView)]
         public IActionResult Get()
         {
-            return Ok(_configMonitor.CurrentValue);
+            var config = _configMonitor.CurrentValue;
+            if (!User.HasClaim("is_root", "true") && !User.HasClaim("perm", PermissionKeys.SecurityRolesManage))
+            {
+                if (config.Security != null && !string.IsNullOrEmpty(config.Security.JwtSecretKey))
+                {
+                    var masked = new SystemConfig
+                    {
+                        HttpPort = config.HttpPort,
+                        RecordingRetentionDays = config.RecordingRetentionDays,
+                        MaxStorageQuotaGb = config.MaxStorageQuotaGb,
+                        DashboardRefreshRateMs = config.DashboardRefreshRateMs,
+                        DisplayTimezone = config.DisplayTimezone,
+                        DisplayLocale = config.DisplayLocale,
+                        ManualDstTransitions = config.ManualDstTransitions,
+                        Dashboard = config.Dashboard,
+                        MediaMtx = config.MediaMtx,
+                        Storage = config.Storage,
+                        DefaultVideoBitrate = config.DefaultVideoBitrate,
+                        DefaultTargetFps = config.DefaultTargetFps,
+                        Security = new SecuritySettings
+                        {
+                            AllowedAdAdminGroup = config.Security.AllowedAdAdminGroup,
+                            TokenExpirationHours = config.Security.TokenExpirationHours,
+                            JwtSecretKey = "***"
+                        }
+                    };
+                    return Ok(masked);
+                }
+            }
+            return Ok(config);
         }
 
         [HttpGet("dst-transitions")]
