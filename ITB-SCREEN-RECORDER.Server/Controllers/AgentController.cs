@@ -1,5 +1,5 @@
 ﻿// ==========================================
-// File: Server/Controllers/AgentController.cs
+// File: ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
@@ -8,6 +8,7 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -36,7 +37,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public string? Bitrate { get; set; }
     }
 
-    // 💡 מודל טופס מאוחד: מונע קריסה של Swagger Generator ב-multipart/form-data
     public class UploadBufferRequest
     {
         public string Hostname { get; set; } = string.Empty;
@@ -91,7 +91,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(validationErrors);
             }
 
-            // 💡 קליטת Keystrokes חיים שנשלחו בדוח הטלמטריה השוטף
             if (report.Keystrokes != null && report.Keystrokes.Count > 0)
             {
                 try
@@ -220,7 +219,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     )
                 });
 
-                // 💡 קליטת קובץ ה-Sidecar (.keys.jsonl) של המקשים שנשלח בטופס
                 var keysFile = request.KeysFile ?? Request.Form.Files["keysFile"] ?? Request.Form.Files["keys_file"];
                 if (keysFile != null && keysFile.Length > 0)
                 {
@@ -289,14 +287,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         await _catalogRepository.BulkInsertKeystrokesAsync(hostname, ingestedKeystrokes);
                         _logger.LogInformation("[SYNC INGEST] Successfully parsed and ingested {Count} offline keys for {Host}", ingestedKeystrokes.Count, hostname);
                     }
-                    else
-                    {
-                        _logger.LogWarning("[SYNC INGEST] Keys sidecar file '{FileName}' was present but yielded 0 valid keystrokes.", keysFile.FileName);
-                    }
-                }
-                else
-                {
-                    _logger.LogDebug("[SYNC INGEST] No keys sidecar attached for chunk '{File}' from '{Host}'", safeFileName, hostname);
                 }
 
                 _logger.LogInformation("[SYNC INGEST] Synced & Indexed offline chunk from '{Host}': '{File}' (Epoch: {Epoch}, Size: {Size} bytes)",
@@ -312,6 +302,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("tuning/{hostname}")]
+        [AuthorizePermission(PermissionKeys.SettingsAgents)]
         public async Task<IActionResult> UpdateStationTuning(string hostname, [FromBody] AgentTuningRequest request)
         {
             if (string.IsNullOrWhiteSpace(hostname) || request == null)
@@ -351,6 +342,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("command/{hostname}")]
+        [AuthorizePermission(PermissionKeys.StationsControl)]
         public IActionResult EnforceStreamingPolicy(string hostname, [FromQuery] bool enable)
         {
             _telemetryState.SetAgentStreamState(hostname, enable);
@@ -365,6 +357,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("fleet-streaming-policy")]
+        [AuthorizePermission(PermissionKeys.StationsControl)]
         public IActionResult EnforceFleetWideStreamingPolicy(
             [FromBody] FleetStreamingPolicyRequest? request,
             [FromQuery] bool? enable)

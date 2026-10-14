@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Security;
+using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
@@ -16,25 +18,29 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly ITelemetryStateService _telemetryState;
         private readonly StationOverridesService _overridesService;
         private readonly CustomTabsService _tabsService;
-        // שימוש ב-IOptionsMonitor מבטיח טעינת שינויים מיידית ללא Restart
+        private readonly ICatalogRepository _catalogRepository;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
 
         public DashboardController(
             ITelemetryStateService telemetryState,
             StationOverridesService overridesService,
             CustomTabsService tabsService,
+            ICatalogRepository catalogRepository,
             IOptionsMonitor<SystemConfig> configMonitor)
         {
             _telemetryState = telemetryState;
             _overridesService = overridesService;
             _tabsService = tabsService;
+            _catalogRepository = catalogRepository;
             _configMonitor = configMonitor;
         }
 
         [HttpGet("stations")]
-        public IActionResult GetStationsSummary()
+        [AuthorizePermission(PermissionKeys.StationsView)]
+        public async Task<IActionResult> GetStationsSummary()
         {
             var agents = _telemetryState.GetAllAgents();
+            var aliases = await _catalogRepository.GetAllStationRoleAliasesAsync();
 
             var host = Request.Host.Value.Split(':')[0];
             var hlsPort = _configMonitor.CurrentValue.MediaMtx.HlsPort;
@@ -43,18 +49,17 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             {
                 bool isOnline = (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15;
                 bool isStreaming = agent.IsStreaming;
+                aliases.TryGetValue(agent.Hostname, out string? roleAlias);
 
                 return new
                 {
                     agent.Hostname,
+                    RoleAlias = roleAlias,
                     agent.IpAddress,
                     IsOnline = isOnline,
                     IsStreaming = isStreaming,
-                    // יישור טרמינולוגיה: חיווי הקלטה רשמי
                     IsRecording = isStreaming,
-                    // חותמת זמן מדויקת שנשמרת מהסוכן ומבטלת איפוס טיימר
                     RecordingStartedAtUtc = isStreaming ? agent.RecordingStartedAtUtc : null,
-                    // שינוי הסטטוס מ-Streaming ל-Recording
                     Status = isOnline ? (isStreaming ? "Recording" : "Standby") : "Offline",
 
                     HasAudio = agent.HasActiveMicrophone || agent.HasActiveSpeakers,
@@ -88,14 +93,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpGet("config")]
+        [AuthorizePermission(PermissionKeys.StationsView)]
         public IActionResult GetDashboardConfig()
         {
             return Ok(_configMonitor.CurrentValue.Dashboard);
         }
 
-        #region Custom Tabs API (ניהול טאבים, FPS ו-Bitrate)
+        #region Custom Tabs API
 
         [HttpGet("tabs")]
+        [AuthorizePermission(PermissionKeys.StationsView)]
         public async Task<IActionResult> GetTabs()
         {
             var tabs = await _tabsService.GetAllTabsAsync();
@@ -103,6 +110,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("tabs")]
+        [AuthorizePermission(PermissionKeys.StationsManage)]
         public async Task<IActionResult> SaveTab([FromBody] CustomTabModel model)
         {
             if (model == null || string.IsNullOrWhiteSpace(model.Name))
@@ -115,6 +123,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpDelete("tabs/{tabId}")]
+        [AuthorizePermission(PermissionKeys.StationsManage)]
         public async Task<IActionResult> DeleteTab(string tabId)
         {
             bool deleted = await _tabsService.DeleteTabAsync(tabId);
@@ -123,6 +132,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("tabs/{tabId}/assign/{hostname}")]
+        [AuthorizePermission(PermissionKeys.StationsManage)]
         public async Task<IActionResult> AssignStationToTab(string tabId, string hostname)
         {
             await _tabsService.AssignStationAsync(tabId, hostname);
@@ -130,6 +140,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("tabs/{tabId}/remove/{hostname}")]
+        [AuthorizePermission(PermissionKeys.StationsManage)]
         public async Task<IActionResult> RemoveStationFromTab(string tabId, string hostname)
         {
             await _tabsService.RemoveStationAsync(tabId, hostname);
@@ -141,6 +152,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         #region Station Overrides API
 
         [HttpGet("stations/overrides")]
+        [AuthorizePermission(PermissionKeys.StationsView)]
         public async Task<IActionResult> GetStationOverrides()
         {
             var overrides = await _overridesService.GetAllAsync();
@@ -148,6 +160,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("stations/{hostname}/override")]
+        [AuthorizePermission(PermissionKeys.SettingsAgents)]
         public async Task<IActionResult> SetStationOverride(string hostname, [FromBody] StationOverride request)
         {
             if (string.IsNullOrWhiteSpace(hostname) || request == null)
@@ -160,6 +173,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpDelete("stations/{hostname}/override")]
+        [AuthorizePermission(PermissionKeys.SettingsAgents)]
         public async Task<IActionResult> RemoveStationOverride(string hostname)
         {
             if (string.IsNullOrWhiteSpace(hostname))
@@ -172,6 +186,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpDelete("stations/overrides/reset-all")]
+        [AuthorizePermission(PermissionKeys.SettingsAgents)]
         public async Task<IActionResult> ResetAllStationOverrides()
         {
             await _overridesService.ResetAllOverridesAsync();

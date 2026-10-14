@@ -1,0 +1,349 @@
+// ==========================================
+// File: src/components/Settings/styles/_securityAccessTab.scss
+// ==========================================
+.security-access-fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+
+    .security-subpanel {
+        background: rgba(11, 15, 25, 0.45);
+        border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+        border-radius: var(--radius-lg, 12px);
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+
+        .subpanel-header {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+
+            &.flex-between {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            h4 {
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-size: 0.86rem;
+                font-weight: 800;
+                color: var(--accent-cyan-light, #38BDF8);
+                letter-spacing: 0.04em;
+                margin: 0;
+            }
+
+            .subpanel-desc {
+                font-size: 0.74rem;
+                color: var(--text-secondary, #94A3B8);
+            }
+
+            .btn-add-entity {
+                height: 32px;
+                padding: 0 12px;
+                border-radius: 6px;
+                background: rgba(6, 182, 212, 0.12);
+                border: 1px solid var(--accent-cyan, #06B6D4);
+                color: var(--accent-cyan-light, #38BDF8);
+                font-size: 0.74rem;
+                font-weight: 700;
+                cursor: pointer;
+
+                &:hover {
+                    background: var(--accent-cyan);
+                    color: #000;
+                }
+            }
+        }
+
+        .auth-mode-cards-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+
+            .auth-mode-card {
+                background: var(--surface-card, #151E2E);
+                border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
+                border-radius: var(--radius-controls, 8px);
+                padding: 14px;
+                cursor: pointer;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                transition: all 0.18s ease;
+
+                .card-top {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+
+                    .mode-badge {
+                        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                        font-size: 9px;
+                        font-weight: 800;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+
+                        &.open {
+                            background: rgba(16, 185, 129, 0.15);
+                            color: #34D399;
+                        }
+
+                        &.strict-local {
+                            background: rgba(245, 158, 11, 0.15);
+                            color: #FBBF24;
+                        }
+
+                        &.strict-ldap {
+                            background: rgba(6, 182, 212, 0.15);
+                            color: #38BDF8;
+                        }
+                    }
+
+                    .radio-pip {
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 50%;
+                        border: 2px solid var(--border-subtle);
+                    }
+                }
+
+                p {
+                    margin: 0;
+                    font-size: 0.72rem;
+                    color: var(--text-secondary, #94A3B8);
+                    line-height: 1.4;
+                }
+
+                &.active {
+                    border-color: var(--accent-cyan, #06B6D4);
+                    background: rgba(6, 182, 212, 0.08);
+
+                    .card-top .radio-pip {
+                        background: var(--accent-cyan);
+                        border-color: var(--accent-cyan);
+                        box-shadow: 0 0 8px var(--accent-cyan-glow);
+                    }
+                }
+            }
+        }
+
+        .ldap-form-grid {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 12px;
+
+            .fullwidth {
+                grid-column: span 2;
+            }
+
+            .ldap-form-actions {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-top: 4px;
+
+                .ssl-checkbox {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 0.76rem;
+                    color: var(--text-primary);
+                    cursor: pointer;
+                }
+
+                .btn-save-sm {
+                    height: 34px;
+                    padding: 0 16px;
+                    border-radius: 6px;
+                    background: var(--accent-cyan);
+                    color: #000;
+                    font-weight: 700;
+                    border: none;
+                    cursor: pointer;
+                }
+            }
+        }
+
+        .table-responsive-box {
+            overflow-x: auto;
+
+            .security-data-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.76rem;
+
+                thead th {
+                    padding: 8px 10px;
+                    background: rgba(0, 0, 0, 0.2);
+                    color: var(--text-muted);
+                    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                    text-align: left;
+                }
+
+                tbody tr {
+                    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+
+                    td {
+                        padding: 10px;
+                        vertical-align: middle;
+                    }
+
+                    .mono-text {
+                        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+
+                        &.bold {
+                            font-weight: 700;
+                            color: #FFF;
+                        }
+
+                        &.date {
+                            font-size: 0.7rem;
+                            color: var(--text-muted);
+                        }
+                    }
+
+                    .role-tag-pill {
+                        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                        font-size: 9px;
+                        font-weight: 700;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        background: rgba(6, 182, 212, 0.12);
+                        color: var(--accent-cyan-light);
+                        border: 1px solid rgba(6, 182, 212, 0.3);
+                    }
+
+                    .roles-chips-cell {
+                        display: flex;
+                        gap: 4px;
+                        flex-wrap: wrap;
+                    }
+
+                    .table-actions-group {
+                        display: inline-flex;
+                        gap: 10px;
+                        align-items: center;
+
+                        .btn-tbl-action {
+                            background: transparent;
+                            border: 1px solid var(--border-subtle);
+                            color: var(--text-secondary);
+                            padding: 3px 8px;
+                            border-radius: 4px;
+                            font-size: 0.7rem;
+                            cursor: pointer;
+
+                            &:hover {
+                                color: #FFF;
+                                border-color: var(--accent-cyan);
+                            }
+                        }
+                    }
+
+                    .btn-text-danger {
+                        background: transparent;
+                        border: none;
+                        color: var(--c2-red-light, #F87171);
+                        font-size: 0.72rem;
+                        cursor: pointer;
+
+                        &:hover {
+                            text-decoration: underline;
+                        }
+                    }
+                }
+
+                .empty-row {
+                    text-align: center;
+                    padding: 20px;
+                    color: var(--text-muted);
+                }
+            }
+        }
+    }
+
+    .security-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        background: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(12px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        .security-modal-card {
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            width: 420px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+
+            h3 {
+                margin: 0;
+                color: #FFF;
+                font-size: 1.1rem;
+            }
+
+            .roles-checkboxes-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+                margin-top: 4px;
+
+                .role-check-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 0.76rem;
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                }
+            }
+
+            .tactical-select {
+                width: 100%;
+                height: 38px;
+                background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+                border: 1px solid var(--border-subtle);
+                border-radius: 8px;
+                color: #FFF;
+                padding: 0 10px;
+                outline: none;
+            }
+
+            .modal-actions-row {
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                margin-top: 8px;
+
+                button {
+                    height: 36px;
+                    padding: 0 16px;
+                    border-radius: 6px;
+                    font-weight: 700;
+                    cursor: pointer;
+                }
+
+                .btn-cancel {
+                    background: transparent;
+                    border: 1px solid var(--border-subtle);
+                    color: var(--text-secondary);
+                }
+
+                .btn-save {
+                    background: var(--accent-cyan);
+                    border: none;
+                    color: #000;
+                }
+            }
+        }
+    }
+}

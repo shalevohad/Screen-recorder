@@ -1,5 +1,7 @@
+// ==========================================
+// File: Client/src/components/UI/TabConfigModal.jsx
+// ==========================================
 import { useState, useEffect, useMemo } from 'react';
-import RangeSlider from '../UI/RangeSlider';
 import './TabConfigModal.scss';
 
 export default function TabConfigModal({
@@ -13,14 +15,6 @@ export default function TabConfigModal({
     const [assignedHostnames, setAssignedHostnames] = useState(initialData?.assignedHostnames || []);
     const [assignedOus, setAssignedOus] = useState(initialData?.assignedOus || []);
     const [adSettings, setAdSettings] = useState({ isEnabled: false, availableOus: [], loading: true });
-
-    const [enableBitrate, setEnableBitrate] = useState(!!initialData?.defaultBitrate);
-    const [defaultBitrate, setDefaultBitrate] = useState(initialData?.defaultBitrate || 2500);
-
-    const [enableFps, setEnableFps] = useState(!!initialData?.defaultFps);
-    const [defaultFps, setDefaultFps] = useState(initialData?.defaultFps || 30);
-
-    // שדה חיפוש תחנות ייעודי
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
@@ -59,12 +53,12 @@ export default function TabConfigModal({
         );
     };
 
-    // סינון תחנות לפי שדה החיפוש
     const filteredStations = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
         if (!q) return allStations;
         return allStations.filter(st =>
             (st.hostname && st.hostname.toLowerCase().includes(q)) ||
+            (st.roleAlias && st.roleAlias.toLowerCase().includes(q)) ||
             (st.displayName && st.displayName.toLowerCase().includes(q)) ||
             (st.ipAddress && st.ipAddress.includes(q))
         );
@@ -77,9 +71,7 @@ export default function TabConfigModal({
             id: initialData?.id,
             name: name.trim(),
             assignedHostnames,
-            assignedOus,
-            defaultBitrate: enableBitrate ? Number(defaultBitrate) : null,
-            defaultFps: enableFps ? Number(defaultFps) : null
+            assignedOus
         });
     };
 
@@ -99,57 +91,6 @@ export default function TabConfigModal({
                             placeholder="e.g. Command Center, North Branch"
                             required
                         />
-                    </div>
-
-                    <div className="config-section">
-                        <div className="section-title">Batch Stream Policy</div>
-                        <div className="form-row">
-                            <div className="form-group slider-group-wrapper">
-                                <div className="toggle-header">
-                                    <label>
-                                        <input
-                                            type="checkbox"
-                                            checked={enableBitrate}
-                                            onChange={e => setEnableBitrate(e.target.checked)}
-                                        />
-                                        <span>Override Default Bitrate</span>
-                                    </label>
-                                </div>
-                                <RangeSlider
-                                    label="Bitrate Limit"
-                                    value={defaultBitrate}
-                                    min={500}
-                                    max={10000}
-                                    step={100}
-                                    unit="k"
-                                    disabled={!enableBitrate}
-                                    onChange={setDefaultBitrate}
-                                />
-                            </div>
-
-                            <div className="form-group slider-group-wrapper">
-                                <div className="toggle-header">
-                                    <label>
-                                        <input
-                                            type="checkbox"
-                                            checked={enableFps}
-                                            onChange={e => setEnableFps(e.target.checked)}
-                                        />
-                                        <span>Override Default FPS</span>
-                                    </label>
-                                </div>
-                                <RangeSlider
-                                    label="FPS Limit"
-                                    value={defaultFps}
-                                    min={10}
-                                    max={60}
-                                    step={5}
-                                    unit=" fps"
-                                    disabled={!enableFps}
-                                    onChange={setDefaultFps}
-                                />
-                            </div>
-                        </div>
                     </div>
 
                     <div className="config-section">
@@ -178,7 +119,7 @@ export default function TabConfigModal({
                             </div>
                         ) : null}
 
-                        {/* 💡 1. תיבת תגיות של התחנות שנבחרו - עם מחיקה בקליק */}
+                        {/* תגיות העמדות שנבחרו */}
                         <div className="form-group">
                             <label className="field-label">
                                 Assigned Stations ({assignedHostnames.length}):
@@ -191,7 +132,7 @@ export default function TabConfigModal({
                                 ) : (
                                     assignedHostnames.map(hostname => {
                                         const st = allStations.find(s => s.hostname === hostname);
-                                        const label = st?.displayName || hostname;
+                                        const label = st?.roleAlias || st?.displayName || hostname;
                                         return (
                                             <span key={hostname} className="station-chip-pill">
                                                 <span className="chip-name">{label}</span>
@@ -210,7 +151,7 @@ export default function TabConfigModal({
                             </div>
                         </div>
 
-                        {/* 💡 2. שדה חיפוש מהיר לתחנות */}
+                        {/* שדה חיפוש עמדות */}
                         <div className="form-group">
                             <label className="field-label">Or Select Stations Explicitly:</label>
                             <div className="station-search-filter-field">
@@ -220,7 +161,7 @@ export default function TabConfigModal({
                                 </svg>
                                 <input
                                     type="text"
-                                    placeholder="Search stations by name or IP..."
+                                    placeholder="Search stations by name, role or IP..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -235,13 +176,13 @@ export default function TabConfigModal({
                                 )}
                             </div>
 
-                            {/* רשימת תחנות נגללת עם אינדיקטור בחירה */}
                             <div className="stations-checklist-box">
                                 {filteredStations.length === 0 ? (
                                     <div className="no-results-msg">No stations match "{searchQuery}"</div>
                                 ) : (
                                     filteredStations.map(st => {
                                         const isSelected = assignedHostnames.includes(st.hostname);
+                                        const displayTitle = st.roleAlias ? `${st.roleAlias} (${st.hostname})` : (st.displayName || st.hostname);
                                         return (
                                             <div
                                                 key={st.hostname}
@@ -249,7 +190,7 @@ export default function TabConfigModal({
                                                 onClick={() => handleToggleHost(st.hostname)}
                                             >
                                                 <input type="checkbox" checked={isSelected} readOnly />
-                                                <span className="st-name">{st.displayName || st.hostname}</span>
+                                                <span className="st-name">{displayTitle}</span>
                                                 {st.ipAddress && <span className="st-ip">{st.ipAddress}</span>}
                                                 <span className="st-status">{isSelected ? '✓ ADDED' : '+ ADD'}</span>
                                             </div>

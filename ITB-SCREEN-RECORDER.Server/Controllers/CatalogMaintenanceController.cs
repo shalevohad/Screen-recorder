@@ -3,6 +3,7 @@
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Security;
 
 [ApiController]
 [Route("api/v1/catalog")]
@@ -19,6 +20,7 @@ public class CatalogMaintenanceController : ControllerBase
     /// הפעלת סריקת דיסק ואינדוקס חוסרים ברקע (Manual Trigger)
     /// </summary>
     [HttpPost("reindex")]
+    [AuthorizePermission(PermissionKeys.SettingsMaintenance)]
     public async Task<IActionResult> TriggerReindex([FromQuery] bool forceFullRecheck = false)
     {
         var status = await _maintenanceService.TriggerReindexAsync(forceFullRecheck);
@@ -29,6 +31,7 @@ public class CatalogMaintenanceController : ControllerBase
     /// קבלת סטטוס תהליך האינדוקס הנוכחי (Polling עבור הווידג'ט הצף GlobalJobIndicator ולשונית Maintenance)
     /// </summary>
     [HttpGet("reindex/status")]
+    [AuthorizePermission(PermissionKeys.SettingsView)]
     public IActionResult GetReindexStatus()
     {
         var status = _maintenanceService.GetCurrentJobState();
@@ -39,6 +42,7 @@ public class CatalogMaintenanceController : ControllerBase
     /// שליפת סטטיסטיקות אודות מסד הנתונים system_catalog.db והמשימה הפעילה עבור מסך ה-Settings
     /// </summary>
     [HttpGet("stats")]
+    [AuthorizePermission(PermissionKeys.SettingsView)]
     public async Task<IActionResult> GetStats()
     {
         var stats = await _maintenanceService.GetCatalogStatsAsync();

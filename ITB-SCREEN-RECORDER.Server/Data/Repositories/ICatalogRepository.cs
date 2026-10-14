@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+using ITB_SCREEN_RECORDER.Server.Models.Security;
 
 public record StationOverrideRecord(string Hostname, string? VideoBitrate, int? TargetFps, long UpdatedAtUtc);
 
@@ -12,8 +13,6 @@ public record CustomTabRecord(
     string Name,
     string HostnamesJson,
     string OusJson,
-    int? TargetFps,
-    int? TargetBitrateKbps,
     bool IsDefault,
     int DisplayOrder,
     long UpdatedAtUtc
@@ -28,6 +27,9 @@ public interface ICatalogRepository : IKeystrokeRepository
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetChunksForWindowAsync(string stationId, long fromEpochMs, long toEpochMs);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit);
     Task RemoveChunksAsync(IEnumerable<string> filePaths);
+
+    // Keystrokes Maintenance
+    Task<int> PurgeExpiredKeystrokesAsync(long cutoffEpochMs);
 
     // System Configurations
     Task<string?> GetConfigurationAsync(string key);
@@ -44,5 +46,37 @@ public interface ICatalogRepository : IKeystrokeRepository
     Task UpsertOverrideAsync(string hostname, string? videoBitrate, int? targetFps);
     Task<bool> DeleteOverrideAsync(string hostname);
 
-    Task<int> PurgeExpiredKeystrokesAsync(long cutoffEpochMs);
+    // Station Roles
+    Task<Dictionary<string, string>> GetAllStationRoleAliasesAsync();
+    Task SetStationRoleAliasAsync(string hostname, string? roleAlias);
+    Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings);
+
+    // Security & Policies
+    Task<SecurityPolicyStateDto> GetSecurityPolicyAsync();
+    Task SetSecurityPolicyModeAsync(AuthMode mode);
+    Task UpdateLdapPolicySettingsAsync(string server, int port, string baseDn, bool useSsl);
+
+    // Roles
+    Task<IReadOnlyList<RoleDto>> GetAllRolesAsync();
+    Task<RoleDto?> GetRoleByIdAsync(string roleId);
+    Task UpsertRoleAsync(RoleDto role);
+    Task<bool> DeleteRoleAsync(string roleId);
+
+    // Users
+    Task<IReadOnlyList<UserDto>> GetAllUsersAsync();
+    Task<UserDto?> GetUserByUsernameAsync(string username);
+    Task<UserDto?> GetUserByIdAsync(string userId);
+    Task<string> CreateUserAsync(string username, string displayName, string passwordHash, string authSource, IEnumerable<string> roleIds);
+    Task UpdateUserPasswordAsync(string userId, string newPasswordHash);
+    Task UpdateUserRolesAndOverridesAsync(string userId, IEnumerable<string> roleIds, IEnumerable<string> grantedOverrides, IEnumerable<string> revokedOverrides);
+    Task UpdateUserLastLoginAsync(string userId, long loginEpochMs);
+    Task<bool> DeleteUserAsync(string userId);
+
+    // LDAP Mappings
+    Task<IReadOnlyList<LdapGroupMappingDto>> GetAllLdapGroupMappingsAsync();
+    Task UpsertLdapGroupMappingAsync(string adGroupName, string roleId);
+    Task<bool> DeleteLdapGroupMappingAsync(string mappingId);
+
+    // Direct Recovery
+    Task<bool> ResetRootPasswordDirectAsync(string newPasswordHash);
 }

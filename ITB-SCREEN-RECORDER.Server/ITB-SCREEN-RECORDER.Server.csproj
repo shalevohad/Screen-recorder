@@ -42,6 +42,7 @@
 		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+		<PackageReference Include="System.DirectoryServices.Protocols" Version="8.0.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -53,6 +54,8 @@
 		<Folder Include="ClientApp/src/components/Settings/tabs/" />
 		<Folder Include="ClientApp/src/styles/" />
 		<Folder Include="ClientApp\src\Agents\" />
+		<Folder Include="ClientApp\src\components\Auth\" />
+		<Folder Include="ClientApp\src\context\" />
 		<Folder Include="Tools\Win\" />
 		<Folder Include="Tools\Linux\" />
 		<Folder Include="wwwroot/css/" />
