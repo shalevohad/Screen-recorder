@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.AgentWorker/Providers/Keyboard/WindowsKeyboardCaptureProvider.cs
 // ==========================================
 #if WINDOWS
@@ -170,17 +170,6 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
 
         private static string FormatKeyStroke(int vkCode)
         {
-            bool isCtrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-            bool isAlt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-            bool isShift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-            bool isWin = ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) || ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
-
-            var sb = new StringBuilder();
-            if (isCtrl) sb.Append("Ctrl+");
-            if (isAlt) sb.Append("Alt+");
-            if (isShift) sb.Append("Shift+");
-            if (isWin) sb.Append("Win+");
-
             string keyText = vkCode switch
             {
                 0x08 => "Backspace",
@@ -188,16 +177,62 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
                 0x0D => "Enter",
                 0x1B => "Esc",
                 0x20 => "Space",
+                0x21 => "PageUp",
+                0x22 => "PageDown",
+                0x23 => "End",
+                0x24 => "Home",
                 0x25 => "Left",
                 0x26 => "Up",
                 0x27 => "Right",
                 0x28 => "Down",
+                0x2C => "PrintScreen",
+                0x2D => "Insert",
                 0x2E => "Delete",
+                0x13 => "Pause",
+                0x14 => "CapsLock",
+                0x90 => "NumLock",
+                0x91 => "ScrollLock",
                 >= 0x30 and <= 0x39 => ((char)vkCode).ToString(),
                 >= 0x41 and <= 0x5A => ((char)vkCode).ToString(),
-                >= 0x70 and <= 0x7B => $"F{vkCode - 0x6F}",
+                >= 0x60 and <= 0x69 => $"Num {vkCode - 0x60}",
+                0x6A => "Num *",
+                0x6B => "Num +",
+                0x6D => "Num -",
+                0x6E => "Num .",
+                0x6F => "Num /",
+                >= 0x70 and <= 0x87 => $"F{vkCode - 0x6F}",
+                0x10 or 0xA0 => "Shift",
+                0xA1 => "RShift",
+                0x11 or 0xA2 => "Ctrl",
+                0xA3 => "RCtrl",
+                0x12 or 0xA4 => "Alt",
+                0xA5 => "RAlt",
+                0x5B or 0x5C => "Win",
+                0xBA => ";",
+                0xBB => "=",
+                0xBC => ",",
+                0xBD => "-",
+                0xBE => ".",
+                0xBF => "/",
+                0xC0 => "`",
+                0xDB => "[",
+                0xDC => "\\",
+                0xDD => "]",
+                0xDE => "'",
+                0xE2 => "\\",
                 _ => $"Key({vkCode})"
             };
+
+            bool isCtrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+            bool isAlt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+            bool isShift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            bool isWin = ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) || ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
+
+            var sb = new StringBuilder();
+            if (isCtrl && keyText != "Ctrl" && keyText != "RCtrl") sb.Append("Ctrl+");
+            if (isAlt && keyText != "Alt" && keyText != "RAlt") sb.Append("Alt+");
+            if (isShift && keyText != "Shift" && keyText != "RShift") sb.Append("Shift+");
+            if (isWin && keyText != "Win" && keyText != "RWin") sb.Append("Win+");
 
             sb.Append(keyText);
             return sb.ToString();

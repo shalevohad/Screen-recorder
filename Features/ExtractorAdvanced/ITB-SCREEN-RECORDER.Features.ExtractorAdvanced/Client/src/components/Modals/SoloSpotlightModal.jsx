@@ -502,7 +502,7 @@ export default function SoloSpotlightModal({
                         }}
                         keystrokeMode={keystrokeMode}
                         onChangeKeystrokeMode={onChangeKeystrokeMode}
-                        showKeystrokes={keystrokeMode !== 'NONE'}
+                        showKeystrokes={keystrokeMode !== 'NONE' && keystrokeMode !== 'OFF'}
                     />
                 </div>
             </div>

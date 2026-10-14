@@ -18,16 +18,18 @@ export default function TimelineHeaderActions({
     keystrokeMode = 'BURN_IN', // 'NONE' | 'CAPTION' | 'BURN_IN'
     onChangeKeystrokeMode
 }) {
+    const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+
     // מחזור מעבר בין 3 המצבים בלחיצה
     const handleCycleKeystrokeMode = () => {
         if (!onChangeKeystrokeMode) return;
-        if (keystrokeMode === 'NONE') onChangeKeystrokeMode('BURN_IN');
-        else if (keystrokeMode === 'BURN_IN') onChangeKeystrokeMode('CAPTION');
+        if (normalizedMode === 'NONE' || normalizedMode === 'OFF') onChangeKeystrokeMode('BURN_IN');
+        else if (normalizedMode === 'BURN_IN') onChangeKeystrokeMode('CAPTION');
         else onChangeKeystrokeMode('NONE');
     };
 
     const getModeLabel = () => {
-        switch (keystrokeMode) {
+        switch (normalizedMode) {
             case 'BURN_IN': return 'KEYS: BURN-IN';
             case 'CAPTION': return 'KEYS: CAPTION';
             default: return 'KEYS: OFF';
@@ -40,7 +42,7 @@ export default function TimelineHeaderActions({
             {onChangeKeystrokeMode && (
                 <button
                     type="button"
-                    className={`btn-vp-action keys-mode-btn mode-${keystrokeMode.toLowerCase()}`}
+                    className={`btn-vp-action keys-mode-btn mode-${normalizedMode.toLowerCase().replace('_', '-')}`}
                     onClick={handleCycleKeystrokeMode}
                     title="Toggle Keystroke Export & Preview Mode (Off / Burn-in / Soft Caption)"
                 >

@@ -2,6 +2,7 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx
 // ==========================================
 import React, { useState, useEffect, useMemo, memo } from 'react';
+import { cleanKeyName } from '../../../utils/virtualKeyMap.js';
 import './TimelineKeystrokes.scss';
 
 const MIN_PIXEL_DISTANCE = 8; // סף מרחק בפיקסלים למיזוג אירועים לאשכול
@@ -97,28 +98,6 @@ function TimelineKeystrokes({
         return result;
     }, [keystrokes, baseEpochMs, viewportStartMs, viewportDurationMs, pixelWidth]);
 
-// 💡 עזרי פענוח וניקוי שמות מקשים למניעת הדפסת קודי מקשים גולמיים
-function cleanKeyName(rawKey) {
-    if (!rawKey) return '';
-    return rawKey
-        .replace(/Key\(162\)/gi, 'Ctrl')
-        .replace(/Key\(163\)/gi, 'RCtrl')
-        .replace(/Key\(164\)/gi, 'Alt')
-        .replace(/Key\(165\)/gi, 'RAlt')
-        .replace(/Key\(160\)/gi, 'Shift')
-        .replace(/Key\(161\)/gi, 'RShift')
-        .replace(/Key\(13\)/gi, 'Enter')
-        .replace(/Key\(32\)/gi, 'Space')
-        .replace(/Key\(27\)/gi, 'Esc')
-        .replace(/Key\(8\)/gi, 'Backspace')
-        .replace(/Key\(46\)/gi, 'Delete')
-        .replace(/Key\(9\)/gi, 'Tab')
-        .replace(/Key\(190\)/gi, '.')
-        .replace(/Key\(188\)/gi, ',')
-        .replace(/Key\(191\)/gi, '/')
-        .replace(/Key\(189\)/gi, '-')
-        .replace(/Key\(187\)/gi, '=');
-}
 
 function formatBadgeText(cluster) {
     if (!cluster.events.length) return '';

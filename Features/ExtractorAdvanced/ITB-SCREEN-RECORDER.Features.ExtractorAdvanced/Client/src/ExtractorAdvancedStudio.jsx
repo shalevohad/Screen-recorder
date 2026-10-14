@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/ExtractorAdvancedStudio.jsx
 // ==========================================
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -205,8 +205,11 @@ export default function ExtractorAdvancedStudio() {
     const [activeStationKeystrokes, setActiveStationKeystrokes] = useState([]);
 
     useEffect(() => {
-        const stationName = activeStation?.displayName || activeStation?.hostname || activeStation?.id;
-        if (!stationName || !timelineBaseEpochMs || keystrokeMode === 'NONE') {
+        const targetStation = isSpotlightOpen ? (spotlightStation || activeStation) : activeStation;
+        const stationName = targetStation?.hostname || targetStation?.displayName || targetStation?.id;
+        const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+
+        if (!stationName || !timelineBaseEpochMs || normalizedMode === 'NONE' || normalizedMode === 'OFF') {
             setActiveStationKeystrokes([]);
             return;
         }
@@ -223,7 +226,7 @@ export default function ExtractorAdvancedStudio() {
             });
 
         return () => ac.abort();
-    }, [activeStation, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode]);
+    }, [activeStation, spotlightStation, isSpotlightOpen, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode]);
 
     useEffect(() => {
         if (selectedStationIds.length === 1) {
@@ -403,9 +406,10 @@ export default function ExtractorAdvancedStudio() {
         if (targetStationIds.length === 0) return alert('No active stations selected in timeline.');
 
         let numericMode = 2;
-        if (keystrokeMode === 'NONE') numericMode = 0;
-        else if (keystrokeMode === 'CAPTION') numericMode = 1;
-        else if (keystrokeMode === 'BURN_IN') numericMode = 2;
+        const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+        if (normMode === 'NONE' || normMode === 'OFF') numericMode = 0;
+        else if (normMode === 'CAPTION') numericMode = 1;
+        else numericMode = 2;
 
         try {
             const response = await fetch('/api/v1/extractor-advanced/cut', {
@@ -556,7 +560,7 @@ export default function ExtractorAdvancedStudio() {
                                     onEstimateLoaded={(est) => est?.removedGlobalGaps && setGlobalGaps(est.removedGlobalGaps)}
                                     keystrokeMode={keystrokeMode}
                                     onChangeKeystrokeMode={setKeystrokeMode}
-                                    showKeystrokes={keystrokeMode !== 'NONE'}
+                                    showKeystrokes={keystrokeMode !== 'NONE' && keystrokeMode !== 'OFF'}
                                 />
                             </div>
                         </div>

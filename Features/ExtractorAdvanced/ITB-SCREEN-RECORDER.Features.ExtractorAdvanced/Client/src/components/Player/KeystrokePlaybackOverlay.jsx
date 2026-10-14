@@ -2,6 +2,7 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Player/KeystrokePlaybackOverlay.jsx
 // ==========================================
 import React, { useMemo } from 'react';
+import { cleanKeyCombination, parseKeyCombination } from '../../utils/virtualKeyMap.js';
 import './KeystrokePlaybackOverlay.scss';
 
 const DISPLAY_DURATION_MS = 2200;
@@ -10,15 +11,20 @@ const FADE_DURATION_MS = 400;
 export default function KeystrokePlaybackOverlay({
     currentEpochMs = 0,
     keystrokes = [],
-    keystrokeMode = 'BURN_IN' // אפשרויות: 'NONE' | 'CAPTION' | 'BURN_IN'
+    keystrokeMode = 'BURN_IN' // אפשרויות: 'NONE' | 'CAPTION' | 'BURN_IN' | 'OFF'
 }) {
-    const normalizedMode = (keystrokeMode || 'NONE').toUpperCase();
+    const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
 
-    // 💡 אם המצב הוא NONE - לא מרנדרים דבר
+    // 💡 אם המצב הוא NONE או OFF - לא מרנדרים דבר
+    if (normalizedMode === 'NONE' || normalizedMode === 'OFF') {
+        return null;
+    }
+
     const isVisibleMode = normalizedMode === 'BURN_IN' || normalizedMode === 'CAPTION';
+    if (!isVisibleMode) return null;
 
     const activeEvent = useMemo(() => {
-        if (!isVisibleMode || !keystrokes.length || !currentEpochMs) return null;
+        if (!keystrokes.length || !currentEpochMs) return null;
 
         for (let i = keystrokes.length - 1; i >= 0; i--) {
             const k = keystrokes[i];
@@ -32,7 +38,7 @@ export default function KeystrokePlaybackOverlay({
             }
         }
         return null;
-    }, [currentEpochMs, keystrokes, isVisibleMode]);
+    }, [currentEpochMs, keystrokes]);
 
     if (!activeEvent) return null;
 
@@ -45,29 +51,33 @@ export default function KeystrokePlaybackOverlay({
 
     if (opacity <= 0.05) return null;
 
-    // 💡 מצב 1: כתובית סרטים רכה (Caption) - מוצגת בתחתית הנגן
+    // 💡 מצב 1: כתובית סרטים רכה (Caption) - מוצגת בתחתית הנגן (מעל האי בציר זמן ב-Fullscreen)
     if (normalizedMode === 'CAPTION') {
+        const cleanCombo = cleanKeyCombination(activeEvent.keyCombination);
+        if (!cleanCombo) return null;
+
         return (
             <div className="keystroke-overlay-root mode-caption" style={{ opacity }}>
                 <div className="caption-bar">
-                    <span className="caption-text">[ {activeEvent.keyCombination} ]</span>
+                    <span className="caption-text">[ {cleanCombo} ]</span>
                 </div>
             </div>
         );
     }
 
     // 💡 מצב 2: צריבה קשיחה טקטית (Burn-In) - מקשי Keycaps זוהרים במרכז
-    const rawKeys = activeEvent.keyCombination.split(/\s*\+\s*/).filter(Boolean);
+    const keys = parseKeyCombination(activeEvent.keyCombination);
+    if (!keys.length) return null;
 
     return (
         <div className="keystroke-overlay-root mode-burnin" style={{ opacity }}>
             <div className="keycap-cluster">
-                {rawKeys.map((key, idx) => (
+                {keys.map((key, idx) => (
                     <React.Fragment key={idx}>
                         <div className="keycap-badge">
                             <span className="keycap-text">{key.toUpperCase()}</span>
                         </div>
-                        {idx < rawKeys.length - 1 && (
+                        {idx < keys.length - 1 && (
                             <span className="keycap-plus">+</span>
                         )}
                     </React.Fragment>
@@ -75,4 +85,4 @@ export default function KeystrokePlaybackOverlay({
             </div>
         </div>
     );
-}
+}
