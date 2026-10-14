@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using ITB_SCREEN_RECORDER.Core.Common;
@@ -148,6 +148,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                                             {
                                                 XQueryPointer(dpy, rootWin, out _, out _, out int px, out int py, out _, out _, out _);
                                                 if (detail == 1) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.LeftClick);
+                                                else if (detail == 2) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.MiddleClick);
                                                 else if (detail == 3) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.RightClick);
                                                 else if (detail == 4) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.ScrollUp);
                                                 else if (detail == 5) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.ScrollDown);
@@ -181,6 +182,10 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                             bool leftDown = (mask & (1 << 8)) != 0;
                             bool prevLeft = (lastMask & (1 << 8)) != 0;
                             if (leftDown && !prevLeft) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.LeftClick);
+
+                            bool midDown = (mask & (1 << 9)) != 0;
+                            bool prevMid = (lastMask & (1 << 9)) != 0;
+                            if (midDown && !prevMid) MouseVisualRasterizer.EnqueueEvent(px, py, MouseInteractionType.MiddleClick);
 
                             bool rightDown = (mask & (1 << 10)) != 0;
                             bool prevRight = (lastMask & (1 << 10)) != 0;
@@ -308,7 +313,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                     }
 
                     bool isIBeam = (curW <= 16 && curH >= 12);
-                    float scale = MouseVisualRasterizer.IsClickActive() ? 1.35f : 1.0f;
+                    float scale = MouseVisualRasterizer.GetCurrentCursorScale();
                     int drawW = (int)(curW * scale);
                     int drawH = (int)(curH * scale);
                     int startX = cur.x - (int)(cur.xhot * scale);
