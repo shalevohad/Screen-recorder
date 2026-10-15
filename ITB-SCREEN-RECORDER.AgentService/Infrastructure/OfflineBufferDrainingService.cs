@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: AgentService/Infrastructure/OfflineBufferDrainingService.cs
 // ==========================================
 using System;
@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Security.Pki;
 
 namespace ITB_SCREEN_RECORDER.AgentService
 {
@@ -27,7 +28,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
         public OfflineBufferDrainingService(ILogger<OfflineBufferDrainingService> logger, AppConfig config)
         {
             _logger = logger;
-            _httpClient = new HttpClient
+            var handler = new HttpClientHandler();
+            AgentCertificateValidator.ConfigureHandler(handler);
+            _httpClient = new HttpClient(handler)
             {
                 Timeout = TimeSpan.FromMinutes(10)
             };
@@ -36,7 +39,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 ? (OperatingSystem.IsWindows() ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer" : "/var/lib/itb-screen-recorder/buffer")
                 : config.LocalBufferPath;
 
-            // 💡 חילוץ מדויק של שרת הבסיס מתוך AppConfig בלבד (ללא תלות ב-Environment Variables)
+            // 💡 חילוץ מדויק של שרת הבסיס מתוך AppConfig בלבד (מוצפן HTTPS)
             _uploadUrl = ResolveUploadEndpoint(config.DashboardApiUrl);
 
             Logger.AlwaysInfo($"[DRAINER] Initialized. Buffer Path: '{_bufferPath}', Target Upload Endpoint: '{_uploadUrl}'");
@@ -44,17 +47,20 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private static string ResolveUploadEndpoint(string? dashboardApiUrl)
         {
-            string fallback = "http://127.0.0.1:5090/api/v1/agent/upload-buffer";
+            string fallback = "https://127.0.0.1:5090/api/v1/agent/upload-buffer";
             if (string.IsNullOrWhiteSpace(dashboardApiUrl))
             {
                 return fallback;
             }
 
             string url = dashboardApiUrl.Trim();
-            if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
             {
-                url = $"http://{url}";
+                url = "https://" + url.Substring("http://".Length);
+            }
+            else if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                url = $"https://{url}";
             }
 
             if (Uri.TryCreate(url, UriKind.Absolute, out Uri? parsedUri))

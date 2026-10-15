@@ -6,6 +6,7 @@ using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using ITB_SCREEN_RECORDER.Server.Data;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
@@ -134,7 +135,7 @@ namespace ITB_SCREEN_RECORDER.Server
                     ?? kestrelPort
                     ?? 5090;
 
-                builder.WebHost.UseUrls($"http://0.0.0.0:{finalListeningPort}");
+                var certBundle = CertificateAuthorityManager.EnsureCertificates();
                 builder.Configuration["SystemConfig:HttpPort"] = finalListeningPort.ToString();
 
                 int mtxApiPort = builder.Configuration.GetValue<int?>("SystemConfig:MediaMtx:ApiPort") ?? 9997;
@@ -181,9 +182,17 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.WebHost.ConfigureKestrel(options =>
                 {
                     options.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
-                    options.ConfigureEndpointDefaults(listenOptions =>
+                    options.ListenAnyIP(finalListeningPort, listenOptions =>
                     {
                         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+                        listenOptions.UseHttps(httpsOptions =>
+                        {
+                            httpsOptions.ServerCertificateSelector = (connectionContext, name) =>
+                            {
+                                var current = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+                                return current.ServerCertificate;
+                            };
+                        });
                     });
                 });
 
@@ -286,6 +295,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
                 builder.Services.AddHostedService<RecordingChunkScheduler>();
                 builder.Services.AddHostedService<ServerTelemetryHostService>();
+                builder.Services.AddHostedService<CertificateRenewalWorker>();
 
                 builder.Services.AddSingleton<IRetentionTask, StorageChunksRetentionTask>();
                 builder.Services.AddSingleton<IRetentionTask, KeystrokesRetentionTask>();
@@ -351,7 +361,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 app.MapControllers();
                 app.MapFallbackToFile("index.html");
 
-                Logger.AlwaysInfo($"[SERVER] ITB-SCREEN-RECORDER listening on http://0.0.0.0:{finalListeningPort}");
+                Logger.AlwaysInfo($"[SERVER] ITB-SCREEN-RECORDER listening securely on https://0.0.0.0:{finalListeningPort} (Zero-Touch PKI Active)");
                 app.Run();
             }
             finally

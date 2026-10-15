@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Server/Services/MediaMtxSupervisorWorker.cs
 // ==========================================
 namespace ITB_SCREEN_RECORDER.Server.Services;
@@ -13,6 +13,7 @@ using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -138,9 +139,32 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     startInfo.Environment["MTX_PLAYBACKADDRESS"] = $":{currentConfig.MediaMtx.PlaybackPort}";
                     startInfo.Environment["MTX_PLAYBACKALLOWORIGINS"] = "[\"*\"]";
 
-                    // 5. RTMP Ingest Server
-                    startInfo.Environment["MTX_RTMP"] = "yes";
-                    startInfo.Environment["MTX_RTMPADDRESS"] = $":{currentConfig.MediaMtx.RtmpPort}";
+                    // 5. RTMP / RTMPS Ingest Server & Media Encryption
+                    var certBundle = CertificateAuthorityManager.EnsureCertificates();
+                    if (File.Exists(certBundle.ServerCrtPath) && File.Exists(certBundle.ServerKeyPath))
+                    {
+                        startInfo.Environment["MTX_RTMP"] = "yes";
+                        startInfo.Environment["MTX_RTMPENCRYPTION"] = "optional";
+                        startInfo.Environment["MTX_RTMPADDRESS"] = $":{currentConfig.MediaMtx.RtmpPort - 1}";
+                        startInfo.Environment["MTX_RTMPSADDRESS"] = $":{currentConfig.MediaMtx.RtmpPort}";
+                        startInfo.Environment["MTX_RTMPSERVERKEY"] = certBundle.ServerKeyPath;
+                        startInfo.Environment["MTX_RTMPSERVERCERT"] = certBundle.ServerCrtPath;
+
+                        // WebRTC TLS
+                        startInfo.Environment["MTX_WEBRTCENCRYPTION"] = "yes";
+                        startInfo.Environment["MTX_WEBRTCSERVERKEY"] = certBundle.ServerKeyPath;
+                        startInfo.Environment["MTX_WEBRTCSERVERCERT"] = certBundle.ServerCrtPath;
+
+                        // HLS TLS
+                        startInfo.Environment["MTX_HLSENCRYPTION"] = "yes";
+                        startInfo.Environment["MTX_HLSSERVERKEY"] = certBundle.ServerKeyPath;
+                        startInfo.Environment["MTX_HLSSERVERCERT"] = certBundle.ServerCrtPath;
+                    }
+                    else
+                    {
+                        startInfo.Environment["MTX_RTMP"] = "yes";
+                        startInfo.Environment["MTX_RTMPADDRESS"] = $":{currentConfig.MediaMtx.RtmpPort}";
+                    }
 
                     // 6. HLS Server
                     startInfo.Environment["MTX_HLS"] = "yes";

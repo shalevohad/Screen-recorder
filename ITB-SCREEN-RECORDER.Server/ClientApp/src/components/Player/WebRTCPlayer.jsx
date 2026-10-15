@@ -3,7 +3,7 @@ import './VideoPlayer.scss';
 
 export default function WebRTCPlayer({
     streamPath,
-    webrtcBaseUrl = 'http://127.0.0.1:8889',
+    webrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '/api/v1/whep' : 'http://127.0.0.1:8889',
     showControls = false,
     onPlaying
 }) {

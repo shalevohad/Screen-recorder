@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: AgentWorker/Engine/WorkerIpcClient.cs
 // ==========================================
 using System;
@@ -33,6 +33,12 @@ namespace ITBRecorderAgent.Engine
 
                         using var reader = new StreamReader(client);
                         using var writer = new StreamWriter(client) { AutoFlush = true };
+
+                        string? ipcToken = GetIpcToken();
+                        if (!string.IsNullOrEmpty(ipcToken))
+                        {
+                            await writer.WriteLineAsync($"Auth|{ipcToken}").ConfigureAwait(false);
+                        }
 
                         var listenerTask = Task.Run(async () =>
                         {
@@ -106,6 +112,19 @@ namespace ITBRecorderAgent.Engine
                     RestartRequested?.Invoke(dest, offset, targetFps, bitrate);
                 }
             }
+        }
+
+        private static string? GetIpcToken()
+        {
+            var args = Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (string.Equals(args[i], "--ipc-token", StringComparison.OrdinalIgnoreCase))
+                {
+                    return args[i + 1];
+                }
+            }
+            return Environment.GetEnvironmentVariable("ITB_IPC_TOKEN");
         }
     }
 }

@@ -27,7 +27,9 @@ export default function DashboardGrid(props) {
     } = props;
 
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const dynamicWebrtcBaseUrl = `http://${serverHost}:${import.meta.env?.VITE_WEBRTC_PORT || '8889'}`;
+    const dynamicWebrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:'
+        ? '/api/v1/whep'
+        : `http://${serverHost}:${import.meta.env?.VITE_WEBRTC_PORT || '8889'}`;
 
     const isFeatureMode = Boolean(logic.activeFeatureObject);
 
