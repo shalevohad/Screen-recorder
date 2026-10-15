@@ -597,7 +597,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                                     Size = fi.Length,
                                     W = probe.Width > 0 ? probe.Width : 1920,
                                     H = probe.Height > 0 ? probe.Height : 1080,
-                                    Fps = probe.Fps > 0 ? (int)Math.Round(probe.Fps) : 30,
+                                    Fps = probe.Fps > 0 ? (int)Math.Round((double)probe.Fps) : 30,
                                     Audio = probe.HasAudio ? 1 : 0
                                 });
                                 repaired++;
