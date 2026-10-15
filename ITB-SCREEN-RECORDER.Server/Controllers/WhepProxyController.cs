@@ -19,6 +19,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     /// </summary>
     [ApiController]
     [Route("api/v1/whep")]
+    [ApiExplorerSettings(IgnoreApi = true)]
     public class WhepProxyController : ControllerBase
     {
         private readonly IHttpClientFactory _httpClientFactory;

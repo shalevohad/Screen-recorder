@@ -238,7 +238,16 @@ namespace ITB_SCREEN_RECORDER.Server
                 foreach (var featureAsm in loadedFeatureAssemblies) mvcBuilder.AddApplicationPart(featureAsm);
 
                 builder.Services.AddEndpointsApiExplorer();
-                builder.Services.AddSwaggerGen();
+                builder.Services.AddSwaggerGen(options =>
+                {
+                    options.CustomSchemaIds(type => type.FullName ?? type.Name);
+                    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+                    {
+                        Title = "ITB Screen Recorder API",
+                        Version = "v1",
+                        Description = "Central Server Telemetry, Security & Streaming API"
+                    });
+                });
 
                 builder.Services.AddSingleton<ITelemetryStateService, TelemetryStateService>();
                 builder.Services.AddSingleton<OfflineSyncManager>();
@@ -328,11 +337,12 @@ namespace ITB_SCREEN_RECORDER.Server
                     }
                 }
 
-                if (app.Environment.IsDevelopment())
+                app.UseSwagger();
+                app.UseSwaggerUI(c =>
                 {
-                    app.UseSwagger();
-                    app.UseSwaggerUI();
-                }
+                    c.SwaggerEndpoint("/swagger/v1/swagger.json", "ITB Screen Recorder API v1");
+                    c.RoutePrefix = "swagger";
+                });
 
                 app.UseResponseCompression();
                 app.UseDefaultFiles();
