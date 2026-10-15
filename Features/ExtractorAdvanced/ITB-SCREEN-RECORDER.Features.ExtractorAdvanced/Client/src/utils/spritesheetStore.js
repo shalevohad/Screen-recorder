@@ -9,7 +9,7 @@ let activeWorkers = 0;
 
 // 💡 מקביליות מיטבית לטעינה מהירה של ה-Filmstrip ללא חנק המעבד
 const MAX_CONCURRENT = 4;
-const TASK_TIMEOUT_MS = 6000;
+const TASK_TIMEOUT_MS = 10000;
 const MAX_CACHE_ENTRIES = 500; // הגדלת מטמון אריחים ב-RAM
 
 function scheduleQueueProcessing() {
@@ -56,23 +56,25 @@ async function executeTask(task) {
         const url = `/api/v1/extractor-advanced/spritesheet?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}&frameCount=${frameCount}&tileWidth=100&tileHeight=50`;
         const res = await fetch(url, { signal });
 
-        if (res.ok) {
+        if (res.ok && res.status !== 204) {
             const blob = await res.blob();
-            const blobUrl = URL.createObjectURL(blob);
+            if (blob && blob.size > 1500) {
+                const blobUrl = URL.createObjectURL(blob);
 
-            // ניהול LRU: שחרור אריח ישן אם המטמון חורג מהגודל המרבי
-            if (tileCache.size >= MAX_CACHE_ENTRIES) {
-                const oldestKey = tileCache.keys().next().value;
-                const oldestUrl = tileCache.get(oldestKey);
-                if (oldestUrl) URL.revokeObjectURL(oldestUrl);
-                tileCache.delete(oldestKey);
+                // ניהול LRU: שחרור אריח ישן אם המטמון חורג מהגודל המרבי
+                if (tileCache.size >= MAX_CACHE_ENTRIES) {
+                    const oldestKey = tileCache.keys().next().value;
+                    const oldestUrl = tileCache.get(oldestKey);
+                    if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+                    tileCache.delete(oldestKey);
+                }
+
+                tileCache.set(key, blobUrl);
+                resolve(blobUrl); // 💡 שיבוץ מיידי ברגע שהאריח מוכן
+                return;
             }
-
-            tileCache.set(key, blobUrl);
-            resolve(blobUrl); // 💡 שיבוץ מיידי ברגע שהאריח מוכן
-        } else {
-            resolve(null);
         }
+        resolve(null);
     } catch {
         resolve(null);
     } finally {

@@ -217,28 +217,52 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             if (candidateChunks.Count == 0)
             {
+                var widerChunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc.AddSeconds(-15), endUtc.AddSeconds(15));
+                candidateChunks = widerChunks
+                    .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
+                    .OrderByDescending(c =>
+                    {
+                        long overlapStart = Math.Max(startUtc.Ticks, c.StartUtc.Ticks);
+                        long overlapEnd = Math.Min(endUtc.Ticks, c.EndUtc.Ticks);
+                        return Math.Max(0, overlapEnd - overlapStart);
+                    })
+                    .ToList();
+            }
+
+            if (candidateChunks.Count == 0)
+            {
                 byte[] blackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
                 return new MemoryStream(blackTile);
             }
 
             foreach (var sampleChunk in candidateChunks)
             {
-                double offsetSeconds = Math.Max(0, (startUtc - sampleChunk.StartUtc).TotalSeconds);
-                double maxSafeOffset = Math.Max(0, sampleChunk.Duration.TotalSeconds - 0.1);
+                double fileDuration = sampleChunk.Duration.TotalSeconds;
+                if (fileDuration <= 0.3) continue;
+
+                // 💡 דילוג בטוח על פריים החימום השחור ב-0.0s
+                double offsetSeconds = Math.Max(0.25, (startUtc - sampleChunk.StartUtc).TotalSeconds);
+                double maxSafeOffset = Math.Max(0.25, fileDuration - 0.25);
                 if (offsetSeconds > maxSafeOffset)
                 {
                     offsetSeconds = maxSafeOffset;
                 }
 
-                double intervalSeconds = Math.Max(0.1, (endUtc - startUtc).TotalSeconds / frameCount);
-                string filter = $"fps=1/{intervalSeconds.ToString("0.00", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
+                // 💡 קביעת משך הטווח הזמין לדגימה בתוך הקובץ כדי למנוע חריגה מעבר ל-EOF ואיפוס הפילטר
+                double availableDuration = Math.Max(0.5, fileDuration - offsetSeconds);
+                double tileSpan = Math.Max(0.5, (endUtc - startUtc).TotalSeconds);
+                double targetSpan = Math.Min(availableDuration, tileSpan);
+                double intervalSeconds = Math.Max(0.05, targetSpan / frameCount);
+
+                string filter = $"fps=1/{intervalSeconds.ToString("0.000", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
 
                 using var memoryStream = new MemoryStream(65536);
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 1000000 -analyzeduration 1000000 " +
                                 $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                $"-t {targetSpan.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                 $"-i \"{sampleChunk.FullPath.Replace('\\', '/')}\" " +
                                 $"-vf \"{filter}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
@@ -261,7 +285,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     await process.StandardOutput.BaseStream.CopyToAsync(memoryStream, 16384, linkedCts.Token);
                     await process.WaitForExitAsync(linkedCts.Token);
 
-                    if (memoryStream.Length > 0)
+                    // 💡 וידוא שהתקבל אריח אמיתי (אריח שחור ריק ממוצע שוקל פחות מ-1.5KB)
+                    if (memoryStream.Length > 2000)
                     {
                         byte[] sheetBytes = memoryStream.ToArray();
                         _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(30));
