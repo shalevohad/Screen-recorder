@@ -138,7 +138,30 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     offsetSeconds = maxSafeOffset;
                 }
 
-                byte[]? frameData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, offsetSeconds, ct);
+                // 💡 אם הפריים המבוקש נמצא בתחילת המקטע (<0.20s), נדלג קלות ל-0.25s כדי לעקוף פריים חימום שחור
+                double seekOffset = offsetSeconds;
+                if (seekOffset < 0.20 && chunk.Duration.TotalSeconds >= 0.3)
+                {
+                    seekOffset = Math.Min(0.25, maxSafeOffset);
+                }
+
+                byte[]? frameData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, seekOffset, ct);
+
+                // 💡 זיהוי פריים שחור/ריק: פריים JPEG שחור ב-1080p/2K/4K שוקל כ-24KB.
+                // אם המשקל נמוך מ-28KB, נבצע ניסיון שני מעט קדימה כדי לדלות פריים וידאו מלא
+                if (frameData != null && frameData.Length <= 28000 && chunk.Duration.TotalSeconds >= 0.6)
+                {
+                    double retryOffset = Math.Min(seekOffset + 0.4, maxSafeOffset);
+                    if (retryOffset > seekOffset)
+                    {
+                        byte[]? retryData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, retryOffset, ct);
+                        if (retryData != null && retryData.Length > frameData.Length)
+                        {
+                            frameData = retryData;
+                        }
+                    }
+                }
+
                 if (frameData != null && frameData.Length > 0)
                 {
                     _memoryCache?.Set(cacheKey, frameData, TimeSpan.FromMinutes(30));
@@ -272,8 +295,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 32768 -analyzeduration 0 -flags2 +fast " +
-                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} -noaccurate_seek " +
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 -flags2 +fast " +
+                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                 $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -frames:v 1 -q:v 3 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,
