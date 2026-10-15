@@ -40,6 +40,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         private const string OrganizationalUnit = "Security";
 
         private static readonly object SyncLock = new();
+        private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
         private static CertificateBundle? _activeBundle;
 
         public static event Action<CertificateBundle>? OnCertificateRenewed;
@@ -94,6 +95,15 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         {
             lock (SyncLock)
             {
+                if (!forceRenew && _activeBundle != null)
+                {
+                    if (_activeBundle.ServerCertificate.NotAfter > DateTime.UtcNow.AddDays(30) &&
+                        _activeBundle.RootCaCertificate.NotAfter > DateTime.UtcNow.AddDays(60))
+                    {
+                        return _activeBundle;
+                    }
+                }
+
                 string certsDir = ResolveCertificatesDirectory();
                 string serverPfxPath = Path.Combine(certsDir, "server.pfx");
                 string serverCrtPath = Path.Combine(certsDir, "server.crt");
@@ -114,18 +124,18 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                 {
                     try
                     {
-                        caCert = X509Certificate2.CreateFromPemFile(caCrtPath, caKeyPath);
+                        caCert = new X509Certificate2(File.ReadAllBytes(caCrtPath));
                         // בדיקת תוקף ה-CA: אם נותרו פחות מ-60 יום לתוקף ה-CA, נחדש אותו
                         if (caCert.NotAfter < DateTime.UtcNow.AddDays(60) || caCert.NotBefore > DateTime.UtcNow)
                         {
-                            Logger.Warn($"[PKI] Root CA is expired or expiring soon (NotAfter: {caCert.NotAfter:u}). Renewing CA.");
+                            Logger.AlwaysInfo($"[PKI] Root CA is expired or expiring soon (NotAfter: {caCert.NotAfter:u}). Renewing CA.");
                             needNewCa = true;
                             needNewServerCert = true;
                         }
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warn($"[PKI] Failed to read existing Root CA: {ex.Message}. Re-generating.");
+                        Logger.AlwaysInfo($"[PKI] Failed to read existing Root CA: {ex.Message}. Re-generating.");
                         needNewCa = true;
                         needNewServerCert = true;
                     }
@@ -147,12 +157,12 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
 
                     caCert = caReq.CreateSelfSigned(notBefore, notAfter);
 
-                    // שמירת CA CRT ו-KEY (פורמט PEM קריא לכל המערכות כולל MediaMTX ו-Linux)
+                    // שמירת CA CRT ו-KEY ללא BOM עבור תאימות מושלמת עם MediaMTX, Go ו-Linux
                     string caPem = caCert.ExportCertificatePem();
                     string caKeyPem = caPrivateKey.ExportPkcs8PrivateKeyPem();
 
-                    File.WriteAllText(caCrtPath, caPem, Encoding.UTF8);
-                    File.WriteAllText(caKeyPath, caKeyPem, Encoding.UTF8);
+                    File.WriteAllText(caCrtPath, caPem, Utf8NoBom);
+                    File.WriteAllText(caKeyPath, caKeyPem, Utf8NoBom);
 
                     // עדכון ca-bundle.crt (צובר תעודות CA היסטוריות למעבר שקוף ללא השבתה)
                     AppendToCaBundle(caBundlePath, caPem);
@@ -162,10 +172,18 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     // רישום ה-CA בחנות התעודות של מערכת ההפעלה (Windows / Linux)
                     TryRegisterCaInSystemTrust(caCert, caCrtPath);
                 }
-                else
+                else if (needNewServerCert)
                 {
-                    caPrivateKey = RSA.Create();
-                    caPrivateKey.ImportFromPem(File.ReadAllText(caKeyPath));
+                    try
+                    {
+                        caPrivateKey = RSA.Create();
+                        caPrivateKey.ImportFromPem(File.ReadAllText(caKeyPath));
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.AlwaysInfo($"[PKI] Failed reading existing CA private key: {ex.Message}. Re-generating Root CA.");
+                        needNewCa = true;
+                    }
                 }
 
                 X509Certificate2? serverCert = null;
@@ -266,8 +284,8 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     string serverCrtPem = issuedCertWithKey.ExportCertificatePem();
                     string serverKeyPem = serverRsa.ExportPkcs8PrivateKeyPem();
 
-                    File.WriteAllText(serverCrtPath, serverCrtPem, Encoding.UTF8);
-                    File.WriteAllText(serverKeyPath, serverKeyPem, Encoding.UTF8);
+                    File.WriteAllText(serverCrtPath, serverCrtPem, Utf8NoBom);
+                    File.WriteAllText(serverKeyPath, serverKeyPem, Utf8NoBom);
 
                     serverCert = new X509Certificate2(pfxBytes, pfxPassword, X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
                     Logger.AlwaysInfo($"[PKI] Server certificate issued successfully. Thumbprint: {serverCert.Thumbprint}, Valid until: {serverCert.NotAfter:u}");
@@ -298,14 +316,14 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
             {
                 if (!File.Exists(bundlePath))
                 {
-                    File.WriteAllText(bundlePath, caPem, Encoding.UTF8);
+                    File.WriteAllText(bundlePath, caPem, Utf8NoBom);
                 }
                 else
                 {
                     string existing = File.ReadAllText(bundlePath);
                     if (!existing.Contains(caPem.Trim()))
                     {
-                        File.AppendAllText(bundlePath, Environment.NewLine + caPem, Encoding.UTF8);
+                        File.AppendAllText(bundlePath, Environment.NewLine + caPem, Utf8NoBom);
                     }
                 }
             }

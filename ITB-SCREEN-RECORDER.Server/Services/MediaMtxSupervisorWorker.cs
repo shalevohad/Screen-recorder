@@ -143,22 +143,27 @@ public class MediaMtxSupervisorWorker : BackgroundService
                     var certBundle = CertificateAuthorityManager.EnsureCertificates();
                     if (File.Exists(certBundle.ServerCrtPath) && File.Exists(certBundle.ServerKeyPath))
                     {
+                        string localCrt = Path.Combine(mtxFolder, "server.crt");
+                        string localKey = Path.Combine(mtxFolder, "server.key");
+                        try
+                        {
+                            File.Copy(certBundle.ServerCrtPath, localCrt, overwrite: true);
+                            File.Copy(certBundle.ServerKeyPath, localKey, overwrite: true);
+                        }
+                        catch (Exception copyEx)
+                        {
+                            _logger.LogWarning("[MediaMTX Supervisor] Could not mirror server certificates to MediaMTX dir: {Message}", copyEx.Message);
+                        }
+
+                        string crtToUse = File.Exists(localCrt) ? localCrt : certBundle.ServerCrtPath;
+                        string keyToUse = File.Exists(localKey) ? localKey : certBundle.ServerKeyPath;
+
                         startInfo.Environment["MTX_RTMP"] = "yes";
                         startInfo.Environment["MTX_RTMPENCRYPTION"] = "optional";
                         startInfo.Environment["MTX_RTMPADDRESS"] = $":{currentConfig.MediaMtx.RtmpPort - 1}";
                         startInfo.Environment["MTX_RTMPSADDRESS"] = $":{currentConfig.MediaMtx.RtmpPort}";
-                        startInfo.Environment["MTX_RTMPSERVERKEY"] = certBundle.ServerKeyPath;
-                        startInfo.Environment["MTX_RTMPSERVERCERT"] = certBundle.ServerCrtPath;
-
-                        // WebRTC TLS
-                        startInfo.Environment["MTX_WEBRTCENCRYPTION"] = "yes";
-                        startInfo.Environment["MTX_WEBRTCSERVERKEY"] = certBundle.ServerKeyPath;
-                        startInfo.Environment["MTX_WEBRTCSERVERCERT"] = certBundle.ServerCrtPath;
-
-                        // HLS TLS
-                        startInfo.Environment["MTX_HLSENCRYPTION"] = "yes";
-                        startInfo.Environment["MTX_HLSSERVERKEY"] = certBundle.ServerKeyPath;
-                        startInfo.Environment["MTX_HLSSERVERCERT"] = certBundle.ServerCrtPath;
+                        startInfo.Environment["MTX_RTMPSERVERKEY"] = keyToUse;
+                        startInfo.Environment["MTX_RTMPSERVERCERT"] = crtToUse;
                     }
                     else
                     {
