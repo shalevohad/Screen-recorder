@@ -1,4 +1,4 @@
-﻿// Client/src/components/Station/StationThumbnail.scss
+// Client/src/components/Station/StationThumbnail.scss
 
 .station-tactical-card {
     background: var(--surface-card, #151E2E);
@@ -177,6 +177,13 @@
                     opacity: 0.7;
                     cursor: wait;
                 }
+
+                &.no-perm {
+                    opacity: 0.45 !important;
+                    cursor: not-allowed !important;
+                    border-color: rgba(148, 163, 184, 0.2) !important;
+                    background: rgba(15, 23, 42, 0.4) !important;
+                }
             }
 
             .header-action-icon-btn {
@@ -351,6 +358,13 @@
                         background: var(--accent-emerald);
                         color: #000;
                     }
+                }
+
+                &:disabled,
+                &.disabled {
+                    opacity: 0.35 !important;
+                    cursor: not-allowed !important;
+                    pointer-events: none;
                 }
             }
         }

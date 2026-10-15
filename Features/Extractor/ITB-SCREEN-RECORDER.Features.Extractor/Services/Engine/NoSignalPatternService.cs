@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/Engine/NoSignalPatternService.cs
 // ==========================================
 using System;
@@ -47,6 +47,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     Path.Combine(baseDir, "wwwroot", "assets", "no_signal.png"),
                     Path.Combine(currentDir, "wwwroot", "assets", "no_signal.jpg"),
                     Path.Combine(currentDir, "wwwroot", "assets", "no_signal.png"),
+                    Path.Combine(currentDir, "Features", "ExtractorAdvanced", "ITB-SCREEN-RECORDER.Features.ExtractorAdvanced", "wwwroot", "assets", "no_signal.jpg"),
+                    Path.Combine(baseDir, "Features", "ExtractorAdvanced", "ITB-SCREEN-RECORDER.Features.ExtractorAdvanced", "wwwroot", "assets", "no_signal.jpg"),
+                    Path.Combine(currentDir, "Features", "Extractor", "ITB-SCREEN-RECORDER.Features.Extractor", "wwwroot", "assets", "no_signal.jpg"),
+                    Path.Combine(baseDir, "Features", "Extractor", "ITB-SCREEN-RECORDER.Features.Extractor", "wwwroot", "assets", "no_signal.jpg"),
                     Path.Combine(currentDir, "Features", "Extractor", "wwwroot", "assets", "no_signal.jpg"),
                     Path.Combine(baseDir, "Features", "Extractor", "wwwroot", "assets", "no_signal.jpg"),
                     Path.Combine(currentDir, "Features", "ExtractorAdvanced", "wwwroot", "assets", "no_signal.jpg"),

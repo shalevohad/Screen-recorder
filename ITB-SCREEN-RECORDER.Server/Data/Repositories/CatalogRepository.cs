@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
+namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
 
 using System;
 using System.Collections.Generic;
@@ -508,9 +508,19 @@ public sealed class CatalogRepository : ICatalogRepository
 
     public async Task<bool> DeleteRoleAsync(string roleId)
     {
+        if (string.Equals(roleId, "role_admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(roleId, "role_viewer", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         using var db = _factory.CreateConnection();
-        const string sql = "DELETE FROM roles WHERE id = @roleId AND is_built_in = 0;";
-        int affected = await db.ExecuteAsync(sql, new { roleId });
+        using var tx = db.BeginTransaction();
+        await db.ExecuteAsync("DELETE FROM user_roles WHERE role_id = @roleId;", new { roleId }, tx);
+        await db.ExecuteAsync("DELETE FROM role_permissions WHERE role_id = @roleId;", new { roleId }, tx);
+        await db.ExecuteAsync("DELETE FROM ldap_group_mappings WHERE role_id = @roleId;", new { roleId }, tx);
+        int affected = await db.ExecuteAsync("DELETE FROM roles WHERE id = @roleId;", new { roleId }, tx);
+        tx.Commit();
         return affected > 0;
     }
     #endregion
@@ -643,11 +653,9 @@ public sealed class CatalogRepository : ICatalogRepository
 
         await db.ExecuteAsync(sql, new { userId, username, displayName, passwordHash, authSource, now }, tx);
 
-        if (roleIds != null && roleIds.Any())
-        {
-            const string roleSql = "INSERT INTO user_roles (user_id, role_id) VALUES (@userId, @roleId);";
-            await db.ExecuteAsync(roleSql, roleIds.Select(r => new { userId, roleId = r }), tx);
-        }
+        var assignedRoles = (roleIds != null && roleIds.Any()) ? roleIds : new[] { "role_viewer" };
+        const string roleSql = "INSERT INTO user_roles (user_id, role_id) VALUES (@userId, @roleId);";
+        await db.ExecuteAsync(roleSql, assignedRoles.Select(r => new { userId, roleId = r }), tx);
 
         tx.Commit();
         return userId;

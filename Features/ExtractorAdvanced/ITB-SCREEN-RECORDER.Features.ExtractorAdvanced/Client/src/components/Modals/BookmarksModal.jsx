@@ -104,7 +104,8 @@ export default function BookmarksModal({
             allStationIds,
             stationIds: selectedStationIds.length > 0 ? selectedStationIds : allStationIds,
             activeStationId: currentState?.activeStationId || null,
-            activeStationName: currentState?.activeStationName || null
+            activeStationName: currentState?.activeStationName || null,
+            spotlightStationId: currentState?.spotlightStationId || null
         };
 
         setIsSaving(true);

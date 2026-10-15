@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export default function MaintenanceTab() {
     const [stats, setStats] = useState(null);
@@ -43,6 +43,20 @@ export default function MaintenanceTab() {
             await fetchStats();
         } catch (err) {
             console.error('Failed triggering reindex:', err);
+        } finally {
+            setTriggering(false);
+        }
+    };
+
+    const handleTriggerRepair = async () => {
+        if (!window.confirm('Run catalog integrity and duration audit? This will probe actual media durations, repair truncated/phantom chunks, and clean orphaned database records.')) return;
+
+        setTriggering(true);
+        try {
+            await fetch('/api/v1/catalog/repair', { method: 'POST' });
+            await fetchStats();
+        } catch (err) {
+            console.error('Failed triggering repair:', err);
         } finally {
             setTriggering(false);
         }
@@ -97,14 +111,19 @@ export default function MaintenanceTab() {
                             <span className="pulse-dot-cyan"></span>
                             <span className="pulse-ring-cyan"></span>
                         </div>
-                        <span className="job-text">Storage Re-indexing in progress: {job?.progressPercent || 0}%</span>
+                        <span className="job-text">
+                            {job?.jobType === 'CatalogRepair' ? 'Catalog Integrity & Duration Audit in progress' : 'Storage Re-indexing in progress'}: {job?.progressPercent || 0}%
+                        </span>
                     </div>
                     <div className="job-track">
                         <div className="job-fill" style={{ width: `${job?.progressPercent || 0}%` }}></div>
                     </div>
                     <div className="job-footer">
                         <span>Scanned: <strong>{job?.totalFilesScanned || 0}</strong> files</span>
-                        <span>Added: <strong className="text-cyan">{job?.newlyIndexedCount || 0}</strong></span>
+                        <span>{job?.jobType === 'CatalogRepair' ? 'Repaired: ' : 'Added: '}<strong className="text-cyan">{job?.newlyIndexedCount || 0}</strong></span>
+                        {job?.errorsCount > 0 && (
+                            <span>{job?.jobType === 'CatalogRepair' ? 'Pruned: ' : 'Errors: '}<strong className="text-amber">{job.errorsCount}</strong></span>
+                        )}
                         {job?.currentTarget && (
                             <span className="station-badge">{job.currentTarget}</span>
                         )}
@@ -116,6 +135,25 @@ export default function MaintenanceTab() {
                     <span>System Catalog Engine Nominal • Database in WAL Sync Mode</span>
                 </div>
             )}
+
+            {/* בדיקת תקינות ואימות אינדקסים (Integrity & Repair) */}
+            <div className="maintenance-actions-box">
+                <div className="action-info">
+                    <h4>Catalog Integrity & Duration Audit</h4>
+                    <p>Verifies database chunks against physical files on disk. Probes exact video durations, repairs truncated/phantom chunks (e.g., interrupted recordings), and prunes orphaned database records to eliminate timeline ghost segments.</p>
+                </div>
+
+                <div className="action-buttons-row">
+                    <button
+                        type="button"
+                        className="btn-maintenance-action emerald"
+                        disabled={isRunning || triggering}
+                        onClick={handleTriggerRepair}
+                    >
+                        {isRunning && job?.jobType === 'CatalogRepair' ? 'Audit & Repair in Progress…' : '⚡ Verify & Repair Video Indexes'}
+                    </button>
+                </div>
+            </div>
 
             {/* כפתורי פעולה טקטיים */}
             <div className="maintenance-actions-box">

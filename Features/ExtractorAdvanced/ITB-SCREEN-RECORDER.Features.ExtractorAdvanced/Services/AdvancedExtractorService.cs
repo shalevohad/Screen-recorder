@@ -33,7 +33,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
         private readonly IFfmpegBinaryResolver _binaryResolver;
-        private static readonly SemaphoreSlim _visualThrottle = new(8, 8);
+        private static readonly SemaphoreSlim _visualThrottle = new(4, 4);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
@@ -138,7 +138,30 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     offsetSeconds = maxSafeOffset;
                 }
 
-                byte[]? frameData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, offsetSeconds, ct);
+                // 💡 אם הפריים המבוקש נמצא בתחילת המקטע (<0.20s), נדלג קלות ל-0.25s כדי לעקוף פריים חימום שחור
+                double seekOffset = offsetSeconds;
+                if (seekOffset < 0.20 && chunk.Duration.TotalSeconds >= 0.3)
+                {
+                    seekOffset = Math.Min(0.25, maxSafeOffset);
+                }
+
+                byte[]? frameData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, seekOffset, ct);
+
+                // 💡 זיהוי פריים שחור/ריק: פריים JPEG שחור ב-1080p/2K/4K שוקל כ-24KB.
+                // אם המשקל נמוך מ-28KB, נבצע ניסיון שני מעט קדימה כדי לדלות פריים וידאו מלא
+                if (frameData != null && frameData.Length <= 28000 && chunk.Duration.TotalSeconds >= 0.6)
+                {
+                    double retryOffset = Math.Min(seekOffset + 0.4, maxSafeOffset);
+                    if (retryOffset > seekOffset)
+                    {
+                        byte[]? retryData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, retryOffset, ct);
+                        if (retryData != null && retryData.Length > frameData.Length)
+                        {
+                            frameData = retryData;
+                        }
+                    }
+                }
+
                 if (frameData != null && frameData.Length > 0)
                 {
                     _memoryCache?.Set(cacheKey, frameData, TimeSpan.FromMinutes(30));
@@ -194,28 +217,54 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             if (candidateChunks.Count == 0)
             {
+                var widerChunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc.AddSeconds(-15), endUtc.AddSeconds(15));
+                candidateChunks = widerChunks
+                    .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
+                    .OrderByDescending(c =>
+                    {
+                        long overlapStart = Math.Max(startUtc.Ticks, c.StartUtc.Ticks);
+                        long overlapEnd = Math.Min(endUtc.Ticks, c.EndUtc.Ticks);
+                        return Math.Max(0, overlapEnd - overlapStart);
+                    })
+                    .ToList();
+            }
+
+            if (candidateChunks.Count == 0)
+            {
                 byte[] blackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
                 return new MemoryStream(blackTile);
             }
 
             foreach (var sampleChunk in candidateChunks)
             {
-                double offsetSeconds = Math.Max(0, (startUtc - sampleChunk.StartUtc).TotalSeconds);
-                double maxSafeOffset = Math.Max(0, sampleChunk.Duration.TotalSeconds - 0.1);
+                double fileDuration = sampleChunk.Duration.TotalSeconds;
+                if (fileDuration <= 0.3) continue;
+
+                // 💡 דילוג בטוח על פריים החימום השחור ב-0.0s
+                double offsetSeconds = Math.Max(0.25, (startUtc - sampleChunk.StartUtc).TotalSeconds);
+                double maxSafeOffset = Math.Max(0.25, fileDuration - 0.25);
                 if (offsetSeconds > maxSafeOffset)
                 {
                     offsetSeconds = maxSafeOffset;
                 }
 
-                double intervalSeconds = Math.Max(0.1, (endUtc - startUtc).TotalSeconds / frameCount);
-                string filter = $"fps=1/{intervalSeconds.ToString("0.00", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
+                // 💡 קביעת משך הטווח הזמין לדגימה בתוך הקובץ:
+                // הגבלת משך הדגימה לעד 18 שניות לכל היותר עבור אריח תצוגה
+                // הדבר מבטיח שליפה סילונית (~200-300ms) ללא פענוח כבד של מאות ואלפי פריימים
+                double availableDuration = Math.Max(0.5, fileDuration - offsetSeconds);
+                double tileSpan = Math.Max(0.5, (endUtc - startUtc).TotalSeconds);
+                double targetSpan = Math.Min(availableDuration, Math.Min(tileSpan, 18.0));
+                double intervalSeconds = Math.Max(0.05, targetSpan / frameCount);
+
+                string filter = $"fps=1/{intervalSeconds.ToString("0.000", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
 
                 using var memoryStream = new MemoryStream(65536);
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 1000000 -analyzeduration 1000000 " +
                                 $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                $"-t {targetSpan.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                 $"-i \"{sampleChunk.FullPath.Replace('\\', '/')}\" " +
                                 $"-vf \"{filter}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
@@ -225,7 +274,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 };
 
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                linkedCts.CancelAfter(TimeSpan.FromSeconds(6));
+                linkedCts.CancelAfter(TimeSpan.FromSeconds(5));
 
                 await _visualThrottle.WaitAsync(linkedCts.Token);
                 using var process = new Process { StartInfo = startInfo };
@@ -238,10 +287,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     await process.StandardOutput.BaseStream.CopyToAsync(memoryStream, 16384, linkedCts.Token);
                     await process.WaitForExitAsync(linkedCts.Token);
 
-                    if (memoryStream.Length > 0)
+                    // 💡 וידוא שהתקבל אריח אמיתי (אריח שחור ריק ממוצע שוקל פחות מ-1.5KB)
+                    if (memoryStream.Length > 2000)
                     {
                         byte[] sheetBytes = memoryStream.ToArray();
-                        _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(30));
+                        _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(60));
                         return new MemoryStream(sheetBytes);
                     }
                 }
@@ -272,8 +322,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 32768 -analyzeduration 0 -flags2 +fast " +
-                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} -noaccurate_seek " +
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 -flags2 +fast " +
+                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                 $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -frames:v 1 -q:v 3 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,

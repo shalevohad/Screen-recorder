@@ -216,6 +216,19 @@
                     }
                 }
 
+                &.emerald {
+                    background: rgba(16, 185, 129, 0.12);
+                    border: 1px solid var(--accent-emerald, #10B981);
+                    color: var(--accent-emerald-light, #34D399);
+                    box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+
+                    &:hover:not(:disabled) {
+                        background: var(--accent-emerald, #10B981);
+                        color: #000;
+                        transform: translateY(-1px);
+                    }
+                }
+
                 &.secondary {
                     background: var(--surface-card, #151E2E);
                     border: 1px solid var(--border-card, rgba(148, 163, 184, 0.20));

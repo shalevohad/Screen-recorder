@@ -1,5 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Security;
 using System.Linq;
 using System;
 using System.Diagnostics;
@@ -9,6 +10,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
     [ApiController]
     [Route("api/monitoring")]
+    [AuthorizePermission(PermissionKeys.StationsView)]
     public class FleetMonitoringController : ControllerBase
     {
         private readonly ITelemetryStateService _telemetryState;

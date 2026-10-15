@@ -377,14 +377,23 @@ export default function ExtractorAdvancedStudio() {
 
         if (stationsToSelect?.length > 0) {
             setSelectedStationIds(stationsToSelect);
-            if (bm.activeStationId && stationsToSelect.includes(bm.activeStationId)) {
-                setActiveStationId(bm.activeStationId);
+
+            const rawSpotlightId = bm.spotlightStationId || bm.SpotlightStationId || null;
+            const rawActiveId = bm.activeStationId || bm.ActiveStationId || null;
+
+            if (rawSpotlightId && stationsToSelect.includes(rawSpotlightId)) {
+                setActiveStationId(rawSpotlightId);
+                setSpotlightStationId(rawSpotlightId);
+            } else if (rawActiveId && stationsToSelect.includes(rawActiveId)) {
+                setActiveStationId(rawActiveId);
+                setSpotlightStationId(null);
             } else if (stationsToSelect.length === 1) {
                 setActiveStationId(stationsToSelect[0]);
+                setSpotlightStationId(null);
             } else {
                 setActiveStationId(null);
+                setSpotlightStationId(null);
             }
-            setSpotlightStationId(null);
         }
 
         if (bm.keystrokeMode) setKeystrokeMode(bm.keystrokeMode);
@@ -630,6 +639,7 @@ export default function ExtractorAdvancedStudio() {
                     allStationIds: allStations.map(s => s.id),
                     activeStationId,
                     activeStationName: activeStation?.displayName || activeStation?.hostname || null,
+                    spotlightStationId,
                     keystrokeMode
                 }}
                 onLoadBookmark={handleLoadBookmark}

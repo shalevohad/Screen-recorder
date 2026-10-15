@@ -286,6 +286,14 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        &.is-readonly {
+            opacity: 0.45;
+            background: rgba(148, 163, 184, 0.08);
+            border-color: rgba(148, 163, 184, 0.2);
+            color: var(--text-muted, #94A3B8);
+            cursor: not-allowed;
+        }
     }
 }
 

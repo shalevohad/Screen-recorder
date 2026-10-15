@@ -139,6 +139,19 @@ export default function StorageRetentionTab({ form, updateField, updateStorageFi
                     required
                 />
             </label>
+
+            <label className="settings-field">
+                <span>Recording Segment Container Format</span>
+                <select
+                    value={form.storage.recordFormat || 'fmp4'}
+                    onChange={e => updateStorageField('recordFormat', e.target.value)}
+                    className="tactical-select"
+                >
+                    <option value="fmp4">fMP4 (Fragmented MP4 - Crash Resilient & Clock Aligned)</option>
+                    <option value="mp4">MP4 (Standard ISO MP4)</option>
+                    <option value="mkv">MKV (Matroska Container)</option>
+                </select>
+            </label>
         </fieldset>
     );
 }

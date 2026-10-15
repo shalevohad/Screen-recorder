@@ -1,14 +1,16 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using ITB_SCREEN_RECORDER.Core.Plugins;
 using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Server.Services.Security;
 
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
     [ApiController]
     [Route("api/v1/features")]
+    [AuthorizePermission(PermissionKeys.StationsView)]
     public class FeaturesController : ControllerBase
     {
         private readonly IEnumerable<IFeatureModule> _features;

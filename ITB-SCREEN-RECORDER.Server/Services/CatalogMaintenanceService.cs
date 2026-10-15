@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Server/Services/CatalogMaintenanceService.cs
 // ==========================================
 namespace ITB_SCREEN_RECORDER.Server.Services;
@@ -39,6 +39,7 @@ public interface ICatalogMaintenanceService
 {
     MaintenanceJobState GetCurrentJobState();
     Task<MaintenanceJobState> TriggerReindexAsync(bool forceFullRecheck = false);
+    Task<MaintenanceJobState> TriggerRepairCatalogAsync();
     Task<object> GetCatalogStatsAsync();
 }
 
@@ -174,6 +175,44 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         return GetCurrentJobState();
     }
 
+    public async Task<MaintenanceJobState> TriggerRepairCatalogAsync()
+    {
+        if (!await _jobLock.WaitAsync(0))
+        {
+            return GetCurrentJobState();
+        }
+
+        string jobId = Guid.NewGuid().ToString("N")[..8];
+        UpdateState(s => new MaintenanceJobState(
+            JobId: jobId,
+            JobType: "CatalogRepair",
+            IsRunning: true,
+            ProgressPercent: 1,
+            TotalFilesScanned: 0,
+            NewlyIndexedCount: 0,
+            SkippedCount: 0,
+            ErrorsCount: 0,
+            CurrentTarget: "Auditing database entries...",
+            StatusMessage: "Auditing catalog for duration mismatches and ghost chunks...",
+            StartedAtUtc: DateTime.UtcNow,
+            CompletedAtUtc: null
+        ), forceBroadcast: true);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await RunCatalogIntegrityAuditAsync(isSilentScheduled: false);
+            }
+            finally
+            {
+                _jobLock.Release();
+            }
+        });
+
+        return GetCurrentJobState();
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("[MAINTENANCE] Storage Maintenance Engine & Auto-Indexer started.");
@@ -200,6 +239,9 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     {
                         _logger.LogInformation("[MAINTENANCE] Running scheduled catalog delta scan on storage...");
                         await RunReindexCoreAsync(forceFullRecheck: false, isSilentScheduled: true);
+
+                        _logger.LogInformation("[MAINTENANCE] Running scheduled catalog integrity and duration audit...");
+                        await RunCatalogIntegrityAuditAsync(isSilentScheduled: true);
                     }
                     finally
                     {
@@ -478,6 +520,177 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             }, tx);
         }
         tx.Commit();
+    }
+
+    private async Task RunCatalogIntegrityAuditAsync(bool isSilentScheduled)
+    {
+        try
+        {
+            using var db = _factory.CreateConnection();
+            var allChunks = (await db.QueryAsync<(long Id, string StationId, string FilePath, long StartEpochMs, long EndEpochMs, long DurationMs, long FileSizeBytes)>(@"
+                SELECT id AS Id, station_id AS StationId, file_path AS FilePath,
+                       start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
+                       duration_ms AS DurationMs, file_size_bytes AS FileSizeBytes
+                FROM recording_chunks
+                ORDER BY start_epoch_ms DESC;")).ToList();
+
+            int total = allChunks.Count;
+            int scanned = 0;
+            int repaired = 0;
+            int pruned = 0;
+            int skipped = 0;
+
+            var toPruneIds = new List<long>();
+            var toUpdateChunks = new List<(long Id, long NewEndMs, long NewDurMs, long Size, int W, int H, int Fps, int Audio)>();
+
+            for (int i = 0; i < total; i++)
+            {
+                var chunk = allChunks[i];
+                scanned++;
+
+                if (!File.Exists(chunk.FilePath))
+                {
+                    toPruneIds.Add(chunk.Id);
+                    pruned++;
+                }
+                else
+                {
+                    var fi = new FileInfo(chunk.FilePath);
+                    bool needsProbe = false;
+
+                    // 1. קובץ שהוגדר באורך 15 דקות בדיוק (ערך ברירת מחדל שעלול להיות שגוי בעת הפסקה מוקדמת)
+                    if (chunk.DurationMs == 900000)
+                    {
+                        needsProbe = true;
+                    }
+                    // 2. קובץ קטן יחסית שאינו תואם למשך המוצהר (קובץ של פחות מ-70MB לא יכול להימשך 15 דקות)
+                    else if (fi.Length < 70_000_000 && chunk.DurationMs > 300_000)
+                    {
+                        needsProbe = true;
+                    }
+                    // 3. אי-התאמה בין start, end ל-duration הרשום
+                    else if (Math.Abs((chunk.EndEpochMs - chunk.StartEpochMs) - chunk.DurationMs) > 1000)
+                    {
+                        needsProbe = true;
+                    }
+                    // 4. שינוי משמעותי בגודל הקובץ מאז שנרשם
+                    else if (Math.Abs(fi.Length - chunk.FileSizeBytes) > 1_000_000)
+                    {
+                        needsProbe = true;
+                    }
+
+                    if (needsProbe)
+                    {
+                        var probe = await _probeService.ProbeFileAsync(chunk.FilePath, CancellationToken.None);
+                        if (probe != null && probe.DurationSeconds > 0.05)
+                        {
+                            long actualDurMs = (long)Math.Round(probe.DurationSeconds * 1000.0);
+                            long actualEndMs = chunk.StartEpochMs + actualDurMs;
+
+                            if (Math.Abs(actualDurMs - chunk.DurationMs) > 1000 || chunk.EndEpochMs != actualEndMs || chunk.FileSizeBytes != fi.Length)
+                            {
+                                toUpdateChunks.Add((
+                                    chunk.Id,
+                                    actualEndMs,
+                                    actualDurMs,
+                                    fi.Length,
+                                    probe.Width > 0 ? probe.Width : 1920,
+                                    probe.Height > 0 ? probe.Height : 1080,
+                                    probe.Fps > 0 ? probe.Fps : 30,
+                                    probe.HasAudio ? 1 : 0
+                                ));
+                                repaired++;
+                            }
+                            else
+                            {
+                                skipped++;
+                            }
+                        }
+                        else
+                        {
+                            skipped++;
+                        }
+                    }
+                    else
+                    {
+                        skipped++;
+                    }
+                }
+
+                if (!isSilentScheduled && (scanned % 15 == 0 || scanned == total))
+                {
+                    int pct = total > 0 ? (int)Math.Min(99, (scanned * 100.0) / total) : 100;
+                    UpdateState(s => s with
+                    {
+                        ProgressPercent = pct,
+                        TotalFilesScanned = scanned,
+                        NewlyIndexedCount = repaired,
+                        ErrorsCount = pruned,
+                        SkippedCount = skipped,
+                        CurrentTarget = chunk.StationId,
+                        StatusMessage = $"Auditing catalog: {scanned}/{total} ({repaired} repaired, {pruned} ghost records pruned)"
+                    });
+                }
+            }
+
+            if (toPruneIds.Count > 0 || toUpdateChunks.Count > 0)
+            {
+                using var tx = db.BeginTransaction();
+
+                if (toPruneIds.Count > 0)
+                {
+                    await db.ExecuteAsync("DELETE FROM recording_chunks WHERE id = @Id;", toPruneIds.Select(id => new { Id = id }), tx);
+                }
+
+                if (toUpdateChunks.Count > 0)
+                {
+                    const string updateSql = @"
+                        UPDATE recording_chunks
+                        SET end_epoch_ms = @NewEndMs,
+                            duration_ms = @NewDurMs,
+                            file_size_bytes = @Size,
+                            width = @W,
+                            height = @H,
+                            fps = @Fps,
+                            has_audio = @Audio
+                        WHERE id = @Id;";
+
+                    await db.ExecuteAsync(updateSql, toUpdateChunks, tx);
+                }
+
+                tx.Commit();
+                _logger.LogInformation("[MAINTENANCE] Catalog audit completed: {Repaired} repaired, {Pruned} orphaned records deleted.", repaired, pruned);
+            }
+
+            if (!isSilentScheduled)
+            {
+                UpdateState(s => s with
+                {
+                    IsRunning = false,
+                    ProgressPercent = 100,
+                    TotalFilesScanned = scanned,
+                    NewlyIndexedCount = repaired,
+                    ErrorsCount = pruned,
+                    SkippedCount = skipped,
+                    CurrentTarget = string.Empty,
+                    StatusMessage = $"Integrity audit complete: {repaired} chunk(s) repaired, {pruned} ghost chunk(s) pruned.",
+                    CompletedAtUtc = DateTime.UtcNow
+                }, forceBroadcast: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[MAINTENANCE] Failure during catalog integrity audit.");
+            if (!isSilentScheduled)
+            {
+                UpdateState(s => s with
+                {
+                    IsRunning = false,
+                    StatusMessage = $"Audit Failed: {ex.Message}",
+                    CompletedAtUtc = DateTime.UtcNow
+                }, forceBroadcast: true);
+            }
+        }
     }
 
     private void UpdateState(Func<MaintenanceJobState, MaintenanceJobState> update, bool forceBroadcast = false)

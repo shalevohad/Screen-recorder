@@ -7,10 +7,10 @@ const pendingTiles = new Map();
 let requestQueue = [];
 let activeWorkers = 0;
 
-// 💡 מקביליות מיטבית לטעינה מהירה של ה-Filmstrip ללא חנק המעבד
-const MAX_CONCURRENT = 4;
-const TASK_TIMEOUT_MS = 6000;
-const MAX_CACHE_ENTRIES = 500; // הגדלת מטמון אריחים ב-RAM
+// 💡 מקביליות מבוקרת (3 עובדים) כדי לשמור על תגובתיות מלאה של השרת, הווידאו וציר הזמן
+const MAX_CONCURRENT = 3;
+const TASK_TIMEOUT_MS = 8000;
+const MAX_CACHE_ENTRIES = 80; // 💡 מטמון רזה ב-RAM (~3-5MB מקסימום) למניעת קריסת זיכרון דפדפן
 
 function scheduleQueueProcessing() {
     setTimeout(processQueue, 0);
@@ -23,7 +23,7 @@ function processQueue() {
     requestQueue = requestQueue.filter(task => !task.signal?.aborted);
 
     while (activeWorkers < MAX_CONCURRENT && requestQueue.length > 0) {
-        // 💡 LIFO: שליפת האריחים שנוספו אחרונים (האזור שהמשתמש מביט בו כעת ב-Viewport)
+        // 💡 LIFO: שליפת האריח האחרון שהמשתמש מביט בו כעת ב-Viewport
         const task = requestQueue.pop();
         if (!task || task.signal?.aborted) continue;
 
@@ -56,23 +56,25 @@ async function executeTask(task) {
         const url = `/api/v1/extractor-advanced/spritesheet?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}&frameCount=${frameCount}&tileWidth=100&tileHeight=50`;
         const res = await fetch(url, { signal });
 
-        if (res.ok) {
+        if (res.ok && res.status !== 204) {
             const blob = await res.blob();
-            const blobUrl = URL.createObjectURL(blob);
+            if (blob && blob.size > 1500) {
+                const blobUrl = URL.createObjectURL(blob);
 
-            // ניהול LRU: שחרור אריח ישן אם המטמון חורג מהגודל המרבי
-            if (tileCache.size >= MAX_CACHE_ENTRIES) {
-                const oldestKey = tileCache.keys().next().value;
-                const oldestUrl = tileCache.get(oldestKey);
-                if (oldestUrl) URL.revokeObjectURL(oldestUrl);
-                tileCache.delete(oldestKey);
+                // ניהול LRU: שחרור אריח ישן אם המטמון חורג מהגודל המרבי
+                if (tileCache.size >= MAX_CACHE_ENTRIES) {
+                    const oldestKey = tileCache.keys().next().value;
+                    const oldestUrl = tileCache.get(oldestKey);
+                    if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+                    tileCache.delete(oldestKey);
+                }
+
+                tileCache.set(key, blobUrl);
+                resolve(blobUrl); // 💡 שיבוץ מיידי ברגע שהאריח מוכן
+                return;
             }
-
-            tileCache.set(key, blobUrl);
-            resolve(blobUrl); // 💡 שיבוץ מיידי ברגע שהאריח מוכן
-        } else {
-            resolve(null);
         }
+        resolve(null);
     } catch {
         resolve(null);
     } finally {

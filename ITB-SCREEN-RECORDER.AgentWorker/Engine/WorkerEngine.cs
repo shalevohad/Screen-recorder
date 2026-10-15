@@ -276,7 +276,23 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             }
 
             var handshakeTask = ffmpeg.CompleteAudioHandshakeAsync(ct);
-            _ = Task.Run(() => ffmpeg.WriteVideoFrame(new byte[screen.Width * screen.Height * 4]), ct);
+            _ = Task.Run(() =>
+            {
+                byte[]? initialFrame = null;
+                try
+                {
+                    if (screen.TryCaptureFrame(out var captured) && captured != null)
+                    {
+                        initialFrame = new byte[captured.Length];
+                        Buffer.BlockCopy(captured, 0, initialFrame, 0, captured.Length);
+                        latestFrame = initialFrame;
+                    }
+                }
+                catch { }
+
+                initialFrame ??= new byte[screen.Width * screen.Height * 4];
+                ffmpeg.WriteVideoFrame(initialFrame);
+            }, ct);
 
             if (!await handshakeTask.ConfigureAwait(false))
             {

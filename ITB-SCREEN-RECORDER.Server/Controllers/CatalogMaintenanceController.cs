@@ -28,6 +28,17 @@ public class CatalogMaintenanceController : ControllerBase
     }
 
     /// <summary>
+    /// בדיקת תקינות מלאה, תיקון אינדקסים, עדכון משכים אמיתיים וסילוק רשומות רפאים (Manual Trigger)
+    /// </summary>
+    [HttpPost("repair")]
+    [AuthorizePermission(PermissionKeys.SettingsMaintenance)]
+    public async Task<IActionResult> TriggerRepair()
+    {
+        var status = await _maintenanceService.TriggerRepairCatalogAsync();
+        return Accepted(status);
+    }
+
+    /// <summary>
     /// קבלת סטטוס תהליך האינדוקס הנוכחי (Polling עבור הווידג'ט הצף GlobalJobIndicator ולשונית Maintenance)
     /// </summary>
     [HttpGet("reindex/status")]
