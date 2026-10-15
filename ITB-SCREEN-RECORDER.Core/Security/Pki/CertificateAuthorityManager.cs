@@ -120,26 +120,34 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                 X509Certificate2? caCert = null;
                 RSA? caPrivateKey = null;
 
+                // ==========================================
+                // שלב 1: אימות והבטחת קיומו של Root CA תקין עם מפתח פרטי
+                // ==========================================
                 if (!needNewCa)
                 {
                     try
                     {
-                        caCert = new X509Certificate2(File.ReadAllBytes(caCrtPath));
-                        DateTime caNotBeforeUtc = caCert.NotBefore.ToUniversalTime();
-                        DateTime caNotAfterUtc = caCert.NotAfter.ToUniversalTime();
-                        // בדיקת תוקף ה-CA ב-UTC: אם נותרו פחות מ-60 יום לתוקף ה-CA, נחדש אותו
+                        using var caRaw = new X509Certificate2(File.ReadAllBytes(caCrtPath));
+                        DateTime caNotBeforeUtc = caRaw.NotBefore.ToUniversalTime();
+                        DateTime caNotAfterUtc = caRaw.NotAfter.ToUniversalTime();
+
                         if (caNotAfterUtc < DateTime.UtcNow.AddDays(60) || caNotBeforeUtc > DateTime.UtcNow.AddMinutes(5))
                         {
                             Logger.AlwaysInfo($"[PKI] Root CA is expired or expiring soon (NotAfter UTC: {caNotAfterUtc:u}). Renewing CA.");
                             needNewCa = true;
-                            needNewServerCert = true;
+                        }
+                        else
+                        {
+                            // טעינת המפתח הפרטי וחיבורו אל תעודת ה-CA (חובה לצורך חתימה על תעודות שרת)
+                            caPrivateKey = RSA.Create();
+                            caPrivateKey.ImportFromPem(File.ReadAllText(caKeyPath));
+                            caCert = caRaw.CopyWithPrivateKey(caPrivateKey);
                         }
                     }
                     catch (Exception ex)
                     {
-                        Logger.AlwaysInfo($"[PKI] Failed to read existing Root CA: {ex.Message}. Re-generating.");
+                        Logger.AlwaysInfo($"[PKI] Failed reading existing Root CA or private key: {ex.Message}. Re-generating.");
                         needNewCa = true;
-                        needNewServerCert = true;
                     }
                 }
 
@@ -173,21 +181,13 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
 
                     // רישום ה-CA בחנות התעודות של מערכת ההפעלה (Windows / Linux)
                     TryRegisterCaInSystemTrust(caCert, caCrtPath);
-                }
-                else if (needNewServerCert)
-                {
-                    try
-                    {
-                        caPrivateKey = RSA.Create();
-                        caPrivateKey.ImportFromPem(File.ReadAllText(caKeyPath));
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.AlwaysInfo($"[PKI] Failed reading existing CA private key: {ex.Message}. Re-generating Root CA.");
-                        needNewCa = true;
-                    }
+
+                    needNewServerCert = true;
                 }
 
+                // ==========================================
+                // שלב 2: אימות והבטחת קיומה של תעודת שרת התואמת את ה-CA הפעיל
+                // ==========================================
                 X509Certificate2? serverCert = null;
 
                 if (!needNewServerCert)
@@ -197,8 +197,35 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                         serverCert = new X509Certificate2(serverPfxPath, pfxPassword, X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
                         DateTime srvNotBeforeUtc = serverCert.NotBefore.ToUniversalTime();
                         DateTime srvNotAfterUtc = serverCert.NotAfter.ToUniversalTime();
-                        // חידוש אוטומטי אם נותרו פחות מ-30 יום לתעודת השרת
-                        if (srvNotAfterUtc < DateTime.UtcNow.AddDays(30) || srvNotBeforeUtc > DateTime.UtcNow.AddMinutes(5))
+
+                        // בדיקה קריטית: האם תעודת השרת הקיימת אכן נחתמה על ידי ה-Root CA הנוכחי?
+                        bool isSignedByActiveCa = false;
+                        try
+                        {
+                            using var chain = new X509Chain();
+                            chain.ChainPolicy.ExtraStore.Add(caCert!);
+                            chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
+                            if (chain.Build(serverCert))
+                            {
+                                foreach (var element in chain.ChainElements)
+                                {
+                                    if (element.Certificate.Thumbprint.Equals(caCert!.Thumbprint, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        isSignedByActiveCa = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+
+                        if (!isSignedByActiveCa)
+                        {
+                            Logger.AlwaysInfo($"[PKI] Existing server certificate was issued by an older or different CA. Re-issuing server certificate to match active Root CA ({caCert!.Thumbprint})...");
+                            needNewServerCert = true;
+                        }
+                        else if (srvNotAfterUtc < DateTime.UtcNow.AddDays(30) || srvNotBeforeUtc > DateTime.UtcNow.AddMinutes(5))
                         {
                             Logger.AlwaysInfo($"[PKI] Server certificate expiring soon or invalid (NotAfter UTC: {srvNotAfterUtc:u}). Auto-renewing...");
                             needNewServerCert = true;
