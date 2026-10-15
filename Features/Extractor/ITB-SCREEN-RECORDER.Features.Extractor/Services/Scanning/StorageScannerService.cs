@@ -3,6 +3,7 @@
 // ==========================================
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -30,6 +31,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
         private static bool _pragmaInitialized = false;
         private static readonly object _pragmaLock = new();
+        private static bool _selfHealTriggered = false;
+        private static readonly object _selfHealLock = new();
 
         private static readonly string[] SupportedVideoExtensions = { ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov" };
 
@@ -106,6 +109,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     }
                 }
             }
+
+            TriggerCatalogSelfHeal();
 
             return conn;
         }
@@ -282,7 +287,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     if (parsed != null)
                     {
                         long fStart = new DateTimeOffset(parsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-                        long fEnd = fStart + defaultDurationMs;
+                        long fEnd = 0;
 
                         if (i + 1 < candidateFiles.Count)
                         {
@@ -292,9 +297,18 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                 long nextStart = new DateTimeOffset(nextParsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
                                 if (nextStart > fStart && (nextStart - fStart) <= (30 * 60 * 1000))
                                 {
-                                    fEnd = nextStart;
+                                    // בדוק אם הקובץ עצמו הסתיים מוקדם יותר מאשר תחילת הקובץ הבא (למשל אם יש פער)
+                                    long accurateMs = GetAccurateChunkDurationMs(file, parsed.StartUtc, nextStart - fStart);
+                                    fEnd = fStart + accurateMs;
                                 }
                             }
+                        }
+
+                        if (fEnd <= 0)
+                        {
+                            // קובץ אחרון ברצף או שאין קובץ עוקב בטווח 30 דקות - חובה לדגום משך מדויק כדי לא ליצור מקטע רפאים!
+                            long accurateMs = GetAccurateChunkDurationMs(file, parsed.StartUtc, defaultDurationMs);
+                            fEnd = fStart + accurateMs;
                         }
 
                         if (fEnd >= startMs && fStart <= endMs)
@@ -310,6 +324,156 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
 
             return missing;
+        }
+
+        private long GetAccurateChunkDurationMs(string filePath, DateTime startUtc, long fallbackDurationMs)
+        {
+            try
+            {
+                var fi = new FileInfo(filePath);
+                if (!fi.Exists || fi.Length < 1024) return fallbackDurationMs;
+
+                // קבצים שנכתבים ברגע זה ממש (פעילים)
+                if (fi.LastWriteTimeUtc > DateTime.UtcNow.AddMinutes(-2))
+                {
+                    return fallbackDurationMs;
+                }
+
+                string? ffprobePath = ResolveFfprobePath();
+                if (!string.IsNullOrWhiteSpace(ffprobePath) && File.Exists(ffprobePath))
+                {
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = ffprobePath,
+                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    using var proc = Process.Start(psi);
+                    if (proc != null)
+                    {
+                        if (proc.WaitForExit(3000))
+                        {
+                            string output = proc.StandardOutput.ReadToEnd().Trim();
+                            if (double.TryParse(output, NumberStyles.Any, CultureInfo.InvariantCulture, out double durSec) && durSec > 0.05)
+                            {
+                                return (long)Math.Round(durSec * 1000.0);
+                            }
+                        }
+                        else
+                        {
+                            try { proc.Kill(); } catch { }
+                        }
+                    }
+                }
+
+                // Fallback לפי שעת סגירת הקובץ בדיסק (LastWriteTimeUtc)
+                if (fi.LastWriteTimeUtc > startUtc)
+                {
+                    long diffMs = (long)(fi.LastWriteTimeUtc - startUtc).TotalMilliseconds;
+                    if (diffMs > 500 && diffMs < fallbackDurationMs)
+                    {
+                        return diffMs;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[STORAGE SCANNER] Could not probe exact duration for '{Path}'.", filePath);
+            }
+
+            return fallbackDurationMs;
+        }
+
+        private static string? ResolveFfprobePath()
+        {
+            string binaryName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+            var baseDir = AppContext.BaseDirectory;
+            string[] directCandidates = {
+                Path.Combine(baseDir, "Features", "ExtractorAdvanced", binaryName),
+                Path.Combine(baseDir, "Features", "Extractor", binaryName),
+                Path.Combine(baseDir, "Features", "Extractor", "Tools", "Win", binaryName),
+                Path.Combine(baseDir, "Tools", "Win", binaryName),
+                Path.Combine(baseDir, binaryName),
+                Path.Combine(baseDir, "..", "..", "..", "Tools", "Win", binaryName),
+                Path.Combine(baseDir, "..", "..", "..", "..", "Features", "ExtractorAdvanced", "ITB-SCREEN-RECORDER.Features.ExtractorAdvanced", "Tools", "Win", binaryName),
+                Path.Combine(baseDir, "..", "..", "..", "..", "Features", "Extractor", "ITB-SCREEN-RECORDER.Features.Extractor", "Tools", "Win", binaryName)
+            };
+
+            foreach (var path in directCandidates)
+            {
+                try
+                {
+                    var full = Path.GetFullPath(path);
+                    if (File.Exists(full)) return full;
+                }
+                catch { }
+            }
+
+            return binaryName;
+        }
+
+        private void TriggerCatalogSelfHeal()
+        {
+            if (_selfHealTriggered) return;
+            lock (_selfHealLock)
+            {
+                if (_selfHealTriggered) return;
+                _selfHealTriggered = true;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var conn = OpenCatalogDbConnection();
+                    const string querySql = @"
+                        SELECT file_path AS FilePath, start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, duration_ms AS DurationMs
+                        FROM recording_chunks
+                        WHERE duration_ms = 900000;";
+
+                    var candidates = (await conn.QueryAsync<(string FilePath, long StartEpochMs, long EndEpochMs, long DurationMs)>(querySql)).ToList();
+                    if (candidates.Count == 0) return;
+
+                    var updates = new List<(string FilePath, long NewEndMs, long NewDurMs)>();
+
+                    foreach (var item in candidates)
+                    {
+                        if (!File.Exists(item.FilePath)) continue;
+                        var fi = new FileInfo(item.FilePath);
+                        if (fi.Length < 70_000_000)
+                        {
+                            long realDurMs = GetAccurateChunkDurationMs(item.FilePath, DateTimeOffset.FromUnixTimeMilliseconds(item.StartEpochMs).UtcDateTime, 900000);
+                            if (realDurMs > 0 && Math.Abs(realDurMs - item.DurationMs) > 5000)
+                            {
+                                updates.Add((item.FilePath, item.StartEpochMs + realDurMs, realDurMs));
+                            }
+                        }
+                    }
+
+                    if (updates.Count > 0)
+                    {
+                        using var tx = conn.BeginTransaction();
+                        const string updateSql = @"
+                            UPDATE recording_chunks
+                            SET end_epoch_ms = @NewEndMs, duration_ms = @NewDurMs
+                            WHERE file_path = @FilePath;";
+
+                        foreach (var u in updates)
+                        {
+                            await conn.ExecuteAsync(updateSql, new { u.NewEndMs, u.NewDurMs, u.FilePath }, tx);
+                        }
+                        tx.Commit();
+                        _logger.LogInformation("[STORAGE SCANNER] Self-healed {Count} chunks with accurate durations.", updates.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[STORAGE SCANNER] Catalog self-heal background task completed with non-fatal note.");
+                }
+            });
         }
 
         public async Task<string> BuildConcatManifestAsync(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc)
