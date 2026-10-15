@@ -165,38 +165,48 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             _logger.LogInformation("[MediaMTX API REQUEST] Sending PATCH to {Route} with Payload: {Payload}", route, jsonPayload);
 
-            try
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                var request = new HttpRequestMessage(HttpMethod.Patch, route)
+                try
                 {
-                    Content = JsonContent.Create(payload)
-                };
+                    var request = new HttpRequestMessage(HttpMethod.Patch, route)
+                    {
+                        Content = JsonContent.Create(payload)
+                    };
 
-                using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    string responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
-                if (!response.IsSuccessStatusCode)
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogError("[MediaMTX API REJECTED] PATCH {Route} failed! StatusCode: {StatusCode} (HTTP {CodeInt}). Error Details: {Body}",
+                            route, response.StatusCode, (int)response.StatusCode, responseBody);
+                        return false;
+                    }
+
+                    _logger.LogInformation("[MediaMTX API SUCCESS] PATCH {Route} applied successfully (HTTP {StatusCode}). Response: {Body}",
+                        route, (int)response.StatusCode, string.IsNullOrWhiteSpace(responseBody) ? "OK (empty body)" : responseBody);
+
+                    return true;
+                }
+                catch (HttpRequestException ex) when (attempt < 3 && !cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogError("[MediaMTX API REJECTED] PATCH {Route} failed! StatusCode: {StatusCode} (HTTP {CodeInt}). Error Details: {Body}",
-                        route, response.StatusCode, (int)response.StatusCode, responseBody);
+                    _logger.LogWarning("[MediaMTX API RETRY] Attempt {Attempt}/3 failed ({Message}). Retrying in 1s...", attempt, ex.Message);
+                    await Task.Delay(1000, cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogError(ex, "[MediaMTX API NETWORK ERROR] Connection refused or lost while calling PATCH {Route}: {Message}", route, ex.Message);
                     return false;
                 }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[MediaMTX API EXCEPTION] Unexpected failure during PATCH {Route}: {Message}", route, ex.Message);
+                    return false;
+                }
+            }
 
-                _logger.LogInformation("[MediaMTX API SUCCESS] PATCH {Route} applied successfully (HTTP {StatusCode}). Response: {Body}",
-                    route, (int)response.StatusCode, string.IsNullOrWhiteSpace(responseBody) ? "OK (empty body)" : responseBody);
-
-                return true;
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogError(ex, "[MediaMTX API NETWORK ERROR] Connection refused or lost while calling PATCH {Route}: {Message}", route, ex.Message);
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[MediaMTX API EXCEPTION] Unexpected failure during PATCH {Route}: {Message}", route, ex.Message);
-                return false;
-            }
+            return false;
         }
 
         private class MediaMtxPathsListResponse

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
@@ -85,7 +85,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     Gpu3dPct = agent.Gpu3dPct,
                     GpuNvencPct = agent.GpuNvencPct,
 
-                    HlsUrl = $"http://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
+                    HlsUrl = $"{Request.Scheme}://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });
 

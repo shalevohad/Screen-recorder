@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
@@ -117,7 +117,10 @@ export default function FullscreenModal(props) {
 
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
-    const dynamicWebrtcBaseUrl = webrtcBaseUrl || `http://${serverHost}:${webrtcPort}`;
+    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    const dynamicWebrtcBaseUrl = isHttps
+        ? (webrtcBaseUrl && webrtcBaseUrl.startsWith('/') ? webrtcBaseUrl : '/api/v1/whep')
+        : (webrtcBaseUrl || `http://${serverHost}:${webrtcPort}`);
 
     const hostCpu = Number(hostCpuPct || 0);
     const appCpu = Number(appCpuPct || 0);

@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITB-SCREEN-RECORDER | End-to-End Technical & Engineering Architecture</title>
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-surface: #111827;
+      --bg-card: #162032;
+      --border-subtle: #1f2d42;
+      --border-accent: #2563eb;
+      --text-main: #f3f4f6;
+      --text-muted: #94a3b8;
+      --text-highlight: #38bdf8;
+      --accent-cyan: #06b6d4;
+      --accent-blue: #3b82f6;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-purple: #8b5cf6;
+      --accent-rose: #f43f5e;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, Monaco, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    /* Presentation Header */
+    header.deck-header {
+      height: 52px;
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.05em;
+      color: var(--text-main);
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #fff;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    .deck-controls {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .slide-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-nav {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-nav:hover {
+      background: var(--border-subtle);
+      color: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+    }
+
+    /* Slides Viewport */
+    main.deck-viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .slide {
+      position: absolute;
+      top: 24px;
+      bottom: 24px;
+      left: 32px;
+      right: 32px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 36px 44px;
+      display: none;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      overflow-y: auto;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+
+    .slide.active {
+      display: flex;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Slide Content Typography */
+    .slide-tag {
+      display: inline-block;
+      align-self: flex-start;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      padding: 3px 10px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+
+    .slide-title {
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+
+    .slide-subtitle {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      flex: 1;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      flex: 1;
+    }
+
+    /* Card Component */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .card.highlight {
+      border-color: rgba(6, 182, 212, 0.4);
+      background: linear-gradient(180deg, rgba(6, 182, 212, 0.05) 0%, rgba(22, 32, 50, 0.95) 100%);
+    }
+
+    .card.warning {
+      border-color: rgba(245, 158, 11, 0.4);
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.05) 0%, rgba(22, 32, 50, 0.95) 100%);
+    }
+
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title .icon {
+      font-size: 1.15rem;
+    }
+
+    .card-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 0.9rem;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    .card-list li {
+      position: relative;
+      padding-left: 18px;
+    }
+
+    .card-list li::before {
+      content: "▪";
+      position: absolute;
+      left: 0;
+      color: var(--accent-cyan);
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
+    .badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+    .badge-cyan { background: rgba(6, 182, 212, 0.15); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.3); }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .badge-purple { background: rgba(139, 92, 246, 0.15); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.3); }
+
+    /* Code & Technical Blocks */
+    .tech-code {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      background: #090d16;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 12px;
+      color: #e2e8f0;
+      line-height: 1.45;
+      overflow-x: auto;
+    }
+
+    /* Diagram Canvas / Visual */
+    .diagram-container {
+      background: #090e18;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      overflow: auto;
+    }
+
+    /* Tables */
+    .tech-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin-top: 10px;
+    }
+
+    .tech-table th {
+      background: var(--bg-card);
+      color: var(--accent-cyan);
+      text-align: left;
+      padding: 10px 14px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      border-bottom: 2px solid var(--border-subtle);
+    }
+
+    .tech-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: #cbd5e1;
+    }
+
+    .tech-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Deck Footer */
+    footer.deck-footer {
+      height: 38px;
+      background: rgba(17, 24, 39, 0.85);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      z-index: 100;
+    }
+
+    .deck-progress-bar {
+      position: absolute;
+      bottom: 37px;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+      transition: width 0.3s ease;
+      z-index: 101;
+    }
+
+    /* Print View for Exporting to Clean PDF */
+    @media print {
+      body {
+        overflow: visible !important;
+        height: auto !important;
+        background: #0a0e17 !important;
+        color: #f3f4f6 !important;
+      }
+      header.deck-header, footer.deck-footer, .deck-controls, .deck-progress-bar {
+        display: none !important;
+      }
+      main.deck-viewport {
+        display: block !important;
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+      .slide {
+        display: flex !important;
+        position: relative !important;
+        top: auto !important;
+        bottom: auto !important;
+        left: auto !important;
+        right: auto !important;
+        opacity: 1 !important;
+        transform: none !important;
+        page-break-after: always !important;
+        height: 100vh !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 40px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="deck-header">
+    <div class="brand">
+      <span class="brand-badge">ARCHITECTURE</span>
+      <span>ITB-SCREEN-RECORDER <span style="color:var(--text-muted); font-weight:400;">| Technical Deep-Dive</span></span>
+    </div>
+    <div class="deck-controls">
+      <span class="slide-indicator" id="slideIndicator">SLIDE 01 / 21</span>
+      <button class="btn-nav" id="prevBtn" title="Previous Slide (Left Arrow)">◀ Prev</button>
+      <button class="btn-nav" id="nextBtn" title="Next Slide (Right Arrow, Space)">Next ▶</button>
+      <button class="btn-nav" id="fullscreenBtn" title="Toggle Fullscreen (F)">⛶ Fullscreen</button>
+      <button class="btn-nav" id="printBtn" title="Export / Print to PDF (Ctrl+P)">🖨️ PDF</button>
+    </div>
+  </header>
+
+  <!-- Progress Bar -->
+  <div class="deck-progress-bar" id="progressBar" style="width: 4.76%;"></div>
+
+  <!-- Viewport -->
+  <main class="deck-viewport">
+
+    <!-- ==========================================
+         SLIDE 1: Title & System Overview
+         ========================================== -->
+    <div class="slide active" data-index="1">
+      <span class="slide-tag">Engineering Specification</span>
+      <h1 class="slide-title">ITB-SCREEN-RECORDER System Architecture</h1>
+      <p class="slide-subtitle">Air-Gapped Enterprise Fleet Video Streaming, Continuous Capture, and Non-Linear Synchronized Forensic Extraction</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🎯</span> Core System Mission</div>
+          <ul class="card-list">
+            <li><strong>High-Density Fleet Recording:</strong> Enterprise continuous screen, dual-channel audio (speakers + mic), and forensic keystroke streaming across 100+ endpoints simultaneously.</li>
+            <li><strong>Strict Air-Gap Environment:</strong> 100% self-hosted, offline operation with zero external internet dependencies or external cloud sync.</li>
+            <li><strong>Zero Client Workstation Impact:</strong> Hardware-accelerated GPU offloading (NVIDIA NVENC & Intel QuickSync) ensuring operators experience 0% perceptible UI lag.</li>
+            <li><strong>Sub-Second Real-Time Playback:</strong> Low-latency live monitoring via WebRTC / WHEP alongside HLS fallback streaming.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🏗️</span> Technology Stack & Core Modules</div>
+          <table class="tech-table">
+            <thead>
+              <tr><th>Subsystem</th><th>Core Technology</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><span class="badge badge-cyan">Agent Service</span></td><td>.NET 8 Worker, Win32 API</td><td>Session 0 Watchdog, User Logon Detection</td></tr>
+              <tr><td><span class="badge badge-cyan">Agent Worker</span></td><td>DirectX DDA, WASAPI, FFmpeg</td><td>Session 1 High-Priority Capture & Streaming</td></tr>
+              <tr><td><span class="badge badge-purple">Central Server</span></td><td>ASP.NET Core 8 Web API, SignalR</td><td>Fleet C2, MediaMTX Supervisor, Path Resolution</td></tr>
+              <tr><td><span class="badge badge-amber">Streaming Engine</span></td><td>MediaMTX v1.15.4 (Pinned)</td><td>RTMP Ingestion (:19350), WHEP (:8889), HLS (:8888)</td></tr>
+              <tr><td><span class="badge badge-green">NLE Extractor</span></td><td>FFmpeg, Custom Filter Pipeline</td><td>Multi-Track Clock-Aligned Video Slicing</td></tr>
+              <tr><td><span class="badge badge-cyan">Web Client</span></td><td>React 18, Vite, SCSS, WebRTC</td><td>Live Fleet Grid & Multi-Track Studio NLE</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 2: Architectural Principles & Invariants
+         ========================================== -->
+    <div class="slide" data-index="2">
+      <span class="slide-tag">System Invariants</span>
+      <h2 class="slide-title">Architectural Principles & Hard Constraints</h2>
+      <p class="slide-subtitle">Design rules governing deterministic synchronization, zero data loss, and resource governance.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span class="icon">⏱️</span> Wall-Clock Determinism</div>
+          <ul class="card-list">
+            <li>Recordings are split on absolute UTC wall-clock multiples of <code>Storage.ChunkIntervalMinutes</code> (default: 5 min).</li>
+            <li>Chunks align to <code>00:00, 00:05, 00:10</code> etc., independent of when individual station streaming commenced.</li>
+            <li>Ensures identical temporal bounds across all 100+ stations for effortless multi-track alignment.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🛡️</span> Dual-Path Failover Strategy</div>
+          <ul class="card-list">
+            <li><strong>Primary Target:</strong> Central NetApp UNC storage path (<code>Storage.NetAppUncPath</code>).</li>
+            <li><strong>Automated Fallback:</strong> If NetApp is unreachable within 3 seconds, Server auto-switches MediaMTX to local NVMe fallback (<code>C:\ProgramData\...\Recordings</code>).</li>
+            <li><strong>Endpoint Local Cache:</strong> If LAN link drops, AgentWorker writes to local encrypted queue.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">⚡</span> Zero-Overhead Hardware Encoding</div>
+          <ul class="card-list">
+            <li>Dynamic runtime encoder probing: <strong>NVENC</strong> &rarr; <strong>Intel QSV</strong> &rarr; <strong>CPU libx264</strong> fallback.</li>
+            <li>Intel QSV reduces workstation CPU utilization by <strong>~37%</strong> compared to software x264.</li>
+            <li>Desktop Duplication API (DirectX DDA) captures GPU framebuffers directly without GDI memory copying.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 3: System Topology & Connectivity
+         ========================================== -->
+    <div class="slide" data-index="3">
+      <span class="slide-tag">Network Topology</span>
+      <h2 class="slide-title">End-to-End System Connectivity & Wiring Schema</h2>
+      <p class="slide-subtitle">Complete physical and logical connectivity between managed endpoints, central services, and operators.</p>
+
+      <div class="diagram-container">
+        <svg viewBox="0 0 960 400" width="100%" height="100%" style="max-height: 380px;">
+          <!-- Managed Workstation Box -->
+          <rect x="20" y="30" width="260" height="340" rx="8" fill="#111827" stroke="#3b82f6" stroke-width="2"/>
+          <text x="35" y="55" fill="#38bdf8" font-family="Inter" font-weight="700" font-size="13">MANAGED WORKSTATION (Endpoint)</text>
+          
+          <rect x="35" y="70" width="230" height="100" rx="6" fill="#162032" stroke="#1f2d42"/>
+          <text x="45" y="92" fill="#fff" font-family="Inter" font-weight="600" font-size="12">AgentService (Session 0)</text>
+          <text x="45" y="112" fill="#94a3b8" font-family="Inter" font-size="11">• OS Service / systemd watchdog</text>
+          <text x="45" y="128" fill="#94a3b8" font-family="Inter" font-size="11">• User logon detection (Win32)</text>
+          <text x="45" y="144" fill="#94a3b8" font-family="Inter" font-size="11">• Win32 CreateProcessAsUser</text>
+
+          <rect x="35" y="185" width="230" height="170" rx="6" fill="#162032" stroke="#06b6d4"/>
+          <text x="45" y="208" fill="#fff" font-family="Inter" font-weight="600" font-size="12">AgentWorker (Session 1 GUI)</text>
+          <text x="45" y="228" fill="#94a3b8" font-family="Inter" font-size="11">• DirectX DDA (Screen Capture)</text>
+          <text x="45" y="244" fill="#94a3b8" font-family="Inter" font-size="11">• WASAPI Dual Loopback (Audio)</text>
+          <text x="45" y="260" fill="#94a3b8" font-family="Inter" font-size="11">• Hardware FFmpeg (NVENC/QSV)</text>
+          <text x="45" y="276" fill="#94a3b8" font-family="Inter" font-size="11">• Global Keystroke Hook</text>
+          <text x="45" y="292" fill="#94a3b8" font-family="Inter" font-size="11">• Local Failover Buffer (.mp4/.key)</text>
+
+          <!-- Central Server Box -->
+          <rect x="360" y="30" width="300" height="340" rx="8" fill="#111827" stroke="#8b5cf6" stroke-width="2"/>
+          <text x="375" y="55" fill="#c084fc" font-family="Inter" font-weight="700" font-size="13">CENTRAL RECORDING SERVER</text>
+
+          <rect x="375" y="70" width="270" height="90" rx="6" fill="#162032" stroke="#1f2d42"/>
+          <text x="385" y="92" fill="#fff" font-family="Inter" font-weight="600" font-size="12">MediaMTX v1.15.4 (Streaming Core)</text>
+          <text x="385" y="112" fill="#94a3b8" font-family="Inter" font-size="11">• RTMP Ingestion (:19350)</text>
+          <text x="385" y="128" fill="#94a3b8" font-family="Inter" font-size="11">• WebRTC / WHEP Server (:8889)</text>
+          <text x="385" y="144" fill="#94a3b8" font-family="Inter" font-size="11">• Dynamic Control API (:9997)</text>
+
+          <rect x="375" y="170" width="270" height="185" rx="6" fill="#162032" stroke="#1f2d42"/>
+          <text x="385" y="192" fill="#fff" font-family="Inter" font-weight="600" font-size="12">ASP.NET Core 8 Web Host (:5090)</text>
+          <text x="385" y="210" fill="#94a3b8" font-family="Inter" font-size="11">• RecordingChunkScheduler (Wall-Clock)</text>
+          <text x="385" y="226" fill="#94a3b8" font-family="Inter" font-size="11">• MediaMtxSupervisorWorker (Auto-Heal)</text>
+          <text x="385" y="242" fill="#94a3b8" font-family="Inter" font-size="11">• StorageScannerService (Covering Index)</text>
+          <text x="385" y="258" fill="#94a3b8" font-family="Inter" font-size="11">• SQLite DB (WAL Mode, 256MB mmap)</text>
+          <text x="385" y="274" fill="#94a3b8" font-family="Inter" font-size="11">• Extractor & ExtractorAdvanced (NLE)</text>
+          <text x="385" y="290" fill="#94a3b8" font-family="Inter" font-size="11">• Telemetry & C2 WebSockets / SignalR</text>
+
+          <!-- Storage Target Box -->
+          <rect x="740" y="30" width="200" height="150" rx="8" fill="#111827" stroke="#10b981" stroke-width="2"/>
+          <text x="755" y="55" fill="#34d399" font-family="Inter" font-weight="700" font-size="13">STORAGE TIER</text>
+          <rect x="755" y="70" width="170" height="45" rx="6" fill="#162032" stroke="#10b981"/>
+          <text x="765" y="90" fill="#fff" font-family="Inter" font-size="11" font-weight="600">NetApp UNC (Primary)</text>
+          <text x="765" y="104" fill="#94a3b8" font-family="Inter" font-size="10">\\netapp\recordings\live</text>
+          
+          <rect x="755" y="125" width="170" height="45" rx="6" fill="#162032" stroke="#f59e0b"/>
+          <text x="765" y="145" fill="#fff" font-family="Inter" font-size="11" font-weight="600">NVMe Local Fallback</text>
+          <text x="765" y="159" fill="#94a3b8" font-family="Inter" font-size="10">C:\ProgramData\...\Recordings</text>
+
+          <!-- Client Tier Box -->
+          <rect x="740" y="210" width="200" height="160" rx="8" fill="#111827" stroke="#38bdf8" stroke-width="2"/>
+          <text x="755" y="235" fill="#38bdf8" font-family="Inter" font-weight="700" font-size="13">OPERATIONS CLIENTS</text>
+          <text x="755" y="260" fill="#fff" font-family="Inter" font-size="11">• React 18 Fleet C2 Dashboard</text>
+          <text x="755" y="280" fill="#fff" font-family="Inter" font-size="11">• WebRTC WHEP Low-Latency View</text>
+          <text x="755" y="300" fill="#fff" font-family="Inter" font-size="11">• Multi-Track Timeline Studio (NLE)</text>
+          <text x="755" y="320" fill="#fff" font-family="Inter" font-size="11">• Forensic Synchronized Exporter</text>
+
+          <!-- Connecting Lines -->
+          <!-- Agent to MediaMTX RTMP -->
+          <path d="M 265 240 L 375 110" stroke="#06b6d4" stroke-width="2" stroke-dasharray="4,4" fill="none"/>
+          <text x="270" y="165" fill="#38bdf8" font-family="monospace" font-size="10">RTMP (:19350)</text>
+
+          <!-- Agent to Server C2 -->
+          <path d="M 265 120 L 375 220" stroke="#3b82f6" stroke-width="2" fill="none"/>
+          <text x="275" y="195" fill="#93c5fd" font-family="monospace" font-size="10">HTTP/C2 (:5090)</text>
+
+          <!-- Server to Storage -->
+          <path d="M 645 115 L 755 92" stroke="#10b981" stroke-width="2" fill="none"/>
+          <text x="660" y="95" fill="#34d399" font-family="monospace" font-size="10">Write Segments</text>
+
+          <!-- Clients to Server -->
+          <path d="M 645 280 L 740 280" stroke="#8b5cf6" stroke-width="2" fill="none"/>
+          <text x="655" y="270" fill="#c084fc" font-family="monospace" font-size="10">REST / WSEP / WHEP</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 4: UML Component Diagram
+         ========================================== -->
+    <div class="slide" data-index="4">
+      <span class="slide-tag">Architecture Modeling</span>
+      <h2 class="slide-title">System UML Component Diagram</h2>
+      <p class="slide-subtitle">Modular breakdown of assemblies, dependencies, and inter-process interfaces.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">🧩</span> Component Hierarchy</div>
+          <div class="tech-code">
++-------------------------------------------------------+
+|                ITB-SCREEN-RECORDER.Core                |
+|  * Abstractions  * SystemConfig  * Ipc contracts      |
+|  * Diagnostics   * KeystrokeDto  * NetworkTelemetry   |
++-------------------------------------------------------+
+                           ^
+        +------------------+------------------+
+        |                                     |
++-------+--------------------+   +------------+--------------------+
+| ITB.AgentService           |   | ITB-SCREEN-RECORDER.Server       |
+| * AgentSupervisorService   |   | * RecordingChunkScheduler        |
+| * Win32 Session Manager    |   | * MediaMtxSupervisorWorker       |
+| * Worker Launcher (IPC)    |   | * CatalogDbInitializer (SQLite)  |
++----------------------------+   | * StoragePathResolver            |
+        | Spawns User Session    +----------------------------------+
+        v                                     ^
++----------------------------+                | Dynamic Assembly Load
+| ITB.AgentWorker            |   +------------+--------------------+
+| * WorkerEngine             |   | Features.Extractor / Advanced   |
+| * ScreenCapture (DDA/X11)  |   | * SynchronizationPlanBuilder    |
+| * AudioPacer (WASAPI)      |   | * SynchronizedTrackCutter       |
+| * FfmpegProcessManager     |   | * NoSignalPatternService        |
+| * Low-Level KeyboardHook   |   | * AdvanceJobManager             |
++----------------------------+   +---------------------------------+
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🔍</span> Architectural Decoupling</div>
+          <ul class="card-list">
+            <li><strong>Core Dependency Inversion:</strong> <code>ITB-SCREEN-RECORDER.Core</code> provides shared contracts, logging, and IPC DTOs without coupling Agent to Server database models.</li>
+            <li><strong>Feature Plugin Isolation:</strong> <code>Features.Extractor</code> and <code>Features.ExtractorAdvanced</code> operate as modular plugin assemblies injected at runtime via <code>ExtractorHostingStartup</code>.</li>
+            <li><strong>Isolated Media Transcoder:</strong> FFmpeg executes as an out-of-process subprocess managed by <code>FfmpegProcessManager</code>, protecting host worker memory from codec faults.</li>
+            <li><strong>Zero Global Shared State:</strong> All workstation-server synchronizations occur across well-typed REST telemetry and RTMP media frames.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 5: Endpoint Architecture - Session 0 vs. 1
+         ========================================== -->
+    <div class="slide" data-index="5">
+      <span class="slide-tag">Endpoint Internals</span>
+      <h2 class="slide-title">Endpoint Architecture: Session 0 vs. Session 1 Isolation</h2>
+      <p class="slide-subtitle">Solving Windows security boundaries: Capturing user desktop graphics from a persistent background service.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">🛑</span> The Windows Session 0 Barrier</div>
+          <ul class="card-list">
+            <li>Since Windows Vista, system services run in <strong>Session 0</strong>, which has no interactive desktop, no display monitor access, and no Direct3D graphics context.</li>
+            <li>Direct3D Desktop Duplication API (DDA) can only run within the interactive user session (<strong>Session 1+</strong>).</li>
+            <li>If an application runs solely as a user program, it terminates when the user logs off, failing continuous surveillance requirements.</li>
+          </ul>
+          <div class="tech-code" style="margin-top:14px;">
+// Win32 Interop in AgentSupervisorService:
+WTSGetActiveConsoleSessionId();
+WTSQueryUserToken(activeSessionId, out userToken);
+DuplicateTokenEx(userToken, MAXIMUM_ALLOWED, ...);
+CreateProcessAsUser(..., "AgentWorker.exe", ...);
+          </div>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">✅</span> Two-Tier Supervisor-Worker Solution</div>
+          <ul class="card-list">
+            <li><strong>AgentSupervisorService (Session 0):</strong>
+              <br>Runs as a persistent Windows Service with <code>SYSTEM</code> privileges. It monitors user logon/logoff events and acts as the watchdog.
+            </li>
+            <li><strong>Elevation to Interactive Desktop:</strong>
+              <br>Upon active user login, Supervisor duplicates the user desktop token and invokes Win32 <code>CreateProcessAsUser</code> to spawn <code>AgentWorker.exe</code> directly into Session 1.
+            </li>
+            <li><strong>Local IPC Coordination:</strong>
+              <br>Supervisor and Worker communicate via a private local Named Pipe / IPC channel for clock calibration, stream targets, and telemetry reporting.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 6: AgentWorker Ingestion Engine
+         ========================================== -->
+    <div class="slide" data-index="6">
+      <span class="slide-tag">Media Pipeline</span>
+      <h2 class="slide-title">AgentWorker Ingestion: DDA, WASAPI & Video Pacer</h2>
+      <p class="slide-subtitle">Capturing display surfaces and mixed audio with microsecond timing accuracy.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">🖥️</span> DirectX Desktop Duplication (DDA)</div>
+          <ul class="card-list">
+            <li>Acquires frame surfaces straight from the GPU frame buffer via <code>IDXGIOutputDuplication</code>.</li>
+            <li>Zero memory copy across CPU boundaries until the frame is piped into the hardware encoder.</li>
+            <li>Captures native multi-monitor display resolutions up to 4K at steady 30 FPS.</li>
+            <li>Automated session recovery via <code>SessionGuard</code> if workstation resolution changes or screen locks.</li>
+          </ul>
+          <div class="tech-code" style="margin-top: 10px;">
+// High-Precision Multimedia Timer applied at startup:
+WindowsNative.TimeBeginPeriod(1); // 1ms scheduler granularity
+Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+Thread.CurrentThread.Priority = ThreadPriority.Highest;
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🎙️</span> WASAPI Audio & Video Pacing</div>
+          <ul class="card-list">
+            <li><strong>Dual Loopback Mixer:</strong> Uses Windows Audio Session API (WASAPI) to capture system speaker audio mixed simultaneously with the local microphone.</li>
+            <li><strong>AudioPacer Synchronization:</strong> Solves timestamp drift between independent audio clock and display refresh rate by continuous sample counting and audio byte pacing.</li>
+            <li><strong>Loopback TCP Handshake:</strong> Audio samples are streamed via high-speed local TCP loopback into FFmpeg, eliminating standard Windows pipe buffer bloat.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 7: Hardware Acceleration & Codec Selection
+         ========================================== -->
+    <div class="slide" data-index="7">
+      <span class="slide-tag">Encoding Engine</span>
+      <h2 class="slide-title">Tri-Tier Hardware Acceleration (NVENC &rarr; QSV &rarr; CPU)</h2>
+      <p class="slide-subtitle">Dynamic hardware probe executing at stream startup to eliminate workstation CPU load.</p>
+
+      <div class="grid-3">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🟢</span> Tier 1: NVIDIA NVENC</div>
+          <ul class="card-list">
+            <li><strong>Encoder:</strong> <code>h264_nvenc</code></li>
+            <li><strong>Preset:</strong> <code>p2</code> (Fast / Low Latency)</li>
+            <li><strong>Tuning:</strong> <code>-tune ll -forced-idr 1</code></li>
+            <li><strong>CPU Overhead:</strong> &lt; 1% CPU utilization</li>
+            <li><strong>Latency:</strong> Zero-latency B-frame suppression</li>
+          </ul>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🔵</span> Tier 2: Intel QuickSync (QSV)</div>
+          <ul class="card-list">
+            <li><strong>Encoder:</strong> <code>h264_qsv</code></li>
+            <li><strong>Preset:</strong> <code>veryfast -low_power 1</code></li>
+            <li><strong>Pixel Format:</strong> Auto-converted to <code>nv12</code></li>
+            <li><strong>CPU Efficiency:</strong> <strong>~37% less CPU</strong> than software x264 on standard office PCs</li>
+            <li>Enables hardware encoding on laptops and integrated GPU fleets</li>
+          </ul>
+        </div>
+
+        <div class="card warning">
+          <div class="card-title"><span class="icon">🟡</span> Tier 3: CPU Fallback</div>
+          <ul class="card-list">
+            <li><strong>Encoder:</strong> <code>libx264</code> (Software)</li>
+            <li><strong>Preset:</strong> <code>ultrafast</code></li>
+            <li><strong>Tuning:</strong> <code>-tune zerolatency</code></li>
+            <li><strong>Safety Margin:</strong> Activated only when no supported discrete or integrated GPU is detected.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 8: Deterministic Wall-Clock Chunking
+         ========================================== -->
+    <div class="slide" data-index="8">
+      <span class="slide-tag">Storage Engine</span>
+      <h2 class="slide-title">Deterministic Wall-Clock Chunking Engine</h2>
+      <p class="slide-subtitle">Synchronizing MediaMTX segment cuts to round clock boundaries without cumulative drift.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">⏰</span> Boundary Calculation Logic</div>
+          <div class="tech-code">
+// RecordingChunkScheduler.cs: Compute boundary from UTC clock
+var now = DateTime.UtcNow;
+int interval = _storageConfig.ChunkIntervalMinutes; // e.g. 5
+int minutesSinceMidnight = now.Hour * 60 + now.Minute;
+int nextBoundaryMinutes = minutesSinceMidnight - 
+    (minutesSinceMidnight % interval) + interval;
+
+// Exact sleep until next tick (no cumulative Task.Delay drift):
+var nextTick = now.Date.AddMinutes(nextBoundaryMinutes);
+await Task.Delay(nextTick - DateTime.UtcNow, ct);
+          </div>
+          <p style="margin-top:10px; font-size:0.85rem; color:#94a3b8;">
+            At boundary tick, <code>MediaMtxApiClient</code> calls <code>RotatePathRecordingAsync()</code> on active streams, toggling <code>record: false &rarr; true</code> to force an immediate clean segment close.
+          </p>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">📌</span> MediaMTX Pinning & Upstream Patch</div>
+          <ul class="card-list">
+            <li><strong>Version Pin:</strong> MediaMTX is strictly pinned to <strong>v1.15.4</strong>.</li>
+            <li><strong>The Upstream Bug (v1.15.5+):</strong> Later releases enforce an unconfigurable <code>ntpDriftTolerance</code> check in <code>format_fmp4_track.go</code> that falsely flags live screen capture jitter, splitting chunks every 15-20 seconds instead of the configured 5 minutes!</li>
+            <li><strong>Deterministic Filenames:</strong> Formatted with <code>%Y-%m-%d_%H-%M-%S-%f</code>, matching the exact millisecond boundary of the cut.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 9: Storage Architecture & Failover
+         ========================================== -->
+    <div class="slide" data-index="9">
+      <span class="slide-tag">Storage Strategy</span>
+      <h2 class="slide-title">Storage Architecture & High-Availability Failover</h2>
+      <p class="slide-subtitle">Guaranteed persistence across enterprise SAN/NAS outages and local disk constraints.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span class="icon">🏛️</span> Primary: NetApp UNC</div>
+          <ul class="card-list">
+            <li>All station segments write directly to <code>Storage.NetAppUncPath</code>.</li>
+            <li>Organized by station subfolders:
+              <br><code>{root}/live/{station_id}/*.mp4</code>
+            </li>
+            <li>High throughput enterprise SAN/NAS backend designed for 30+ day retention.</li>
+          </ul>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🔄</span> Dynamic Failover Resolver</div>
+          <ul class="card-list">
+            <li><code>StoragePathResolver</code> tests NetApp responsiveness every chunk boundary with a <strong>3-second timeout</strong>.</li>
+            <li>If NetApp is unreachable, MediaMTX is instantly reconfigured to write to local NVMe:
+              <br><code>C:\ProgramData\...\Recordings</code>
+            </li>
+            <li>When NetApp returns, subsequent chunks transition back automatically without server reboot.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🧹</span> Retention & Quota Safety</div>
+          <ul class="card-list">
+            <li><strong>Time-Based Retention:</strong> MediaMTX automatically purges segments older than <code>Storage.RetentionDays</code> (e.g. 30 days).</li>
+            <li><strong>Quota Safety Guard:</strong> Active recordings within <code>2 * ChunkInterval</code> are shielded from eviction.</li>
+            <li><strong>Safe Fallback:</strong> If total capacity exceeds quota, oldest non-shielded segments are pruned globally.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 10: Database Schema & High-Speed Catalog
+         ========================================== -->
+    <div class="slide" data-index="10">
+      <span class="slide-tag">Data Layer</span>
+      <h2 class="slide-title">High-Throughput SQLite WAL Database & Schema</h2>
+      <p class="slide-subtitle">In-memory SQLite tuned for sub-millisecond timeline range queries and high write concurrency.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">⚡</span> SQLite Engine Tuning</div>
+          <ul class="card-list">
+            <li><code>PRAGMA journal_mode = WAL;</code> — Enables concurrent non-blocking reads during continuous chunk insertions.</li>
+            <li><code>PRAGMA synchronous = NORMAL;</code> — Maximizes disk I/O throughput.</li>
+            <li><code>PRAGMA mmap_size = 268435456;</code> (256 MB memory mapped I/O).</li>
+            <li><code>PRAGMA temp_store = MEMORY;</code> — Fast temporary sort buffers.</li>
+          </ul>
+          <div class="tech-code" style="margin-top:10px;">
+-- Covering index for instantaneous timeline requests:
+CREATE INDEX idx_chunks_station_window_covering 
+ON recording_chunks (
+  station_id, start_epoch_ms, end_epoch_ms, 
+  is_finalized, file_path, file_size_bytes, 
+  fps, width, height, has_audio
+);
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">📊</span> Core Table Architecture</div>
+          <table class="tech-table">
+            <thead><tr><th>Table</th><th>Key Fields</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>station_nodes</code></td><td>station_id, ip, agent_version</td><td>Active fleet registry & health</td></tr>
+              <tr><td><code>recording_chunks</code></td><td>file_path, start/end_epoch_ms</td><td>Wall-clock video slice catalog</td></tr>
+              <tr><td><code>keystroke_events</code></td><td>station_id, epoch_ms, key_combo</td><td>Indexed operator keyboard inputs</td></tr>
+              <tr><td><code>custom_tabs</code></td><td>id, hostnames_json, ous_json</td><td>Fleet grouping & layout templates</td></tr>
+              <tr><td><code>advance_jobs</code></td><td>JobId, Status, ProgressPercent</td><td>NLE background rendering jobs</td></tr>
+              <tr><td><code>bookmarks</code></td><td>StationId, StartUtc, EndUtc</td><td>Marked forensic incident segments</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 11: Storage Scanner & Metadata Ingestion
+         ========================================== -->
+    <div class="slide" data-index="11">
+      <span class="slide-tag">Catalog Engine</span>
+      <h2 class="slide-title">Storage Scanner & Automated Cataloging Pipeline</h2>
+      <p class="slide-subtitle">Continuously reconciling on-disk MP4 files with the database to index finalized segments.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">🔄</span> Scan & Reconciliation Cycle</div>
+          <ul class="card-list">
+            <li><code>StorageScannerService</code> runs a low-priority background sweep across the active recordings root directory.</li>
+            <li>Parses timestamp metadata encoded in segment filenames:
+              <br><code>stationA_2026-10-15_13-15-00-000.mp4</code>
+            </li>
+            <li>Inspects unfinalized chunks using <code>ffprobe</code> to extract exact frame count, actual duration, codec, width, height, and audio stream presence.</li>
+            <li>Marks chunks as <code>is_finalized = 1</code> once MediaMTX closes the write handle and releases the file.</li>
+          </ul>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🛡️</span> Resiliency Features</div>
+          <ul class="card-list">
+            <li><strong>Self-Healing Catalog:</strong> If the server restarts unexpectedly, the scanner detects existing files on disk and restores missing database entries automatically.</li>
+            <li><strong>Orphan Cleanup:</strong> Chunks recorded while the server was down or during network split-brain are discovered and ingested seamlessly.</li>
+            <li><strong>Non-Blocking Queries:</strong> Timeline playback requests query the database covering index without touching the physical file system.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 12: Sequence Diagram: Agent Ingestion Flow
+         ========================================== -->
+    <div class="slide" data-index="12">
+      <span class="slide-tag">Sequence Flow</span>
+      <h2 class="slide-title">UML Sequence: Agent Lifecycle & Live Ingestion</h2>
+      <p class="slide-subtitle">Complete sequence from service boot, user logon, stream initialization, to C2 telemetry.</p>
+
+      <div class="diagram-container">
+        <div class="tech-code" style="width:100%; font-size:0.75rem;">
+OperatingSystem         AgentSupervisor(Session0)   AgentWorker(Session1)       MediaMTX(:19350)       CentralServer(:5090)
+      |                            |                         |                         |                        |
+      |-- 1. User Logon Event ---->|                         |                         |                        |
+      |    (WTS_SESSION_LOGON)     |-- 2. Duplicate Token -->|                         |                        |
+      |                            |-- 3. CreateProcessAsUser|                         |                        |
+      |                            |      (Launch Worker)    |                         |                        |
+      |                            |                         |-- 4. Probe Encoders --->|                        |
+      |                            |                         |      (NVENC/QSV/CPU)    |                        |
+      |                            |<== 5. IPC Handshake ===>|                         |                        |
+      |                            |                         |                         |                        |
+      |                            |-- 6. Fetch Stream Config (Destination, FPS, Bitrate) --------------------->|
+      |                            |<---------------------------------------------------------------------------|
+      |                            |-- 7. Send START_COMMAND>|                         |                        |
+      |                            |                         |-- 8. Connect RTMP ----->|                        |
+      |                            |                         |      (Send H.264 Video) |                        |
+      |                            |                         |                         |-- 9. Ingest Active --->|
+      |                            |<-- 10. IPC Telemetry <--|                         |                        |
+      |                            |-- 11. Heartbeat & Batch Keystrokes --------------------------------------->|
+      |                            |                                                   |                        |-- 12. Update Node
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 13: Sequence Diagram: Segment Rotation
+         ========================================== -->
+    <div class="slide" data-index="13">
+      <span class="slide-tag">Sequence Flow</span>
+      <h2 class="slide-title">UML Sequence: Wall-Clock Segment Rotation</h2>
+      <p class="slide-subtitle">Coordination between scheduler, MediaMTX API, file system, and catalog scanner.</p>
+
+      <div class="diagram-container">
+        <div class="tech-code" style="width:100%; font-size:0.75rem;">
+RecordingChunkScheduler       MediaMtxApiClient          MediaMTX Engine           File System / NetApp    StorageScannerService
+          |                           |                         |                           |                         |
+          |-- 1. Wall-Clock Tick ---->|                         |                           |                         |
+          |   (e.g., 14:00:00 UTC)    |                         |                           |                         |
+          |                           |-- 2. GET /v3/paths/list>|                           |                         |
+          |                           |<-- Active Stream Paths -|                           |                         |
+          |                           |                         |                           |                         |
+          |                           |-- 3. RotatePathRecording(record: false) ----------->|                         |
+          |                           |                         |-- 4. Close Segment ------>|                         |
+          |                           |                         |      (chunk_13-55-00.mp4) |                         |
+          |                           |-- 5. RotatePathRecording(record: true) ------------>|                         |
+          |                           |                         |-- 6. Open New Segment --->|                         |
+          |                           |                         |      (chunk_14-00-00.mp4) |                         |
+          |                           |                         |                           |                         |
+          |-- 7. Notify Boundary ------------------------------------------------------------------------------------>|
+          |                           |                         |                           |<-- 8. Probe & Finalize -|
+          |                           |                         |                           |    (Insert to DB Table) |
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 14: Extractor Core & Advanced NLE
+         ========================================== -->
+    <div class="slide" data-index="14">
+      <span class="slide-tag">Forensic Extraction</span>
+      <h2 class="slide-title">Extractor & ExtractorAdvanced: Web NLE Architecture</h2>
+      <p class="slide-subtitle">Browser-based multi-camera forensic editing with synchronized multi-track export.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🎬</span> Advanced Studio Capabilities</div>
+          <ul class="card-list">
+            <li><strong>Multi-Station Synchronized Playback:</strong> Up to 16 stations played simultaneously in lockstep.</li>
+            <li><strong>Visual Timeline & Spritesheets:</strong> High-performance scrubbing using cached thumbnail spritesheets rendered directly on HTML5 Canvas.</li>
+            <li><strong>Non-Destructive Editing:</strong> Users set IN/OUT cue points, create bookmarks, and save editing drafts without duplicating source files.</li>
+            <li><strong>Background Export Queue:</strong> Managed by <code>AdvanceJobManager</code> with live percentage, throughput MB/s, and ETA telemetry.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">⚙️</span> Export Cutting Modes</div>
+          <ul class="card-list">
+            <li><strong>Synchronized Multi-Track:</strong> Merges multiple station views into synchronized parallel tracks or side-by-side grids.</li>
+            <li><strong>Single Station Cut:</strong> Rapid lossless stream-copy where keyframe boundaries align, or smart-recoding where sub-second precision is required.</li>
+            <li><strong>Forensic Metadata Burn-in:</strong> Embedded station hostname, millisecond UTC timestamps, and synchronized keystroke subtitles.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 15: Sequence Diagram: Synchronized Extraction
+         ========================================== -->
+    <div class="slide" data-index="15">
+      <span class="slide-tag">Sequence Flow</span>
+      <h2 class="slide-title">UML Sequence: Multi-Track Synchronized Extraction</h2>
+      <p class="slide-subtitle">How gaps, different start times, and multi-station cuts are unified into an export file.</p>
+
+      <div class="diagram-container">
+        <div class="tech-code" style="width:100%; font-size:0.75rem;">
+Web Studio Client         AdvancedExtractorController   AdvanceJobManager     SynchronizationPlanBuilder   SynchronizedTrackCutter
+        |                              |                        |                         |                           |
+        |-- 1. POST /api/export ------>|                        |                         |                           |
+        |   (Stations, InUtc, OutUtc)  |-- 2. Enqueue Job ----->|                         |                           |
+        |<-- 202 Accepted (JobId) -----|                        |                         |                           |
+        |                              |                        |-- 3. Query DB Chunks -->|                           |
+        |                              |                        |-- 4. Build Plan ------->|                           |
+        |                              |                        |<-- Plan (Gaps & Cuts) --|                           |
+        |                              |                        |                                                     |
+        |                              |                        |-- 5. For each station: CutSynchronizedTrackAsync -->|
+        |                              |                        |      (Fills offline gaps with NoSignalPattern)      |
+        |                              |                        |<-- Station Track MP4 -------------------------------|
+        |                              |                        |                                                     |
+        |                              |                        |-- 6. FFmpeg Concat / Mux Final Package              |
+        |-- 7. Poll Job Status (SSE/GET) ---------------------->|                                                     |
+        |<-- Progress % & Speed (MB/s) -------------------------|                                                     |
+        |-- 8. Download Final Video (.mp4 + .srt) ------------->|                                                     |
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 16: Gap Handling & "No Signal" Engine
+         ========================================== -->
+    <div class="slide" data-index="16">
+      <span class="slide-tag">Time Continuity</span>
+      <h2 class="slide-title">Gap Handling & "No Signal" Clock-Alignment Engine</h2>
+      <p class="slide-subtitle">Solving temporal desynchronization when stations reboot, disconnect, or power down.</p>
+
+      <div class="grid-2">
+        <div class="card warning">
+          <div class="card-title"><span class="icon">⚠️</span> The Desynchronization Challenge</div>
+          <p style="font-size:0.9rem; color:#cbd5e1; line-height:1.5;">
+            In traditional NLE systems, if Station A records continuously from 10:00 to 10:30, but Station B was powered off from 10:10 to 10:20, simply concatenating Station B's clips results in a 10-minute video phase desynchronization.
+            Multi-screen playback will show Station B's 10:20 actions at 10:10!
+          </p>
+          <div class="diagram-container" style="margin-top:14px; padding:10px;">
+            <svg viewBox="0 0 400 90" width="100%">
+              <text x="10" y="25" fill="#fff" font-size="10">Station A:</text>
+              <rect x="70" y="12" width="310" height="18" fill="#06b6d4" rx="3"/>
+              <text x="80" y="25" fill="#000" font-size="10" font-weight="bold">Continuous Stream (10:00 &rarr; 10:30)</text>
+
+              <text x="10" y="65" fill="#fff" font-size="10">Station B:</text>
+              <rect x="70" y="52" width="100" height="18" fill="#10b981" rx="3"/>
+              <rect x="175" y="52" width="95" height="18" fill="#f43f5e" rx="3" stroke="#f43f5e" stroke-dasharray="2,2"/>
+              <text x="180" y="65" fill="#fff" font-size="9">GAP (No Signal)</text>
+              <rect x="275" y="52" width="105" height="18" fill="#10b981" rx="3"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🛡️</span> The NoSignalPatternService Solution</div>
+          <ul class="card-list">
+            <li><code>SynchronizationPlanBuilder</code> scans chunk timestamps and identifies temporal gaps greater than 500ms.</li>
+            <li>For every missing timespan, <code>NoSignalPatternService</code> synthesizes a calibrated "NO SIGNAL" / black synthetic video stream with the exact dimensions and duration of the gap.</li>
+            <li>Audio channels generate synthetic silence to match.</li>
+            <li><strong>Outcome:</strong> Station tracks remain 100% time-synchronized throughout the entire export window down to the exact millisecond!</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 17: Forensic Keystroke Capture & SRT
+         ========================================== -->
+    <div class="slide" data-index="17">
+      <span class="slide-tag">Forensic Telemetry</span>
+      <h2 class="slide-title">Forensic Keystroke Capture & Synchronized SRT</h2>
+      <p class="slide-subtitle">Capturing operator keyboard events with millisecond timestamps for synchronized subtitle display.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">⌨️</span> Low-Level Keyboard Capture</div>
+          <ul class="card-list">
+            <li><code>KeyboardCaptureFactory</code> initializes a low-level OS hook (<code>SetWindowsHookEx</code> / X11).</li>
+            <li>Calculates absolute UTC epoch milliseconds calibrated with server clock offset.</li>
+            <li><strong>Privacy & Safety Gate:</strong> Keystroke capture automatically pauses whenever the agent is in standby or offline gap modes, preventing leak of unrecorded input.</li>
+            <li>Batched into C2 telemetry reports to eliminate per-key network overhead.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">📄</span> SubRip (.SRT) Subtitle Generation</div>
+          <ul class="card-list">
+            <li><code>KeystrokeSrtGenerator</code> queries <code>keystroke_events</code> across the requested extraction time range.</li>
+            <li>Assembles human-readable subtitle tracks formatted with exact start and end display intervals:
+              <div class="tech-code" style="margin-top:8px;">
+1
+00:01:14,200 --> 00:01:15,800
+[KEY] Ctrl+Shift+Esc (Task Manager)
+
+2
+00:01:18,450 --> 00:01:20,100
+[KEY] Enter (Execute Command)
+              </div>
+            </li>
+            <li>Exported alongside video files for seamless playback in VLC, browser players, or court forensic suites.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 18: Frontend Client Architecture
+         ========================================== -->
+    <div class="slide" data-index="18">
+      <span class="slide-tag">Client Application</span>
+      <h2 class="slide-title">Frontend Client Architecture: React 18 & WebRTC WHEP</h2>
+      <p class="slide-subtitle">Modular, responsive operator workspace designed for high-density live telemetry and rapid NLE scrubbing.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span class="icon">⚡</span> React 18 & Vite SPA</div>
+          <ul class="card-list">
+            <li>Single-page application bundled with Vite for near-instant hot reload and optimal asset minification.</li>
+            <li>Global state orchestration with custom lightweight stores (e.g. <code>spritesheetStore</code>).</li>
+            <li>Optimized DOM recycling supporting live 16-screen fleet monitoring simultaneously.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">📡</span> WebRTC / WHEP Player</div>
+          <ul class="card-list">
+            <li>Sub-second live streaming using WebRTC HTTP Egress Protocol (WHEP) direct to MediaMTX (:8889).</li>
+            <li>Eliminates multi-second HLS buffering delay during live incident debriefs.</li>
+            <li>Automated fallback to low-latency HLS (:8888) if WebRTC UDP ports are blocked by firewall.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🎞️</span> Canvas NLE Timeline</div>
+          <ul class="card-list">
+            <li>Hardware-accelerated HTML5 Canvas timeline track rendering.</li>
+            <li>Dynamic zooming from 24-hour day overview down to individual frame intervals.</li>
+            <li>Cached visual scrubbing with hover thumbnail cards.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 19: Security, Auth & RBAC
+         ========================================== -->
+    <div class="slide" data-index="19">
+      <span class="slide-tag">Security & Access</span>
+      <h2 class="slide-title">Security Architecture, Authentication & RBAC</h2>
+      <p class="slide-subtitle">Defense-in-depth security model built for air-gapped high-security operations.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">🔐</span> Authentication Modes</div>
+          <ul class="card-list">
+            <li><strong>Local Identity Store:</strong> Embedded users with SHA-256 / PBKDF2 hashed credentials and system root immutable accounts (<code>usr_sys_root</code>).</li>
+            <li><strong>Active Directory / LDAP:</strong> Air-gapped on-premises domain integration for single sign-on across enterprise analyst workstations.</li>
+            <li><strong>Cryptographic Session Tokens:</strong> Stateless JWT tokens carrying user identity and verified permission claims.</li>
+          </ul>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🛡️</span> Granular Role-Based Access Control</div>
+          <table class="tech-table">
+            <thead><tr><th>Permission Key</th><th>Scope</th><th>Default Roles</th></tr></thead>
+            <tbody>
+              <tr><td><code>view_live_fleet</code></td><td>Live screen grid monitoring</td><td>Viewer, Operator, Admin</td></tr>
+              <tr><td><code>export_recordings</code></td><td>Extract & download video</td><td>Investigator, Admin</td></tr>
+              <tr><td><code>manage_retention</code></td><td>Modify chunk purge rules</td><td>System Administrator</td></tr>
+              <tr><td><code>admin_roles_users</code></td><td>Manage users and LDAP</td><td>System Administrator</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 20: Fault Tolerance & Resiliency
+         ========================================== -->
+    <div class="slide" data-index="20">
+      <span class="slide-tag">High Availability</span>
+      <h2 class="slide-title">Fault Tolerance, Resiliency & Recovery Matrix</h2>
+      <p class="slide-subtitle">Comprehensive resilience strategies across all failure domains.</p>
+
+      <table class="tech-table">
+        <thead>
+          <tr>
+            <th>Failure Scenario</th>
+            <th>Impact</th>
+            <th>Automated Recovery Mechanism</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>LAN Network Link Outage</strong></td>
+            <td>AgentWorker cannot reach MediaMTX RTMP ingest</td>
+            <td>Worker detects broken pipe; auto-switches to local offline NVMe buffer. Reconnects and streams live once network is restored.</td>
+          </tr>
+          <tr>
+            <td><strong>NetApp Storage Down</strong></td>
+            <td>Recordings cannot write to central UNC share</td>
+            <td><code>StoragePathResolver</code> detects timeout (3s); reconfigures MediaMTX to write to local fallback disk without dropping streams.</td>
+          </tr>
+          <tr>
+            <td><strong>MediaMTX Core Crash</strong></td>
+            <td>Streaming server process terminates</td>
+            <td><code>MediaMtxSupervisorWorker</code> detects dead process within 5 seconds; kills orphaned trees and restarts MediaMTX with persisted configuration.</td>
+          </tr>
+          <tr>
+            <td><strong>User Workstation Lock/Switch</strong></td>
+            <td>DirectX DDA loses desktop display context</td>
+            <td><code>SessionGuard</code> detects DDA fatal errors; triggers graceful re-initialization once user unlocks or display context restores.</td>
+          </tr>
+          <tr>
+            <td><strong>Server Crash / Power Loss</strong></td>
+            <td>Database chunks unfinalized in SQLite</td>
+            <td><code>StorageScannerService</code> sweeps disk on startup, inspects orphaned chunks via ffprobe, and repairs database catalog automatically.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 21: Summary & Reference Architecture
+         ========================================== -->
+    <div class="slide" data-index="21">
+      <span class="slide-tag">Executive Wrap-up</span>
+      <h2 class="slide-title">Architecture Summary & Technical Highlights</h2>
+      <p class="slide-subtitle">A battle-tested, high-density recording platform engineered for mission-critical visual defense.</p>
+
+      <div class="grid-3">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🚀</span> Extreme Efficiency</div>
+          <p style="font-size:0.88rem; color:#cbd5e1; line-height:1.5;">
+            By decoupling Session 0 supervision from Session 1 GPU-accelerated capture (NVENC/QSV), workstations achieve 24/7 continuous surveillance with <strong>less than 1% CPU utilization</strong>.
+          </p>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🎯</span> Temporal Precision</div>
+          <p style="font-size:0.88rem; color:#cbd5e1; line-height:1.5;">
+            Wall-clock deterministic chunking and the <code>NoSignalPatternService</code> guarantee that any multi-track video export across 100+ stations remains <strong>synchronized down to the exact frame</strong>.
+          </p>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🔒</span> Air-Gap Security</div>
+          <p style="font-size:0.88rem; color:#cbd5e1; line-height:1.5;">
+            Zero cloud telemetry, zero external CDNs, self-contained SQLite WAL databases, and on-premises Active Directory integration deliver <strong>100% data sovereignty</strong>.
+          </p>
+        </div>
+      </div>
+
+      <div style="margin-top:24px; padding:16px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <span style="font-weight:600; color:#fff;">System Documentation & Source Code:</span>
+          <span style="color:var(--text-muted); font-size:0.9rem; margin-left:8px;"><code>ITB-SCREEN-RECORDER / .NET 8 / React 18 / MediaMTX</code></span>
+        </div>
+        <div>
+          <span class="badge badge-green">STATUS: PRODUCTION READY</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="deck-footer">
+    <div>ITB-SCREEN-RECORDER | Confidential Engineering Presentation</div>
+    <div>Keyboard Navigation: <kbd>◀</kbd> <kbd>▶</kbd> / <kbd>Space</kbd> / <kbd>F</kbd> for Fullscreen</div>
+  </footer>
+
+  <!-- Script for Navigation -->
+  <script>
+    (function () {
+      const slides = document.querySelectorAll('.slide');
+      const totalSlides = slides.length;
+      let currentSlide = 1;
+
+      const indicator = document.getElementById('slideIndicator');
+      const progressBar = document.getElementById('progressBar');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const fullscreenBtn = document.getElementById('fullscreenBtn');
+      const printBtn = document.getElementById('printBtn');
+
+      function updateSlide(newIndex) {
+        if (newIndex < 1) newIndex = 1;
+        if (newIndex > totalSlides) newIndex = totalSlides;
+
+        slides.forEach(slide => {
+          slide.classList.remove('active');
+          if (parseInt(slide.getAttribute('data-index')) === newIndex) {
+            slide.classList.add('active');
+          }
+        });
+
+        currentSlide = newIndex;
+        indicator.textContent = `SLIDE ${String(currentSlide).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`;
+        progressBar.style.width = `${(currentSlide / totalSlides) * 100}%`;
+      }
+
+      function nextSlide() {
+        if (currentSlide < totalSlides) updateSlide(currentSlide + 1);
+      }
+
+      function prevSlide() {
+        if (currentSlide > 1) updateSlide(currentSlide - 1);
+      }
+
+      nextBtn.addEventListener('click', nextSlide);
+      prevBtn.addEventListener('click', prevSlide);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+          e.preventDefault();
+          nextSlide();
+        } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+          e.preventDefault();
+          prevSlide();
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          updateSlide(1);
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          updateSlide(totalSlides);
+        } else if (e.key.toLowerCase() === 'f') {
+          toggleFullscreen();
+        }
+      });
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+
+      fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+      printBtn.addEventListener('click', () => {
+        window.print();
+      });
+
+      // Swipe support for touch
+      let startX = 0;
+      document.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+      }, { passive: true });
+
+      document.addEventListener('touchend', (e) => {
+        const diffX = startX - e.changedTouches[0].clientX;
+        if (Math.abs(diffX) > 50) {
+          if (diffX > 0) nextSlide();
+          else prevSlide();
+        }
+      }, { passive: true });
+
+      updateSlide(1);
+    })();
+  </script>
+</body>
+</html>

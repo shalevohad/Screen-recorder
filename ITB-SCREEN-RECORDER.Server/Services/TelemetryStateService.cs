@@ -1,4 +1,4 @@
-﻿using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using System;
 using System.Collections.Concurrent;
@@ -168,7 +168,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             return new AgentStreamPolicy
             {
-                RtmpServerBaseUrl = $"rtmp://{requestHost}:{rtmpPort}/live",
+                RtmpServerBaseUrl = $"rtmps://{requestHost}:{rtmpPort}/live",
                 VideoBitrate = bitrate,
                 TargetFps = fps
             };

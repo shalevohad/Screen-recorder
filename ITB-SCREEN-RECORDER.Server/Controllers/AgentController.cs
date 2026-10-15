@@ -6,6 +6,7 @@ using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Server.Services.Security;
@@ -407,6 +408,29 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 TargetHostnames = activeAgents.Select(agent => agent.Hostname).ToList(),
                 TimestampUtc = DateTime.UtcNow
             });
+        }
+
+        [HttpGet("cert/ca-bundle")]
+        public IActionResult GetCaBundle()
+        {
+            var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+            string path = System.IO.File.Exists(bundle.RootCaBundlePath) ? bundle.RootCaBundlePath : bundle.RootCaCrtPath;
+            if (System.IO.File.Exists(path))
+            {
+                return PhysicalFile(path, "application/x-x509-ca-cert", "ca-bundle.crt");
+            }
+            return NotFound("Certificate authority bundle is not available.");
+        }
+
+        [HttpGet("cert/root-ca")]
+        public IActionResult GetRootCa()
+        {
+            var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+            if (System.IO.File.Exists(bundle.RootCaCrtPath))
+            {
+                return PhysicalFile(bundle.RootCaCrtPath, "application/x-x509-ca-cert", "itb-root-ca.crt");
+            }
+            return NotFound("Root CA certificate is not available.");
         }
     }
 }

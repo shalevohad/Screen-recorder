@@ -3,7 +3,7 @@ import './VideoPlayer.scss';
 
 export default function WebRTCPlayer({
     streamPath,
-    webrtcBaseUrl = 'http://127.0.0.1:8889',
+    webrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '/api/v1/whep' : 'http://127.0.0.1:8889',
     showControls = false,
     onPlaying
 }) {
@@ -97,7 +97,9 @@ export default function WebRTCPlayer({
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
-                const whepUrl = `${webrtcBaseUrl}/${streamPath}/whep`;
+                const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+                const effectiveBase = (isHttps && webrtcBaseUrl.startsWith('http:')) ? '/api/v1/whep' : webrtcBaseUrl;
+                const whepUrl = `${effectiveBase}/${streamPath}/whep`;
                 const response = await fetch(whepUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/sdp' },

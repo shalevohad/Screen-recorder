@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITB-SCREEN-RECORDER | Executive Management Overview</title>
+  <style>
+    :root {
+      --bg-primary: #070b14;
+      --bg-surface: #0f172a;
+      --bg-card: #1e293b;
+      --border-subtle: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-gold: #f59e0b;
+      --accent-blue: #38bdf8;
+      --accent-cyan: #06b6d4;
+      --accent-emerald: #10b981;
+      --accent-purple: #a855f7;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+
+    /* Presentation Header */
+    header.deck-header {
+      height: 56px;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, #d97706, #b45309);
+      color: #fff;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    .deck-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slide-indicator {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      font-weight: 600;
+    }
+
+    .btn-nav {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn-nav:hover {
+      background: var(--border-subtle);
+      color: var(--accent-gold);
+      border-color: var(--accent-gold);
+    }
+
+    /* Slides Viewport */
+    main.deck-viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 36px;
+    }
+
+    .slide {
+      position: absolute;
+      top: 28px;
+      bottom: 28px;
+      left: 36px;
+      right: 36px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 44px 56px;
+      display: none;
+      flex-direction: column;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+      overflow-y: auto;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    .slide.active {
+      display: flex;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Slide Content Typography */
+    .slide-tag {
+      display: inline-block;
+      align-self: flex-start;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-gold);
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 4px 12px;
+      border-radius: 4px;
+      margin-bottom: 14px;
+      font-weight: 700;
+    }
+
+    .slide-title {
+      font-size: 2.1rem;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+
+    .slide-subtitle {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      margin-bottom: 30px;
+      line-height: 1.5;
+    }
+
+    /* Layout Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      flex: 1;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      flex: 1;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card.highlight {
+      border-color: rgba(245, 158, 11, 0.5);
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.08) 0%, rgba(30, 41, 59, 0.95) 100%);
+    }
+
+    .card.accent {
+      border-color: rgba(56, 189, 248, 0.5);
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, rgba(30, 41, 59, 0.95) 100%);
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-title .icon {
+      font-size: 1.3rem;
+    }
+
+    .card-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 0.95rem;
+      color: #cbd5e1;
+      line-height: 1.55;
+    }
+
+    .card-list li {
+      position: relative;
+      padding-left: 20px;
+    }
+
+    .card-list li::before {
+      content: "✔";
+      position: absolute;
+      left: 0;
+      color: var(--accent-gold);
+      font-weight: bold;
+    }
+
+    /* Metrics Banner */
+    .metric-row {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .metric-box {
+      flex: 1;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 18px 22px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .metric-value {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--accent-gold);
+      margin-bottom: 4px;
+    }
+
+    .metric-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    /* Diagrams & Visual Flow */
+    .visual-flow {
+      background: #090e1a;
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+    }
+
+    /* Progress & Footer */
+    .deck-progress-bar {
+      position: absolute;
+      bottom: 41px;
+      left: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent-gold), var(--accent-blue));
+      transition: width 0.3s ease;
+      z-index: 101;
+    }
+
+    footer.deck-footer {
+      height: 42px;
+      background: rgba(15, 23, 42, 0.9);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      z-index: 100;
+    }
+
+    @media print {
+      body {
+        overflow: visible !important;
+        height: auto !important;
+        background: #070b14 !important;
+        color: #f8fafc !important;
+      }
+      header.deck-header, footer.deck-footer, .deck-controls, .deck-progress-bar {
+        display: none !important;
+      }
+      main.deck-viewport {
+        display: block !important;
+        padding: 0 !important;
+      }
+      .slide {
+        display: flex !important;
+        position: relative !important;
+        top: auto !important;
+        bottom: auto !important;
+        left: auto !important;
+        right: auto !important;
+        opacity: 1 !important;
+        transform: none !important;
+        page-break-after: always !important;
+        height: 100vh !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 50px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="deck-header">
+    <div class="brand">
+      <span class="brand-badge">MANAGEMENT BRIEFING</span>
+      <span>ITB-SCREEN-RECORDER <span style="color:var(--text-muted); font-weight:400;">| Executive Deck</span></span>
+    </div>
+    <div class="deck-controls">
+      <span class="slide-indicator" id="slideIndicator">SLIDE 01 / 14</span>
+      <button class="btn-nav" id="prevBtn">◀ Prev</button>
+      <button class="btn-nav" id="nextBtn">Next ▶</button>
+      <button class="btn-nav" id="fullscreenBtn">⛶ Fullscreen</button>
+      <button class="btn-nav" id="printBtn">🖨️ PDF</button>
+    </div>
+  </header>
+
+  <!-- Progress Bar -->
+  <div class="deck-progress-bar" id="progressBar" style="width: 7.14%;"></div>
+
+  <!-- Viewport -->
+  <main class="deck-viewport">
+
+    <!-- ==========================================
+         SLIDE 1: Title & Executive Summary
+         ========================================== -->
+    <div class="slide active" data-index="1">
+      <span class="slide-tag">Executive Briefing</span>
+      <h1 class="slide-title">Enterprise Visual Monitoring & Operational Assurance</h1>
+      <p class="slide-subtitle">A high-density, air-gapped screen recording and multi-station forensic investigation platform.</p>
+
+      <div class="metric-row">
+        <div class="metric-box">
+          <span class="metric-value">100+</span>
+          <span class="metric-label">Simultaneous Stations</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value">&lt; 1%</span>
+          <span class="metric-label">Client CPU Impact</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value">&lt; 1 sec</span>
+          <span class="metric-label">Live Stream Latency</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value">100%</span>
+          <span class="metric-label">Air-Gapped Sovereignty</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">💼</span> What ITB-SCREEN-RECORDER Delivers</div>
+          <p style="color:#cbd5e1; font-size:1rem; line-height:1.6;">
+            A centralized enterprise platform that records, monitors, and archives operator workstations in mission-critical environments. It gives leadership complete visual accountability, incident debriefing speed, and regulatory compliance without compromising workstation performance or network security.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🎯</span> Strategic Core Pillars</div>
+          <ul class="card-list">
+            <li><strong>Zero Workstation Disruption:</strong> Operators notice zero sluggishness or mouse lag.</li>
+            <li><strong>Complete Data Sovereignty:</strong> Operates entirely on-premises with zero external dependencies.</li>
+            <li><strong>Forensic Synchronized Replay:</strong> Reconstruct complex cross-team incidents with millisecond precision.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 2: The Operational Challenge
+         ========================================== -->
+    <div class="slide" data-index="2">
+      <span class="slide-tag">Operational Need</span>
+      <h2 class="slide-title">The Operational Challenge in Mission-Critical Facilities</h2>
+      <p class="slide-subtitle">Why conventional commercial screen recording and meeting tools cannot meet enterprise defense requirements.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span class="icon">❌</span> Heavy Client Overhead</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Commercial recording software consumes 20% to 50% of the CPU, degrading operator responsiveness during intense mission operations and causing workstations to freeze or stutter.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">❌</span> Air-Gap Security Failures</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Cloud-based platforms (Zoom, Teams, SaaS tools) demand continuous internet access and transmit sensitive operations data to third-party cloud infrastructure, violating strict security policies.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">❌</span> Lack of Synchronized Replay</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            When an incident involves multiple operators working together, reviewing unaligned, separate video files makes it impossible to reconstruct who did what and in what exact sequence.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 3: The 3-Tier Enterprise Solution
+         ========================================== -->
+    <div class="slide" data-index="3">
+      <span class="slide-tag">Solution Blueprint</span>
+      <h2 class="slide-title">How the Solution Operates (3-Tier Blueprint)</h2>
+      <p class="slide-subtitle">A clean separation between client workstations, central server, and operations command.</p>
+
+      <div class="visual-flow">
+        <svg viewBox="0 0 920 300" width="100%" height="100%">
+          <!-- Tier 1 -->
+          <rect x="20" y="40" width="250" height="220" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+          <text x="40" y="75" fill="#38bdf8" font-size="14" font-weight="bold">1. ENDPOINT WORKSTATIONS</text>
+          <text x="40" y="110" fill="#f8fafc" font-size="12">Continuous Background Agent</text>
+          <text x="40" y="135" fill="#94a3b8" font-size="11">• GPU-Accelerated Capture</text>
+          <text x="40" y="155" fill="#94a3b8" font-size="11">• Dual Audio (Mic + Speakers)</text>
+          <text x="40" y="175" fill="#94a3b8" font-size="11">• Keystroke Telemetry</text>
+          <text x="40" y="195" fill="#94a3b8" font-size="11">• Offline Safe Buffer</text>
+          <text x="40" y="230" fill="#10b981" font-size="12" font-weight="bold">Zero Operator Intervention</text>
+
+          <!-- Arrow 1 to 2 -->
+          <path d="M 270 150 L 350 150" stroke="#f59e0b" stroke-width="3" stroke-dasharray="5,5"/>
+          <text x="280" y="140" fill="#f59e0b" font-size="10" font-weight="bold">LAN (Air-Gap)</text>
+
+          <!-- Tier 2 -->
+          <rect x="350" y="40" width="250" height="220" rx="10" fill="#1e293b" stroke="#f59e0b" stroke-width="2"/>
+          <text x="370" y="75" fill="#f59e0b" font-size="14" font-weight="bold">2. CENTRAL C2 & STORAGE</text>
+          <text x="370" y="110" fill="#f8fafc" font-size="12">Master Recording Hub</text>
+          <text x="370" y="135" fill="#94a3b8" font-size="11">• Streaming Ingestion</text>
+          <text x="370" y="155" fill="#94a3b8" font-size="11">• Fixed Clock Chunking (5 min)</text>
+          <text x="370" y="175" fill="#94a3b8" font-size="11">• NetApp Primary Storage</text>
+          <text x="370" y="195" fill="#94a3b8" font-size="11">• Local Fallback Safeguard</text>
+          <text x="370" y="230" fill="#10b981" font-size="12" font-weight="bold">Self-Healing Automation</text>
+
+          <!-- Arrow 2 to 3 -->
+          <path d="M 600 150 L 680 150" stroke="#a855f7" stroke-width="3" stroke-dasharray="5,5"/>
+          <text x="615" y="140" fill="#a855f7" font-size="10" font-weight="bold">Secure Web</text>
+
+          <!-- Tier 3 -->
+          <rect x="680" y="40" width="220" height="220" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+          <text x="700" y="75" fill="#a855f7" font-size="14" font-weight="bold">3. OPERATIONS SUITE</text>
+          <text x="700" y="110" fill="#f8fafc" font-size="12">Browser Command Center</text>
+          <text x="700" y="135" fill="#94a3b8" font-size="11">• Multi-Station Live Wall</text>
+          <text x="700" y="155" fill="#94a3b8" font-size="11">• Synchronized Replay</text>
+          <text x="700" y="175" fill="#94a3b8" font-size="11">• Forensic Video Exporter</text>
+          <text x="700" y="195" fill="#94a3b8" font-size="11">• Role-Based Permissions</text>
+          <text x="700" y="230" fill="#10b981" font-size="12" font-weight="bold">Instant Incident Debrief</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 4: "Zero Workstation Impact"
+         ========================================== -->
+    <div class="slide" data-index="4">
+      <span class="slide-tag">Workstation Integrity</span>
+      <h2 class="slide-title">Zero Workstation Impact: Hardware-Accelerated Performance</h2>
+      <p class="slide-subtitle">Ensuring critical mission software runs at peak speed while video is captured in real-time.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🚀</span> Automatic Hardware Offloading</div>
+          <p style="color:#cbd5e1; font-size:1rem; line-height:1.6; margin-bottom:14px;">
+            The agent features an intelligent hardware probe. At startup, it evaluates the workstation and directs video compression straight to the graphics processor:
+          </p>
+          <ul class="card-list">
+            <li><strong>NVIDIA NVENC Acceleration:</strong> Leaves the main workstation CPU completely free (&lt;1% usage).</li>
+            <li><strong>Intel QuickSync (QSV):</strong> Achieves <strong>~37% less CPU usage</strong> than traditional software recorders on standard desktop workstations.</li>
+            <li><strong>No User Configuration Needed:</strong> Adapts automatically across mixed fleets of laptops, standard desktops, and high-end workstations.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">📈</span> Workstation Resource Comparison</div>
+          <div style="margin-top:20px; display:flex; flex-direction:column; gap:16px;">
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:0.9rem; margin-bottom:6px;">
+                <span>Commercial Recorders (Software CPU)</span>
+                <span style="color:#ef4444; font-weight:bold;">35% - 60% CPU</span>
+              </div>
+              <div style="background:#0f172a; height:12px; border-radius:6px; overflow:hidden;">
+                <div style="width:50%; height:100%; background:#ef4444;"></div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:0.9rem; margin-bottom:6px;">
+                <span>ITB-SCREEN-RECORDER (Intel QuickSync)</span>
+                <span style="color:#f59e0b; font-weight:bold;">~2.5% CPU</span>
+              </div>
+              <div style="background:#0f172a; height:12px; border-radius:6px; overflow:hidden;">
+                <div style="width:5%; height:100%; background:#f59e0b;"></div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:0.9rem; margin-bottom:6px;">
+                <span>ITB-SCREEN-RECORDER (NVIDIA GPU)</span>
+                <span style="color:#10b981; font-weight:bold;">&lt; 0.8% CPU (Zero Impact)</span>
+              </div>
+              <div style="background:#0f172a; height:12px; border-radius:6px; overflow:hidden;">
+                <div style="width:2%; height:100%; background:#10b981;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 5: 24/7 Resilience & Offline Continuity
+         ========================================== -->
+    <div class="slide" data-index="5">
+      <span class="slide-tag">Operational Reliability</span>
+      <h2 class="slide-title">24/7 High Availability & Offline Resiliency</h2>
+      <p class="slide-subtitle">Designed to ensure zero gap in critical security audits even during network cuts or storage outages.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span class="icon">🔌</span> Network Disconnect Protection</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            If the network link to the server drops, the endpoint agent automatically switches to local encrypted caching. When connectivity restores, recorded video is seamlessly synchronized.
+          </p>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">💾</span> Dual Storage Safeguard</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Primary recordings write directly to enterprise NetApp network storage. If NetApp becomes unreachable, the server auto-diverts recordings to local high-speed disk within 3 seconds.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🔄</span> Self-Healing Processes</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Server supervisor workers continuously monitor core streaming processes. In the event of an abnormal crash, services auto-recover within 5 seconds without requiring IT intervention.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 6: Live Command-and-Control Wall
+         ========================================== -->
+    <div class="slide" data-index="6">
+      <span class="slide-tag">Operations Oversight</span>
+      <h2 class="slide-title">Live Command-and-Control Fleet Monitoring</h2>
+      <p class="slide-subtitle">Real-time situational awareness across dozens of operational rooms and consoles.</p>
+
+      <div class="grid-2">
+        <div class="card accent">
+          <div class="card-title"><span class="icon">📺</span> Sub-Second Fleet Wall</div>
+          <ul class="card-list">
+            <li><strong>Low-Latency WebRTC Viewing:</strong> Video streams directly to command browsers with sub-second delay, allowing commanders to see operator actions as they happen.</li>
+            <li><strong>Custom Operational Tabs:</strong> Group workstations by department, mission cell, or physical room for focused observation.</li>
+            <li><strong>Interactive Multi-Grid:</strong> Seamlessly switch between a 16-station overview grid and single-station full-screen inspection.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">📊</span> Fleet Telemetry & Station Health</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55; margin-bottom:12px;">
+            The dashboard actively displays real-time health for every monitored station:
+          </p>
+          <ul class="card-list">
+            <li>Active streaming status & FPS indicator.</li>
+            <li>Audio capture indicators (active speakers and active microphone).</li>
+            <li>Network bandwidth utilization and station connectivity heartbeat.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 7: Forensic Multi-Track NLE Studio
+         ========================================== -->
+    <div class="slide" data-index="7">
+      <span class="slide-tag">Investigation Power</span>
+      <h2 class="slide-title">Forensic Synchronized Replay & Visual NLE Studio</h2>
+      <p class="slide-subtitle">Reconstructing complex multi-operator incidents in minutes rather than days.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🎬</span> Synchronized Multi-Screen Replay</div>
+          <ul class="card-list">
+            <li>Select up to 16 stations involved in an incident.</li>
+            <li>Press play: All video feeds advance in <strong>absolute temporal lockstep</strong>.</li>
+            <li>When Station A types a message or confirms a target, you see Station B's exact screen reaction at the identical second.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🔍</span> High-Speed Visual Scrubbing</div>
+          <ul class="card-list">
+            <li><strong>Interactive Timeline:</strong> Zoom across a 24-hour mission window down to individual seconds.</li>
+            <li><strong>Hover Thumbnail Previews:</strong> Instantly inspect operator screens by moving the mouse across the timeline without waiting for video loading.</li>
+            <li><strong>Incident Bookmarks:</strong> Tag critical events with notes and share drafts with investigative peers.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 8: The "Time-Continuity Guarantee"
+         ========================================== -->
+    <div class="slide" data-index="8">
+      <span class="slide-tag">Forensic Integrity</span>
+      <h2 class="slide-title">The "Time-Continuity Guarantee": Gap-Proof Audits</h2>
+      <p class="slide-subtitle">Overcoming station reboots and power outages without corrupting multi-station alignment.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">❓</span> The Risk with Traditional Videos</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.6;">
+            If Operator A worked continuously, but Operator B restarted their workstation for 5 minutes, traditional video players collapse the missing 5 minutes. The videos immediately desynchronize, rendering investigation recordings misleading or legally inadmissible.
+          </p>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🛡️</span> The ITB "No-Signal" Guarantee</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.6; margin-bottom:12px;">
+            ITB-SCREEN-RECORDER automatically injects standardized "No-Signal" frames for any offline duration.
+          </p>
+          <ul class="card-list">
+            <li>Total time alignment is preserved across all tracks.</li>
+            <li>Clear visual distinction between active recording and power-down periods.</li>
+            <li>Ready for certified courtroom, military debrief, or compliance reviews.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 9: Forensic Keystroke Intelligence
+         ========================================== -->
+    <div class="slide" data-index="9">
+      <span class="slide-tag">Detailed Audit</span>
+      <h2 class="slide-title">Forensic Keystroke Capture & Synchronized Subtitles</h2>
+      <p class="slide-subtitle">Correlating operator intent with screen outcomes for definitive audit trails.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span class="icon">⌨️</span> Input Verification</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Records key combinations (shortcuts, command executions, system triggers) with exact millisecond timestamps, proving what commands were entered.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">📄</span> Synchronized Subtitles</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Exported videos can include automatic SubRip (.SRT) subtitles. Keystrokes appear overlaid at the bottom of the video exactly when they occurred on screen.
+          </p>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🔒</span> Privacy Protection Gate</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Keystroke logging is strictly bound to active recording. If a station is logged off or in standby, keyboard capture is automatically shut down.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 10: Storage Economics & Retention
+         ========================================== -->
+    <div class="slide" data-index="10">
+      <span class="slide-tag">Infrastructure Efficiency</span>
+      <h2 class="slide-title">Enterprise Storage Economics & Intelligent Retention</h2>
+      <p class="slide-subtitle">Predictable storage consumption with automated lifecycle policies.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title"><span class="icon">📦</span> Deterministic 5-Minute Chunks</div>
+          <ul class="card-list">
+            <li>Recordings are segmented precisely every 5 minutes on the clock (e.g., 10:00, 10:05).</li>
+            <li>Eliminates massive, vulnerable 10-hour single video files that can corrupt easily.</li>
+            <li>Enables immediate parallel extraction of any 10-minute incident without scanning days of data.</li>
+          </ul>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🧹</span> Automated Retention & Safety Shield</div>
+          <ul class="card-list">
+            <li><strong>Automated Purge:</strong> Files older than the configured policy (e.g. 30 days) are automatically deleted without human intervention.</li>
+            <li><strong>Active Recording Shield:</strong> Live sessions are protected from accidental premature deletion during high-capacity events.</li>
+            <li><strong>High Compression Ratio:</strong> Standardized H.264 profiles provide crisp 1080p legibility with minimal network bandwidth usage.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 11: Security & Governance
+         ========================================== -->
+    <div class="slide" data-index="11">
+      <span class="slide-tag">Security & Compliance</span>
+      <h2 class="slide-title">Security, Air-Gap Sovereignty & Role-Based Access</h2>
+      <p class="slide-subtitle">Purpose-built for zero-trust, highly compartmentalized facilities.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span class="icon">🏰</span> 100% Air-Gapped</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Runs entirely inside your secured perimeter. Does not require external internet, external CDNs, or external licensing servers.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🔑</span> Active Directory Integration</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Seamless integration with on-premises LDAP / Active Directory. User logins respect your existing enterprise authentication credentials.
+          </p>
+        </div>
+
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🛡️</span> Role-Based Access (RBAC)</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Granular permissions: Distinguish between live viewers, forensic investigators (who can export recordings), and system administrators.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 12: Scalability & Low TCO
+         ========================================== -->
+    <div class="slide" data-index="12">
+      <span class="slide-tag">Scale & Deployment</span>
+      <h2 class="slide-title">Scalability & Low Total Cost of Ownership (TCO)</h2>
+      <p class="slide-subtitle">Effortless deployment from small command cells to large operational operations.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">📈</span> High Density per Server Node</div>
+          <ul class="card-list">
+            <li>Because encoding work is offloaded to client workstation GPUs, a single server node handles <strong>100+ active video streams</strong> easily.</li>
+            <li>No need for massive GPU-heavy recording servers in the data center.</li>
+            <li>Standard COTS (Commercial Off-The-Shelf) enterprise server hardware is sufficient.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">⚙️</span> Effortless Maintenance</div>
+          <ul class="card-list">
+            <li><strong>Silent Installer:</strong> Automated deployment across the fleet via standard IT management tools.</li>
+            <li><strong>Zero Maintenance Overhead:</strong> Self-cleaning databases and automated storage rotation keep systems running hands-free.</li>
+            <li><strong>Centralized Settings:</strong> Adjust fleet frame rates, bitrates, and recording policies dynamically from the web console.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 13: Measurable Business & Operational ROI
+         ========================================== -->
+    <div class="slide" data-index="13">
+      <span class="slide-tag">Value Proposition</span>
+      <h2 class="slide-title">Measurable Business & Operational ROI</h2>
+      <p class="slide-subtitle">Transforming mission debriefing, compliance posture, and operational efficiency.</p>
+
+      <div class="grid-3">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">⏱️</span> 90% Faster Debriefs</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Incident reconstruction drops from multiple days of manual interviews to minutes of verified, synchronized video playback.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">⚖️</span> Liability & Compliance</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Indisputable, frame-accurate visual and keystroke logs protect organizations against liability disputes and audit penalties.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">💼</span> Operator Productivity</div>
+          <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.55;">
+            Because the client uses GPU acceleration, workstations stay fast and responsive, avoiding user frustration or workflow bottlenecks.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 14: Conclusion & Strategic Summary
+         ========================================== -->
+    <div class="slide" data-index="14">
+      <span class="slide-tag">Executive Summary</span>
+      <h2 class="slide-title">Strategic Readiness: The Visual Defense Foundation</h2>
+      <p class="slide-subtitle">Comprehensive, air-gapped operational assurance ready for enterprise deployment.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span class="icon">🌟</span> Key Takeaways</div>
+          <ul class="card-list">
+            <li><strong>High-Density & Ultra-Low Overhead:</strong> 100+ stations recorded with &lt;1% CPU usage.</li>
+            <li><strong>Synchronized Multi-Screen NLE:</strong> Replay operational events with millisecond time precision.</li>
+            <li><strong>Zero Cloud Risk:</strong> 100% air-gapped, on-premises security sovereignty.</li>
+            <li><strong>Reliable & Resilient:</strong> Offline buffering, dual storage targets, and self-healing architecture.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span class="icon">🚀</span> Next Steps & Deployment Options</div>
+          <ul class="card-list">
+            <li><strong>Phase 1: Pilot Cell:</strong> Deploy to 10–15 representative workstations in an isolated operational cell.</li>
+            <li><strong>Phase 2: Fleet Rollout:</strong> Distribute agent across the full enterprise fleet via silent deployment.</li>
+            <li><strong>Phase 3: Integration:</strong> Align with central Active Directory groups and storage quotas.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="margin-top:24px; padding:16px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <span style="font-weight:700; color:#fff;">ITB-SCREEN-RECORDER Executive Summary</span>
+          <span style="color:var(--text-muted); font-size:0.9rem; margin-left:10px;">Production-Ready Enterprise Platform</span>
+        </div>
+        <div>
+          <button class="btn-nav" onclick="window.print()" style="background:var(--accent-gold); color:#000; border:none;">Download Executive PDF</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="deck-footer">
+    <div>ITB-SCREEN-RECORDER | Executive Management Briefing</div>
+    <div>Keyboard Navigation: <kbd>◀</kbd> <kbd>▶</kbd> / <kbd>Space</kbd> / <kbd>F</kbd> for Fullscreen</div>
+  </footer>
+
+  <script>
+    (function () {
+      const slides = document.querySelectorAll('.slide');
+      const totalSlides = slides.length;
+      let currentSlide = 1;
+
+      const indicator = document.getElementById('slideIndicator');
+      const progressBar = document.getElementById('progressBar');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const fullscreenBtn = document.getElementById('fullscreenBtn');
+      const printBtn = document.getElementById('printBtn');
+
+      function updateSlide(newIndex) {
+        if (newIndex < 1) newIndex = 1;
+        if (newIndex > totalSlides) newIndex = totalSlides;
+
+        slides.forEach(slide => {
+          slide.classList.remove('active');
+          if (parseInt(slide.getAttribute('data-index')) === newIndex) {
+            slide.classList.add('active');
+          }
+        });
+
+        currentSlide = newIndex;
+        indicator.textContent = `SLIDE ${String(currentSlide).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`;
+        progressBar.style.width = `${(currentSlide / totalSlides) * 100}%`;
+      }
+
+      function nextSlide() {
+        if (currentSlide < totalSlides) updateSlide(currentSlide + 1);
+      }
+
+      function prevSlide() {
+        if (currentSlide > 1) updateSlide(currentSlide - 1);
+      }
+
+      nextBtn.addEventListener('click', nextSlide);
+      prevBtn.addEventListener('click', prevSlide);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+          e.preventDefault();
+          nextSlide();
+        } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+          e.preventDefault();
+          prevSlide();
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          updateSlide(1);
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          updateSlide(totalSlides);
+        } else if (e.key.toLowerCase() === 'f') {
+          toggleFullscreen();
+        }
+      });
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+
+      fullscreenBtn.addEventListener('click', toggleFullscreen);
+      printBtn.addEventListener('click', () => window.print());
+
+      let startX = 0;
+      document.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+      }, { passive: true });
+
+      document.addEventListener('touchend', (e) => {
+        const diffX = startX - e.changedTouches[0].clientX;
+        if (Math.abs(diffX) > 50) {
+          if (diffX > 0) nextSlide();
+          else prevSlide();
+        }
+      }, { passive: true });
+
+      updateSlide(1);
+    })();
+  </script>
+</body>
+</html>

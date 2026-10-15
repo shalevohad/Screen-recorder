@@ -38,7 +38,9 @@ export default function StationThumbnail(props) {
 
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
-    const dynamicWebrtcBaseUrl = `http://${serverHost}:${webrtcPort}`;
+    const dynamicWebrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:'
+        ? '/api/v1/whep'
+        : `http://${serverHost}:${webrtcPort}`;
 
     const isLive = isOnline && isStreaming;
     const hasCriticalError = isOnline && (droppedFrames > 5);

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/PreloadSettings.js
 // ==========================================
 try {
@@ -45,8 +45,8 @@ try {
                 var text = file.ReadAll();
                 file.Close();
 
-                // שליפת פורט HTTP
-                var mHttp = text.match(/"HttpPort"\s*:\s*(\d+)/i) || text.match(/http:\/\/0\.0\.0\.0:(\d+)/i);
+                // שליפת פורט HTTPS / HTTP
+                var mHttp = text.match(/"HttpPort"\s*:\s*(\d+)/i) || text.match(/https?:\/\/0\.0\.0\.0:(\d+)/i);
                 if (mHttp && mHttp[1]) Session.Property("HTTP_PORT") = mHttp[1];
 
                 // שליפת פורטי MediaMTX

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: AgentService/AgentSupervisorService.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
@@ -6,6 +6,7 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
@@ -14,6 +15,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -92,6 +94,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public double AppLineUtilizationPct { get; set; }
         }
 
+        private readonly string _ipcSecretToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+
         public AgentSupervisorService(ILogger<AgentSupervisorService> logger, AppConfig config)
         {
             _logger = logger;
@@ -115,9 +119,31 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 _workerPath = Path.Combine(AppContext.BaseDirectory, "ITB-SCREEN-RECORDER.AgentWorker.exe");
             }
 
-            _httpClient = new HttpClient
+            var handler = new HttpClientHandler();
+            AgentCertificateValidator.ConfigureHandler(handler);
+            _httpClient = new HttpClient(handler)
             {
                 Timeout = TimeSpan.FromSeconds(5)
+            };
+
+            // 💡 האזנה לרענון תעודות אוטומטי במקרה של עמדה שנותקה זמן רב או שתעודתה חודשה
+            AgentCertificateValidator.OnTrustRefreshRequired += () =>
+            {
+                _logger.LogInformation("[PKI-AUTO-RECOVERY] Station recovery detected. Refreshing Root CA bundle from server...");
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(_serverBaseUrl))
+                        {
+                            await AgentCertificateValidator.RefreshTrustFromServerAsync(_serverBaseUrl);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning("[PKI-AUTO-RECOVERY] Background trust refresh error: {Msg}", ex.Message);
+                    }
+                });
             };
 
             InitServerConfiguration();
@@ -184,6 +210,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             _logger.LogInformation("AgentSupervisorService active. Dashboard endpoint: {ServerBaseUrl}", _serverBaseUrl);
 
             _ = Task.Run(() => ListenToWorkerIpcAsync(stoppingToken), stoppingToken);
+            _ = Task.Run(() => PeriodicTrustSyncLoopAsync(stoppingToken), stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -224,6 +251,26 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
+        private async Task PeriodicTrustSyncLoopAsync(CancellationToken ct)
+        {
+            // בדיקה ראשונית זמן קצר לאחר עליית השירות
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(_serverBaseUrl))
+                    {
+                        await AgentCertificateValidator.RefreshTrustFromServerAsync(_serverBaseUrl, ct);
+                    }
+                }
+                catch { }
+
+                // סנכרון תעודות תקופתי אחת ל-6 שעות
+                await Task.Delay(TimeSpan.FromHours(6), ct);
+            }
+        }
+
         private async Task ListenToWorkerIpcAsync(CancellationToken ct)
         {
             var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -248,11 +295,28 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         await writer.WriteLineAsync($"SyncClock|{_serverUtcOffset.Ticks}");
                     }
 
+                    bool isIpcAuthenticated = false;
                     while (pipeServer.IsConnected && !ct.IsCancellationRequested)
                     {
                         string? line = await reader.ReadLineAsync(ct);
                         if (!string.IsNullOrEmpty(line))
                         {
+                            if (!isIpcAuthenticated)
+                            {
+                                if (line.StartsWith("Auth|", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    string token = line.Substring(5).Trim();
+                                    if (string.Equals(token, _ipcSecretToken, StringComparison.Ordinal) || string.IsNullOrEmpty(_ipcSecretToken))
+                                    {
+                                        isIpcAuthenticated = true;
+                                        if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
+                                        continue;
+                                    }
+                                }
+                                _logger.LogWarning("[IPC-SECURITY] Rejecting unauthorized IPC client connection.");
+                                break;
+                            }
+
                             try
                             {
                                 var status = JsonSerializer.Deserialize<IpcMessageDto>(line, jsonOptions);
@@ -382,9 +446,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 string jsonPayload = JsonSerializer.Serialize(report);
                 _lastTelemetryPayloadSizeBytes = Encoding.UTF8.GetByteCount(jsonPayload);
 
-                string targetEndpoint = _serverBaseUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                    ? $"{_serverBaseUrl.TrimEnd('/')}/api/v1/agent/telemetry"
-                    : $"http://{_serverBaseUrl}/api/v1/agent/telemetry";
+                string cleanBase = _serverBaseUrl.TrimEnd('/');
+                string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? $"{cleanBase}/api/v1/agent/telemetry"
+                    : cleanBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                        ? $"https://{cleanBase.Substring("http://".Length)}/api/v1/agent/telemetry"
+                        : $"https://{cleanBase}/api/v1/agent/telemetry";
 
                 using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
@@ -539,10 +606,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         _logger.LogInformation("Launching Worker process...");
                     }
 
+                    string workerArgs = $"--ipc-token {_ipcSecretToken}";
+
                     if (OperatingSystem.IsWindows())
                     {
 #if WINDOWS
-                        bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, string.Empty);
+                        bool launched = InteractiveProcessLauncher.StartProcessInActiveSession(_workerPath, workerArgs);
                         if (!launched)
                         {
                             if (!_lastWorkerLaunchFailed)
@@ -553,7 +622,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         }
                         else
                         {
-                            _logger.LogInformation("AgentWorker launched successfully into active session.");
+                            _logger.LogInformation("AgentWorker launched successfully into active session with secure IPC token.");
                             _lastWorkerHeartbeat = DateTime.UtcNow;
                             _lastWorkerLaunchFailed = false;
                         }
@@ -564,6 +633,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         var psi = new ProcessStartInfo
                         {
                             FileName = _workerPath,
+                            Arguments = workerArgs,
                             UseShellExecute = false,
                             CreateNoWindow = true
                         };

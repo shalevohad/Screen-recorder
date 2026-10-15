@@ -51,7 +51,8 @@ try:
     extractor_cfg = cfg.get("Extractor", {})
     app_cfg = cfg.get("AppConfig", {})
 
-    kestrel_url = cfg.get("Kestrel", {}).get("Endpoints", {}).get("Http", {}).get("Url", "")
+    k_endpoints = cfg.get("Kestrel", {}).get("Endpoints", {})
+    kestrel_url = k_endpoints.get("Https", {}).get("Url", "") or k_endpoints.get("Http", {}).get("Url", "")
     import re
     m_url = re.search(r':(\d+)', kestrel_url)
 
@@ -88,10 +89,10 @@ if [ "$IS_UNATTENDED" = false ]; then
     echo ""
     echo "Current Configuration Layout:"
     echo "  [Network Ports]"
-    echo "  • HTTP Dashboard Port: $HTTP_PORT"
-    echo "  • MediaMTX RTMP Port:  $RTMP_PORT"
-    echo "  • MediaMTX API Port:   $API_PORT"
-    echo "  • MediaMTX HLS Port:   $HLS_PORT"
+    echo "  • HTTPS Dashboard Port: $HTTP_PORT"
+    echo "  • MediaMTX RTMPS Port:  $RTMP_PORT"
+    echo "  • MediaMTX API Port:    $API_PORT"
+    echo "  • MediaMTX HLS Port:    $HLS_PORT"
     echo ""
     echo "  [Storage & Data Layout]"
     echo "  • Database Data:       $DATA_DIR"
@@ -105,11 +106,11 @@ if [ "$IS_UNATTENDED" = false ]; then
     case "$customize_choice" in
         y|Y|[yY][eE][sS])
             echo ""
-            echo "--- Network Configuration ---"
-            read -p "  Enter HTTP Dashboard Port [$HTTP_PORT]: " custom_val
+            echo "--- Network Configuration (Encrypted TLS/PKI) ---"
+            read -p "  Enter HTTPS Dashboard Port [$HTTP_PORT]: " custom_val
             HTTP_PORT="${custom_val:-$HTTP_PORT}"
 
-            read -p "  Enter MediaMTX RTMP Port [$RTMP_PORT]: " custom_val
+            read -p "  Enter MediaMTX RTMPS Port [$RTMP_PORT]: " custom_val
             RTMP_PORT="${custom_val:-$RTMP_PORT}"
 
             read -p "  Enter MediaMTX API Port [$API_PORT]: " custom_val
@@ -145,6 +146,8 @@ echo ""
 echo "--> Stopping running server service if active..."
 systemctl stop itb-server.service 2>/dev/null || true
 
+CERTS_DIR="/var/lib/itb-screen-recorder/certificates"
+
 echo "--> Provisioning directories..."
 mkdir -p "$INSTALL_ROOT" \
          "$CONFIG_DIR" \
@@ -153,10 +156,12 @@ mkdir -p "$INSTALL_ROOT" \
          "$RECORDINGS_DIR" \
          "$LOGS_DIR" \
          "$NETAPP_MOUNT" \
+         "$CERTS_DIR" \
          "$FEATURES_DEST_DIR"
 
 echo "--> Applying access permissions..."
 chmod 755 "$CONFIG_DIR"
+chmod 700 "$CERTS_DIR"
 chmod 755 "$DATA_DIR" "$EXPORTS_DIR" "$RECORDINGS_DIR" "$LOGS_DIR"
 
 echo "--> Deploying central server binaries..."
@@ -185,8 +190,10 @@ try:
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # 1. Kestrel Port
-    cfg.setdefault("Kestrel", {}).setdefault("Endpoints", {}).setdefault("Http", {})["Url"] = "http://0.0.0.0:$HTTP_PORT"
+    # 1. Kestrel Port (Encrypted HTTPS)
+    endpoints = cfg.setdefault("Kestrel", {}).setdefault("Endpoints", {})
+    endpoints.setdefault("Https", {})["Url"] = "https://0.0.0.0:$HTTP_PORT"
+    endpoints.pop("Http", None)
 
     # 2. SystemConfig Ports
     sys_cfg = cfg.setdefault("SystemConfig", {})

@@ -1,4 +1,4 @@
-﻿# ==========================================
+# ==========================================
 # File: Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/UpdateSettings.ps1
 # ==========================================
 param(
@@ -35,8 +35,9 @@ try {
         "Updating: $file" | Out-File $log -Append
         $content = Get-Content $file -Raw
 
-        # עדכון פורט Kestrel
-        $content = $content -replace ('(?i)' + $q + 'Url' + $q + '\s*:\s*' + $q + 'http://0\.0\.0\.0:\d+' + $q), ($q + 'Url' + $q + ': ' + $q + 'http://0.0.0.0:' + $HttpPort + $q)
+        # עדכון פורט Kestrel (אכיפת HTTPS)
+        $content = $content -replace ('(?i)' + $q + 'Url' + $q + '\s*:\s*' + $q + 'https?://0\.0\.0\.0:\d+' + $q), ($q + 'Url' + $q + ': ' + $q + 'https://0.0.0.0:' + $HttpPort + $q)
+        $content = $content -replace ('(?i)' + $q + 'Endpoints' + $q + '\s*:\s*\{\s*' + $q + 'Http' + $q), ($q + 'Endpoints' + $q + ': { ' + $q + 'Https' + $q)
 
         # עדכון או הוספת SystemConfig.HttpPort
         if ($content -match ('(?i)' + $q + 'HttpPort' + $q + '\s*:\s*\d+')) {
@@ -67,14 +68,19 @@ try {
         "Updating YAML: $yFile" | Out-File $log -Append$y = Get-Content $yFile -Raw$y = $y -replace '(?m)^\s*#?\s*api:\s*.*$', 'api: yes'
         $y =$y -replace '(?m)^\s*#?\s*apiAddress:\s*.*$', "apiAddress: :$ApiPort"
         $y =$y -replace '(?m)^\s*#?\s*rtmpAddress:\s*.*$', "rtmpAddress: :$RtmpPort"
-        $y =$y -replace '(?m)^\s*#?\s*hlsAddress:\s*.*$', "hlsAddress: :$HlsPort"
-        $y \vert{} Set-Content$yFile -Encoding UTF8
-        "Saved updated YAML to $yFile" \vert{} Out-File $log -Append
+        $y | Set-Content $yFile -Encoding UTF8
+        "Saved updated YAML to $yFile" | Out-File $log -Append
+    }
+
+    # 3. הבטחת ספריית תעודות מאובטחת
+    $certsDir = 'C:\ProgramData\ITB-SCREEN-RECORDER\Certificates'
+    if (-not (Test-Path $certsDir)) {
+        New-Item -ItemType Directory -Path $certsDir -Force | Out-Null
     }
 
     "=== Configuration Finished Successfully ===" | Out-File $log -Append
 } catch {
-    "CRITICAL ERROR: $($_.Exception.ToString())" \vert{} Out-File $log -Append
+    "CRITICAL ERROR: $($_.Exception.ToString())" | Out-File $log -Append
 }
 
 exit 0

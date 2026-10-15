@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: AgentWorker/Engine/FfmpegProcessManager.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
@@ -264,10 +264,15 @@ namespace ITBRecorderAgent.Engine
             ffmpegArgs.Append($"-metadata comment=\"ITB_EPOCH:{startEpochMs}\" ");
             ffmpegArgs.Append($"-metadata hostname=\"{Environment.MachineName}\" ");
 
-            // 6. פלט
-            bool isRtmp = destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase);
+            // 6. פלט (תמיכה מלאה ב-RTMPS מוצפן TLS ו-RTMP)
+            bool isRtmps = destinationUrl.StartsWith("rtmps://", StringComparison.OrdinalIgnoreCase);
+            bool isRtmp = isRtmps || destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase);
             if (isRtmp)
             {
+                if (isRtmps)
+                {
+                    ffmpegArgs.Append("-tls_verify 0 ");
+                }
                 ffmpegArgs.Append($"-flvflags no_duration_filesize -y -f flv \"{destinationUrl}\"");
             }
             else

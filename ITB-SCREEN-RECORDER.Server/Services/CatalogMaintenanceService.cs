@@ -541,7 +541,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             int skipped = 0;
 
             var toPruneIds = new List<long>();
-            var toUpdateChunks = new List<(long Id, long NewEndMs, long NewDurMs, long Size, int W, int H, int Fps, int Audio)>();
+            var toUpdateChunks = new List<object>();
 
             for (int i = 0; i < total; i++)
             {
@@ -589,16 +589,17 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
                             if (Math.Abs(actualDurMs - chunk.DurationMs) > 1000 || chunk.EndEpochMs != actualEndMs || chunk.FileSizeBytes != fi.Length)
                             {
-                                toUpdateChunks.Add((
-                                    chunk.Id,
-                                    actualEndMs,
-                                    actualDurMs,
-                                    fi.Length,
-                                    probe.Width > 0 ? probe.Width : 1920,
-                                    probe.Height > 0 ? probe.Height : 1080,
-                                    probe.Fps > 0 ? probe.Fps : 30,
-                                    probe.HasAudio ? 1 : 0
-                                ));
+                                toUpdateChunks.Add(new
+                                {
+                                    Id = chunk.Id,
+                                    NewEndMs = actualEndMs,
+                                    NewDurMs = actualDurMs,
+                                    Size = fi.Length,
+                                    W = probe.Width > 0 ? probe.Width : 1920,
+                                    H = probe.Height > 0 ? probe.Height : 1080,
+                                    Fps = probe.Fps > 0 ? (int)Math.Round((double)probe.Fps) : 30,
+                                    Audio = probe.HasAudio ? 1 : 0
+                                });
                                 repaired++;
                             }
                             else
