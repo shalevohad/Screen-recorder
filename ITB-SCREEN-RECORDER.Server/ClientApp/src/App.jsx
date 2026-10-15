@@ -6,7 +6,9 @@ import * as signalR from '@microsoft/signalr';
 import CommandCenterHeader from './components/Layout/CommandCenterHeader';
 import GlobalJobIndicator from './components/Layout/GlobalJobIndicator';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
-import SettingsModal from './components/Settings/SettingsModal';
+import SettingsView from './components/Settings/SettingsView';
+import SystemLauncher from './components/Auth/SystemLauncher';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.scss';
 
 const LOCAL_WALLPAPERS = {
@@ -27,27 +29,45 @@ const resolveTimeOfDay = () => {
 const DISCONNECT_GRACE_PERIOD_MS = 8000;
 
 export default function App() {
+    return (
+        <AuthProvider>
+            <CommandCenterApp />
+        </AuthProvider>
+    );
+}
+
+function CommandCenterApp() {
+    const { isInitialized, isAuthenticated } = useAuth();
+
+    // ניווט: 'portal' (שער בחירת מערכת), 'recording' (חמ"ל הקלטות בלבד), 'settings' (ניהול מערכת בלבד)
+    const [currentSubsystem, setCurrentSubsystem] = useState('portal');
+
     const [stations, setStations] = useState([]);
-    const [serverTelemetry, setServerTelemetry] = useState(null);
+
+    // 💡 אתחול בטוח למניעת שגיאות של null reading
+    const [serverTelemetry, setServerTelemetry] = useState(() => ({
+        cpuPct: 0,
+        hostRamPct: 0,
+        storagePool: null,
+        netUtilPct: 0,
+        uptimeSeconds: 0
+    }));
+
     const [systemConfig, setSystemConfig] = useState(null);
     const [actionPending, setActionPending] = useState({});
 
     const [isServerOfflineModal, setIsServerOfflineModal] = useState(false);
-    // 💡 שימוש ב-Lazy Initializer כדי למנוע יצירת Date חדש בכל רינדור
     const [lastServerContact, setLastServerContact] = useState(() => new Date());
     const [isRetryingConnection, setIsRetryingConnection] = useState(false);
 
-    // 💡 אתחול ה-Ref ל-0 בזמן ה-Render כדי לעמוד בחוק הטוהר של React
     const lastContactTimestampRef = useRef(0);
 
-    // 💡 השמת חותמת הזמן הראשונית ב-Effect לאחר ה-Mount
     useEffect(() => {
         lastContactTimestampRef.current = Date.now();
     }, []);
 
     const [hideOffline, setHideOffline] = useState(true);
     const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [timeOfDay, setTimeOfDay] = useState(resolveTimeOfDay);
 
     useEffect(() => {
@@ -82,8 +102,9 @@ export default function App() {
     }, []);
 
     useEffect(() => {
+        if (!isAuthenticated) return;
+
         const checkConnectionTicker = setInterval(() => {
-            // 💡 מניעת בדיקה כשהרפרנס טרם אותחל ב-Mount
             if (!lastContactTimestampRef.current) return;
 
             const elapsedSinceLastContact = Date.now() - lastContactTimestampRef.current;
@@ -95,7 +116,7 @@ export default function App() {
         }, 1000);
 
         return () => clearInterval(checkConnectionTicker);
-    }, []);
+    }, [isAuthenticated]);
 
     const fetchStations = useCallback(async () => {
         try {
@@ -143,6 +164,8 @@ export default function App() {
     }, [apiBaseUrl, registerServerHeartbeat]);
 
     useEffect(() => {
+        if (!isAuthenticated) return;
+
         let isMounted = true;
         const loadInitialData = async () => {
             try {
@@ -165,9 +188,11 @@ export default function App() {
             isMounted = false;
             clearInterval(heartbeatInterval);
         };
-    }, [fetchStations, fetchSystemConfig]);
+    }, [isAuthenticated, fetchStations, fetchSystemConfig]);
 
     useEffect(() => {
+        if (!isAuthenticated) return;
+
         const hubUrl = `${apiBaseUrl}/hubs/telemetry`;
         const connection = new signalR.HubConnectionBuilder()
             .withUrl(hubUrl)
@@ -180,23 +205,15 @@ export default function App() {
             })
             .build();
 
-        connection.onreconnecting(() => {
-            console.warn('[App] SignalR reconnecting...');
-        });
-
         connection.onreconnected(() => {
-            console.log('[App] SignalR reconnected successfully.');
             registerServerHeartbeat();
             fetchStations();
             fetchSystemConfig();
         });
 
         connection.onclose(() => {
-            console.warn('[App] SignalR closed. Retrying in 5s...');
             setTimeout(() => {
-                connection.start()
-                    .then(registerServerHeartbeat)
-                    .catch(() => { });
+                connection.start().then(registerServerHeartbeat).catch(() => { });
             }, 5000);
         });
 
@@ -204,25 +221,22 @@ export default function App() {
             if (!telemetry) return;
             registerServerHeartbeat();
             setServerTelemetry(prev => {
-                if (!prev) return telemetry;
+                const base = prev || {};
                 return {
-                    ...prev,
+                    ...base,
                     ...telemetry,
-                    uptimeSeconds: telemetry.uptimeSeconds ?? telemetry.systemUptimeSeconds ?? prev.uptimeSeconds ?? prev.systemUptimeSeconds,
-                    cpuPct: telemetry.cpuPct !== undefined ? telemetry.cpuPct : prev.cpuPct,
-                    hostRamPct: telemetry.hostRamPct !== undefined ? telemetry.hostRamPct : prev.hostRamPct,
-                    storagePool: telemetry.storagePool !== undefined ? telemetry.storagePool : prev.storagePool,
-                    netUtilPct: telemetry.netUtilPct !== undefined ? telemetry.netUtilPct : prev.netUtilPct
+                    uptimeSeconds: telemetry.uptimeSeconds ?? telemetry.systemUptimeSeconds ?? base.uptimeSeconds ?? 0,
+                    cpuPct: telemetry.cpuPct ?? telemetry.hostCpuPct ?? base.cpuPct ?? 0,
+                    hostRamPct: telemetry.hostRamPct ?? telemetry.ramPct ?? base.hostRamPct ?? 0,
+                    storagePool: telemetry.storagePool ?? base.storagePool ?? null,
+                    netUtilPct: telemetry.netUtilPct ?? base.netUtilPct ?? 0
                 };
             });
         });
 
         connection.on('ReceiveMaintenanceJob', (job) => {
             registerServerHeartbeat();
-            setServerTelemetry(prev => ({
-                ...prev,
-                maintenanceJob: job
-            }));
+            setServerTelemetry(prev => ({ ...(prev || {}), maintenanceJob: job }));
         });
 
         connection.on('ReceiveAgentMetrics', (report) => {
@@ -249,14 +263,9 @@ export default function App() {
             }
         });
 
-        connection.start()
-            .then(registerServerHeartbeat)
-            .catch(err => {
-                console.error('[App] Initial SignalR Connection Error:', err);
-            });
-
+        connection.start().then(registerServerHeartbeat).catch(() => { });
         return () => { connection.stop(); };
-    }, [apiBaseUrl, fetchStations, fetchSystemConfig, registerServerHeartbeat]);
+    }, [apiBaseUrl, isAuthenticated, fetchStations, fetchSystemConfig, registerServerHeartbeat]);
 
     const handleManualRetry = async () => {
         setIsRetryingConnection(true);
@@ -269,16 +278,11 @@ export default function App() {
 
     const sortedStations = useMemo(() => {
         return [...stations].sort((a, b) => {
-            const nameA = (a.displayName || a.hostname || '').toLowerCase();
-            const nameB = (b.displayName || b.hostname || '').toLowerCase();
+            const nameA = (a.roleAlias || a.displayName || a.hostname || '').toLowerCase();
+            const nameB = (b.roleAlias || b.displayName || b.hostname || '').toLowerCase();
             return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
         });
     }, [stations]);
-
-    const handleSettingsSaved = useCallback(async () => {
-        await fetchStations();
-        await fetchSystemConfig();
-    }, [fetchStations, fetchSystemConfig]);
 
     const handleToggleStream = async (hostname, isCurrentlyStreaming, policy = {}) => {
         setActionPending(prev => ({ ...prev, [hostname]: true }));
@@ -292,62 +296,30 @@ export default function App() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-
             if (res.ok) {
                 setStations(prev => prev.map(st => st.hostname === hostname ? { ...st, isStreaming: targetEnable } : st));
             }
-        } catch (err) {
-            console.error(`[App] Error toggling stream for ${hostname}:`, err);
         } finally {
             setActionPending(prev => ({ ...prev, [hostname]: false }));
         }
     };
 
-    const handleBulkStart = async (targetHostnames = [], policy = {}) => {
-        try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    enable: true,
-                    hostnames: targetHostnames.length > 0 ? targetHostnames : null,
-                    bitrate: policy.bitrate || null,
-                    fps: policy.fps || null
-                })
-            });
+    if (!isInitialized) return null;
 
-            if (res.ok) {
-                setStations(prev => prev.map(s => {
-                    const shouldUpdate = targetHostnames.length === 0 || targetHostnames.includes(s.hostname);
-                    return (shouldUpdate && s.isOnline) ? { ...s, isStreaming: true } : s;
-                }));
-            }
-        } catch (err) {
-            console.error('[App] Failed bulk start:', err);
-        }
-    };
-
-    const handleBulkStop = async (targetHostnames = []) => {
-        try {
-            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    enable: false,
-                    hostnames: targetHostnames.length > 0 ? targetHostnames : null
-                })
-            });
-
-            if (res.ok) {
-                setStations(prev => prev.map(s => {
-                    const shouldUpdate = targetHostnames.length === 0 || targetHostnames.includes(s.hostname);
-                    return shouldUpdate ? { ...s, isStreaming: false } : s;
-                }));
-            }
-        } catch (err) {
-            console.error('[App] Failed bulk stop:', err);
-        }
-    };
+    // 1. שער המערכות הראשי (PORTAL LAUNCHER)
+    if (!isAuthenticated || currentSubsystem === 'portal') {
+        return (
+            <SystemLauncher
+                onLaunchApp={(appId) => {
+                    lastContactTimestampRef.current = Date.now();
+                    setCurrentSubsystem(appId);
+                    if (appId === 'recording') {
+                        fetchStations();
+                    }
+                }}
+            />
+        );
+    }
 
     return (
         <div className={`itb-command-center-root ${isServerOfflineModal ? 'is-server-blurred' : ''}`} dir="ltr">
@@ -359,52 +331,57 @@ export default function App() {
             <div className="dynamic-scrim-overlay" aria-hidden="true" />
 
             <div className="itb-command-center-app">
-                <CommandCenterHeader
-                    stations={sortedStations}
-                    serverTelemetry={serverTelemetry}
-                    systemConfig={systemConfig}
-                    isSettingsOpen={isSettingsOpen}
-                    onOpenSettings={() => setIsSettingsOpen(prev => !prev)}
-                    hideOffline={hideOffline}
-                    isFaultFilterActive={isFaultFilterActive}
-                    onToggleFaultFilter={() => setIsFaultFilterActive(prev => !prev)}
-                    isServerConnected={!isServerOfflineModal}
-                    lastServerContact={lastServerContact}
-                />
-
-                <DashboardGrid
-                    stations={sortedStations}
-                    actionPending={actionPending}
-                    onToggleStream={handleToggleStream}
-                    onBulkStart={handleBulkStart}
-                    onBulkStop={handleBulkStop}
-                    onUpdateStationSettings={setStations}
-                    systemConfig={systemConfig}
-                    onSystemConfigUpdate={setSystemConfig}
-                    direction="ltr"
-                    hideOffline={hideOffline}
-                    onToggleHideOffline={() => setHideOffline(prev => !prev)}
-                    isFaultFilterActive={isFaultFilterActive}
-                    onExitFaultFilter={() => setIsFaultFilterActive(false)}
-                    isServerConnected={!isServerOfflineModal}
-                />
-
-                {isSettingsOpen && (
-                    <SettingsModal
-                        onClose={() => setIsSettingsOpen(false)}
-                        onSettingsSaved={handleSettingsSaved}
+                {/* 2. מערכת ההגדרות (SYSTEM SETTINGS) - מערכת עצמאית מקצה לקצה */}
+                {currentSubsystem === 'settings' ? (
+                    <SettingsView
+                        onReturnToPortal={() => setCurrentSubsystem('portal')}
+                        onSettingsSaved={() => {
+                            fetchStations();
+                            fetchSystemConfig();
+                        }}
                     />
+                ) : (
+                    /* 3. מרכז הקלטות המסכים (SCREEN RECORDING CENTER) */
+                    <>
+                        <CommandCenterHeader
+                            stations={sortedStations}
+                            serverTelemetry={serverTelemetry}
+                            systemConfig={systemConfig}
+                            onOpenAppSwitcher={() => setCurrentSubsystem('portal')}
+                            hideOffline={hideOffline}
+                            isFaultFilterActive={isFaultFilterActive}
+                            onToggleFaultFilter={() => setIsFaultFilterActive(prev => !prev)}
+                            isServerConnected={!isServerOfflineModal}
+                            lastServerContact={lastServerContact}
+                        />
+
+                        <DashboardGrid
+                            stations={sortedStations}
+                            actionPending={actionPending}
+                            onToggleStream={handleToggleStream}
+                            onBulkStart={() => { }}
+                            onBulkStop={() => { }}
+                            onUpdateStationSettings={setStations}
+                            systemConfig={systemConfig}
+                            onSystemConfigUpdate={setSystemConfig}
+                            direction="ltr"
+                            hideOffline={hideOffline}
+                            onToggleHideOffline={() => setHideOffline(prev => !prev)}
+                            isFaultFilterActive={isFaultFilterActive}
+                            onExitFaultFilter={() => setIsFaultFilterActive(false)}
+                            isServerConnected={!isServerOfflineModal}
+                        />
+                    </>
                 )}
 
                 <GlobalJobIndicator />
             </div>
 
-            {/* Tactical C2 Server Disconnection Modal */}
+            {/* דיאלוג ניתוק שרת */}
             {isServerOfflineModal && (
                 <div className="tactical-modal-backdrop" role="dialog" aria-modal="true">
                     <div className="tactical-disconnect-modal-card">
                         <div className="modal-top-accent-bar" />
-
                         <div className="modal-header-section">
                             <div className="disconnect-radar-emitter">
                                 <div className="radar-ring" />
@@ -418,24 +395,17 @@ export default function App() {
 
                         <div className="modal-body-section">
                             <p className="modal-explanation">
-                                Communication with the central recording server has been lost. The display has been frozen to prevent stale telemetry display or invalid remote command dispatches.
+                                Communication with the central recording server has been lost. The display has been frozen to prevent stale telemetry display.
                             </p>
-
                             <div className="disconnect-diagnostics-box">
                                 <div className="diag-row">
                                     <span className="diag-label">STATUS</span>
-                                    <span className="diag-val red">SERVER OFFLINE (CONNECTION DROPPED)</span>
+                                    <span className="diag-val red">SERVER OFFLINE</span>
                                 </div>
                                 <div className="diag-row">
                                     <span className="diag-label">LAST CONTACT</span>
                                     <span className="diag-val mono">
                                         {lastServerContact ? lastServerContact.toLocaleTimeString() : 'N/A'}
-                                    </span>
-                                </div>
-                                <div className="diag-row">
-                                    <span className="diag-label">AUTO-RETRY</span>
-                                    <span className="diag-val cyan">
-                                        <span className="spinning-dot" /> RECONNECTING IN BACKGROUND...
                                     </span>
                                 </div>
                             </div>
@@ -448,16 +418,7 @@ export default function App() {
                                 onClick={handleManualRetry}
                                 disabled={isRetryingConnection}
                             >
-                                {isRetryingConnection ? (
-                                    <>
-                                        <span className="action-spinner" />
-                                        <span>CHECKING CONNECTION...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>⟳ RECONNECT NOW</span>
-                                    </>
-                                )}
+                                {isRetryingConnection ? 'CHECKING CONNECTION...' : '⟳ RECONNECT NOW'}
                             </button>
                         </div>
                     </div>

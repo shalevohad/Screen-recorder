@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/utils/studioSessionStore.js
 // ==========================================
 
@@ -53,6 +53,7 @@ export function saveStudioSessionCache(data) {
                 allStations: sanitizedStations,
                 isLooping: typeof data.isLooping === 'boolean' ? data.isLooping : true,
                 playbackSpeed: typeof data.playbackSpeed === 'number' ? data.playbackSpeed : 1,
+                showRulerKeystrokes: typeof data.showRulerKeystrokes === 'boolean' ? data.showRulerKeystrokes : false,
                 lastSavedAt: Date.now()
             };
 

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.jsx
 // ==========================================
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
@@ -209,7 +209,7 @@ export default function MulticamViewport({
                         />
 
                         <KeystrokePlaybackOverlay
-                            currentEpochMs={currentEpochMs}
+                            currentEpochMs={playheadEpochMs > 0 ? playheadEpochMs : Math.round(baseEpochMs + playheadMs)}
                             keystrokes={keystrokes}
                             keystrokeMode={keystrokeMode}
                         />

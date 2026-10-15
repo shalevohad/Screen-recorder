@@ -1,7 +1,8 @@
 // ==========================================
-// File: ClientApp/src/components/Dashboard/StationsDenseView.jsx
+// File: Client/src/components/Dashboard/StationsDenseView.jsx
 // ==========================================
 import RemoteWidgetHost from '../Plugins/RemoteWidgetHost';
+import { Can } from '../../context/AuthContext';
 import './StationsDenseView.scss';
 
 export default function StationsDenseView({
@@ -39,6 +40,8 @@ export default function StationsDenseView({
                     const isRec = Boolean(s.isStreaming);
                     const hasDrops = (s.droppedFrames || 0) > 0;
                     const isPending = actionPending[s.hostname] || false;
+                    const primaryTitle = s.roleAlias || s.displayName || s.hostname;
+                    const secondaryHost = s.roleAlias ? s.hostname : null;
 
                     return (
                         <div
@@ -53,8 +56,11 @@ export default function StationsDenseView({
                             </div>
 
                             <div className="dense-col host-info">
-                                <span className="dense-hostname">{s.hostname}</span>
-                                <span className="dense-ip">{s.ipAddress || s.ip || 'N/A'}</span>
+                                <span className="dense-hostname">{primaryTitle}</span>
+                                <div className="dense-sub-info">
+                                    {secondaryHost && <span className="dense-machine-name">[{secondaryHost}]</span>}
+                                    <span className="dense-ip">{s.ipAddress || s.ip || 'N/A'}</span>
+                                </div>
                             </div>
 
                             <div className="dense-col tag-col">
@@ -72,17 +78,19 @@ export default function StationsDenseView({
                             </div>
 
                             <div className="dense-col actions" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                    type="button"
-                                    className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
-                                    disabled={!s.isOnline || isPending}
-                                    onClick={() => onToggleStream(s.hostname, isRec, {
-                                        bitrate: s.effectiveBitrate,
-                                        fps: s.effectiveFps
-                                    })}
-                                >
-                                    {isPending ? '...' : isRec ? 'STOP' : 'START'}
-                                </button>
+                                <Can permission="stations.control" disabled disabledTooltip="No stream control permissions">
+                                    <button
+                                        type="button"
+                                        className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
+                                        disabled={!s.isOnline || isPending}
+                                        onClick={() => onToggleStream(s.hostname, isRec, {
+                                            bitrate: s.effectiveBitrate,
+                                            fps: s.effectiveFps
+                                        })}
+                                    >
+                                        {isPending ? '...' : isRec ? 'STOP' : 'START'}
+                                    </button>
+                                </Can>
                                 <button
                                     type="button"
                                     className={`dense-act-btn full ${!isRec ? 'disabled' : ''}`}

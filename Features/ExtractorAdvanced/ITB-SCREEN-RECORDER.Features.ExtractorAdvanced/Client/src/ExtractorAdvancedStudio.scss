@@ -1,4 +1,4 @@
-﻿// Client/src/components/Extractor/ExtractorAdvancedStudio.scss
+// Client/src/components/Extractor/ExtractorAdvancedStudio.scss
 
 .extractor-advanced-studio {
     position: relative;
@@ -64,11 +64,14 @@
         }
         /* אזור הטיים-ליין: שומר על גובהו הטבעי ומעוגן לתחתית */
         .studio-bottom-timeline {
+            position: relative;
+            z-index: 20;
             flex: 0 0 auto;
             width: 100%;
             display: flex;
             flex-direction: column;
             background: transparent;
+            overflow: visible;
         }
     }
 }

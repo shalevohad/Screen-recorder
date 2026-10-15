@@ -130,7 +130,8 @@ export default function StudioVideoFeed({
             return;
         }
 
-        const delayMs = wasPlaying ? 40 : 200;
+        // 💡 תגובה סופר-מהירה (35ms במקום 200ms) לשיפור מהירות ה-Scrubbing והזזת הפלייהד
+        const delayMs = wasPlaying ? 25 : 35;
         const fetchTimer = setTimeout(() => {
             if (!isMounted) return;
             frameStore.fetchFrame(hostname, targetEpochMs, abortController.signal).then(res => {

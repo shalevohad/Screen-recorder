@@ -1,5 +1,5 @@
-﻿// ==========================================
-// File: Server/Controllers/AgentController.cs
+// ==========================================
+// File: ITB-SCREEN-RECORDER.Server/Controllers/AgentController.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
@@ -8,6 +8,7 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -36,7 +37,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public string? Bitrate { get; set; }
     }
 
-    // 💡 מודל טופס מאוחד: מונע קריסה של Swagger Generator ב-multipart/form-data
     public class UploadBufferRequest
     {
         public string Hostname { get; set; } = string.Empty;
@@ -54,6 +54,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly StoragePathResolver _storageResolver;
         private readonly ICatalogRepository _catalogRepository;
+        private readonly IVideoProbeService _probeService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
@@ -63,6 +64,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             IOptionsMonitor<SystemConfig> configMonitor,
             StoragePathResolver storageResolver,
             ICatalogRepository catalogRepository,
+            IVideoProbeService probeService,
             ILogger<AgentController> logger)
         {
             _telemetryState = telemetryState;
@@ -71,6 +73,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _configMonitor = configMonitor;
             _storageResolver = storageResolver;
             _catalogRepository = catalogRepository;
+            _probeService = probeService;
             _logger = logger;
         }
 
@@ -91,7 +94,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(validationErrors);
             }
 
-            // 💡 קליטת Keystrokes חיים שנשלחו בדוח הטלמטריה השוטף
             if (report.Keystrokes != null && report.Keystrokes.Count > 0)
             {
                 try
@@ -193,16 +195,32 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 }
 
                 long fileSizeBytes = new FileInfo(destinationPath).Length;
-                int chunkMinutes = Math.Max(1, _configMonitor.CurrentValue.Storage.ChunkIntervalMinutes);
-                long endEpochMs = startEpochMs + (chunkMinutes * 60 * 1000);
+                if (fileSizeBytes < 1024)
+                {
+                    _logger.LogWarning("[SYNC INGEST] Discarding corrupt/empty buffer '{File}' ({Bytes} bytes) from host '{Host}'.", safeFileName, fileSizeBytes, hostname);
+                    try { System.IO.File.Delete(destinationPath); } catch { }
+                    return BadRequest("Uploaded file is too small or corrupt.");
+                }
+
+                // 💡 בדיקת משך זמן אמיתי של הסרטון באמצעות FFprobe כדי למנוע זיוף זמינות ו-Gaps שגויים
+                var probe = await _probeService.ProbeFileAsync(destinationPath);
+                if (probe == null || probe.DurationSeconds <= 0.05)
+                {
+                    _logger.LogWarning("[SYNC INGEST] Uploaded buffer '{File}' failed ffprobe validation (zero/invalid duration). Discarding.", safeFileName);
+                    try { System.IO.File.Delete(destinationPath); } catch { }
+                    return BadRequest("Uploaded file could not be verified as a valid video stream.");
+                }
+
+                long durationMs = (long)Math.Round(probe.DurationSeconds * 1000.0);
+                long endEpochMs = startEpochMs + durationMs;
 
                 var agentSnapshot = _telemetryState.GetAllAgents()
                     .FirstOrDefault(agent => string.Equals(agent.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
 
-                int screenWidth = agentSnapshot?.ScreenWidth > 0 ? agentSnapshot.ScreenWidth : 0;
-                int screenHeight = agentSnapshot?.ScreenHeight > 0 ? agentSnapshot.ScreenHeight : 0;
-                int captureFps = agentSnapshot?.ActualFps > 0 ? agentSnapshot.ActualFps : (agentSnapshot?.InternalCaptureFps > 0 ? agentSnapshot.InternalCaptureFps : 0);
-                bool hasAudio = agentSnapshot?.HasAudio ?? false;
+                int screenWidth = probe.Width > 0 ? probe.Width : (agentSnapshot?.ScreenWidth > 0 ? agentSnapshot.ScreenWidth : 1920);
+                int screenHeight = probe.Height > 0 ? probe.Height : (agentSnapshot?.ScreenHeight > 0 ? agentSnapshot.ScreenHeight : 1080);
+                int captureFps = probe.Fps > 0 ? probe.Fps : (agentSnapshot?.ActualFps > 0 ? agentSnapshot.ActualFps : 30);
+                bool hasAudio = probe.HasAudio || (agentSnapshot?.HasAudio ?? false);
 
                 await _catalogRepository.BulkUpsertChunksAsync(new[]
                 {
@@ -220,7 +238,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     )
                 });
 
-                // 💡 קליטת קובץ ה-Sidecar (.keys.jsonl) של המקשים שנשלח בטופס
                 var keysFile = request.KeysFile ?? Request.Form.Files["keysFile"] ?? Request.Form.Files["keys_file"];
                 if (keysFile != null && keysFile.Length > 0)
                 {
@@ -289,14 +306,6 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         await _catalogRepository.BulkInsertKeystrokesAsync(hostname, ingestedKeystrokes);
                         _logger.LogInformation("[SYNC INGEST] Successfully parsed and ingested {Count} offline keys for {Host}", ingestedKeystrokes.Count, hostname);
                     }
-                    else
-                    {
-                        _logger.LogWarning("[SYNC INGEST] Keys sidecar file '{FileName}' was present but yielded 0 valid keystrokes.", keysFile.FileName);
-                    }
-                }
-                else
-                {
-                    _logger.LogDebug("[SYNC INGEST] No keys sidecar attached for chunk '{File}' from '{Host}'", safeFileName, hostname);
                 }
 
                 _logger.LogInformation("[SYNC INGEST] Synced & Indexed offline chunk from '{Host}': '{File}' (Epoch: {Epoch}, Size: {Size} bytes)",
@@ -312,6 +321,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("tuning/{hostname}")]
+        [AuthorizePermission(PermissionKeys.SettingsAgents)]
         public async Task<IActionResult> UpdateStationTuning(string hostname, [FromBody] AgentTuningRequest request)
         {
             if (string.IsNullOrWhiteSpace(hostname) || request == null)
@@ -351,6 +361,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("command/{hostname}")]
+        [AuthorizePermission(PermissionKeys.StationsControl)]
         public IActionResult EnforceStreamingPolicy(string hostname, [FromQuery] bool enable)
         {
             _telemetryState.SetAgentStreamState(hostname, enable);
@@ -365,6 +376,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         [HttpPost("fleet-streaming-policy")]
+        [AuthorizePermission(PermissionKeys.StationsControl)]
         public IActionResult EnforceFleetWideStreamingPolicy(
             [FromBody] FleetStreamingPolicyRequest? request,
             [FromQuery] bool? enable)

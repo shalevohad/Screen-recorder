@@ -46,7 +46,9 @@ export default function TimelineBoard({
     onJumpViewportTo,
     keystrokeMode = 'BURN_IN',
     onChangeKeystrokeMode,
-    showKeystrokes = true
+    showKeystrokes = false,
+    showRulerKeystrokes = false,
+    onToggleRulerKeystrokes
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [trackBankIndex, setTrackBankIndex] = useState(0);
@@ -184,6 +186,8 @@ export default function TimelineBoard({
                             timeMode={timeMode}
                             keystrokeMode={keystrokeMode}
                             onChangeKeystrokeMode={onChangeKeystrokeMode}
+                            showRulerKeystrokes={showRulerKeystrokes}
+                            onToggleRulerKeystrokes={onToggleRulerKeystrokes}
                         />
                     </div>
 
@@ -202,7 +206,7 @@ export default function TimelineBoard({
                             earliestMediaMs={earliestMediaMs}
                             movieBoundaries={movieBoundaries}
                             activeStationName={activeStationObj?.displayName || activeStationObj?.hostname || activeStationObj?.name}
-                            showKeystrokes={showKeystrokes}
+                            showKeystrokes={Boolean(showRulerKeystrokes ?? showKeystrokes)}
                         />
                     </div>
                 </div>

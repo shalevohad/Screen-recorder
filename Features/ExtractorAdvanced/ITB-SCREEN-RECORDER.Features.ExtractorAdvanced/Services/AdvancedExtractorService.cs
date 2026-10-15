@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvancedExtractorService.cs
 // ==========================================
 using System;
@@ -113,29 +113,37 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-5), targetUtc.AddMinutes(5));
 
-            // 💡 חילוץ קפדני: מאתרים אך ורק מקטע שמכסה את נקודת הזמן בפועל (עם סבילות של ±2 שניות לתפרי צ'אנקים).
-            // הוסר ה-Fallback ההרסני ששלף פריים מקובץ עתידי כשהפלייהד עמד בפער ריק!
-            var matchingChunk = chunks.FirstOrDefault(c =>
-                !string.IsNullOrEmpty(c.FullPath) &&
-                File.Exists(c.FullPath) &&
-                c.StartUtc <= targetUtc.AddSeconds(2) &&
-                targetUtc.AddSeconds(-2) <= c.EndUtc);
+            // 💡 חילוץ מקטעים רלוונטיים: מקטעים שמכסים ישירות את נקודת הזמן מקבלים עדיפות עליונה, ולאחריהם מקטעים בתחום של ±2 שניות לתפרי צ'אנקים.
+            var candidates = chunks
+                .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath) &&
+                            c.StartUtc <= targetUtc.AddSeconds(2) && targetUtc.AddSeconds(-2) <= c.EndUtc)
+                .OrderByDescending(c => c.StartUtc <= targetUtc && targetUtc <= c.EndUtc)
+                .ThenBy(c => Math.Abs((c.StartUtc + (c.Duration / 2) - targetUtc).TotalSeconds))
+                .ToList();
 
             string ffmpegPath = ResolveFfmpegBinary();
 
-            if (matchingChunk == null)
+            if (candidates.Count == 0)
             {
                 byte[] noSignal = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
                 return (noSignal != null && noSignal.Length > 0) ? new MemoryStream(noSignal) : Stream.Null;
             }
 
-            double offsetSeconds = Math.Max(0, (targetUtc - matchingChunk.StartUtc).TotalSeconds);
-            byte[]? frameData = await ExtractKeyframeDirectAsync(ffmpegPath, matchingChunk.FullPath, offsetSeconds, ct);
-
-            if (frameData != null && frameData.Length > 0)
+            foreach (var chunk in candidates)
             {
-                _memoryCache?.Set(cacheKey, frameData, TimeSpan.FromMinutes(3));
-                return new MemoryStream(frameData);
+                double offsetSeconds = Math.Max(0, (targetUtc - chunk.StartUtc).TotalSeconds);
+                double maxSafeOffset = Math.Max(0, chunk.Duration.TotalSeconds - 0.05);
+                if (offsetSeconds > maxSafeOffset)
+                {
+                    offsetSeconds = maxSafeOffset;
+                }
+
+                byte[]? frameData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, offsetSeconds, ct);
+                if (frameData != null && frameData.Length > 0)
+                {
+                    _memoryCache?.Set(cacheKey, frameData, TimeSpan.FromMinutes(30));
+                    return new MemoryStream(frameData);
+                }
             }
 
             byte[] fallback = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
@@ -173,57 +181,75 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc, endUtc);
             string ffmpegPath = ResolveFfmpegBinary();
 
-            if (chunks.Count == 0)
+            var candidateChunks = chunks
+                .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath))
+                .OrderByDescending(c => c.StartUtc <= startUtc && startUtc <= c.EndUtc)
+                .ThenByDescending(c =>
+                {
+                    long overlapStart = Math.Max(startUtc.Ticks, c.StartUtc.Ticks);
+                    long overlapEnd = Math.Min(endUtc.Ticks, c.EndUtc.Ticks);
+                    return Math.Max(0, overlapEnd - overlapStart);
+                })
+                .ToList();
+
+            if (candidateChunks.Count == 0)
             {
                 byte[] blackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
                 return new MemoryStream(blackTile);
             }
 
-            var sampleChunk = chunks.First();
-            double offsetSeconds = Math.Max(0, (startUtc - sampleChunk.StartUtc).TotalSeconds);
-            double intervalSeconds = Math.Max(0.1, (endUtc - startUtc).TotalSeconds / frameCount);
-
-            string filter = $"fps=1/{intervalSeconds.ToString("0.00", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
-
-            using var memoryStream = new MemoryStream(65536);
-            var startInfo = new ProcessStartInfo
+            foreach (var sampleChunk in candidateChunks)
             {
-                FileName = ffmpegPath,
-                Arguments = $"-nostdin -loglevel error -noautorotate " +
-                            $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                            $"-i \"{sampleChunk.FullPath.Replace('\\', '/')}\" " +
-                            $"-vf \"{filter}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
-                RedirectStandardOutput = true,
-                RedirectStandardError = false,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linkedCts.CancelAfter(TimeSpan.FromSeconds(6));
-
-            await _visualThrottle.WaitAsync(linkedCts.Token);
-            using var process = new Process { StartInfo = startInfo };
-
-            try
-            {
-                process.Start();
-                using var reg = linkedCts.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
-
-                await process.StandardOutput.BaseStream.CopyToAsync(memoryStream, 16384, linkedCts.Token);
-                await process.WaitForExitAsync(linkedCts.Token);
-
-                if (memoryStream.Length > 0)
+                double offsetSeconds = Math.Max(0, (startUtc - sampleChunk.StartUtc).TotalSeconds);
+                double maxSafeOffset = Math.Max(0, sampleChunk.Duration.TotalSeconds - 0.1);
+                if (offsetSeconds > maxSafeOffset)
                 {
-                    byte[] sheetBytes = memoryStream.ToArray();
-                    _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(5));
-                    return new MemoryStream(sheetBytes);
+                    offsetSeconds = maxSafeOffset;
                 }
-            }
-            catch { }
-            finally
-            {
-                _visualThrottle.Release();
+
+                double intervalSeconds = Math.Max(0.1, (endUtc - startUtc).TotalSeconds / frameCount);
+                string filter = $"fps=1/{intervalSeconds.ToString("0.00", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
+
+                using var memoryStream = new MemoryStream(65536);
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
+                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                $"-i \"{sampleChunk.FullPath.Replace('\\', '/')}\" " +
+                                $"-vf \"{filter}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = false,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                linkedCts.CancelAfter(TimeSpan.FromSeconds(6));
+
+                await _visualThrottle.WaitAsync(linkedCts.Token);
+                using var process = new Process { StartInfo = startInfo };
+
+                try
+                {
+                    process.Start();
+                    using var reg = linkedCts.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch { } });
+
+                    await process.StandardOutput.BaseStream.CopyToAsync(memoryStream, 16384, linkedCts.Token);
+                    await process.WaitForExitAsync(linkedCts.Token);
+
+                    if (memoryStream.Length > 0)
+                    {
+                        byte[] sheetBytes = memoryStream.ToArray();
+                        _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(30));
+                        return new MemoryStream(sheetBytes);
+                    }
+                }
+                catch { }
+                finally
+                {
+                    _visualThrottle.Release();
+                }
             }
 
             byte[] fallbackTile = await _patternService.GetOrCreateBlackTileAsync(ffmpegPath, tileWidth, tileHeight, frameCount, ct);
@@ -238,7 +264,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
             using var memoryStream = new MemoryStream(32768);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linkedCts.CancelAfter(TimeSpan.FromSeconds(5));
+            linkedCts.CancelAfter(TimeSpan.FromSeconds(4));
 
             await _visualThrottle.WaitAsync(linkedCts.Token);
             try
@@ -246,9 +272,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate " +
-                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                                $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -frames:v 1 -q:v 2 -f image2pipe -vcodec mjpeg pipe:1",
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 32768 -analyzeduration 0 -flags2 +fast " +
+                                $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} -noaccurate_seek " +
+                                $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -frames:v 1 -q:v 3 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,
                     UseShellExecute = false,

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -8,6 +8,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
     {
         LeftClick,
         RightClick,
+        MiddleClick,
         ScrollUp,
         ScrollDown
     }
@@ -22,41 +23,61 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
 
     public static class MouseVisualRasterizer
     {
-        private const double CLICK_DURATION_MS = 340.0;
-        private const double SCROLL_DURATION_MS = 380.0;
+        private const double CLICK_DURATION_MS = 380.0;
+        private const double SCROLL_DURATION_MS = 420.0;
 
-        private const int BADGE_RADIUS = 11;
+        private const int BADGE_RADIUS = 15;
 
         private static readonly object _syncLock = new();
         private static readonly List<MouseVisualEvent> _activeEvents = new(16);
 
-        #region Crisp 8x10 Bold Glyphs for L and R
-        private static readonly byte[] GlyphL = new byte[8 * 10]
+        #region Crisp 10x12 Bold Glyphs for L, R and M
+        private static readonly byte[] GlyphL = new byte[10 * 12]
         {
-            1,1,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,
-            1,1,0,0,0,0,0,0,
-            1,1,1,1,1,1,1,0,
-            1,1,1,1,1,1,1,0
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,0,0,0,0,0,0,0,0,
+            1,1,1,1,1,1,1,1,0,0,
+            1,1,1,1,1,1,1,1,0,0
         };
 
-        private static readonly byte[] GlyphR = new byte[8 * 10]
+        private static readonly byte[] GlyphR = new byte[10 * 12]
         {
-            1,1,1,1,1,1,0,0,
-            1,1,0,0,0,1,1,0,
-            1,1,0,0,0,1,1,0,
-            1,1,1,1,1,1,0,0,
-            1,1,1,1,1,0,0,0,
-            1,1,0,1,1,0,0,0,
-            1,1,0,0,1,1,0,0,
-            1,1,0,0,1,1,0,0,
-            1,1,0,0,0,1,1,0,
-            1,1,0,0,0,1,1,0
+            1,1,1,1,1,1,1,0,0,0,
+            1,1,1,1,1,1,1,1,0,0,
+            1,1,0,0,0,0,1,1,0,0,
+            1,1,0,0,0,0,1,1,0,0,
+            1,1,1,1,1,1,1,1,0,0,
+            1,1,1,1,1,1,1,0,0,0,
+            1,1,0,0,1,1,1,0,0,0,
+            1,1,0,0,0,1,1,0,0,0,
+            1,1,0,0,0,1,1,1,0,0,
+            1,1,0,0,0,0,1,1,0,0,
+            1,1,0,0,0,0,1,1,1,0,
+            1,1,0,0,0,0,0,1,1,0
+        };
+
+        private static readonly byte[] GlyphM = new byte[10 * 12]
+        {
+            1,1,0,0,0,0,0,0,1,1,
+            1,1,1,0,0,0,0,1,1,1,
+            1,1,1,1,0,0,1,1,1,1,
+            1,1,0,1,1,1,1,0,1,1,
+            1,1,0,0,1,1,0,0,1,1,
+            1,1,0,0,1,1,0,0,1,1,
+            1,1,0,0,0,0,0,0,1,1,
+            1,1,0,0,0,0,0,0,1,1,
+            1,1,0,0,0,0,0,0,1,1,
+            1,1,0,0,0,0,0,0,1,1,
+            1,1,0,0,0,0,0,0,1,1,
+            1,1,0,0,0,0,0,0,1,1
         };
         #endregion
 
@@ -79,23 +100,38 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             }
         }
 
-        public static bool IsClickActive()
+        public static float GetCurrentCursorScale()
         {
             long now = Stopwatch.GetTimestamp();
+            float maxBoost = 0f;
+
             lock (_syncLock)
             {
                 foreach (var ev in _activeEvents)
                 {
-                    if (ev.Type == MouseInteractionType.LeftClick || ev.Type == MouseInteractionType.RightClick)
+                    if (ev.Type == MouseInteractionType.LeftClick ||
+                        ev.Type == MouseInteractionType.RightClick ||
+                        ev.Type == MouseInteractionType.MiddleClick)
                     {
-                        if (Stopwatch.GetElapsedTime(ev.StartTick, now).TotalMilliseconds <= 180.0)
+                        double elapsed = Stopwatch.GetElapsedTime(ev.StartTick, now).TotalMilliseconds;
+                        if (elapsed <= 280.0)
                         {
-                            return true; // קליק נמצא ב-Pulse ראשוני
+                            float t = (float)(elapsed / 280.0);
+                            float pulse = (1.0f - t) * (1.0f - t);
+                            if (pulse > maxBoost) maxBoost = pulse;
                         }
                     }
                 }
             }
-            return false;
+
+            // סולם בסיס של 1.35x כך שהסמן תמיד ברור ונוח למעקב
+            // בעת לחיצה קופץ בצורה חלקה עד 2.10x
+            return 1.35f + (maxBoost * 0.75f);
+        }
+
+        public static bool IsClickActive()
+        {
+            return GetCurrentCursorScale() > 1.40f;
         }
 
         public static void RenderRingsAndScroll(byte[] buffer, int width, int height)
@@ -119,11 +155,18 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
                 switch (ev.Type)
                 {
                     case MouseInteractionType.LeftClick:
+                        // Cyan shockwave ring
                         DrawExpandingRing(buffer, width, height, ev.X, ev.Y, progress, alpha, r: 0, g: 229, b: 255);
                         break;
 
                     case MouseInteractionType.RightClick:
+                        // Coral Red shockwave ring
                         DrawExpandingRing(buffer, width, height, ev.X, ev.Y, progress, alpha, r: 255, g: 59, b: 48);
+                        break;
+
+                    case MouseInteractionType.MiddleClick:
+                        // Vibrant Violet shockwave ring for wheel click (#A855F7)
+                        DrawExpandingRing(buffer, width, height, ev.X, ev.Y, progress, alpha, r: 168, g: 85, b: 247);
                         break;
 
                     case MouseInteractionType.ScrollUp:
@@ -143,32 +186,53 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             if (eventsToDraw == null || eventsToDraw.Length == 0) return;
 
             long now = Stopwatch.GetTimestamp();
+            float currentScale = GetCurrentCursorScale();
+            int offset = (int)(16 * currentScale);
 
             foreach (var ev in eventsToDraw)
             {
-                if (ev.Type != MouseInteractionType.LeftClick && ev.Type != MouseInteractionType.RightClick) continue;
+                if (ev.Type != MouseInteractionType.LeftClick &&
+                    ev.Type != MouseInteractionType.RightClick &&
+                    ev.Type != MouseInteractionType.MiddleClick)
+                {
+                    continue;
+                }
 
                 double elapsed = Stopwatch.GetElapsedTime(ev.StartTick, now).TotalMilliseconds;
                 float progress = Math.Clamp((float)(elapsed / CLICK_DURATION_MS), 0.0f, 1.0f);
                 int alpha = (int)(255 * (1.0f - (progress * 0.7f)));
                 if (alpha <= 6) continue;
 
-                bool isLeft = ev.Type == MouseInteractionType.LeftClick;
+                // מיקום מוצמד לגוף הסמן המוגדל
+                int badgeCenterX = Math.Clamp(ev.X + offset, BADGE_RADIUS + 2, width - BADGE_RADIUS - 2);
+                int badgeCenterY = Math.Clamp(ev.Y + offset, BADGE_RADIUS + 2, height - BADGE_RADIUS - 2);
 
-                // מיקום מוצמד לגוף הסמן (מתחשב בהגדלה)
-                int badgeCenterX = Math.Clamp(ev.X + 13, BADGE_RADIUS, width - BADGE_RADIUS - 1);
-                int badgeCenterY = Math.Clamp(ev.Y + 13, BADGE_RADIUS, height - BADGE_RADIUS - 1);
-
-                DrawAdaptiveBadge(buffer, width, height, badgeCenterX, badgeCenterY, isLeft, alpha, isCursorBright);
+                DrawAdaptiveBadge(buffer, width, height, badgeCenterX, badgeCenterY, ev.Type, alpha, isCursorBright);
             }
         }
 
-        private static void DrawAdaptiveBadge(byte[] buffer, int width, int height, int cx, int cy, bool isLeft, int alpha, bool isCursorBright)
+        private static void DrawAdaptiveBadge(byte[] buffer, int width, int height, int cx, int cy, MouseInteractionType clickType, int alpha, bool isCursorBright)
         {
-            // צבע הפעולה הזוהר (ציאן שמאלי, אדום ימני)
-            byte fgR = isLeft ? (byte)0 : (byte)255;
-            byte fgG = isLeft ? (byte)240 : (byte)59;
-            byte fgB = isLeft ? (byte)255 : (byte)48;
+            // צבע הפעולה הזוהר (ציאן שמאלי, אדום ימני, סגול גלגלת)
+            byte fgR, fgG, fgB;
+            byte[] glyph;
+
+            switch (clickType)
+            {
+                case MouseInteractionType.LeftClick:
+                    fgR = 0;   fgG = 240; fgB = 255; // Cyan
+                    glyph = GlyphL;
+                    break;
+                case MouseInteractionType.RightClick:
+                    fgR = 255; fgG = 59;  fgB = 48;  // Coral Red
+                    glyph = GlyphR;
+                    break;
+                case MouseInteractionType.MiddleClick:
+                default:
+                    fgR = 168; fgG = 85;  fgB = 247; // Violet (#A855F7)
+                    glyph = GlyphM;
+                    break;
+            }
 
             // התאמת צבע הרקע לניגודיות מלאה:
             // אם הסמן בהיר -> רקע שחור עמוק (#090D1A)
@@ -176,7 +240,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             byte bgR = isCursorBright ? (byte)9 : (byte)248;
             byte bgG = isCursorBright ? (byte)13 : (byte)250;
             byte bgB = isCursorBright ? (byte)26 : (byte)252;
-            int bgAlpha = (alpha * 230) / 255;
+            int bgAlpha = (alpha * 235) / 255;
 
             int r2 = BADGE_RADIUS * BADGE_RADIUS;
             int innerR2 = (BADGE_RADIUS - 2) * (BADGE_RADIUS - 2);
@@ -211,21 +275,20 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
                 }
             }
 
-            // הטבעת האות
-            byte[] glyph = isLeft ? GlyphL : GlyphR;
-            int glyphStartX = cx - 4;
-            int glyphStartY = cy - 5;
+            // הטבעת האות (גודל 10x12 ממורכז בתוך תגית רדיוס 15)
+            int glyphStartX = cx - 5;
+            int glyphStartY = cy - 6;
 
-            for (int gy = 0; gy < 10; gy++)
+            for (int gy = 0; gy < 12; gy++)
             {
                 int targetY = glyphStartY + gy;
                 if (targetY < 0 || targetY >= height) continue;
 
                 int rowIdx = targetY * width * 4;
 
-                for (int gx = 0; gx < 8; gx++)
+                for (int gx = 0; gx < 10; gx++)
                 {
-                    if (glyph[gy * 8 + gx] == 0) continue;
+                    if (glyph[gy * 10 + gx] == 0) continue;
 
                     int targetX = glyphStartX + gx;
                     if (targetX < 0 || targetX >= width) continue;
@@ -242,16 +305,17 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
 
         private static void DrawSymmetricScrollArrow(byte[] buffer, int width, int height, int cx, int cy, bool isUp, float progress, int alpha)
         {
-            int cursorMidX = cx + 6;
-            int cursorMidY = cy + 10;
+            float currentScale = GetCurrentCursorScale();
+            int cursorMidX = cx + (int)(6 * currentScale);
+            int cursorMidY = cy + (int)(10 * currentScale);
 
-            float distance = 21f + (progress * 10f);
+            float distance = 26f + (progress * 18f);
             int arrowCenterY = (int)(isUp ? (cursorMidY - distance) : (cursorMidY + distance));
 
-            byte r = 250, g = 204, b = 21;
-            byte borderR = 15, borderG = 23, borderB = 42;
+            byte r = 250, g = 204, b = 21; // Bright Amber Yellow (#FACC15)
+            byte borderR = 15, borderG = 23, borderB = 42; // Deep Slate (#0F172A)
 
-            int h = 9;
+            int h = 15;
             int minY = Math.Max(0, isUp ? (arrowCenterY - h) : arrowCenterY);
             int maxY = Math.Min(height - 1, isUp ? arrowCenterY : (arrowCenterY + h));
 
@@ -259,14 +323,16 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             {
                 int rowIdx = y * width * 4;
                 int progressY = isUp ? (y - (arrowCenterY - h)) : ((arrowCenterY + h) - y);
-                int halfW = (progressY * 7) / h;
+                int halfW = (progressY * 12) / h;
 
                 int minX = Math.Max(0, cursorMidX - halfW);
                 int maxX = Math.Min(width - 1, cursorMidX + halfW);
 
                 for (int x = minX; x <= maxX; x++)
                 {
-                    bool isBorder = (x == minX || x == maxX || y == (isUp ? maxY : minY));
+                    // מסגרת כפולה בעובי 2 פיקסלים לניגודיות מיטבית על כל רקע
+                    bool isBorder = (x - minX < 2 || maxX - x < 2 ||
+                                    (isUp ? (maxY - y < 2) : (y - minY < 2)));
                     byte curR = isBorder ? borderR : r;
                     byte curG = isBorder ? borderG : g;
                     byte curB = isBorder ? borderB : b;
@@ -283,8 +349,9 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
 
         private static void DrawExpandingRing(byte[] buffer, int width, int height, int cx, int cy, float progress, int alpha, byte r, byte g, byte b)
         {
-            float radius = 10f + (progress * 26f);
-            float thickness = 2.4f;
+            // טבעת גדולה ובולטת במיוחד (נעה בין 16 ל-64 פיקסלים)
+            float radius = 16f + (progress * 48f);
+            float thickness = 3.6f;
 
             int rOut = (int)Math.Ceiling(radius + thickness);
             int rIn = (int)Math.Floor(Math.Max(0, radius - thickness));
@@ -296,7 +363,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             int minY = Math.Max(0, cy - rOut);
             int maxY = Math.Min(height - 1, cy + rOut);
 
-            byte fillAlpha = (byte)(alpha / 6);
+            byte fillAlpha = (byte)(alpha / 7);
 
             for (int y = minY; y <= maxY; y++)
             {

@@ -2,6 +2,7 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx
 // ==========================================
 import React, { useState, useEffect, useMemo, memo } from 'react';
+import { cleanKeyName } from '../../../utils/virtualKeyMap.js';
 import './TimelineKeystrokes.scss';
 
 const MIN_PIXEL_DISTANCE = 8; // סף מרחק בפיקסלים למיזוג אירועים לאשכול
@@ -97,6 +98,51 @@ function TimelineKeystrokes({
         return result;
     }, [keystrokes, baseEpochMs, viewportStartMs, viewportDurationMs, pixelWidth]);
 
+
+function formatBadgeText(cluster) {
+    if (!cluster.events.length) return '';
+    if (cluster.events.length === 1) {
+        return cleanKeyName(cluster.events[0].keyCombination);
+    }
+    // עדיפות לצירוף עם מקש קיצור (Ctrl/Alt/Shift)
+    const combo = cluster.events.find(e => e.keyCombination.includes('+'));
+    if (combo) {
+        const cleaned = cleanKeyName(combo.keyCombination);
+        return cluster.events.length > 1 ? `${cleaned} (+${cluster.events.length - 1})` : cleaned;
+    }
+
+    // אם כל המקשים באשכול זהים
+    const firstClean = cleanKeyName(cluster.events[0].keyCombination);
+    const allSame = cluster.events.every(e => cleanKeyName(e.keyCombination) === firstClean);
+    if (allSame) {
+        return `${firstClean} ×${cluster.events.length}`;
+    }
+
+    // רצף מקשים מעורב: מציג את המקש הראשון ומספר המקשים הנוספים
+    return `${firstClean} (+${cluster.events.length - 1})`;
+}
+
+function formatTooltipTime(epochMs) {
+    const d = new Date(epochMs);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+}
+
+function groupClusterEvents(events) {
+    const groups = [];
+    for (const evt of events) {
+        const key = cleanKeyName(evt.keyCombination);
+        if (groups.length && groups[groups.length - 1].key === key) {
+            groups[groups.length - 1].count++;
+        } else {
+            groups.push({ key, count: 1 });
+        }
+    }
+    return groups;
+}
+
     if (!clusters.length) {
         return null;
     }
@@ -106,15 +152,10 @@ function TimelineKeystrokes({
             {clusters.map((cluster) => {
                 const count = cluster.events.length;
                 const isCluster = count > 1;
-
-                // יצירת תיאור תמציתי ל-Tooltip
-                let tooltipSummary;
-                if (!isCluster) {
-                    tooltipSummary = cluster.events[0].keyCombination;
-                } else {
-                    const sample = cluster.events.slice(0, 3).map(e => e.keyCombination).join('  ');
-                    tooltipSummary = count > 3 ? `${sample} (+${count - 3})` : sample;
-                }
+                const badgeText = formatBadgeText(cluster);
+                const timeLabel = formatTooltipTime(cluster.startEpochMs);
+                const groups = groupClusterEvents(cluster.events);
+                const edgeClass = cluster.pct < 10 ? 'edge-left' : (cluster.pct > 90 ? 'edge-right' : '');
 
                 return (
                     <div
@@ -127,19 +168,30 @@ function TimelineKeystrokes({
                         }}
                     >
                         <div className="keystroke-tick-line" />
-                        <div className="keystroke-tick-cap">
-                            {isCluster && <span className="cluster-count">{count > 99 ? '99+' : count}</span>}
+                        <div className="keystroke-pip-anchor" title={`${badgeText} at ${timeLabel}`}>
+                            <div className="keystroke-pip-glyph" />
+                            {isCluster && <span className="keystroke-pip-count">{count > 9 ? '9+' : count}</span>}
                         </div>
 
                         {/* תגית Tooltip טקטית */}
-                        <div className="keystroke-tooltip">
+                        <div className={`keystroke-tooltip ${edgeClass}`}>
                             <div className="tooltip-header">
                                 <span className="tooltip-type">
                                     {isCluster ? `KEYSTROKE BURST (${count})` : 'KEYSTROKE'}
                                 </span>
+                                <span className="tooltip-time">{timeLabel}</span>
                             </div>
-                            <div className="tooltip-keys">{tooltipSummary}</div>
-                            <div className="tooltip-hint">Click to jump</div>
+                            <div className="tooltip-keys-list">
+                                {groups.slice(0, 8).map((g, idx) => (
+                                    <span key={idx} className="tooltip-key-pill">
+                                        {g.key}{g.count > 1 ? ` ×${g.count}` : ''}
+                                    </span>
+                                ))}
+                                {groups.length > 8 && (
+                                    <span className="tooltip-more">+{groups.length - 8} more</span>
+                                )}
+                            </div>
+                            <div className="tooltip-hint">Click to seek playhead</div>
                         </div>
                     </div>
                 );

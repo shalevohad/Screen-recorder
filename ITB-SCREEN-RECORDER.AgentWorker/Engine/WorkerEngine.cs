@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.AgentWorker/WorkerEngine.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard;
@@ -76,6 +76,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private void OnKeystrokeCaptured(KeystrokeEventDto k)
         {
+            // 💡 רישום טלמטריה של מקשים מותר אך ורק בזמן שהסוכן מקליט בפועל! מונע זליגת מקשים ל-Gaps ולזמנים שבהם אין וידאו
+            if (!_isStreaming) return;
+
             if (_isOffline && !string.IsNullOrEmpty(_currentOfflineKeysPath))
             {
                 lock (_offlineWriteLock)
@@ -119,6 +122,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 Logger.Info("[WORKER:IPC] STOP_COMMAND received from supervisor. Pausing transmission.");
                 _isStreaming = false;
                 _sessionStartTimeUtc = null;
+                while (_onlineKeystrokes.TryDequeue(out _)) { }
             };
 
             _ipc.RestartRequested += (dest, offset, fps, bitrate) =>
@@ -390,9 +394,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             bool flowing = _audioPacer?.IsAudioFlowing() ?? false;
 
             var keysToSend = new System.Collections.Generic.List<KeystrokeEventDto>();
-            while (_onlineKeystrokes.TryDequeue(out var k) && keysToSend.Count < 200)
+            if (_isStreaming)
             {
-                keysToSend.Add(k);
+                while (_onlineKeystrokes.TryDequeue(out var k) && keysToSend.Count < 200)
+                {
+                    keysToSend.Add(k);
+                }
+            }
+            else
+            {
+                while (_onlineKeystrokes.TryDequeue(out _)) { }
             }
 
             return new

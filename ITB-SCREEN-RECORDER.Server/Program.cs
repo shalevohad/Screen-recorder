@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Server/Program.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Abstractions;
@@ -10,6 +10,9 @@ using ITB_SCREEN_RECORDER.Server.Data;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Server.Services.Retention;
+using ITB_SCREEN_RECORDER.Server.Services.Security;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Features;
@@ -210,6 +213,11 @@ namespace ITB_SCREEN_RECORDER.Server
                     options.AddDefaultPolicy(p => p.SetIsOriginAllowed(_ => true).AllowAnyMethod().AllowAnyHeader().AllowCredentials());
                 });
 
+                builder.Services.AddResponseCompression(options =>
+                {
+                    options.EnableForHttps = true;
+                });
+
                 var mvcBuilder = builder.Services.AddControllers()
                     .AddJsonOptions(options =>
                     {
@@ -253,10 +261,24 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<IKeystrokeSrtGenerator, KeystrokeSrtGenerator>();
                 builder.Services.AddSingleton<IVideoProbeService, VideoProbeService>();
 
+                // ==========================================
+                // 💡 שירותי אבטחה, אימות והרשאות
+                // ==========================================
+                builder.Services.AddAuthentication();
+                builder.Services.AddSingleton<LocalAuthenticationProvider>();
+                builder.Services.AddSingleton<LdapAuthenticationProvider>();
+                builder.Services.AddSingleton<ISecurityService, SecurityService>();
+                builder.Services.AddSingleton<StationRolesService>();
+
+                builder.Services.AddAuthentication(BearerPassthroughAuthenticationHandler.SchemeName)
+                    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, BearerPassthroughAuthenticationHandler>(BearerPassthroughAuthenticationHandler.SchemeName, null);
+                builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+                builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+                builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
+
                 builder.Services.AddSingleton<ISystemConfigDbSyncService, SystemConfigDbSyncService>();
                 builder.Services.AddHostedService(sp => (SystemConfigDbSyncService)sp.GetRequiredService<ISystemConfigDbSyncService>());
 
-                // 💡 שירות תחזוקת הקטלוג והאינדוקס
                 builder.Services.AddSingleton<CatalogMaintenanceService>();
                 builder.Services.AddSingleton<ICatalogMaintenanceService>(sp => sp.GetRequiredService<CatalogMaintenanceService>());
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<CatalogMaintenanceService>());
@@ -270,6 +292,11 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddHostedService<StorageRetentionWorker>();
 
                 var app = builder.Build();
+
+                if (RootPasswordRecovery.TryHandleCliRecovery(args, app))
+                {
+                    return;
+                }
 
                 using (var scope = app.Services.CreateScope())
                 {
@@ -296,10 +323,28 @@ namespace ITB_SCREEN_RECORDER.Server
                     app.UseSwaggerUI();
                 }
 
+                app.UseResponseCompression();
                 app.UseDefaultFiles();
                 app.UseStaticFiles();
                 app.UseRouting();
                 app.UseCors();
+
+                app.Use(async (context, next) =>
+                {
+                    var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
+                    if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var token = authHeader.Substring("Bearer ".Length).Trim();
+                        var secService = context.RequestServices.GetRequiredService<ISecurityService>();
+                        var principal = secService.ValidateJwtToken(token);
+                        if (principal != null)
+                        {
+                            context.User = principal;
+                        }
+                    }
+                    await next();
+                });
+
                 app.UseAuthorization();
 
                 app.MapHub<TelemetryHub>("/hubs/telemetry");

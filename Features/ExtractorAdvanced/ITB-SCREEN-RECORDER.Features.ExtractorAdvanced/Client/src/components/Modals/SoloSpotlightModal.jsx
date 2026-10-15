@@ -34,6 +34,9 @@ export default function SoloSpotlightModal({
     totalDurationMs = 3600000,
     zoomLevel = 1,
     onZoomChange,
+    onZoomReset,
+    onFitRange,
+    onJumpViewportTo,
     viewportStartMs = 0,
     onViewportStartChange,
     playheadMs = 0,
@@ -54,7 +57,9 @@ export default function SoloSpotlightModal({
     setPlaybackSpeed: propSetPlaybackSpeed,
     keystrokeMode = 'BURN_IN',
     onChangeKeystrokeMode,
-    keystrokes = []
+    keystrokes = [],
+    showRulerKeystrokes = false,
+    onToggleRulerKeystrokes
 }) {
     const [localIsPlaying, setLocalIsPlaying] = useState(false);
     const isPlaying = propIsPlaying !== undefined ? propIsPlaying : localIsPlaying;
@@ -81,7 +86,16 @@ export default function SoloSpotlightModal({
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [activeGaps, setActiveGaps] = useState(globalGaps);
 
-    const timelineWrapRef = useRef(null);
+    const bottomIslandRef = useRef(null);
+
+    const zoomLevelRef = useRef(zoomLevel);
+    zoomLevelRef.current = zoomLevel;
+
+    const viewportStartRef = useRef(viewportStartMs);
+    viewportStartRef.current = viewportStartMs;
+
+    const totalDurationRef = useRef(totalDurationMs);
+    totalDurationRef.current = totalDurationMs;
 
     const prevStationIdRef = useRef(station && station.id);
     useEffect(() => {
@@ -105,7 +119,8 @@ export default function SoloSpotlightModal({
     }, [isOpen]);
 
     useEffect(() => {
-        const el = timelineWrapRef.current;
+        if (!isOpen) return;
+        const el = bottomIslandRef.current;
         if (!el || !onZoomChange || !onViewportStartChange) return;
 
         const handleWheel = (e) => {
@@ -113,16 +128,21 @@ export default function SoloSpotlightModal({
             e.stopPropagation();
 
             const isHorizontal = e.ctrlKey || e.shiftKey;
+            const currentZoom = zoomLevelRef.current;
+            const currentStart = viewportStartRef.current;
+            const currentTotal = totalDurationRef.current || 3600000;
 
             if (isHorizontal) {
                 const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
                 if (delta === 0) return;
 
-                const visibleMs = totalDurationMs / zoomLevel;
-                const maxStart = Math.max(0, totalDurationMs - visibleMs);
+                const visibleMs = currentTotal / currentZoom;
+                const maxStart = Math.max(0, currentTotal - visibleMs);
                 const stepMs = (visibleMs * 0.08) * (delta > 0 ? 1 : -1);
+                const nextStart = Math.max(0, Math.min(maxStart, currentStart + stepMs));
 
-                onViewportStartChange(prev => Math.max(0, Math.min(maxStart, prev + stepMs)));
+                viewportStartRef.current = nextStart;
+                onViewportStartChange(nextStart);
             } else {
                 if (e.deltaY === 0) return;
 
@@ -130,27 +150,87 @@ export default function SoloSpotlightModal({
                 const zoomFactor = isZoomIn ? 1.25 : 0.8;
 
                 const rect = el.getBoundingClientRect();
-                const mouseX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-                const mouseRatio = rect.width > 0 ? (mouseX / rect.width) : 0.5;
+                const trackLeft = rect.left + 150;
+                const trackRight = rect.right - 58;
+                const trackWidth = Math.max(100, trackRight - trackLeft);
 
-                const nextZoom = Math.max(1, Math.min(32, Math.round(zoomLevel * zoomFactor * 100) / 100));
-                if (nextZoom === zoomLevel) return;
+                let mouseRatio = 0.5;
+                if (e.clientX >= trackLeft && e.clientX <= trackRight) {
+                    mouseRatio = (e.clientX - trackLeft) / trackWidth;
+                } else if (rect.width > 0) {
+                    mouseRatio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                }
 
-                const oldVisibleMs = totalDurationMs / zoomLevel;
-                const newVisibleMs = totalDurationMs / nextZoom;
-                const mouseEpochOffset = viewportStartMs + (mouseRatio * oldVisibleMs);
+                const maxDynamicZoom = Math.max(32, currentTotal / 2000);
+                const nextZoom = Math.max(1, Math.min(maxDynamicZoom, Math.round(currentZoom * zoomFactor * 100) / 100));
+                if (nextZoom === currentZoom) return;
+
+                const oldVisibleMs = currentTotal / currentZoom;
+                const newVisibleMs = currentTotal / nextZoom;
+                const mouseEpochOffset = currentStart + (mouseRatio * oldVisibleMs);
 
                 const nextStart = mouseEpochOffset - (mouseRatio * newVisibleMs);
-                const maxStart = Math.max(0, totalDurationMs - newVisibleMs);
+                const maxStart = Math.max(0, currentTotal - newVisibleMs);
+                const clampedStart = Math.max(0, Math.min(maxStart, nextStart));
 
-                onViewportStartChange(Math.max(0, Math.min(maxStart, nextStart)));
+                zoomLevelRef.current = nextZoom;
+                viewportStartRef.current = clampedStart;
+
+                onViewportStartChange(clampedStart);
                 onZoomChange(nextZoom);
             }
         };
 
         el.addEventListener('wheel', handleWheel, { passive: false, capture: true });
         return () => el.removeEventListener('wheel', handleWheel, { capture: true });
-    }, [totalDurationMs, zoomLevel, viewportStartMs, onZoomChange, onViewportStartChange]);
+    }, [isOpen, station, onZoomChange, onViewportStartChange]);
+
+    const handleZoomReset = useCallback(() => {
+        if (onZoomReset) {
+            onZoomReset();
+        } else {
+            viewportStartRef.current = 0;
+            zoomLevelRef.current = 1;
+            onViewportStartChange?.(0);
+            onZoomChange?.(1);
+        }
+    }, [onZoomReset, onViewportStartChange, onZoomChange]);
+
+    const handleFitRange = useCallback((startMs, endMs) => {
+        if (onFitRange) {
+            onFitRange(startMs, endMs);
+        } else {
+            const cutDur = Math.max(1000, endMs - startMs);
+            const paddingMs = Math.max(500, cutDur * 0.05);
+            const targetStart = Math.max(0, startMs - paddingMs);
+            const targetEnd = Math.min(totalDurationMs, endMs + paddingMs);
+            const effectiveDur = targetEnd - targetStart;
+
+            const maxDynamicZoom = Math.max(32, totalDurationMs / 2000);
+            const targetZoom = Math.max(1, Math.min(maxDynamicZoom, Number((totalDurationMs / effectiveDur).toFixed(1))));
+            const newVpDur = totalDurationMs / targetZoom;
+            const newStart = Math.max(0, Math.min(targetStart, totalDurationMs - newVpDur));
+
+            viewportStartRef.current = newStart;
+            zoomLevelRef.current = targetZoom;
+            onViewportStartChange?.(newStart);
+            onZoomChange?.(targetZoom);
+        }
+    }, [onFitRange, totalDurationMs, onViewportStartChange, onZoomChange]);
+
+    const handleJumpViewportTo = useCallback((targetMs, align = 'center') => {
+        if (onJumpViewportTo) {
+            onJumpViewportTo(targetMs, align);
+        } else {
+            if (targetMs === null || targetMs === undefined) return;
+            const currentZoom = zoomLevelRef.current || 1;
+            const vpDur = totalDurationMs / Math.max(1, currentZoom);
+            const offset = align === 'start' ? vpDur / 4 : (vpDur * 0.75);
+            const targetStart = Math.max(0, Math.min(targetMs - offset, totalDurationMs - vpDur));
+            viewportStartRef.current = targetStart;
+            onViewportStartChange?.(targetStart);
+        }
+    }, [onJumpViewportTo, totalDurationMs, onViewportStartChange]);
 
     const handleTogglePlaySmart = useCallback(() => {
         setIsPlaying(prev => !prev);
@@ -427,7 +507,7 @@ export default function SoloSpotlightModal({
                 </div>
             </div>
 
-            <div className={`spotlight-bottom-island ${isPlaying ? 'is-playing-dimmed' : ''}`}>
+            <div className={`spotlight-bottom-island ${isPlaying ? 'is-playing-dimmed' : ''}`} ref={bottomIslandRef}>
                 <div className="island-transport-row">
                     <div className="cut-actions-cluster">
                         <div className="cut-duration-pill">
@@ -477,7 +557,7 @@ export default function SoloSpotlightModal({
                     </div>
                 </div>
 
-                <div className="island-timeline-board-wrap" ref={timelineWrapRef}>
+                <div className="island-timeline-board-wrap">
                     <TimelineBoard
                         stations={memoizedSoloStations}
                         activeStationId={station.id}
@@ -487,6 +567,9 @@ export default function SoloSpotlightModal({
                         totalDurationMs={totalDurationMs}
                         zoomLevel={zoomLevel}
                         onZoomChange={onZoomChange}
+                        onZoomReset={handleZoomReset}
+                        onFitRange={handleFitRange}
+                        onJumpViewportTo={handleJumpViewportTo}
                         viewportStartMs={viewportStartMs}
                         onViewportStartChange={onViewportStartChange}
                         playheadMs={playheadMs}
@@ -502,7 +585,9 @@ export default function SoloSpotlightModal({
                         }}
                         keystrokeMode={keystrokeMode}
                         onChangeKeystrokeMode={onChangeKeystrokeMode}
-                        showKeystrokes={keystrokeMode !== 'NONE'}
+                        showKeystrokes={showRulerKeystrokes}
+                        showRulerKeystrokes={showRulerKeystrokes}
+                        onToggleRulerKeystrokes={onToggleRulerKeystrokes}
                     />
                 </div>
             </div>

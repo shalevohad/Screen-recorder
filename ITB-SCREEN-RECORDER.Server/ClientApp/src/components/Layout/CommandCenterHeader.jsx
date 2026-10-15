@@ -1,18 +1,18 @@
 // ==========================================
-// File: ClientApp/src/components/Layout/CommandCenterHeader.jsx
+// File: Client/src/components/Layout/CommandCenterHeader.jsx
 // ==========================================
 import { useState, useMemo, useEffect } from 'react';
 import ServerClock from '../Telemetry/ServerClock';
 import ServerTelemetryWidget from '../Telemetry/ServerTelemetryWidget';
 import RadialGauge from '../Telemetry/RadialGauge';
+import SessionControlWidget from './SessionControlWidget';
 import './CommandCenterHeader.scss';
 
 export default function CommandCenterHeader({
     stations = [],
     hideOffline = true,
     serverTelemetry,
-    isSettingsOpen = false,
-    onOpenSettings,
+    onOpenAppSwitcher,
     isFaultFilterActive = false,
     onToggleFaultFilter,
     systemConfig: propSystemConfig
@@ -71,10 +71,6 @@ export default function CommandCenterHeader({
         !s.isOnline && s.status !== 1 && s.status !== 2 && !s.isProcessRunning
     ).length;
 
-    const toggleExpand = () => {
-        setIsExpanded(prev => !prev);
-    };
-
     return (
         <header className={`command-center-top-bar ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
             <div className="top-row-main">
@@ -90,7 +86,7 @@ export default function CommandCenterHeader({
                     <div className="brand-text-group">
                         <div className="brand-title-row">
                             <span className="brand-name">ITB</span>
-                            <span className="brand-main">RECORDING CENTER</span>
+                            <span className="brand-main">SCREEN RECORDING CENTER</span>
                         </div>
                         <span className="brand-subtitle">LIVE AGENT OPERATIONS</span>
                     </div>
@@ -105,17 +101,15 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-actions-group">
+                    <SessionControlWidget onOpenAppSwitcher={onOpenAppSwitcher} />
+
                     <button
                         className={`header-icon-btn toggle-collapse-btn ${isExpanded ? 'active' : ''}`}
-                        title={isExpanded ? "Collapse Telemetry & Agents Overview" : "Expand Telemetry & Agents Overview"}
-                        onClick={toggleExpand}
+                        title={isExpanded ? "Collapse Overview" : "Expand Overview"}
+                        onClick={() => setIsExpanded(p => !p)}
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="16" height="16">
-                            {isExpanded ? (
-                                <polyline points="18 15 12 9 6 15" />
-                            ) : (
-                                <polyline points="6 9 12 15 18 9" />
-                            )}
+                            {isExpanded ? <polyline points="18 15 12 9 6 15" /> : <polyline points="6 9 12 15 18 9" />}
                         </svg>
                     </button>
 
@@ -130,33 +124,19 @@ export default function CommandCenterHeader({
                         </div>
 
                         <div className="indicator-data">
-                            <div className="data-title">
-                                CONNECTED AGENTS
-                            </div>
+                            <div className="data-title">CONNECTED AGENTS</div>
                             <div className="data-values">
                                 <span className="count-active">
                                     {hideOffline ? activeWorkerCount : totalCount}
                                 </span>
-
                                 {hideOffline && offlineCount > 0 && (
-                                    <span className="count-filtered" title={`${offlineCount} offline stations hidden from view`}>
+                                    <span className="count-filtered" title={`${offlineCount} offline stations hidden`}>
                                         [{offlineCount} HIDDEN]
                                     </span>
                                 )}
                             </div>
                         </div>
                     </div>
-
-                    <button
-                        className={`header-icon-btn ${isSettingsOpen ? 'is-active' : ''}`}
-                        title="System Settings"
-                        onClick={onOpenSettings}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
-                            <circle cx="12" cy="12" r="3" />
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                        </svg>
-                    </button>
                 </div>
             </div>
 
@@ -165,12 +145,11 @@ export default function CommandCenterHeader({
                     <div className="fleet-summary-pill">
                         <div
                             className="summary-pod recording-agents-pod"
-                            title={`Recording Fleet: ${agentMetrics.streamingCount} recording of ${agentMetrics.onlineCount} online (${agentMetrics.recordingPct}%) | Fleet Total: ${totalCount}`}
+                            title={`Recording Fleet: ${agentMetrics.streamingCount} recording of ${agentMetrics.onlineCount} online (${agentMetrics.recordingPct}%)`}
                         >
                             <span className="pod-lbl">RECORDING AGENTS</span>
                             <div className="pod-content-row">
                                 <span className="pod-val cyan">{agentMetrics.recordingPct}%</span>
-
                                 <RadialGauge
                                     size={32}
                                     strokeWidth={2.4}
@@ -201,27 +180,16 @@ export default function CommandCenterHeader({
                         <div
                             className={`summary-pod health-pod ${agentMetrics.criticalAlerts > 0 ? 'is-clickable' : ''} ${isFaultFilterActive ? 'filter-active' : ''}`}
                             onClick={() => {
-                                if (agentMetrics.criticalAlerts > 0 && onToggleFaultFilter) {
-                                    onToggleFaultFilter();
-                                }
+                                if (agentMetrics.criticalAlerts > 0 && onToggleFaultFilter) onToggleFaultFilter();
                             }}
-                            title={
-                                agentMetrics.criticalAlerts > 0
-                                    ? isFaultFilterActive
-                                        ? "Click to exit fault isolation mode"
-                                        : `Click to isolate ${agentMetrics.criticalAlerts} agent(s) with issues`
-                                    : "Fleet health nominal"
-                            }
+                            title={agentMetrics.criticalAlerts > 0 ? "Filter alerts" : "Fleet health nominal"}
                         >
                             <span className="pod-lbl">AGENT HEALTH</span>
                             <div className="pod-val-row">
                                 {agentMetrics.criticalAlerts > 0 ? (
                                     <>
                                         <span className="alert-beacon-dot" />
-                                        <span className="pod-primary red">
-                                            {isFaultFilterActive ? `${agentMetrics.criticalAlerts} FILTERED` : `${agentMetrics.criticalAlerts} ALERTS`}
-                                        </span>
-                                        {isFaultFilterActive && <span className="filter-active-indicator">✕</span>}
+                                        <span className="pod-primary red">{agentMetrics.criticalAlerts} ALERTS</span>
                                     </>
                                 ) : (
                                     <>
@@ -235,8 +203,9 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-telemetry-wrapper">
+                    {/* מגן כנגד ערך null למניעת קריסות רינדור */}
                     <ServerTelemetryWidget
-                        serverTelemetry={serverTelemetry}
+                        serverTelemetry={serverTelemetry || {}}
                         fleetC2Kbps={agentMetrics.aggregateC2Kbps}
                     />
                 </div>

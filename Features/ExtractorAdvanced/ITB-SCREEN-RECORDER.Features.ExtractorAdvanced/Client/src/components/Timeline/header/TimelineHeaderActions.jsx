@@ -16,18 +16,22 @@ export default function TimelineHeaderActions({
     baseEpochMs,
     timeMode,
     keystrokeMode = 'BURN_IN', // 'NONE' | 'CAPTION' | 'BURN_IN'
-    onChangeKeystrokeMode
+    onChangeKeystrokeMode,
+    showRulerKeystrokes = false,
+    onToggleRulerKeystrokes
 }) {
+    const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+
     // מחזור מעבר בין 3 המצבים בלחיצה
     const handleCycleKeystrokeMode = () => {
         if (!onChangeKeystrokeMode) return;
-        if (keystrokeMode === 'NONE') onChangeKeystrokeMode('BURN_IN');
-        else if (keystrokeMode === 'BURN_IN') onChangeKeystrokeMode('CAPTION');
+        if (normalizedMode === 'NONE' || normalizedMode === 'OFF') onChangeKeystrokeMode('BURN_IN');
+        else if (normalizedMode === 'BURN_IN') onChangeKeystrokeMode('CAPTION');
         else onChangeKeystrokeMode('NONE');
     };
 
     const getModeLabel = () => {
-        switch (keystrokeMode) {
+        switch (normalizedMode) {
             case 'BURN_IN': return 'KEYS: BURN-IN';
             case 'CAPTION': return 'KEYS: CAPTION';
             default: return 'KEYS: OFF';
@@ -40,7 +44,7 @@ export default function TimelineHeaderActions({
             {onChangeKeystrokeMode && (
                 <button
                     type="button"
-                    className={`btn-vp-action keys-mode-btn mode-${keystrokeMode.toLowerCase()}`}
+                    className={`btn-vp-action keys-mode-btn mode-${normalizedMode.toLowerCase().replace('_', '-')}`}
                     onClick={handleCycleKeystrokeMode}
                     title="Toggle Keystroke Export & Preview Mode (Off / Burn-in / Soft Caption)"
                 >
@@ -49,6 +53,22 @@ export default function TimelineHeaderActions({
                         <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
                     </svg>
                     <span>{getModeLabel()}</span>
+                </button>
+            )}
+
+            {/* 💡 כפתור טקטי להצגה/הסתרה של שנתות ה-Keystrokes בסרגל (כבוי כברירת מחדל) */}
+            {onToggleRulerKeystrokes && (
+                <button
+                    type="button"
+                    className={`btn-vp-action ruler-keys-btn ${showRulerKeystrokes ? 'active' : 'inactive'}`}
+                    onClick={onToggleRulerKeystrokes}
+                    title={showRulerKeystrokes ? "Hide Keystroke Ticks on Ruler" : "Show Keystroke Ticks on Ruler (Default: Off)"}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="3" fill={showRulerKeystrokes ? "currentColor" : "none"} />
+                        <path d="M3 12h3M18 12h3M12 3v3M12 18v3" />
+                    </svg>
+                    <span>{showRulerKeystrokes ? 'RULER TICKS: ON' : 'RULER TICKS: OFF'}</span>
                 </button>
             )}
 

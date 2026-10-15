@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -71,6 +71,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         private const int WH_MOUSE_LL = 14;
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_RBUTTONDOWN = 0x0204;
+        private const int WM_MBUTTONDOWN = 0x0207;
         private const int WM_MOUSEWHEEL = 0x020A;
 
         private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -165,7 +166,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
             if (nCode >= 0)
             {
                 int msg = wParam.ToInt32();
-                if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MOUSEWHEEL)
+                if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN || msg == WM_MOUSEWHEEL)
                 {
                     var hs = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
                     if (msg == WM_LBUTTONDOWN)
@@ -175,6 +176,10 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                     else if (msg == WM_RBUTTONDOWN)
                     {
                         MouseVisualRasterizer.EnqueueEvent(hs.pt.x, hs.pt.y, MouseInteractionType.RightClick);
+                    }
+                    else if (msg == WM_MBUTTONDOWN)
+                    {
+                        MouseVisualRasterizer.EnqueueEvent(hs.pt.x, hs.pt.y, MouseInteractionType.MiddleClick);
                     }
                     else if (msg == WM_MOUSEWHEEL)
                     {
@@ -341,7 +346,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                 }
 
                 // --- ציור הסמן על הפריים כולל Pulse Scale ---
-                float scale = MouseVisualRasterizer.IsClickActive() ? 1.35f : 1.0f;
+                float scale = MouseVisualRasterizer.GetCurrentCursorScale();
                 int drawW = (int)(cursorW * scale);
                 int drawH = (int)(cursorH * scale);
                 int startX = pci.ptScreenPos.x - (int)(hotspotX * scale);

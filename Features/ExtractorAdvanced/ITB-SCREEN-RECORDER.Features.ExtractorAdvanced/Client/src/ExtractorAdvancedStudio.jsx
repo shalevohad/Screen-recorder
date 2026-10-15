@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/ExtractorAdvancedStudio.jsx
 // ==========================================
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -59,6 +59,9 @@ export default function ExtractorAdvancedStudio() {
 
     const [timeMode, setTimeMode] = useState(cached.timeMode || 'LOCAL');
     const [keystrokeMode, setKeystrokeMode] = useState(cached.keystrokeMode || 'BURN_IN');
+    const [showRulerKeystrokes, setShowRulerKeystrokes] = useState(() => {
+        return typeof cached.showRulerKeystrokes === 'boolean' ? cached.showRulerKeystrokes : false;
+    });
 
     useEffect(() => {
         initDstEngineAsync().catch(err => console.warn('[Studio] DST init error:', err));
@@ -152,6 +155,9 @@ export default function ExtractorAdvancedStudio() {
         return allStations.find(s => s.id === spotlightStationId) || null;
     }, [allStations, spotlightStationId]);
 
+    // 💡 האם Spotlight מוצג כעת במסך מלא
+    const isSpotlightOpen = Boolean(spotlightStationId && spotlightStation);
+
     const lastViewBeforeFullscreenRef = useRef('grid');
     const timelineContainerRef = useRef(null);
 
@@ -205,8 +211,11 @@ export default function ExtractorAdvancedStudio() {
     const [activeStationKeystrokes, setActiveStationKeystrokes] = useState([]);
 
     useEffect(() => {
-        const stationName = activeStation?.displayName || activeStation?.hostname || activeStation?.id;
-        if (!stationName || !timelineBaseEpochMs || keystrokeMode === 'NONE') {
+        const targetStation = isSpotlightOpen ? (spotlightStation || activeStation) : activeStation;
+        const stationName = targetStation?.hostname || targetStation?.displayName || targetStation?.id;
+        const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+
+        if (!stationName || !timelineBaseEpochMs || normalizedMode === 'NONE' || normalizedMode === 'OFF') {
             setActiveStationKeystrokes([]);
             return;
         }
@@ -223,7 +232,7 @@ export default function ExtractorAdvancedStudio() {
             });
 
         return () => ac.abort();
-    }, [activeStation, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode]);
+    }, [activeStation, spotlightStation, isSpotlightOpen, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode]);
 
     useEffect(() => {
         if (selectedStationIds.length === 1) {
@@ -304,7 +313,8 @@ export default function ExtractorAdvancedStudio() {
             isWorkspaceActive,
             isLooping,
             playbackSpeed,
-            keystrokeMode
+            keystrokeMode,
+            showRulerKeystrokes
         });
     }, [
         timeRange,
@@ -320,7 +330,8 @@ export default function ExtractorAdvancedStudio() {
         isLooping,
         playbackSpeed,
         timelineBaseEpochMs,
-        keystrokeMode
+        keystrokeMode,
+        showRulerKeystrokes
     ]);
 
     const handleLoadBookmark = useCallback((bm) => {
@@ -403,9 +414,10 @@ export default function ExtractorAdvancedStudio() {
         if (targetStationIds.length === 0) return alert('No active stations selected in timeline.');
 
         let numericMode = 2;
-        if (keystrokeMode === 'NONE') numericMode = 0;
-        else if (keystrokeMode === 'CAPTION') numericMode = 1;
-        else if (keystrokeMode === 'BURN_IN') numericMode = 2;
+        const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+        if (normMode === 'NONE' || normMode === 'OFF') numericMode = 0;
+        else if (normMode === 'CAPTION') numericMode = 1;
+        else numericMode = 2;
 
         try {
             const response = await fetch('/api/v1/extractor-advanced/cut', {
@@ -453,9 +465,6 @@ export default function ExtractorAdvancedStudio() {
 
     const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
     const currentPlayheadEpochMs = timelineBaseEpochMs + playheadMs;
-
-    // 💡 האם Spotlight מוצג כעת במסך מלא
-    const isSpotlightOpen = Boolean(spotlightStationId && spotlightStation);
 
     return (
         <div className="extractor-advanced-studio">
@@ -556,7 +565,9 @@ export default function ExtractorAdvancedStudio() {
                                     onEstimateLoaded={(est) => est?.removedGlobalGaps && setGlobalGaps(est.removedGlobalGaps)}
                                     keystrokeMode={keystrokeMode}
                                     onChangeKeystrokeMode={setKeystrokeMode}
-                                    showKeystrokes={keystrokeMode !== 'NONE'}
+                                    showKeystrokes={showRulerKeystrokes}
+                                    showRulerKeystrokes={showRulerKeystrokes}
+                                    onToggleRulerKeystrokes={() => setShowRulerKeystrokes(prev => !prev)}
                                 />
                             </div>
                         </div>
@@ -644,6 +655,9 @@ export default function ExtractorAdvancedStudio() {
                 totalDurationMs={totalTimelineDurationMs}
                 zoomLevel={zoomLevel}
                 onZoomChange={setZoomLevel}
+                onZoomReset={resetZoom}
+                onFitRange={fitRange}
+                onJumpViewportTo={jumpViewportTo}
                 viewportStartMs={viewportStartMs}
                 onViewportStartChange={setViewportStartMs}
                 playheadMs={playheadMs}
@@ -665,6 +679,8 @@ export default function ExtractorAdvancedStudio() {
                 keystrokeMode={keystrokeMode}
                 onChangeKeystrokeMode={setKeystrokeMode}
                 keystrokes={activeStationKeystrokes}
+                showRulerKeystrokes={showRulerKeystrokes}
+                onToggleRulerKeystrokes={() => setShowRulerKeystrokes(prev => !prev)}
             />
 
             <StationContextMenu

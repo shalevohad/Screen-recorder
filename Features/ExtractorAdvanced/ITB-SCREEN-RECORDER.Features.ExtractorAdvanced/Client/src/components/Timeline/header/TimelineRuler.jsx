@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/TimelineRuler.jsx
 // ==========================================
 import React, { useRef, useMemo, useState, useEffect, useCallback } from 'react';
@@ -25,8 +25,8 @@ export default function TimelineRuler({
     hoverMs = null,
     onHoverChange,
     onSeek,
-    _inPointMs,
-    _outPointMs,
+    inPointMs = null,
+    outPointMs = null,
     earliestMediaMs = null,
     movieBoundaries = null,
     activeStationName = '',
@@ -266,6 +266,32 @@ export default function TimelineRuler({
         toPercent
     ]);
 
+    // 💡 שנתות טקטיות בולטות על הסרגל לפריים הראשון (IN) והאחרון (OUT) בטווח שנבחר
+    const cutRangePins = useMemo(() => {
+        const list = [];
+        if (typeof inPointMs === 'number' && isVisibleInViewport(inPointMs)) {
+            list.push({
+                id: 'cut-first-frame-in',
+                type: 'in',
+                ms: inPointMs,
+                pct: toPercent(inPointMs),
+                shortLabel: 'IN',
+                title: `First Frame in Cut (IN): ${formatTimelineClock(baseEpochMs + inPointMs, timeMode, { includeSeconds: true })} (Click to seek)`
+            });
+        }
+        if (typeof outPointMs === 'number' && isVisibleInViewport(outPointMs)) {
+            list.push({
+                id: 'cut-last-frame-out',
+                type: 'out',
+                ms: outPointMs,
+                pct: toPercent(outPointMs),
+                shortLabel: 'OUT',
+                title: `Last Frame in Cut (OUT): ${formatTimelineClock(baseEpochMs + outPointMs, timeMode, { includeSeconds: true })} (Click to seek)`
+            });
+        }
+        return list;
+    }, [inPointMs, outPointMs, baseEpochMs, timeMode, isVisibleInViewport, toPercent]);
+
     const hoverPercent = hoverMs !== null ? toPercent(hoverMs) : null;
     const isHoverVisible = hoverPercent !== null && hoverPercent >= 0 && hoverPercent <= 100;
 
@@ -350,6 +376,26 @@ export default function TimelineRuler({
                             </svg>
                         </div>
                         <div className="pin-line" />
+                    </div>
+                ))}
+
+                {/* 💡 שנתות טקטיות בולטות על הסרגל לפריים הראשון (IN) והאחרון (OUT) של הטווח שנבחר */}
+                {cutRangePins.map(pin => (
+                    <div
+                        key={pin.id}
+                        className={`ruler-cut-tick ${pin.type}-cut-tick`}
+                        style={{ left: `${pin.pct}` }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onSeek) onSeek(pin.ms);
+                        }}
+                        title={pin.title}
+                    >
+                        <div className="cut-tick-line" />
+                        <div className="cut-tick-chip">
+                            <span className="cut-tick-dir">{pin.type === 'in' ? '▶' : '◀'}</span>
+                            <span className="cut-tick-tag">{pin.shortLabel}</span>
+                        </div>
                     </div>
                 ))}
             </div>
