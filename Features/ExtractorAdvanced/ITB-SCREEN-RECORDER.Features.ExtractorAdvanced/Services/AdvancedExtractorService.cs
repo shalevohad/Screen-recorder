@@ -33,7 +33,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly ExtractorOptions _extractorOptions;
         private readonly IMemoryCache? _memoryCache;
         private readonly IFfmpegBinaryResolver _binaryResolver;
-        private static readonly SemaphoreSlim _visualThrottle = new(8, 8);
+        private static readonly SemaphoreSlim _visualThrottle = new(4, 4);
 
         public AdvancedExtractorService(
             IStorageScannerService storageScanner,
@@ -248,10 +248,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     offsetSeconds = maxSafeOffset;
                 }
 
-                // 💡 קביעת משך הטווח הזמין לדגימה בתוך הקובץ כדי למנוע חריגה מעבר ל-EOF ואיפוס הפילטר
+                // 💡 קביעת משך הטווח הזמין לדגימה בתוך הקובץ:
+                // הגבלת משך הדגימה לעד 18 שניות לכל היותר עבור אריח תצוגה
+                // הדבר מבטיח שליפה סילונית (~200-300ms) ללא פענוח כבד של מאות ואלפי פריימים
                 double availableDuration = Math.Max(0.5, fileDuration - offsetSeconds);
                 double tileSpan = Math.Max(0.5, (endUtc - startUtc).TotalSeconds);
-                double targetSpan = Math.Min(availableDuration, tileSpan);
+                double targetSpan = Math.Min(availableDuration, Math.Min(tileSpan, 18.0));
                 double intervalSeconds = Math.Max(0.05, targetSpan / frameCount);
 
                 string filter = $"fps=1/{intervalSeconds.ToString("0.000", CultureInfo.InvariantCulture)},scale={tileWidth}:{tileHeight},tile={frameCount}x1";
@@ -272,7 +274,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 };
 
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                linkedCts.CancelAfter(TimeSpan.FromSeconds(6));
+                linkedCts.CancelAfter(TimeSpan.FromSeconds(5));
 
                 await _visualThrottle.WaitAsync(linkedCts.Token);
                 using var process = new Process { StartInfo = startInfo };
@@ -289,7 +291,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     if (memoryStream.Length > 2000)
                     {
                         byte[] sheetBytes = memoryStream.ToArray();
-                        _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(30));
+                        _memoryCache?.Set(sheetCacheKey, sheetBytes, TimeSpan.FromMinutes(60));
                         return new MemoryStream(sheetBytes);
                     }
                 }

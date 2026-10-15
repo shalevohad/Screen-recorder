@@ -7,10 +7,10 @@ const pendingTiles = new Map();
 let requestQueue = [];
 let activeWorkers = 0;
 
-// 💡 מקביליות מיטבית לטעינה מהירה של ה-Filmstrip ללא חנק המעבד
-const MAX_CONCURRENT = 4;
-const TASK_TIMEOUT_MS = 10000;
-const MAX_CACHE_ENTRIES = 500; // הגדלת מטמון אריחים ב-RAM
+// 💡 מקביליות מבוקרת (3 עובדים) כדי לשמור על תגובתיות מלאה של השרת, הווידאו וציר הזמן
+const MAX_CONCURRENT = 3;
+const TASK_TIMEOUT_MS = 8000;
+const MAX_CACHE_ENTRIES = 80; // 💡 מטמון רזה ב-RAM (~3-5MB מקסימום) למניעת קריסת זיכרון דפדפן
 
 function scheduleQueueProcessing() {
     setTimeout(processQueue, 0);
@@ -23,7 +23,7 @@ function processQueue() {
     requestQueue = requestQueue.filter(task => !task.signal?.aborted);
 
     while (activeWorkers < MAX_CONCURRENT && requestQueue.length > 0) {
-        // 💡 LIFO: שליפת האריחים שנוספו אחרונים (האזור שהמשתמש מביט בו כעת ב-Viewport)
+        // 💡 LIFO: שליפת האריח האחרון שהמשתמש מביט בו כעת ב-Viewport
         const task = requestQueue.pop();
         if (!task || task.signal?.aborted) continue;
 

@@ -6,12 +6,18 @@ import { spritesheetStore } from '../../../utils/spritesheetStore.js';
 import './TimelineTrack.scss';
 
 const getLodConfig = (viewportDurationMs) => {
-    if (viewportDurationMs <= 60 * 1000) return { tileDurationMs: 4 * 1000, framesPerTile: 4 };
-    if (viewportDurationMs <= 5 * 60 * 1000) return { tileDurationMs: 15 * 1000, framesPerTile: 5 };
-    if (viewportDurationMs <= 30 * 60 * 1000) return { tileDurationMs: 60 * 1000, framesPerTile: 6 };
-    if (viewportDurationMs <= 2 * 60 * 60 * 1000) return { tileDurationMs: 4 * 60 * 1000, framesPerTile: 6 };
-    if (viewportDurationMs <= 8 * 60 * 60 * 1000) return { tileDurationMs: 15 * 60 * 1000, framesPerTile: 6 };
-    return { tileDurationMs: 60 * 60 * 1000, framesPerTile: 6 };
+    // 💡 מדרגות LOD דינמיות מבוקרות: שמירה הדוקה על כ-10 עד 16 אריחים בכל רוחב תצוגה
+    if (viewportDurationMs <= 60 * 1000) return { tileDurationMs: 5 * 1000, framesPerTile: 4 };              // עד 1 דקה -> אריח 5 שניות (~12)
+    if (viewportDurationMs <= 5 * 60 * 1000) return { tileDurationMs: 20 * 1000, framesPerTile: 4 };          // עד 5 דקות -> אריח 20 שניות (~15)
+    if (viewportDurationMs <= 30 * 60 * 1000) return { tileDurationMs: 2 * 60 * 1000, framesPerTile: 4 };     // עד 30 דקות -> אריח 2 דקות (~15)
+    if (viewportDurationMs <= 2 * 60 * 60 * 1000) return { tileDurationMs: 8 * 60 * 1000, framesPerTile: 5 }; // עד שעתיים -> אריח 8 דקות (~15)
+    if (viewportDurationMs <= 8 * 60 * 60 * 1000) return { tileDurationMs: 30 * 60 * 1000, framesPerTile: 5 };// עד 8 שעות -> אריח 30 דקות (~16)
+    if (viewportDurationMs <= 24 * 60 * 60 * 1000) return { tileDurationMs: 2 * 60 * 60 * 1000, framesPerTile: 5 }; // עד 24 שעות -> אריח שעתיים (~12)
+    if (viewportDurationMs <= 72 * 60 * 60 * 1000) return { tileDurationMs: 6 * 60 * 60 * 1000, framesPerTile: 4 }; // עד 3 ימים -> אריח 6 שעות (~12)
+    if (viewportDurationMs <= 7 * 24 * 60 * 60 * 1000) return { tileDurationMs: 14 * 60 * 60 * 1000, framesPerTile: 4 }; // עד שבוע -> אריח 14 שעות (~12)
+    // מעל שבוע: התאמה אוטומטית לעד 14 אריחים לכל היותר
+    const autoTileMs = Math.max(24 * 60 * 60 * 1000, Math.round(viewportDurationMs / 14));
+    return { tileDurationMs: autoTileMs, framesPerTile: 4 };
 };
 
 const getSegStart = (seg) => seg.startEpochMs ?? seg.startEpoch ?? seg.start ?? 0;
@@ -89,6 +95,18 @@ export default function TimelineTrack({
             }
         });
 
+        // 💡 תקרת ביטחון מוחלטת: הגבלה לעד 20 אריחים מקסימום עם עדיפות למרכז ה-Viewport
+        if (tiles.length > 20) {
+            const centerEpoch = baseEpochMs + viewportStartMs + (viewportDurationMs / 2);
+            tiles.sort((a, b) => {
+                const distA = Math.abs((a.startEpoch + a.endEpoch) / 2 - centerEpoch);
+                const distB = Math.abs((b.startEpoch + b.endEpoch) / 2 - centerEpoch);
+                return distA - distB;
+            });
+            tiles.length = 20;
+            tiles.sort((a, b) => a.startEpoch - b.startEpoch);
+        }
+
         return tiles;
     }, [activeSegments, baseEpochMs, hostname, disableFilmstrip, viewportStartMs, viewportDurationMs, lodConfig]);
 
@@ -114,14 +132,28 @@ export default function TimelineTrack({
             }
         });
 
-        if (hasImmediate) {
-            Object.assign(tilesMapRef.current, immediateUpdates);
-            setTilesMap(prev => ({ ...prev, ...immediateUpdates }));
+        // 💡 ניקוי RAM יזום: סילוק אריחים ישנים מ-tilesMap שאינם בטווח הנראה
+        const visibleKeySet = new Set(timelineTiles.map(t => t.key));
+        const currentMap = tilesMapRef.current;
+        const pruned = {};
+        let needsPrune = false;
+        Object.keys(currentMap).forEach(k => {
+            if (visibleKeySet.has(k)) {
+                pruned[k] = currentMap[k];
+            } else {
+                needsPrune = true;
+            }
+        });
+
+        if (hasImmediate || needsPrune) {
+            const nextMap = { ...pruned, ...immediateUpdates };
+            tilesMapRef.current = nextMap;
+            setTilesMap(nextMap);
         }
 
         if (missingTiles.length === 0) return () => { isMounted = false; };
 
-        // 💡 דיבאונס קצר ומהיר (45ms במקום 140ms)
+        // 💡 דיבאונס מבוקר (150ms): מונע ירי של בקשות רשת ו-FFmpeg תוך כדי גרירת סליידרים או זום מהיר
         const debounceTimer = setTimeout(() => {
             missingTiles.forEach(tile => {
                 spritesheetStore.fetchTile(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile, abortController.signal)
@@ -132,7 +164,7 @@ export default function TimelineTrack({
                         }
                     });
             });
-        }, 45);
+        }, 150);
 
         return () => {
             isMounted = false;
