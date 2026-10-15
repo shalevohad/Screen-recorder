@@ -97,8 +97,8 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
             {
                 if (!forceRenew && _activeBundle != null)
                 {
-                    if (_activeBundle.ServerCertificate.NotAfter > DateTime.UtcNow.AddDays(30) &&
-                        _activeBundle.RootCaCertificate.NotAfter > DateTime.UtcNow.AddDays(60))
+                    if (_activeBundle.ServerCertificate.NotAfter.ToUniversalTime() > DateTime.UtcNow.AddDays(30) &&
+                        _activeBundle.RootCaCertificate.NotAfter.ToUniversalTime() > DateTime.UtcNow.AddDays(60))
                     {
                         return _activeBundle;
                     }
@@ -125,10 +125,12 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     try
                     {
                         caCert = new X509Certificate2(File.ReadAllBytes(caCrtPath));
-                        // בדיקת תוקף ה-CA: אם נותרו פחות מ-60 יום לתוקף ה-CA, נחדש אותו
-                        if (caCert.NotAfter < DateTime.UtcNow.AddDays(60) || caCert.NotBefore > DateTime.UtcNow)
+                        DateTime caNotBeforeUtc = caCert.NotBefore.ToUniversalTime();
+                        DateTime caNotAfterUtc = caCert.NotAfter.ToUniversalTime();
+                        // בדיקת תוקף ה-CA ב-UTC: אם נותרו פחות מ-60 יום לתוקף ה-CA, נחדש אותו
+                        if (caNotAfterUtc < DateTime.UtcNow.AddDays(60) || caNotBeforeUtc > DateTime.UtcNow.AddMinutes(5))
                         {
-                            Logger.AlwaysInfo($"[PKI] Root CA is expired or expiring soon (NotAfter: {caCert.NotAfter:u}). Renewing CA.");
+                            Logger.AlwaysInfo($"[PKI] Root CA is expired or expiring soon (NotAfter UTC: {caNotAfterUtc:u}). Renewing CA.");
                             needNewCa = true;
                             needNewServerCert = true;
                         }
@@ -193,10 +195,12 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     try
                     {
                         serverCert = new X509Certificate2(serverPfxPath, pfxPassword, X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
+                        DateTime srvNotBeforeUtc = serverCert.NotBefore.ToUniversalTime();
+                        DateTime srvNotAfterUtc = serverCert.NotAfter.ToUniversalTime();
                         // חידוש אוטומטי אם נותרו פחות מ-30 יום לתעודת השרת
-                        if (serverCert.NotAfter < DateTime.UtcNow.AddDays(30) || serverCert.NotBefore > DateTime.UtcNow)
+                        if (srvNotAfterUtc < DateTime.UtcNow.AddDays(30) || srvNotBeforeUtc > DateTime.UtcNow.AddMinutes(5))
                         {
-                            Logger.AlwaysInfo($"[PKI] Server certificate expiring soon or invalid (NotAfter: {serverCert.NotAfter:u}). Auto-renewing...");
+                            Logger.AlwaysInfo($"[PKI] Server certificate expiring soon or invalid (NotAfter UTC: {srvNotAfterUtc:u}). Auto-renewing...");
                             needNewServerCert = true;
                         }
                     }
