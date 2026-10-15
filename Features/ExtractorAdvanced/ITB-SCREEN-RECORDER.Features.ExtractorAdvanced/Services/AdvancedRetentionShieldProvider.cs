@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvancedRetentionShieldProvider.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Abstractions;
@@ -37,19 +37,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startUtc = DateTimeOffset.FromUnixTimeMilliseconds(startEpochMs).UtcDateTime;
                 var endUtc = DateTimeOffset.FromUnixTimeMilliseconds(endEpochMs).UtcDateTime;
 
-                // 1. בדיקת חפיפה ספציפית לתחנה ב-advance_extractor.db
-                bool isShielded = await _bookmarkRepository.HasOverlapAsync(stationId, startUtc, endUtc);
-
-                // 2. בדיקת חפיפה לסימניות מערכתיות/גלובליות (ALL)
-                if (!isShielded)
-                {
-                    isShielded = await _bookmarkRepository.HasOverlapAsync("ALL", startUtc, endUtc);
-                }
+                // 1. בדיקת חפיפה לכלל הסימניות בטווח הזמנים (מגן על כל הקלטה בכל תחנה שנופלת בטווח הסימניה)
+                bool isShielded = await _bookmarkRepository.HasAnyOverlapAsync(startUtc, endUtc);
 
                 if (isShielded)
                 {
                     _logger.LogInformation(
-                        "[RETENTION SHIELD] Protected chunk range [{Start} - {End}] on station '{Station}' due to active bookmark.",
+                        "[RETENTION SHIELD] Protected chunk range [{Start} - {End}] on station '{Station}' due to bookmark time-window shield covering all active stations.",
                         startUtc.ToString("yyyy-MM-dd HH:mm:ss"),
                         endUtc.ToString("yyyy-MM-dd HH:mm:ss"),
                         stationId);

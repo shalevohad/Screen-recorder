@@ -1,5 +1,7 @@
-﻿// Client/src/components/Dashboard/DashboardDock.jsx
+// Client/src/components/Dashboard/DashboardDock.jsx
+import { useMemo } from 'react';
 import DynamicIcon from '../UI/DynamicIcon';
+import { useAuth } from '../../context/AuthContext';
 import './DashboardDock.scss';
 
 export default function DashboardDock({
@@ -22,6 +24,22 @@ export default function DashboardDock({
     handleToggleFeature,
     isFeatureActive
 }) {
+    const { isSystemRoot, hasPermission } = useAuth();
+    const canControlStations = isSystemRoot || hasPermission('stations.control');
+
+    const permittedFeatures = useMemo(() => {
+        return availableFeatures.filter(f => {
+            const id = (f.id || '').toLowerCase();
+            if (id.includes('extractor')) {
+                return isSystemRoot || hasPermission('extractor.view');
+            }
+            if (id.includes('studio')) {
+                return isSystemRoot || hasPermission('studio.view');
+            }
+            return true;
+        });
+    }, [availableFeatures, isSystemRoot, hasPermission]);
+
     const onFeatureClick = (feat, isOpen) => {
         if (isOpen) {
             window.dispatchEvent(new CustomEvent('extractor:clear-session'));
@@ -73,10 +91,18 @@ export default function DashboardDock({
             <div className="dock-divider" />
 
             <button
-                className={`dock-icon-btn tactical-btn-start ${canStartAny && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
-                onClick={canStartAny && !isFeatureActive ? handleFilteredBulkStart : undefined}
-                disabled={!canStartAny || isFeatureActive}
-                title={isFeatureActive ? "Bulk actions unavailable in Feature Mode" : canStartAny ? "Start streaming on filtered agents" : "No idle filtered agents"}
+                className={`dock-icon-btn tactical-btn-start ${canStartAny && canControlStations && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
+                onClick={canStartAny && canControlStations && !isFeatureActive ? handleFilteredBulkStart : undefined}
+                disabled={!canStartAny || !canControlStations || isFeatureActive}
+                title={
+                    !canControlStations
+                        ? "Start action requires 'stations.control' permission"
+                        : isFeatureActive
+                        ? "Bulk actions unavailable in Feature Mode"
+                        : canStartAny
+                        ? "Start streaming on filtered agents"
+                        : "No idle filtered agents"
+                }
             >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
                     <polygon points="6 3 20 12 6 21 6 3" />
@@ -86,10 +112,18 @@ export default function DashboardDock({
             </button>
 
             <button
-                className={`dock-icon-btn tactical-btn-stop ${canStopAny && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
-                onClick={canStopAny && !isFeatureActive ? handleFilteredBulkStop : undefined}
-                disabled={!canStopAny || isFeatureActive}
-                title={isFeatureActive ? "Bulk actions unavailable in Feature Mode" : canStopAny ? "Stop active filtered streams" : "No active streams"}
+                className={`dock-icon-btn tactical-btn-stop ${canStopAny && canControlStations && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
+                onClick={canStopAny && canControlStations && !isFeatureActive ? handleFilteredBulkStop : undefined}
+                disabled={!canStopAny || !canControlStations || isFeatureActive}
+                title={
+                    !canControlStations
+                        ? "Stop action requires 'stations.control' permission"
+                        : isFeatureActive
+                        ? "Bulk actions unavailable in Feature Mode"
+                        : canStopAny
+                        ? "Stop active filtered streams"
+                        : "No active streams"
+                }
             >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
                     <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -137,10 +171,10 @@ export default function DashboardDock({
                 </svg>
             </button>
 
-            {availableFeatures && availableFeatures.length > 0 && (
+            {permittedFeatures && permittedFeatures.length > 0 && (
                 <>
                     <div className="dock-divider" />
-                    {availableFeatures.map((feat) => {
+                    {permittedFeatures.map((feat) => {
                         const isOpen = openFeatureIds.includes(feat.id);
                         return (
                             <button

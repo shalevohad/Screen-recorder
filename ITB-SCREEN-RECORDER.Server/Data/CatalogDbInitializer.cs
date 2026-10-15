@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Data;
+namespace ITB_SCREEN_RECORDER.Server.Data;
 
 using System;
 using System.Collections.Generic;
@@ -226,10 +226,10 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
 
         var defaultRoles = new[]
         {
-            new { Id = "role_admin", Name = "מנהל מערכת", Desc = "ניהול מלא של המערכת, עמדות, משתמשים והגדרות אחסון", Icon = "ShieldCheck", Color = "#06B6D4", Order = 1 },
-            new { Id = "role_operator", Name = "מפעיל חמ\"ל", Desc = "שליטה מלאה בשידור, ניהול טאבים וחילוצי וידאו", Icon = "Activity", Color = "#10B981", Order = 2 },
-            new { Id = "role_investigator", Name = "חוקר תחקירים", Desc = "גישה לתחקור ציר זמן, סטודיו עריכה וייצוא קטעים", Icon = "Search", Color = "#F59E0B", Order = 3 },
-            new { Id = "role_viewer", Name = "צופה", Desc = "צפייה בלבד בשידור חי וטלמטריה ללא יכולת שליטה", Icon = "Eye", Color = "#64748B", Order = 4 }
+            new { Id = "role_admin", Name = "System Administrator", Desc = "Full central control over fleet, stations, users, security, and storage.", Icon = "ShieldCheck", Color = "#06B6D4", Order = 1 },
+            new { Id = "role_operator", Name = "Control Room Operator", Desc = "Live operations, station streaming control, tactical bookmarks, and fleet monitoring.", Icon = "Activity", Color = "#10B981", Order = 2 },
+            new { Id = "role_investigator", Name = "Forensic Investigator", Desc = "Timeline playback, incident investigations, clip exporting, and forensic extractor.", Icon = "Search", Color = "#F59E0B", Order = 3 },
+            new { Id = "role_viewer", Name = "Viewer", Desc = "Read-only live station telemetry and viewport monitoring without control.", Icon = "Eye", Color = "#64748B", Order = 4 }
         };
 
         foreach (var r in defaultRoles)
@@ -237,7 +237,12 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             db.Execute(@"
                 INSERT INTO roles (id, name, description, icon, color, display_order, is_built_in, updated_at_utc)
                 VALUES (@Id, @Name, @Desc, @Icon, @Color, @Order, 1, @now)
-                ON CONFLICT(id) DO NOTHING;
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    description = excluded.description,
+                    icon = excluded.icon,
+                    color = excluded.color,
+                    display_order = excluded.display_order;
             ", new { r.Id, r.Name, r.Desc, r.Icon, r.Color, r.Order, now });
         }
 

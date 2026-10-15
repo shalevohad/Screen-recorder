@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.scss
 // ==========================================
 
@@ -265,5 +265,7 @@
         align-items: center;
         justify-items: center;
         box-sizing: border-box;
+        grid-auto-rows: minmax(0, 1fr);
+        grid-auto-columns: minmax(0, 1fr);
     }
 }

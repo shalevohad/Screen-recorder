@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import StationTuningFlyout from './StationTuningFlyout';
 import { Badge } from '../UI/Badge';
+import { useAuth } from '../../context/AuthContext';
 import './StationInspectorDrawer.scss';
 
 const resolveTargetFps = (st) => {
@@ -31,6 +32,13 @@ export default function StationInspectorDrawer({
 }) {
     const [activeTab, setActiveTab] = useState('telemetry');
     const [confirmStop, setConfirmStop] = useState(false);
+
+    const { hasPermission } = useAuth();
+    const canControl = hasPermission('stations.control');
+    const canBookmark = hasPermission('bookmarks.manage');
+    const canPlayback = hasPermission('playback.view');
+    const canExport = hasPermission('playback.export');
+    const canTune = hasPermission('settings.agents');
 
     const [prevStationId, setPrevStationId] = useState(station?.hostname);
     const [overrideTargetFps, setOverrideTargetFps] = useState(null);
@@ -135,7 +143,7 @@ export default function StationInspectorDrawer({
                             <line x1="9" y1="8" x2="15" y2="8" />
                             <line x1="17" y1="16" x2="23" y2="16" />
                         </svg>
-                        Pipeline Tuning
+                        Pipeline Tuning {!canTune && '(View Only)'}
                     </button>
 
                     <button
@@ -288,6 +296,7 @@ export default function StationInspectorDrawer({
                                 hostname={stationId}
                                 apiBaseUrl=""
                                 embedded={true}
+                                readOnly={!canTune}
                                 onClose={() => { }}
                                 onTuningApplied={(appliedPolicy) => {
                                     const newFps = appliedPolicy?.targetFps || appliedPolicy?.fps;
@@ -313,18 +322,22 @@ export default function StationInspectorDrawer({
                                 {!isLive ? (
                                     <button
                                         type="button"
-                                        className="action-stream-btn start"
-                                        onClick={() => onToggleStream?.(stationId, false)}
+                                        className={`action-stream-btn start ${!canControl ? 'disabled' : ''}`}
+                                        onClick={canControl ? () => onToggleStream?.(stationId, false) : undefined}
+                                        disabled={!canControl}
+                                        title={!canControl ? "Access restricted (requires stations.control)" : undefined}
                                     >
-                                        START AGENT STREAM
+                                        {!canControl ? 'STREAM CONTROL LOCKED' : 'START AGENT STREAM'}
                                     </button>
                                 ) : !confirmStop ? (
                                     <button
                                         type="button"
-                                        className="action-stream-btn prepare-stop"
-                                        onClick={() => setConfirmStop(true)}
+                                        className={`action-stream-btn prepare-stop ${!canControl ? 'disabled' : ''}`}
+                                        onClick={canControl ? () => setConfirmStop(true) : undefined}
+                                        disabled={!canControl}
+                                        title={!canControl ? "Access restricted (requires stations.control)" : undefined}
                                     >
-                                        STOP STREAM
+                                        {!canControl ? 'STREAM CONTROL LOCKED' : 'STOP STREAM'}
                                     </button>
                                 ) : (
                                     <div className="stop-confirmation-cluster">
@@ -367,9 +380,10 @@ export default function StationInspectorDrawer({
 
                                     <button
                                         type="button"
-                                        className="quick-act-btn"
-                                        onClick={() => onQuickBookmark?.(stationId)}
-                                        title="Insert Tactical Bookmark"
+                                        className={`quick-act-btn ${!canBookmark ? 'disabled' : ''}`}
+                                        onClick={canBookmark ? () => onQuickBookmark?.(stationId) : undefined}
+                                        disabled={!canBookmark}
+                                        title={!canBookmark ? "Access restricted (requires bookmarks.manage)" : "Insert Tactical Bookmark"}
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
@@ -379,9 +393,10 @@ export default function StationInspectorDrawer({
 
                                     <button
                                         type="button"
-                                        className="quick-act-btn"
-                                        onClick={() => onQuickPlayback?.(stationId)}
-                                        title="Open Playback Window"
+                                        className={`quick-act-btn ${!canPlayback ? 'disabled' : ''}`}
+                                        onClick={canPlayback ? () => onQuickPlayback?.(stationId) : undefined}
+                                        disabled={!canPlayback}
+                                        title={!canPlayback ? "Access restricted (requires playback.view)" : "Open Playback Window"}
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <polygon points="5 3 19 12 5 21 5 3" />
@@ -391,9 +406,10 @@ export default function StationInspectorDrawer({
 
                                     <button
                                         type="button"
-                                        className="quick-act-btn"
-                                        onClick={() => onQuickExport?.(stationId)}
-                                        title="Export Video Segment"
+                                        className={`quick-act-btn ${!canExport ? 'disabled' : ''}`}
+                                        onClick={canExport ? () => onQuickExport?.(stationId) : undefined}
+                                        disabled={!canExport}
+                                        title={!canExport ? "Access restricted (requires playback.export)" : "Export Video Segment"}
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

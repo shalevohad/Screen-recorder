@@ -48,8 +48,11 @@
             font-family: var(--font-primary, 'Inter', system-ui, sans-serif);
         }
 
-        input[type="text"] {
+        input[type="text"],
+        input[type="number"],
+        input[type="password"] {
             height: 38px;
+            width: 100%;
             background: var(--surface-controls, rgba(30, 41, 59, 0.60));
             border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
             border-radius: var(--radius-controls, 8px);
@@ -65,6 +68,110 @@
                 border-color: var(--border-active-cyan, rgba(56, 189, 248, 0.45));
                 box-shadow: 0 0 8px var(--accent-cyan-glow, rgba(6, 182, 212, 0.3));
             }
+        }
+
+        select,
+        .tactical-select {
+            height: 38px;
+            width: 100%;
+            background: var(--surface-controls, rgba(30, 41, 59, 0.60));
+            border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.15));
+            border-radius: var(--radius-controls, 8px);
+            padding: 0 2rem 0 0.75rem;
+            color: var(--text-primary, #F8FAFC);
+            font-size: 0.82rem;
+            font-family: var(--font-primary, 'Inter', sans-serif);
+            outline: none;
+            box-sizing: border-box;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2338BDF8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            transition: all 0.18s ease;
+
+            &:focus {
+                border-color: var(--border-active-cyan, rgba(56, 189, 248, 0.45));
+                box-shadow: 0 0 8px var(--accent-cyan-glow, rgba(6, 182, 212, 0.3));
+            }
+
+            option {
+                background: #0B0F19;
+                color: #F8FAFC;
+                padding: 6px;
+            }
+        }
+    }
+
+    .security-subpanel,
+    .settings-subpanel {
+        background: rgba(15, 23, 42, 0.40);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+        border-radius: var(--radius-md, 10px);
+        padding: 16px 20px;
+        margin-bottom: 18px;
+        transition: border-color 0.18s ease;
+
+        &:hover {
+            border-color: rgba(56, 189, 248, 0.25);
+        }
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+
+        .subpanel-header {
+            margin-bottom: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+
+            h4 {
+                margin: 0;
+                font-size: 0.82rem;
+                font-weight: 800;
+                color: var(--accent-cyan-light, #38BDF8);
+                letter-spacing: 0.05em;
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                text-transform: uppercase;
+            }
+
+            .subpanel-desc {
+                font-size: 0.74rem;
+                color: var(--text-muted, #64748B);
+                font-family: var(--font-primary, 'Inter', sans-serif);
+            }
+        }
+    }
+
+    .tactical-checkbox-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--text-secondary, #94A3B8);
+        user-select: none;
+        padding: 8px 14px;
+        background: rgba(30, 41, 59, 0.45);
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: var(--radius-controls, 8px);
+        transition: all 0.18s ease;
+
+        &:hover {
+            background: rgba(30, 41, 59, 0.7);
+            border-color: rgba(56, 189, 248, 0.35);
+            color: var(--text-primary, #F8FAFC);
+        }
+
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent-cyan, #06B6D4);
+            cursor: pointer;
+            margin: 0;
         }
     }
 }

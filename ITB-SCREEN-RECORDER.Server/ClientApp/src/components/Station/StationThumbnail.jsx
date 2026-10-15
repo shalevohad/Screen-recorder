@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import './StationThumbnail.scss';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
+import { useAuth } from '../../context/AuthContext';
 
 export default function StationThumbnail(props) {
     const {
@@ -28,6 +29,12 @@ export default function StationThumbnail(props) {
     } = props;
 
     const [recordingSeconds, setRecordingSeconds] = useState(0);
+
+    const { hasPermission } = useAuth();
+    const canControl = hasPermission('stations.control');
+    const canBookmark = hasPermission('bookmarks.manage');
+    const canPlayback = hasPermission('playback.view');
+    const canExport = hasPermission('playback.export');
 
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
@@ -80,7 +87,7 @@ export default function StationThumbnail(props) {
 
     const handleQuickToggleRec = (e) => {
         e.stopPropagation();
-        if (!isOnline || isPending) return;
+        if (!canControl || !isOnline || isPending) return;
         onToggleStream?.(hostname, isStreaming);
     };
 
@@ -118,14 +125,15 @@ export default function StationThumbnail(props) {
                 <div className="station-header-right">
                     <button
                         type="button"
-                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isStreaming ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''}`}
+                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isStreaming ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
                         onClick={handleQuickToggleRec}
-                        disabled={!isOnline || isPending}
+                        disabled={!isOnline || isPending || !canControl}
+                        title={!canControl ? "Access restricted (requires stations.control)" : undefined}
                     >
                         <span className="rec-indicator-dot" />
                         <div className="rec-text-wrapper">
                             <span className="rec-state">
-                                {!isOnline ? 'OFFLINE' : isPending ? 'WAIT' : isStreaming ? 'REC' : 'IDLE'}
+                                {!canControl ? 'LOCKED' : !isOnline ? 'OFFLINE' : isPending ? 'WAIT' : isStreaming ? 'REC' : 'IDLE'}
                             </span>
                             {isStreaming && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
                         </div>
@@ -218,9 +226,10 @@ export default function StationThumbnail(props) {
                 <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
                     <button
                         type="button"
-                        className={`action-btn ${isStreaming ? 'stop' : 'start'}`}
+                        className={`action-btn ${isStreaming ? 'stop' : 'start'} ${!canControl ? 'disabled' : ''}`}
                         onClick={handleQuickToggleRec}
-                        title={isStreaming ? "Stop Stream" : "Start Stream"}
+                        disabled={!canControl}
+                        title={!canControl ? "Access restricted (stations.control)" : (isStreaming ? "Stop Stream" : "Start Stream")}
                     >
                         {isStreaming ? 'STOP' : 'START'}
                     </button>
@@ -233,30 +242,36 @@ export default function StationThumbnail(props) {
                     >
                         FULL
                     </button>
-                    <button
-                        type="button"
-                        className="action-btn"
-                        onClick={() => onQuickBookmark?.(hostname)}
-                        title="Add Bookmark"
-                    >
-                        BM
-                    </button>
-                    <button
-                        type="button"
-                        className="action-btn"
-                        onClick={() => onQuickPlayback?.(hostname)}
-                        title="Open Playback"
-                    >
-                        PLAY
-                    </button>
-                    <button
-                        type="button"
-                        className="action-btn"
-                        onClick={() => onQuickExport?.(hostname)}
-                        title="Export Clip"
-                    >
-                        EXP
-                    </button>
+                    {canBookmark && (
+                        <button
+                            type="button"
+                            className="action-btn"
+                            onClick={() => onQuickBookmark?.(hostname)}
+                            title="Add Bookmark"
+                        >
+                            BM
+                        </button>
+                    )}
+                    {canPlayback && (
+                        <button
+                            type="button"
+                            className="action-btn"
+                            onClick={() => onQuickPlayback?.(hostname)}
+                            title="Open Playback"
+                        >
+                            PLAY
+                        </button>
+                    )}
+                    {canExport && (
+                        <button
+                            type="button"
+                            className="action-btn"
+                            onClick={() => onQuickExport?.(hostname)}
+                            title="Export Clip"
+                        >
+                            EXP
+                        </button>
+                    )}
                 </div>
             </div>
 

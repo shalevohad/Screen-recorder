@@ -28,6 +28,7 @@ export default function StationTuningFlyout(props) {
         currentFps,
         currentBitrateKbps,
         apiBaseUrl = '',
+        readOnly = false,
         onClose
     } = props;
 
@@ -109,8 +110,8 @@ export default function StationTuningFlyout(props) {
     };
 
     const handleApply = async () => {
-        if (!targetHostname) {
-            setStatusText('ERR: NO ID');
+        if (readOnly || isSaving || !targetHostname) {
+            if (!targetHostname) setStatusText('ERR: NO ID');
             return;
         }
 
@@ -181,7 +182,7 @@ export default function StationTuningFlyout(props) {
                             onChange={(e) => setSelectedFps(e.target.value)}
                             onBlur={handleFpsBlur}
                             className="tuning-num-input"
-                            disabled={isSaving || isFadingOut}
+                            disabled={isSaving || isFadingOut || readOnly}
                         />
                         <span className="tuning-unit">FPS</span>
                     </div>
@@ -196,7 +197,7 @@ export default function StationTuningFlyout(props) {
                         value={Math.max(10, Math.min(60, Number(selectedFps) || 10))}
                         onChange={(e) => setSelectedFps(Number(e.target.value))}
                         className="tuning-range-slider"
-                        disabled={isSaving || isFadingOut}
+                        disabled={isSaving || isFadingOut || readOnly}
                     />
 
                     <div className="slider-ticks-track">
@@ -211,7 +212,7 @@ export default function StationTuningFlyout(props) {
                                     style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
                                     onClick={() => setSelectedFps(tick.val)}
                                     title={`Set ${tick.val} FPS`}
-                                    disabled={isSaving || isFadingOut}
+                                    disabled={isSaving || isFadingOut || readOnly}
                                 >
                                     <span className="tick-pip" />
                                     <span className="tick-text">{tick.label}</span>
@@ -240,7 +241,7 @@ export default function StationTuningFlyout(props) {
                             onChange={(e) => setSelectedBitrate(e.target.value)}
                             onBlur={handleBitrateBlur}
                             className="tuning-num-input bitrate"
-                            disabled={isSaving || isFadingOut}
+                            disabled={isSaving || isFadingOut || readOnly}
                         />
                         <span className="tuning-unit">KBPS</span>
                     </div>
@@ -255,7 +256,7 @@ export default function StationTuningFlyout(props) {
                         value={Math.max(1000, Math.min(20000, Number(selectedBitrate) || 1000))}
                         onChange={(e) => setSelectedBitrate(Number(e.target.value))}
                         className="tuning-range-slider"
-                        disabled={isSaving || isFadingOut}
+                        disabled={isSaving || isFadingOut || readOnly}
                     />
 
                     <div className="slider-ticks-track">
@@ -270,7 +271,7 @@ export default function StationTuningFlyout(props) {
                                     style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
                                     onClick={() => setSelectedBitrate(tick.val)}
                                     title={`Set ${tick.label}`}
-                                    disabled={isSaving || isFadingOut}
+                                    disabled={isSaving || isFadingOut || readOnly}
                                 >
                                     <span className="tick-pip" />
                                     <span className="tick-text">{tick.label}</span>
@@ -283,11 +284,11 @@ export default function StationTuningFlyout(props) {
 
             <button
                 type="button"
-                className="tuning-apply-btn"
+                className={`tuning-apply-btn ${readOnly ? 'is-readonly' : ''}`}
                 onClick={handleApply}
-                disabled={isSaving || isFadingOut}
+                disabled={isSaving || isFadingOut || readOnly}
             >
-                {isSaving ? "APPLYING CONFIG..." : "APPLY TUNING"}
+                {readOnly ? "RESTRICTED (VIEW ONLY)" : isSaving ? "APPLYING CONFIG..." : "APPLY TUNING"}
             </button>
         </div>
     );

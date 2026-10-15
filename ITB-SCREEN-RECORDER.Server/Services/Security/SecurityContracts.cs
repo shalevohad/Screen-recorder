@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Models.Security;
+namespace ITB_SCREEN_RECORDER.Server.Models.Security;
 
 using System.Collections.Generic;
 
@@ -56,4 +56,11 @@ public record SecurityPolicyStateDto(
     string? LdapBaseDn,
     bool UseSsl,
     long UpdatedAtUtc
+);
+
+public record PermissionItemDto(
+    string Key,
+    string Name,
+    string Category,
+    string Description
 );

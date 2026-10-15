@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
+namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
 
 using System;
 using System.Collections.Generic;
@@ -14,6 +14,7 @@ public interface IBookmarkRepository
     Task<List<BookmarkInfo>> GetByStationAsync(string stationId);
     Task<bool> DeleteAsync(string id);
     Task<bool> HasOverlapAsync(string stationId, DateTime startUtc, DateTime endUtc);
+    Task<bool> HasAnyOverlapAsync(DateTime startUtc, DateTime endUtc);
 }
 
 public sealed class BookmarkRepository : IBookmarkRepository
@@ -80,6 +81,19 @@ public sealed class BookmarkRepository : IBookmarkRepository
             LIMIT 1;
         ";
         int count = await db.ExecuteScalarAsync<int>(sql, new { stationId, startUtc, endUtc });
+        return count > 0;
+    }
+
+    public async Task<bool> HasAnyOverlapAsync(DateTime startUtc, DateTime endUtc)
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = @"
+            SELECT COUNT(1) FROM bookmarks 
+            WHERE StartUtc < @endUtc 
+              AND EndUtc > @startUtc 
+            LIMIT 1;
+        ";
+        int count = await db.ExecuteScalarAsync<int>(sql, new { startUtc, endUtc });
         return count > 0;
     }
 }

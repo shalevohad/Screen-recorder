@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedBookmarksController.cs
 // ==========================================
 using System;
@@ -49,6 +49,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                             var dto = JsonSerializer.Deserialize<InvestigationBookmarkDto>(b.Tags);
                             if (dto != null)
                             {
+                                if (dto.SelectedStationIds == null || dto.SelectedStationIds.Count == 0)
+                                {
+                                    dto.SelectedStationIds = dto.StationIds != null && dto.StationIds.Count > 0
+                                        ? dto.StationIds
+                                        : new List<string> { b.StationId };
+                                }
                                 dtoList.Add(dto);
                                 continue;
                             }
@@ -66,6 +72,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         OutPointMs = new DateTimeOffset(b.EndUtc).ToUnixTimeMilliseconds(),
                         PlayheadMs = new DateTimeOffset(b.StartUtc).ToUnixTimeMilliseconds(),
                         StationIds = new List<string> { b.StationId },
+                        SelectedStationIds = new List<string> { b.StationId },
                         CreatedAt = b.CreatedAtUtc
                     });
                 }
@@ -139,6 +146,19 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
                         await _bookmarkRepository.UpsertAsync(record);
                     }
+
+                    // 💡 בנוסף: שמירת רשומת Retention Shield גלובלית ("ALL") כדי שכל תחנה שיש לה הקלטה בזמנים האלו תהיה מוגנת ממחיקה
+                    var globalShieldRecord = new BookmarkInfo
+                    {
+                        Id = $"{newBookmark.Id}#ALL",
+                        StationId = "ALL",
+                        Title = newBookmark.Title,
+                        StartUtc = startUtc,
+                        EndUtc = endUtc,
+                        Tags = jsonPayload,
+                        CreatedAtUtc = newBookmark.CreatedAt
+                    };
+                    await _bookmarkRepository.UpsertAsync(globalShieldRecord);
                 }
                 else
                 {
@@ -207,8 +227,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             public long PlayheadMs { get; set; }
             public long InPointMs { get; set; }
             public long OutPointMs { get; set; }
+            public long BaseEpochMs { get; set; }
+            public long TimelineBaseEpochMs { get; set; }
+            public long InEpochMs { get; set; }
+            public long OutEpochMs { get; set; }
+            public long PlayheadEpochMs { get; set; }
             public List<string> StationIds { get; set; } = new();
+            public List<string> SelectedStationIds { get; set; } = new();
+            public List<string> SelectedStationNames { get; set; } = new();
+            public List<string> AllStationIds { get; set; } = new();
+            public string? ActiveStationId { get; set; }
+            public string? ActiveStationName { get; set; }
+            public string? SpotlightStationId { get; set; }
+            public string? KeystrokeMode { get; set; }
             public DateTime CreatedAt { get; set; }
+
+            [System.Text.Json.Serialization.JsonExtensionData]
+            public Dictionary<string, System.Text.Json.JsonElement>? AdditionalData { get; set; }
         }
     }
 }

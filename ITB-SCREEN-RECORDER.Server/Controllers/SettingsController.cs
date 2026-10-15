@@ -104,6 +104,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             {
                 await _syncService.UpdateSystemConfigAsync(config =>
                 {
+                    if (updatedConfig.HttpPort > 0) config.HttpPort = updatedConfig.HttpPort;
                     config.DefaultTargetFps = updatedConfig.DefaultTargetFps;
                     config.DefaultVideoBitrate = updatedConfig.DefaultVideoBitrate;
                     config.RecordingRetentionDays = updatedConfig.RecordingRetentionDays;
@@ -174,6 +175,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         }
 
         #region Security & Policy API
+
+        [HttpGet("security/permissions")]
+        [AuthorizePermission(PermissionKeys.SettingsView)]
+        public IActionResult GetPermissionsCatalog()
+        {
+            return Ok(PermissionKeys.Catalog);
+        }
 
         [HttpGet("security/policy")]
         [AuthorizePermission(PermissionKeys.SettingsView)]
@@ -299,7 +307,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public async Task<IActionResult> DeleteRole(string roleId)
         {
             bool deleted = await _catalogRepo.DeleteRoleAsync(roleId);
-            if (!deleted) return BadRequest(new { message = "Cannot delete built-in role or role not found." });
+            if (!deleted) return BadRequest(new { message = "Cannot delete protected system roles (role_admin, role_viewer) or role not found." });
             return Ok(new { success = true });
         }
 

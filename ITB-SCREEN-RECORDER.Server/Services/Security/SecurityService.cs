@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services.Security;
+namespace ITB_SCREEN_RECORDER.Server.Services.Security;
 
 using System;
 using System.Collections.Generic;
@@ -47,6 +47,12 @@ public sealed class SecurityService : ISecurityService
         var localResult = await _localAuth.AuthenticateAsync(username, password);
         if (localResult.Success)
         {
+            // In Strict mode, accounts with no assigned roles are blocked from entering the system
+            if (policy.CurrentMode != AuthMode.Open && !localResult.IsSystemImmutable && !localResult.AssignedRoleIds.Any())
+            {
+                return new AuthResult(false, "Access denied: Account has no assigned operational roles.", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+            }
+
             await _repository.UpdateUserLastLoginAsync(localResult.UserId!, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             return localResult;
         }
@@ -54,6 +60,10 @@ public sealed class SecurityService : ISecurityService
         if (policy.CurrentMode == AuthMode.StrictLdap)
         {
             var ldapResult = await _ldapAuth.AuthenticateAsync(username, password);
+            if (ldapResult.Success && !ldapResult.AssignedRoleIds.Any())
+            {
+                return new AuthResult(false, "Access denied: No operational roles mapped to your Active Directory security groups.", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+            }
             return ldapResult;
         }
 

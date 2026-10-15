@@ -26,6 +26,23 @@ function computeOptimalPageCapacity(width, height, gap = 14) {
     return cols * rows;
 }
 
+function getGridDimensions(count, width, height) {
+    if (width > 0 && height > 0) {
+        return calculateOptimalGrid(count, width, height, 14);
+    }
+    if (count <= 1) return { cols: 1, rows: 1 };
+    if (count === 2) return { cols: 2, rows: 1 };
+    if (count <= 4) return { cols: 2, rows: 2 };
+    if (count <= 6) return { cols: 3, rows: 2 };
+    if (count <= 8) return { cols: 4, rows: 2 };
+    if (count <= 9) return { cols: 3, rows: 3 };
+    if (count <= 12) return { cols: 4, rows: 3 };
+    if (count <= 16) return { cols: 4, rows: 4 };
+    const cols = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+    return { cols, rows };
+}
+
 export default function MulticamViewport({
     activeStation,
     timelineStations = [],
@@ -48,9 +65,8 @@ export default function MulticamViewport({
     keystrokeMode = 'BURN_IN',
     keystrokes = []
 }) {
-    const containerRef = useRef(null);
+    const resizeObserverRef = useRef(null);
     const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
-    const [gridStyle, setGridStyle] = useState({ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' });
 
     const [viewMode, setViewMode] = useState(() => {
         try {
@@ -94,20 +110,42 @@ export default function MulticamViewport({
         return playheadEpochMs > 0 ? playheadEpochMs : Math.round(baseEpochMs + playheadMs);
     }, [playheadEpochMs, baseEpochMs, playheadMs]);
 
+    const updateDims = useCallback((node) => {
+        if (!node) return;
+        const rect = node.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            setContainerDimensions(prev => {
+                if (Math.abs(prev.width - rect.width) < 1 && Math.abs(prev.height - rect.height) < 1) {
+                    return prev;
+                }
+                return { width: rect.width, height: rect.height };
+            });
+        }
+    }, []);
+
+    const setGridContainerRef = useCallback((node) => {
+        if (resizeObserverRef.current) {
+            resizeObserverRef.current.disconnect();
+            resizeObserverRef.current = null;
+        }
+
+        if (node) {
+            updateDims(node);
+
+            const observer = new ResizeObserver(() => {
+                updateDims(node);
+            });
+            observer.observe(node);
+            resizeObserverRef.current = observer;
+        }
+    }, [updateDims]);
+
     useEffect(() => {
-        if (!containerRef.current) return;
-        const updateDims = () => {
-            if (containerRef.current) {
-                const { width, height } = containerRef.current.getBoundingClientRect();
-                setContainerDimensions({ width, height });
+        return () => {
+            if (resizeObserverRef.current) {
+                resizeObserverRef.current.disconnect();
             }
         };
-
-        const observer = new ResizeObserver(updateDims);
-        observer.observe(containerRef.current);
-        updateDims();
-
-        return () => observer.disconnect();
     }, []);
 
     const dynamicPageCapacity = useMemo(() => {
@@ -130,20 +168,21 @@ export default function MulticamViewport({
         return timelineStations.slice(start, start + dynamicPageCapacity);
     }, [timelineStations, viewMode, dynamicPageCapacity, currentPage]);
 
-    useEffect(() => {
+    const gridStyle = useMemo(() => {
         const count = visibleStations.length;
-        if (count <= 1 || activeStation) return;
+        if (count <= 1) {
+            return {
+                gridTemplateColumns: 'minmax(0, 1fr)',
+                gridTemplateRows: 'minmax(0, 1fr)'
+            };
+        }
 
-        const { width, height } = containerDimensions;
-        if (width <= 0 || height <= 0) return;
-
-        const { cols, rows } = calculateOptimalGrid(count, width, height, 14);
-
-        setGridStyle({
+        const { cols, rows } = getGridDimensions(count, containerDimensions.width, containerDimensions.height);
+        return {
             gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
             gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`
-        });
-    }, [visibleStations.length, containerDimensions, activeStation]);
+        };
+    }, [visibleStations.length, containerDimensions.width, containerDimensions.height]);
 
     if (timelineStations.length === 0 && !activeStation) return null;
 
@@ -293,7 +332,7 @@ export default function MulticamViewport({
                 </div>
             )}
 
-            <div className="multicam-tactical-grid" ref={containerRef} style={gridStyle}>
+            <div className="multicam-tactical-grid" ref={setGridContainerRef} style={gridStyle}>
                 {visibleStations.map(st => (
                     <div
                         key={st.id}
