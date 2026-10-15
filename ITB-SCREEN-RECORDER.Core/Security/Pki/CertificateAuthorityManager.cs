@@ -280,9 +280,15 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     using var issuedCertWithoutKey = serverReq.Create(caCert!, notBefore, notAfter, serialNumber);
                     using var issuedCertWithKey = issuedCertWithoutKey.CopyWithPrivateKey(serverRsa);
 
-                    // ייצוא PFX עם שרשרת התעודה
-                    byte[] pfxBytes = issuedCertWithKey.Export(X509ContentType.Pfx, pfxPassword);
-                    File.WriteAllBytes(serverPfxPath, pfxBytes);
+                    // ייצוא PFX עם שרשרת התעודה (כולל שרשרת ה-Root CA)
+                    var pfxCollection = new X509Certificate2Collection();
+                    pfxCollection.Add(issuedCertWithKey);
+                    pfxCollection.Add(caCert!);
+                    byte[]? pfxBytes = pfxCollection.Export(X509ContentType.Pfx, pfxPassword);
+                    if (pfxBytes != null)
+                    {
+                        File.WriteAllBytes(serverPfxPath, pfxBytes);
+                    }
 
                     // ייצוא CRT ו-KEY בפורמט PEM עבור MediaMTX
                     string serverCrtPem = issuedCertWithKey.ExportCertificatePem();
@@ -362,7 +368,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
 
         /// <summary>
         /// רושם את ה-Root CA בחנות התעודות של מערכת ההפעלה באופן שקוף לחלוטין.
-        /// בווינדוס: מוסיף ל-Trusted Root Certification Authorities (LocalMachine או CurrentUser).
+        /// בווינדוס: מוסיף ל-Trusted Root Certification Authorities (LocalMachine) כדי ש-Chrome ודפדפנים יזהו חיבור מאובטח.
         /// בלינוקס: מעתיק ל-/usr/local/share/ca-certificates/ ומריץ update-ca-certificates אם יש הרשאות.
         /// </summary>
         public static bool TryRegisterCaInSystemTrust(X509Certificate2 caCert, string caCrtFilePath)
@@ -381,39 +387,45 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     catch { }
 #endif
-                    // 1. בדיקה האם ה-CA כבר קיים בחנות LocalMachine או CurrentUser
+                    // 1. בדיקה האם ה-CA כבר קיים בחנות LocalMachine (חנות המכונה הנדרשת עבור Chrome Root Store)
                     try
                     {
                         using var checkMachine = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
                         checkMachine.Open(OpenFlags.ReadOnly);
                         if (checkMachine.Certificates.Find(X509FindType.FindByThumbprint, caCert.Thumbprint, false).Count > 0)
                         {
-                            return true;
-                        }
-
-                        using var checkUser = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
-                        checkUser.Open(OpenFlags.ReadOnly);
-                        if (checkUser.Certificates.Find(X509FindType.FindByThumbprint, caCert.Thumbprint, false).Count > 0)
-                        {
+                            Logger.Info($"[PKI] Root CA already trusted in Windows LocalMachine store ({caCert.Thumbprint}).");
                             return true;
                         }
                     }
                     catch { }
 
-                    // יצירת סקריפט התקנה מהיר בלחיצה אחת לצד התעודה עבור מפתחים ומנהלי רשת
+                    // יצירת סקריפט התקנה מהיר עם UAC Self-Elevation בלחיצה אחת לצד התעודה
                     try
                     {
                         string scriptDir = Path.GetDirectoryName(caCrtFilePath) ?? AppContext.BaseDirectory;
                         string batPath = Path.Combine(scriptDir, "Install-ITB-RootCA.bat");
                         string batContent = "@echo off\r\n" +
-                                            "echo Installing ITB Root CA into Windows Trusted Root Certification Authorities...\r\n" +
+                                            ":: Self-elevate script to Administrator if not already elevated\r\n" +
+                                            "net session >nul 2>&1\r\n" +
+                                            "if %ERRORLEVEL% neq 0 (\r\n" +
+                                            "    echo Requesting Administrator privileges to trust ITB Root CA in Chrome & Windows...\r\n" +
+                                            "    powershell -NoProfile -ExecutionPolicy Bypass -Command \"Start-Process cmd -ArgumentList '/c \\\"\\\"%~f0\\\"\\\"' -Verb RunAs\"\r\n" +
+                                            "    exit /b\r\n" +
+                                            ")\r\n\r\n" +
+                                            "echo Installing ITB Root CA into Windows Trusted Root Certification Authorities (LocalMachine)...\r\n" +
                                             "certutil.exe -addstore -f \"Root\" \"%~dp0ca.crt\"\r\n" +
                                             "if %ERRORLEVEL% EQU 0 (\r\n" +
-                                            "    echo [SUCCESS] ITB Root CA registered successfully!\r\n" +
+                                            "    echo.\r\n" +
+                                            "    echo =========================================================================\r\n" +
+                                            "    echo  [SUCCESS] ITB Root CA registered successfully in LocalMachine\\Root!\r\n" +
+                                            "    echo  Chrome, Edge and Windows now fully trust ITB Screen Recorder HTTPS.\r\n" +
+                                            "    echo =========================================================================\r\n" +
                                             ") else (\r\n" +
-                                            "    echo [ERROR] Please right-click this script and select 'Run as administrator'.\r\n" +
+                                            "    echo.\r\n" +
+                                            "    echo [ERROR] Failed to register Root CA in LocalMachine store.\r\n" +
                                             ")\r\n" +
-                                            "pause\r\n";
+                                            "timeout /t 5\r\n";
                         File.WriteAllText(batPath, batContent, Encoding.ASCII);
                     }
                     catch { }
@@ -432,7 +444,33 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     else
                     {
-                        // ניסיון התקנה לחנות משתמש נוכחי (CurrentUser\Root)
+                        // ניסיון התקנה אוטומטי מבוסס UAC כאשר האפליקציה רצה בסביבה אינטראקטיבית (Dev/Desktop)
+                        if (Environment.UserInteractive)
+                        {
+                            try
+                            {
+                                var psi = new ProcessStartInfo
+                                {
+                                    FileName = "certutil.exe",
+                                    Arguments = $"-addstore -f \"Root\" \"{caCrtFilePath}\"",
+                                    UseShellExecute = true,
+                                    Verb = "runas",
+                                    WindowStyle = ProcessWindowStyle.Hidden
+                                };
+                                using var proc = Process.Start(psi);
+                                if (proc != null && proc.WaitForExit(10000) && proc.ExitCode == 0)
+                                {
+                                    Logger.AlwaysInfo($"[PKI] Registered ITB Root CA in Windows LocalMachine Root store via UAC ({caCert.Thumbprint}).");
+                                    return true;
+                                }
+                            }
+                            catch (Exception uacEx)
+                            {
+                                Logger.Info($"[PKI] Elevated UAC registration bypassed or cancelled: {uacEx.Message}");
+                            }
+                        }
+
+                        // ניסיון התקנה לחנות משתמש נוכחי (CurrentUser\Root) כ-fallback
                         try
                         {
                             using var userStore = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
@@ -442,7 +480,6 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                             {
                                 userStore.Add(caCert);
                                 Logger.AlwaysInfo($"[PKI] Registered ITB Root CA in Windows CurrentUser store ({caCert.Thumbprint}).");
-                                return true;
                             }
                         }
                         catch (Exception userEx)
