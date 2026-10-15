@@ -123,7 +123,8 @@ namespace ITB_SCREEN_RECORDER.Server
             try
             {
                 int? kestrelPort = null;
-                string? kestrelUrl = builder.Configuration["Kestrel:Endpoints:Http:Url"];
+                string? kestrelUrl = builder.Configuration["Kestrel:Endpoints:Https:Url"]
+                    ?? builder.Configuration["Kestrel:Endpoints:Http:Url"];
                 if (!string.IsNullOrWhiteSpace(kestrelUrl))
                 {
                     var portMatch = Regex.Match(kestrelUrl, @":(\d+)");

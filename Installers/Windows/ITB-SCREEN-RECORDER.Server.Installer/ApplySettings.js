@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ApplySettings.js
 // ==========================================
 try {
@@ -59,8 +59,9 @@ try {
                 var content = jf.ReadAll();
                 jf.Close();
 
-                // פורט Kestrel
-                content = content.replace(/"Url"\s*:\s*"http:\/\/0\.0\.0\.0:\d+"/gi, '"Url": "http://0.0.0.0:' + httpPort + '"');
+                // פורט Kestrel - שמירה ואכיפה של HTTPS
+                content = content.replace(/"Url"\s*:\s*"https?:\/\/0\.0\.0\.0:\d+"/gi, '"Url": "https://0.0.0.0:' + httpPort + '"');
+                content = content.replace(/"Endpoints"\s*:\s*\{\s*"Http"\s*:/gi, '"Endpoints": {\r\n      "Https":');
 
                 // SystemConfig.HttpPort
                 if (/"HttpPort"\s*:\s*\d+/i.test(content)) {
@@ -122,6 +123,17 @@ try {
                 outY.Close();
                 log("Successfully updated " + yp);
             }
+        }
+
+        // 3. הבטחת ספריית התעודות של ה-Server
+        var certsDir = "C:\\ProgramData\\ITB-SCREEN-RECORDER\\Certificates";
+        if (!fso.FolderExists(certsDir)) {
+            try {
+                var pData = "C:\\ProgramData\\ITB-SCREEN-RECORDER";
+                if (!fso.FolderExists(pData)) fso.CreateFolder(pData);
+                fso.CreateFolder(certsDir);
+                log("Created certificates directory: " + certsDir);
+            } catch (eCerts) { }
         }
 
         log("=== Setup Configuration Action Finished Successfully ===");

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import './GlobalJobIndicator.scss';
 
@@ -8,32 +8,67 @@ export default function GlobalJobIndicator() {
 
     useEffect(() => {
         let isMounted = true;
+        let timeoutId = null;
+        let consecutiveErrors = 0;
 
         const checkStatus = async () => {
+            if (!isMounted) return;
+
+            // If document is in background / minimized, pause aggressive polling
+            if (typeof document !== 'undefined' && document.hidden) {
+                timeoutId = setTimeout(checkStatus, 30000);
+                return;
+            }
+
+            let nextDelay = 1500;
+
             try {
                 const res = await fetch('/api/v1/catalog/reindex/status');
                 if (res.ok) {
+                    consecutiveErrors = 0;
                     const data = await res.json();
                     if (isMounted) {
                         if (data.isRunning) {
                             setJob(data);
+                            nextDelay = 1500;
                         } else if (data.completedAtUtc && (Date.now() - new Date(data.completedAtUtc).getTime()) < 6000) {
                             setJob(data);
+                            nextDelay = 2000;
                         } else {
                             setJob(null);
+                            nextDelay = 4000;
                         }
                     }
+                } else {
+                    consecutiveErrors++;
+                    nextDelay = Math.min(30000, 1500 * Math.pow(2, Math.min(consecutiveErrors, 5)));
                 }
             } catch (err) {
-                // Silently ignore polling network errors
-                void err;
+                consecutiveErrors++;
+                // Smart exponential backoff on SSL or network failures
+                nextDelay = Math.min(30000, 1500 * Math.pow(2, Math.min(consecutiveErrors, 5)));
+            }
+
+            if (isMounted) {
+                timeoutId = setTimeout(checkStatus, nextDelay);
             }
         };
 
-        const interval = setInterval(checkStatus, 1500);
+        const onVisibilityChange = () => {
+            if (!document.hidden && isMounted) {
+                clearTimeout(timeoutId);
+                consecutiveErrors = 0;
+                checkStatus();
+            }
+        };
+
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        checkStatus();
+
         return () => {
             isMounted = false;
-            clearInterval(interval);
+            clearTimeout(timeoutId);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
         };
     }, []);
 

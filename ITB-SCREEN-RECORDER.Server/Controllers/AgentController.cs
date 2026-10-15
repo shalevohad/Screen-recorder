@@ -421,5 +421,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             }
             return NotFound("Certificate authority bundle is not available.");
         }
+
+        [HttpGet("cert/root-ca")]
+        public IActionResult GetRootCa()
+        {
+            var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+            if (System.IO.File.Exists(bundle.RootCaCrtPath))
+            {
+                return PhysicalFile(bundle.RootCaCrtPath, "application/x-x509-ca-cert", "itb-root-ca.crt");
+            }
+            return NotFound("Root CA certificate is not available.");
+        }
     }
 }

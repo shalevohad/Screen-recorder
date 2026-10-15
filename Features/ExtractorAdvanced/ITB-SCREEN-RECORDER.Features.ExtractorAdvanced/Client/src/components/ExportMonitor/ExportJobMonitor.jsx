@@ -11,6 +11,7 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
     const [dismissingIds, setDismissingIds] = useState(new Set());
     const drawerRef = useRef(null);
     const isFetchingRef = useRef(false);
+    const errorCountRef = useRef(0);
 
     const [isPinned, setIsPinned] = useState(() => {
         try {
@@ -30,6 +31,8 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
 
     const fetchJobs = useCallback(async () => {
         if (isFetchingRef.current) return;
+        if (typeof document !== 'undefined' && document.hidden) return;
+
         isFetchingRef.current = true;
         try {
             let res = await fetch('/api/v1/extractor-advanced/jobs');
@@ -38,22 +41,60 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
             }
 
             if (res.ok) {
+                errorCountRef.current = 0;
                 const data = await res.json();
                 const list = Array.isArray(data) ? data : [];
                 setJobs(list);
                 window.dispatchEvent(new CustomEvent('export-jobs-updated', { detail: list }));
+            } else {
+                errorCountRef.current++;
             }
         } catch (err) {
-            console.warn('[ExportJobMonitor] Polling error:', err);
+            errorCountRef.current++;
+            if (errorCountRef.current <= 2) {
+                console.warn('[ExportJobMonitor] Polling error:', err);
+            }
         } finally {
             isFetchingRef.current = false;
         }
     }, []);
 
     useEffect(() => {
-        fetchJobs();
-        const interval = setInterval(fetchJobs, 2500);
-        return () => clearInterval(interval);
+        let isMounted = true;
+        let timeoutId = null;
+
+        const schedulePoll = () => {
+            if (!isMounted) return;
+
+            let delay = 2500;
+            if (typeof document !== 'undefined' && document.hidden) {
+                delay = 30000;
+            } else if (errorCountRef.current > 0) {
+                delay = Math.min(30000, 2500 * Math.pow(2, Math.min(errorCountRef.current, 4)));
+            }
+
+            timeoutId = setTimeout(async () => {
+                await fetchJobs();
+                schedulePoll();
+            }, delay);
+        };
+
+        const onVisibilityChange = () => {
+            if (!document.hidden && isMounted) {
+                clearTimeout(timeoutId);
+                errorCountRef.current = 0;
+                fetchJobs().then(schedulePoll);
+            }
+        };
+
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        fetchJobs().then(schedulePoll);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timeoutId);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
     }, [fetchJobs]);
 
     useEffect(() => {

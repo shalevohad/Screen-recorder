@@ -359,6 +359,43 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     catch { }
 #endif
+                    // 1. בדיקה האם ה-CA כבר קיים בחנות LocalMachine או CurrentUser
+                    try
+                    {
+                        using var checkMachine = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
+                        checkMachine.Open(OpenFlags.ReadOnly);
+                        if (checkMachine.Certificates.Find(X509FindType.FindByThumbprint, caCert.Thumbprint, false).Count > 0)
+                        {
+                            return true;
+                        }
+
+                        using var checkUser = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+                        checkUser.Open(OpenFlags.ReadOnly);
+                        if (checkUser.Certificates.Find(X509FindType.FindByThumbprint, caCert.Thumbprint, false).Count > 0)
+                        {
+                            return true;
+                        }
+                    }
+                    catch { }
+
+                    // יצירת סקריפט התקנה מהיר בלחיצה אחת לצד התעודה עבור מפתחים ומנהלי רשת
+                    try
+                    {
+                        string scriptDir = Path.GetDirectoryName(caCrtFilePath) ?? AppContext.BaseDirectory;
+                        string batPath = Path.Combine(scriptDir, "Install-ITB-RootCA.bat");
+                        string batContent = "@echo off\r\n" +
+                                            "echo Installing ITB Root CA into Windows Trusted Root Certification Authorities...\r\n" +
+                                            "certutil.exe -addstore -f \"Root\" \"%~dp0ca.crt\"\r\n" +
+                                            "if %ERRORLEVEL% EQU 0 (\r\n" +
+                                            "    echo [SUCCESS] ITB Root CA registered successfully!\r\n" +
+                                            ") else (\r\n" +
+                                            "    echo [ERROR] Please right-click this script and select 'Run as administrator'.\r\n" +
+                                            ")\r\n" +
+                                            "pause\r\n";
+                        File.WriteAllText(batPath, batContent, Encoding.ASCII);
+                    }
+                    catch { }
+
                     if (isAdmin)
                     {
                         using var machineStore = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
@@ -373,7 +410,25 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     else
                     {
-                        Logger.Info("[PKI] Running under standard user; utilizing in-memory CustomTrustStore (zero prompt).");
+                        // ניסיון התקנה לחנות משתמש נוכחי (CurrentUser\Root)
+                        try
+                        {
+                            using var userStore = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+                            userStore.Open(OpenFlags.ReadWrite);
+                            var existing = userStore.Certificates.Find(X509FindType.FindByThumbprint, caCert.Thumbprint, false);
+                            if (existing.Count == 0)
+                            {
+                                userStore.Add(caCert);
+                                Logger.AlwaysInfo($"[PKI] Registered ITB Root CA in Windows CurrentUser store ({caCert.Thumbprint}).");
+                                return true;
+                            }
+                        }
+                        catch (Exception userEx)
+                        {
+                            Logger.Info($"[PKI] CurrentUser CA registration prompt bypassed: {userEx.Message}");
+                        }
+
+                        Logger.Info("[PKI] Running under standard user; utilizing in-memory CustomTrustStore.");
                         return false;
                     }
                 }
