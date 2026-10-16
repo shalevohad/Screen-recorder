@@ -132,32 +132,38 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             string bitrate = !string.IsNullOrWhiteSpace(config.DefaultVideoBitrate) ? config.DefaultVideoBitrate : "3000k";
 
             // 2. בדיקת מדיניות לפי Tab (אם העמדה משויכת ל-Tab ייעודי)
-            var allTabs = await _tabsService.GetAllTabsAsync();
-            var assignedTab = allTabs.FirstOrDefault(t => !t.IsDefault && t.Hostnames.Contains(hostname, StringComparer.OrdinalIgnoreCase));
-            if (assignedTab != null)
+            if (_tabsService != null)
             {
-                if (assignedTab.TargetFps.HasValue && assignedTab.TargetFps.Value >= 10 && assignedTab.TargetFps.Value <= 60)
+                var allTabs = await _tabsService.GetAllTabsAsync();
+                var assignedTab = allTabs.FirstOrDefault(t => !t.IsDefault && t.Hostnames.Contains(hostname, StringComparer.OrdinalIgnoreCase));
+                if (assignedTab != null)
                 {
-                    fps = assignedTab.TargetFps.Value;
-                }
-                if (assignedTab.TargetBitrateKbps.HasValue && assignedTab.TargetBitrateKbps.Value >= 500)
-                {
-                    bitrate = $"{assignedTab.TargetBitrateKbps.Value}k";
+                    if (assignedTab.TargetFps.HasValue && assignedTab.TargetFps.Value >= 10 && assignedTab.TargetFps.Value <= 60)
+                    {
+                        fps = assignedTab.TargetFps.Value;
+                    }
+                    if (assignedTab.TargetBitrateKbps.HasValue && assignedTab.TargetBitrateKbps.Value >= 500)
+                    {
+                        bitrate = $"{assignedTab.TargetBitrateKbps.Value}k";
+                    }
                 }
             }
 
             // 3. דריסה פרטנית לתחנה (העדיפות הגבוהה ביותר)
-            var overrides = await _overridesService.GetAllAsync();
-            if (overrides.TryGetValue(hostname, out var stationConfig))
+            if (_overridesService != null)
             {
-                if (!string.IsNullOrEmpty(stationConfig.VideoBitrate))
+                var overrides = await _overridesService.GetAllAsync();
+                if (overrides.TryGetValue(hostname, out var stationConfig))
                 {
-                    bitrate = stationConfig.VideoBitrate.ToUpperInvariant();
-                }
+                    if (!string.IsNullOrEmpty(stationConfig.VideoBitrate))
+                    {
+                        bitrate = stationConfig.VideoBitrate.ToUpperInvariant();
+                    }
 
-                if (stationConfig.TargetFps.HasValue && stationConfig.TargetFps.Value >= 10 && stationConfig.TargetFps.Value <= 60)
-                {
-                    fps = stationConfig.TargetFps.Value;
+                    if (stationConfig.TargetFps.HasValue && stationConfig.TargetFps.Value >= 10 && stationConfig.TargetFps.Value <= 60)
+                    {
+                        fps = stationConfig.TargetFps.Value;
+                    }
                 }
             }
 

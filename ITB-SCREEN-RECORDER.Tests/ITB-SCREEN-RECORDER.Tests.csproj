@@ -25,6 +25,7 @@
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj" />
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.AgentWorker\ITB-SCREEN-RECORDER.AgentWorker.csproj" />
+    <ProjectReference Include="..\ITB-SCREEN-RECORDER.AgentService\ITB-SCREEN-RECORDER.AgentService.csproj" />
     <ProjectReference Include="..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj" />
   </ItemGroup>
 
