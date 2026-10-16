@@ -139,6 +139,12 @@ jobs:
     - name: Restore NuGet dependencies
       run: dotnet restore ITB-Screen-Recorder.sln
 
+    - name: Run Central Unit Tests (Quality Gate)
+      timeout-minutes: 2
+      run: |
+        dotnet build ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet test ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-build --configuration Release --verbosity minimal
+
     - name: Build Windows Installers (MSI)
       run: |
         dotnet build ITB-SCREEN-RECORDER.Core/ITB-SCREEN-RECORDER.Core.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
@@ -218,6 +224,12 @@ jobs:
 
     - name: Restore NuGet dependencies
       run: dotnet restore ITB-Screen-Recorder.sln
+
+    - name: Run Central Unit Tests (Linux Quality Gate)
+      timeout-minutes: 2
+      run: |
+        dotnet build ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet test ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-build --configuration Release --verbosity minimal
 
     - name: Publish Linux Binaries & Installers (.run)
       run: |
