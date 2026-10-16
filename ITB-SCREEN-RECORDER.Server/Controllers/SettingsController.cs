@@ -22,8 +22,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     {
         public AuthMode Mode { get; set; }
     }
-    public record UpdateLdapSettingsRequest(string Server, int Port, string BaseDn, bool UseSsl);
+    public record UpdateLdapSettingsRequest(string Server, int Port, string BaseDn, bool UseSsl, string? BindDn = null, string? BindPassword = null);
     public record UpsertLdapMappingRequest(string AdGroupName, string RoleId);
+    public record BatchUpsertLdapMappingRequest(List<string> AdGroupNames, string RoleId);
+    public record TestLdapConnectionRequest(string? Server, int? Port, string? BaseDn, bool? UseSsl, string? BindDn, string? BindPassword);
+    public record AdAutoDetectRequest(string? HostOrDomain, bool? PreferSsl = null);
+    public record AdDiagnosticsRequest(string? Server, int? Port, string? BaseDn, bool? UseSsl, string? BindDn, string? BindPassword);
 
     [ApiController]
     [Route("api/v1/settings")]
@@ -34,15 +38,18 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly ISystemConfigDbSyncService _syncService;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly ICatalogRepository _catalogRepo;
+        private readonly ILdapDirectoryService _ldapDirectoryService;
 
         public SettingsController(
             ISystemConfigDbSyncService syncService,
             IOptionsMonitor<SystemConfig> configMonitor,
-            ICatalogRepository catalogRepo)
+            ICatalogRepository catalogRepo,
+            ILdapDirectoryService ldapDirectoryService)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
             _catalogRepo = catalogRepo;
+            _ldapDirectoryService = ldapDirectoryService;
         }
 
         [HttpGet]
@@ -233,9 +240,51 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         [AuthorizePermission(PermissionKeys.SecurityRolesManage)]
         public async Task<IActionResult> UpdateLdapSettings([FromBody] UpdateLdapSettingsRequest req)
         {
-            await _catalogRepo.UpdateLdapPolicySettingsAsync(req.Server, req.Port, req.BaseDn, req.UseSsl);
+            var (cleanHost, cleanPort) = LdapEndpointHelper.ParseEndpoint(req.Server, req.Port, req.UseSsl);
+            await _catalogRepo.UpdateLdapPolicySettingsAsync(cleanHost, cleanPort, req.BaseDn?.Trim() ?? string.Empty, req.UseSsl, req.BindDn?.Trim(), req.BindPassword);
             return Ok(new { success = true });
         }
+
+        [HttpGet("security/ad/browse")]
+        [AuthorizePermission(PermissionKeys.SecurityRolesManage)]
+        public async Task<IActionResult> BrowseAdTree([FromQuery] string? baseDn = null, [FromQuery] bool simulate = false)
+        {
+            var result = await _ldapDirectoryService.BrowseOuTreeAsync(baseDn, simulate);
+            return Ok(result);
+        }
+
+        [HttpGet("security/ad/search")]
+        [AuthorizePermission(PermissionKeys.SecurityRolesManage)]
+        public async Task<IActionResult> SearchAdEntities([FromQuery] string query = "", [FromQuery] string? baseDn = null, [FromQuery] int limit = 30, [FromQuery] bool simulate = false)
+        {
+            var result = await _ldapDirectoryService.SearchEntitiesAsync(query ?? string.Empty, baseDn, limit, simulate);
+            return Ok(result);
+        }
+
+        [HttpPost("security/ad/test-connection")]
+        [AuthorizePermission(PermissionKeys.SecurityRolesManage)]
+        public async Task<IActionResult> TestLdapConnection([FromBody] TestLdapConnectionRequest req)
+        {
+            var result = await _ldapDirectoryService.TestConnectionAsync(req.Server, req.Port, req.BaseDn, req.UseSsl, req.BindDn, req.BindPassword);
+            return Ok(result);
+        }
+
+        [HttpPost("security/ad/auto-detect")]
+        [AuthorizePermission(PermissionKeys.SecurityRolesManage)]
+        public async Task<IActionResult> AutoDetectAdSettings([FromBody] AdAutoDetectRequest req)
+        {
+            var result = await _ldapDirectoryService.AutoDetectSettingsAsync(req.HostOrDomain, req.PreferSsl);
+            return Ok(result);
+        }
+
+        [HttpPost("security/ad/diagnose")]
+        [AuthorizePermission(PermissionKeys.SecurityRolesManage)]
+        public async Task<IActionResult> RunAdDiagnostics([FromBody] AdDiagnosticsRequest req)
+        {
+            var result = await _ldapDirectoryService.RunDiagnosticsAsync(req.Server, req.Port, req.BaseDn, req.UseSsl, req.BindDn, req.BindPassword);
+            return Ok(result);
+        }
+
 
         [HttpGet("security/users")]
         [AuthorizePermission(PermissionKeys.SecurityUsersManage)]
@@ -325,6 +374,18 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         {
             await _catalogRepo.UpsertLdapGroupMappingAsync(req.AdGroupName, req.RoleId);
             return Ok(new { success = true });
+        }
+
+        [HttpPost("security/ldap-mappings/batch")]
+        [AuthorizePermission(PermissionKeys.SecurityRolesManage)]
+        public async Task<IActionResult> BatchUpsertLdapMappings([FromBody] BatchUpsertLdapMappingRequest req)
+        {
+            if (req == null || req.AdGroupNames == null || !req.AdGroupNames.Any())
+            {
+                return BadRequest(new { message = "At least one AD group name is required." });
+            }
+            await _catalogRepo.BulkUpsertLdapGroupMappingsAsync(req.AdGroupNames, req.RoleId);
+            return Ok(new { success = true, count = req.AdGroupNames.Count });
         }
 
         [HttpDelete("security/ldap-mappings/{mappingId}")]

@@ -2,6 +2,8 @@
 // File: Client/src/components/Settings/tabs/SecurityAccessTab.jsx
 // ==========================================
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import AdGroupChipsInput from '../AdGroupChipsInput';
+import AdTreeBrowserModal from '../AdTreeBrowserModal';
 
 export default function SecurityAccessTab() {
     const [policy, setPolicy] = useState(null);
@@ -18,7 +20,20 @@ export default function SecurityAccessTab() {
     const [ldapPort, setLdapPort] = useState(389);
     const [ldapBaseDn, setLdapBaseDn] = useState('');
     const [ldapUseSsl, setLdapUseSsl] = useState(false);
+    const [ldapBindDn, setLdapBindDn] = useState('');
+    const [ldapBindPassword, setLdapBindPassword] = useState('');
     const [savingLdap, setSavingLdap] = useState(false);
+    const [testingLdap, setTestingLdap] = useState(false);
+    const [testResult, setTestResult] = useState(null);
+
+    // AD Auto-Discovery & Diagnostics
+    const [autoDetectHost, setAutoDetectHost] = useState('');
+    const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+    const [autoDetectResult, setAutoDetectResult] = useState(null);
+    const [showDiscoveryLogs, setShowDiscoveryLogs] = useState(false);
+    const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+    const [diagnosticsReport, setDiagnosticsReport] = useState(null);
+    const [showDiagnosticsModal, setShowDiagnosticsModal] = useState(false);
 
     // Modal states
     const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
@@ -31,8 +46,12 @@ export default function SecurityAccessTab() {
     const [newPasswordValue, setNewPasswordValue] = useState('');
 
     const [isAddMappingOpen, setIsAddMappingOpen] = useState(false);
-    const [newAdGroup, setNewAdGroup] = useState('');
+    const [standaloneMappedGroups, setStandaloneMappedGroups] = useState([]);
     const [newMappingRoleId, setNewMappingRoleId] = useState('role_operator');
+
+    // Tree browser modal controls
+    const [isTreeBrowserOpen, setIsTreeBrowserOpen] = useState(false);
+    const [isTreeBrowserOpenForStandalone, setIsTreeBrowserOpenForStandalone] = useState(false);
 
     // Role editing / creation modal
     const [roleModalData, setRoleModalData] = useState(null);
@@ -60,6 +79,7 @@ export default function SecurityAccessTab() {
                 setLdapPort(pData.ldapPort || 389);
                 setLdapBaseDn(pData.ldapBaseDn || '');
                 setLdapUseSsl(Boolean(pData.useSsl));
+                setLdapBindDn(pData.ldapBindDn || '');
             }
 
             if (usersRes.ok) setUsers(await usersRes.json());
@@ -151,11 +171,14 @@ export default function SecurityAccessTab() {
                     server: ldapServer.trim(),
                     port: Number(ldapPort),
                     baseDn: ldapBaseDn.trim(),
-                    useSsl: ldapUseSsl
+                    useSsl: ldapUseSsl,
+                    bindDn: ldapBindDn.trim() || null,
+                    bindPassword: ldapBindPassword || null
                 })
             });
             if (res.ok) {
                 await loadSecurityData();
+                setLdapBindPassword('');
                 alert('Active Directory / LDAP parameters updated successfully.');
             }
         } catch (err) {
@@ -165,7 +188,126 @@ export default function SecurityAccessTab() {
         }
     };
 
+    const handleTestLdap = async () => {
+        setTestingLdap(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/v1/settings/security/ad/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    server: ldapServer.trim(),
+                    port: Number(ldapPort),
+                    baseDn: ldapBaseDn.trim(),
+                    useSsl: ldapUseSsl,
+                    bindDn: ldapBindDn.trim() || null,
+                    bindPassword: ldapBindPassword || null
+                })
+            });
+            const data = await res.json();
+            setTestResult(data);
+        } catch (err) {
+            setTestResult({ success: false, message: err.message || 'Connection test failed.' });
+        } finally {
+            setTestingLdap(false);
+        }
+    };
+
+    const handleAutoDetect = async (e) => {
+        if (e) e.preventDefault();
+        const target = autoDetectHost.trim() || ldapServer.trim();
+        if (!target) {
+            alert('Please enter an Active Directory Domain Controller IP, Hostname, or Domain name (e.g., 10.0.0.5 or corp.internal).');
+            return;
+        }
+        setIsAutoDetecting(true);
+        setAutoDetectResult(null);
+        try {
+            const res = await fetch('/api/v1/settings/security/ad/auto-detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hostOrDomain: target })
+            });
+            const data = await res.json();
+            setAutoDetectResult(data);
+            if (data.success) {
+                if (data.discoveredServer) setLdapServer(data.discoveredServer);
+                if (data.discoveredPort) setLdapPort(data.discoveredPort);
+                if (data.discoveredBaseDn) setLdapBaseDn(data.discoveredBaseDn);
+                setLdapUseSsl(Boolean(data.useSsl));
+            }
+        } catch (err) {
+            setAutoDetectResult({
+                success: false,
+                message: err.message || 'Auto-detection request failed.'
+            });
+        } finally {
+            setIsAutoDetecting(false);
+        }
+    };
+
+    const handleRunDiagnostics = async () => {
+        setIsRunningDiagnostics(true);
+        setDiagnosticsReport(null);
+        setShowDiagnosticsModal(true);
+        try {
+            const res = await fetch('/api/v1/settings/security/ad/diagnose', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    server: ldapServer.trim(),
+                    port: Number(ldapPort),
+                    baseDn: ldapBaseDn.trim(),
+                    useSsl: ldapUseSsl,
+                    bindDn: ldapBindDn.trim() || null,
+                    bindPassword: ldapBindPassword || null
+                })
+            });
+            const data = await res.json();
+            setDiagnosticsReport(data);
+        } catch (err) {
+            setDiagnosticsReport({
+                overallSuccess: false,
+                summary: 'Diagnostics request failed: ' + (err.message || 'Unknown network error'),
+                steps: [{ stepName: '1. Network Communication', success: false, latencyMs: 0, message: err.message }]
+            });
+        } finally {
+            setIsRunningDiagnostics(false);
+        }
+    };
+
+    const handlePortPreset = (port, useSsl) => {
+        setLdapPort(port);
+        setLdapUseSsl(useSsl);
+    };
+
+    const handleServerChange = (e) => {
+        let val = e.target.value;
+        if (val.startsWith('ldaps://')) {
+            val = val.substring(8);
+            setLdapUseSsl(true);
+            setLdapPort(636);
+        } else if (val.startsWith('ldap://')) {
+            val = val.substring(7);
+            setLdapUseSsl(false);
+            setLdapPort(389);
+        }
+        const colonIdx = val.lastIndexOf(':');
+        if (colonIdx > 0) {
+            const portStr = val.substring(colonIdx + 1);
+            const parsedP = parseInt(portStr, 10);
+            if (!isNaN(parsedP)) {
+                val = val.substring(0, colonIdx);
+                setLdapPort(parsedP);
+                if (parsedP === 636) setLdapUseSsl(true);
+                else if (parsedP === 389) setLdapUseSsl(false);
+            }
+        }
+        setLdapServer(val);
+    };
+
     // User creation
+
     const handleCreateUser = async (e) => {
         e.preventDefault();
         try {
@@ -251,23 +393,29 @@ export default function SecurityAccessTab() {
         }
     };
 
-    // Add AD Mapping directly
+    // Add AD Mapping directly (supporting multiple chips)
     const handleAddMapping = async (e) => {
         e.preventDefault();
-        if (!newAdGroup.trim()) return;
+        if (standaloneMappedGroups.length === 0) {
+            alert('Please select or enter at least one Active Directory group.');
+            return;
+        }
         try {
-            const res = await fetch('/api/v1/settings/security/ldap-mappings', {
+            const res = await fetch('/api/v1/settings/security/ldap-mappings/batch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    adGroupName: newAdGroup.trim(),
+                    adGroupNames: standaloneMappedGroups,
                     roleId: newMappingRoleId
                 })
             });
             if (res.ok) {
                 setIsAddMappingOpen(false);
-                setNewAdGroup('');
+                setStandaloneMappedGroups([]);
                 await loadSecurityData();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(err.message || 'Failed saving mappings.');
             }
         } catch (err) {
             console.error(err);
@@ -300,7 +448,6 @@ export default function SecurityAccessTab() {
             isNew,
             assignedUserIds,
             mappedAdGroups,
-            newAdGroupInput: '',
             activeModalTab: 'permissions' // 'permissions' | 'users' | 'ldap'
         });
     };
@@ -571,7 +718,14 @@ export default function SecurityAccessTab() {
                             <h4>ACTIVE DIRECTORY & DOMAIN SECURITY GROUP MAPPINGS</h4>
                             <span className="subpanel-desc">Connect to Domain Controllers (DC) and map AD security groups to operational roles.</span>
                         </div>
-                        <button type="button" className="btn-add-entity" onClick={() => setIsAddMappingOpen(true)}>
+                        <button
+                            type="button"
+                            className="btn-add-entity"
+                            onClick={() => {
+                                setIsAddMappingOpen(true);
+                                setStandaloneMappedGroups([]);
+                            }}
+                        >
                             + Add Group Mapping
                         </button>
                     </div>
@@ -593,22 +747,121 @@ export default function SecurityAccessTab() {
                         </div>
                     </div>
 
+                    {/* 1-Click Auto-Discovery Card */}
+                    <div className="ldap-autodetect-card">
+                        <div className="autodetect-header">
+                            <div className="autodetect-title-row">
+                                <span className="autodetect-icon">⚡</span>
+                                <div>
+                                    <h4 className="autodetect-title">Active Directory Auto-Discovery & Zero-Touch Setup</h4>
+                                    <p className="autodetect-subtitle">
+                                        Type your Domain Controller Hostname, IP address, or Domain FQDN (e.g. <code>10.0.0.5</code> or <code>corp.internal</code>). The system will automatically probe open ports (389 / 636), test TLS encryption, and query the RootDSE Base DN.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="autodetect-input-group">
+                            <input
+                                type="text"
+                                className="autodetect-input"
+                                placeholder="Enter Domain Controller IP or FQDN (e.g. 10.0.0.5 or dc01.corp.internal)"
+                                value={autoDetectHost}
+                                onChange={e => setAutoDetectHost(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleAutoDetect(e); }}
+                            />
+                            <button
+                                type="button"
+                                className="btn-autodetect"
+                                onClick={handleAutoDetect}
+                                disabled={isAutoDetecting || (!autoDetectHost.trim() && !ldapServer.trim())}
+                            >
+                                {isAutoDetecting ? 'Probing Domain Controller…' : '⚡ Auto-Detect & Configure'}
+                            </button>
+                        </div>
+
+                        {autoDetectResult && (
+                            <div className={`autodetect-result-banner ${autoDetectResult.success ? 'success' : 'fail'}`}>
+                                <div className="result-header">
+                                    <span className="result-icon">{autoDetectResult.success ? '✓' : '✗'}</span>
+                                    <div className="result-text">
+                                        <strong>{autoDetectResult.message}</strong>
+                                        {autoDetectResult.success && (
+                                            <div className="result-meta">
+                                                <span>DC Endpoint: <code>{autoDetectResult.discoveredServer}:{autoDetectResult.discoveredPort}</code></span>
+                                                <span>Protocol: <code>{autoDetectResult.useSsl ? 'LDAPS (Secure Port 636)' : 'Standard LDAP (Port 389)'}</code></span>
+                                                <span>Discovered Base DN: <code>{autoDetectResult.discoveredBaseDn}</code></span>
+                                                <span>TCP Latency: <code>{autoDetectResult.latencyMs} ms</code></span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {autoDetectResult.details?.length > 0 && (
+                                        <button
+                                            type="button"
+                                            className="btn-toggle-details"
+                                            onClick={() => setShowDiscoveryLogs(!showDiscoveryLogs)}
+                                        >
+                                            {showDiscoveryLogs ? 'Hide Log' : 'Probe Log'}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {showDiscoveryLogs && autoDetectResult.details?.length > 0 && (
+                                    <div className="discovery-log-terminal">
+                                        {autoDetectResult.details.map((line, idx) => (
+                                            <div key={idx} className="terminal-line">› {line}</div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* LDAP Server Config Form */}
                     <form onSubmit={handleSaveLdap} className="ldap-settings-form">
                         <div className="settings-fields-row">
-                            <div className="settings-field">
+                            <div className="settings-field" style={{ flex: '1.4' }}>
                                 <span>Domain Controller Host / IP</span>
                                 <input
                                     type="text"
-                                    placeholder="dc01.corp.internal"
+                                    placeholder="dc01.corp.internal or 10.0.0.5"
                                     value={ldapServer}
-                                    onChange={e => setLdapServer(e.target.value)}
+                                    onChange={handleServerChange}
                                     required
                                 />
+                                <span className="field-hint">Accepts hostname, IP, or host:port (protocol prefixes stripped automatically)</span>
                             </div>
 
-                            <div className="settings-field" style={{ maxWidth: '120px' }}>
-                                <span>Port</span>
+                            <div className="settings-field port-field-container" style={{ flex: '1.2' }}>
+                                <div className="port-header-row">
+                                    <span>Port & Preset</span>
+                                    <div className="port-presets">
+                                        <button
+                                            type="button"
+                                            className={`btn-port-preset ${Number(ldapPort) === 389 && !ldapUseSsl ? 'active' : ''}`}
+                                            onClick={() => handlePortPreset(389, false)}
+                                            title="Standard Active Directory LDAP port (Plain / Negotiate)"
+                                        >
+                                            389 (Standard)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`btn-port-preset ${Number(ldapPort) === 636 && ldapUseSsl ? 'active' : ''}`}
+                                            onClick={() => handlePortPreset(636, true)}
+                                            title="Secure Active Directory LDAPS over TLS/SSL"
+                                        >
+                                            636 (LDAPS)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`btn-port-preset ${Number(ldapPort) === 3268 ? 'active' : ''}`}
+                                            onClick={() => handlePortPreset(3268, false)}
+                                            title="Global Catalog forest-wide query port"
+                                        >
+                                            3268 (GC)
+                                        </button>
+                                    </div>
+                                </div>
                                 <input
                                     type="number"
                                     value={ldapPort}
@@ -617,7 +870,7 @@ export default function SecurityAccessTab() {
                                 />
                             </div>
 
-                            <div className="settings-field">
+                            <div className="settings-field" style={{ flex: '1.4' }}>
                                 <span>Search Base DN</span>
                                 <input
                                     type="text"
@@ -625,6 +878,30 @@ export default function SecurityAccessTab() {
                                     value={ldapBaseDn}
                                     onChange={e => setLdapBaseDn(e.target.value)}
                                     required
+                                />
+                                <span className="field-hint">Active Directory root search container (RootDSE)</span>
+                            </div>
+                        </div>
+
+                        <div className="settings-fields-row" style={{ marginTop: '8px' }}>
+                            <div className="settings-field">
+                                <span>Directory Bind DN / Service Account (Optional)</span>
+                                <input
+                                    type="text"
+                                    placeholder="CN=svc_recorder,OU=ServiceAccounts,DC=corp,DC=internal or svc@corp.internal"
+                                    value={ldapBindDn}
+                                    onChange={e => setLdapBindDn(e.target.value)}
+                                />
+                                <span className="field-hint">For OU browsing and group discovery. Anonymous used if omitted.</span>
+                            </div>
+                            <div className="settings-field">
+                                <span>Service Account Password (Optional)</span>
+                                <input
+                                    type="password"
+                                    placeholder={policy?.hasBindPassword ? '•••••••• (Stored securely in vault)' : 'Enter service account password'}
+                                    value={ldapBindPassword}
+                                    onChange={e => setLdapBindPassword(e.target.value)}
+                                    autoComplete="new-password"
                                 />
                             </div>
                         </div>
@@ -634,15 +911,63 @@ export default function SecurityAccessTab() {
                                 <input
                                     type="checkbox"
                                     checked={ldapUseSsl}
-                                    onChange={e => setLdapUseSsl(e.target.checked)}
+                                    onChange={e => {
+                                        const checked = e.target.checked;
+                                        setLdapUseSsl(checked);
+                                        if (checked && Number(ldapPort) === 389) setLdapPort(636);
+                                        else if (!checked && Number(ldapPort) === 636) setLdapPort(389);
+                                    }}
                                 />
-                                <span>Use LDAPS (SSL/TLS - Port 636)</span>
+                                <span>Use LDAPS (SSL/TLS - Port 636) • Enterprise CA Bypass Enabled</span>
                             </label>
 
-                            <button type="submit" className="btn-save-ldap" disabled={savingLdap}>
-                                {savingLdap ? 'Saving Connection…' : 'Save Connection Parameters'}
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <button
+                                    type="button"
+                                    className="btn-diagnostics"
+                                    onClick={handleRunDiagnostics}
+                                    disabled={isRunningDiagnostics || !ldapServer.trim()}
+                                    title="Run comprehensive 5-step active directory connectivity diagnostics"
+                                >
+                                    {isRunningDiagnostics ? 'Diagnosing…' : '🔍 Deep Diagnostics'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-test-ldap"
+                                    onClick={handleTestLdap}
+                                    disabled={testingLdap || !ldapServer.trim()}
+                                >
+                                    {testingLdap ? 'Testing DC…' : 'Quick Test'}
+                                </button>
+                                <button type="submit" className="btn-save-ldap" disabled={savingLdap}>
+                                    {savingLdap ? 'Saving Connection…' : 'Save Connection Parameters'}
+                                </button>
+                            </div>
                         </div>
+
+                        {testResult && (
+                            <div
+                                className={`ldap-test-banner ${testResult.success ? 'success' : 'fail'}`}
+                                style={{
+                                    marginTop: '10px',
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    fontSize: '0.74rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    background: testResult.success ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                    border: `1px solid ${testResult.success ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                                    color: testResult.success ? '#34D399' : '#F87171'
+                                }}
+                            >
+                                <span>{testResult.success ? '✓' : '✗'}</span>
+                                <span>{testResult.message}</span>
+                                {testResult.defaultNamingContext && (
+                                    <span style={{ color: '#94A3B8' }}>(Root DSE: {testResult.defaultNamingContext})</span>
+                                )}
+                            </div>
+                        )}
                     </form>
 
                     {/* AD Group Mappings Table */}
@@ -1089,21 +1414,29 @@ export default function SecurityAccessTab() {
             {/* Modal: Add AD Group Mapping */}
             {isAddMappingOpen && (
                 <div className="security-modal-overlay" onClick={() => setIsAddMappingOpen(false)}>
-                    <div className="security-modal-card" onClick={e => e.stopPropagation()}>
-                        <h3>Add Active Directory Group Mapping</h3>
-                        <form onSubmit={handleAddMapping}>
+                    <div className="security-modal-card" onClick={e => e.stopPropagation()} style={{ width: '560px' }}>
+                        <h3>Add Active Directory Group Mappings</h3>
+                        <span className="modal-subtitle">Assign one or more domain security groups to an operational role.</span>
+                        <form onSubmit={handleAddMapping} style={{ marginTop: '12px' }}>
                             <div className="settings-field">
-                                <span>AD Security Group Name</span>
-                                <input
-                                    type="text"
-                                    placeholder="e.g. Operations_Commanders or C2_Admins"
-                                    value={newAdGroup}
-                                    onChange={e => setNewAdGroup(e.target.value)}
-                                    required
-                                    autoFocus
+                                <span>Active Directory Security Groups (Chips / Multi-Select)</span>
+                                <AdGroupChipsInput
+                                    chips={standaloneMappedGroups}
+                                    onAddGroups={(names) => {
+                                        setStandaloneMappedGroups(prev => {
+                                            const existingLower = prev.map(n => n.toLowerCase());
+                                            const toAdd = names.filter(n => !existingLower.includes(n.toLowerCase()));
+                                            return [...prev, ...toAdd];
+                                        });
+                                    }}
+                                    onRemoveGroup={(groupName) => {
+                                        setStandaloneMappedGroups(prev => prev.filter(g => g.toLowerCase() !== groupName.toLowerCase()));
+                                    }}
+                                    onOpenBrowser={() => setIsTreeBrowserOpenForStandalone(true)}
+                                    placeholder="Type AD group name or click Browse AD Tree…"
                                 />
                             </div>
-                            <div className="settings-field">
+                            <div className="settings-field" style={{ marginTop: '14px' }}>
                                 <span>Map to Operational Role</span>
                                 <select
                                     value={newMappingRoleId}
@@ -1117,11 +1450,30 @@ export default function SecurityAccessTab() {
                             </div>
                             <div className="modal-actions-row">
                                 <button type="button" className="btn-cancel" onClick={() => setIsAddMappingOpen(false)}>Cancel</button>
-                                <button type="submit" className="btn-save">Save Mapping</button>
+                                <button type="submit" className="btn-save" disabled={standaloneMappedGroups.length === 0}>
+                                    Save {standaloneMappedGroups.length > 1 ? `(${standaloneMappedGroups.length}) Mappings` : 'Mapping'}
+                                </button>
                             </div>
                         </form>
                     </div>
                 </div>
+            )}
+
+            {/* Standalone Tree Browser Modal */}
+            {isTreeBrowserOpenForStandalone && (
+                <AdTreeBrowserModal
+                    isOpen={isTreeBrowserOpenForStandalone}
+                    onClose={() => setIsTreeBrowserOpenForStandalone(false)}
+                    alreadySelectedNames={standaloneMappedGroups}
+                    onSelectEntities={(entities) => {
+                        const names = entities.map(e => e.samAccountName);
+                        setStandaloneMappedGroups(prev => {
+                            const existingLower = prev.map(n => n.toLowerCase());
+                            const toAdd = names.filter(n => !existingLower.includes(n.toLowerCase()));
+                            return [...prev, ...toAdd];
+                        });
+                    }}
+                />
             )}
 
             {/* Modal: Assign Roles for a Permission (From Catalog) */}
@@ -1323,53 +1675,63 @@ export default function SecurityAccessTab() {
                             {roleModalData.activeModalTab === 'ldap' && (
                                 <div className="settings-field">
                                     <div className="role-ad-groups-block">
-                                        <div className="add-ad-row">
-                                            <input
-                                                type="text"
-                                                placeholder="Enter AD Group Name (e.g. C2_Admins, Operators)"
-                                                value={roleModalData.newAdGroupInput || ''}
-                                                onChange={e => setRoleModalData(prev => ({ ...prev, newAdGroupInput: e.target.value }))}
-                                                onKeyDown={e => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        const groupName = (roleModalData.newAdGroupInput || '').trim();
-                                                        if (groupName) {
-                                                            setRoleModalData(prev => ({
-                                                                ...prev,
-                                                                mappedAdGroups: [...(prev.mappedAdGroups || []), { id: `new_${Date.now()}`, groupName, isNew: true }],
-                                                                newAdGroupInput: ''
-                                                            }));
-                                                        }
-                                                    }
-                                                }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const groupName = (roleModalData.newAdGroupInput || '').trim();
-                                                    if (groupName) {
-                                                        setRoleModalData(prev => ({
-                                                            ...prev,
-                                                            mappedAdGroups: [...(prev.mappedAdGroups || []), { id: `new_${Date.now()}`, groupName, isNew: true }],
-                                                            newAdGroupInput: ''
-                                                        }));
-                                                    }
-                                                }}
-                                            >
-                                                + Map Group
-                                            </button>
+                                        <span style={{ fontSize: '0.78rem', color: '#CBD5E1', fontWeight: 700 }}>
+                                            Active Directory Security Groups Assigned to this Role:
+                                        </span>
+                                        <p style={{ fontSize: '0.72rem', color: '#94A3B8', margin: '0 0 10px 0' }}>
+                                            Users authenticating via domain credentials will inherit this role if they are members of any assigned AD group. Type a group name with autocomplete or browse the Organizational Unit tree.
+                                        </p>
+
+                                        <AdGroupChipsInput
+                                            chips={roleModalData.mappedAdGroups || []}
+                                            onAddGroups={(names) => {
+                                                setRoleModalData(prev => {
+                                                    const existingLower = (prev.mappedAdGroups || []).map(g => g.groupName.toLowerCase());
+                                                    const newItems = names
+                                                        .filter(n => !existingLower.includes(n.toLowerCase()))
+                                                        .map(n => ({ id: `new_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, groupName: n, isNew: true }));
+                                                    return {
+                                                        ...prev,
+                                                        mappedAdGroups: [...(prev.mappedAdGroups || []), ...newItems]
+                                                    };
+                                                });
+                                            }}
+                                            onRemoveGroup={(groupName) => {
+                                                setRoleModalData(prev => ({
+                                                    ...prev,
+                                                    mappedAdGroups: (prev.mappedAdGroups || []).filter(g => g.groupName.toLowerCase() !== groupName.toLowerCase())
+                                                }));
+                                            }}
+                                            onOpenBrowser={() => setIsTreeBrowserOpen(true)}
+                                            placeholder="Type AD group name or click Browse AD Tree…"
+                                        />
+
+                                        <div className="mapped-groups-summary-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px' }}>
+                                            <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 700 }}>
+                                                Currently Assigned AD Groups ({(roleModalData.mappedAdGroups || []).length}):
+                                            </span>
+                                            {(roleModalData.mappedAdGroups || []).length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    className="btn-clear-all-role-ad"
+                                                    onClick={() => setRoleModalData(prev => ({ ...prev, mappedAdGroups: [] }))}
+                                                    style={{ background: 'transparent', border: 'none', color: '#EF4444', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 600 }}
+                                                >
+                                                    Clear All Mappings
+                                                </button>
+                                            )}
                                         </div>
 
-                                        <span style={{ fontSize: '0.74rem', color: '#94A3B8' }}>Mapped Domain Security Groups:</span>
                                         <div className="ad-groups-chip-list">
                                             {(!roleModalData.mappedAdGroups || roleModalData.mappedAdGroups.length === 0) ? (
-                                                <span style={{ fontSize: '0.74rem', color: '#64748B', fontStyle: 'italic' }}>
-                                                    No AD groups mapped to this role yet. Type a group name above to map domain users.
+                                                <span style={{ fontSize: '0.74rem', color: '#64748B', fontStyle: 'italic', padding: '8px 0' }}>
+                                                    No AD groups mapped to this role yet. Type a group name above or click &ldquo;Browse AD Tree&rdquo; to select from the directory.
                                                 </span>
                                             ) : (
                                                 roleModalData.mappedAdGroups.map(g => (
                                                     <div key={g.id || g.groupName} className="ad-group-row-item">
                                                         <span className="ad-group-name">{g.groupName}</span>
+                                                        {g.isNew && <span className="badge-new-mapping" style={{ fontSize: '0.62rem', background: 'rgba(16, 185, 129, 0.2)', color: '#34D399', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>NEW</span>}
                                                         <button
                                                             type="button"
                                                             className="btn-remove-ad-group"
@@ -1392,6 +1754,28 @@ export default function SecurityAccessTab() {
                                         </div>
                                     </div>
                                 </div>
+                            )}
+
+                            {/* Tree Browser Modal for Role Editor */}
+                            {isTreeBrowserOpen && (
+                                <AdTreeBrowserModal
+                                    isOpen={isTreeBrowserOpen}
+                                    onClose={() => setIsTreeBrowserOpen(false)}
+                                    alreadySelectedNames={(roleModalData?.mappedAdGroups || []).map(g => g.groupName)}
+                                    onSelectEntities={(entities) => {
+                                        const names = entities.map(e => e.samAccountName);
+                                        setRoleModalData(prev => {
+                                            const existingLower = (prev.mappedAdGroups || []).map(g => g.groupName.toLowerCase());
+                                            const newItems = names
+                                                .filter(n => !existingLower.includes(n.toLowerCase()))
+                                                .map(n => ({ id: `new_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`, groupName: n, isNew: true }));
+                                            return {
+                                                ...prev,
+                                                mappedAdGroups: [...(prev.mappedAdGroups || []), ...newItems]
+                                            };
+                                        });
+                                    }}
+                                />
                             )}
 
                             <div className="modal-actions-row">
@@ -1552,6 +1936,109 @@ export default function SecurityAccessTab() {
                                 <button type="submit" className="btn-save">Save Overrides</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Deep Diagnostics Modal */}
+            {showDiagnosticsModal && (
+                <div className="modal-backdrop" onClick={() => setShowDiagnosticsModal(false)}>
+                    <div className="modal-box diagnostics-modal" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <div className="title-area">
+                                <span className="modal-icon">🔍</span>
+                                <div>
+                                    <h3>Active Directory Connectivity Diagnostics</h3>
+                                    <p className="modal-sub">
+                                        Multi-stage network probe, DNS verification, TLS handshake check, and bind validation for <code>{ldapServer}:{ldapPort}</code>
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="modal-close"
+                                onClick={() => setShowDiagnosticsModal(false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="diagnostics-modal-body">
+                            {isRunningDiagnostics ? (
+                                <div className="diagnostics-loading">
+                                    <div className="spinner-tactical" />
+                                    <span>Running socket & LDAP protocol probes…</span>
+                                </div>
+                            ) : diagnosticsReport ? (
+                                <div className="diagnostics-content">
+                                    <div className={`diagnostics-overall-banner ${diagnosticsReport.overallSuccess ? 'pass' : 'fail'}`}>
+                                        <div className="banner-left">
+                                            <span className="badge-icon">{diagnosticsReport.overallSuccess ? '✓' : '⚠️'}</span>
+                                            <div>
+                                                <h4>{diagnosticsReport.overallSuccess ? 'All Diagnostic Checks Passed' : 'Connectivity or Configuration Issue Detected'}</h4>
+                                                <p>{diagnosticsReport.summary}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {diagnosticsReport.recommendation && (
+                                        <div className="diagnostics-recommendation-box">
+                                            <span className="rec-title">💡 Actionable Recommendation:</span>
+                                            <p className="rec-text">{diagnosticsReport.recommendation}</p>
+                                        </div>
+                                    )}
+
+                                    <div className="diagnostics-steps-list">
+                                        {diagnosticsReport.steps?.map((step, idx) => (
+                                            <div key={idx} className={`diag-step-card ${step.success ? 'step-ok' : 'step-fail'}`}>
+                                                <div className="step-header">
+                                                    <span className="step-status-pill">{step.success ? 'PASS' : 'FAIL'}</span>
+                                                    <span className="step-name">{step.stepName}</span>
+                                                    {step.latencyMs > 0 && (
+                                                        <span className="step-latency">{step.latencyMs} ms</span>
+                                                    )}
+                                                </div>
+                                                <div className="step-body">
+                                                    <p className="step-message">{step.message}</p>
+                                                    {step.details && (
+                                                        <div className="step-detail-box">
+                                                            <span>Details / Remedy:</span> {step.details}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button
+                                type="button"
+                                className="btn-cancel"
+                                onClick={() => setShowDiagnosticsModal(false)}
+                            >
+                                Close
+                            </button>
+                            <button
+                                type="button"
+                                className="btn-primary"
+                                onClick={handleRunDiagnostics}
+                                disabled={isRunningDiagnostics}
+                                style={{
+                                    background: '#06B6D4',
+                                    border: 'none',
+                                    color: '#020617',
+                                    fontWeight: 700,
+                                    borderRadius: '6px',
+                                    padding: '8px 16px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {isRunningDiagnostics ? 'Testing…' : 'Re-Run Diagnostics'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

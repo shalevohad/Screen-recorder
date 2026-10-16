@@ -357,6 +357,8 @@ public sealed class CatalogRepository : ICatalogRepository
         public long LdapPort { get; set; }
         public string? LdapBaseDn { get; set; }
         public long UseSsl { get; set; }
+        public string? LdapBindDn { get; set; }
+        public string? LdapBindPassword { get; set; }
         public long UpdatedAtUtc { get; set; }
     }
 
@@ -366,7 +368,8 @@ public sealed class CatalogRepository : ICatalogRepository
         const string sql = @"
             SELECT auth_mode AS CurrentMode, ldap_server AS LdapServer, 
                    ldap_port AS LdapPort, ldap_base_dn AS LdapBaseDn, 
-                   ldap_use_ssl AS UseSsl, updated_at_utc AS UpdatedAtUtc
+                   ldap_use_ssl AS UseSsl, ldap_bind_dn AS LdapBindDn,
+                   ldap_bind_password AS LdapBindPassword, updated_at_utc AS UpdatedAtUtc
             FROM security_policies WHERE id = 'GLOBAL';
         ";
 
@@ -384,8 +387,17 @@ public sealed class CatalogRepository : ICatalogRepository
             (int)row.LdapPort,
             row.LdapBaseDn,
             row.UseSsl == 1,
-            row.UpdatedAtUtc
+            row.UpdatedAtUtc,
+            LdapBindDn: row.LdapBindDn,
+            HasBindPassword: !string.IsNullOrWhiteSpace(row.LdapBindPassword)
         );
+    }
+
+    public async Task<string?> GetLdapBindPasswordAsync()
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = "SELECT ldap_bind_password FROM security_policies WHERE id = 'GLOBAL';";
+        return await db.QuerySingleOrDefaultAsync<string?>(sql);
     }
 
     public async Task SetSecurityPolicyModeAsync(AuthMode mode)
@@ -399,13 +411,15 @@ public sealed class CatalogRepository : ICatalogRepository
         await db.ExecuteAsync(sql, new { mode = (int)mode, now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
     }
 
-    public async Task UpdateLdapPolicySettingsAsync(string server, int port, string baseDn, bool useSsl)
+    public async Task UpdateLdapPolicySettingsAsync(string server, int port, string baseDn, bool useSsl, string? bindDn = null, string? bindPassword = null)
     {
         using var db = _factory.CreateConnection();
-        const string sql = @"
+        string sql = @"
             UPDATE security_policies 
             SET ldap_server = @server, ldap_port = @port, ldap_base_dn = @baseDn, 
-                ldap_use_ssl = @useSsl, updated_at_utc = @now 
+                ldap_use_ssl = @useSsl, ldap_bind_dn = @bindDn,
+                updated_at_utc = @now 
+                " + (bindPassword != null ? ", ldap_bind_password = @bindPassword" : "") + @"
             WHERE id = 'GLOBAL';
         ";
         await db.ExecuteAsync(sql, new
@@ -414,6 +428,8 @@ public sealed class CatalogRepository : ICatalogRepository
             port,
             baseDn,
             useSsl = useSsl ? 1 : 0,
+            bindDn,
+            bindPassword,
             now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         });
     }
@@ -746,6 +762,27 @@ public sealed class CatalogRepository : ICatalogRepository
         string id = $"map_{Guid.NewGuid():N}";
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await db.ExecuteAsync(sql, new { id, adGroupName, roleId, now });
+    }
+
+    public async Task BulkUpsertLdapGroupMappingsAsync(IEnumerable<string> adGroupNames, string roleId)
+    {
+        using var db = _factory.CreateConnection();
+        using var tx = db.BeginTransaction();
+        const string sql = @"
+            INSERT INTO ldap_group_mappings (id, ad_group_name, role_id, updated_at_utc)
+            VALUES (@id, @adGroupName, @roleId, @now)
+            ON CONFLICT(ad_group_name) DO UPDATE SET
+                role_id = excluded.role_id,
+                updated_at_utc = excluded.updated_at_utc;
+        ";
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        foreach (var group in adGroupNames)
+        {
+            if (string.IsNullOrWhiteSpace(group)) continue;
+            string id = $"map_{Guid.NewGuid():N}";
+            await db.ExecuteAsync(sql, new { id, adGroupName = group.Trim(), roleId, now }, tx);
+        }
+        tx.Commit();
     }
 
     public async Task<bool> DeleteLdapGroupMappingAsync(string mappingId)

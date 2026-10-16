@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services.Security;
+namespace ITB_SCREEN_RECORDER.Server.Services.Security;
 
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using System;
@@ -22,35 +22,75 @@ public sealed class LdapAuthenticationProvider : IAuthenticationProvider
         var policy = await _repository.GetSecurityPolicyAsync();
         if (string.IsNullOrWhiteSpace(policy.LdapServer))
         {
-            return new AuthResult(false, "LDAP server is not configured.", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+            return new AuthResult(false, "Active Directory / LDAP server is not configured.", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        var (host, port) = LdapEndpointHelper.ParseEndpoint(policy.LdapServer, policy.LdapPort, policy.UseSsl);
+
+        // Pre-flight TCP reachability probe to provide immediate, clear diagnostics if port is closed or blocked
+        var tcpCheck = await LdapEndpointHelper.ProbeTcpPortAsync(host, port, 3500);
+        if (!tcpCheck.Success)
+        {
+            return new AuthResult(false, $"Active Directory unreachable at '{host}:{port}'. {tcpCheck.Error}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
         }
 
         try
         {
-            var identifier = new LdapDirectoryIdentifier(policy.LdapServer, policy.LdapPort);
-            using var connection = new LdapConnection(identifier);
-            connection.AuthType = AuthType.Basic;
+            var identifier = new LdapDirectoryIdentifier(host, port);
+            using var connection = new LdapConnection(identifier)
+            {
+                Timeout = TimeSpan.FromSeconds(8)
+            };
             connection.SessionOptions.ProtocolVersion = 3;
 
             if (policy.UseSsl)
             {
                 connection.SessionOptions.SecureSocketLayer = true;
+                // Allow enterprise internal CA certificates on remote servers
+                connection.SessionOptions.VerifyServerCertificate = (conn, cert) => true;
             }
 
-            // אימות מול ה-DC
-            var credential = new NetworkCredential(username, password);
+            // Derive domain for NetBIOS / UPN bind fallback if domain prefix is omitted
+            string? domain = LdapEndpointHelper.ExtractDomainFromBaseDn(policy.LdapBaseDn);
+            NetworkCredential credential;
+
+            if (username.Contains('\\'))
+            {
+                var parts = username.Split('\\', 2);
+                credential = new NetworkCredential(parts[1], password, parts[0]);
+                connection.AuthType = AuthType.Negotiate;
+            }
+            else if (username.Contains('@'))
+            {
+                credential = new NetworkCredential(username, password);
+                connection.AuthType = AuthType.Basic;
+            }
+            else if (!string.IsNullOrWhiteSpace(domain))
+            {
+                credential = new NetworkCredential(username, password, domain);
+                connection.AuthType = policy.UseSsl ? AuthType.Basic : AuthType.Negotiate;
+            }
+            else
+            {
+                credential = new NetworkCredential(username, password);
+                connection.AuthType = policy.UseSsl ? AuthType.Basic : AuthType.Negotiate;
+            }
+
             connection.Bind(credential);
 
             // שליפת קבוצות המשתמש (MemberOf)
             var groups = new List<string>();
-            if (!string.IsNullOrWhiteSpace(policy.LdapBaseDn))
+            string searchBase = !string.IsNullOrWhiteSpace(policy.LdapBaseDn) ? policy.LdapBaseDn : "";
+
+            if (!string.IsNullOrWhiteSpace(searchBase))
             {
-                string searchFilter = $"(&(objectClass=user)(sAMAccountName={username}))";
+                string safeUsername = LdapEndpointHelper.EscapeFilter(username.Contains('\\') ? username.Split('\\')[1] : (username.Contains('@') ? username.Split('@')[0] : username));
+                string searchFilter = $"(&(objectClass=user)(|(sAMAccountName={safeUsername})(userPrincipalName={safeUsername}*)))";
                 var searchRequest = new SearchRequest(
-                    policy.LdapBaseDn,
+                    searchBase,
                     searchFilter,
                     SearchScope.Subtree,
-                    "memberOf", "displayName"
+                    "memberOf", "displayName", "sAMAccountName"
                 );
 
                 var response = (SearchResponse)connection.SendRequest(searchRequest);
@@ -63,7 +103,6 @@ public sealed class LdapAuthenticationProvider : IAuthenticationProvider
                         {
                             if (val is string dn)
                             {
-                                // חילוץ ה-CN מתוך ה-DN (למשל CN=Operations_Team,OU=Groups... -> Operations_Team)
                                 int start = dn.IndexOf("CN=", StringComparison.OrdinalIgnoreCase);
                                 if (start >= 0)
                                 {
@@ -105,11 +144,13 @@ public sealed class LdapAuthenticationProvider : IAuthenticationProvider
         }
         catch (LdapException ex)
         {
-            return new AuthResult(false, $"AD Authentication failed: {ex.Message}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+            string rawErr = ex.ServerErrorMessage ?? ex.Message;
+            string friendly = LdapEndpointHelper.DecodeAdError(rawErr);
+            return new AuthResult(false, $"AD Authentication failed: {friendly}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
         }
         catch (Exception ex)
         {
-            return new AuthResult(false, $"LDAP Connection error: {ex.Message}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+            return new AuthResult(false, $"Active Directory connection error: {ex.Message}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
         }
     }
 }

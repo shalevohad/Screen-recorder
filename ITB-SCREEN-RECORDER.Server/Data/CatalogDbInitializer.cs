@@ -166,6 +166,9 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             db.EnsureColumn("station_nodes", "is_active", "INTEGER NOT NULL DEFAULT 1");
             db.EnsureColumn("station_nodes", "last_heartbeat_utc", "INTEGER NOT NULL DEFAULT 0");
 
+            db.EnsureColumn("security_policies", "ldap_bind_dn", "TEXT");
+            db.EnsureColumn("security_policies", "ldap_bind_password", "TEXT");
+
             db.EnsureColumn("custom_tabs", "ous_json", "TEXT NOT NULL DEFAULT '[]'");
             db.EnsureColumn("custom_tabs", "target_fps", "INTEGER");
             db.EnsureColumn("custom_tabs", "target_bitrate_kbps", "INTEGER");

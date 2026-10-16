@@ -286,6 +286,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddAuthentication();
                 builder.Services.AddSingleton<LocalAuthenticationProvider>();
                 builder.Services.AddSingleton<LdapAuthenticationProvider>();
+                builder.Services.AddSingleton<ILdapDirectoryService, LdapDirectoryService>();
                 builder.Services.AddSingleton<ISecurityService, SecurityService>();
                 builder.Services.AddSingleton<StationRolesService>();
 

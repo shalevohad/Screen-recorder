@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
+namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -54,7 +54,8 @@ public interface ICatalogRepository : IKeystrokeRepository
     // Security & Policies
     Task<SecurityPolicyStateDto> GetSecurityPolicyAsync();
     Task SetSecurityPolicyModeAsync(AuthMode mode);
-    Task UpdateLdapPolicySettingsAsync(string server, int port, string baseDn, bool useSsl);
+    Task UpdateLdapPolicySettingsAsync(string server, int port, string baseDn, bool useSsl, string? bindDn = null, string? bindPassword = null);
+    Task<string?> GetLdapBindPasswordAsync();
 
     // Roles
     Task<IReadOnlyList<RoleDto>> GetAllRolesAsync();
@@ -75,6 +76,7 @@ public interface ICatalogRepository : IKeystrokeRepository
     // LDAP Mappings
     Task<IReadOnlyList<LdapGroupMappingDto>> GetAllLdapGroupMappingsAsync();
     Task UpsertLdapGroupMappingAsync(string adGroupName, string roleId);
+    Task BulkUpsertLdapGroupMappingsAsync(IEnumerable<string> adGroupNames, string roleId);
     Task<bool> DeleteLdapGroupMappingAsync(string mappingId);
 
     // Direct Recovery
