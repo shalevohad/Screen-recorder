@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services.Security;
+namespace ITB_SCREEN_RECORDER.Server.Services.Security;
 
 using System;
 using System.Security.Cryptography;
@@ -25,12 +25,20 @@ public static class PasswordHasher
         string[] parts = storedHash.Split('.');
         if (parts.Length != 3) return false;
 
-        if (!int.TryParse(parts[0], out int iterations)) return false;
-        byte[] salt = Convert.FromBase64String(parts[1]);
-        byte[] expectedHash = Convert.FromBase64String(parts[2]);
+        if (!int.TryParse(parts[0], out int iterations) || iterations <= 0) return false;
 
-        byte[] actualHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, Algorithm, expectedHash.Length);
+        try
+        {
+            byte[] salt = Convert.FromBase64String(parts[1]);
+            byte[] expectedHash = Convert.FromBase64String(parts[2]);
 
-        return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
+            byte[] actualHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, Algorithm, expectedHash.Length);
+
+            return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
