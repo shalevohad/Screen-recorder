@@ -345,11 +345,18 @@ public class StorageScannerService : IStorageScannerService
         );
     }
 
-    private static long TryParseStartEpoch(string fileName, DateTime fallbackCreationTimeUtc, string? configuredTzId)
+    internal static long TryParseStartEpoch(string fileName, DateTime fallbackCreationTimeUtc, string? configuredTzId)
     {
         string nameOnly = Path.GetFileNameWithoutExtension(fileName);
 
-        // 1. תבנית Epoch (שניות ומיקרו-שניות MediaMTX, למשל 1791582402_381843)
+        // 1. תבנית Epoch ישירה במילישניות (13 ספרות, למשל 1791583050601)
+        var matchDirectMs = Regex.Match(nameOnly, @"^(\d{13})$");
+        if (matchDirectMs.Success && long.TryParse(matchDirectMs.Groups[1].Value, out long directMs))
+        {
+            return directMs;
+        }
+
+        // 2. תבנית Epoch (שניות ומיקרו-שניות MediaMTX, למשל 1791582402_381843)
         var matchEpoch = Regex.Match(nameOnly, @"(?:^|[_-])(?<sec>\d{10})(?:[_-](?<micro>\d{1,6}))?");
         if (matchEpoch.Success && long.TryParse(matchEpoch.Groups["sec"].Value, out long sec))
         {
@@ -359,13 +366,6 @@ public class StorageScannerService : IStorageScannerService
                 ms += (micro / 1000);
             }
             return ms;
-        }
-
-        // 2. תבנית Epoch ישירה במילישניות (13 ספרות, למשל 1791583050601)
-        var matchDirectMs = Regex.Match(nameOnly, @"^(\d{13})$");
-        if (matchDirectMs.Success && long.TryParse(matchDirectMs.Groups[1].Value, out long directMs))
-        {
-            return directMs;
         }
 
         TimeZoneInfo tz;

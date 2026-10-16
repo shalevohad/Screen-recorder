@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Server/Services/KeystrokeSrtGenerator.cs
 // ==========================================
 using System;
@@ -101,13 +101,13 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return assPath;
         }
 
-        private static string FormatSrtTimestamp(long ms)
+        internal static string FormatSrtTimestamp(long ms)
         {
             var ts = TimeSpan.FromMilliseconds(ms);
             return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2},{ts.Milliseconds:D3}";
         }
 
-        private static string FormatAssTimestamp(long ms)
+        internal static string FormatAssTimestamp(long ms)
         {
             var ts = TimeSpan.FromMilliseconds(ms);
             return $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds / 10:D2}";
