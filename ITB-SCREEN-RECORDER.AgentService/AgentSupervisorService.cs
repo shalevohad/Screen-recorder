@@ -6,6 +6,7 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Network.Discovery;
 using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -38,6 +39,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private readonly string _localBufferPath;
 
         private string _serverBaseUrl = "127.0.0.1:5090";
+        private int _consecutiveServerFailures = 0;
         private AgentStreamPolicy _currentPolicy;
 
         private bool _isWorkerStreaming;
@@ -154,6 +156,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
         {
             if (!string.IsNullOrWhiteSpace(_config.DashboardApiUrl))
             {
+                if (string.Equals(_config.DashboardApiUrl.Trim(), "AUTO", StringComparison.OrdinalIgnoreCase))
+                {
+                    _serverBaseUrl = "AUTO";
+                    _logger.LogInformation("DashboardApiUrl is set to 'AUTO' - autonomous discovery will locate the central server.");
+                    return;
+                }
+
                 if (Uri.TryCreate(_config.DashboardApiUrl, UriKind.Absolute, out Uri? parsedUri))
                 {
                     _serverBaseUrl = parsedUri.Authority;
@@ -169,12 +178,20 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
                 if (!string.IsNullOrWhiteSpace(envIp))
                 {
+                    if (string.Equals(envIp.Trim(), "AUTO", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _serverBaseUrl = "AUTO";
+                        _logger.LogInformation("ITB_SERVER_IP is set to 'AUTO' - autonomous discovery will locate the central server.");
+                        return;
+                    }
+
                     _serverBaseUrl = envIp.Trim().Contains(':') ? envIp.Trim() : $"{envIp.Trim()}:5090";
                     _logger.LogInformation("Loaded Server IP from Environment Variable: {ServerBaseUrl}", _serverBaseUrl);
                 }
                 else
                 {
-                    _logger.LogWarning("Using fallback Server URL: {ServerBaseUrl}", _serverBaseUrl);
+                    _serverBaseUrl = "AUTO";
+                    _logger.LogInformation("No server endpoint configured; defaulting to autonomous discovery (AUTO).");
                 }
             }
         }
@@ -211,6 +228,15 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
             _ = Task.Run(() => ListenToWorkerIpcAsync(stoppingToken), stoppingToken);
             _ = Task.Run(() => PeriodicTrustSyncLoopAsync(stoppingToken), stoppingToken);
+
+            if (string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                await PerformAutonomousDiscoveryAsync(stoppingToken);
+            }
+            else
+            {
+                await RegisterWithServerAsync(_serverBaseUrl, stoppingToken);
+            }
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -259,7 +285,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 try
                 {
-                    if (!string.IsNullOrWhiteSpace(_serverBaseUrl))
+                    if (!string.IsNullOrWhiteSpace(_serverBaseUrl) && !string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
                     {
                         await AgentCertificateValidator.RefreshTrustFromServerAsync(_serverBaseUrl, ct);
                     }
@@ -446,6 +472,15 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 string jsonPayload = JsonSerializer.Serialize(report);
                 _lastTelemetryPayloadSizeBytes = Encoding.UTF8.GetByteCount(jsonPayload);
 
+                if (string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool discovered = await PerformAutonomousDiscoveryAsync(ct);
+                    if (!discovered)
+                    {
+                        return;
+                    }
+                }
+
                 string cleanBase = _serverBaseUrl.TrimEnd('/');
                 string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
                     ? $"{cleanBase}/api/v1/agent/telemetry"
@@ -461,6 +496,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 if (response.IsSuccessStatusCode)
                 {
+                    _consecutiveServerFailures = 0;
                     isServerConnectedThisTick = true;
                     await SendCommandToWorkerAsync("ServerConnected");
 
@@ -537,15 +573,23 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 else
                 {
+                    _consecutiveServerFailures++;
                     // שחזור המקשים לתור אם השרת החזיר שגיאה
                     foreach (var k in keysBatch) _pendingKeystrokes.Enqueue(k);
                 }
             }
             catch (Exception ex)
             {
+                _consecutiveServerFailures++;
                 if (DebugHelper.IsDebugModeEnabled())
                 {
                     _logger.LogWarning("Telemetry transmission failed: {Msg}", ex.Message);
+                }
+
+                if (_consecutiveServerFailures >= 10 && _consecutiveServerFailures % 5 == 0)
+                {
+                    _logger.LogInformation("[DISCOVERY] Server communication disconnected for {Count} cycles. Attempting autonomous server rediscovery...", _consecutiveServerFailures);
+                    _ = Task.Run(() => PerformAutonomousDiscoveryAsync(ct), ct);
                 }
             }
             finally
@@ -554,6 +598,94 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     await SendCommandToWorkerAsync("ServerDisconnected");
                 }
+            }
+        }
+
+        private async Task<bool> PerformAutonomousDiscoveryAsync(CancellationToken ct)
+        {
+            try
+            {
+                _logger.LogInformation("[DISCOVERY] Initiating autonomous multicast/broadcast server discovery...");
+                var discoveryClient = new ServerDiscoveryClient(_logger);
+                var discovered = await discoveryClient.DiscoverBestServerAsync(timeoutMs: 2500, ct);
+                if (discovered != null)
+                {
+                    if (Uri.TryCreate(discovered.ApiBaseUrl, UriKind.Absolute, out Uri? parsedUri))
+                    {
+                        _serverBaseUrl = parsedUri.Authority;
+                    }
+                    else
+                    {
+                        string ip = discovered.ServerIps.Count > 0 ? discovered.ServerIps[0] : "127.0.0.1";
+                        _serverBaseUrl = $"{ip}:{discovered.HttpPort}";
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(discovered.RtmpBaseUrl))
+                    {
+                        _currentPolicy.RtmpServerBaseUrl = discovered.RtmpBaseUrl;
+                    }
+
+                    _logger.LogInformation("[DISCOVERY] Autonomous discovery found Central Server '{Name}' -> {Endpoint}",
+                        discovered.ServerName, _serverBaseUrl);
+
+                    await RegisterWithServerAsync(_serverBaseUrl, ct);
+                    _consecutiveServerFailures = 0;
+                    return true;
+                }
+                else
+                {
+                    _logger.LogWarning("[DISCOVERY] Autonomous server discovery timed out without response. Retrying on next cycle.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[DISCOVERY] Autonomous server discovery probe encountered an issue.");
+            }
+
+            return false;
+        }
+
+        private async Task RegisterWithServerAsync(string serverBaseUrl, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(serverBaseUrl) || string.Equals(serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            try
+            {
+                string cleanBase = serverBaseUrl.TrimEnd('/');
+                string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? $"{cleanBase}/api/v1/agent/register"
+                    : cleanBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                        ? $"https://{cleanBase.Substring("http://".Length)}/api/v1/agent/register"
+                        : $"https://{cleanBase}/api/v1/agent/register";
+
+                var request = new AgentRegistrationRequest
+                {
+                    MachineName = Environment.MachineName,
+                    OsVersion = Environment.OSVersion.ToString(),
+                    AgentVersion = "1.0.4",
+                    RequestTimestampUtc = DateTime.UtcNow
+                };
+
+                using var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(targetEndpoint, content, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    string json = await response.Content.ReadAsStringAsync(ct);
+                    var regResponse = JsonSerializer.Deserialize<AgentRegistrationResponse>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (regResponse?.Policy != null)
+                    {
+                        _currentPolicy = regResponse.Policy;
+                        _logger.LogInformation("[HANDSHAKE] Handshake completed successfully with server. StreamKey: {Key}, FPS: {Fps}, Bitrate: {Bitrate}",
+                            regResponse.AssignedStreamKey, _currentPolicy.TargetFps, _currentPolicy.VideoBitrate);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("[HANDSHAKE] Initial registration ping completed with info: {Msg}", ex.Message);
             }
         }
 

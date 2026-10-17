@@ -122,6 +122,36 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(heartbeatResponse);
         }
 
+        [HttpPost("register")]
+        public async Task<IActionResult> RegisterAgent([FromBody] AgentRegistrationRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.MachineName))
+            {
+                return BadRequest("Invalid registration payload: MachineName is required.");
+            }
+
+            string requestHost = Request.Host.Host;
+            var policy = await _telemetryState.GetAgentPolicyAsync(request.MachineName, requestHost);
+            string safeStreamKey = Uri.EscapeDataString(request.MachineName.Trim().Replace(" ", "_"));
+
+            var response = new AgentRegistrationResponse
+            {
+                AgentId = !string.IsNullOrWhiteSpace(request.HardwareUuid) ? request.HardwareUuid : Guid.NewGuid().ToString(),
+                ServerName = Environment.MachineName,
+                AssignedStreamKey = safeStreamKey,
+                RtmpServerBaseUrl = policy.RtmpServerBaseUrl,
+                Policy = policy,
+                HeartbeatIntervalSeconds = 2,
+                ServerUtcTime = DateTime.UtcNow,
+                ServerUtcEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+
+            _logger.LogInformation("[AGENT REGISTRATION] Successfully registered agent for host '{MachineName}' (OS: {Os}, StreamKey: {Key})",
+                request.MachineName, request.OsVersion ?? "Unknown", safeStreamKey);
+
+            return Ok(response);
+        }
+
         [HttpPost("upload-buffer")]
         [Consumes("multipart/form-data")]
         [RequestSizeLimit(BufferLimits.MaxRequestSizeBytes)]

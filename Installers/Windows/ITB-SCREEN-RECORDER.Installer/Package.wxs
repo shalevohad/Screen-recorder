@@ -43,7 +43,7 @@
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<Property Id="SERVER_IP" Value="127.0.0.1" />
+		<Property Id="SERVER_IP" Value="AUTO" />
 
 		<UI>
 			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
@@ -52,10 +52,11 @@
 				<Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
 
 				<Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent Configuration" />
-				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address or Hostname of the Central ITB Server." />
+				<Control Id="Description" Type="Text" X="25" Y="23" Width="320" Height="15" Transparent="yes" NoPrefix="yes" Text="Central ITB Server discovery and connection settings." />
 
-				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP/Host (e.g. 192.168.1.50):" />
-				<Control Id="IpEdit" Type="Edit" X="20" Y="75" Width="200" Height="18" Property="SERVER_IP" />
+				<Control Id="IpLabel" Type="Text" X="20" Y="55" Width="330" Height="15" Text="Central Server IP/Host (Default: AUTO for Autonomous Discovery):" />
+				<Control Id="IpEdit" Type="Edit" X="20" Y="70" Width="200" Height="18" Property="SERVER_IP" />
+				<Control Id="AutoNote" Type="Text" X="20" Y="95" Width="330" Height="32" Text="Leave as 'AUTO' to autonomously discover and register with the Central Server via UDP Multicast and corporate DNS. Enter an IP or hostname only to override." />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />

@@ -10,6 +10,7 @@ using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using ITB_SCREEN_RECORDER.Server.Data;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Network;
 using ITB_SCREEN_RECORDER.Server.Services.Retention;
 using ITB_SCREEN_RECORDER.Server.Services.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -307,6 +308,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddHostedService<RecordingChunkScheduler>();
                 builder.Services.AddHostedService<ServerTelemetryHostService>();
                 builder.Services.AddHostedService<CertificateRenewalWorker>();
+                builder.Services.AddHostedService<ServerDiscoveryHostedService>();
 
                 builder.Services.AddSingleton<IRetentionTask, StorageChunksRetentionTask>();
                 builder.Services.AddSingleton<IRetentionTask, KeystrokesRetentionTask>();
