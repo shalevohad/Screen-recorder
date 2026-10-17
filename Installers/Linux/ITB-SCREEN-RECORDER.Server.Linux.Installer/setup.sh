@@ -10,8 +10,14 @@ FEATURES_DEST_DIR="$INSTALL_ROOT/Features"
 
 # בדיקת דגלי התקנה שקטה ופרמטרים משורת הפקודה
 IS_UNATTENDED=false
+CLI_ROLE_PASSED=false
 DISCOVERY_PORT=5098
 DISCOVERY_MULTICAST="239.255.10.90"
+ENABLE_VIP=false
+VIRTUAL_IP=""
+VIRTUAL_IP_SUBNET="255.255.255.0"
+NETWORK_INTERFACE=""
+PARTNER_URL=""
 
 for arg in "$@"; do
     case "$arg" in
@@ -19,6 +25,7 @@ for arg in "$@"; do
             IS_UNATTENDED=true
             ;;
         --role=*|-r=*)
+            CLI_ROLE_PASSED=true
             raw_role="${arg#*=}"
             raw_role_clean="$(echo "$raw_role" | tr '[:upper:]' '[:lower:]' | xargs)"
             case "$raw_role_clean" in
@@ -45,6 +52,31 @@ for arg in "$@"; do
         --discovery-multicast=*)
             DISCOVERY_MULTICAST="${arg#*=}"
             ;;
+        --virtual-ip=*|-vip=*)
+            VIRTUAL_IP="${arg#*=}"
+            ENABLE_VIP=true
+            ;;
+        --enable-vip)
+            ENABLE_VIP=true
+            ;;
+        --enable-vip=*)
+            val="${arg#*=}"
+            val_clean="$(echo "$val" | tr '[:upper:]' '[:lower:]')"
+            if [ "$val_clean" = "true" ] || [ "$val_clean" = "1" ] || [ "$val_clean" = "yes" ]; then
+                ENABLE_VIP=true
+            else
+                ENABLE_VIP=false
+            fi
+            ;;
+        --virtual-ip-subnet=*)
+            VIRTUAL_IP_SUBNET="${arg#*=}"
+            ;;
+        --network-interface=*)
+            NETWORK_INTERFACE="${arg#*=}"
+            ;;
+        --partner-url=*)
+            PARTNER_URL="${arg#*=}"
+            ;;
     esac
 done
 
@@ -65,6 +97,11 @@ NETAPP_MOUNT="/mnt/netapp/capturerecordings"
 LOGS_DIR="/var/log/itb-screen-recorder"
 SERVER_ROLE="${SERVER_ROLE:-Primary}"
 SERVER_PRIORITY="${SERVER_PRIORITY:-1}"
+ENABLE_VIP="${ENABLE_VIP:-false}"
+VIRTUAL_IP="${VIRTUAL_IP:-}"
+VIRTUAL_IP_SUBNET="${VIRTUAL_IP_SUBNET:-255.255.255.0}"
+NETWORK_INTERFACE="${NETWORK_INTERFACE:-}"
+PARTNER_URL="${PARTNER_URL:-}"
 
 # 💡 1. טעינת הגדרות קודמות מתוך הקובץ הקיים (שדרוג / התקנה חוזרת - SSOT)
 if [ -f "$TARGET_CONFIG" ] && command -v python3 >/dev/null 2>&1; then
@@ -105,6 +142,11 @@ try:
     srv_priority = disc_cfg.get("Priority", 1)
     disc_port = disc_cfg.get("Port", 5098)
     disc_mcast = disc_cfg.get("MulticastAddress", "239.255.10.90")
+    en_vip = disc_cfg.get("EnableVirtualIp", False)
+    vip_addr = disc_cfg.get("VirtualIp", "")
+    vip_sub = disc_cfg.get("VirtualIpSubnetMask", "255.255.255.0")
+    iface_name = disc_cfg.get("NetworkInterfaceName", "")
+    partner_u = disc_cfg.get("PartnerServerUrl", "")
 
     if re.search(r'aggregate|aggrigate|agg|super', str(srv_role_raw), re.I):
         srv_role = "Aggregate"
@@ -126,10 +168,80 @@ try:
     print(f"SERVER_PRIORITY={srv_priority}")
     print(f"DISCOVERY_PORT={disc_port}")
     print(f"DISCOVERY_MULTICAST='{disc_mcast}'")
+    print(f"ENABLE_VIP={'true' if en_vip else 'false'}")
+    print(f"VIRTUAL_IP='{vip_addr or ''}'")
+    print(f"VIRTUAL_IP_SUBNET='{vip_sub or '255.255.255.0'}'")
+    print(f"NETWORK_INTERFACE='{iface_name or ''}'")
+    print(f"PARTNER_URL='{partner_u or ''}'")
 except Exception:
     pass
 EOF
 )"
+# 💡 1.5 אם מדובר בהתקנה נקייה - ביצוע גילוי רשתי אוטונומי לאיתור שרת Primary קיים
+elif [ ! -f "$TARGET_CONFIG" ] && [ "$CLI_ROLE_PASSED" != "true" ] && command -v python3 >/dev/null 2>&1; then
+    echo "--> Running autonomous network discovery probe to check for existing Primary server..."
+    eval "$(python3 - <<EOF
+import socket
+import json
+
+found_primary = False
+server_ip = ""
+virtual_ip = ""
+
+try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    sock.settimeout(1.2)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+    probe_payload = json.dumps({"magic": "ITB_DISCOVERY_PROBE"}).encode('utf-8')
+
+    try:
+        sock.sendto(probe_payload, ("$DISCOVERY_MULTICAST", int("$DISCOVERY_PORT")))
+    except Exception:
+        pass
+    try:
+        sock.sendto(probe_payload, ("255.255.255.255", int("$DISCOVERY_PORT")))
+    except Exception:
+        pass
+
+    while True:
+        try:
+            data, addr = sock.recvfrom(4096)
+            resp = json.loads(data.decode('utf-8'))
+            if resp.get("magic") == "ITB_DISCOVERY_RESPONSE":
+                role = str(resp.get("role", "")).lower()
+                if role == "primary":
+                    found_primary = True
+                    ips = resp.get("serverIps", [])
+                    server_ip = ips[0] if ips else addr[0]
+                    virtual_ip = resp.get("virtualIp", "") or ""
+                    break
+        except socket.timeout:
+            break
+        except Exception:
+            break
+    sock.close()
+except Exception:
+    pass
+
+if found_primary:
+    print("AUTODETECT_PRIMARY=true")
+    print("SERVER_ROLE='Secondary'")
+    print("SERVER_PRIORITY=2")
+    if server_ip:
+        print(f"PARTNER_URL='http://{server_ip}:5090'")
+    if virtual_ip:
+        print(f"VIRTUAL_IP='{virtual_ip}'")
+        print("ENABLE_VIP=true")
+EOF
+)"
+    if [ "$AUTODETECT_PRIMARY" = "true" ]; then
+        echo "  [Discovery] Active Primary server detected on the network!"
+        echo "  [Discovery] Automatically configured as Secondary node with Partner URL: $PARTNER_URL"
+        if [ -n "$VIRTUAL_IP" ]; then
+            echo "  [Discovery] Cluster Virtual IP inherited: $VIRTUAL_IP"
+        fi
+    fi
 fi
 
 # 💡 2. תפריט אינטראקטיבי להתאמת תפקיד שרת, פורטים ונתיבים
@@ -170,6 +282,12 @@ if [ "$IS_UNATTENDED" = false ]; then
 
     echo ""
     echo "  Configured Role: $SERVER_ROLE (Priority Level: $SERVER_PRIORITY)"
+    if [ "$SERVER_ROLE" = "Secondary" ] && [ -n "$PARTNER_URL" ]; then
+        echo "  • Partner Primary Server: $PARTNER_URL"
+    fi
+    if [ "$ENABLE_VIP" = "true" ] && [ -n "$VIRTUAL_IP" ]; then
+        echo "  • Cluster Virtual IP (VIP): $VIRTUAL_IP (Subnet: $VIRTUAL_IP_SUBNET)"
+    fi
     echo ""
     echo "Current Configuration Layout:"
     echo "  [Network Ports]"
@@ -204,9 +322,31 @@ if [ "$IS_UNATTENDED" = false ]; then
             HLS_PORT="${custom_val:-$HLS_PORT}"
 
             echo ""
-            echo "--- Cluster Architecture & Discovery Settings ---"
+            echo "--- Cluster Architecture & VIP Redundancy ---"
             read -p "  Enter Cluster Priority Level (1 = Primary, 2+ = Secondary, 0 = Aggregate) [$SERVER_PRIORITY]: " custom_val
             SERVER_PRIORITY="${custom_val:-$SERVER_PRIORITY}"
+
+            if [ "$SERVER_ROLE" = "Secondary" ]; then
+                read -p "  Enter Partner Primary Server URL [$PARTNER_URL]: " custom_val
+                PARTNER_URL="${custom_val:-$PARTNER_URL}"
+            fi
+
+            read -p "  Enable Cluster Virtual IP (VIP)? (y/n) [Current: $ENABLE_VIP]: " custom_vip_choice
+            case "$custom_vip_choice" in
+                y|Y|[yY][eE][sS]) ENABLE_VIP="true" ;;
+                n|N|[nN][oO]) ENABLE_VIP="false" ;;
+            esac
+
+            if [ "$ENABLE_VIP" = "true" ]; then
+                read -p "  Enter Cluster Virtual IP (VIP) [$VIRTUAL_IP]: " custom_val
+                VIRTUAL_IP="${custom_val:-$VIRTUAL_IP}"
+
+                read -p "  Enter VIP Subnet Mask [$VIRTUAL_IP_SUBNET]: " custom_val
+                VIRTUAL_IP_SUBNET="${custom_val:-$VIRTUAL_IP_SUBNET}"
+
+                read -p "  Enter Network Interface Name (leave empty for auto) [$NETWORK_INTERFACE]: " custom_val
+                NETWORK_INTERFACE="${custom_val:-$NETWORK_INTERFACE}"
+            fi
 
             read -p "  Enter Discovery UDP Port [$DISCOVERY_PORT]: " custom_val
             DISCOVERY_PORT="${custom_val:-$DISCOVERY_PORT}"
@@ -313,6 +453,11 @@ try:
     disc["Priority"] = int("$SERVER_PRIORITY")
     disc["Port"] = int("$DISCOVERY_PORT")
     disc["MulticastAddress"] = "$DISCOVERY_MULTICAST"
+    disc["PartnerServerUrl"] = "$PARTNER_URL"
+    disc["EnableVirtualIp"] = str("$ENABLE_VIP").lower() in ("true", "1", "yes", "y")
+    disc["VirtualIp"] = "$VIRTUAL_IP"
+    disc["VirtualIpSubnetMask"] = "$VIRTUAL_IP_SUBNET"
+    disc["NetworkInterfaceName"] = "$NETWORK_INTERFACE"
 
     app_cfg = cfg.setdefault("AppConfig", {})
     app_cfg["LogFilePath"] = "$LOGS_DIR/server.log"

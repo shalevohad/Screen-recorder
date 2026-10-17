@@ -38,6 +38,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 discoveryDto.PartnerServerUrl = (string?)discovery["PartnerServerUrl"];
                 discoveryDto.AutoFailoverDashboard = (bool)(discovery["AutoFailoverDashboard"] ?? true);
                 discoveryDto.DashboardFailoverDelaySeconds = (int)(discovery["DashboardFailoverDelaySeconds"] ?? 8);
+                discoveryDto.EnableVirtualIp = (bool)(discovery["EnableVirtualIp"] ?? false);
+                discoveryDto.VirtualIp = (string?)discovery["VirtualIp"];
+                discoveryDto.VirtualIpSubnetMask = (string)(discovery["VirtualIpSubnetMask"] ?? "255.255.255.0");
+                discoveryDto.NetworkInterfaceName = (string?)discovery["NetworkInterfaceName"];
             }
 
             return new SystemConfigDto
@@ -109,6 +113,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     discNode["PartnerServerUrl"] = dto.Discovery.PartnerServerUrl ?? "";
                     discNode["AutoFailoverDashboard"] = dto.Discovery.AutoFailoverDashboard;
                     discNode["DashboardFailoverDelaySeconds"] = dto.Discovery.DashboardFailoverDelaySeconds;
+                    discNode["EnableVirtualIp"] = dto.Discovery.EnableVirtualIp;
+                    discNode["VirtualIp"] = dto.Discovery.VirtualIp ?? "";
+                    discNode["VirtualIpSubnetMask"] = dto.Discovery.VirtualIpSubnetMask ?? "255.255.255.0";
+                    discNode["NetworkInterfaceName"] = dto.Discovery.NetworkInterfaceName ?? "";
                 }
 
                 var json = root!.ToJsonString(new JsonSerializerOptions { WriteIndented = true });

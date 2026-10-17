@@ -83,6 +83,14 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Range(1, 60)]
         public int DashboardFailoverDelaySeconds { get; set; } = 8;
+
+        public bool EnableVirtualIp { get; set; } = false;
+
+        public string? VirtualIp { get; set; }
+
+        public string VirtualIpSubnetMask { get; set; } = "255.255.255.0";
+
+        public string? NetworkInterfaceName { get; set; }
     }
 
     public class DstTransitionRule

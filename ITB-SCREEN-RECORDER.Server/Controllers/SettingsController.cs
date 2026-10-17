@@ -185,6 +185,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         config.Discovery.AutoFailoverDashboard = updatedConfig.Discovery.AutoFailoverDashboard;
                         if (updatedConfig.Discovery.DashboardFailoverDelaySeconds > 0)
                             config.Discovery.DashboardFailoverDelaySeconds = updatedConfig.Discovery.DashboardFailoverDelaySeconds;
+                        config.Discovery.EnableVirtualIp = updatedConfig.Discovery.EnableVirtualIp;
+                        config.Discovery.VirtualIp = updatedConfig.Discovery.VirtualIp;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.VirtualIpSubnetMask))
+                            config.Discovery.VirtualIpSubnetMask = updatedConfig.Discovery.VirtualIpSubnetMask;
+                        config.Discovery.NetworkInterfaceName = updatedConfig.Discovery.NetworkInterfaceName;
                     }
                 });
 

@@ -309,6 +309,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddHostedService<ServerTelemetryHostService>();
                 builder.Services.AddHostedService<CertificateRenewalWorker>();
                 builder.Services.AddHostedService<ServerDiscoveryHostedService>();
+                builder.Services.AddHostedService<VirtualIpManagerService>();
 
                 builder.Services.AddSingleton<IRetentionTask, StorageChunksRetentionTask>();
                 builder.Services.AddSingleton<IRetentionTask, KeystrokesRetentionTask>();

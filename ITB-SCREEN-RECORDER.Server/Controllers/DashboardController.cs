@@ -55,7 +55,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 MulticastAddress = !string.IsNullOrWhiteSpace(disc.MulticastAddress) ? disc.MulticastAddress : "239.255.10.90",
                 PartnerServerUrl = disc.PartnerServerUrl ?? string.Empty,
                 AutoFailoverDashboard = disc.AutoFailoverDashboard,
-                FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8
+                FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8,
+                VirtualIp = disc.VirtualIp ?? string.Empty,
+                EnableVirtualIp = disc.EnableVirtualIp
             });
         }
 

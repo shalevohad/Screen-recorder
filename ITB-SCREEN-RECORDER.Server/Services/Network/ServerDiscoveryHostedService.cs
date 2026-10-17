@@ -165,7 +165,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     RtmpBaseUrl = $"rtmps://{preferredIp}:{rtmpPort}/live",
                     ServerIps = localIps,
                     ServerUtcTime = DateTime.UtcNow,
-                    AcceptingNewAgents = true
+                    AcceptingNewAgents = true,
+                    VirtualIp = discoveryConfig.EnableVirtualIp ? discoveryConfig.VirtualIp : null,
+                    EnableVirtualIp = discoveryConfig.EnableVirtualIp
                 };
 
                 byte[] respBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(response));

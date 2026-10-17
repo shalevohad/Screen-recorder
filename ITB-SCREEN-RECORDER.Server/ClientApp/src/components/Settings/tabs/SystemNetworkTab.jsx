@@ -326,7 +326,48 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                     </div>
                 </div>
 
+                <div className="settings-fields-row" style={{ marginTop: '12px' }}>
+                    <div className="settings-field">
+                        <span>Cluster Virtual IP (VIP)</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. 192.168.1.10"
+                            value={discovery.virtualIp || ''}
+                            onChange={e => updateDiscoveryField('virtualIp', e.target.value)}
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>VIP Subnet Mask</span>
+                        <input
+                            type="text"
+                            placeholder="255.255.255.0"
+                            value={discovery.virtualIpSubnetMask || '255.255.255.0'}
+                            onChange={e => updateDiscoveryField('virtualIpSubnetMask', e.target.value)}
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Network Interface (Optional)</span>
+                        <input
+                            type="text"
+                            placeholder="Auto-detect active adapter"
+                            value={discovery.networkInterfaceName || ''}
+                            onChange={e => updateDiscoveryField('networkInterfaceName', e.target.value)}
+                        />
+                    </div>
+                </div>
+
                 <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap' }}>
+                    <label className="tactical-checkbox-label">
+                        <input
+                            type="checkbox"
+                            checked={Boolean(discovery.enableVirtualIp)}
+                            onChange={e => updateDiscoveryField('enableVirtualIp', e.target.checked)}
+                        />
+                        <span>Enable Autonomous Cluster Virtual IP (VIP) Management</span>
+                    </label>
+
                     <label className="tactical-checkbox-label">
                         <input
                             type="checkbox"

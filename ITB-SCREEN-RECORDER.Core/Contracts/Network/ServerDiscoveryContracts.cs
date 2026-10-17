@@ -99,6 +99,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("acceptingNewAgents")]
         public bool AcceptingNewAgents { get; set; } = true;
+
+        [JsonPropertyName("virtualIp")]
+        public string? VirtualIp { get; set; }
+
+        [JsonPropertyName("enableVirtualIp")]
+        public bool EnableVirtualIp { get; set; }
     }
 
     public class AgentRegistrationRequest

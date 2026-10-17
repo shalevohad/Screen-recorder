@@ -507,6 +507,53 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             Assert.Equal(expectedAggregate, response.IsAggregate);
         }
 
+        [Fact]
+        public void ServerDiscoveryContracts_ResponseSerialization_PreservesVirtualIpMetadata()
+        {
+            var response = new ServerDiscoveryResponse
+            {
+                ServerId = "SRV-CLUSTER-01",
+                Role = "Primary",
+                EnableVirtualIp = true,
+                VirtualIp = "192.168.1.200"
+            };
+
+            string json = JsonSerializer.Serialize(response);
+            var deserialized = JsonSerializer.Deserialize<ServerDiscoveryResponse>(json);
+
+            Assert.NotNull(deserialized);
+            Assert.True(deserialized.EnableVirtualIp);
+            Assert.Equal("192.168.1.200", deserialized.VirtualIp);
+        }
+
+        [Fact]
+        public async Task VirtualIpManagerService_WhenDisabled_DoesNotHoldVip()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    EnableVirtualIp = false,
+                    VirtualIp = "192.168.1.200",
+                    Role = "Primary"
+                }
+            };
+
+            var monitorMock = new Mock<IOptionsMonitor<SystemConfig>>();
+            monitorMock.Setup(m => m.CurrentValue).Returns(config);
+
+            var loggerMock = new Mock<ILogger<VirtualIpManagerService>>();
+
+            var service = new VirtualIpManagerService(monitorMock.Object, loggerMock.Object);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+            await service.StartAsync(cts.Token);
+            await Task.Delay(200);
+            await service.StopAsync(CancellationToken.None);
+
+            Assert.False(service.IsHoldingVip);
+        }
+
         #endregion
     }
 }

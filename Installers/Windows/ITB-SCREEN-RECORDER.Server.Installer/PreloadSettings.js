@@ -86,6 +86,16 @@ try {
                 var mMcast = text.match(/"MulticastAddress"\s*:\s*"([^"]+)"/i);
                 if (mMcast && mMcast[1]) Session.Property("DISCOVERY_MULTICAST") = mMcast[1];
 
+                // שליפת הגדרות Virtual IP (VIP) ו-Partner URL
+                var mVip = text.match(/"VirtualIp"\s*:\s*"([^"]+)"/i);
+                if (mVip && mVip[1]) Session.Property("VIRTUAL_IP") = mVip[1];
+
+                var mEnVip = text.match(/"EnableVirtualIp"\s*:\s*(true|false)/i);
+                if (mEnVip && mEnVip[1]) Session.Property("ENABLE_VIP") = (mEnVip[1].toLowerCase() === "true" ? "1" : "0");
+
+                var mPartner = text.match(/"PartnerServerUrl"\s*:\s*"([^"]+)"/i);
+                if (mPartner && mPartner[1]) Session.Property("PARTNER_URL") = mPartner[1];
+
                 // עדכון INSTALLFOLDER לנתיב שנמצא בו הקונפיגורציה
                 Session.Property("INSTALLFOLDER") = dir;
 
@@ -94,6 +104,43 @@ try {
             }
         }
         if (found) break;
+    }
+
+    // 4. אם מדובר בהתקנה נקייה - ביצוע גילוי רשתי אוטונומי לאיתור שרת Primary קיים
+    if (!found) {
+        try {
+            var shell = new ActiveXObject("WScript.Shell");
+            var psScript = "$u=New-Object Net.Sockets.UdpClient; $u.Client.ReceiveTimeout=1200; " +
+                "$p=[Text.Encoding]::UTF8.GetBytes('{\"magic\":\"ITB_DISCOVERY_PROBE\"}'); " +
+                "$u.Send($p,$p.Length,'239.255.10.90',5098); $u.Send($p,$p.Length,'255.255.255.255',5098); " +
+                "$e=New-Object Net.IPEndPoint([Net.IPAddress]::Any,0); " +
+                "$r=$u.Receive([ref]$e); [Text.Encoding]::UTF8.GetString($r)";
+
+            var exec = shell.Exec("powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"" + psScript + "\"");
+            var output = exec.StdOut.ReadAll();
+
+            if (output && output.indexOf("ITB_DISCOVERY_RESPONSE") !== -1) {
+                var mRole = output.match(/"role"\s*:\s*"([^"]+)"/i);
+                if (mRole && mRole[1].toLowerCase() === "primary") {
+                    // זוהה שרת Primary פעיל ברשת - מצרפים את השרת הנוכחי כ-Secondary!
+                    Session.Property("SERVER_ROLE") = "Secondary";
+                    Session.Property("SERVER_PRIORITY") = "2";
+
+                    var mIp = output.match(/"serverIps"\s*:\s*\[\s*"([^"]+)"/i);
+                    if (mIp && mIp[1]) {
+                        Session.Property("PARTNER_URL") = "http://" + mIp[1] + ":5090";
+                    }
+
+                    var mDiscVip = output.match(/"virtualIp"\s*:\s*"([^"]+)"/i);
+                    if (mDiscVip && mDiscVip[1]) {
+                        Session.Property("VIRTUAL_IP") = mDiscVip[1];
+                        Session.Property("ENABLE_VIP") = "1";
+                    }
+                }
+            }
+        } catch (probeErr) {
+            // אם הבדיקה נכשלה, נשמרים ערכי ברירת המחדל
+        }
     }
 } catch (err) {
     // בהתקנה נקייה ישמרו ערכי ברירת המחדל

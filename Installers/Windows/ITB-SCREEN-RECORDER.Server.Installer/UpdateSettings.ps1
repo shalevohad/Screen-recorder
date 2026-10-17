@@ -11,7 +11,10 @@ param(
     [string]$ServerRole = "Primary",
     [int]$ServerPriority = 1,
     [int]$DiscoveryPort = 5098,
-    [string]$DiscoveryMulticast = "239.255.10.90"
+    [string]$DiscoveryMulticast = "239.255.10.90",
+    [string]$VirtualIp = "",
+    [bool]$EnableVirtualIp = $false,
+    [string]$PartnerServerUrl = ""
 )
 
 $log = 'C:\Windows\Temp\itb-server-setup.log'
@@ -100,6 +103,29 @@ try {
             $content = $content -replace ('(?i)' + $q + 'MulticastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'MulticastAddress' + $q + ': ' + $q + $DiscoveryMulticast + $q)
         } else {
             $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "MulticastAddress" + $q + ": " + $q + $DiscoveryMulticast + $q + ",")
+        }
+
+        # עדכון Virtual IP
+        if (-not [string]::IsNullOrWhiteSpace($VirtualIp)) { $EnableVirtualIp = $true }
+        $vEnStr = if ($EnableVirtualIp) { "true" } else { "false" }
+        if ($content -match ('(?i)' + $q + 'EnableVirtualIp' + $q + '\s*:\s*(true|false)')) {
+            $content = $content -replace ('(?i)' + $q + 'EnableVirtualIp' + $q + '\s*:\s*(true|false)'), ($q + 'EnableVirtualIp' + $q + ': ' + $vEnStr)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "EnableVirtualIp" + $q + ": " + $vEnStr + ",")
+        }
+
+        if ($content -match ('(?i)' + $q + 'VirtualIp' + $q + '\s*:\s*' + $q + '.*?' + $q)) {
+            $content = $content -replace ('(?i)' + $q + 'VirtualIp' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'VirtualIp' + $q + ': ' + $q + $VirtualIp + $q)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "VirtualIp" + $q + ": " + $q + $VirtualIp + $q + ",")
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($PartnerServerUrl)) {
+            if ($content -match ('(?i)' + $q + 'PartnerServerUrl' + $q + '\s*:\s*' + $q + '.*?' + $q)) {
+                $content = $content -replace ('(?i)' + $q + 'PartnerServerUrl' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'PartnerServerUrl' + $q + ': ' + $q + $PartnerServerUrl + $q)
+            } else {
+                $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "PartnerServerUrl" + $q + ": " + $q + $PartnerServerUrl + $q + ",")
+            }
         }
 
         $content | Set-Content $file -Encoding UTF8

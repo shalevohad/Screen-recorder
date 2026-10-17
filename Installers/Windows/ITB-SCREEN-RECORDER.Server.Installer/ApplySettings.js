@@ -34,6 +34,10 @@ try {
         var serverPriority = parts[7] || "1";
         var discPort = parts[8] || "5098";
         var discMcast = parts[9] || "239.255.10.90";
+        var enableVip = (parts[10] === "1" || parts[10] === "true");
+        var virtualIp = parts[11] || "";
+        var partnerUrl = parts[12] || "";
+        if (virtualIp.length > 0) enableVip = true;
 
         // נירמול תפקיד השרת ועדיפות תקנית
         var cleanRole = (serverRole + "").toLowerCase().replace(/^\s+|\s+$/g, "");
@@ -128,6 +132,27 @@ try {
                     content = content.replace(/"MulticastAddress"\s*:\s*"[^"]*"/gi, '"MulticastAddress": "' + discMcast + '"');
                 } else {
                     content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "MulticastAddress": "' + discMcast + '",');
+                }
+
+                // Virtual IP (VIP) and Partner Server URL
+                if (/"EnableVirtualIp"\s*:\s*(true|false)/i.test(content)) {
+                    content = content.replace(/"EnableVirtualIp"\s*:\s*(true|false)/gi, '"EnableVirtualIp": ' + (enableVip ? "true" : "false"));
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "EnableVirtualIp": ' + (enableVip ? "true" : "false") + ',');
+                }
+
+                if (/"VirtualIp"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"VirtualIp"\s*:\s*"[^"]*"/gi, '"VirtualIp": "' + virtualIp + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "VirtualIp": "' + virtualIp + '",');
+                }
+
+                if (partnerUrl && partnerUrl.length > 0) {
+                    if (/"PartnerServerUrl"\s*:\s*"[^"]*"/i.test(content)) {
+                        content = content.replace(/"PartnerServerUrl"\s*:\s*"[^"]*"/gi, '"PartnerServerUrl": "' + partnerUrl + '"');
+                    } else {
+                        content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "PartnerServerUrl": "' + partnerUrl + '",');
+                    }
                 }
 
                 var outJ = fso.CreateTextFile(jp, true);
