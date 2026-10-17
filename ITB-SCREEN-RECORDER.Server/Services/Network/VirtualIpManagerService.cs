@@ -25,16 +25,19 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
     public class VirtualIpManagerService : BackgroundService
     {
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
+        private readonly ClusterMeshService? _clusterMesh;
         private readonly ILogger<VirtualIpManagerService> _logger;
         private bool _isHoldingVip = false;
         private int _failedHealthChecks = 0;
 
         public VirtualIpManagerService(
             IOptionsMonitor<SystemConfig> configMonitor,
-            ILogger<VirtualIpManagerService> logger)
+            ILogger<VirtualIpManagerService> logger,
+            ClusterMeshService? clusterMesh = null)
         {
             _configMonitor = configMonitor;
             _logger = logger;
+            _clusterMesh = clusterMesh;
         }
 
         public bool IsHoldingVip => _isHoldingVip;
@@ -59,7 +62,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("[VIP MANAGER] Service started. Monitoring cluster redundancy role and VIP state...");
+            _logger.LogInformation("[VIP MANAGER] Service started. Monitoring cluster redundancy role, mesh peers, and VIP state...");
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -78,47 +81,69 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                         continue;
                     }
 
-                    bool isPrimary = string.Equals(disc.Role, "Primary", StringComparison.OrdinalIgnoreCase);
-                    bool isSecondary = string.Equals(disc.Role, "Secondary", StringComparison.OrdinalIgnoreCase);
-
-                    if (isPrimary)
+                    // 1. Dynamic Cluster Mesh Integration (Zero-Conf Active-Active or Standalone)
+                    if (_clusterMesh != null)
                     {
-                        // Primary node must always attempt to hold the Virtual IP
-                        if (!_isHoldingVip)
+                        bool shouldHold = _clusterMesh.ShouldLocalNodeHoldVip();
+                        if (shouldHold && !_isHoldingVip)
                         {
+                            _logger.LogInformation("[VIP MANAGER] Elected as active VIP leader for {Vip}. Acquiring VIP...", disc.VirtualIp);
                             await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
                         }
-                    }
-                    else if (isSecondary)
-                    {
-                        // Secondary node monitors Primary health and takes over only if Primary fails
-                        string partnerUrl = (disc.PartnerServerUrl ?? string.Empty).Trim();
-                        if (string.IsNullOrWhiteSpace(partnerUrl))
+                        else if (!shouldHold && _isHoldingVip)
                         {
-                            _logger.LogDebug("[VIP MANAGER] Secondary node has no PartnerServerUrl configured for VIP failover.");
+                            _logger.LogInformation("[VIP MANAGER] Releasing VIP {Vip} to higher-priority active cluster peer.", disc.VirtualIp);
+                            await ReleaseVirtualIpAsync(disc).ConfigureAwait(false);
+                        }
+                    }
+                    else
+                    {
+                        // 2. Standalone or Manual Redundancy Fallback (when running without ClusterMesh)
+                        bool isSecondary = string.Equals(disc.Role, "Secondary", StringComparison.OrdinalIgnoreCase) ||
+                                           string.Equals(disc.Role, "Standby", StringComparison.OrdinalIgnoreCase);
+
+                        if (!isSecondary)
+                        {
+                            // Standalone or Primary: actively hold the VIP
+                            if (!_isHoldingVip)
+                            {
+                                await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
+                            }
                         }
                         else
                         {
-                            bool primaryHealthy = await ServerDiscoveryClient.VerifyServerHealthAsync(partnerUrl, 1500, stoppingToken).ConfigureAwait(false);
-                            if (primaryHealthy)
+                            // Secondary node with configured partner
+                            string partnerUrl = (disc.PartnerServerUrl ?? string.Empty).Trim();
+                            if (string.IsNullOrWhiteSpace(partnerUrl))
                             {
-                                _failedHealthChecks = 0;
-                                if (_isHoldingVip)
+                                // If no partner is configured, secondary runs autonomously and holds VIP
+                                if (!_isHoldingVip)
                                 {
-                                    _logger.LogInformation("[VIP MANAGER] Primary server recovered at {PartnerUrl}. Releasing VIP back to Primary node.", partnerUrl);
-                                    await ReleaseVirtualIpAsync(disc).ConfigureAwait(false);
+                                    await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
                                 }
                             }
                             else
                             {
-                                _failedHealthChecks++;
-                                _logger.LogWarning("[VIP MANAGER] Primary health check failed ({Count}/2) at {PartnerUrl}.", _failedHealthChecks, partnerUrl);
-
-                                // After 2 consecutive failures (~3-4 seconds), fail over and claim the VIP!
-                                if (_failedHealthChecks >= 2 && !_isHoldingVip)
+                                bool primaryHealthy = await ServerDiscoveryClient.VerifyServerHealthAsync(partnerUrl, 1500, stoppingToken).ConfigureAwait(false);
+                                if (primaryHealthy)
                                 {
-                                    _logger.LogWarning("[VIP MANAGER] Primary server confirmed OFFLINE! Secondary taking ownership of Virtual IP {Vip}.", disc.VirtualIp);
-                                    await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
+                                    _failedHealthChecks = 0;
+                                    if (_isHoldingVip)
+                                    {
+                                        _logger.LogInformation("[VIP MANAGER] Primary server recovered at {PartnerUrl}. Releasing VIP back to Primary node.", partnerUrl);
+                                        await ReleaseVirtualIpAsync(disc).ConfigureAwait(false);
+                                    }
+                                }
+                                else
+                                {
+                                    _failedHealthChecks++;
+                                    _logger.LogWarning("[VIP MANAGER] Primary health check failed ({Count}/2) at {PartnerUrl}.", _failedHealthChecks, partnerUrl);
+
+                                    if (_failedHealthChecks >= 2 && !_isHoldingVip)
+                                    {
+                                        _logger.LogWarning("[VIP MANAGER] Primary server confirmed OFFLINE! Secondary taking ownership of Virtual IP {Vip}.", disc.VirtualIp);
+                                        await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
+                                    }
                                 }
                             }
                         }
@@ -189,6 +214,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             if (success)
             {
                 _isHoldingVip = true;
+                _clusterMesh?.SetHoldingVip(true);
                 ActiveInterfaceName = iface;
                 LastVipTransitionUtc = DateTime.UtcNow;
                 _logger.LogInformation("[VIP MANAGER] Successfully ACQUIRED Virtual IP {Vip} on interface '{Interface}'.", vip, iface);
@@ -197,6 +223,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             {
                 _logger.LogWarning("[VIP MANAGER] Command to acquire Virtual IP {Vip} returned non-zero code. It may already be assigned or require elevated permissions.", vip);
                 _isHoldingVip = true; // Mark as holding if already assigned
+                _clusterMesh?.SetHoldingVip(true);
                 ActiveInterfaceName = iface;
                 LastVipTransitionUtc = DateTime.UtcNow;
             }
@@ -207,6 +234,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             if (string.IsNullOrWhiteSpace(disc.VirtualIp))
             {
                 _isHoldingVip = false;
+                _clusterMesh?.SetHoldingVip(false);
                 return;
             }
 
@@ -215,6 +243,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             if (string.IsNullOrWhiteSpace(iface))
             {
                 _isHoldingVip = false;
+                _clusterMesh?.SetHoldingVip(false);
                 return;
             }
 
@@ -232,6 +261,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
 
             _isHoldingVip = false;
+            _clusterMesh?.SetHoldingVip(false);
             LastVipTransitionUtc = DateTime.UtcNow;
             _logger.LogInformation("[VIP MANAGER] Virtual IP {Vip} released.", vip);
         }

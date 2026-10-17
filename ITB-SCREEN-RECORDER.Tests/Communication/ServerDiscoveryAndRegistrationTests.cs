@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Network.Discovery;
 using ITB_SCREEN_RECORDER.Server.Controllers;
 using ITB_SCREEN_RECORDER.Server.Services;
@@ -552,6 +553,202 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             await service.StopAsync(CancellationToken.None);
 
             Assert.False(service.IsHoldingVip);
+        }
+
+        [Fact]
+        public void ClusterMeshContracts_BeaconSerialization_PreservesHardwareAndLoadScore()
+        {
+            var beacon = new ClusterNodeBeacon
+            {
+                NodeId = "SRV-TEST-01",
+                MachineName = "RENDER-RIG-01",
+                ServerDisplayName = "ITB Transcoding Node",
+                ApiBaseUrl = "https://192.168.1.150:5090",
+                RtmpBaseUrl = "rtmps://192.168.1.150:19350/live",
+                Role = "Active-Active",
+                Priority = 1,
+                IsHoldingVip = true,
+                EnableVirtualIp = true,
+                VirtualIp = "192.168.1.200",
+                Hardware = new NodeHardwareProfile
+                {
+                    CpuCores = 16,
+                    TotalRamMb = 32768,
+                    DetectedEncoder = "h264_nvenc",
+                    GpuName = "NVIDIA RTX 4080",
+                    CapacityWeight = 3.5
+                },
+                Workload = new NodeWorkloadMetrics
+                {
+                    HostCpuPct = 25.5,
+                    HostRamPct = 40.0,
+                    GpuNvencPct = 18.0,
+                    ActiveStreams = 6,
+                    NormalizedLoadScore = 12.8
+                }
+            };
+
+            string json = JsonSerializer.Serialize(beacon);
+            var deserialized = JsonSerializer.Deserialize<ClusterNodeBeacon>(json);
+
+            Assert.NotNull(deserialized);
+            Assert.Equal(ClusterMeshConstants.BeaconMagic, deserialized.Magic);
+            Assert.Equal("RENDER-RIG-01", deserialized.MachineName);
+            Assert.Equal("Active-Active", deserialized.Role);
+            Assert.True(deserialized.IsHoldingVip);
+            Assert.Equal("192.168.1.200", deserialized.VirtualIp);
+            Assert.Equal("h264_nvenc", deserialized.Hardware.DetectedEncoder);
+            Assert.Equal(3.5, deserialized.Hardware.CapacityWeight);
+            Assert.Equal(6, deserialized.Workload.ActiveStreams);
+            Assert.Equal(12.8, deserialized.Workload.NormalizedLoadScore);
+        }
+
+        [Fact]
+        public void NodeHardwareProfile_CapacityWeight_CorrectlyWeightsNvencQsvCpu()
+        {
+            double nvencWeight = NodeHardwareProfile.CalculateCapacityWeight("h264_nvenc", 8);
+            double qsvWeight = NodeHardwareProfile.CalculateCapacityWeight("h264_qsv", 8);
+            double amfWeight = NodeHardwareProfile.CalculateCapacityWeight("h264_amf", 8);
+            double cpuWeight = NodeHardwareProfile.CalculateCapacityWeight("libx264", 8);
+
+            Assert.Equal(3.5, nvencWeight);
+            Assert.Equal(2.0, qsvWeight);
+            Assert.Equal(2.5, amfWeight);
+            Assert.Equal(1.0, cpuWeight);
+
+            // High-capacity GPU should have higher weight than QSV, and QSV higher than CPU
+            Assert.True(nvencWeight > qsvWeight);
+            Assert.True(qsvWeight > cpuWeight);
+        }
+
+        [Fact]
+        public void NodeWorkloadMetrics_ComputeLoadScore_WeightsHardwareCapacity()
+        {
+            // Scenario requested by user:
+            // Server A has powerful GPU (NVENC weight 3.5), handling 6 streams, CPU 20%, GPU 20%
+            // Server B has Intel QSV (weight 2.0), handling 3 streams, CPU 20%, GPU 20%
+            double scoreA = NodeWorkloadMetrics.ComputeLoadScore(
+                cpuPct: 20, ramPct: 30, gpuNvencPct: 20, activeStreams: 6, capacityWeight: 3.5);
+
+            double scoreB = NodeWorkloadMetrics.ComputeLoadScore(
+                cpuPct: 20, ramPct: 30, gpuNvencPct: 20, activeStreams: 3, capacityWeight: 2.0);
+
+            // Despite handling DOUBLE the streams, Server A's score should be comparable to Server B!
+            // Raw A = (20*0.4)+(30*0.1)+(6*5)+(20*0.3) = 8 + 3 + 30 + 6 = 47. 47 / 3.5 = 13.43
+            // Raw B = (20*0.4)+(30*0.1)+(3*5)+(20*0.3) = 8 + 3 + 15 + 6 = 32. 32 / 2.0 = 16.0
+            Assert.True(scoreA < scoreB, $"GPU node should have lower normalized strain ({scoreA} < {scoreB})");
+        }
+
+        [Fact]
+        public void ClusterMeshService_StandaloneSingleNode_ReturnsSelfAsOptimal()
+        {
+            var config = new SystemConfig
+            {
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    Priority = 1,
+                    EnableVirtualIp = true,
+                    VirtualIp = "192.168.1.200"
+                }
+            };
+            var configMock = new Mock<IOptionsMonitor<SystemConfig>>();
+            configMock.Setup(m => m.CurrentValue).Returns(config);
+
+            var telemetryState = new Mock<ITelemetryStateService>();
+            telemetryState.Setup(t => t.GetAllAgents()).Returns(new List<AgentTelemetryReport>());
+
+            var netTelemetry = new NetworkTelemetry();
+            var configurationMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+            var loggerMock = new Mock<ILogger<ClusterMeshService>>();
+
+            var meshService = new ClusterMeshService(
+                configMock.Object,
+                telemetryState.Object,
+                netTelemetry,
+                configurationMock.Object,
+                loggerMock.Object);
+
+            Assert.True(meshService.IsStandalone);
+            Assert.Equal(1, meshService.TotalActiveNodes);
+
+            var allNodes = meshService.GetAllNodes();
+            Assert.Single(allNodes);
+            Assert.True(allNodes[0].IsLocal);
+
+            var optimal = meshService.GetOptimalNodeForWorkload();
+            Assert.NotNull(optimal);
+            Assert.True(optimal.IsLocal);
+
+            // In standalone mode with VIP enabled, local node always holds VIP
+            Assert.True(meshService.ShouldLocalNodeHoldVip());
+        }
+
+        [Fact]
+        public async Task ClusterController_Overview_ReturnsStandaloneAndActiveActiveMeshMetadata()
+        {
+            var config = new SystemConfig
+            {
+                HttpPort = 5090,
+                MediaMtx = new MediaMtxSettings { RtmpPort = 19350 },
+                Discovery = new DiscoverySettings
+                {
+                    Role = "Active-Active",
+                    Priority = 1,
+                    EnableVirtualIp = false
+                }
+            };
+            var configMock = new Mock<IOptionsMonitor<SystemConfig>>();
+            configMock.Setup(m => m.CurrentValue).Returns(config);
+
+            var telemetryState = new Mock<ITelemetryStateService>();
+            telemetryState.Setup(t => t.GetAllAgents()).Returns(new List<AgentTelemetryReport>());
+
+            var netTelemetry = new NetworkTelemetry();
+            var configurationMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+            var loggerMeshMock = new Mock<ILogger<ClusterMeshService>>();
+
+            var meshService = new ClusterMeshService(
+                configMock.Object,
+                telemetryState.Object,
+                netTelemetry,
+                configurationMock.Object,
+                loggerMeshMock.Object);
+
+            var vipLogger = new Mock<ILogger<VirtualIpManagerService>>();
+            var vipManager = new VirtualIpManagerService(configMock.Object, vipLogger.Object, meshService);
+
+            var envMock = new Mock<Microsoft.Extensions.Hosting.IHostEnvironment>();
+            envMock.Setup(e => e.ContentRootPath).Returns(AppContext.BaseDirectory);
+            var settingsFileService = new SettingsFileService(envMock.Object);
+
+            var httpClientFactory = new Mock<System.Net.Http.IHttpClientFactory>();
+            var controllerLogger = new Mock<ILogger<ClusterController>>();
+
+            var controller = new ClusterController(
+                telemetryState.Object,
+                vipManager,
+                netTelemetry,
+                settingsFileService,
+                configMock.Object,
+                configurationMock.Object,
+                httpClientFactory.Object,
+                controllerLogger.Object,
+                meshService);
+
+            var result = await controller.GetClusterOverview();
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(okResult.Value);
+
+            // Test dedicated mesh nodes endpoint
+            var nodesResult = controller.GetClusterNodes();
+            var nodesOk = Assert.IsType<OkObjectResult>(nodesResult);
+            Assert.NotNull(nodesOk.Value);
+
+            // Test optimal node endpoint
+            var optimalResult = controller.GetOptimalNode();
+            var optimalOk = Assert.IsType<OkObjectResult>(optimalResult);
+            Assert.NotNull(optimalOk.Value);
         }
 
         #endregion

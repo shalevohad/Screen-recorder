@@ -33,6 +33,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     {
         private readonly ITelemetryStateService _telemetryState;
         private readonly VirtualIpManagerService _vipManager;
+        private readonly ClusterMeshService? _clusterMesh;
         private readonly NetworkTelemetry _serverNetworkTelemetry;
         private readonly SettingsFileService _settingsFileService;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
@@ -48,7 +49,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             IOptionsMonitor<SystemConfig> configMonitor,
             IConfiguration configuration,
             IHttpClientFactory httpClientFactory,
-            ILogger<ClusterController> logger)
+            ILogger<ClusterController> logger,
+            ClusterMeshService? clusterMesh = null)
         {
             _telemetryState = telemetryState;
             _vipManager = vipManager;
@@ -58,6 +60,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
             _logger = logger;
+            _clusterMesh = clusterMesh;
         }
 
         [HttpGet("overview")]
@@ -138,12 +141,30 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             var partnerUrl = (disc.PartnerServerUrl ?? string.Empty).Trim();
             bool isPartnerConfigured = !string.IsNullOrWhiteSpace(partnerUrl);
 
+            var clusterNodes = _clusterMesh?.GetAllNodes() ?? new List<ClusterNodeInfo>();
+            var optimalNode = _clusterMesh?.GetOptimalNodeForWorkload();
+            bool isStandalone = _clusterMesh?.IsStandalone ?? true;
+            int totalActiveNodes = _clusterMesh?.TotalActiveNodes ?? 1;
+
+            var discoveredPeer = clusterNodes.FirstOrDefault(n => !n.IsLocal);
+            if (!isPartnerConfigured && discoveredPeer != null)
+            {
+                partnerUrl = discoveredPeer.ApiBaseUrl;
+                isPartnerConfigured = true;
+            }
+
             return Ok(new
             {
+                ClusterMode = isStandalone ? "Standalone" : "Active-Active Mesh",
+                IsStandalone = isStandalone,
+                TotalActiveNodes = totalActiveNodes,
+                ActiveActiveEnabled = true,
+                OptimalWorkloadNode = optimalNode,
+                ClusterNodes = clusterNodes,
                 LocalNode = new
                 {
                     MachineName = Environment.MachineName,
-                    Role = !string.IsNullOrWhiteSpace(disc.Role) ? disc.Role : "Primary",
+                    Role = !string.IsNullOrWhiteSpace(disc.Role) ? disc.Role : "Active-Active",
                     Priority = disc.Priority > 0 ? disc.Priority : 1,
                     ServerDisplayName = disc.ServerDisplayName ?? "ITB Central Node",
                     ServiceName = disc.ServiceName ?? "ITB-SCREEN-RECORDER",
@@ -207,6 +228,32 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     AutoFailoverDashboard = disc.AutoFailoverDashboard,
                     FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8
                 }
+            });
+        }
+
+        [HttpGet("nodes")]
+        [AllowAnonymous]
+        public IActionResult GetClusterNodes()
+        {
+            var nodes = _clusterMesh?.GetAllNodes() ?? new List<ClusterNodeInfo>();
+            return Ok(new
+            {
+                totalNodes = nodes.Count,
+                isStandalone = _clusterMesh?.IsStandalone ?? true,
+                clusterMode = (_clusterMesh?.IsStandalone ?? true) ? "Standalone" : "Active-Active Mesh",
+                nodes
+            });
+        }
+
+        [HttpGet("workload/optimal-node")]
+        [AllowAnonymous]
+        public IActionResult GetOptimalNode()
+        {
+            var node = _clusterMesh?.GetOptimalNodeForWorkload();
+            return Ok(new
+            {
+                optimalNode = node,
+                reason = "Selected based on lowest normalized load score weighted by GPU/QSV/CPU capacity."
             });
         }
 

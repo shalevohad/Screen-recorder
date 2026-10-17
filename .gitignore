@@ -2,6 +2,7 @@
 bin/
 obj/
 .vs/
+.tmp_dotnet/
 TestResults/
 *.user
 *.suo

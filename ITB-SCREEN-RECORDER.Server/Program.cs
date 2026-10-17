@@ -309,6 +309,8 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddHostedService<ServerTelemetryHostService>();
                 builder.Services.AddHostedService<CertificateRenewalWorker>();
                 builder.Services.AddHostedService<ServerDiscoveryHostedService>();
+                builder.Services.AddSingleton<ClusterMeshService>();
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<ClusterMeshService>());
                 builder.Services.AddSingleton<VirtualIpManagerService>();
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<VirtualIpManagerService>());
 

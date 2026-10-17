@@ -12,8 +12,8 @@ export default function ClusterOperationsView({ onNavigate }) {
     const [lastUpdated, setLastUpdated] = useState(() => new Date());
 
     // Action states
-    const [isPinging, setIsPinging] = useState(false);
-    const [pingResult, setPingResult] = useState(null);
+    const [pingResults, setPingResults] = useState({});
+    const [pingingNodeId, setPingingNodeId] = useState(null);
 
     const [isScanning, setIsScanning] = useState(false);
     const [scanResults, setScanResults] = useState(null);
@@ -25,7 +25,7 @@ export default function ClusterOperationsView({ onNavigate }) {
     // Quick Settings Drawer
     const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState(false);
     const [settingsForm, setSettingsForm] = useState({
-        role: 'Primary',
+        role: 'Active-Active',
         priority: 1,
         partnerServerUrl: '',
         enableVirtualIp: false,
@@ -52,7 +52,7 @@ export default function ClusterOperationsView({ onNavigate }) {
             if (data?.LocalNode && data?.Discovery) {
                 setSettingsForm(prev => ({
                     ...prev,
-                    role: data.LocalNode.Role || 'Primary',
+                    role: data.LocalNode.Role || 'Active-Active',
                     priority: data.LocalNode.Priority ?? 1,
                     partnerServerUrl: data.PartnerNode?.PartnerUrl || '',
                     enableVirtualIp: data.LocalNode.VipStatus?.EnableVirtualIp || false,
@@ -78,22 +78,25 @@ export default function ClusterOperationsView({ onNavigate }) {
         return () => clearInterval(timer);
     }, [fetchOverview, isAutoRefresh]);
 
-    // Handle Ping Partner
-    const handlePingPartner = async () => {
-        setIsPinging(true);
-        setPingResult(null);
+    // Handle Ping Node
+    const handlePingNode = async (targetNode) => {
+        if (!targetNode?.ApiBaseUrl) return;
+        setPingingNodeId(targetNode.NodeId || targetNode.ApiBaseUrl);
         try {
             const res = await fetch('/api/v1/cluster/ping-partner', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ partnerUrl: overview?.PartnerNode?.PartnerUrl })
+                body: JSON.stringify({ partnerUrl: targetNode.ApiBaseUrl })
             });
             const data = await res.json();
-            setPingResult(data);
+            setPingResults(prev => ({ ...prev, [targetNode.NodeId || targetNode.ApiBaseUrl]: data }));
         } catch (err) {
-            setPingResult({ success: false, message: err.message || 'Network call failed' });
+            setPingResults(prev => ({
+                ...prev,
+                [targetNode.NodeId || targetNode.ApiBaseUrl]: { success: false, message: err.message || 'Ping failed' }
+            }));
         } finally {
-            setIsPinging(false);
+            setPingingNodeId(null);
         }
     };
 
@@ -158,9 +161,20 @@ export default function ClusterOperationsView({ onNavigate }) {
     const isVipConfigured = overview?.LocalNode?.VipStatus?.EnableVirtualIp && overview?.LocalNode?.VipStatus?.VirtualIp;
     const vipAddress = overview?.LocalNode?.VipStatus?.VirtualIp || 'Not Configured';
 
-    const localRole = overview?.LocalNode?.Role || 'Primary';
-    const isPrimary = localRole.toLowerCase() === 'primary';
-    const partnerUrl = overview?.PartnerNode?.PartnerUrl;
+    // Dynamic mesh state
+    const clusterNodes = overview?.ClusterNodes || [];
+    const isStandalone = overview?.IsStandalone !== false && clusterNodes.length <= 1;
+    const totalActiveNodes = overview?.TotalActiveNodes || Math.max(1, clusterNodes.length);
+    const optimalNodeId = overview?.OptimalWorkloadNode?.NodeId;
+    const localRole = overview?.LocalNode?.Role || 'Active-Active';
+
+    // Identify who holds VIP across all nodes
+    const vipHolderNode = useMemo(() => {
+        if (!isVipConfigured) return null;
+        if (isHoldingVip) return overview?.LocalNode?.MachineName || 'This Local Node';
+        const remoteHolder = clusterNodes.find(n => n.IsHoldingVip && !n.IsLocal);
+        return remoteHolder?.MachineName || 'Elected Cluster Leader';
+    }, [isVipConfigured, isHoldingVip, clusterNodes, overview]);
 
     const formatUptime = (seconds) => {
         if (!seconds) return '0s';
@@ -191,20 +205,24 @@ export default function ClusterOperationsView({ onNavigate }) {
                     <div className="brand-meta">
                         <div className="meta-row">
                             <span className="accent-tag">ITB ENTERPRISE CLUSTER</span>
-                            <span className={`cluster-badge-pill ${localRole.toLowerCase()}`}>
+                            <span className={`cluster-badge-pill ${isStandalone ? 'standalone' : 'active-active'}`}>
                                 <span className="dot" />
-                                {localRole.toUpperCase()} NODE
+                                {isStandalone ? 'STANDALONE ACTIVE (1/1 NODE)' : `ACTIVE-ACTIVE MESH (${totalActiveNodes} NODES)`}
+                            </span>
+                            <span className="platform-badge-pill">
+                                <span className="platform-icon">🌐</span>
+                                CROSS-PLATFORM (WIN/LINUX)
                             </span>
                             {isVipConfigured && (
                                 <span className={`vip-badge-pill ${isHoldingVip ? 'holding' : 'standby'}`}>
                                     <span className="vip-icon">⚡</span>
-                                    VIP: {vipAddress} [{isHoldingVip ? 'ACTIVE HERE' : 'STANDBY'}]
+                                    VIP: {vipAddress} [{isHoldingVip ? 'ACTIVE HERE' : 'PEER HOLDER'}]
                                 </span>
                             )}
                         </div>
                         <h1>Cluster Architecture & High Availability Operations</h1>
                         <p className="subtitle">
-                            ACTIVE-ACTIVE REDUNDANCY • VIRTUAL IP (VIP) FAILOVER • LOAD BALANCING & HARDWARE MONITORING
+                            ALWAYS ACTIVE-ACTIVE • ASYMMETRIC HARDWARE LOAD BALANCING • AUTONOMOUS UDP MESH DISCOVERY • CROSS-PLATFORM VIP
                         </p>
                     </div>
                 </div>
@@ -259,50 +277,51 @@ export default function ClusterOperationsView({ onNavigate }) {
                     <span>TACTICAL CONTROLS:</span>
                 </div>
 
-                <div className="action-buttons-wrap">
-                    {/* VIP Takeover / Release */}
+                <div className="action-buttons-group">
+                    {/* VIP Force Takeover / Release */}
                     {isVipConfigured && (
-                        <button
-                            type="button"
-                            className={`btn-action-vip ${isHoldingVip ? 'release' : 'takeover'}`}
-                            onClick={() => handleVipToggle(isHoldingVip ? 'release' : 'takeover')}
-                            disabled={isVipActionPending}
-                        >
-                            <span className="bolt">⚡</span>
-                            {isVipActionPending ? 'Executing...' : (isHoldingVip ? 'Release Virtual IP (VIP)' : 'Force Takeover Virtual IP (VIP)')}
-                        </button>
+                        <>
+                            {!isHoldingVip ? (
+                                <button
+                                    type="button"
+                                    className="btn-action-tool vip-takeover"
+                                    onClick={() => handleVipToggle('takeover')}
+                                    disabled={isVipActionPending}
+                                >
+                                    <span className="icon">⚡</span>
+                                    <span>{isVipActionPending ? 'Claiming VIP...' : 'Force VIP Takeover Here'}</span>
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="btn-action-tool vip-release"
+                                    onClick={() => handleVipToggle('release')}
+                                    disabled={isVipActionPending}
+                                >
+                                    <span className="icon">⚡</span>
+                                    <span>{isVipActionPending ? 'Releasing VIP...' : 'Release VIP to Cluster'}</span>
+                                </button>
+                            )}
+                        </>
                     )}
 
-                    {/* Ping Partner */}
+                    {/* LAN Discovery Radar Scan */}
                     <button
                         type="button"
-                        className="btn-action-tool"
-                        onClick={handlePingPartner}
-                        disabled={isPinging || !partnerUrl}
-                        title={!partnerUrl ? 'No Partner URL configured' : 'Ping partner server'}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="15" height="15">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                        </svg>
-                        <span>{isPinging ? 'Pinging...' : 'Ping Partner Server'}</span>
-                    </button>
-
-                    {/* Scan LAN Discovery */}
-                    <button
-                        type="button"
-                        className="btn-action-tool"
+                        className="btn-action-tool radar"
                         onClick={handleScanLan}
                         disabled={isScanning}
                     >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="15" height="15">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="16" height="16">
                             <circle cx="12" cy="12" r="10" />
-                            <line x1="12" y1="2" x2="12" y2="12" />
+                            <circle cx="12" cy="12" r="6" />
+                            <circle cx="12" cy="12" r="2" />
                             <path d="M12 12l7 4" />
                         </svg>
-                        <span>{isScanning ? 'Scanning LAN...' : 'LAN Discovery Radar'}</span>
+                        <span>{isScanning ? 'Scanning LAN Subnet...' : 'LAN Discovery Radar'}</span>
                     </button>
 
-                    {/* Navigate to Recording Command Center */}
+                    {/* Quick navigation to Recording Command Center */}
                     <button
                         type="button"
                         className="btn-action-tool secondary"
@@ -318,11 +337,6 @@ export default function ClusterOperationsView({ onNavigate }) {
                         {vipActionFeedback.message}
                     </div>
                 )}
-                {pingResult && (
-                    <div className={`action-feedback-pill ${pingResult.success ? 'success' : 'error'}`}>
-                        {pingResult.message}
-                    </div>
-                )}
             </div>
 
             {/* Main Operational Canvas */}
@@ -332,17 +346,23 @@ export default function ClusterOperationsView({ onNavigate }) {
                     <div className="section-title-row">
                         <div className="title-left">
                             <span className="num-pill">01</span>
-                            <h2>Live Cluster Topology & Node Interconnects</h2>
+                            <h2>
+                                {isStandalone
+                                    ? 'Autonomous Single-Node Topology & Mesh Listener'
+                                    : `Live Active-Active Mesh Topology (${clusterNodes.length} Nodes Online)`}
+                            </h2>
                         </div>
                         <div className="title-right">
                             <span className="live-pulse-dot" />
-                            <span className="sub-txt">REAL-TIME CIRCUIT VISUALIZATION</span>
+                            <span className="sub-txt">
+                                {isStandalone ? 'STANDALONE MODE • DISCOVERY ACTIVE' : 'ACTIVE-ACTIVE PEER MESH'}
+                            </span>
                         </div>
                     </div>
 
                     <div className="topology-canvas-container">
                         {/* FLOATING VIP GATEWAY ANCHOR (TOP CENTER) */}
-                        <div className={`topology-vip-anchor ${isHoldingVip ? 'holding-local' : 'holding-partner'}`}>
+                        <div className={`topology-vip-anchor ${isHoldingVip ? 'holding-local' : (isVipConfigured ? 'holding-partner' : 'disabled')}`}>
                             <div className="vip-diamond-box">
                                 <div className="diamond-glow" />
                                 <div className="diamond-inner">
@@ -355,161 +375,270 @@ export default function ClusterOperationsView({ onNavigate }) {
                                 {isVipConfigured ? (
                                     <>
                                         <span className="owner-txt">
-                                            ACTIVE OWNER: <strong>{isHoldingVip ? 'THIS NODE (LOCAL)' : 'PARTNER NODE'}</strong>
+                                            ACTIVE GATEWAY OWNER: <strong>{vipHolderNode}</strong>
                                         </span>
-                                        <span className="arp-txt">Gratuitous ARP Broadcasting</span>
+                                        <span className="arp-txt">Gratuitous ARP Broadcasting (Cross-Platform)</span>
                                     </>
                                 ) : (
-                                    <span className="unconfigured-txt">VIP Feature Disabled</span>
+                                    <span className="unconfigured-txt">Direct IP Ingest Mode (VIP Disabled)</span>
                                 )}
                             </div>
                         </div>
 
-                        {/* NODES ROW */}
-                        <div className="topology-nodes-row">
-                            {/* NODE 1: LOCAL SERVER (THIS INSTANCE) */}
-                            <div className={`node-card local-node ${isHoldingVip ? 'is-vip-owner' : ''}`}>
-                                <div className="node-card-header">
-                                    <div className="node-status-indicator">
-                                        <span className="status-orb green" />
-                                        <span className="node-label">LOCAL NODE (THIS INSTANCE)</span>
-                                    </div>
-                                    <span className={`role-badge ${localRole.toLowerCase()}`}>
-                                        {localRole.toUpperCase()} (P{overview?.LocalNode?.Priority ?? 1})
-                                    </span>
-                                </div>
-
-                                <div className="node-hostname">
-                                    {overview?.LocalNode?.MachineName || 'Local Server'}
-                                </div>
-
-                                <div className="node-props-grid">
-                                    <div className="prop-row">
-                                        <span className="prop-k">Uptime</span>
-                                        <span className="prop-v highlight">{formatUptime(overview?.LocalNode?.UptimeSeconds)}</span>
-                                    </div>
-                                    <div className="prop-row">
-                                        <span className="prop-k">Dashboard Port</span>
-                                        <span className="prop-v">HTTPS {overview?.LocalNode?.Ports?.HttpPort || 5090}</span>
-                                    </div>
-                                    <div className="prop-row">
-                                        <span className="prop-k">RTMPS / HLS</span>
-                                        <span className="prop-v">{overview?.LocalNode?.Ports?.RtmpPort || 19350} / {overview?.LocalNode?.Ports?.HlsPort || 8888}</span>
-                                    </div>
-                                    <div className="prop-row">
-                                        <span className="prop-k">Discovery Port</span>
-                                        <span className="prop-v">UDP {overview?.LocalNode?.Ports?.DiscoveryPort || 5098}</span>
-                                    </div>
-                                    <div className="prop-row">
-                                        <span className="prop-k">VIP Status</span>
-                                        <span className={`prop-v ${isHoldingVip ? 'cyan font-bold' : 'gray'}`}>
-                                            {isHoldingVip ? '⚡ ACTIVE HOLDER' : 'Standby / Unbound'}
+                        {/* CASE A: STANDALONE MODE (SINGLE SERVER OPERATING AUTONOMOUSLY) */}
+                        {isStandalone ? (
+                            <div className="topology-nodes-row standalone-layout">
+                                {/* LOCAL SERVER (THIS INSTANCE) */}
+                                <div className={`node-card local-node ${isHoldingVip ? 'is-vip-owner' : ''}`}>
+                                    <div className="node-card-header">
+                                        <div className="node-status-indicator">
+                                            <span className="status-orb green" />
+                                            <span className="node-label">LOCAL NODE (THIS INSTANCE)</span>
+                                        </div>
+                                        <span className="role-badge primary">
+                                            ACTIVE-ACTIVE (P{overview?.LocalNode?.Priority ?? 1})
                                         </span>
                                     </div>
-                                </div>
 
-                                <div className="node-ips-strip">
-                                    <span className="ip-lbl">IPs:</span>
-                                    {overview?.LocalNode?.LocalIps?.length > 0 ? (
-                                        overview.LocalNode.LocalIps.slice(0, 3).map(ip => (
-                                            <span key={ip} className="ip-chip">{ip}</span>
-                                        ))
-                                    ) : (
-                                        <span className="ip-chip">127.0.0.1</span>
+                                    <div className="node-hostname">
+                                        {overview?.LocalNode?.MachineName || 'Local Server'}
+                                    </div>
+
+                                    <div className="node-props-grid">
+                                        <div className="prop-row">
+                                            <span className="prop-k">Uptime</span>
+                                            <span className="prop-v highlight">{formatUptime(overview?.LocalNode?.UptimeSeconds)}</span>
+                                        </div>
+                                        <div className="prop-row">
+                                            <span className="prop-k">Dashboard Port</span>
+                                            <span className="prop-v">HTTPS {overview?.LocalNode?.Ports?.HttpPort || 5090}</span>
+                                        </div>
+                                        <div className="prop-row">
+                                            <span className="prop-k">RTMPS / HLS</span>
+                                            <span className="prop-v">{overview?.LocalNode?.Ports?.RtmpPort || 19350} / {overview?.LocalNode?.Ports?.HlsPort || 8888}</span>
+                                        </div>
+                                        <div className="prop-row">
+                                            <span className="prop-k">Discovery Port</span>
+                                            <span className="prop-v">UDP {overview?.LocalNode?.Ports?.DiscoveryPort || 5098}</span>
+                                        </div>
+                                        <div className="prop-row">
+                                            <span className="prop-k">Hardware Encoder</span>
+                                            <span className="prop-v green">{overview?.Workload?.DetectedEncoder?.toUpperCase() || 'LIBX264'}</span>
+                                        </div>
+                                        <div className="prop-row">
+                                            <span className="prop-k">VIP Status</span>
+                                            <span className={`prop-v ${isHoldingVip ? 'cyan font-bold' : 'gray'}`}>
+                                                {isHoldingVip ? '⚡ ACTIVE HOLDER' : 'Standby / Unbound'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="node-ips-strip">
+                                        <span className="ip-lbl">IPs:</span>
+                                        {overview?.LocalNode?.LocalIps?.length > 0 ? (
+                                            overview.LocalNode.LocalIps.slice(0, 3).map(ip => (
+                                                <span key={ip} className="ip-chip">{ip}</span>
+                                            ))
+                                        ) : (
+                                            <span className="ip-chip">127.0.0.1</span>
+                                        )}
+                                    </div>
+
+                                    {isHoldingVip && (
+                                        <div className="vip-owner-banner">
+                                            <span className="bolt">⚡</span>
+                                            <span>PRIMARY VIP INBOUND GATEWAY</span>
+                                        </div>
                                     )}
                                 </div>
 
-                                {isHoldingVip && (
-                                    <div className="vip-owner-banner">
-                                        <span className="bolt">⚡</span>
-                                        <span>ACTIVE VIP INBOUND GATEWAY</span>
+                                {/* CIRCUIT INTERCONNECT TO AUTONOMOUS MESH */}
+                                <div className="topology-interconnect-column">
+                                    <div className="interconnect-line standalone-active">
+                                        <div className="packet-pulse packet-forward" />
                                     </div>
-                                )}
-                            </div>
-
-                            {/* CIRCUIT INTERCONNECT VISUALIZER */}
-                            <div className="topology-interconnect-column">
-                                <div className={`interconnect-line ${overview?.PartnerNode?.IsConfigured ? 'connected' : 'disconnected'}`}>
-                                    <div className="packet-pulse packet-forward" />
-                                    <div className="packet-pulse packet-backward" />
-                                </div>
-                                <div className="interconnect-hub-pill">
-                                    <span className="sync-icon">⇌</span>
-                                    <span className="hub-label">HEARTBEAT & SYNC</span>
-                                    {pingResult?.latencyMs ? (
-                                        <span className="ping-pill">{pingResult.latencyMs} ms</span>
-                                    ) : (
-                                        <span className="ping-pill status">HEALTHY</span>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* NODE 2: PARTNER SERVER NODE */}
-                            <div className={`node-card partner-node ${!overview?.PartnerNode?.IsConfigured ? 'not-configured' : ''}`}>
-                                <div className="node-card-header">
-                                    <div className="node-status-indicator">
-                                        <span className={`status-orb ${overview?.PartnerNode?.IsConfigured ? 'green' : 'amber'}`} />
-                                        <span className="node-label">PARTNER NODE (CLUSTER PAIR)</span>
+                                    <div className="interconnect-hub-pill standalone">
+                                        <span className="sync-icon">📡</span>
+                                        <span className="hub-label">AUTONOMOUS DISCOVERY</span>
+                                        <span className="ping-pill status">LISTENING</span>
                                     </div>
-                                    <span className="role-badge standby">
-                                        {isPrimary ? 'SECONDARY' : 'PRIMARY'}
-                                    </span>
                                 </div>
 
-                                <div className="node-hostname">
-                                    {overview?.PartnerNode?.PartnerUrl || 'No Partner Configured'}
-                                </div>
+                                {/* STANDALONE MESH PEER LISTENER CARD */}
+                                <div className="node-card mesh-listener-card">
+                                    <div className="node-card-header">
+                                        <div className="node-status-indicator">
+                                            <span className="status-orb cyan-pulse" />
+                                            <span className="node-label">AUTO-DISCOVERY MESH ENGINE</span>
+                                        </div>
+                                        <span className="role-badge mesh-ready">
+                                            STANDALONE 1/1
+                                        </span>
+                                    </div>
 
-                                {overview?.PartnerNode?.IsConfigured ? (
-                                    <>
-                                        <div className="node-props-grid">
-                                            <div className="prop-row">
-                                                <span className="prop-k">Partner URL</span>
-                                                <span className="prop-v link" title={partnerUrl}>{partnerUrl}</span>
-                                            </div>
-                                            <div className="prop-row">
-                                                <span className="prop-k">Health Check</span>
-                                                <span className="prop-v green">VERIFIED ONLINE</span>
-                                            </div>
-                                            <div className="prop-row">
-                                                <span className="prop-k">Failed Probes</span>
-                                                <span className="prop-v">{overview?.PartnerNode?.FailedHealthChecks || 0} / 2</span>
-                                            </div>
-                                            <div className="prop-row">
-                                                <span className="prop-k">Failover Trigger</span>
-                                                <span className="prop-v">Auto Failover Enabled</span>
-                                            </div>
-                                            <div className="prop-row">
-                                                <span className="prop-k">Failover Delay</span>
-                                                <span className="prop-v">{overview?.Discovery?.FailoverDelaySeconds || 8}s</span>
+                                    <div className="mesh-listener-head">
+                                        <div className="radar-radar-icon">📡</div>
+                                        <div className="mesh-info-text">
+                                            <div className="mesh-title">Zero-Configuration Cluster Ready</div>
+                                            <div className="mesh-desc">
+                                                Operating autonomously with zero errors. All streams, recordings, and APIs are fully operational on this single server instance.
                                             </div>
                                         </div>
+                                    </div>
 
-                                        <div className="partner-action-row">
-                                            <button
-                                                type="button"
-                                                className="btn-partner-ping"
-                                                onClick={handlePingPartner}
-                                                disabled={isPinging}
-                                            >
-                                                {isPinging ? 'Testing...' : 'Test Connection Ping'}
-                                            </button>
+                                    <div className="node-props-grid">
+                                        <div className="prop-row">
+                                            <span className="prop-k">Multicast Channel</span>
+                                            <span className="prop-v">{overview?.Discovery?.MulticastAddress || '239.255.10.90'}:{overview?.Discovery?.Port || 5098}</span>
                                         </div>
-                                    </>
-                                ) : (
-                                    <div className="not-configured-notice">
-                                        <p>No partner server URL configured yet.</p>
+                                        <div className="prop-row">
+                                            <span className="prop-k">Subnet Broadcast</span>
+                                            <span className="prop-v">255.255.255.255:{overview?.Discovery?.Port || 5098}</span>
+                                        </div>
+                                        <div className="prop-row">
+                                            <span className="prop-k">Cluster Expansion</span>
+                                            <span className="prop-v green">AUTOMATIC JOIN READY</span>
+                                        </div>
+                                        <div className="prop-row">
+                                            <span className="prop-k">Load Balancing Mode</span>
+                                            <span className="prop-v">ACTIVE-ACTIVE WHEN PEERS JOIN</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="standalone-action-box">
+                                        <p className="note">
+                                            When additional server instances boot on the local network, they automatically announce themselves via UDP beacons and join this Active-Active cluster with dynamic load balancing.
+                                        </p>
                                         <button
                                             type="button"
-                                            className="btn-setup-partner"
-                                            onClick={() => setIsSettingsDrawerOpen(true)}
+                                            className="btn-trigger-radar"
+                                            onClick={handleScanLan}
+                                            disabled={isScanning}
                                         >
-                                            Configure Partner Server →
+                                            {isScanning ? 'Probing Subnet...' : '📡 Scan LAN Subnet for Peers'}
                                         </button>
                                     </div>
-                                )}
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            /* CASE B: MULTI-NODE ACTIVE-ACTIVE MESH TOPOLOGY */
+                            <div className="topology-mesh-nodes-grid">
+                                {clusterNodes.map(node => {
+                                    const isOptimal = node.NodeId === optimalNodeId;
+                                    const isLocalNode = node.IsLocal;
+                                    const pingData = pingResults[node.NodeId || node.ApiBaseUrl];
+                                    const isPingingThis = pingingNodeId === (node.NodeId || node.ApiBaseUrl);
+
+                                    return (
+                                        <div
+                                            key={node.NodeId || node.MachineName}
+                                            className={`node-card mesh-node ${node.IsHoldingVip ? 'is-vip-owner' : ''} ${isOptimal ? 'is-optimal' : ''} ${isLocalNode ? 'local-instance' : 'remote-peer'}`}
+                                        >
+                                            <div className="node-card-header">
+                                                <div className="node-status-indicator">
+                                                    <span className={`status-orb ${node.Status === 'Healthy' ? 'green' : (node.Status === 'Degraded' ? 'amber' : 'red')}`} />
+                                                    <span className="node-label">
+                                                        {isLocalNode ? 'THIS INSTANCE (LOCAL)' : 'ACTIVE CLUSTER PEER'}
+                                                    </span>
+                                                </div>
+                                                <span className="role-badge primary">
+                                                    ACTIVE-ACTIVE (P{node.Priority})
+                                                </span>
+                                            </div>
+
+                                            <div className="node-hostname-row">
+                                                <span className="node-hostname">{node.MachineName}</span>
+                                                {isOptimal && (
+                                                    <span className="optimal-pill" title="Selected by the intelligent load balancer for new video ingestion and FFMPEG tasks">
+                                                        ⚖️ LEAST LOADED
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Hardware Capacity Badge */}
+                                            <div className="hardware-capacity-chip">
+                                                <span className="chip-icon">⚡</span>
+                                                <span className="chip-name">
+                                                    {node.Hardware?.DetectedEncoder?.toUpperCase() || 'LIBX264'}
+                                                </span>
+                                                <span className="chip-weight">
+                                                    Capacity: {node.Hardware?.CapacityWeight || 1.0}x
+                                                </span>
+                                                {node.Hardware?.GpuName && (
+                                                    <span className="chip-gpu-name">({node.Hardware.GpuName})</span>
+                                                )}
+                                            </div>
+
+                                            <div className="node-props-grid">
+                                                <div className="prop-row">
+                                                    <span className="prop-k">API Endpoint</span>
+                                                    <span className="prop-v link" title={node.ApiBaseUrl}>{node.ApiBaseUrl}</span>
+                                                </div>
+                                                <div className="prop-row">
+                                                    <span className="prop-k">CPU / RAM Strain</span>
+                                                    <span className="prop-v">{node.Workload?.HostCpuPct ?? 0}% CPU • {node.Workload?.HostRamPct ?? 0}% RAM</span>
+                                                </div>
+                                                <div className="prop-row">
+                                                    <span className="prop-k">Active Streams</span>
+                                                    <span className="prop-v highlight">{node.Workload?.ActiveStreams ?? 0} Ingesting</span>
+                                                </div>
+                                                <div className="prop-row">
+                                                    <span className="prop-k">GPU Engine</span>
+                                                    <span className="prop-v">{node.Workload?.GpuNvencPct ?? 0}% NVENC</span>
+                                                </div>
+                                                <div className="prop-row">
+                                                    <span className="prop-k">Normalized Load Score</span>
+                                                    <span className="prop-v font-bold cyan">{node.Workload?.NormalizedLoadScore ?? 0} pts</span>
+                                                </div>
+                                                <div className="prop-row">
+                                                    <span className="prop-k">VIP Ownership</span>
+                                                    <span className={`prop-v ${node.IsHoldingVip ? 'cyan font-bold' : 'gray'}`}>
+                                                        {node.IsHoldingVip ? '⚡ ACTIVE HOLDER' : 'Standby / Unbound'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="node-ips-strip">
+                                                <span className="ip-lbl">IPs:</span>
+                                                {node.ServerIps?.length > 0 ? (
+                                                    node.ServerIps.slice(0, 3).map(ip => (
+                                                        <span key={ip} className="ip-chip">{ip}</span>
+                                                    ))
+                                                ) : (
+                                                    <span className="ip-chip">127.0.0.1</span>
+                                                )}
+                                            </div>
+
+                                            {/* Action bar for remote peers */}
+                                            {!isLocalNode && (
+                                                <div className="peer-action-row">
+                                                    <button
+                                                        type="button"
+                                                        className="btn-peer-ping"
+                                                        onClick={() => handlePingNode(node)}
+                                                        disabled={isPingingThis}
+                                                    >
+                                                        {isPingingThis ? 'Pinging...' : (pingData?.latencyMs ? `Ping: ${pingData.latencyMs}ms` : 'Ping Peer')}
+                                                    </button>
+                                                    {pingData && (
+                                                        <span className={`ping-status-pill ${pingData.success ? 'green' : 'red'}`}>
+                                                            {pingData.success ? 'ONLINE' : 'UNREACHABLE'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {node.IsHoldingVip && (
+                                                <div className="vip-owner-banner">
+                                                    <span className="bolt">⚡</span>
+                                                    <span>ACTIVE VIP INBOUND GATEWAY</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
 
                         {/* INFRASTRUCTURE LINKS ROW (STORAGE & FLEET) */}
                         <div className="topology-infra-row">
@@ -561,7 +690,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                     <div className="section-title-row">
                         <div className="title-left">
                             <span className="num-pill">02</span>
-                            <h2>Active-Active Load Balancer & Hardware Meters</h2>
+                            <h2>Active-Active Load Balancer & Dynamic Hardware Distribution</h2>
                         </div>
                         <div className="title-right">
                             <span className="encoder-tag">
@@ -644,19 +773,73 @@ export default function ClusterOperationsView({ onNavigate }) {
                         </div>
                     </div>
 
+                    {/* DYNAMIC MULTI-NODE WORKLOAD COMPARISON MATRIX */}
+                    {clusterNodes.length > 1 && (
+                        <div className="mesh-load-comparison-matrix">
+                            <div className="matrix-header">
+                                <span className="matrix-icon">⚖️</span>
+                                <h3>Cluster-Wide Workload Balancing Matrix (Active-Active)</h3>
+                            </div>
+                            <div className="matrix-table-wrap">
+                                <table className="mesh-load-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Node</th>
+                                            <th>Hardware Engine</th>
+                                            <th>Capacity Weight</th>
+                                            <th>CPU Load</th>
+                                            <th>Active Streams</th>
+                                            <th>Normalized Load Score</th>
+                                            <th>Routing Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {clusterNodes.map(n => {
+                                            const isSelected = n.NodeId === optimalNodeId;
+                                            return (
+                                                <tr key={n.NodeId} className={isSelected ? 'optimal-row' : ''}>
+                                                    <td className="node-cell">
+                                                        <span className="dot" />
+                                                        <strong>{n.MachineName}</strong> {n.IsLocal && <span className="tag">Local</span>}
+                                                    </td>
+                                                    <td>{n.Hardware?.DetectedEncoder?.toUpperCase()}</td>
+                                                    <td><span className="weight-pill">{n.Hardware?.CapacityWeight || 1.0}x</span></td>
+                                                    <td>{n.Workload?.HostCpuPct ?? 0}%</td>
+                                                    <td>{n.Workload?.ActiveStreams ?? 0}</td>
+                                                    <td className="score-cell font-bold cyan">{n.Workload?.NormalizedLoadScore ?? 0} pts</td>
+                                                    <td>
+                                                        {isSelected ? (
+                                                            <span className="optimal-badge">⚡ Optimal Route (New Ingest)</span>
+                                                        ) : (
+                                                            <span className="balanced-badge">Active Participant</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     {/* LOAD BALANCER RECOMMENDATION STRIP */}
                     <div className="lb-proportional-banner">
                         <div className="banner-icon">⚖️</div>
                         <div className="banner-content">
-                            <h4>Asymmetric Hardware Workload Distribution (Active-Active)</h4>
+                            <h4>Intelligent Asymmetric Hardware Workload Balancing</h4>
                             <p>
-                                The cluster automatically computes proportional load balancing between cluster nodes based on available GPU (NVENC), Intel QuickSync (QSV), and CPU cores to balance operational pressure evenly across both server instances.
+                                The cluster automatically evaluates node capacity (NVIDIA NVENC 3.5x, Intel QSV 2.0x, CPU 1.0x) and routes new stream recordings and FFMPEG transcoding tasks to maintain balanced operational strain percentage across all active instances.
                             </p>
                         </div>
                         <div className="banner-ratio-pills">
-                            <span className="ratio-pill primary">Local ({overview?.Workload?.DetectedEncoder?.includes('nvenc') ? 'GPU 70%' : 'QSV/CPU 45%'})</span>
-                            <span className="ratio-divider">:</span>
-                            <span className="ratio-pill secondary">Partner (Reserve Capacity)</span>
+                            <span className="ratio-pill primary">
+                                Current Active Nodes: {totalActiveNodes}
+                            </span>
+                            <span className="ratio-divider">•</span>
+                            <span className="ratio-pill secondary">
+                                Mode: {isStandalone ? 'Autonomous Single-Node' : 'Active-Active Mesh'}
+                            </span>
                         </div>
                     </div>
                 </section>
@@ -717,7 +900,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                                                         setIsSettingsDrawerOpen(true);
                                                     }}
                                                 >
-                                                    Select as Partner
+                                                    Select Node
                                                 </button>
                                             </div>
                                         </div>
@@ -725,7 +908,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                                 </div>
                             ) : (
                                 <div className="no-nodes-box">
-                                    <p>No other active ITB servers detected on this subnet.</p>
+                                    <p>No other active ITB servers detected on this subnet. Operating as autonomous single node.</p>
                                     <button
                                         type="button"
                                         className="btn-rescan"
@@ -760,13 +943,14 @@ export default function ClusterOperationsView({ onNavigate }) {
 
                         <form className="drawer-form" onSubmit={handleSaveSettings}>
                             <div className="form-group">
-                                <label>Server Role</label>
+                                <label>Cluster Operational Mode / Role</label>
                                 <select
                                     value={settingsForm.role}
                                     onChange={e => setSettingsForm({ ...settingsForm, role: e.target.value })}
                                 >
-                                    <option value="Primary">Primary (Active Main Server)</option>
-                                    <option value="Secondary">Secondary (Standby / Auto-Failover)</option>
+                                    <option value="Active-Active">Active-Active (Dynamic Distributed Mesh)</option>
+                                    <option value="Primary">Primary (Dedicated VIP Preferred Node)</option>
+                                    <option value="Secondary">Secondary (Standby Node)</option>
                                     <option value="Aggregate">Aggregate (Super-Server Studio)</option>
                                 </select>
                             </div>
@@ -780,18 +964,18 @@ export default function ClusterOperationsView({ onNavigate }) {
                                     value={settingsForm.priority}
                                     onChange={e => setSettingsForm({ ...settingsForm, priority: parseInt(e.target.value) || 1 })}
                                 />
-                                <span className="helper-txt">1 = Primary, 2+ = Secondary, 0 = Aggregate</span>
+                                <span className="helper-txt">1 = Highest Priority for VIP Leadership; 2+ = Secondary</span>
                             </div>
 
                             <div className="form-group">
-                                <label>Partner Server URL</label>
+                                <label>Peer Server URL (Optional)</label>
                                 <input
                                     type="text"
-                                    placeholder="https://192.168.1.101:5090"
+                                    placeholder="Leave empty for zero-conf UDP auto-discovery"
                                     value={settingsForm.partnerServerUrl}
                                     onChange={e => setSettingsForm({ ...settingsForm, partnerServerUrl: e.target.value })}
                                 />
-                                <span className="helper-txt">Direct URL of the peer cluster node for health checks and failover</span>
+                                <span className="helper-txt">Leave empty to discover cluster nodes automatically via LAN Multicast/Broadcast</span>
                             </div>
 
                             <div className="form-divider" />
@@ -803,7 +987,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                                         checked={settingsForm.enableVirtualIp}
                                         onChange={e => setSettingsForm({ ...settingsForm, enableVirtualIp: e.target.checked })}
                                     />
-                                    <span className="check-title">Enable Cluster Virtual IP (VIP)</span>
+                                    <span className="check-title">Enable Cross-Platform Virtual IP (VIP)</span>
                                 </label>
                             </div>
 
@@ -833,7 +1017,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                                         <label>Network Interface Name (Optional)</label>
                                         <input
                                             type="text"
-                                            placeholder="Leave empty for auto-detection (e.g. Ethernet / eth0)"
+                                            placeholder="Leave empty for auto-detection (Windows: Ethernet / Linux: eth0)"
                                             value={settingsForm.networkInterfaceName}
                                             onChange={e => setSettingsForm({ ...settingsForm, networkInterfaceName: e.target.value })}
                                         />
