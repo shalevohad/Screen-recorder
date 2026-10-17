@@ -18,9 +18,10 @@ for arg in "$@"; do
 done
 
 if [ -z "$SERVER_HOST" ] && [ -t 0 ]; then
-    read -p "Enter Central Server IP/Hostname [127.0.0.1]: " input_host
-    SERVER_HOST="${input_host:-127.0.0.1}"
+    read -p "Enter Central Server IP/Hostname (Default: AUTO for Autonomous Discovery) [AUTO]: " input_host
+    SERVER_HOST="${input_host:-AUTO}"
 fi
+SERVER_HOST="${SERVER_HOST:-AUTO}"
 
 echo "--> Stopping running agent services if any..."
 systemctl stop itb-agent.service 2>/dev/null || true
@@ -32,16 +33,24 @@ cp -r "$CURRENT_DIR/worker/"* "$INSTALL_ROOT/worker/"
 
 # Configure server endpoints with encryption (HTTPS / RTMPS)
 if [ -n "$SERVER_HOST" ] && command -v python3 >/dev/null 2>&1; then
-    echo "--> Configuring agent encryption endpoints for server: $SERVER_HOST..."
-    for json_file in "$INSTALL_ROOT/service/appsettings.json" "$INSTALL_ROOT/worker/appsettings.json"; do
+    echo "--> Configuring agent encryption endpoints (Mode: $SERVER_HOST)..."
+    for json_file in "$INSTALL_ROOT/service/appsettings.json" "$INSTALL_ROOT/service/appsettings.Linux.json" "$INSTALL_ROOT/worker/appsettings.json" "$INSTALL_ROOT/worker/appsettings.Linux.json"; do
         if [ -f "$json_file" ]; then
             python3 - <<EOF
 import json
 try:
     with open("$json_file", "r", encoding="utf-8") as f:
         cfg = json.load(f)
-    cfg["DashboardApiUrl"] = "https://$SERVER_HOST:5090/api/v1/agent/telemetry"
-    cfg["RtmpServerBaseUrl"] = "rtmps://$SERVER_HOST:19350/live/"
+
+    srv = "$SERVER_HOST".strip()
+    if srv.upper() == "AUTO" or not srv:
+        cfg["DashboardApiUrl"] = "AUTO"
+        cfg["RtmpServerBaseUrl"] = "AUTO"
+    else:
+        host_only = srv.split(':')[0]
+        cfg["DashboardApiUrl"] = f"https://{host_only}:5090/api/v1/agent/telemetry"
+        cfg["RtmpServerBaseUrl"] = f"rtmps://{host_only}:19350/live/"
+
     with open("$json_file", "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 except Exception:
