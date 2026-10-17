@@ -37,8 +37,10 @@
 		<Property Id="SERVER_PRIORITY" Value="1" Secure="yes" />
 		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
 		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
+		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes" />
 		<Property Id="ENABLE_VIP" Value="0" Secure="yes" />
 		<Property Id="VIRTUAL_IP" Value="" Secure="yes" />
+		<Property Id="VIRTUAL_IP_SUBNET" Value="255.255.255.0" Secure="yes" />
 		<Property Id="PARTNER_URL" Value="" Secure="yes" />
 
 		<SetProperty Id="INSTALLFOLDER" Value="[PREVIOUS_INSTALLFOLDER]" After="AppSearch" Condition="PREVIOUS_INSTALLFOLDER" />
@@ -66,7 +68,7 @@
 		<!-- 💡 4. הכנת נתוני ההתקנה עבור הפעולה הנדחית (Deferred Custom Action) -->
 		<CustomAction Id="SetApplySettingsData"
 					  Property="ApplySettingsAction"
-					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]|[SERVER_ROLE]|[SERVER_PRIORITY]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]|[ENABLE_VIP]|[VIRTUAL_IP]|[PARTNER_URL]"
+					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]|[SERVER_ROLE]|[SERVER_PRIORITY]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]|[ENABLE_VIP]|[VIRTUAL_IP]|[PARTNER_URL]|[VIRTUAL_IP_SUBNET]|[DISCOVERY_BROADCAST]"
 					  Execute="immediate" />
 
 		<!-- 💡 5. החלת ההגדרות ישירות דרך מנוע ה-MSI ללא תלות ב-PowerShell -->

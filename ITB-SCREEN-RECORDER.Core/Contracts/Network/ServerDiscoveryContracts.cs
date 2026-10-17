@@ -14,6 +14,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         /// Safe for private/enterprise networks without public routing.
         /// </summary>
         public const string DefaultMulticastAddress = "239.255.10.90";
+        public const string DefaultBroadcastAddress = "255.255.255.255";
+        public const string DefaultSubnetMask = "255.255.255.0";
 
         /// <summary>
         /// Dedicated UDP port for autonomous ITB server discovery.

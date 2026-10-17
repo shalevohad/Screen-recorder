@@ -24,6 +24,7 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
         private readonly ILogger? _logger;
         private readonly int _discoveryPort;
         private readonly string _multicastAddress;
+        private readonly string _broadcastAddress;
         private readonly List<string> _dnsSearchHostnames;
         private readonly int _fallbackHttpPort;
         private readonly int _fallbackRtmpPort;
@@ -33,6 +34,7 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
             ILogger? logger = null,
             int discoveryPort = ServerDiscoveryConstants.DefaultDiscoveryPort,
             string multicastAddress = ServerDiscoveryConstants.DefaultMulticastAddress,
+            string broadcastAddress = ServerDiscoveryConstants.DefaultBroadcastAddress,
             IEnumerable<string>? dnsSearchHostnames = null,
             int fallbackHttpPort = 5090,
             int fallbackRtmpPort = 19350,
@@ -40,7 +42,8 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
         {
             _logger = logger;
             _discoveryPort = discoveryPort;
-            _multicastAddress = multicastAddress;
+            _multicastAddress = !string.IsNullOrWhiteSpace(multicastAddress) ? multicastAddress.Trim() : ServerDiscoveryConstants.DefaultMulticastAddress;
+            _broadcastAddress = !string.IsNullOrWhiteSpace(broadcastAddress) ? broadcastAddress.Trim() : ServerDiscoveryConstants.DefaultBroadcastAddress;
             _dnsSearchHostnames = dnsSearchHostnames != null
                 ? dnsSearchHostnames.Where(h => !string.IsNullOrWhiteSpace(h)).Select(h => h.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
                 : new List<string> { "itb-server", "screenrecorder" };
@@ -93,13 +96,13 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                 // 2. Send Broadcast Probe (for flat networks or where multicast is restricted)
                 try
                 {
-                    var broadcastEp = new IPEndPoint(IPAddress.Broadcast, _discoveryPort);
+                    var broadcastEp = new IPEndPoint(IPAddress.Parse(_broadcastAddress), _discoveryPort);
                     await udpClient.SendAsync(probeBytes, probeBytes.Length, broadcastEp);
-                    _logger?.LogDebug("[DISCOVERY] Sent UDP broadcast probe to 255.255.255.255:{Port}", _discoveryPort);
+                    _logger?.LogDebug("[DISCOVERY] Sent UDP broadcast probe to {Address}:{Port}", _broadcastAddress, _discoveryPort);
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogDebug(ex, "[DISCOVERY] Failed to send broadcast probe.");
+                    _logger?.LogDebug(ex, "[DISCOVERY] Failed to send broadcast probe to {Address}.", _broadcastAddress);
                 }
 
                 // 3. Listen for incoming responses until timeout

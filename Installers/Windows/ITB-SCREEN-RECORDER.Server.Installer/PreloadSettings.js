@@ -86,9 +86,15 @@ try {
                 var mMcast = text.match(/"MulticastAddress"\s*:\s*"([^"]+)"/i);
                 if (mMcast && mMcast[1]) Session.Property("DISCOVERY_MULTICAST") = mMcast[1];
 
+                var mBcast = text.match(/"BroadcastAddress"\s*:\s*"([^"]+)"/i);
+                if (mBcast && mBcast[1]) Session.Property("DISCOVERY_BROADCAST") = mBcast[1];
+
                 // שליפת הגדרות Virtual IP (VIP) ו-Partner URL
                 var mVip = text.match(/"VirtualIp"\s*:\s*"([^"]+)"/i);
                 if (mVip && mVip[1]) Session.Property("VIRTUAL_IP") = mVip[1];
+
+                var mVipSub = text.match(/"VirtualIpSubnetMask"\s*:\s*"([^"]+)"/i);
+                if (mVipSub && mVipSub[1]) Session.Property("VIRTUAL_IP_SUBNET") = mVipSub[1];
 
                 var mEnVip = text.match(/"EnableVirtualIp"\s*:\s*(true|false)/i);
                 if (mEnVip && mEnVip[1]) Session.Property("ENABLE_VIP") = (mEnVip[1].toLowerCase() === "true" ? "1" : "0");

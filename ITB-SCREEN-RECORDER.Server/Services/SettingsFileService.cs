@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Server.Models;
 using Microsoft.Extensions.Hosting;
 
@@ -31,8 +32,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             if (discovery != null)
             {
                 discoveryDto.Enabled = (bool)(discovery["Enabled"] ?? true);
-                discoveryDto.Port = (int)(discovery["Port"] ?? 5098);
-                discoveryDto.MulticastAddress = (string)(discovery["MulticastAddress"] ?? "239.255.10.90");
+                discoveryDto.Port = (int)(discovery["Port"] ?? ServerDiscoveryConstants.DefaultDiscoveryPort);
+                discoveryDto.MulticastAddress = (string)(discovery["MulticastAddress"] ?? ServerDiscoveryConstants.DefaultMulticastAddress);
+                discoveryDto.EnableBroadcastFallback = (bool)(discovery["EnableBroadcastFallback"] ?? true);
+                discoveryDto.BroadcastAddress = (string)(discovery["BroadcastAddress"] ?? ServerDiscoveryConstants.DefaultBroadcastAddress);
                 discoveryDto.Role = (string)(discovery["Role"] ?? "Primary");
                 discoveryDto.Priority = (int)(discovery["Priority"] ?? 1);
                 discoveryDto.PartnerServerUrl = (string?)discovery["PartnerServerUrl"];
@@ -40,7 +43,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 discoveryDto.DashboardFailoverDelaySeconds = (int)(discovery["DashboardFailoverDelaySeconds"] ?? 8);
                 discoveryDto.EnableVirtualIp = (bool)(discovery["EnableVirtualIp"] ?? false);
                 discoveryDto.VirtualIp = (string?)discovery["VirtualIp"];
-                discoveryDto.VirtualIpSubnetMask = (string)(discovery["VirtualIpSubnetMask"] ?? "255.255.255.0");
+                discoveryDto.VirtualIpSubnetMask = (string)(discovery["VirtualIpSubnetMask"] ?? ServerDiscoveryConstants.DefaultSubnetMask);
                 discoveryDto.NetworkInterfaceName = (string?)discovery["NetworkInterfaceName"];
             }
 
@@ -107,7 +110,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
                     discNode["Enabled"] = dto.Discovery.Enabled;
                     discNode["Port"] = dto.Discovery.Port;
-                    discNode["MulticastAddress"] = dto.Discovery.MulticastAddress;
+                    discNode["MulticastAddress"] = dto.Discovery.MulticastAddress ?? ServerDiscoveryConstants.DefaultMulticastAddress;
+                    discNode["EnableBroadcastFallback"] = dto.Discovery.EnableBroadcastFallback;
+                    discNode["BroadcastAddress"] = dto.Discovery.BroadcastAddress ?? ServerDiscoveryConstants.DefaultBroadcastAddress;
                     discNode["Role"] = dto.Discovery.Role;
                     discNode["Priority"] = dto.Discovery.Priority;
                     discNode["PartnerServerUrl"] = dto.Discovery.PartnerServerUrl ?? "";
@@ -115,7 +120,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     discNode["DashboardFailoverDelaySeconds"] = dto.Discovery.DashboardFailoverDelaySeconds;
                     discNode["EnableVirtualIp"] = dto.Discovery.EnableVirtualIp;
                     discNode["VirtualIp"] = dto.Discovery.VirtualIp ?? "";
-                    discNode["VirtualIpSubnetMask"] = dto.Discovery.VirtualIpSubnetMask ?? "255.255.255.0";
+                    discNode["VirtualIpSubnetMask"] = dto.Discovery.VirtualIpSubnetMask ?? ServerDiscoveryConstants.DefaultSubnetMask;
                     discNode["NetworkInterfaceName"] = dto.Discovery.NetworkInterfaceName ?? "";
                 }
 

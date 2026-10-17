@@ -12,7 +12,9 @@ param(
     [int]$ServerPriority = 1,
     [int]$DiscoveryPort = 5098,
     [string]$DiscoveryMulticast = "239.255.10.90",
+    [string]$DiscoveryBroadcast = "255.255.255.255",
     [string]$VirtualIp = "",
+    [string]$VirtualIpSubnet = "255.255.255.0",
     [bool]$EnableVirtualIp = $false,
     [string]$PartnerServerUrl = ""
 )
@@ -105,6 +107,12 @@ try {
             $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "MulticastAddress" + $q + ": " + $q + $DiscoveryMulticast + $q + ",")
         }
 
+        if ($content -match ('(?i)' + $q + 'BroadcastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q)) {
+            $content = $content -replace ('(?i)' + $q + 'BroadcastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'BroadcastAddress' + $q + ': ' + $q + $DiscoveryBroadcast + $q)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "BroadcastAddress" + $q + ": " + $q + $DiscoveryBroadcast + $q + ",")
+        }
+
         # עדכון Virtual IP
         if (-not [string]::IsNullOrWhiteSpace($VirtualIp)) { $EnableVirtualIp = $true }
         $vEnStr = if ($EnableVirtualIp) { "true" } else { "false" }
@@ -118,6 +126,12 @@ try {
             $content = $content -replace ('(?i)' + $q + 'VirtualIp' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'VirtualIp' + $q + ': ' + $q + $VirtualIp + $q)
         } else {
             $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "VirtualIp" + $q + ": " + $q + $VirtualIp + $q + ",")
+        }
+
+        if ($content -match ('(?i)' + $q + 'VirtualIpSubnetMask' + $q + '\s*:\s*' + $q + '.*?' + $q)) {
+            $content = $content -replace ('(?i)' + $q + 'VirtualIpSubnetMask' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'VirtualIpSubnetMask' + $q + ': ' + $q + $VirtualIpSubnet + $q)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "VirtualIpSubnetMask" + $q + ": " + $q + $VirtualIpSubnet + $q + ",")
         }
 
         if (-not [string]::IsNullOrWhiteSpace($PartnerServerUrl)) {

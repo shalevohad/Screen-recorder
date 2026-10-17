@@ -66,6 +66,8 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public bool EnableBroadcastFallback { get; set; } = true;
 
+        public string BroadcastAddress { get; set; } = "255.255.255.255";
+
         public string ServerDisplayName { get; set; } = "ITB Central Server";
 
         public string EnvironmentName { get; set; } = "Production";

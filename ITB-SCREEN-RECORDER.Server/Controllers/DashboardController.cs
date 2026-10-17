@@ -51,12 +51,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 Priority = priority,
                 ServerName = disc.ServerDisplayName,
                 ServerId = Environment.MachineName,
-                DiscoveryPort = disc.Port > 0 ? disc.Port : 5098,
-                MulticastAddress = !string.IsNullOrWhiteSpace(disc.MulticastAddress) ? disc.MulticastAddress : "239.255.10.90",
+                DiscoveryPort = disc.Port > 0 ? disc.Port : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultDiscoveryPort,
+                MulticastAddress = !string.IsNullOrWhiteSpace(disc.MulticastAddress) ? disc.MulticastAddress : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultMulticastAddress,
+                BroadcastAddress = !string.IsNullOrWhiteSpace(disc.BroadcastAddress) ? disc.BroadcastAddress : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultBroadcastAddress,
                 PartnerServerUrl = disc.PartnerServerUrl ?? string.Empty,
                 AutoFailoverDashboard = disc.AutoFailoverDashboard,
                 FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8,
                 VirtualIp = disc.VirtualIp ?? string.Empty,
+                VirtualIpSubnetMask = !string.IsNullOrWhiteSpace(disc.VirtualIpSubnetMask) ? disc.VirtualIpSubnetMask : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultSubnetMask,
                 EnableVirtualIp = disc.EnableVirtualIp
             });
         }

@@ -657,18 +657,22 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 var dnsHostnames = _config.DiscoveryDnsHostnames != null && _config.DiscoveryDnsHostnames.Count > 0
                     ? _config.DiscoveryDnsHostnames
                     : new List<string> { "itb-server", "screenrecorder" };
+                string discBcast = !string.IsNullOrWhiteSpace(_config.DiscoveryBroadcastAddress)
+                    ? _config.DiscoveryBroadcastAddress
+                    : ServerDiscoveryConstants.DefaultBroadcastAddress;
                 int discTimeout = _config.DiscoveryTimeoutMs > 0 ? _config.DiscoveryTimeoutMs : 2500;
                 string targetEnv = !string.IsNullOrWhiteSpace(_config.DiscoveryTargetEnvironment) ? _config.DiscoveryTargetEnvironment : "Production";
                 int fallbackHttp = _config.DiscoveryFallbackHttpPort > 0 ? _config.DiscoveryFallbackHttpPort : 5090;
                 int fallbackRtmp = _config.DiscoveryFallbackRtmpPort > 0 ? _config.DiscoveryFallbackRtmpPort : 19350;
 
-                _logger.LogInformation("[DISCOVERY] Initiating autonomous server discovery on {Address}:{Port} (DNS fallback names: {DnsNames}, TargetEnv: {Env})...",
-                    discMcast, discPort, string.Join(", ", dnsHostnames), targetEnv);
+                _logger.LogInformation("[DISCOVERY] Initiating autonomous server discovery on {Address}:{Port} (Broadcast: {Bcast}, DNS fallback names: {DnsNames}, TargetEnv: {Env})...",
+                    discMcast, discPort, discBcast, string.Join(", ", dnsHostnames), targetEnv);
 
                 var discoveryClient = new ServerDiscoveryClient(
                     _logger,
                     discoveryPort: discPort,
                     multicastAddress: discMcast,
+                    broadcastAddress: discBcast,
                     dnsSearchHostnames: dnsHostnames,
                     fallbackHttpPort: fallbackHttp,
                     fallbackRtmpPort: fallbackRtmp,

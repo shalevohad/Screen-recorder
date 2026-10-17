@@ -182,27 +182,36 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     {
                         int port = disc.Port > 0 ? disc.Port : ServerDiscoveryConstants.DefaultDiscoveryPort;
                         string mcast = !string.IsNullOrWhiteSpace(disc.MulticastAddress)
-                            ? disc.MulticastAddress
+                            ? disc.MulticastAddress.Trim()
                             : ServerDiscoveryConstants.DefaultMulticastAddress;
+                        string bcast = !string.IsNullOrWhiteSpace(disc.BroadcastAddress)
+                            ? disc.BroadcastAddress.Trim()
+                            : ServerDiscoveryConstants.DefaultBroadcastAddress;
 
                         var beacon = BuildLocalBeacon(disc, config);
                         byte[] beaconBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(beacon));
 
                         // Send Multicast
-                        try
+                        if (!string.IsNullOrWhiteSpace(mcast))
                         {
-                            var mcastEp = new IPEndPoint(IPAddress.Parse(mcast), port);
-                            await udpSender.SendAsync(beaconBytes, beaconBytes.Length, mcastEp).ConfigureAwait(false);
+                            try
+                            {
+                                var mcastEp = new IPEndPoint(IPAddress.Parse(mcast), port);
+                                await udpSender.SendAsync(beaconBytes, beaconBytes.Length, mcastEp).ConfigureAwait(false);
+                            }
+                            catch { }
                         }
-                        catch { }
 
                         // Send Broadcast fallback
-                        try
+                        if (disc.EnableBroadcastFallback && !string.IsNullOrWhiteSpace(bcast))
                         {
-                            var bcastEp = new IPEndPoint(IPAddress.Broadcast, port);
-                            await udpSender.SendAsync(beaconBytes, beaconBytes.Length, bcastEp).ConfigureAwait(false);
+                            try
+                            {
+                                var bcastEp = new IPEndPoint(IPAddress.Parse(bcast), port);
+                                await udpSender.SendAsync(beaconBytes, beaconBytes.Length, bcastEp).ConfigureAwait(false);
+                            }
+                            catch { }
                         }
-                        catch { }
                     }
                 }
                 catch (OperationCanceledException)
@@ -228,18 +237,21 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     var config = _configMonitor.CurrentValue.Discovery ?? new DiscoverySettings();
                     int port = config.Port > 0 ? config.Port : ServerDiscoveryConstants.DefaultDiscoveryPort;
                     string mcast = !string.IsNullOrWhiteSpace(config.MulticastAddress)
-                        ? config.MulticastAddress
+                        ? config.MulticastAddress.Trim()
                         : ServerDiscoveryConstants.DefaultMulticastAddress;
 
                     udpListener = new UdpClient();
                     udpListener.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                     udpListener.Client.Bind(new IPEndPoint(IPAddress.Any, port));
 
-                    try
+                    if (!string.IsNullOrWhiteSpace(mcast))
                     {
-                        udpListener.JoinMulticastGroup(IPAddress.Parse(mcast));
+                        try
+                        {
+                            udpListener.JoinMulticastGroup(IPAddress.Parse(mcast));
+                        }
+                        catch { }
                     }
-                    catch { }
 
                     while (!ct.IsCancellationRequested)
                     {

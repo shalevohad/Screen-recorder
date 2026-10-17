@@ -223,8 +223,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 Discovery = new
                 {
                     Enabled = disc.Enabled,
-                    MulticastAddress = disc.MulticastAddress ?? "239.255.10.90",
-                    Port = disc.Port > 0 ? disc.Port : 5098,
+                    MulticastAddress = !string.IsNullOrWhiteSpace(disc.MulticastAddress) ? disc.MulticastAddress : ServerDiscoveryConstants.DefaultMulticastAddress,
+                    BroadcastAddress = !string.IsNullOrWhiteSpace(disc.BroadcastAddress) ? disc.BroadcastAddress : ServerDiscoveryConstants.DefaultBroadcastAddress,
+                    EnableBroadcastFallback = disc.EnableBroadcastFallback,
+                    VirtualIpSubnetMask = !string.IsNullOrWhiteSpace(disc.VirtualIpSubnetMask) ? disc.VirtualIpSubnetMask : ServerDiscoveryConstants.DefaultSubnetMask,
+                    Port = disc.Port > 0 ? disc.Port : ServerDiscoveryConstants.DefaultDiscoveryPort,
                     AutoFailoverDashboard = disc.AutoFailoverDashboard,
                     FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8
                 }
@@ -320,8 +323,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public async Task<IActionResult> ScanLanDiscovery()
         {
             var config = _configMonitor.CurrentValue.Discovery ?? new DiscoverySettings();
-            int port = config.Port > 0 ? config.Port : 5098;
-            string mcast = !string.IsNullOrWhiteSpace(config.MulticastAddress) ? config.MulticastAddress : "239.255.10.90";
+            int port = config.Port > 0 ? config.Port : ServerDiscoveryConstants.DefaultDiscoveryPort;
+            string mcast = !string.IsNullOrWhiteSpace(config.MulticastAddress) ? config.MulticastAddress.Trim() : ServerDiscoveryConstants.DefaultMulticastAddress;
+            string bcast = !string.IsNullOrWhiteSpace(config.BroadcastAddress) ? config.BroadcastAddress.Trim() : ServerDiscoveryConstants.DefaultBroadcastAddress;
 
             var discoveredNodes = new List<object>();
 
@@ -339,18 +343,25 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 });
                 var probeBytes = Encoding.UTF8.GetBytes(probeJson);
 
-                // Broadcast & Multicast
-                try
+                // Broadcast fallback (if configured)
+                if (config.EnableBroadcastFallback && !string.IsNullOrWhiteSpace(bcast))
                 {
-                    await udp.SendAsync(probeBytes, probeBytes.Length, "255.255.255.255", port).ConfigureAwait(false);
+                    try
+                    {
+                        await udp.SendAsync(probeBytes, probeBytes.Length, bcast, port).ConfigureAwait(false);
+                    }
+                    catch { }
                 }
-                catch { }
 
-                try
+                // Multicast (if configured)
+                if (!string.IsNullOrWhiteSpace(mcast))
                 {
-                    await udp.SendAsync(probeBytes, probeBytes.Length, mcast, port).ConfigureAwait(false);
+                    try
+                    {
+                        await udp.SendAsync(probeBytes, probeBytes.Length, mcast, port).ConfigureAwait(false);
+                    }
+                    catch { }
                 }
-                catch { }
 
                 var cts = new CancellationTokenSource(1200);
                 while (!cts.IsCancellationRequested)
@@ -398,6 +409,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             {
                 scannedPort = port,
                 scannedMulticast = mcast,
+                scannedBroadcast = bcast,
                 nodesCount = discoveredNodes.Count,
                 nodes = discoveredNodes
             });
@@ -448,6 +460,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 if (dto.NetworkInterfaceName != null) disc.NetworkInterfaceName = dto.NetworkInterfaceName.Trim();
                 if (dto.AutoFailoverDashboard.HasValue) disc.AutoFailoverDashboard = dto.AutoFailoverDashboard.Value;
                 if (dto.DashboardFailoverDelaySeconds.HasValue) disc.DashboardFailoverDelaySeconds = dto.DashboardFailoverDelaySeconds.Value;
+                if (!string.IsNullOrWhiteSpace(dto.MulticastAddress)) disc.MulticastAddress = dto.MulticastAddress.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.BroadcastAddress)) disc.BroadcastAddress = dto.BroadcastAddress.Trim();
+                if (dto.Port.HasValue && dto.Port.Value >= 1024 && dto.Port.Value <= 65535) disc.Port = dto.Port.Value;
+                if (dto.EnableBroadcastFallback.HasValue) disc.EnableBroadcastFallback = dto.EnableBroadcastFallback.Value;
 
                 existing.Discovery = disc;
                 await _settingsFileService.WriteAsync(existing).ConfigureAwait(false);
@@ -502,5 +518,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public string? NetworkInterfaceName { get; set; }
         public bool? AutoFailoverDashboard { get; set; }
         public int? DashboardFailoverDelaySeconds { get; set; }
+        public string? MulticastAddress { get; set; }
+        public string? BroadcastAddress { get; set; }
+        public int? Port { get; set; }
+        public bool? EnableBroadcastFallback { get; set; }
     }
 }

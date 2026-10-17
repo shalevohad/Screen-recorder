@@ -182,8 +182,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         private async Task AcquireVirtualIpAsync(DiscoverySettings disc)
         {
             string vip = disc.VirtualIp!.Trim();
-            string mask = !string.IsNullOrWhiteSpace(disc.VirtualIpSubnetMask) ? disc.VirtualIpSubnetMask.Trim() : "255.255.255.0";
             string? iface = ResolveInterfaceName(disc.NetworkInterfaceName);
+            string mask = ResolveSubnetMask(disc.VirtualIpSubnetMask, iface);
 
             if (string.IsNullOrWhiteSpace(iface))
             {
@@ -255,7 +255,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
             else if (OperatingSystem.IsLinux())
             {
-                string mask = !string.IsNullOrWhiteSpace(disc.VirtualIpSubnetMask) ? disc.VirtualIpSubnetMask.Trim() : "255.255.255.0";
+                string mask = ResolveSubnetMask(disc.VirtualIpSubnetMask, iface);
                 int prefix = SubnetMaskToCidr(mask);
                 await RunCommandAsync("ip", $"addr del {vip}/{prefix} dev {iface}").ConfigureAwait(false);
             }
@@ -276,6 +276,34 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     && ni.GetIPProperties().UnicastAddresses.Any(u => u.Address.AddressFamily == AddressFamily.InterNetwork));
 
             return iface?.Name;
+        }
+
+        private static string ResolveSubnetMask(string? configuredMask, string? ifaceName)
+        {
+            if (!string.IsNullOrWhiteSpace(configuredMask))
+            {
+                return configuredMask.Trim();
+            }
+
+            try
+            {
+                var iface = NetworkInterface.GetAllNetworkInterfaces()
+                    .FirstOrDefault(ni => string.Equals(ni.Name, ifaceName, StringComparison.OrdinalIgnoreCase)
+                        || (string.IsNullOrWhiteSpace(ifaceName) && ni.OperationalStatus == OperationalStatus.Up && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback));
+                
+                if (iface != null)
+                {
+                    var u = iface.GetIPProperties().UnicastAddresses
+                        .FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork && !System.Net.IPAddress.IsLoopback(a.Address));
+                    if (u?.IPv4Mask != null && !System.Net.IPAddress.Any.Equals(u.IPv4Mask))
+                    {
+                        return u.IPv4Mask.ToString();
+                    }
+                }
+            }
+            catch { }
+
+            return ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultSubnetMask;
         }
 
         private static int SubnetMaskToCidr(string mask)

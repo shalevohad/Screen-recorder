@@ -13,6 +13,7 @@ IS_UNATTENDED=false
 CLI_ROLE_PASSED=false
 DISCOVERY_PORT=5098
 DISCOVERY_MULTICAST="239.255.10.90"
+DISCOVERY_BROADCAST="${DISCOVERY_BROADCAST:-255.255.255.255}"
 ENABLE_VIP=false
 VIRTUAL_IP=""
 VIRTUAL_IP_SUBNET="255.255.255.0"
@@ -142,6 +143,7 @@ try:
     srv_priority = disc_cfg.get("Priority", 1)
     disc_port = disc_cfg.get("Port", 5098)
     disc_mcast = disc_cfg.get("MulticastAddress", "239.255.10.90")
+    disc_bcast = disc_cfg.get("BroadcastAddress", "255.255.255.255")
     en_vip = disc_cfg.get("EnableVirtualIp", False)
     vip_addr = disc_cfg.get("VirtualIp", "")
     vip_sub = disc_cfg.get("VirtualIpSubnetMask", "255.255.255.0")
@@ -168,6 +170,7 @@ try:
     print(f"SERVER_PRIORITY={srv_priority}")
     print(f"DISCOVERY_PORT={disc_port}")
     print(f"DISCOVERY_MULTICAST='{disc_mcast}'")
+    print(f"DISCOVERY_BROADCAST='{disc_bcast}'")
     print(f"ENABLE_VIP={'true' if en_vip else 'false'}")
     print(f"VIRTUAL_IP='{vip_addr or ''}'")
     print(f"VIRTUAL_IP_SUBNET='{vip_sub or '255.255.255.0'}'")
@@ -200,7 +203,7 @@ try:
     except Exception:
         pass
     try:
-        sock.sendto(probe_payload, ("255.255.255.255", int("$DISCOVERY_PORT")))
+        sock.sendto(probe_payload, ("$DISCOVERY_BROADCAST", int("$DISCOVERY_PORT")))
     except Exception:
         pass
 
@@ -453,6 +456,8 @@ try:
     disc["Priority"] = int("$SERVER_PRIORITY")
     disc["Port"] = int("$DISCOVERY_PORT")
     disc["MulticastAddress"] = "$DISCOVERY_MULTICAST"
+    disc["BroadcastAddress"] = "$DISCOVERY_BROADCAST"
+    disc["EnableBroadcastFallback"] = True
     disc["PartnerServerUrl"] = "$PARTNER_URL"
     disc["EnableVirtualIp"] = str("$ENABLE_VIP").lower() in ("true", "1", "yes", "y")
     disc["VirtualIp"] = "$VIRTUAL_IP"

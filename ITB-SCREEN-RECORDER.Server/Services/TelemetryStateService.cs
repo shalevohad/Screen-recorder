@@ -80,7 +80,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             _latestReports[key] = report;
 
-            string hostToUse = !string.IsNullOrWhiteSpace(requestHost) ? requestHost : "128.200.3.10";
+            string hostToUse = !string.IsNullOrWhiteSpace(requestHost)
+                ? requestHost
+                : (!string.IsNullOrWhiteSpace(_configMonitor.CurrentValue.Discovery?.VirtualIp)
+                    ? _configMonitor.CurrentValue.Discovery.VirtualIp
+                    : "127.0.0.1");
 
             // מדרג מדיניות (Overrides -> Tab Settings -> Global Defaults)
             var currentPolicy = await GetAgentPolicyAsync(report.Hostname, hostToUse);

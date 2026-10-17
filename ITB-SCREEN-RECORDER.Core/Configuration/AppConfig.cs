@@ -17,6 +17,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public int DiscoveryPort { get; set; } = 5098;
         public string DiscoveryMulticastAddress { get; set; } = "239.255.10.90";
+        public string DiscoveryBroadcastAddress { get; set; } = "255.255.255.255";
         public System.Collections.Generic.List<string> DiscoveryDnsHostnames { get; set; } = new() { "itb-server", "screenrecorder" };
         public int DiscoveryTimeoutMs { get; set; } = 2500;
         public string DiscoveryTargetEnvironment { get; set; } = "Production";

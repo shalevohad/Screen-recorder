@@ -46,6 +46,10 @@ namespace ITB_SCREEN_RECORDER.Server.Models
 
         public string MulticastAddress { get; set; } = "239.255.10.90";
 
+        public bool EnableBroadcastFallback { get; set; } = true;
+
+        public string BroadcastAddress { get; set; } = "255.255.255.255";
+
         public string Role { get; set; } = "Primary";
 
         public int Priority { get; set; } = 1;

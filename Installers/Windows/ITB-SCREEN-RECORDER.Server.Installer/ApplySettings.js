@@ -37,6 +37,8 @@ try {
         var enableVip = (parts[10] === "1" || parts[10] === "true");
         var virtualIp = parts[11] || "";
         var partnerUrl = parts[12] || "";
+        var vipSubnet = parts[13] || "255.255.255.0";
+        var discBcast = parts[14] || "255.255.255.255";
         if (virtualIp.length > 0) enableVip = true;
 
         // נירמול תפקיד השרת ועדיפות תקנית
@@ -134,6 +136,12 @@ try {
                     content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "MulticastAddress": "' + discMcast + '",');
                 }
 
+                if (/"BroadcastAddress"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"BroadcastAddress"\s*:\s*"[^"]*"/gi, '"BroadcastAddress": "' + discBcast + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "BroadcastAddress": "' + discBcast + '",');
+                }
+
                 // Virtual IP (VIP) and Partner Server URL
                 if (/"EnableVirtualIp"\s*:\s*(true|false)/i.test(content)) {
                     content = content.replace(/"EnableVirtualIp"\s*:\s*(true|false)/gi, '"EnableVirtualIp": ' + (enableVip ? "true" : "false"));
@@ -145,6 +153,12 @@ try {
                     content = content.replace(/"VirtualIp"\s*:\s*"[^"]*"/gi, '"VirtualIp": "' + virtualIp + '"');
                 } else {
                     content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "VirtualIp": "' + virtualIp + '",');
+                }
+
+                if (/"VirtualIpSubnetMask"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"VirtualIpSubnetMask"\s*:\s*"[^"]*"/gi, '"VirtualIpSubnetMask": "' + vipSubnet + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "VirtualIpSubnetMask": "' + vipSubnet + '",');
                 }
 
                 if (partnerUrl && partnerUrl.length > 0) {

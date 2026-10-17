@@ -294,10 +294,19 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                         <span>UDP Multicast Address</span>
                         <input
                             type="text"
-                            placeholder="239.255.10.90"
-                            value={discovery.multicastAddress || '239.255.10.90'}
+                            placeholder="e.g. 239.255.10.90"
+                            value={discovery.multicastAddress ?? ''}
                             onChange={e => updateDiscoveryField('multicastAddress', e.target.value)}
-                            required
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Subnet Broadcast Address</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. 255.255.255.255"
+                            value={discovery.broadcastAddress ?? ''}
+                            onChange={e => updateDiscoveryField('broadcastAddress', e.target.value)}
                         />
                     </div>
 
@@ -307,7 +316,8 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                             type="number"
                             min="1024"
                             max="65535"
-                            value={discovery.port || 5098}
+                            placeholder="5098"
+                            value={discovery.port ?? ''}
                             onChange={e => updateDiscoveryField('port', Number(e.target.value))}
                             required
                         />
@@ -319,7 +329,8 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                             type="number"
                             min="3"
                             max="60"
-                            value={discovery.dashboardFailoverDelaySeconds || 8}
+                            placeholder="8"
+                            value={discovery.dashboardFailoverDelaySeconds ?? ''}
                             onChange={e => updateDiscoveryField('dashboardFailoverDelaySeconds', Number(e.target.value))}
                             required
                         />
@@ -341,8 +352,8 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                         <span>VIP Subnet Mask</span>
                         <input
                             type="text"
-                            placeholder="255.255.255.0"
-                            value={discovery.virtualIpSubnetMask || '255.255.255.0'}
+                            placeholder="e.g. 255.255.255.0"
+                            value={discovery.virtualIpSubnetMask ?? ''}
                             onChange={e => updateDiscoveryField('virtualIpSubnetMask', e.target.value)}
                         />
                     </div>

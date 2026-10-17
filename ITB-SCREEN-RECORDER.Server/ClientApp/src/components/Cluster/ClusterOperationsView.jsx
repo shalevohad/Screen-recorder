@@ -30,10 +30,14 @@ export default function ClusterOperationsView({ onNavigate }) {
         partnerServerUrl: '',
         enableVirtualIp: false,
         virtualIp: '',
-        virtualIpSubnetMask: '255.255.255.0',
+        virtualIpSubnetMask: '',
         networkInterfaceName: '',
         autoFailoverDashboard: true,
-        dashboardFailoverDelaySeconds: 8
+        dashboardFailoverDelaySeconds: 8,
+        multicastAddress: '',
+        broadcastAddress: '',
+        port: 5098,
+        enableBroadcastFallback: true
     });
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     const [settingsFeedback, setSettingsFeedback] = useState(null);
@@ -57,10 +61,14 @@ export default function ClusterOperationsView({ onNavigate }) {
                     partnerServerUrl: data.PartnerNode?.PartnerUrl || '',
                     enableVirtualIp: data.LocalNode.VipStatus?.EnableVirtualIp || false,
                     virtualIp: data.LocalNode.VipStatus?.VirtualIp || '',
-                    virtualIpSubnetMask: data.LocalNode.VipStatus?.SubnetMask || '255.255.255.0',
+                    virtualIpSubnetMask: data.LocalNode.VipStatus?.SubnetMask || data.Discovery?.VirtualIpSubnetMask || '',
                     networkInterfaceName: data.LocalNode.VipStatus?.ActiveInterface || '',
                     autoFailoverDashboard: data.Discovery.AutoFailoverDashboard !== false,
-                    dashboardFailoverDelaySeconds: data.Discovery.FailoverDelaySeconds || 8
+                    dashboardFailoverDelaySeconds: data.Discovery.FailoverDelaySeconds || 8,
+                    multicastAddress: data.Discovery.MulticastAddress || '',
+                    broadcastAddress: data.Discovery.BroadcastAddress || '',
+                    port: data.Discovery.Port || 5098,
+                    enableBroadcastFallback: data.Discovery.EnableBroadcastFallback !== false
                 }));
             }
         } catch (err) {
@@ -489,11 +497,11 @@ export default function ClusterOperationsView({ onNavigate }) {
                                     <div className="node-props-grid">
                                         <div className="prop-row">
                                             <span className="prop-k">Multicast Channel</span>
-                                            <span className="prop-v">{overview?.Discovery?.MulticastAddress || '239.255.10.90'}:{overview?.Discovery?.Port || 5098}</span>
+                                            <span className="prop-v">{overview?.Discovery?.MulticastAddress || 'Disabled'}:{overview?.Discovery?.Port || 5098}</span>
                                         </div>
                                         <div className="prop-row">
                                             <span className="prop-k">Subnet Broadcast</span>
-                                            <span className="prop-v">255.255.255.255:{overview?.Discovery?.Port || 5098}</span>
+                                            <span className="prop-v">{overview?.Discovery?.BroadcastAddress || '255.255.255.255'}:{overview?.Discovery?.Port || 5098}</span>
                                         </div>
                                         <div className="prop-row">
                                             <span className="prop-k">Cluster Expansion</span>
@@ -865,7 +873,7 @@ export default function ClusterOperationsView({ onNavigate }) {
 
                         <div className="modal-body">
                             <p className="modal-desc">
-                                Broadcasted UDP probe across local subnet (255.255.255.255) and multicast group ({scanResults?.scannedMulticast || '239.255.10.90'}:{scanResults?.scannedPort || 5098}).
+                                Broadcasted UDP probe across local subnet ({scanResults?.scannedBroadcast || overview?.Discovery?.BroadcastAddress || '255.255.255.255'}) and multicast group ({scanResults?.scannedMulticast || overview?.Discovery?.MulticastAddress || 'Disabled'}:{scanResults?.scannedPort || overview?.Discovery?.Port || 5098}).
                             </p>
 
                             {isScanning ? (
@@ -997,7 +1005,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                                         <label>Virtual IP (VIP) Address</label>
                                         <input
                                             type="text"
-                                            placeholder="192.168.1.200"
+                                            placeholder="e.g. 192.168.1.200"
                                             value={settingsForm.virtualIp}
                                             onChange={e => setSettingsForm({ ...settingsForm, virtualIp: e.target.value })}
                                         />
@@ -1007,7 +1015,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                                         <label>VIP Subnet Mask</label>
                                         <input
                                             type="text"
-                                            placeholder="255.255.255.0"
+                                            placeholder="e.g. 255.255.255.0"
                                             value={settingsForm.virtualIpSubnetMask}
                                             onChange={e => setSettingsForm({ ...settingsForm, virtualIpSubnetMask: e.target.value })}
                                         />
@@ -1024,6 +1032,45 @@ export default function ClusterOperationsView({ onNavigate }) {
                                     </div>
                                 </>
                             )}
+
+                            <div className="form-divider" />
+                            <div className="drawer-section-title" style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>
+                                Network & Discovery Mesh Configuration
+                            </div>
+
+                            <div className="form-group">
+                                <label>UDP Multicast Group Address</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 239.255.10.90"
+                                    value={settingsForm.multicastAddress}
+                                    onChange={e => setSettingsForm({ ...settingsForm, multicastAddress: e.target.value })}
+                                />
+                                <span className="helper-txt">Administratively scoped IPv4 Multicast group used for cluster peer heartbeat</span>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Subnet Broadcast Address</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. 255.255.255.255"
+                                    value={settingsForm.broadcastAddress}
+                                    onChange={e => setSettingsForm({ ...settingsForm, broadcastAddress: e.target.value })}
+                                />
+                                <span className="helper-txt">Fallback subnet broadcast address when multicast is restricted</span>
+                            </div>
+
+                            <div className="form-group">
+                                <label>UDP Discovery Port</label>
+                                <input
+                                    type="number"
+                                    min="1024"
+                                    max="65535"
+                                    placeholder="5098"
+                                    value={settingsForm.port}
+                                    onChange={e => setSettingsForm({ ...settingsForm, port: parseInt(e.target.value) || 5098 })}
+                                />
+                            </div>
 
                             <div className="form-divider" />
 
