@@ -79,6 +79,13 @@ try {
                 var mPriority = text.match(/"Priority"\s*:\s*(\d+)/i);
                 if (mPriority && mPriority[1]) Session.Property("SERVER_PRIORITY") = mPriority[1];
 
+                // שליפת פורט ומולטיקאסט של Discovery
+                var mDiscPort = text.match(/"Port"\s*:\s*(\d+)/i);
+                if (mDiscPort && mDiscPort[1]) Session.Property("DISCOVERY_PORT") = mDiscPort[1];
+
+                var mMcast = text.match(/"MulticastAddress"\s*:\s*"([^"]+)"/i);
+                if (mMcast && mMcast[1]) Session.Property("DISCOVERY_MULTICAST") = mMcast[1];
+
                 // עדכון INSTALLFOLDER לנתיב שנמצא בו הקונפיגורציה
                 Session.Property("INSTALLFOLDER") = dir;
 

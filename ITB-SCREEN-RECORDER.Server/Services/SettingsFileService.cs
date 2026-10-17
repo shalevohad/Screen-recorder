@@ -25,6 +25,20 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             var root = await JsonNode.ParseAsync(stream).ConfigureAwait(false);
             var systemConfig = root?["SystemConfig"] ?? throw new InvalidOperationException("SystemConfig section missing from appsettings.json");
             var storage = systemConfig["Storage"] ?? throw new InvalidOperationException("SystemConfig.Storage section missing from appsettings.json");
+            var discovery = systemConfig["Discovery"];
+
+            var discoveryDto = new DiscoverySettingsDto();
+            if (discovery != null)
+            {
+                discoveryDto.Enabled = (bool)(discovery["Enabled"] ?? true);
+                discoveryDto.Port = (int)(discovery["Port"] ?? 5098);
+                discoveryDto.MulticastAddress = (string)(discovery["MulticastAddress"] ?? "239.255.10.90");
+                discoveryDto.Role = (string)(discovery["Role"] ?? "Primary");
+                discoveryDto.Priority = (int)(discovery["Priority"] ?? 1);
+                discoveryDto.PartnerServerUrl = (string?)discovery["PartnerServerUrl"];
+                discoveryDto.AutoFailoverDashboard = (bool)(discovery["AutoFailoverDashboard"] ?? true);
+                discoveryDto.DashboardFailoverDelaySeconds = (int)(discovery["DashboardFailoverDelaySeconds"] ?? 8);
+            }
 
             return new SystemConfigDto
             {
@@ -46,7 +60,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     ChunkIntervalMinutes = (int)storage["ChunkIntervalMinutes"]!,
                     RetentionDays = (int)storage["RetentionDays"]!,
                     ChunkEventLogPath = (string)storage["ChunkEventLogPath"]!
-                }
+                },
+
+                Discovery = discoveryDto
             };
         }
 
@@ -75,6 +91,25 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 storage["ChunkIntervalMinutes"] = dto.Storage.ChunkIntervalMinutes;
                 storage["RetentionDays"] = dto.Storage.RetentionDays;
                 storage["ChunkEventLogPath"] = dto.Storage.ChunkEventLogPath;
+
+                if (dto.Discovery != null)
+                {
+                    var discNode = systemConfig["Discovery"] as JsonObject;
+                    if (discNode == null)
+                    {
+                        discNode = new JsonObject();
+                        systemConfig["Discovery"] = discNode;
+                    }
+
+                    discNode["Enabled"] = dto.Discovery.Enabled;
+                    discNode["Port"] = dto.Discovery.Port;
+                    discNode["MulticastAddress"] = dto.Discovery.MulticastAddress;
+                    discNode["Role"] = dto.Discovery.Role;
+                    discNode["Priority"] = dto.Discovery.Priority;
+                    discNode["PartnerServerUrl"] = dto.Discovery.PartnerServerUrl ?? "";
+                    discNode["AutoFailoverDashboard"] = dto.Discovery.AutoFailoverDashboard;
+                    discNode["DashboardFailoverDelaySeconds"] = dto.Discovery.DashboardFailoverDelaySeconds;
+                }
 
                 var json = root!.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 

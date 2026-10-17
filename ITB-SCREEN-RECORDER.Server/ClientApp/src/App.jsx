@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ClientApp/src/App.jsx
 // ==========================================
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -59,6 +59,26 @@ function CommandCenterApp() {
     const [isServerOfflineModal, setIsServerOfflineModal] = useState(false);
     const [lastServerContact, setLastServerContact] = useState(() => new Date());
     const [isRetryingConnection, setIsRetryingConnection] = useState(false);
+
+    const [clusterConfig, setClusterConfig] = useState(() => {
+        try {
+            return {
+                role: localStorage.getItem('itb_cluster_role') || 'Primary',
+                partnerServerUrl: localStorage.getItem('itb_cluster_partner_url') || '',
+                autoFailoverDashboard: localStorage.getItem('itb_cluster_failover_enabled') !== 'false',
+                failoverDelaySeconds: Number(localStorage.getItem('itb_cluster_failover_delay')) || 8,
+                primaryServerUrl: localStorage.getItem('itb_cluster_primary_url') || ''
+            };
+        } catch {
+            return { role: 'Primary', partnerServerUrl: '', autoFailoverDashboard: true, failoverDelaySeconds: 8, primaryServerUrl: '' };
+        }
+    });
+
+    const [failoverCountdown, setFailoverCountdown] = useState(8);
+    const [isFailoverPaused, setIsFailoverPaused] = useState(false);
+    const [primaryRecovered, setPrimaryRecovered] = useState(false);
+    const [failbackCountdown, setFailbackCountdown] = useState(5);
+    const [isFailbackDismissed, setIsFailbackDismissed] = useState(false);
 
     const lastContactTimestampRef = useRef(0);
 
@@ -163,6 +183,132 @@ function CommandCenterApp() {
         }
     }, [apiBaseUrl, registerServerHeartbeat]);
 
+    const fetchClusterConfig = useCallback(async () => {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const res = await fetch(`${apiBaseUrl}/api/v1/dashboard/cluster`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+                const data = await res.json();
+                const role = data.role || data.Role || 'Primary';
+                const partner = (data.partnerServerUrl || data.PartnerServerUrl || '').trim();
+                const autoFailover = data.autoFailoverDashboard ?? data.AutoFailoverDashboard ?? true;
+                const delay = Number(data.failoverDelaySeconds || data.FailoverDelaySeconds) || 8;
+
+                const currentOrigin = window.location.origin;
+                let primaryUrl = '';
+                if (role.toLowerCase() === 'primary') {
+                    primaryUrl = currentOrigin;
+                    localStorage.setItem('itb_cluster_primary_url', currentOrigin);
+                } else if (role.toLowerCase() === 'secondary') {
+                    primaryUrl = partner || localStorage.getItem('itb_cluster_primary_url') || '';
+                    if (primaryUrl) localStorage.setItem('itb_cluster_primary_url', primaryUrl);
+                }
+
+                localStorage.setItem('itb_cluster_role', role);
+                localStorage.setItem('itb_cluster_partner_url', partner);
+                localStorage.setItem('itb_cluster_failover_enabled', String(autoFailover));
+                localStorage.setItem('itb_cluster_failover_delay', String(delay));
+
+                setClusterConfig({
+                    role,
+                    priority: data.priority ?? data.Priority,
+                    serverName: data.serverName || data.ServerName,
+                    discoveryPort: data.discoveryPort || data.DiscoveryPort,
+                    multicastAddress: data.multicastAddress || data.MulticastAddress,
+                    partnerServerUrl: partner,
+                    autoFailoverDashboard: autoFailover,
+                    failoverDelaySeconds: delay,
+                    primaryServerUrl: primaryUrl
+                });
+                setFailoverCountdown(delay);
+            }
+        } catch (err) {
+            console.warn('[App] fetchClusterConfig error:', err.message);
+        }
+    }, [apiBaseUrl]);
+
+    // ניהול ספירה לאחור ומעבר אוטומטי לשרת המשני בעת ניתוק
+    useEffect(() => {
+        if (!isServerOfflineModal) {
+            setFailoverCountdown(clusterConfig.failoverDelaySeconds || 8);
+            setIsFailoverPaused(false);
+            return;
+        }
+
+        const canFailover = clusterConfig.autoFailoverDashboard && Boolean(clusterConfig.partnerServerUrl?.trim());
+        if (!canFailover || isFailoverPaused) return;
+
+        const timer = setInterval(() => {
+            setFailoverCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer);
+                    const target = clusterConfig.partnerServerUrl.trim();
+                    if (target) {
+                        window.location.href = target;
+                    }
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [isServerOfflineModal, isFailoverPaused, clusterConfig]);
+
+    // בדיקת שרידות וזמינות של השרת הראשי כאשר המשתמש מחובר לשרת המשני (Failback Health Probe)
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        const isSecondary = clusterConfig.role?.toLowerCase() === 'secondary';
+        const primaryTarget = clusterConfig.primaryServerUrl || clusterConfig.partnerServerUrl;
+        if (!isSecondary || !primaryTarget || isFailbackDismissed) return;
+
+        const probeInterval = setInterval(async () => {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const res = await fetch(`${primaryTarget}/api/v1/health`, {
+                    signal: controller.signal,
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.status === 'Healthy' || data.Status === 'Healthy') {
+                        setPrimaryRecovered(true);
+                    }
+                }
+            } catch {
+                // Primary node still unavailable
+            }
+        }, 6000);
+
+        return () => clearInterval(probeInterval);
+    }, [isAuthenticated, clusterConfig, isFailbackDismissed]);
+
+    // ספירה לאחור ומעבר אוטומטי חזרה לשרת הראשי (Auto-Failback)
+    useEffect(() => {
+        if (!primaryRecovered || isFailbackDismissed) return;
+
+        const timer = setInterval(() => {
+            setFailbackCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer);
+                    const target = clusterConfig.primaryServerUrl || clusterConfig.partnerServerUrl;
+                    if (target) window.location.href = target;
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [primaryRecovered, isFailbackDismissed, clusterConfig]);
+
     useEffect(() => {
         if (!isAuthenticated) return;
 
@@ -171,7 +317,8 @@ function CommandCenterApp() {
             try {
                 await Promise.allSettled([
                     fetchStations(),
-                    fetchSystemConfig()
+                    fetchSystemConfig(),
+                    fetchClusterConfig()
                 ]);
             } catch (err) {
                 console.error('[App] Failed to load initial data:', err);
@@ -188,7 +335,7 @@ function CommandCenterApp() {
             isMounted = false;
             clearInterval(heartbeatInterval);
         };
-    }, [isAuthenticated, fetchStations, fetchSystemConfig]);
+    }, [isAuthenticated, fetchStations, fetchSystemConfig, fetchClusterConfig]);
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -209,6 +356,7 @@ function CommandCenterApp() {
             registerServerHeartbeat();
             fetchStations();
             fetchSystemConfig();
+            fetchClusterConfig();
         });
 
         connection.onclose(() => {
@@ -338,6 +486,7 @@ function CommandCenterApp() {
                         onSettingsSaved={() => {
                             fetchStations();
                             fetchSystemConfig();
+                            fetchClusterConfig();
                         }}
                     />
                 ) : (
@@ -347,6 +496,7 @@ function CommandCenterApp() {
                             stations={sortedStations}
                             serverTelemetry={serverTelemetry}
                             systemConfig={systemConfig}
+                            clusterConfig={clusterConfig}
                             onOpenAppSwitcher={() => setCurrentSubsystem('portal')}
                             hideOffline={hideOffline}
                             isFaultFilterActive={isFaultFilterActive}
@@ -408,21 +558,115 @@ function CommandCenterApp() {
                                         {lastServerContact ? lastServerContact.toLocaleTimeString() : 'N/A'}
                                     </span>
                                 </div>
+                                {clusterConfig.role && (
+                                    <div className="diag-row">
+                                        <span className="diag-label">ACTIVE NODE ROLE</span>
+                                        <span className="diag-val cyan">
+                                            {clusterConfig.role.toUpperCase()}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Failover Automation Card */}
+                            {clusterConfig.autoFailoverDashboard && clusterConfig.partnerServerUrl ? (
+                                <div className="failover-automation-box">
+                                    <div className="failover-box-header">
+                                        <span className="pulse-warning-dot" />
+                                        <span className="failover-title">AUTOMATIC FAILOVER INITIATED</span>
+                                        <span className="failover-countdown-pill">
+                                            {isFailoverPaused ? 'PAUSED' : `${failoverCountdown}s`}
+                                        </span>
+                                    </div>
+                                    <p className="failover-desc">
+                                        Standby Partner Node: <strong>{clusterConfig.partnerServerUrl}</strong>
+                                    </p>
+                                    <div className="failover-progress-track">
+                                        <div
+                                            className={`failover-progress-fill ${isFailoverPaused ? 'paused' : ''}`}
+                                            style={{
+                                                width: `${Math.max(0, Math.min(100, (failoverCountdown / (clusterConfig.failoverDelaySeconds || 8)) * 100))}%`
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
                         </div>
 
                         <div className="modal-actions-section">
-                            <button
-                                type="button"
-                                className="btn-modal-reconnect"
-                                onClick={handleManualRetry}
-                                disabled={isRetryingConnection}
-                            >
-                                {isRetryingConnection ? 'CHECKING CONNECTION...' : '⟳ RECONNECT NOW'}
-                            </button>
+                            {clusterConfig.autoFailoverDashboard && clusterConfig.partnerServerUrl && (
+                                <button
+                                    type="button"
+                                    className="btn-modal-failover"
+                                    onClick={() => {
+                                        const target = clusterConfig.partnerServerUrl.trim();
+                                        if (target) window.location.href = target;
+                                    }}
+                                >
+                                    ⚡ SWITCH TO SECONDARY NOW
+                                </button>
+                            )}
+
+                            <div className="modal-actions-secondary-row">
+                                <button
+                                    type="button"
+                                    className="btn-modal-reconnect"
+                                    onClick={handleManualRetry}
+                                    disabled={isRetryingConnection}
+                                >
+                                    {isRetryingConnection ? 'CHECKING CONNECTION...' : '⟳ RECONNECT NOW'}
+                                </button>
+
+                                {clusterConfig.autoFailoverDashboard && clusterConfig.partnerServerUrl && (
+                                    <button
+                                        type="button"
+                                        className="btn-modal-pause-failover"
+                                        onClick={() => setIsFailoverPaused(p => !p)}
+                                    >
+                                        {isFailoverPaused ? '▶ RESUME FAILOVER' : '⏸ PAUSE FAILOVER'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Failback Alert Banner when Primary recovers */}
+            {primaryRecovered && !isFailbackDismissed && (
+                <aside className="tactical-failback-toast-bar" role="alert">
+                    <div className="failback-toast-content">
+                        <div className="failback-beacon">
+                            <span className="beacon-ring" />
+                            <span className="beacon-core" />
+                        </div>
+                        <div className="failback-text-group">
+                            <span className="failback-tag">FAILBACK READY</span>
+                            <span className="failback-title">
+                                Primary C2 Server is back online. Returning to Primary in <strong>{failbackCountdown}s</strong>...
+                            </span>
+                        </div>
+                    </div>
+                    <div className="failback-actions">
+                        <button
+                            type="button"
+                            className="btn-failback-now"
+                            onClick={() => {
+                                const target = clusterConfig.primaryServerUrl || clusterConfig.partnerServerUrl;
+                                if (target) window.location.href = target;
+                            }}
+                        >
+                            RETURN TO PRIMARY NOW
+                        </button>
+                        <button
+                            type="button"
+                            className="btn-failback-dismiss"
+                            onClick={() => setIsFailbackDismissed(true)}
+                        >
+                            STAY ON SECONDARY
+                        </button>
+                    </div>
+                </aside>
             )}
         </div>
     );

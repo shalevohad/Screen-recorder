@@ -32,6 +32,29 @@ namespace ITB_SCREEN_RECORDER.Server.Models
 
         // 💡 הוספת הגדרות ה-Dashboard הכוללות את הטאבים ל-DTO
         public DashboardSettingsDto Dashboard { get; set; } = new DashboardSettingsDto();
+
+        // 💡 הגדרות Discovery ו-Cluster
+        public DiscoverySettingsDto Discovery { get; set; } = new DiscoverySettingsDto();
+    }
+
+    public class DiscoverySettingsDto
+    {
+        public bool Enabled { get; set; } = true;
+
+        [Range(1024, 65535)]
+        public int Port { get; set; } = 5098;
+
+        public string MulticastAddress { get; set; } = "239.255.10.90";
+
+        public string Role { get; set; } = "Primary";
+
+        public int Priority { get; set; } = 1;
+
+        public string? PartnerServerUrl { get; set; }
+
+        public bool AutoFailoverDashboard { get; set; } = true;
+
+        public int DashboardFailoverDelaySeconds { get; set; } = 8;
     }
 
     public class DashboardSettingsDto

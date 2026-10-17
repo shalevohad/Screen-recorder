@@ -35,6 +35,8 @@
 		<Property Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" Secure="yes" />
 		<Property Id="SERVER_ROLE" Value="Primary" Secure="yes" />
 		<Property Id="SERVER_PRIORITY" Value="1" Secure="yes" />
+		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
+		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
 
 		<SetProperty Id="INSTALLFOLDER" Value="[PREVIOUS_INSTALLFOLDER]" After="AppSearch" Condition="PREVIOUS_INSTALLFOLDER" />
 
@@ -61,7 +63,7 @@
 		<!-- 💡 4. הכנת נתוני ההתקנה עבור הפעולה הנדחית (Deferred Custom Action) -->
 		<CustomAction Id="SetApplySettingsData"
 					  Property="ApplySettingsAction"
-					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]|[SERVER_ROLE]|[SERVER_PRIORITY]"
+					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]|[SERVER_ROLE]|[SERVER_PRIORITY]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]"
 					  Execute="immediate" />
 
 		<!-- 💡 5. החלת ההגדרות ישירות דרך מנוע ה-MSI ללא תלות ב-PowerShell -->

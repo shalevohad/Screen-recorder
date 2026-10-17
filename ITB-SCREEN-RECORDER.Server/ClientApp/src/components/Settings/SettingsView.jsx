@@ -107,6 +107,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     const updateStorageField = (field, value) => setForm(prev => ({ ...prev, storage: { ...prev.storage, [field]: value } }));
     const updateDashboardField = (field, value) => setForm(prev => ({ ...prev, dashboard: { ...prev.dashboard, [field]: value } }));
     const updateMediaMtxField = (field, value) => setForm(prev => ({ ...prev, mediaMtx: { ...prev.mediaMtx, [field]: value } }));
+    const updateDiscoveryField = (field, value) => setForm(prev => ({ ...prev, discovery: { ...(prev.discovery || {}), [field]: value } }));
 
     const handleSaveGlobalConfig = async (e) => {
         e.preventDefault();
@@ -321,6 +322,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                                     updateField={updateField}
                                     updateDashboardField={updateDashboardField}
                                     updateMediaMtxField={updateMediaMtxField}
+                                    updateDiscoveryField={updateDiscoveryField}
                                 />
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>

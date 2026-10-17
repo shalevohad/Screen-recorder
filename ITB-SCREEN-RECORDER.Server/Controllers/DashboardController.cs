@@ -35,6 +35,30 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _configMonitor = configMonitor;
         }
 
+        [HttpGet("cluster")]
+        [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+        public IActionResult GetClusterStatus()
+        {
+            var config = _configMonitor.CurrentValue;
+            var disc = config.Discovery ?? new DiscoverySettings();
+
+            string role = !string.IsNullOrWhiteSpace(disc.Role) ? disc.Role : "Primary";
+            int priority = disc.Priority > 0 ? disc.Priority : (string.Equals(role, "Secondary", StringComparison.OrdinalIgnoreCase) ? 2 : 1);
+
+            return Ok(new
+            {
+                Role = role,
+                Priority = priority,
+                ServerName = disc.ServerDisplayName,
+                ServerId = Environment.MachineName,
+                DiscoveryPort = disc.Port > 0 ? disc.Port : 5098,
+                MulticastAddress = !string.IsNullOrWhiteSpace(disc.MulticastAddress) ? disc.MulticastAddress : "239.255.10.90",
+                PartnerServerUrl = disc.PartnerServerUrl ?? string.Empty,
+                AutoFailoverDashboard = disc.AutoFailoverDashboard,
+                FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8
+            });
+        }
+
         [HttpGet("stations")]
         [AuthorizePermission(PermissionKeys.StationsView)]
         public async Task<IActionResult> GetStationsSummary()

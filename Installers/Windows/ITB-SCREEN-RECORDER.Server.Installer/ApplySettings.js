@@ -32,6 +32,8 @@ try {
         var dataDir = parts[5] || "C:\\ProgramData\\ITB-SCREEN-RECORDER\\Server";
         var serverRole = parts[6] || "Primary";
         var serverPriority = parts[7] || "1";
+        var discPort = parts[8] || "5098";
+        var discMcast = parts[9] || "239.255.10.90";
 
         // נירמול תפקיד השרת ועדיפות תקנית
         var cleanRole = (serverRole + "").toLowerCase().replace(/^\s+|\s+$/g, "");
@@ -62,7 +64,7 @@ try {
 
         var dataDirJson = dataDir.split("\\").join("\\\\");
 
-        log("Parsed settings: HTTP=" + httpPort + ", RTMP=" + rtmpPort + ", API=" + apiPort + ", HLS=" + hlsPort + ", Role=" + serverRole + ", Priority=" + serverPriority);
+        log("Parsed settings: HTTP=" + httpPort + ", RTMP=" + rtmpPort + ", API=" + apiPort + ", HLS=" + hlsPort + ", Role=" + serverRole + ", Priority=" + serverPriority + ", DiscPort=" + discPort + ", DiscMcast=" + discMcast);
         log("InstallDir: " + installDir);
         log("DataDir: " + dataDir);
 
@@ -113,6 +115,19 @@ try {
                     content = content.replace(/"Priority"\s*:\s*\d+/gi, '"Priority": ' + serverPriority);
                 } else {
                     content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "Priority": ' + serverPriority + ',');
+                }
+
+                // פורט ומולטיקאסט של Discovery
+                if (/"Port"\s*:\s*\d+/i.test(content)) {
+                    content = content.replace(/"Port"\s*:\s*\d+/gi, '"Port": ' + discPort);
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "Port": ' + discPort + ',');
+                }
+
+                if (/"MulticastAddress"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"MulticastAddress"\s*:\s*"[^"]*"/gi, '"MulticastAddress": "' + discMcast + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "MulticastAddress": "' + discMcast + '",');
                 }
 
                 var outJ = fso.CreateTextFile(jp, true);

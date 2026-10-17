@@ -3,11 +3,12 @@
 // ==========================================
 import React from 'react';
 
-export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField }) {
+export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField }) {
     if (!form) return null;
 
     const dashboard = form.dashboard || {};
     const mediaMtx = form.mediaMtx || {};
+    const discovery = form.discovery || {};
 
     const timezones = [
         { val: 'Asia/Jerusalem', label: 'Asia/Jerusalem (Israel Standard Time)' },
@@ -241,6 +242,98 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                             onChange={e => updateMediaMtxField('enablePlayback', e.target.checked)}
                         />
                         <span>Enable MediaMTX Native Playback API</span>
+                    </label>
+                </div>
+            </div>
+
+            <div className="security-subpanel">
+                <div className="subpanel-header">
+                    <h4>AUTONOMOUS CLUSTER DISCOVERY & HIGH AVAILABILITY (HA)</h4>
+                    <span className="subpanel-desc">Configure server redundancy role, multicast beacon discovery, and dashboard auto-failover.</span>
+                </div>
+
+                <div className="settings-fields-row">
+                    <div className="settings-field">
+                        <span>Server Cluster Role</span>
+                        <select
+                            value={discovery.role || 'Standalone'}
+                            onChange={e => updateDiscoveryField('role', e.target.value)}
+                            className="tactical-select"
+                        >
+                            <option value="Standalone">Standalone (Single Server)</option>
+                            <option value="Primary">Primary (Active Core Node)</option>
+                            <option value="Secondary">Secondary (Standby Failover Node)</option>
+                        </select>
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Failover Priority</span>
+                        <input
+                            type="number"
+                            min="1"
+                            max="1000"
+                            value={discovery.priority ?? (discovery.role === 'Primary' ? 100 : 50)}
+                            onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
+                            required
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Partner Failover Server URL</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. http://192.168.1.11:5090"
+                            value={discovery.partnerServerUrl || ''}
+                            onChange={e => updateDiscoveryField('partnerServerUrl', e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <div className="settings-fields-row">
+                    <div className="settings-field">
+                        <span>UDP Multicast Address</span>
+                        <input
+                            type="text"
+                            placeholder="239.255.10.90"
+                            value={discovery.multicastAddress || '239.255.10.90'}
+                            onChange={e => updateDiscoveryField('multicastAddress', e.target.value)}
+                            required
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>UDP Discovery Port</span>
+                        <input
+                            type="number"
+                            min="1024"
+                            max="65535"
+                            value={discovery.port || 5098}
+                            onChange={e => updateDiscoveryField('port', Number(e.target.value))}
+                            required
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Failover Delay (Seconds)</span>
+                        <input
+                            type="number"
+                            min="3"
+                            max="60"
+                            value={discovery.dashboardFailoverDelaySeconds || 8}
+                            onChange={e => updateDiscoveryField('dashboardFailoverDelaySeconds', Number(e.target.value))}
+                            required
+                        />
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap' }}>
+                    <label className="tactical-checkbox-label">
+                        <input
+                            type="checkbox"
+                            checked={discovery.autoFailoverDashboard !== false}
+                            onChange={e => updateDiscoveryField('autoFailoverDashboard', e.target.checked)}
+                        />
+                        <span>Enable Automatic Dashboard Failover on Disconnect</span>
                     </label>
                 </div>
             </div>

@@ -10,6 +10,9 @@ FEATURES_DEST_DIR="$INSTALL_ROOT/Features"
 
 # בדיקת דגלי התקנה שקטה ופרמטרים משורת הפקודה
 IS_UNATTENDED=false
+DISCOVERY_PORT=5098
+DISCOVERY_MULTICAST="239.255.10.90"
+
 for arg in "$@"; do
     case "$arg" in
         --silent|-s|--quiet|-q|--unattended|--non-interactive|-y|--yes)
@@ -35,6 +38,12 @@ for arg in "$@"; do
             ;;
         --priority=*|-p=*)
             SERVER_PRIORITY="${arg#*=}"
+            ;;
+        --discovery-port=*)
+            DISCOVERY_PORT="${arg#*=}"
+            ;;
+        --discovery-multicast=*)
+            DISCOVERY_MULTICAST="${arg#*=}"
             ;;
     esac
 done
@@ -94,6 +103,8 @@ try:
 
     srv_role_raw = disc_cfg.get("Role", "Primary")
     srv_priority = disc_cfg.get("Priority", 1)
+    disc_port = disc_cfg.get("Port", 5098)
+    disc_mcast = disc_cfg.get("MulticastAddress", "239.255.10.90")
 
     if re.search(r'aggregate|aggrigate|agg|super', str(srv_role_raw), re.I):
         srv_role = "Aggregate"
@@ -113,6 +124,8 @@ try:
     print(f"LOGS_DIR='{logs_d}'")
     print(f"SERVER_ROLE='{srv_role}'")
     print(f"SERVER_PRIORITY={srv_priority}")
+    print(f"DISCOVERY_PORT={disc_port}")
+    print(f"DISCOVERY_MULTICAST='{disc_mcast}'")
 except Exception:
     pass
 EOF
@@ -191,9 +204,15 @@ if [ "$IS_UNATTENDED" = false ]; then
             HLS_PORT="${custom_val:-$HLS_PORT}"
 
             echo ""
-            echo "--- Discovery Priority ---"
+            echo "--- Cluster Architecture & Discovery Settings ---"
             read -p "  Enter Cluster Priority Level (1 = Primary, 2+ = Secondary, 0 = Aggregate) [$SERVER_PRIORITY]: " custom_val
             SERVER_PRIORITY="${custom_val:-$SERVER_PRIORITY}"
+
+            read -p "  Enter Discovery UDP Port [$DISCOVERY_PORT]: " custom_val
+            DISCOVERY_PORT="${custom_val:-$DISCOVERY_PORT}"
+
+            read -p "  Enter Discovery Multicast Group Address [$DISCOVERY_MULTICAST]: " custom_val
+            DISCOVERY_MULTICAST="${custom_val:-$DISCOVERY_MULTICAST}"
 
             echo ""
             echo "--- Storage & Directories ---"
@@ -292,6 +311,8 @@ try:
     disc = sys_cfg.setdefault("Discovery", {})
     disc["Role"] = "$SERVER_ROLE"
     disc["Priority"] = int("$SERVER_PRIORITY")
+    disc["Port"] = int("$DISCOVERY_PORT")
+    disc["MulticastAddress"] = "$DISCOVERY_MULTICAST"
 
     app_cfg = cfg.setdefault("AppConfig", {})
     app_cfg["LogFilePath"] = "$LOGS_DIR/server.log"

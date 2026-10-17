@@ -76,6 +76,13 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Range(0, 100)]
         public int Priority { get; set; } = 1;
+
+        public string? PartnerServerUrl { get; set; }
+
+        public bool AutoFailoverDashboard { get; set; } = true;
+
+        [Range(1, 60)]
+        public int DashboardFailoverDelaySeconds { get; set; } = 8;
     }
 
     public class DstTransitionRule

@@ -75,6 +75,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         Storage = config.Storage,
                         DefaultVideoBitrate = config.DefaultVideoBitrate,
                         DefaultTargetFps = config.DefaultTargetFps,
+                        Discovery = config.Discovery,
                         Security = new SecuritySettings
                         {
                             AllowedAdAdminGroup = config.Security.AllowedAdAdminGroup,
@@ -170,6 +171,20 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         config.Security.AllowedAdAdminGroup = updatedConfig.Security.AllowedAdAdminGroup;
                         config.Security.JwtSecretKey = updatedConfig.Security.JwtSecretKey;
                         config.Security.TokenExpirationHours = updatedConfig.Security.TokenExpirationHours;
+                    }
+
+                    if (updatedConfig.Discovery != null)
+                    {
+                        config.Discovery ??= new DiscoverySettings();
+                        if (updatedConfig.Discovery.Port > 0) config.Discovery.Port = updatedConfig.Discovery.Port;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.MulticastAddress))
+                            config.Discovery.MulticastAddress = updatedConfig.Discovery.MulticastAddress;
+                        config.Discovery.Role = updatedConfig.Discovery.Role;
+                        if (updatedConfig.Discovery.Priority > 0) config.Discovery.Priority = updatedConfig.Discovery.Priority;
+                        config.Discovery.PartnerServerUrl = updatedConfig.Discovery.PartnerServerUrl;
+                        config.Discovery.AutoFailoverDashboard = updatedConfig.Discovery.AutoFailoverDashboard;
+                        if (updatedConfig.Discovery.DashboardFailoverDelaySeconds > 0)
+                            config.Discovery.DashboardFailoverDelaySeconds = updatedConfig.Discovery.DashboardFailoverDelaySeconds;
                     }
                 });
 

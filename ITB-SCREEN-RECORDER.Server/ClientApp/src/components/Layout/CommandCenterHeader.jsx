@@ -15,7 +15,8 @@ export default function CommandCenterHeader({
     onOpenAppSwitcher,
     isFaultFilterActive = false,
     onToggleFaultFilter,
-    systemConfig: propSystemConfig
+    systemConfig: propSystemConfig,
+    clusterConfig
 }) {
     const totalCount = stations.length;
     const [fetchedConfig, setFetchedConfig] = useState(null);
@@ -87,6 +88,15 @@ export default function CommandCenterHeader({
                         <div className="brand-title-row">
                             <span className="brand-name">ITB</span>
                             <span className="brand-main">SCREEN RECORDING CENTER</span>
+                            {clusterConfig?.role && (
+                                <span
+                                    className={`cluster-role-tag ${clusterConfig.role.toLowerCase()}`}
+                                    title={`Cluster Node: ${clusterConfig.role.toUpperCase()} (Priority: ${clusterConfig.priority ?? 'N/A'}${clusterConfig.partnerServerUrl ? ' | Partner: ' + clusterConfig.partnerServerUrl : ''})`}
+                                >
+                                    <span className="role-dot" />
+                                    {clusterConfig.role.toUpperCase()}
+                                </span>
+                            )}
                         </div>
                         <span className="brand-subtitle">LIVE AGENT OPERATIONS</span>
                     </div>

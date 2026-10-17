@@ -9,7 +9,9 @@ param(
     [int]$HlsPort  = 8888,
     [string]$DataDir = "C:\ProgramData\ITB-SCREEN-RECORDER\Server",
     [string]$ServerRole = "Primary",
-    [int]$ServerPriority = 1
+    [int]$ServerPriority = 1,
+    [int]$DiscoveryPort = 5098,
+    [string]$DiscoveryMulticast = "239.255.10.90"
 )
 
 $log = 'C:\Windows\Temp\itb-server-setup.log'
@@ -85,6 +87,19 @@ try {
             $content = $content -replace ('(?i)' + $q + 'Priority' + $q + '\s*:\s*\d+'), ($q + 'Priority' + $q + ': ' + $ServerPriority)
         } else {
             $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "Priority" + $q + ": " + $ServerPriority + ",")
+        }
+
+        # עדכון פורט ומולטיקאסט Discovery
+        if ($content -match ('(?i)' + $q + 'Port' + $q + '\s*:\s*\d+')) {
+            $content = $content -replace ('(?i)' + $q + 'Port' + $q + '\s*:\s*\d+'), ($q + 'Port' + $q + ': ' + $DiscoveryPort)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "Port" + $q + ": " + $DiscoveryPort + ",")
+        }
+
+        if ($content -match ('(?i)' + $q + 'MulticastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q)) {
+            $content = $content -replace ('(?i)' + $q + 'MulticastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'MulticastAddress' + $q + ': ' + $q + $DiscoveryMulticast + $q)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "MulticastAddress" + $q + ": " + $q + $DiscoveryMulticast + $q + ",")
         }
 
         $content | Set-Content $file -Encoding UTF8
