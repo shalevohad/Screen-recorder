@@ -34,6 +34,8 @@ EXPORTS_DIR="/var/lib/itb-screen-recorder/exports"
 RECORDINGS_DIR="/var/lib/itb-screen-recorder/recordings"
 NETAPP_MOUNT="/mnt/netapp/capturerecordings"
 LOGS_DIR="/var/log/itb-screen-recorder"
+SERVER_ROLE="Primary"
+SERVER_PRIORITY=1
 
 # 💡 1. טעינת הגדרות קודמות מתוך הקובץ הקיים (שדרוג / התקנה חוזרת - SSOT)
 if [ -f "$TARGET_CONFIG" ] && command -v python3 >/dev/null 2>&1; then
@@ -47,6 +49,7 @@ try:
     sys_cfg = cfg.get("SystemConfig", {})
     mtx_cfg = sys_cfg.get("MediaMtx", {})
     storage_cfg = sys_cfg.get("Storage", {})
+    disc_cfg = sys_cfg.get("Discovery", {})
     db_cfg = cfg.get("Database", {})
     extractor_cfg = cfg.get("Extractor", {})
     app_cfg = cfg.get("AppConfig", {})
@@ -69,6 +72,9 @@ try:
     import os
     logs_d = os.path.dirname(log_file) if log_file else "$LOGS_DIR"
 
+    srv_role = disc_cfg.get("Role", "Primary")
+    srv_priority = disc_cfg.get("Priority", 1)
+
     print(f"HTTP_PORT={http_p}")
     print(f"RTMP_PORT={rtmp_p}")
     print(f"API_PORT={api_p}")
@@ -78,6 +84,8 @@ try:
     print(f"RECORDINGS_DIR='{rec_d}'")
     print(f"NETAPP_MOUNT='{netapp_m}'")
     print(f"LOGS_DIR='{logs_d}'")
+    print(f"SERVER_ROLE='{srv_role}'")
+    print(f"SERVER_PRIORITY={srv_priority}")
 except Exception:
     pass
 EOF
@@ -101,8 +109,12 @@ if [ "$IS_UNATTENDED" = false ]; then
     echo "  • NetApp Mount:        $NETAPP_MOUNT"
     echo "  • Server Logs:         $LOGS_DIR"
     echo ""
+    echo "  [Cluster & Discovery Role]"
+    echo "  • Cluster Role:        $SERVER_ROLE"
+    echo "  • Priority Level:      $SERVER_PRIORITY"
+    echo ""
 
-    read -p "Do you want to customize network ports or paths? [y/N]: " customize_choice
+    read -p "Do you want to customize network ports, cluster role, or paths? [y/N]: " customize_choice
     case "$customize_choice" in
         y|Y|[yY][eE][sS])
             echo ""
@@ -118,6 +130,14 @@ if [ "$IS_UNATTENDED" = false ]; then
 
             read -p "  Enter MediaMTX HLS Port [$HLS_PORT]: " custom_val
             HLS_PORT="${custom_val:-$HLS_PORT}"
+
+            echo ""
+            echo "--- Cluster Architecture & Discovery Role ---"
+            read -p "  Enter Server Cluster Role (Primary / Standby) [$SERVER_ROLE]: " custom_val
+            SERVER_ROLE="${custom_val:-$SERVER_ROLE}"
+
+            read -p "  Enter Cluster Priority Level (1 = Main, 2+ = Backup) [$SERVER_PRIORITY]: " custom_val
+            SERVER_PRIORITY="${custom_val:-$SERVER_PRIORITY}"
 
             echo ""
             echo "--- Storage & Directories ---"
@@ -212,6 +232,10 @@ try:
     storage["NetAppUncPath"] = "$NETAPP_MOUNT"
     storage["LocalFallbackPath"] = "$RECORDINGS_DIR"
     storage["ChunkEventLogPath"] = "$LOGS_DIR/chunk-events.log"
+
+    disc = sys_cfg.setdefault("Discovery", {})
+    disc["Role"] = "$SERVER_ROLE"
+    disc["Priority"] = int("$SERVER_PRIORITY")
 
     app_cfg = cfg.setdefault("AppConfig", {})
     app_cfg["LogFilePath"] = "$LOGS_DIR/server.log"

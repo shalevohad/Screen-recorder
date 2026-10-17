@@ -165,28 +165,22 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                 }
             }
 
-            return discoveredServers.Values.ToList();
+            return discoveredServers.Values
+                .OrderByDescending(s => s.AcceptingNewAgents)
+                .ThenBy(s => s.Priority > 0 ? s.Priority : 100)
+                .ThenByDescending(s => string.Equals(s.Role, "Primary", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(s => string.Equals(s.Environment, _targetEnvironment, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         /// <summary>
-        /// Discovers the single best candidate server (prioritizing Production and verified health).
+        /// Discovers the single best candidate server (prioritizing Primary role, Priority level, and target environment).
         /// Returns null if no reachable server is detected.
         /// </summary>
         public async Task<ServerDiscoveryResponse?> DiscoverBestServerAsync(int timeoutMs = 2000, CancellationToken ct = default)
         {
             var servers = await DiscoverServersAsync(timeoutMs, ct);
-            if (servers.Count == 0)
-            {
-                return null;
-            }
-
-            // Prioritize matching configured target environment (e.g. Production) and accepting agents
-            var best = servers
-                .OrderByDescending(s => s.AcceptingNewAgents)
-                .ThenByDescending(s => string.Equals(s.Environment, _targetEnvironment, StringComparison.OrdinalIgnoreCase))
-                .FirstOrDefault();
-
-            return best;
+            return servers.FirstOrDefault();
         }
 
         /// <summary>
@@ -232,6 +226,8 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                                 ServerId = $"DNS-{host}",
                                 ServerName = host,
                                 Environment = _targetEnvironment,
+                                Role = "Primary",
+                                Priority = 1,
                                 ApiBaseUrl = $"https://{ipStr}:{_fallbackHttpPort}",
                                 RtmpBaseUrl = $"rtmps://{ipStr}:{_fallbackRtmpPort}/live",
                                 HttpPort = _fallbackHttpPort,

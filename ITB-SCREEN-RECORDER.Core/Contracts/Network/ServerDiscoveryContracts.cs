@@ -54,6 +54,12 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("environment")]
         public string Environment { get; set; } = "Production";
 
+        [JsonPropertyName("role")]
+        public string Role { get; set; } = "Primary";
+
+        [JsonPropertyName("priority")]
+        public int Priority { get; set; } = 1;
+
         [JsonPropertyName("apiBaseUrl")]
         public string ApiBaseUrl { get; set; } = string.Empty;
 

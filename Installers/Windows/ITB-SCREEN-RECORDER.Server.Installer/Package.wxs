@@ -33,6 +33,8 @@
 		<Property Id="API_PORT" Value="9997" Secure="yes" />
 		<Property Id="HLS_PORT" Value="8888" Secure="yes" />
 		<Property Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" Secure="yes" />
+		<Property Id="SERVER_ROLE" Value="Primary" Secure="yes" />
+		<Property Id="SERVER_PRIORITY" Value="1" Secure="yes" />
 
 		<SetProperty Id="INSTALLFOLDER" Value="[PREVIOUS_INSTALLFOLDER]" After="AppSearch" Condition="PREVIOUS_INSTALLFOLDER" />
 
@@ -59,7 +61,7 @@
 		<!-- 💡 4. הכנת נתוני ההתקנה עבור הפעולה הנדחית (Deferred Custom Action) -->
 		<CustomAction Id="SetApplySettingsData"
 					  Property="ApplySettingsAction"
-					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]"
+					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]|[SERVER_ROLE]|[SERVER_PRIORITY]"
 					  Execute="immediate" />
 
 		<!-- 💡 5. החלת ההגדרות ישירות דרך מנוע ה-MSI ללא תלות ב-PowerShell -->
@@ -107,9 +109,16 @@
 				<Control Id="HlsEdit" Type="Edit" X="265" Y="80" Width="65" Height="18" Property="HLS_PORT" />
 
 				<!-- ספריית הנתונים והאחסון -->
-				<Control Id="DataDirLabel" Type="Text" X="20" Y="120" Width="330" Height="13" Text="Data &amp; Video Storage Directory:" />
-				<Control Id="DataDirEdit" Type="Edit" X="20" Y="135" Width="330" Height="18" Property="DATA_DIR" />
-				<Control Id="DataDirHelp" Type="Text" X="20" Y="158" Width="330" Height="30" Text="Specifies where SQLite catalogs, event logs, local buffers, and video recordings will be persisted." />
+				<Control Id="DataDirLabel" Type="Text" X="20" Y="112" Width="330" Height="13" Text="Data &amp; Video Storage Directory:" />
+				<Control Id="DataDirEdit" Type="Edit" X="20" Y="126" Width="330" Height="18" Property="DATA_DIR" />
+				<Control Id="DataDirHelp" Type="Text" X="20" Y="147" Width="330" Height="24" Text="Specifies where SQLite catalogs, event logs, local buffers, and video recordings will be persisted." />
+
+				<!-- ארכיטקטורת שרתים: תפקיד ועדיפות -->
+				<Control Id="RoleLabel" Type="Text" X="20" Y="176" Width="150" Height="13" Text="Cluster Role (Primary / Standby):" />
+				<Control Id="RoleEdit" Type="Edit" X="20" Y="190" Width="140" Height="18" Property="SERVER_ROLE" />
+
+				<Control Id="PriorityLabel" Type="Text" X="185" Y="176" Width="160" Height="13" Text="Priority (1 = Main, 2+ = Backup):" />
+				<Control Id="PriorityEdit" Type="Edit" X="185" Y="190" Width="60" Height="18" Property="SERVER_PRIORITY" />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />

@@ -67,6 +67,13 @@ try {
                     Session.Property("DATA_DIR") = cleanPath;
                 }
 
+                // שליפת תפקיד ועדיפות של השרת
+                var mRole = text.match(/"Role"\s*:\s*"([^"]+)"/i);
+                if (mRole && mRole[1]) Session.Property("SERVER_ROLE") = mRole[1];
+
+                var mPriority = text.match(/"Priority"\s*:\s*(\d+)/i);
+                if (mPriority && mPriority[1]) Session.Property("SERVER_PRIORITY") = mPriority[1];
+
                 // עדכון INSTALLFOLDER לנתיב שנמצא בו הקונפיגורציה
                 Session.Property("INSTALLFOLDER") = dir;
 

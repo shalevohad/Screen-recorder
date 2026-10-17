@@ -71,6 +71,11 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public string EnvironmentName { get; set; } = "Production";
 
         public string ServiceName { get; set; } = "ITB-SCREEN-RECORDER";
+
+        public string Role { get; set; } = "Primary";
+
+        [Range(1, 100)]
+        public int Priority { get; set; } = 1;
     }
 
     public class DstTransitionRule

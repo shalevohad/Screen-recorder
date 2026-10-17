@@ -333,6 +333,74 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             Assert.Equal("ITB Central Server", sysConfig.Discovery.ServerDisplayName);
             Assert.Equal("Production", sysConfig.Discovery.EnvironmentName);
             Assert.Equal("ITB-SCREEN-RECORDER", sysConfig.Discovery.ServiceName);
+            Assert.Equal("Primary", sysConfig.Discovery.Role);
+            Assert.Equal(1, sysConfig.Discovery.Priority);
+        }
+
+        [Fact]
+        public async Task ServerDiscoveryHostedService_HonorsCustomServerRoleAndPriority()
+        {
+            int customPort = 59140;
+            string customMulticast = "239.255.10.101";
+
+            var configMock = new Mock<IOptionsMonitor<SystemConfig>>();
+            var systemConfig = new SystemConfig
+            {
+                HttpPort = 5090,
+                MediaMtx = new MediaMtxSettings { RtmpPort = 19350 },
+                Discovery = new DiscoverySettings
+                {
+                    Enabled = true,
+                    Port = customPort,
+                    MulticastAddress = customMulticast,
+                    ServerDisplayName = "DR-Standby-Node-02",
+                    EnvironmentName = "Production",
+                    Role = "Standby",
+                    Priority = 2
+                }
+            };
+            configMock.Setup(c => c.CurrentValue).Returns(systemConfig);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var service = new ServerDiscoveryHostedService(configMock.Object, Mock.Of<ILogger<ServerDiscoveryHostedService>>());
+
+            _ = Task.Run(() => service.StartAsync(cts.Token), cts.Token);
+            await Task.Delay(150);
+
+            try
+            {
+                var client = new ServerDiscoveryClient(null, discoveryPort: customPort, multicastAddress: customMulticast);
+                var discovered = await client.DiscoverBestServerAsync(timeoutMs: 1500, cts.Token);
+
+                Assert.NotNull(discovered);
+                Assert.Equal("Standby", discovered.Role);
+                Assert.Equal(2, discovered.Priority);
+                Assert.Contains("DR-Standby-Node-02", discovered.ServerName);
+            }
+            finally
+            {
+                await service.StopAsync(CancellationToken.None);
+            }
+        }
+
+        [Fact]
+        public void ServerDiscoveryResponse_RoleAndPriority_SerializeAndDeserializeCleanly()
+        {
+            var response = new ServerDiscoveryResponse
+            {
+                ServerId = "SRV-TEST",
+                ServerName = "Standby Server",
+                Role = "Standby",
+                Priority = 2,
+                ApiBaseUrl = "https://10.0.0.2:5090"
+            };
+
+            string json = JsonSerializer.Serialize(response);
+            var deserialized = JsonSerializer.Deserialize<ServerDiscoveryResponse>(json);
+
+            Assert.NotNull(deserialized);
+            Assert.Equal("Standby", deserialized.Role);
+            Assert.Equal(2, deserialized.Priority);
         }
 
         #endregion

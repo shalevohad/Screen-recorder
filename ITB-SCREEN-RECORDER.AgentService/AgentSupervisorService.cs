@@ -41,6 +41,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private string _serverBaseUrl = "127.0.0.1:5090";
         private int _consecutiveServerFailures = 0;
         private AgentStreamPolicy _currentPolicy;
+        private List<ServerDiscoveryResponse> _discoveredServers = new();
+        private ServerDiscoveryResponse? _activeServer;
+        private DateTime _lastFailbackCheckUtc = DateTime.MinValue;
 
         private bool _isWorkerStreaming;
         private DateTime? _workerRecordingStartedAtUtc = null;
@@ -570,6 +573,28 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     {
                         _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
+
+                    // בדוק האם אנחנו מחוברים כרגע לשרת Standby והשרת הראשי התאושש (Failback)
+                    if (_activeServer != null && (_activeServer.Priority > 1 || string.Equals(_activeServer.Role, "Standby", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if ((DateTime.UtcNow - _lastFailbackCheckUtc).TotalSeconds >= 30)
+                        {
+                            _lastFailbackCheckUtc = DateTime.UtcNow;
+                            var primaryCandidate = _discoveredServers
+                                .FirstOrDefault(s => (s.Priority == 1 || string.Equals(s.Role, "Primary", StringComparison.OrdinalIgnoreCase)) &&
+                                                     !string.Equals(s.ServerId, _activeServer.ServerId, StringComparison.OrdinalIgnoreCase));
+
+                            if (primaryCandidate != null)
+                            {
+                                bool primaryRecovered = await ServerDiscoveryClient.VerifyServerHealthAsync(primaryCandidate.ApiBaseUrl, 1500, ct);
+                                if (primaryRecovered)
+                                {
+                                    _logger.LogInformation("[FAILBACK] Primary server '{Primary}' has recovered and is healthy! Switching connection back from Standby.", primaryCandidate.ServerName);
+                                    await SwitchActiveServerAsync(primaryCandidate, ct);
+                                }
+                            }
+                        }
+                    }
                 }
                 else
                 {
@@ -584,6 +609,28 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 if (DebugHelper.IsDebugModeEnabled())
                 {
                     _logger.LogWarning("Telemetry transmission failed: {Msg}", ex.Message);
+                }
+
+                // בדיקת מעבר מיידי לשרת גיבוי (Failover) במקרה של כשל רצוף
+                if (_consecutiveServerFailures >= 3 && _discoveredServers.Count > 1)
+                {
+                    var backupCandidate = _discoveredServers
+                        .Where(s => !string.Equals(s.ServerId, _activeServer?.ServerId, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(s => s.Priority)
+                        .FirstOrDefault();
+
+                    if (backupCandidate != null)
+                    {
+                        bool isStandbyAlive = await ServerDiscoveryClient.VerifyServerHealthAsync(backupCandidate.ApiBaseUrl, 1500, ct);
+                        if (isStandbyAlive)
+                        {
+                            _logger.LogWarning("[FAILOVER] Current server '{Current}' unreachable for {Failures} cycles. Failing over to Standby server '{Standby}' [Role: {Role}, Priority: {Priority}]",
+                                _activeServer?.ServerName ?? _serverBaseUrl, _consecutiveServerFailures, backupCandidate.ServerName, backupCandidate.Role, backupCandidate.Priority);
+
+                            await SwitchActiveServerAsync(backupCandidate, ct);
+                            return;
+                        }
+                    }
                 }
 
                 if (_consecutiveServerFailures >= 10 && _consecutiveServerFailures % 5 == 0)
@@ -627,30 +674,16 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     fallbackRtmpPort: fallbackRtmp,
                     targetEnvironment: targetEnv);
 
-                var discovered = await discoveryClient.DiscoverBestServerAsync(timeoutMs: discTimeout, ct);
-                if (discovered != null)
+                var servers = await discoveryClient.DiscoverServersAsync(timeoutMs: discTimeout, ct);
+                if (servers.Count > 0)
                 {
-                    if (Uri.TryCreate(discovered.ApiBaseUrl, UriKind.Absolute, out Uri? parsedUri))
+                    _discoveredServers = servers;
+                    var bestServer = servers.FirstOrDefault();
+                    if (bestServer != null)
                     {
-                        _serverBaseUrl = parsedUri.Authority;
+                        await SwitchActiveServerAsync(bestServer, ct);
+                        return true;
                     }
-                    else
-                    {
-                        string ip = discovered.ServerIps.Count > 0 ? discovered.ServerIps[0] : "127.0.0.1";
-                        _serverBaseUrl = $"{ip}:{discovered.HttpPort}";
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(discovered.RtmpBaseUrl))
-                    {
-                        _currentPolicy.RtmpServerBaseUrl = discovered.RtmpBaseUrl;
-                    }
-
-                    _logger.LogInformation("[DISCOVERY] Autonomous discovery found Central Server '{Name}' -> {Endpoint}",
-                        discovered.ServerName, _serverBaseUrl);
-
-                    await RegisterWithServerAsync(_serverBaseUrl, ct);
-                    _consecutiveServerFailures = 0;
-                    return true;
                 }
                 else
                 {
@@ -663,6 +696,37 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
 
             return false;
+        }
+
+        private async Task SwitchActiveServerAsync(ServerDiscoveryResponse server, CancellationToken ct)
+        {
+            _activeServer = server;
+            if (Uri.TryCreate(server.ApiBaseUrl, UriKind.Absolute, out Uri? parsedUri))
+            {
+                _serverBaseUrl = parsedUri.Authority;
+            }
+            else
+            {
+                string ip = server.ServerIps.Count > 0 ? server.ServerIps[0] : "127.0.0.1";
+                _serverBaseUrl = $"{ip}:{server.HttpPort}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(server.RtmpBaseUrl))
+            {
+                _currentPolicy.RtmpServerBaseUrl = server.RtmpBaseUrl;
+            }
+
+            _logger.LogInformation("[SERVER SELECTION] Connected to Server '{Name}' [Role: {Role}, Priority: {Priority}] -> {Endpoint}",
+                server.ServerName, server.Role, server.Priority, _serverBaseUrl);
+
+            await RegisterWithServerAsync(_serverBaseUrl, ct);
+            _consecutiveServerFailures = 0;
+
+            if (_isWorkerStreaming)
+            {
+                string dest = GetEffectiveRtmpDestination();
+                await SendCommandToWorkerAsync($"Restart|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+            }
         }
 
         private async Task RegisterWithServerAsync(string serverBaseUrl, CancellationToken ct)

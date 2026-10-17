@@ -30,6 +30,8 @@ try {
         var apiPort = parts[3] || "9997";
         var hlsPort = parts[4] || "8888";
         var dataDir = parts[5] || "C:\\ProgramData\\ITB-SCREEN-RECORDER\\Server";
+        var serverRole = parts[6] || "Primary";
+        var serverPriority = parts[7] || "1";
 
         // ניקוי לוכסנים עודפים
         while (installDir.length > 0 && (installDir.charAt(installDir.length - 1) === "\\" || installDir.charAt(installDir.length - 1) === "/")) {
@@ -41,7 +43,7 @@ try {
 
         var dataDirJson = dataDir.split("\\").join("\\\\");
 
-        log("Parsed settings: HTTP=" + httpPort + ", RTMP=" + rtmpPort + ", API=" + apiPort + ", HLS=" + hlsPort);
+        log("Parsed settings: HTTP=" + httpPort + ", RTMP=" + rtmpPort + ", API=" + apiPort + ", HLS=" + hlsPort + ", Role=" + serverRole + ", Priority=" + serverPriority);
         log("InstallDir: " + installDir);
         log("DataDir: " + dataDir);
 
@@ -80,6 +82,19 @@ try {
                 content = content.replace(/"BaseDirectory"\s*:\s*"[^"]*"/gi, '"BaseDirectory": "' + dataDirJson + '\\\\Data"');
                 content = content.replace(/"ExportPath"\s*:\s*"[^"]*"/gi, '"ExportPath": "' + dataDirJson + '\\\\Exports"');
                 content = content.replace(/"ChunkEventLogPath"\s*:\s*"[^"]*"/gi, '"ChunkEventLogPath": "' + dataDirJson + '\\\\Logs\\\\chunk-events.log"');
+
+                // תפקיד ועדיפות בארכיטקטורת שרתים (Discovery)
+                if (/"Role"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"Role"\s*:\s*"[^"]*"/gi, '"Role": "' + serverRole + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "Role": "' + serverRole + '",');
+                }
+
+                if (/"Priority"\s*:\s*\d+/i.test(content)) {
+                    content = content.replace(/"Priority"\s*:\s*\d+/gi, '"Priority": ' + serverPriority);
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "Priority": ' + serverPriority + ',');
+                }
 
                 var outJ = fso.CreateTextFile(jp, true);
                 outJ.Write(content);

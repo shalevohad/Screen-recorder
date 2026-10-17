@@ -146,11 +146,19 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     ? discoveryConfig.EnvironmentName
                     : "Production";
 
+                string role = !string.IsNullOrWhiteSpace(discoveryConfig.Role)
+                    ? discoveryConfig.Role
+                    : "Primary";
+
+                int priority = discoveryConfig.Priority > 0 ? discoveryConfig.Priority : 1;
+
                 var response = new ServerDiscoveryResponse
                 {
                     ServerId = Environment.MachineName,
                     ServerName = displayName,
                     Environment = envName,
+                    Role = role,
+                    Priority = priority,
                     HttpPort = httpPort,
                     RtmpPort = rtmpPort,
                     ApiBaseUrl = $"https://{preferredIp}:{httpPort}",
