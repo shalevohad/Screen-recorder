@@ -269,6 +269,72 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             }
         }
 
+        [Fact]
+        public async Task ServerDiscoveryHostedService_HonorsCustomServerDisplayNameAndEnvironment()
+        {
+            int customPort = 59135;
+            string customMulticast = "239.255.10.99";
+
+            var configMock = new Mock<IOptionsMonitor<SystemConfig>>();
+            var systemConfig = new SystemConfig
+            {
+                HttpPort = 5090,
+                MediaMtx = new MediaMtxSettings { RtmpPort = 19350 },
+                Discovery = new DiscoverySettings
+                {
+                    Enabled = true,
+                    Port = customPort,
+                    MulticastAddress = customMulticast,
+                    ServerDisplayName = "Custom-HQ-Recorder",
+                    EnvironmentName = "DisasterRecovery"
+                }
+            };
+            configMock.Setup(c => c.CurrentValue).Returns(systemConfig);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var service = new ServerDiscoveryHostedService(configMock.Object, Mock.Of<ILogger<ServerDiscoveryHostedService>>());
+
+            _ = Task.Run(() => service.StartAsync(cts.Token), cts.Token);
+            await Task.Delay(150);
+
+            try
+            {
+                var client = new ServerDiscoveryClient(
+                    null,
+                    discoveryPort: customPort,
+                    multicastAddress: customMulticast,
+                    targetEnvironment: "DisasterRecovery");
+
+                var discovered = await client.DiscoverBestServerAsync(timeoutMs: 1500, cts.Token);
+
+                Assert.NotNull(discovered);
+                Assert.Contains("Custom-HQ-Recorder", discovered.ServerName);
+                Assert.Equal("DisasterRecovery", discovered.Environment);
+            }
+            finally
+            {
+                await service.StopAsync(CancellationToken.None);
+            }
+        }
+
+        [Fact]
+        public void AppConfig_And_ServerConfig_ProvideDefaultConfiguredDiscoveryNames()
+        {
+            var appConfig = new AppConfig();
+            Assert.NotNull(appConfig.DiscoveryDnsHostnames);
+            Assert.Contains("itb-server", appConfig.DiscoveryDnsHostnames);
+            Assert.Contains("screenrecorder", appConfig.DiscoveryDnsHostnames);
+            Assert.Equal(2500, appConfig.DiscoveryTimeoutMs);
+            Assert.Equal("Production", appConfig.DiscoveryTargetEnvironment);
+            Assert.Equal(5090, appConfig.DiscoveryFallbackHttpPort);
+            Assert.Equal(19350, appConfig.DiscoveryFallbackRtmpPort);
+
+            var sysConfig = new SystemConfig();
+            Assert.Equal("ITB Central Server", sysConfig.Discovery.ServerDisplayName);
+            Assert.Equal("Production", sysConfig.Discovery.EnvironmentName);
+            Assert.Equal("ITB-SCREEN-RECORDER", sysConfig.Discovery.ServiceName);
+        }
+
         #endregion
 
         #region Agent Registration Endpoint Tests

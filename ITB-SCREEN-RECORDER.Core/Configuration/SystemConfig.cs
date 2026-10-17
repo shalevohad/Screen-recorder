@@ -65,6 +65,12 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public string MulticastAddress { get; set; } = "239.255.10.90";
 
         public bool EnableBroadcastFallback { get; set; } = true;
+
+        public string ServerDisplayName { get; set; } = "ITB Central Server";
+
+        public string EnvironmentName { get; set; } = "Production";
+
+        public string ServiceName { get; set; } = "ITB-SCREEN-RECORDER";
     }
 
     public class DstTransitionRule

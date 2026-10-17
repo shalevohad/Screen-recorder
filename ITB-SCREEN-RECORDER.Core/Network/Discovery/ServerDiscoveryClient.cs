@@ -24,15 +24,29 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
         private readonly ILogger? _logger;
         private readonly int _discoveryPort;
         private readonly string _multicastAddress;
+        private readonly List<string> _dnsSearchHostnames;
+        private readonly int _fallbackHttpPort;
+        private readonly int _fallbackRtmpPort;
+        private readonly string _targetEnvironment;
 
         public ServerDiscoveryClient(
             ILogger? logger = null,
             int discoveryPort = ServerDiscoveryConstants.DefaultDiscoveryPort,
-            string multicastAddress = ServerDiscoveryConstants.DefaultMulticastAddress)
+            string multicastAddress = ServerDiscoveryConstants.DefaultMulticastAddress,
+            IEnumerable<string>? dnsSearchHostnames = null,
+            int fallbackHttpPort = 5090,
+            int fallbackRtmpPort = 19350,
+            string targetEnvironment = "Production")
         {
             _logger = logger;
             _discoveryPort = discoveryPort;
             _multicastAddress = multicastAddress;
+            _dnsSearchHostnames = dnsSearchHostnames != null
+                ? dnsSearchHostnames.Where(h => !string.IsNullOrWhiteSpace(h)).Select(h => h.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string> { "itb-server", "screenrecorder" };
+            _fallbackHttpPort = fallbackHttpPort > 0 ? fallbackHttpPort : 5090;
+            _fallbackRtmpPort = fallbackRtmpPort > 0 ? fallbackRtmpPort : 19350;
+            _targetEnvironment = !string.IsNullOrWhiteSpace(targetEnvironment) ? targetEnvironment : "Production";
         }
 
         /// <summary>
@@ -166,28 +180,40 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                 return null;
             }
 
-            // Prioritize Production environment and accepting agents
+            // Prioritize matching configured target environment (e.g. Production) and accepting agents
             var best = servers
                 .OrderByDescending(s => s.AcceptingNewAgents)
-                .ThenByDescending(s => string.Equals(s.Environment, "Production", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(s => string.Equals(s.Environment, _targetEnvironment, StringComparison.OrdinalIgnoreCase))
                 .FirstOrDefault();
 
             return best;
         }
 
         /// <summary>
-        /// Probes corporate DNS suffixes for standard ITB record names.
+        /// Probes corporate DNS suffixes for configured server hostnames.
         /// </summary>
         private async Task<ServerDiscoveryResponse?> TryDiscoverViaDnsAsync(CancellationToken ct)
         {
             try
             {
-                string domain = IPGlobalProperties.GetIPGlobalProperties().DomainName;
-                var candidates = new List<string> { "itb-server" };
-                if (!string.IsNullOrWhiteSpace(domain))
+                string domain = string.Empty;
+                try
                 {
-                    candidates.Add($"itb-server.{domain}");
-                    candidates.Add($"screenrecorder.{domain}");
+                    domain = IPGlobalProperties.GetIPGlobalProperties().DomainName;
+                }
+                catch { /* Network properties may not be available on all environments */ }
+
+                var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var host in _dnsSearchHostnames)
+                {
+                    if (string.IsNullOrWhiteSpace(host)) continue;
+                    string trimmed = host.Trim();
+                    candidates.Add(trimmed);
+
+                    if (!string.IsNullOrWhiteSpace(domain) && !trimmed.Contains('.'))
+                    {
+                        candidates.Add($"{trimmed}.{domain.Trim().TrimStart('.')}");
+                    }
                 }
 
                 foreach (var host in candidates)
@@ -199,17 +225,17 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                         if (validIp != null)
                         {
                             string ipStr = validIp.ToString();
-                            _logger?.LogInformation("[DISCOVERY] Found ITB Server through DNS: {Host} -> {Ip}", host, ipStr);
+                            _logger?.LogInformation("[DISCOVERY] Found Central Server through DNS: {Host} -> {Ip}", host, ipStr);
 
                             return new ServerDiscoveryResponse
                             {
                                 ServerId = $"DNS-{host}",
                                 ServerName = host,
-                                Environment = "Enterprise-DNS",
-                                ApiBaseUrl = $"https://{ipStr}:5090",
-                                RtmpBaseUrl = $"rtmps://{ipStr}:19350/live",
-                                HttpPort = 5090,
-                                RtmpPort = 19350,
+                                Environment = _targetEnvironment,
+                                ApiBaseUrl = $"https://{ipStr}:{_fallbackHttpPort}",
+                                RtmpBaseUrl = $"rtmps://{ipStr}:{_fallbackRtmpPort}/live",
+                                HttpPort = _fallbackHttpPort,
+                                RtmpPort = _fallbackRtmpPort,
                                 ServerIps = new List<string> { ipStr }
                             };
                         }

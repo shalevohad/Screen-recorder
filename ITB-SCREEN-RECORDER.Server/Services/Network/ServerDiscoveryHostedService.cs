@@ -130,11 +130,27 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 var localIps = GetActiveLocalIps();
                 string preferredIp = PickBestLocalIp(result.RemoteEndPoint.Address, localIps);
 
+                string displayName = !string.IsNullOrWhiteSpace(discoveryConfig.ServerDisplayName)
+                    ? discoveryConfig.ServerDisplayName
+                    : "ITB Central Server";
+                if (displayName.Contains("{MachineName}"))
+                {
+                    displayName = displayName.Replace("{MachineName}", Environment.MachineName);
+                }
+                else if (!displayName.Contains(Environment.MachineName))
+                {
+                    displayName = $"{displayName} ({Environment.MachineName})";
+                }
+
+                string envName = !string.IsNullOrWhiteSpace(discoveryConfig.EnvironmentName)
+                    ? discoveryConfig.EnvironmentName
+                    : "Production";
+
                 var response = new ServerDiscoveryResponse
                 {
                     ServerId = Environment.MachineName,
-                    ServerName = $"ITB Central Server ({Environment.MachineName})",
-                    Environment = "Production",
+                    ServerName = displayName,
+                    Environment = envName,
                     HttpPort = httpPort,
                     RtmpPort = rtmpPort,
                     ApiBaseUrl = $"https://{preferredIp}:{httpPort}",
