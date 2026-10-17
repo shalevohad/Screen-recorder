@@ -30,7 +30,7 @@ try {
         var apiPort = parts[3] || "9997";
         var hlsPort = parts[4] || "8888";
         var dataDir = parts[5] || "C:\\ProgramData\\ITB-SCREEN-RECORDER\\Server";
-        var serverRole = parts[6] || "Primary";
+        var serverRole = parts[6] || "Active-Active";
         var serverPriority = parts[7] || "1";
         var discPort = parts[8] || "5098";
         var discMcast = parts[9] || "239.255.10.90";
@@ -48,13 +48,14 @@ try {
             if (serverPriority === "1" || !serverPriority) {
                 serverPriority = "0";
             }
-        } else if (cleanRole === "secondary" || cleanRole === "standby" || cleanRole === "sec" || cleanRole === "backup") {
-            serverRole = "Secondary";
-            if (serverPriority === "1" || !serverPriority) {
-                serverPriority = "2";
+        } else if (cleanRole === "standalone" || cleanRole === "single") {
+            serverRole = "Standalone";
+            if (!serverPriority || serverPriority === "0") {
+                serverPriority = "1";
             }
         } else {
-            serverRole = "Primary";
+            // כלל צמתי האשכול הם Active-Active
+            serverRole = "Active-Active";
             if (!serverPriority || serverPriority === "0") {
                 serverPriority = "1";
             }

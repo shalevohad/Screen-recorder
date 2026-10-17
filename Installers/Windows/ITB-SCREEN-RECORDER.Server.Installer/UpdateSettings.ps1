@@ -8,7 +8,7 @@ param(
     [int]$ApiPort  = 9997,
     [int]$HlsPort  = 8888,
     [string]$DataDir = "C:\ProgramData\ITB-SCREEN-RECORDER\Server",
-    [string]$ServerRole = "Primary",
+    [string]$ServerRole = "Active-Active",
     [int]$ServerPriority = 1,
     [int]$DiscoveryPort = 5098,
     [string]$DiscoveryMulticast = "239.255.10.90",
@@ -32,11 +32,11 @@ try {
     if ($cleanRole -match '^(aggregate|aggrigate|agg|super)$') {
         $ServerRole = "Aggregate"
         if ($ServerPriority -eq 1 -or $ServerPriority -eq 0) { $ServerPriority = 0 }
-    } elseif ($cleanRole -match '^(secondary|standby|sec|backup)$') {
-        $ServerRole = "Secondary"
-        if ($ServerPriority -eq 1 -or $ServerPriority -eq 0) { $ServerPriority = 2 }
+    } elseif ($cleanRole -match '^(standalone|single)$') {
+        $ServerRole = "Standalone"
+        if ($ServerPriority -eq 0) { $ServerPriority = 1 }
     } else {
-        $ServerRole = "Primary"
+        $ServerRole = "Active-Active"
         if ($ServerPriority -eq 0) { $ServerPriority = 1 }
     }
 

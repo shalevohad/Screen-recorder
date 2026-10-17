@@ -334,7 +334,7 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             Assert.Equal("ITB Central Server", sysConfig.Discovery.ServerDisplayName);
             Assert.Equal("Production", sysConfig.Discovery.EnvironmentName);
             Assert.Equal("ITB-SCREEN-RECORDER", sysConfig.Discovery.ServiceName);
-            Assert.Equal("Primary", sysConfig.Discovery.Role);
+            Assert.Equal("Active-Active", sysConfig.Discovery.Role);
             Assert.Equal(1, sysConfig.Discovery.Priority);
         }
 
@@ -487,6 +487,7 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
 
         [Theory]
         [InlineData("Primary", true, false, false)]
+        [InlineData("Active-Active", true, false, false)]
         [InlineData("primary", true, false, false)]
         [InlineData("Secondary", false, true, false)]
         [InlineData("secondary", false, true, false)]

@@ -254,32 +254,32 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
 
                 <div className="settings-fields-row">
                     <div className="settings-field">
-                        <span>Server Cluster Role</span>
+                        <span>Server Cluster Mode</span>
                         <select
-                            value={discovery.role || 'Standalone'}
+                            value={discovery.role || 'Active-Active'}
                             onChange={e => updateDiscoveryField('role', e.target.value)}
                             className="tactical-select"
                         >
+                            <option value="Active-Active">Active-Active (Distributed Mesh)</option>
                             <option value="Standalone">Standalone (Single Server)</option>
-                            <option value="Primary">Primary (Active Core Node)</option>
-                            <option value="Secondary">Secondary (Standby Failover Node)</option>
+                            <option value="Aggregate">Aggregate (Super-Server Studio)</option>
                         </select>
                     </div>
 
                     <div className="settings-field">
-                        <span>Failover Priority</span>
+                        <span>VIP Election Priority</span>
                         <input
                             type="number"
                             min="1"
                             max="1000"
-                            value={discovery.priority ?? (discovery.role === 'Primary' ? 100 : 50)}
+                            value={discovery.priority ?? 1}
                             onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
                             required
                         />
                     </div>
 
                     <div className="settings-field">
-                        <span>Partner Failover Server URL</span>
+                        <span>Peer Cluster Server URL</span>
                         <input
                             type="text"
                             placeholder="e.g. http://192.168.1.11:5090"

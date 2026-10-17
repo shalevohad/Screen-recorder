@@ -17,9 +17,9 @@ using Microsoft.Extensions.Options;
 namespace ITB_SCREEN_RECORDER.Server.Services.Network
 {
     /// <summary>
-    /// Autonomous Virtual IP (VIP) Manager for High-Availability clusters.
-    /// Ensures that the primary server actively owns the VIP, and in the event of primary failure,
-    /// the secondary standby server automatically binds the VIP and broadcasts gratuitous ARP.
+    /// Autonomous Virtual IP (VIP) Manager for High-Availability Active-Active and Standalone architectures.
+    /// Ensures that an elected active cluster node dynamically owns the VIP, and in the event of failure,
+    /// a surviving active mesh node automatically assumes the VIP and broadcasts gratuitous ARP.
     /// Supports Windows (via netsh) and Linux (via iproute2 / arping) natively.
     /// </summary>
     public class VirtualIpManagerService : BackgroundService
@@ -99,12 +99,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     else
                     {
                         // 2. Standalone or Manual Redundancy Fallback (when running without ClusterMesh)
-                        bool isSecondary = string.Equals(disc.Role, "Secondary", StringComparison.OrdinalIgnoreCase) ||
-                                           string.Equals(disc.Role, "Standby", StringComparison.OrdinalIgnoreCase);
+                        bool isExplicitStandby = string.Equals(disc.Role, "Secondary", StringComparison.OrdinalIgnoreCase) ||
+                                                 string.Equals(disc.Role, "Standby", StringComparison.OrdinalIgnoreCase);
 
-                        if (!isSecondary)
+                        if (!isExplicitStandby)
                         {
-                            // Standalone or Primary: actively hold the VIP
+                            // Standalone or Active-Active Node: actively hold the VIP
                             if (!_isHoldingVip)
                             {
                                 await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
@@ -112,11 +112,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                         }
                         else
                         {
-                            // Secondary node with configured partner
+                            // Node with configured partner peer
                             string partnerUrl = (disc.PartnerServerUrl ?? string.Empty).Trim();
                             if (string.IsNullOrWhiteSpace(partnerUrl))
                             {
-                                // If no partner is configured, secondary runs autonomously and holds VIP
+                                // If no partner is configured, run autonomously and hold VIP
                                 if (!_isHoldingVip)
                                 {
                                     await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
@@ -124,24 +124,24 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                             }
                             else
                             {
-                                bool primaryHealthy = await ServerDiscoveryClient.VerifyServerHealthAsync(partnerUrl, 1500, stoppingToken).ConfigureAwait(false);
-                                if (primaryHealthy)
+                                bool peerHealthy = await ServerDiscoveryClient.VerifyServerHealthAsync(partnerUrl, 1500, stoppingToken).ConfigureAwait(false);
+                                if (peerHealthy)
                                 {
                                     _failedHealthChecks = 0;
                                     if (_isHoldingVip)
                                     {
-                                        _logger.LogInformation("[VIP MANAGER] Primary server recovered at {PartnerUrl}. Releasing VIP back to Primary node.", partnerUrl);
+                                        _logger.LogInformation("[VIP MANAGER] Preferred cluster peer online at {PartnerUrl}. Releasing VIP.", partnerUrl);
                                         await ReleaseVirtualIpAsync(disc).ConfigureAwait(false);
                                     }
                                 }
                                 else
                                 {
                                     _failedHealthChecks++;
-                                    _logger.LogWarning("[VIP MANAGER] Primary health check failed ({Count}/2) at {PartnerUrl}.", _failedHealthChecks, partnerUrl);
+                                    _logger.LogWarning("[VIP MANAGER] Peer health check failed ({Count}/2) at {PartnerUrl}.", _failedHealthChecks, partnerUrl);
 
                                     if (_failedHealthChecks >= 2 && !_isHoldingVip)
                                     {
-                                        _logger.LogWarning("[VIP MANAGER] Primary server confirmed OFFLINE! Secondary taking ownership of Virtual IP {Vip}.", disc.VirtualIp);
+                                        _logger.LogWarning("[VIP MANAGER] Peer confirmed OFFLINE! Assuming ownership of Virtual IP {Vip}.", disc.VirtualIp);
                                         await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
                                     }
                                 }

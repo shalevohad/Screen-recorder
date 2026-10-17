@@ -64,22 +64,35 @@ function CommandCenterApp() {
     const [clusterConfig, setClusterConfig] = useState(() => {
         try {
             return {
-                role: localStorage.getItem('itb_cluster_role') || 'Primary',
+                role: localStorage.getItem('itb_cluster_role') || 'Active-Active',
                 partnerServerUrl: localStorage.getItem('itb_cluster_partner_url') || '',
                 autoFailoverDashboard: localStorage.getItem('itb_cluster_failover_enabled') !== 'false',
                 failoverDelaySeconds: Number(localStorage.getItem('itb_cluster_failover_delay')) || 8,
-                primaryServerUrl: localStorage.getItem('itb_cluster_primary_url') || ''
+                virtualIp: localStorage.getItem('itb_cluster_vip') || '',
+                enableVirtualIp: localStorage.getItem('itb_cluster_vip_enabled') === 'true',
+                isHoldingVip: false,
+                isStandalone: true,
+                totalActiveNodes: 1,
+                clusterMode: 'Standalone'
             };
         } catch {
-            return { role: 'Primary', partnerServerUrl: '', autoFailoverDashboard: true, failoverDelaySeconds: 8, primaryServerUrl: '' };
+            return {
+                role: 'Active-Active',
+                partnerServerUrl: '',
+                autoFailoverDashboard: true,
+                failoverDelaySeconds: 8,
+                virtualIp: '',
+                enableVirtualIp: false,
+                isHoldingVip: false,
+                isStandalone: true,
+                totalActiveNodes: 1,
+                clusterMode: 'Standalone'
+            };
         }
     });
 
     const [failoverCountdown, setFailoverCountdown] = useState(8);
     const [isFailoverPaused, setIsFailoverPaused] = useState(false);
-    const [primaryRecovered, setPrimaryRecovered] = useState(false);
-    const [failbackCountdown, setFailbackCountdown] = useState(5);
-    const [isFailbackDismissed, setIsFailbackDismissed] = useState(false);
 
     const lastContactTimestampRef = useRef(0);
 
@@ -193,25 +206,23 @@ function CommandCenterApp() {
 
             if (res.ok) {
                 const data = await res.json();
-                const role = data.role || data.Role || 'Primary';
+                const role = data.role || data.Role || 'Active-Active';
                 const partner = (data.partnerServerUrl || data.PartnerServerUrl || '').trim();
                 const autoFailover = data.autoFailoverDashboard ?? data.AutoFailoverDashboard ?? true;
                 const delay = Number(data.failoverDelaySeconds || data.FailoverDelaySeconds) || 8;
-
-                const currentOrigin = window.location.origin;
-                let primaryUrl = '';
-                if (role.toLowerCase() === 'primary') {
-                    primaryUrl = currentOrigin;
-                    localStorage.setItem('itb_cluster_primary_url', currentOrigin);
-                } else if (role.toLowerCase() === 'secondary') {
-                    primaryUrl = partner || localStorage.getItem('itb_cluster_primary_url') || '';
-                    if (primaryUrl) localStorage.setItem('itb_cluster_primary_url', primaryUrl);
-                }
+                const virtualIp = (data.virtualIp || data.VirtualIp || '').trim();
+                const enableVip = Boolean(data.enableVirtualIp ?? data.EnableVirtualIp);
+                const isHoldingVip = Boolean(data.isHoldingVip ?? data.IsHoldingVip);
+                const isStandalone = Boolean(data.isStandalone ?? data.IsStandalone ?? true);
+                const totalActiveNodes = Number(data.totalActiveNodes || data.TotalActiveNodes) || 1;
+                const clusterMode = data.clusterMode || data.ClusterMode || (isStandalone ? 'Standalone' : 'Active-Active Mesh');
 
                 localStorage.setItem('itb_cluster_role', role);
                 localStorage.setItem('itb_cluster_partner_url', partner);
                 localStorage.setItem('itb_cluster_failover_enabled', String(autoFailover));
                 localStorage.setItem('itb_cluster_failover_delay', String(delay));
+                localStorage.setItem('itb_cluster_vip', virtualIp);
+                localStorage.setItem('itb_cluster_vip_enabled', String(enableVip));
 
                 setClusterConfig({
                     role,
@@ -219,10 +230,17 @@ function CommandCenterApp() {
                     serverName: data.serverName || data.ServerName,
                     discoveryPort: data.discoveryPort || data.DiscoveryPort,
                     multicastAddress: data.multicastAddress || data.MulticastAddress,
+                    broadcastAddress: data.broadcastAddress || data.BroadcastAddress,
                     partnerServerUrl: partner,
                     autoFailoverDashboard: autoFailover,
                     failoverDelaySeconds: delay,
-                    primaryServerUrl: primaryUrl
+                    virtualIp,
+                    enableVirtualIp: enableVip,
+                    isHoldingVip,
+                    isStandalone,
+                    totalActiveNodes,
+                    clusterMode,
+                    activeInterface: data.activeInterface || data.ActiveInterface || ''
                 });
                 setFailoverCountdown(delay);
             }
@@ -231,7 +249,7 @@ function CommandCenterApp() {
         }
     }, [apiBaseUrl]);
 
-    // ניהול ספירה לאחור ומעבר אוטומטי לשרת המשני בעת ניתוק
+    // ניהול ספירה לאחור ומעבר אוטומטי לצומת עמית / כתובת VIP בעת ניתוק
     useEffect(() => {
         if (!isServerOfflineModal) {
             setFailoverCountdown(clusterConfig.failoverDelaySeconds || 8);
@@ -239,16 +257,25 @@ function CommandCenterApp() {
             return;
         }
 
-        const canFailover = clusterConfig.autoFailoverDashboard && Boolean(clusterConfig.partnerServerUrl?.trim());
+        const canFailover = clusterConfig.autoFailoverDashboard && (
+            Boolean(clusterConfig.partnerServerUrl?.trim()) ||
+            (clusterConfig.enableVirtualIp && Boolean(clusterConfig.virtualIp?.trim()))
+        );
         if (!canFailover || isFailoverPaused) return;
 
         const timer = setInterval(() => {
             setFailoverCountdown(prev => {
                 if (prev <= 1) {
                     clearInterval(timer);
-                    const target = clusterConfig.partnerServerUrl.trim();
-                    if (target) {
-                        window.location.href = target;
+                    const isAlreadyOnVip = clusterConfig.virtualIp && window.location.hostname === clusterConfig.virtualIp;
+                    if (isAlreadyOnVip) {
+                        // המשתמש כבר גולש דרך כתובת ה-VIP: כתובת ה-VIP עברה אוטונומית לצומת הבא, רענון פשוט מחדש את החיבור
+                        window.location.reload();
+                    } else if (clusterConfig.enableVirtualIp && clusterConfig.virtualIp) {
+                        const port = window.location.port ? `:${window.location.port}` : '';
+                        window.location.href = `${window.location.protocol}//${clusterConfig.virtualIp}${port}`;
+                    } else if (clusterConfig.partnerServerUrl?.trim()) {
+                        window.location.href = clusterConfig.partnerServerUrl.trim();
                     }
                     return 0;
                 }
@@ -258,57 +285,6 @@ function CommandCenterApp() {
 
         return () => clearInterval(timer);
     }, [isServerOfflineModal, isFailoverPaused, clusterConfig]);
-
-    // בדיקת שרידות וזמינות של השרת הראשי כאשר המשתמש מחובר לשרת המשני (Failback Health Probe)
-    useEffect(() => {
-        if (!isAuthenticated) return;
-        const isSecondary = clusterConfig.role?.toLowerCase() === 'secondary';
-        const primaryTarget = clusterConfig.primaryServerUrl || clusterConfig.partnerServerUrl;
-        if (!isSecondary || !primaryTarget || isFailbackDismissed) return;
-
-        const probeInterval = setInterval(async () => {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
-                const res = await fetch(`${primaryTarget}/api/v1/health`, {
-                    signal: controller.signal,
-                    mode: 'cors',
-                    cache: 'no-cache'
-                });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.status === 'Healthy' || data.Status === 'Healthy') {
-                        setPrimaryRecovered(true);
-                    }
-                }
-            } catch {
-                // Primary node still unavailable
-            }
-        }, 6000);
-
-        return () => clearInterval(probeInterval);
-    }, [isAuthenticated, clusterConfig, isFailbackDismissed]);
-
-    // ספירה לאחור ומעבר אוטומטי חזרה לשרת הראשי (Auto-Failback)
-    useEffect(() => {
-        if (!primaryRecovered || isFailbackDismissed) return;
-
-        const timer = setInterval(() => {
-            setFailbackCountdown(prev => {
-                if (prev <= 1) {
-                    clearInterval(timer);
-                    const target = clusterConfig.primaryServerUrl || clusterConfig.partnerServerUrl;
-                    if (target) window.location.href = target;
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, [primaryRecovered, isFailbackDismissed, clusterConfig]);
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -564,28 +540,38 @@ function CommandCenterApp() {
                                         {lastServerContact ? lastServerContact.toLocaleTimeString() : 'N/A'}
                                     </span>
                                 </div>
-                                {clusterConfig.role && (
+                                {clusterConfig.clusterMode && (
                                     <div className="diag-row">
-                                        <span className="diag-label">ACTIVE NODE ROLE</span>
+                                        <span className="diag-label">CLUSTER MODE</span>
                                         <span className="diag-val cyan">
-                                            {clusterConfig.role.toUpperCase()}
+                                            {clusterConfig.clusterMode.toUpperCase()}
                                         </span>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Failover Automation Card */}
-                            {clusterConfig.autoFailoverDashboard && clusterConfig.partnerServerUrl ? (
+                            {/* Autonomous Active-Active Failover / VIP Redirection Card */}
+                            {clusterConfig.autoFailoverDashboard && (clusterConfig.virtualIp || clusterConfig.partnerServerUrl) ? (
                                 <div className="failover-automation-box">
                                     <div className="failover-box-header">
                                         <span className="pulse-warning-dot" />
-                                        <span className="failover-title">AUTOMATIC FAILOVER INITIATED</span>
+                                        <span className="failover-title">AUTONOMOUS FAILOVER IN PROGRESS</span>
                                         <span className="failover-countdown-pill">
                                             {isFailoverPaused ? 'PAUSED' : `${failoverCountdown}s`}
                                         </span>
                                     </div>
                                     <p className="failover-desc">
-                                        Standby Partner Node: <strong>{clusterConfig.partnerServerUrl}</strong>
+                                        {clusterConfig.enableVirtualIp && clusterConfig.virtualIp ? (
+                                            <>
+                                                {window.location.hostname === clusterConfig.virtualIp ? (
+                                                    <>Virtual IP (<strong>{clusterConfig.virtualIp}</strong>) has floated to surviving Active-Active node. Reconnecting...</>
+                                                ) : (
+                                                    <>Cluster Virtual IP (VIP): <strong>{clusterConfig.virtualIp}</strong> (Auto-routing to active node)</>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>Active Cluster Peer: <strong>{clusterConfig.partnerServerUrl}</strong></>
+                                        )}
                                     </p>
                                     <div className="failover-progress-track">
                                         <div
@@ -600,7 +586,20 @@ function CommandCenterApp() {
                         </div>
 
                         <div className="modal-actions-section">
-                            {clusterConfig.autoFailoverDashboard && clusterConfig.partnerServerUrl && (
+                            {clusterConfig.enableVirtualIp && clusterConfig.virtualIp && window.location.hostname !== clusterConfig.virtualIp && (
+                                <button
+                                    type="button"
+                                    className="btn-modal-failover"
+                                    onClick={() => {
+                                        const port = window.location.port ? `:${window.location.port}` : '';
+                                        window.location.href = `${window.location.protocol}//${clusterConfig.virtualIp}${port}`;
+                                    }}
+                                >
+                                    👑 CONNECT VIA CLUSTER VIP ({clusterConfig.virtualIp})
+                                </button>
+                            )}
+
+                            {clusterConfig.partnerServerUrl && (
                                 <button
                                     type="button"
                                     className="btn-modal-failover"
@@ -609,7 +608,7 @@ function CommandCenterApp() {
                                         if (target) window.location.href = target;
                                     }}
                                 >
-                                    ⚡ SWITCH TO SECONDARY NOW
+                                    ⚡ SWITCH TO ACTIVE PEER NODE
                                 </button>
                             )}
 
@@ -623,7 +622,7 @@ function CommandCenterApp() {
                                     {isRetryingConnection ? 'CHECKING CONNECTION...' : '⟳ RECONNECT NOW'}
                                 </button>
 
-                                {clusterConfig.autoFailoverDashboard && clusterConfig.partnerServerUrl && (
+                                {clusterConfig.autoFailoverDashboard && (clusterConfig.partnerServerUrl || clusterConfig.virtualIp) && (
                                     <button
                                         type="button"
                                         className="btn-modal-pause-failover"
@@ -636,43 +635,6 @@ function CommandCenterApp() {
                         </div>
                     </div>
                 </div>
-            )}
-
-            {/* Failback Alert Banner when Primary recovers */}
-            {primaryRecovered && !isFailbackDismissed && (
-                <aside className="tactical-failback-toast-bar" role="alert">
-                    <div className="failback-toast-content">
-                        <div className="failback-beacon">
-                            <span className="beacon-ring" />
-                            <span className="beacon-core" />
-                        </div>
-                        <div className="failback-text-group">
-                            <span className="failback-tag">FAILBACK READY</span>
-                            <span className="failback-title">
-                                Primary C2 Server is back online. Returning to Primary in <strong>{failbackCountdown}s</strong>...
-                            </span>
-                        </div>
-                    </div>
-                    <div className="failback-actions">
-                        <button
-                            type="button"
-                            className="btn-failback-now"
-                            onClick={() => {
-                                const target = clusterConfig.primaryServerUrl || clusterConfig.partnerServerUrl;
-                                if (target) window.location.href = target;
-                            }}
-                        >
-                            RETURN TO PRIMARY NOW
-                        </button>
-                        <button
-                            type="button"
-                            className="btn-failback-dismiss"
-                            onClick={() => setIsFailbackDismissed(true)}
-                        >
-                            STAY ON SECONDARY
-                        </button>
-                    </div>
-                </aside>
             )}
         </div>
     );

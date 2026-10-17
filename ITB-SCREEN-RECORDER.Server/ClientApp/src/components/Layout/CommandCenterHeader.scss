@@ -90,6 +90,14 @@
                         white-space: nowrap;
                     }
 
+                    .cluster-header-badges {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 8px;
+                        margin-left: 10px;
+                        flex-wrap: wrap;
+                    }
+
                     .cluster-role-tag {
                         display: inline-flex;
                         align-items: center;
@@ -98,11 +106,16 @@
                         font-size: 0.65rem;
                         font-weight: 800;
                         letter-spacing: 0.8px;
-                        padding: 2.5px 8px;
+                        padding: 3px 9px;
                         border-radius: 4px;
                         text-transform: uppercase;
-                        margin-left: 8px;
                         vertical-align: middle;
+                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+                        &:hover {
+                            filter: brightness(1.2);
+                            transform: translateY(-1px);
+                        }
 
                         .role-dot {
                             width: 6px;
@@ -110,6 +123,7 @@
                             border-radius: 50%;
                         }
 
+                        &.active-active,
                         &.primary {
                             background: rgba(16, 185, 129, 0.15);
                             color: #34D399;
@@ -117,6 +131,7 @@
                             .role-dot {
                                 background: #10B981;
                                 box-shadow: 0 0 6px #10B981;
+                                animation: radarPulseDot 1.8s infinite ease-out;
                             }
                         }
 
@@ -127,7 +142,6 @@
                             .role-dot {
                                 background: #F59E0B;
                                 box-shadow: 0 0 8px #F59E0B;
-                                animation: radarPulseDot 1.4s infinite ease-out;
                             }
                         }
 
@@ -137,6 +151,54 @@
                             border: 1px solid rgba(148, 163, 184, 0.3);
                             .role-dot {
                                 background: #94A3B8;
+                            }
+                        }
+                    }
+
+                    .cluster-vip-tag {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                        font-size: 0.65rem;
+                        font-weight: 700;
+                        letter-spacing: 0.6px;
+                        padding: 3px 9px;
+                        border-radius: 4px;
+                        vertical-align: middle;
+                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+                        &:hover {
+                            filter: brightness(1.2);
+                            transform: translateY(-1px);
+                        }
+
+                        .vip-icon {
+                            font-size: 0.75rem;
+                            line-height: 1;
+                        }
+
+                        strong {
+                            font-weight: 800;
+                            letter-spacing: 0.8px;
+                        }
+
+                        &.is-leader {
+                            background: rgba(245, 158, 11, 0.16);
+                            color: #FCD34D;
+                            border: 1px solid rgba(245, 158, 11, 0.5);
+                            box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
+                            strong {
+                                color: #FEF08A;
+                            }
+                        }
+
+                        &.is-active {
+                            background: rgba(56, 189, 248, 0.12);
+                            color: #7DD3FC;
+                            border: 1px solid rgba(56, 189, 248, 0.4);
+                            strong {
+                                color: #BAE6FD;
                             }
                         }
                     }

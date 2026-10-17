@@ -34,12 +34,12 @@ for arg in "$@"; do
                     SERVER_ROLE="Aggregate"
                     SERVER_PRIORITY=0
                     ;;
-                2|secondary|secondery|standby|sec|backup)
-                    SERVER_ROLE="Secondary"
-                    SERVER_PRIORITY=2
+                2|standalone|single)
+                    SERVER_ROLE="Standalone"
+                    SERVER_PRIORITY=1
                     ;;
                 *)
-                    SERVER_ROLE="Primary"
+                    SERVER_ROLE="Active-Active"
                     SERVER_PRIORITY=1
                     ;;
             esac
@@ -96,7 +96,7 @@ EXPORTS_DIR="/var/lib/itb-screen-recorder/exports"
 RECORDINGS_DIR="/var/lib/itb-screen-recorder/recordings"
 NETAPP_MOUNT="/mnt/netapp/capturerecordings"
 LOGS_DIR="/var/log/itb-screen-recorder"
-SERVER_ROLE="${SERVER_ROLE:-Primary}"
+SERVER_ROLE="${SERVER_ROLE:-Active-Active}"
 SERVER_PRIORITY="${SERVER_PRIORITY:-1}"
 ENABLE_VIP="${ENABLE_VIP:-false}"
 VIRTUAL_IP="${VIRTUAL_IP:-}"
@@ -139,7 +139,7 @@ try:
     import os
     logs_d = os.path.dirname(log_file) if log_file else "$LOGS_DIR"
 
-    srv_role_raw = disc_cfg.get("Role", "Primary")
+    srv_role_raw = disc_cfg.get("Role", "Active-Active")
     srv_priority = disc_cfg.get("Priority", 1)
     disc_port = disc_cfg.get("Port", 5098)
     disc_mcast = disc_cfg.get("MulticastAddress", "239.255.10.90")
@@ -152,10 +152,10 @@ try:
 
     if re.search(r'aggregate|aggrigate|agg|super', str(srv_role_raw), re.I):
         srv_role = "Aggregate"
-    elif re.search(r'secondary|secondery|standby|sec|backup', str(srv_role_raw), re.I):
-        srv_role = "Secondary"
+    elif re.search(r'standalone|single', str(srv_role_raw), re.I):
+        srv_role = "Standalone"
     else:
-        srv_role = "Primary"
+        srv_role = "Active-Active"
 
     print(f"HTTP_PORT={http_p}")
     print(f"RTMP_PORT={rtmp_p}")
@@ -180,16 +180,17 @@ except Exception:
     pass
 EOF
 )"
-# 💡 1.5 אם מדובר בהתקנה נקייה - ביצוע גילוי רשתי אוטונומי לאיתור שרת Primary קיים
+# 💡 1.5 אם מדובר בהתקנה נקייה - ביצוע גילוי רשתי אוטונומי לאיתור צבר או שרת Active-Active קיים
 elif [ ! -f "$TARGET_CONFIG" ] && [ "$CLI_ROLE_PASSED" != "true" ] && command -v python3 >/dev/null 2>&1; then
-    echo "--> Running autonomous network discovery probe to check for existing Primary server..."
+    echo "--> Running autonomous network discovery probe to check for existing Active-Active cluster..."
     eval "$(python3 - <<EOF
 import socket
 import json
 
-found_primary = False
+found_cluster = False
 server_ip = ""
 virtual_ip = ""
+virtual_ip_subnet = "255.255.255.0"
 
 try:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -212,13 +213,12 @@ try:
             data, addr = sock.recvfrom(4096)
             resp = json.loads(data.decode('utf-8'))
             if resp.get("magic") == "ITB_DISCOVERY_RESPONSE":
-                role = str(resp.get("role", "")).lower()
-                if role == "primary":
-                    found_primary = True
-                    ips = resp.get("serverIps", [])
-                    server_ip = ips[0] if ips else addr[0]
-                    virtual_ip = resp.get("virtualIp", "") or ""
-                    break
+                found_cluster = True
+                ips = resp.get("serverIps", [])
+                server_ip = ips[0] if ips else addr[0]
+                virtual_ip = resp.get("virtualIp", "") or ""
+                virtual_ip_subnet = resp.get("virtualIpSubnetMask", "") or "255.255.255.0"
+                break
         except socket.timeout:
             break
         except Exception:
@@ -227,22 +227,23 @@ try:
 except Exception:
     pass
 
-if found_primary:
-    print("AUTODETECT_PRIMARY=true")
-    print("SERVER_ROLE='Secondary'")
+if found_cluster:
+    print("AUTODETECT_CLUSTER=true")
+    print("SERVER_ROLE='Active-Active'")
     print("SERVER_PRIORITY=2")
     if server_ip:
         print(f"PARTNER_URL='http://{server_ip}:5090'")
     if virtual_ip:
         print(f"VIRTUAL_IP='{virtual_ip}'")
+        print(f"VIRTUAL_IP_SUBNET='{virtual_ip_subnet}'")
         print("ENABLE_VIP=true")
 EOF
 )"
-    if [ "$AUTODETECT_PRIMARY" = "true" ]; then
-        echo "  [Discovery] Active Primary server detected on the network!"
-        echo "  [Discovery] Automatically configured as Secondary node with Partner URL: $PARTNER_URL"
+    if [ "$AUTODETECT_CLUSTER" = "true" ]; then
+        echo "  [Discovery] Active cluster node detected on the network!"
+        echo "  [Discovery] Joining Active-Active cluster mesh with Partner URL: $PARTNER_URL"
         if [ -n "$VIRTUAL_IP" ]; then
-            echo "  [Discovery] Cluster Virtual IP inherited: $VIRTUAL_IP"
+            echo "  [Discovery] Cluster Virtual IP inherited: $VIRTUAL_IP (Subnet: $VIRTUAL_IP_SUBNET)"
         fi
     fi
 fi
@@ -254,24 +255,24 @@ if [ "$IS_UNATTENDED" = false ]; then
     echo "  Server Cluster Architecture & Role Selection"
     echo "========================================================"
     echo "  Please specify the role for this server:"
-    echo "    1) Primary   - Main active recording server (Default)"
-    echo "    2) Secondary - Standby / backup recording server (Automatic failover)"
-    echo "    3) Aggregate - Super-Server (Aggregation Studio & Multi-Site Dashboard)"
+    echo "    1) Active-Active - Distributed multi-node recording cluster (Default)"
+    echo "    2) Standalone    - Single independent recording server"
+    echo "    3) Aggregate     - Super-Server (Aggregation Studio & Multi-Site Dashboard)"
     echo ""
-    read -p "  Select Server Role [1=Primary, 2=Secondary, 3=Aggregate] (Current: $SERVER_ROLE): " role_choice
+    read -p "  Select Server Role [1=Active-Active, 2=Standalone, 3=Aggregate] (Current: $SERVER_ROLE): " role_choice
 
     role_choice_clean="$(echo "${role_choice:-$SERVER_ROLE}" | tr '[:upper:]' '[:lower:]' | xargs)"
     case "$role_choice_clean" in
-        1|primary|prim|main)
-            SERVER_ROLE="Primary"
+        1|active*|act*|primary|main)
+            SERVER_ROLE="Active-Active"
             if [ "$SERVER_PRIORITY" -eq 0 ] || [ -z "$SERVER_PRIORITY" ]; then
                 SERVER_PRIORITY=1
             fi
             ;;
-        2|secondary|secondery|standby|sec|backup)
-            SERVER_ROLE="Secondary"
-            if [ "$SERVER_PRIORITY" -eq 1 ] || [ "$SERVER_PRIORITY" -eq 0 ] || [ -z "$SERVER_PRIORITY" ]; then
-                SERVER_PRIORITY=2
+        2|standalone|single|secondary|sec)
+            SERVER_ROLE="Standalone"
+            if [ "$SERVER_PRIORITY" -eq 0 ] || [ -z "$SERVER_PRIORITY" ]; then
+                SERVER_PRIORITY=1
             fi
             ;;
         3|aggregate|aggrigate|agg|super)
@@ -285,8 +286,8 @@ if [ "$IS_UNATTENDED" = false ]; then
 
     echo ""
     echo "  Configured Role: $SERVER_ROLE (Priority Level: $SERVER_PRIORITY)"
-    if [ "$SERVER_ROLE" = "Secondary" ] && [ -n "$PARTNER_URL" ]; then
-        echo "  • Partner Primary Server: $PARTNER_URL"
+    if [ -n "$PARTNER_URL" ]; then
+        echo "  • Partner Peer Server: $PARTNER_URL"
     fi
     if [ "$ENABLE_VIP" = "true" ] && [ -n "$VIRTUAL_IP" ]; then
         echo "  • Cluster Virtual IP (VIP): $VIRTUAL_IP (Subnet: $VIRTUAL_IP_SUBNET)"
@@ -326,11 +327,11 @@ if [ "$IS_UNATTENDED" = false ]; then
 
             echo ""
             echo "--- Cluster Architecture & VIP Redundancy ---"
-            read -p "  Enter Cluster Priority Level (1 = Primary, 2+ = Secondary, 0 = Aggregate) [$SERVER_PRIORITY]: " custom_val
+            read -p "  Enter Cluster VIP Election Priority (1 = Preferred VIP Leader, 2+ = Secondary) [$SERVER_PRIORITY]: " custom_val
             SERVER_PRIORITY="${custom_val:-$SERVER_PRIORITY}"
 
-            if [ "$SERVER_ROLE" = "Secondary" ]; then
-                read -p "  Enter Partner Primary Server URL [$PARTNER_URL]: " custom_val
+            if [ -n "$PARTNER_URL" ] || [ "$SERVER_ROLE" = "Active-Active" ]; then
+                read -p "  Enter Partner Peer Server URL [$PARTNER_URL]: " custom_val
                 PARTNER_URL="${custom_val:-$PARTNER_URL}"
             fi
 

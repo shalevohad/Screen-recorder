@@ -25,6 +25,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public const string ProbeMagic = "ITB_DISCOVERY_PROBE";
         public const string ResponseMagic = "ITB_DISCOVERY_RESPONSE";
         public const string ProtocolVersion = "1.0";
+        public const string RoleActiveActive = "Active-Active";
+        public const string RoleStandalone = "Standalone";
         public const string RolePrimary = "Primary";
         public const string RoleSecondary = "Secondary";
         public const string RoleAggregate = "Aggregate";
@@ -60,16 +62,23 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         public string Environment { get; set; } = "Production";
 
         [JsonPropertyName("role")]
-        public string Role { get; set; } = ServerDiscoveryConstants.RolePrimary;
+        public string Role { get; set; } = ServerDiscoveryConstants.RoleActiveActive;
 
         [JsonPropertyName("priority")]
         public int Priority { get; set; } = 1;
 
         [JsonIgnore]
+        public bool IsActiveActive => string.Equals(Role, ServerDiscoveryConstants.RoleActiveActive, StringComparison.OrdinalIgnoreCase) ||
+                                      string.Equals(Role, "Active", StringComparison.OrdinalIgnoreCase);
+
+        [JsonIgnore]
+        public bool IsStandalone => string.Equals(Role, ServerDiscoveryConstants.RoleStandalone, StringComparison.OrdinalIgnoreCase);
+
+        [JsonIgnore]
         public bool IsAggregate => string.Equals(Role, ServerDiscoveryConstants.RoleAggregate, StringComparison.OrdinalIgnoreCase);
 
         [JsonIgnore]
-        public bool IsPrimary => string.Equals(Role, ServerDiscoveryConstants.RolePrimary, StringComparison.OrdinalIgnoreCase);
+        public bool IsPrimary => string.Equals(Role, ServerDiscoveryConstants.RolePrimary, StringComparison.OrdinalIgnoreCase) || IsActiveActive;
 
         [JsonIgnore]
         public bool IsSecondary => string.Equals(Role, ServerDiscoveryConstants.RoleSecondary, StringComparison.OrdinalIgnoreCase) ||

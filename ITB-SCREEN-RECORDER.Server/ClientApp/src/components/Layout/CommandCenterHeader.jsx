@@ -88,16 +88,34 @@ export default function CommandCenterHeader({
                         <div className="brand-title-row">
                             <span className="brand-name">ITB</span>
                             <span className="brand-main">SCREEN RECORDING CENTER</span>
-                            {clusterConfig?.role && (
-                                <span
-                                    className={`cluster-role-tag ${clusterConfig.role.toLowerCase()}`}
-                                    title={`Cluster Node: ${clusterConfig.role.toUpperCase()} • Click to open Cluster & Node Operations Hub`}
-                                    onClick={() => onOpenAppSwitcher && onOpenAppSwitcher('cluster')}
-                                    style={{ cursor: 'pointer' }}
-                                >
-                                    <span className="role-dot" />
-                                    {clusterConfig.role.toUpperCase()}
-                                </span>
+                            {clusterConfig && (
+                                <div className="cluster-header-badges">
+                                    <span
+                                        className={`cluster-role-tag ${clusterConfig.isStandalone ? 'standalone' : 'active-active'}`}
+                                        title={`Cluster Architecture: ${clusterConfig.isStandalone ? 'Standalone Node' : `Active-Active Mesh (${clusterConfig.totalActiveNodes || 1} Nodes)`} • Click to open Cluster Operations Hub`}
+                                        onClick={() => onOpenAppSwitcher && onOpenAppSwitcher('cluster')}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        <span className="role-dot" />
+                                        {clusterConfig.isStandalone
+                                            ? 'STANDALONE NODE'
+                                            : `ACTIVE-ACTIVE (${clusterConfig.totalActiveNodes || 1} NODES)`}
+                                    </span>
+
+                                    {clusterConfig.enableVirtualIp && clusterConfig.virtualIp && (
+                                        <span
+                                            className={`cluster-vip-tag ${clusterConfig.isHoldingVip ? 'is-leader' : 'is-active'}`}
+                                            title={`Virtual IP: ${clusterConfig.virtualIp} (${clusterConfig.isHoldingVip ? 'This node is active VIP Leader' : 'Active cluster ingress'}) • Click to open Cluster Operations Hub`}
+                                            onClick={() => onOpenAppSwitcher && onOpenAppSwitcher('cluster')}
+                                            style={{ cursor: 'pointer' }}
+                                        >
+                                            <span className="vip-icon">{clusterConfig.isHoldingVip ? '👑' : '🔗'}</span>
+                                            <span className="vip-text">
+                                                {clusterConfig.isHoldingVip ? 'VIP LEADER' : 'VIP ACTIVE'}: <strong>{clusterConfig.virtualIp}</strong>
+                                            </span>
+                                        </span>
+                                    )}
+                                </div>
                             )}
                         </div>
                         <span className="brand-subtitle">LIVE AGENT OPERATIONS</span>

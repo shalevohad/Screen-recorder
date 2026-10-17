@@ -148,7 +148,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 
                 string role = !string.IsNullOrWhiteSpace(discoveryConfig.Role)
                     ? discoveryConfig.Role
-                    : "Primary";
+                    : ServerDiscoveryConstants.RoleActiveActive;
 
                 int priority = discoveryConfig.Priority > 0 ? discoveryConfig.Priority : 1;
 

@@ -171,7 +171,7 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
             return discoveredServers.Values
                 .OrderByDescending(s => s.AcceptingNewAgents)
                 .ThenBy(s => s.Priority > 0 ? s.Priority : 100)
-                .ThenByDescending(s => string.Equals(s.Role, "Primary", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(s => s.IsActiveActive || s.IsPrimary)
                 .ThenByDescending(s => string.Equals(s.Environment, _targetEnvironment, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
@@ -229,7 +229,7 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
                                 ServerId = $"DNS-{host}",
                                 ServerName = host,
                                 Environment = _targetEnvironment,
-                                Role = "Primary",
+                                Role = ServerDiscoveryConstants.RoleActiveActive,
                                 Priority = 1,
                                 ApiBaseUrl = $"https://{ipStr}:{_fallbackHttpPort}",
                                 RtmpBaseUrl = $"rtmps://{ipStr}:{_fallbackRtmpPort}/live",

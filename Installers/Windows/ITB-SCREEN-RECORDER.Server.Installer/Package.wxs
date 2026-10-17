@@ -33,7 +33,7 @@
 		<Property Id="API_PORT" Value="9997" Secure="yes" />
 		<Property Id="HLS_PORT" Value="8888" Secure="yes" />
 		<Property Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" Secure="yes" />
-		<Property Id="SERVER_ROLE" Value="Primary" Secure="yes" />
+		<Property Id="SERVER_ROLE" Value="Active-Active" Secure="yes" />
 		<Property Id="SERVER_PRIORITY" Value="1" Secure="yes" />
 		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
 		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
@@ -130,7 +130,7 @@
 				<Control Id="VipLabel" Type="Text" X="190" Y="170" Width="150" Height="13" Text="Cluster Virtual IP (VIP):" />
 				<Control Id="VipEdit" Type="Edit" X="190" Y="184" Width="150" Height="18" Property="VIRTUAL_IP" />
 
-				<Control Id="RoleHelp" Type="Text" X="20" Y="208" Width="330" Height="22" Text="Primary / Secondary node. When a Virtual IP is configured, servers coordinate seamless VIP failover." />
+				<Control Id="RoleHelp" Type="Text" X="20" Y="208" Width="330" Height="22" Text="Active-Active mesh node (or Standalone). When Virtual IP is enabled, nodes coordinate seamless VIP ingress failover." />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />

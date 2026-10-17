@@ -50,7 +50,7 @@ namespace ITB_SCREEN_RECORDER.Server.Models
 
         public string BroadcastAddress { get; set; } = "255.255.255.255";
 
-        public string Role { get; set; } = "Primary";
+        public string Role { get; set; } = "Active-Active";
 
         public int Priority { get; set; } = 1;
 

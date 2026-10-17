@@ -380,7 +380,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                                 RemoteIp = result.RemoteEndPoint.Address.ToString(),
                                 ServerId = parsed.TryGetProperty("serverId", out var sId) ? sId.GetString() : "Unknown",
                                 ServerName = parsed.TryGetProperty("serverName", out var sName) ? sName.GetString() : "ITB Server",
-                                Role = parsed.TryGetProperty("role", out var sRole) ? sRole.GetString() : "Primary",
+                                Role = parsed.TryGetProperty("role", out var sRole) ? sRole.GetString() : "Active-Active",
                                 Priority = parsed.TryGetProperty("priority", out var sPri) ? sPri.GetInt32() : 1,
                                 Version = parsed.TryGetProperty("version", out var sVer) ? sVer.GetString() : "1.0",
                                 VirtualIp = parsed.TryGetProperty("virtualIp", out var sVip) ? sVip.GetString() : "",

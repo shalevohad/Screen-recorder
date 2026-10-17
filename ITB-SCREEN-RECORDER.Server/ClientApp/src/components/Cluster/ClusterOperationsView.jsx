@@ -223,8 +223,8 @@ export default function ClusterOperationsView({ onNavigate }) {
                             </span>
                             {isVipConfigured && (
                                 <span className={`vip-badge-pill ${isHoldingVip ? 'holding' : 'standby'}`}>
-                                    <span className="vip-icon">⚡</span>
-                                    VIP: {vipAddress} [{isHoldingVip ? 'ACTIVE HERE' : 'PEER HOLDER'}]
+                                    <span className="vip-icon">{isHoldingVip ? '👑' : '🔗'}</span>
+                                    VIP: {vipAddress} [{isHoldingVip ? 'ACTIVE VIP LEADER' : 'PEER HOLDER'}]
                                 </span>
                             )}
                         </div>
@@ -957,14 +957,13 @@ export default function ClusterOperationsView({ onNavigate }) {
                                     onChange={e => setSettingsForm({ ...settingsForm, role: e.target.value })}
                                 >
                                     <option value="Active-Active">Active-Active (Dynamic Distributed Mesh)</option>
-                                    <option value="Primary">Primary (Dedicated VIP Preferred Node)</option>
-                                    <option value="Secondary">Secondary (Standby Node)</option>
+                                    <option value="Standalone">Standalone (Single Independent Server)</option>
                                     <option value="Aggregate">Aggregate (Super-Server Studio)</option>
                                 </select>
                             </div>
 
                             <div className="form-group">
-                                <label>Priority Level</label>
+                                <label>VIP Election Priority Level</label>
                                 <input
                                     type="number"
                                     min="0"
@@ -972,7 +971,7 @@ export default function ClusterOperationsView({ onNavigate }) {
                                     value={settingsForm.priority}
                                     onChange={e => setSettingsForm({ ...settingsForm, priority: parseInt(e.target.value) || 1 })}
                                 />
-                                <span className="helper-txt">1 = Highest Priority for VIP Leadership; 2+ = Secondary</span>
+                                <span className="helper-txt">Lower number = higher VIP election priority (1 = preferred VIP leader)</span>
                             </div>
 
                             <div className="form-group">

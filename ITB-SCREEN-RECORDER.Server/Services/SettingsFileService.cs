@@ -36,7 +36,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 discoveryDto.MulticastAddress = (string)(discovery["MulticastAddress"] ?? ServerDiscoveryConstants.DefaultMulticastAddress);
                 discoveryDto.EnableBroadcastFallback = (bool)(discovery["EnableBroadcastFallback"] ?? true);
                 discoveryDto.BroadcastAddress = (string)(discovery["BroadcastAddress"] ?? ServerDiscoveryConstants.DefaultBroadcastAddress);
-                discoveryDto.Role = (string)(discovery["Role"] ?? "Primary");
+                discoveryDto.Role = (string)(discovery["Role"] ?? ServerDiscoveryConstants.RoleActiveActive);
                 discoveryDto.Priority = (int)(discovery["Priority"] ?? 1);
                 discoveryDto.PartnerServerUrl = (string?)discovery["PartnerServerUrl"];
                 discoveryDto.AutoFailoverDashboard = (bool)(discovery["AutoFailoverDashboard"] ?? true);

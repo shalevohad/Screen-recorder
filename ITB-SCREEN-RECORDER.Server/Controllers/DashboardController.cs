@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Server.Services.Security;
+using ITB_SCREEN_RECORDER.Server.Services.Network;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 
@@ -20,19 +21,25 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly CustomTabsService _tabsService;
         private readonly ICatalogRepository _catalogRepository;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
+        private readonly VirtualIpManagerService? _vipManager;
+        private readonly ClusterMeshService? _clusterMesh;
 
         public DashboardController(
             ITelemetryStateService telemetryState,
             StationOverridesService overridesService,
             CustomTabsService tabsService,
             ICatalogRepository catalogRepository,
-            IOptionsMonitor<SystemConfig> configMonitor)
+            IOptionsMonitor<SystemConfig> configMonitor,
+            VirtualIpManagerService? vipManager = null,
+            ClusterMeshService? clusterMesh = null)
         {
             _telemetryState = telemetryState;
             _overridesService = overridesService;
             _tabsService = tabsService;
             _catalogRepository = catalogRepository;
             _configMonitor = configMonitor;
+            _vipManager = vipManager;
+            _clusterMesh = clusterMesh;
         }
 
         [HttpGet("cluster")]
@@ -42,8 +49,16 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             var config = _configMonitor.CurrentValue;
             var disc = config.Discovery ?? new DiscoverySettings();
 
-            string role = !string.IsNullOrWhiteSpace(disc.Role) ? disc.Role : "Primary";
-            int priority = disc.Priority > 0 ? disc.Priority : (string.Equals(role, "Secondary", StringComparison.OrdinalIgnoreCase) ? 2 : 1);
+            bool isStandalone = _clusterMesh?.IsStandalone ?? true;
+            int totalActiveNodes = _clusterMesh?.TotalActiveNodes ?? 1;
+            string clusterMode = isStandalone ? "Standalone" : "Active-Active Mesh";
+
+            string role = !string.IsNullOrWhiteSpace(disc.Role)
+                ? disc.Role
+                : (isStandalone ? "Standalone" : "Active-Active");
+
+            int priority = disc.Priority > 0 ? disc.Priority : 1;
+            bool isHoldingVip = _vipManager?.IsHoldingVip ?? false;
 
             return Ok(new
             {
@@ -59,7 +74,12 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8,
                 VirtualIp = disc.VirtualIp ?? string.Empty,
                 VirtualIpSubnetMask = !string.IsNullOrWhiteSpace(disc.VirtualIpSubnetMask) ? disc.VirtualIpSubnetMask : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultSubnetMask,
-                EnableVirtualIp = disc.EnableVirtualIp
+                EnableVirtualIp = disc.EnableVirtualIp,
+                IsHoldingVip = isHoldingVip,
+                IsStandalone = isStandalone,
+                TotalActiveNodes = totalActiveNodes,
+                ClusterMode = clusterMode,
+                ActiveInterface = _vipManager?.ActiveInterfaceName ?? disc.NetworkInterfaceName ?? string.Empty
             });
         }
 

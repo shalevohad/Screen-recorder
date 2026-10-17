@@ -72,8 +72,8 @@ try {
                 if (mRole && mRole[1]) {
                     var rVal = mRole[1];
                     if (/aggregate|aggrigate|agg|super/i.test(rVal)) Session.Property("SERVER_ROLE") = "Aggregate";
-                    else if (/secondary|standby|sec|backup/i.test(rVal)) Session.Property("SERVER_ROLE") = "Secondary";
-                    else Session.Property("SERVER_ROLE") = "Primary";
+                    else if (/standalone|single/i.test(rVal)) Session.Property("SERVER_ROLE") = "Standalone";
+                    else Session.Property("SERVER_ROLE") = "Active-Active";
                 }
 
                 var mPriority = text.match(/"Priority"\s*:\s*(\d+)/i);
@@ -112,7 +112,7 @@ try {
         if (found) break;
     }
 
-    // 4. אם מדובר בהתקנה נקייה - ביצוע גילוי רשתי אוטונומי לאיתור שרת Primary קיים
+    // 4. אם מדובר בהתקנה נקייה - ביצוע גילוי רשתי אוטונומי לאיתור צבר או שרת Active-Active קיים
     if (!found) {
         try {
             var shell = new ActiveXObject("WScript.Shell");
@@ -126,22 +126,24 @@ try {
             var output = exec.StdOut.ReadAll();
 
             if (output && output.indexOf("ITB_DISCOVERY_RESPONSE") !== -1) {
-                var mRole = output.match(/"role"\s*:\s*"([^"]+)"/i);
-                if (mRole && mRole[1].toLowerCase() === "primary") {
-                    // זוהה שרת Primary פעיל ברשת - מצרפים את השרת הנוכחי כ-Secondary!
-                    Session.Property("SERVER_ROLE") = "Secondary";
-                    Session.Property("SERVER_PRIORITY") = "2";
+                // זוהה שרת או צבר פעיל ברשת - מצרפים את השרת הנוכחי ל-Active-Active Mesh!
+                Session.Property("SERVER_ROLE") = "Active-Active";
+                Session.Property("SERVER_PRIORITY") = "2";
 
-                    var mIp = output.match(/"serverIps"\s*:\s*\[\s*"([^"]+)"/i);
-                    if (mIp && mIp[1]) {
-                        Session.Property("PARTNER_URL") = "http://" + mIp[1] + ":5090";
-                    }
+                var mIp = output.match(/"serverIps"\s*:\s*\[\s*"([^"]+)"/i);
+                if (mIp && mIp[1]) {
+                    Session.Property("PARTNER_URL") = "http://" + mIp[1] + ":5090";
+                }
 
-                    var mDiscVip = output.match(/"virtualIp"\s*:\s*"([^"]+)"/i);
-                    if (mDiscVip && mDiscVip[1]) {
-                        Session.Property("VIRTUAL_IP") = mDiscVip[1];
-                        Session.Property("ENABLE_VIP") = "1";
-                    }
+                var mDiscVip = output.match(/"virtualIp"\s*:\s*"([^"]+)"/i);
+                if (mDiscVip && mDiscVip[1]) {
+                    Session.Property("VIRTUAL_IP") = mDiscVip[1];
+                    Session.Property("ENABLE_VIP") = "1";
+                }
+
+                var mDiscMask = output.match(/"virtualIpSubnetMask"\s*:\s*"([^"]+)"/i);
+                if (mDiscMask && mDiscMask[1]) {
+                    Session.Property("VIRTUAL_IP_SUBNET") = mDiscMask[1];
                 }
             }
         } catch (probeErr) {
