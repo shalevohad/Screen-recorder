@@ -72,9 +72,9 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public string ServiceName { get; set; } = "ITB-SCREEN-RECORDER";
 
-        public string Role { get; set; } = "Primary";
+        public string Role { get; set; } = "Primary"; // "Primary", "Secondary", "Aggregate"
 
-        [Range(1, 100)]
+        [Range(0, 100)]
         public int Priority { get; set; } = 1;
     }
 

@@ -8,13 +8,33 @@ TARGET_CONFIG="$CONFIG_DIR/appsettings.json"
 FEATURES_SRC_DIR="$CURRENT_DIR/features"
 FEATURES_DEST_DIR="$INSTALL_ROOT/Features"
 
-# בדיקת דגלי התקנה שקטה
+# בדיקת דגלי התקנה שקטה ופרמטרים משורת הפקודה
 IS_UNATTENDED=false
 for arg in "$@"; do
     case "$arg" in
         --silent|-s|--quiet|-q|--unattended|--non-interactive|-y|--yes)
             IS_UNATTENDED=true
-            break
+            ;;
+        --role=*|-r=*)
+            raw_role="${arg#*=}"
+            raw_role_clean="$(echo "$raw_role" | tr '[:upper:]' '[:lower:]' | xargs)"
+            case "$raw_role_clean" in
+                3|aggregate|aggrigate|agg|super)
+                    SERVER_ROLE="Aggregate"
+                    SERVER_PRIORITY=0
+                    ;;
+                2|secondary|secondery|standby|sec|backup)
+                    SERVER_ROLE="Secondary"
+                    SERVER_PRIORITY=2
+                    ;;
+                *)
+                    SERVER_ROLE="Primary"
+                    SERVER_PRIORITY=1
+                    ;;
+            esac
+            ;;
+        --priority=*|-p=*)
+            SERVER_PRIORITY="${arg#*=}"
             ;;
     esac
 done
@@ -34,8 +54,8 @@ EXPORTS_DIR="/var/lib/itb-screen-recorder/exports"
 RECORDINGS_DIR="/var/lib/itb-screen-recorder/recordings"
 NETAPP_MOUNT="/mnt/netapp/capturerecordings"
 LOGS_DIR="/var/log/itb-screen-recorder"
-SERVER_ROLE="Primary"
-SERVER_PRIORITY=1
+SERVER_ROLE="${SERVER_ROLE:-Primary}"
+SERVER_PRIORITY="${SERVER_PRIORITY:-1}"
 
 # 💡 1. טעינת הגדרות קודמות מתוך הקובץ הקיים (שדרוג / התקנה חוזרת - SSOT)
 if [ -f "$TARGET_CONFIG" ] && command -v python3 >/dev/null 2>&1; then
@@ -72,8 +92,15 @@ try:
     import os
     logs_d = os.path.dirname(log_file) if log_file else "$LOGS_DIR"
 
-    srv_role = disc_cfg.get("Role", "Primary")
+    srv_role_raw = disc_cfg.get("Role", "Primary")
     srv_priority = disc_cfg.get("Priority", 1)
+
+    if re.search(r'aggregate|aggrigate|agg|super', str(srv_role_raw), re.I):
+        srv_role = "Aggregate"
+    elif re.search(r'secondary|secondery|standby|sec|backup', str(srv_role_raw), re.I):
+        srv_role = "Secondary"
+    else:
+        srv_role = "Primary"
 
     print(f"HTTP_PORT={http_p}")
     print(f"RTMP_PORT={rtmp_p}")
@@ -92,8 +119,44 @@ EOF
 )"
 fi
 
-# 💡 2. תפריט אינטראקטיבי להתאמת פורטים ונתיבים
+# 💡 2. תפריט אינטראקטיבי להתאמת תפקיד שרת, פורטים ונתיבים
 if [ "$IS_UNATTENDED" = false ]; then
+    echo ""
+    echo "========================================================"
+    echo "  Server Cluster Architecture & Role Selection"
+    echo "========================================================"
+    echo "  Please specify the role for this server:"
+    echo "    1) Primary   - Main active recording server (Default)"
+    echo "    2) Secondary - Standby / backup recording server (Automatic failover)"
+    echo "    3) Aggregate - Super-Server (Aggregation Studio & Multi-Site Dashboard)"
+    echo ""
+    read -p "  Select Server Role [1=Primary, 2=Secondary, 3=Aggregate] (Current: $SERVER_ROLE): " role_choice
+
+    role_choice_clean="$(echo "${role_choice:-$SERVER_ROLE}" | tr '[:upper:]' '[:lower:]' | xargs)"
+    case "$role_choice_clean" in
+        1|primary|prim|main)
+            SERVER_ROLE="Primary"
+            if [ "$SERVER_PRIORITY" -eq 0 ] || [ -z "$SERVER_PRIORITY" ]; then
+                SERVER_PRIORITY=1
+            fi
+            ;;
+        2|secondary|secondery|standby|sec|backup)
+            SERVER_ROLE="Secondary"
+            if [ "$SERVER_PRIORITY" -eq 1 ] || [ "$SERVER_PRIORITY" -eq 0 ] || [ -z "$SERVER_PRIORITY" ]; then
+                SERVER_PRIORITY=2
+            fi
+            ;;
+        3|aggregate|aggrigate|agg|super)
+            SERVER_ROLE="Aggregate"
+            SERVER_PRIORITY=0
+            ;;
+        *)
+            echo "  --> Unrecognized role '$role_choice', keeping current role: $SERVER_ROLE"
+            ;;
+    esac
+
+    echo ""
+    echo "  Configured Role: $SERVER_ROLE (Priority Level: $SERVER_PRIORITY)"
     echo ""
     echo "Current Configuration Layout:"
     echo "  [Network Ports]"
@@ -109,12 +172,8 @@ if [ "$IS_UNATTENDED" = false ]; then
     echo "  • NetApp Mount:        $NETAPP_MOUNT"
     echo "  • Server Logs:         $LOGS_DIR"
     echo ""
-    echo "  [Cluster & Discovery Role]"
-    echo "  • Cluster Role:        $SERVER_ROLE"
-    echo "  • Priority Level:      $SERVER_PRIORITY"
-    echo ""
 
-    read -p "Do you want to customize network ports, cluster role, or paths? [y/N]: " customize_choice
+    read -p "Do you want to customize network ports, priority level, or storage paths? [y/N]: " customize_choice
     case "$customize_choice" in
         y|Y|[yY][eE][sS])
             echo ""
@@ -132,11 +191,8 @@ if [ "$IS_UNATTENDED" = false ]; then
             HLS_PORT="${custom_val:-$HLS_PORT}"
 
             echo ""
-            echo "--- Cluster Architecture & Discovery Role ---"
-            read -p "  Enter Server Cluster Role (Primary / Standby) [$SERVER_ROLE]: " custom_val
-            SERVER_ROLE="${custom_val:-$SERVER_ROLE}"
-
-            read -p "  Enter Cluster Priority Level (1 = Main, 2+ = Backup) [$SERVER_PRIORITY]: " custom_val
+            echo "--- Discovery Priority ---"
+            read -p "  Enter Cluster Priority Level (1 = Primary, 2+ = Secondary, 0 = Aggregate) [$SERVER_PRIORITY]: " custom_val
             SERVER_PRIORITY="${custom_val:-$SERVER_PRIORITY}"
 
             echo ""
@@ -157,7 +213,7 @@ if [ "$IS_UNATTENDED" = false ]; then
             LOGS_DIR="${custom_val:-$LOGS_DIR}"
             ;;
         *)
-            echo "--> Proceeding with current configuration."
+            echo "--> Proceeding with configuration."
             ;;
     esac
 fi

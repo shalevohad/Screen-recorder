@@ -484,6 +484,29 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             Assert.IsType<BadRequestObjectResult>(result);
         }
 
+        [Theory]
+        [InlineData("Primary", true, false, false)]
+        [InlineData("primary", true, false, false)]
+        [InlineData("Secondary", false, true, false)]
+        [InlineData("secondary", false, true, false)]
+        [InlineData("Standby", false, true, false)]
+        [InlineData("standby", false, true, false)]
+        [InlineData("Aggregate", false, false, true)]
+        [InlineData("aggregate", false, false, true)]
+        public void ServerDiscoveryResponse_RoleProperties_IdentifiesRoleAccurately(
+            string role, bool expectedPrimary, bool expectedSecondary, bool expectedAggregate)
+        {
+            var response = new ServerDiscoveryResponse
+            {
+                Role = role,
+                Priority = expectedPrimary ? 1 : (expectedSecondary ? 2 : 0)
+            };
+
+            Assert.Equal(expectedPrimary, response.IsPrimary);
+            Assert.Equal(expectedSecondary, response.IsSecondary);
+            Assert.Equal(expectedAggregate, response.IsAggregate);
+        }
+
         #endregion
     }
 }

@@ -7,7 +7,9 @@ param(
     [int]$RtmpPort = 19350,
     [int]$ApiPort  = 9997,
     [int]$HlsPort  = 8888,
-    [string]$DataDir = "C:\ProgramData\ITB-SCREEN-RECORDER\Server"
+    [string]$DataDir = "C:\ProgramData\ITB-SCREEN-RECORDER\Server",
+    [string]$ServerRole = "Primary",
+    [int]$ServerPriority = 1
 )
 
 $log = 'C:\Windows\Temp\itb-server-setup.log'
@@ -17,6 +19,21 @@ try {
     "InstallDir: '$InstallDir'" | Out-File $log -Append
     "Ports: HTTP=$HttpPort, RTMP=$RtmpPort, API=$ApiPort, HLS=$HlsPort" | Out-File $log -Append
     "DataDir: '$DataDir'" | Out-File $log -Append
+
+    # נירמול ServerRole
+    $cleanRole = $ServerRole.Trim().ToLower()
+    if ($cleanRole -match '^(aggregate|aggrigate|agg|super)$') {
+        $ServerRole = "Aggregate"
+        if ($ServerPriority -eq 1 -or $ServerPriority -eq 0) { $ServerPriority = 0 }
+    } elseif ($cleanRole -match '^(secondary|standby|sec|backup)$') {
+        $ServerRole = "Secondary"
+        if ($ServerPriority -eq 1 -or $ServerPriority -eq 0) { $ServerPriority = 2 }
+    } else {
+        $ServerRole = "Primary"
+        if ($ServerPriority -eq 0) { $ServerPriority = 1 }
+    }
+
+    "Role: '$ServerRole', Priority: $ServerPriority" | Out-File $log -Append
 
     # ניקוי backslashes מיותרים בסוף נתיב
     $cleanInstallDir = $InstallDir.TrimEnd('\', '/')
@@ -47,15 +64,31 @@ try {
         }
 
         # עדכון פורטי MediaMTX ב-JSON
-        $content = $content -replace ('(?i)' +$q + 'RtmpPort' + $q + '\s*:\s*\d+'), ($q + 'RtmpPort' + $q + ': ' +$RtmpPort)
-        $content =$content -replace ('(?i)' + $q + 'ApiPort' +$q + '\s*:\s*\d+'), ($q + 'ApiPort' +$q + ': ' + $ApiPort)$content = $content -replace ('(?i)' +$q + 'HlsPort' + $q + '\s*:\s*\d+'), ($q + 'HlsPort' + $q + ': ' +$HlsPort)
+        $content = $content -replace ('(?i)' + $q + 'RtmpPort' + $q + '\s*:\s*\d+'), ($q + 'RtmpPort' + $q + ': ' + $RtmpPort)
+        $content = $content -replace ('(?i)' + $q + 'ApiPort' + $q + '\s*:\s*\d+'), ($q + 'ApiPort' + $q + ': ' + $ApiPort)
+        $content = $content -replace ('(?i)' + $q + 'HlsPort' + $q + '\s*:\s*\d+'), ($q + 'HlsPort' + $q + ': ' + $HlsPort)
 
         # עדכון ספריות Data & Storage
-        $content =$content -replace ('(?i)' + $q + 'LocalFallbackPath' +$q + '\s*:\s*' + $q + '.*?' +$q), ($q + 'LocalFallbackPath' +$q + ': ' + $q +$dataDirEscaped + '\\Recordings' + $q)$content = $content -replace ('(?i)' +$q + 'BaseDirectory' + $q + '\s*:\s*' +$q + '.*?' + $q), ($q + 'BaseDirectory' + $q + ': ' +$q + $dataDirEscaped + '\\Data' +$q)
-        $content =$content -replace ('(?i)' + $q + 'ExportPath' +$q + '\s*:\s*' + $q + '.*?' +$q), ($q + 'ExportPath' +$q + ': ' + $q +$dataDirEscaped + '\\Exports' + $q)$content = $content -replace ('(?i)' +$q + 'ChunkEventLogPath' + $q + '\s*:\s*' +$q + '.*?' + $q), ($q + 'ChunkEventLogPath' + $q + ': ' +$q + $dataDirEscaped + '\\Logs\\chunk-events.log' +$q)
+        $content = $content -replace ('(?i)' + $q + 'LocalFallbackPath' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'LocalFallbackPath' + $q + ': ' + $q + $dataDirEscaped + '\\Recordings' + $q)
+        $content = $content -replace ('(?i)' + $q + 'BaseDirectory' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'BaseDirectory' + $q + ': ' + $q + $dataDirEscaped + '\\Data' + $q)
+        $content = $content -replace ('(?i)' + $q + 'ExportPath' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'ExportPath' + $q + ': ' + $q + $dataDirEscaped + '\\Exports' + $q)
+        $content = $content -replace ('(?i)' + $q + 'ChunkEventLogPath' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'ChunkEventLogPath' + $q + ': ' + $q + $dataDirEscaped + '\\Logs\\chunk-events.log' + $q)
 
-        $content \vert{} Set-Content$file -Encoding UTF8
-        "Saved updated JSON to $file" \vert{} Out-File $log -Append
+        # עדכון תפקיד ועדיפות Discovery
+        if ($content -match ('(?i)' + $q + 'Role' + $q + '\s*:\s*' + $q + '.*?' + $q)) {
+            $content = $content -replace ('(?i)' + $q + 'Role' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'Role' + $q + ': ' + $q + $ServerRole + $q)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "Role" + $q + ": " + $q + $ServerRole + $q + ",")
+        }
+
+        if ($content -match ('(?i)' + $q + 'Priority' + $q + '\s*:\s*\d+')) {
+            $content = $content -replace ('(?i)' + $q + 'Priority' + $q + '\s*:\s*\d+'), ($q + 'Priority' + $q + ': ' + $ServerPriority)
+        } else {
+            $content = $content -replace ('(?i)(' + $q + 'Discovery' + $q + '\s*:\s*\{)'), ("`$1`r`n      " + $q + "Priority" + $q + ": " + $ServerPriority + ",")
+        }
+
+        $content | Set-Content $file -Encoding UTF8
+        "Saved updated JSON to $file" | Out-File $log -Append
     }
 
     # 2. עדכון קובץ mediamtx.yml
@@ -64,10 +97,13 @@ try {
         (Join-Path $cleanInstallDir 'mediamtx.yml')
     ) | Where-Object { Test-Path $_ }
 
-    foreach ($yFile in$yamlFiles) {
-        "Updating YAML: $yFile" | Out-File $log -Append$y = Get-Content $yFile -Raw$y = $y -replace '(?m)^\s*#?\s*api:\s*.*$', 'api: yes'
-        $y =$y -replace '(?m)^\s*#?\s*apiAddress:\s*.*$', "apiAddress: :$ApiPort"
-        $y =$y -replace '(?m)^\s*#?\s*rtmpAddress:\s*.*$', "rtmpAddress: :$RtmpPort"
+    foreach ($yFile in $yamlFiles) {
+        "Updating YAML: $yFile" | Out-File $log -Append
+        $y = Get-Content $yFile -Raw
+        $y = $y -replace '(?m)^\s*#?\s*api:\s*.*$', 'api: yes'
+        $y = $y -replace '(?m)^\s*#?\s*apiAddress:\s*.*$', "apiAddress: :$ApiPort"
+        $y = $y -replace '(?m)^\s*#?\s*rtmpAddress:\s*.*$', "rtmpAddress: :$RtmpPort"
+        $y = $y -replace '(?m)^\s*#?\s*hlsAddress:\s*.*$', "hlsAddress: :$HlsPort"
         $y | Set-Content $yFile -Encoding UTF8
         "Saved updated YAML to $yFile" | Out-File $log -Append
     }

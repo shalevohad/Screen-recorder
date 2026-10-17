@@ -69,7 +69,12 @@ try {
 
                 // שליפת תפקיד ועדיפות של השרת
                 var mRole = text.match(/"Role"\s*:\s*"([^"]+)"/i);
-                if (mRole && mRole[1]) Session.Property("SERVER_ROLE") = mRole[1];
+                if (mRole && mRole[1]) {
+                    var rVal = mRole[1];
+                    if (/aggregate|aggrigate|agg|super/i.test(rVal)) Session.Property("SERVER_ROLE") = "Aggregate";
+                    else if (/secondary|standby|sec|backup/i.test(rVal)) Session.Property("SERVER_ROLE") = "Secondary";
+                    else Session.Property("SERVER_ROLE") = "Primary";
+                }
 
                 var mPriority = text.match(/"Priority"\s*:\s*(\d+)/i);
                 if (mPriority && mPriority[1]) Session.Property("SERVER_PRIORITY") = mPriority[1];

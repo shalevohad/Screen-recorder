@@ -33,6 +33,25 @@ try {
         var serverRole = parts[6] || "Primary";
         var serverPriority = parts[7] || "1";
 
+        // נירמול תפקיד השרת ועדיפות תקנית
+        var cleanRole = (serverRole + "").toLowerCase().replace(/^\s+|\s+$/g, "");
+        if (cleanRole === "aggregate" || cleanRole === "aggrigate" || cleanRole === "agg" || cleanRole === "super") {
+            serverRole = "Aggregate";
+            if (serverPriority === "1" || !serverPriority) {
+                serverPriority = "0";
+            }
+        } else if (cleanRole === "secondary" || cleanRole === "standby" || cleanRole === "sec" || cleanRole === "backup") {
+            serverRole = "Secondary";
+            if (serverPriority === "1" || !serverPriority) {
+                serverPriority = "2";
+            }
+        } else {
+            serverRole = "Primary";
+            if (!serverPriority || serverPriority === "0") {
+                serverPriority = "1";
+            }
+        }
+
         // ניקוי לוכסנים עודפים
         while (installDir.length > 0 && (installDir.charAt(installDir.length - 1) === "\\" || installDir.charAt(installDir.length - 1) === "/")) {
             installDir = installDir.substring(0, installDir.length - 1);

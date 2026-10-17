@@ -114,11 +114,13 @@
 				<Control Id="DataDirHelp" Type="Text" X="20" Y="147" Width="330" Height="24" Text="Specifies where SQLite catalogs, event logs, local buffers, and video recordings will be persisted." />
 
 				<!-- ארכיטקטורת שרתים: תפקיד ועדיפות -->
-				<Control Id="RoleLabel" Type="Text" X="20" Y="176" Width="150" Height="13" Text="Cluster Role (Primary / Standby):" />
-				<Control Id="RoleEdit" Type="Edit" X="20" Y="190" Width="140" Height="18" Property="SERVER_ROLE" />
+				<Control Id="RoleLabel" Type="Text" X="20" Y="174" Width="175" Height="13" Text="Server Role (Primary / Secondary / Aggregate):" />
+				<Control Id="RoleEdit" Type="Edit" X="20" Y="188" Width="150" Height="18" Property="SERVER_ROLE" />
 
-				<Control Id="PriorityLabel" Type="Text" X="185" Y="176" Width="160" Height="13" Text="Priority (1 = Main, 2+ = Backup):" />
-				<Control Id="PriorityEdit" Type="Edit" X="185" Y="190" Width="60" Height="18" Property="SERVER_PRIORITY" />
+				<Control Id="PriorityLabel" Type="Text" X="185" Y="174" Width="170" Height="13" Text="Priority (1=Primary, 2=Secondary, 0=Agg):" />
+				<Control Id="PriorityEdit" Type="Edit" X="185" Y="188" Width="60" Height="18" Property="SERVER_PRIORITY" />
+
+				<Control Id="RoleHelp" Type="Text" X="20" Y="208" Width="330" Height="22" Text="Specify Primary (Active Recording), Secondary (Standby Failover), or Aggregate (Super-Server)." />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />
