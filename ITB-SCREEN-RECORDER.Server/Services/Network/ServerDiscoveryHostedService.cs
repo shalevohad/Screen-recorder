@@ -23,19 +23,13 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
     {
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly ILogger<ServerDiscoveryHostedService> _logger;
-        private readonly int _port;
-        private readonly string _multicastAddress;
 
         public ServerDiscoveryHostedService(
             IOptionsMonitor<SystemConfig> configMonitor,
-            ILogger<ServerDiscoveryHostedService> logger,
-            int port = ServerDiscoveryConstants.DefaultDiscoveryPort,
-            string multicastAddress = ServerDiscoveryConstants.DefaultMulticastAddress)
+            ILogger<ServerDiscoveryHostedService> logger)
         {
             _configMonitor = configMonitor;
             _logger = logger;
-            _port = port;
-            _multicastAddress = multicastAddress;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -44,22 +38,37 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                var currentConfig = _configMonitor.CurrentValue;
+                var discoveryConfig = currentConfig.Discovery ?? new DiscoverySettings();
+
+                if (!discoveryConfig.Enabled)
+                {
+                    _logger.LogInformation("[DISCOVERY SERVICE] Discovery is disabled via configuration. Sleeping 10 seconds...");
+                    await Task.Delay(10000, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                int port = discoveryConfig.Port > 0 ? discoveryConfig.Port : ServerDiscoveryConstants.DefaultDiscoveryPort;
+                string mcastAddr = !string.IsNullOrWhiteSpace(discoveryConfig.MulticastAddress)
+                    ? discoveryConfig.MulticastAddress
+                    : ServerDiscoveryConstants.DefaultMulticastAddress;
+
                 try
                 {
                     udpServer = new UdpClient();
                     udpServer.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                    udpServer.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
+                    udpServer.Client.Bind(new IPEndPoint(IPAddress.Any, port));
 
-                    // Join the autonomous discovery multicast group
+                    // Join the autonomous discovery multicast group from configuration
                     try
                     {
-                        var mcastIp = IPAddress.Parse(_multicastAddress);
+                        var mcastIp = IPAddress.Parse(mcastAddr);
                         udpServer.JoinMulticastGroup(mcastIp);
-                        _logger.LogInformation("[DISCOVERY SERVICE] Joined Multicast Group {Group}:{Port} (Listening for autonomous agent probes)", _multicastAddress, _port);
+                        _logger.LogInformation("[DISCOVERY SERVICE] Joined Multicast Group {Group}:{Port} from configuration", mcastAddr, port);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "[DISCOVERY SERVICE] Multicast group join failed; listening on UDP broadcast fallback on port {Port}", _port);
+                        _logger.LogWarning(ex, "[DISCOVERY SERVICE] Multicast group join failed ({Group}); listening on UDP broadcast fallback on port {Port}", mcastAddr, port);
                     }
 
                     while (!stoppingToken.IsCancellationRequested)
@@ -83,7 +92,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[DISCOVERY SERVICE] Socket error encountered in discovery listener. Retrying in 5 seconds...");
+                    _logger.LogWarning(ex, "[DISCOVERY SERVICE] Socket error encountered in discovery listener on port {Port}. Retrying in 5 seconds...", port);
                     await Task.Delay(5000, stoppingToken).ConfigureAwait(false);
                 }
                 finally
@@ -102,13 +111,19 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         {
             try
             {
+                var currentConfig = _configMonitor.CurrentValue;
+                var discoveryConfig = currentConfig.Discovery ?? new DiscoverySettings();
+                if (!discoveryConfig.Enabled)
+                {
+                    return;
+                }
+
                 string payload = Encoding.UTF8.GetString(result.Buffer);
                 if (!payload.Contains(ServerDiscoveryConstants.ProbeMagic))
                 {
                     return; // Ignore non-discovery packets
                 }
 
-                var currentConfig = _configMonitor.CurrentValue;
                 int httpPort = currentConfig.HttpPort > 0 ? currentConfig.HttpPort : 5090;
                 int rtmpPort = currentConfig.MediaMtx?.RtmpPort > 0 ? currentConfig.MediaMtx.RtmpPort : 19350;
 

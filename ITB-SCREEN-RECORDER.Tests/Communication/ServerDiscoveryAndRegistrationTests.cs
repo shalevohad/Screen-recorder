@@ -12,6 +12,7 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Network.Discovery;
 using ITB_SCREEN_RECORDER.Server.Controllers;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Network;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -188,6 +189,84 @@ namespace ITB_SCREEN_RECORDER.Tests.Communication
             Assert.Equal("Mock Recording Server", bestServer.ServerName);
             Assert.Equal(5090, bestServer.HttpPort);
             Assert.Equal(19350, bestServer.RtmpPort);
+        }
+
+        [Fact]
+        public async Task ServerDiscoveryHostedService_HonorsCustomPortAndAddressFromConfiguration()
+        {
+            int customPort = 59128;
+            string customMulticast = "239.255.10.98";
+
+            var configMock = new Mock<IOptionsMonitor<SystemConfig>>();
+            var systemConfig = new SystemConfig
+            {
+                HttpPort = 5090,
+                MediaMtx = new MediaMtxSettings { RtmpPort = 19350 },
+                Discovery = new DiscoverySettings
+                {
+                    Enabled = true,
+                    Port = customPort,
+                    MulticastAddress = customMulticast
+                }
+            };
+            configMock.Setup(c => c.CurrentValue).Returns(systemConfig);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var service = new ServerDiscoveryHostedService(configMock.Object, Mock.Of<ILogger<ServerDiscoveryHostedService>>());
+
+            _ = Task.Run(() => service.StartAsync(cts.Token), cts.Token);
+            await Task.Delay(150); // Allow socket to bind
+
+            try
+            {
+                var client = new ServerDiscoveryClient(null, discoveryPort: customPort, multicastAddress: customMulticast);
+                var discovered = await client.DiscoverBestServerAsync(timeoutMs: 1500, cts.Token);
+
+                Assert.NotNull(discovered);
+                Assert.Equal(5090, discovered.HttpPort);
+                Assert.Equal(19350, discovered.RtmpPort);
+            }
+            finally
+            {
+                await service.StopAsync(CancellationToken.None);
+            }
+        }
+
+        [Fact]
+        public async Task ServerDiscoveryHostedService_WhenDisabledInConfiguration_DoesNotRespond()
+        {
+            int disabledPort = 59129;
+
+            var configMock = new Mock<IOptionsMonitor<SystemConfig>>();
+            var systemConfig = new SystemConfig
+            {
+                HttpPort = 5090,
+                MediaMtx = new MediaMtxSettings { RtmpPort = 19350 },
+                Discovery = new DiscoverySettings
+                {
+                    Enabled = false,
+                    Port = disabledPort
+                }
+            };
+            configMock.Setup(c => c.CurrentValue).Returns(systemConfig);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var service = new ServerDiscoveryHostedService(configMock.Object, Mock.Of<ILogger<ServerDiscoveryHostedService>>());
+
+            _ = Task.Run(() => service.StartAsync(cts.Token), cts.Token);
+            await Task.Delay(100);
+
+            try
+            {
+                var client = new ServerDiscoveryClient(null, discoveryPort: disabledPort);
+                var discovered = await client.DiscoverBestServerAsync(timeoutMs: 300, cts.Token);
+
+                Assert.Null(discovered);
+            }
+            finally
+            {
+                await service.StopAsync(CancellationToken.None);
+            }
         }
 
         #endregion

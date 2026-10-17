@@ -605,8 +605,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
         {
             try
             {
-                _logger.LogInformation("[DISCOVERY] Initiating autonomous multicast/broadcast server discovery...");
-                var discoveryClient = new ServerDiscoveryClient(_logger);
+                int discPort = _config.DiscoveryPort > 0 ? _config.DiscoveryPort : ServerDiscoveryConstants.DefaultDiscoveryPort;
+                string discMcast = !string.IsNullOrWhiteSpace(_config.DiscoveryMulticastAddress) ? _config.DiscoveryMulticastAddress : ServerDiscoveryConstants.DefaultMulticastAddress;
+
+                _logger.LogInformation("[DISCOVERY] Initiating autonomous multicast/broadcast server discovery on {Address}:{Port}...", discMcast, discPort);
+                var discoveryClient = new ServerDiscoveryClient(_logger, discPort, discMcast);
                 var discovered = await discoveryClient.DiscoverBestServerAsync(timeoutMs: 2500, ct);
                 if (discovered != null)
                 {

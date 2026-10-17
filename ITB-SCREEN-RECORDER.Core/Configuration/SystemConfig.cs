@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Core/Configuration/SystemConfig.cs
 // ==========================================
 using System;
@@ -50,6 +50,21 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Required]
         [Range(10, 60, ErrorMessage = "DefaultTargetFps must be between 10 and 60.")]
         public int DefaultTargetFps { get; set; } = 20;
+
+        [Required]
+        public DiscoverySettings Discovery { get; set; } = new DiscoverySettings();
+    }
+
+    public class DiscoverySettings
+    {
+        public bool Enabled { get; set; } = true;
+
+        [Range(1024, 65535)]
+        public int Port { get; set; } = 5098;
+
+        public string MulticastAddress { get; set; } = "239.255.10.90";
+
+        public bool EnableBroadcastFallback { get; set; } = true;
     }
 
     public class DstTransitionRule

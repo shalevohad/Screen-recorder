@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 
 namespace ITB_SCREEN_RECORDER.Core.Configuration
@@ -14,6 +14,9 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public int TargetFps { get; set; } = 30;
         public string VideoBitrate { get; set; } = "5M";
         public string VideoEncoder { get; set; } = "auto";
+
+        public int DiscoveryPort { get; set; } = 5098;
+        public string DiscoveryMulticastAddress { get; set; } = "239.255.10.90";
 
         public string LocalBufferPath { get; set; } = OperatingSystem.IsWindows()
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
