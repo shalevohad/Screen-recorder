@@ -38,6 +38,24 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
         }
 
         public bool IsHoldingVip => _isHoldingVip;
+        public DateTime? LastVipTransitionUtc { get; private set; }
+        public string? ActiveInterfaceName { get; private set; }
+        public int FailedHealthChecks => _failedHealthChecks;
+
+        public async Task<bool> ForceAcquireVipAsync()
+        {
+            var disc = _configMonitor.CurrentValue.Discovery ?? new DiscoverySettings();
+            if (string.IsNullOrWhiteSpace(disc.VirtualIp)) return false;
+            await AcquireVirtualIpAsync(disc).ConfigureAwait(false);
+            return _isHoldingVip;
+        }
+
+        public async Task<bool> ForceReleaseVipAsync()
+        {
+            var disc = _configMonitor.CurrentValue.Discovery ?? new DiscoverySettings();
+            await ReleaseVirtualIpAsync(disc).ConfigureAwait(false);
+            return !_isHoldingVip;
+        }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -171,12 +189,16 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             if (success)
             {
                 _isHoldingVip = true;
+                ActiveInterfaceName = iface;
+                LastVipTransitionUtc = DateTime.UtcNow;
                 _logger.LogInformation("[VIP MANAGER] Successfully ACQUIRED Virtual IP {Vip} on interface '{Interface}'.", vip, iface);
             }
             else
             {
                 _logger.LogWarning("[VIP MANAGER] Command to acquire Virtual IP {Vip} returned non-zero code. It may already be assigned or require elevated permissions.", vip);
                 _isHoldingVip = true; // Mark as holding if already assigned
+                ActiveInterfaceName = iface;
+                LastVipTransitionUtc = DateTime.UtcNow;
             }
         }
 
@@ -210,6 +232,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             }
 
             _isHoldingVip = false;
+            LastVipTransitionUtc = DateTime.UtcNow;
             _logger.LogInformation("[VIP MANAGER] Virtual IP {Vip} released.", vip);
         }
 

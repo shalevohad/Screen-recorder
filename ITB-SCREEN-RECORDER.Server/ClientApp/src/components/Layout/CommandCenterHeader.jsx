@@ -91,7 +91,9 @@ export default function CommandCenterHeader({
                             {clusterConfig?.role && (
                                 <span
                                     className={`cluster-role-tag ${clusterConfig.role.toLowerCase()}`}
-                                    title={`Cluster Node: ${clusterConfig.role.toUpperCase()} (Priority: ${clusterConfig.priority ?? 'N/A'}${clusterConfig.partnerServerUrl ? ' | Partner: ' + clusterConfig.partnerServerUrl : ''})`}
+                                    title={`Cluster Node: ${clusterConfig.role.toUpperCase()} • Click to open Cluster & Node Operations Hub`}
+                                    onClick={() => onOpenAppSwitcher && onOpenAppSwitcher('cluster')}
+                                    style={{ cursor: 'pointer' }}
                                 >
                                     <span className="role-dot" />
                                     {clusterConfig.role.toUpperCase()}

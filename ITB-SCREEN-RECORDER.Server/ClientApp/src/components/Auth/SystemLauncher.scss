@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Client/src/components/Auth/SystemLauncher.scss
 // ==========================================
 .system-launcher-backdrop {
@@ -14,7 +14,7 @@
 
     .launcher-canvas {
         width: 100%;
-        max-width: 920px;
+        max-width: 1140px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -158,8 +158,8 @@
 
         .systems-dual-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 22px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
             width: 100%;
 
             .system-app-card {
@@ -184,6 +184,10 @@
 
                 &.recording-card .card-ambient-glow {
                     background: var(--accent-cyan, #06B6D4);
+                }
+
+                &.cluster-card .card-ambient-glow {
+                    background: linear-gradient(90deg, #f59e0b, #38bdf8);
                 }
 
                 &.settings-card .card-ambient-glow {
