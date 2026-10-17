@@ -114,6 +114,7 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-restore --configuration Release
         dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release
         dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release
 
@@ -124,6 +125,8 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
+        dotnet build ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-restore --configuration Release
 
-    - name: Run .NET Automated Tests
-      run: dotnet test ITB-Screen-Recorder.sln --no-build --configuration Release --verbosity normal
+    - name: Run Central Unit Tests
+      timeout-minutes: 2
+      run: dotnet test ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-build --configuration Release --verbosity minimal

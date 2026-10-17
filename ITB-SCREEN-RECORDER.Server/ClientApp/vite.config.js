@@ -12,7 +12,7 @@ export default defineConfig({
     },
     build: {
         outDir: path.resolve(import.meta.dirname, '../wwwroot'),
-        emptyOutDir: true,
+        emptyOutDir: false,
         chunkSizeWarningLimit: 1500,
         rollupOptions: {
             output: {

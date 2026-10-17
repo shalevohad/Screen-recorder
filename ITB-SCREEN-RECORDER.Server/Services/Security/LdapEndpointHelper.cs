@@ -49,14 +49,16 @@ public static class LdapEndpointHelper
     public static string? ExtractDomainFromBaseDn(string? baseDn)
     {
         if (string.IsNullOrWhiteSpace(baseDn)) return null;
-        var matches = Regex.Matches(baseDn, @"DC=([^,]+)", RegexOptions.IgnoreCase);
+        var matches = Regex.Matches(baseDn, @"DC\s*=\s*([^,]+)", RegexOptions.IgnoreCase);
         if (matches.Count == 0) return null;
 
         var sb = new StringBuilder();
         foreach (Match m in matches)
         {
+            string val = m.Groups[1].Value.Trim();
+            if (string.IsNullOrEmpty(val)) continue;
             if (sb.Length > 0) sb.Append('.');
-            sb.Append(m.Groups[1].Value);
+            sb.Append(val);
         }
         return sb.Length > 0 ? sb.ToString() : null;
     }

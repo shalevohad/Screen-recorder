@@ -50,6 +50,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<InternalsVisibleTo Include="ITB-SCREEN-RECORDER.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<Folder Include="ClientApp/src/components/Settings/styles/" />
 		<Folder Include="ClientApp/src/components/Settings/tabs/" />
 		<Folder Include="ClientApp/src/styles/" />
