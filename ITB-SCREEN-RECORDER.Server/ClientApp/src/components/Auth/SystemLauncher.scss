@@ -14,7 +14,7 @@
 
     .launcher-canvas {
         width: 100%;
-        max-width: 1140px;
+        max-width: 980px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -158,9 +158,13 @@
 
         .systems-dual-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
             width: 100%;
+
+            @media (max-width: 768px) {
+                grid-template-columns: 1fr;
+            }
 
             .system-app-card {
                 position: relative;
@@ -184,10 +188,6 @@
 
                 &.recording-card .card-ambient-glow {
                     background: var(--accent-cyan, #06B6D4);
-                }
-
-                &.cluster-card .card-ambient-glow {
-                    background: linear-gradient(90deg, #f59e0b, #38bdf8);
                 }
 
                 &.settings-card .card-ambient-glow {
