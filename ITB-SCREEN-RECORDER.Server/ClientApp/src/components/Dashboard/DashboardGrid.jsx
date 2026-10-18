@@ -68,8 +68,8 @@ export default function DashboardGrid(props) {
                     handleFilteredBulkStart={logic.handleFilteredBulkStart}
                     canStopAny={logic.canStopAny}
                     handleFilteredBulkStop={logic.handleFilteredBulkStop}
-                    hideOffline={hideOffline}
-                    onToggleHideOffline={onToggleHideOffline}
+                    keystrokeMode={logic.keystrokeMode}
+                    handleCycleKeystrokeMode={logic.handleCycleKeystrokeMode}
                     sortAsc={logic.sortAsc}
                     setSortAsc={logic.setSortAsc}
                     canSort={logic.canSort}
@@ -155,6 +155,8 @@ export default function DashboardGrid(props) {
                         currentTabFilter={logic.currentTabFilter}
                         setFilterForTab={logic.setFilterForTab}
                         resultCount={logic.processedStations.length}
+                        hideOffline={hideOffline}
+                        onToggleHideOffline={onToggleHideOffline}
                     />
 
                     <FleetTabs
@@ -228,6 +230,7 @@ export default function DashboardGrid(props) {
                                         onQuickPlayback={onQuickPlayback}
                                         handleFeatureQuickExport={logic.handleFeatureQuickExport}
                                         liveKeystrokes={liveKeystrokes}
+                                        keystrokeMode={logic.keystrokeMode}
                                     />
                                 ) : (
                                     <StationsDenseView
@@ -241,6 +244,7 @@ export default function DashboardGrid(props) {
                                         setInspectedHostname={logic.setInspectedHostname}
                                         setFullscreenHostname={logic.setFullscreenHostname}
                                         liveKeystrokes={liveKeystrokes}
+                                        keystrokeMode={logic.keystrokeMode}
                                     />
                                 )}
 
@@ -335,6 +339,7 @@ export default function DashboardGrid(props) {
                     isStreaming={logic.fullscreenStation.isStreaming}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
                     recentKeystrokes={liveKeystrokes[logic.fullscreenStation?.hostname?.toLowerCase()]}
+                    keystrokeMode={logic.keystrokeMode}
                     onClose={() => logic.setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
                     onQuickBookmark={onQuickBookmark}

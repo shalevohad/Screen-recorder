@@ -503,29 +503,52 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             [FromQuery] bool? enable)
         {
             bool targetEnable = request?.Enable ?? enable ?? false;
-            var allAgents = _telemetryState.GetAllAgents();
-
-            var activeAgents = allAgents
-                .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15)
-                .ToList();
+            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var targetedHostnames = new List<string>();
 
             if (request?.Hostnames != null && request.Hostnames.Any())
             {
-                var targetHostnameFilter = new HashSet<string>(request.Hostnames, StringComparer.OrdinalIgnoreCase);
-                activeAgents = activeAgents.Where(agent => targetHostnameFilter.Contains(agent.Hostname)).ToList();
+                foreach (var host in request.Hostnames)
+                {
+                    if (!string.IsNullOrWhiteSpace(host))
+                    {
+                        _telemetryState.SetAgentStreamState(host, targetEnable);
+                        targetedHostnames.Add(host);
+                    }
+                }
+            }
+            else
+            {
+                var activeAgents = allAgents
+                    .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 30)
+                    .ToList();
+
+                foreach (var agent in activeAgents)
+                {
+                    _telemetryState.SetAgentStreamState(agent.Hostname, targetEnable);
+                    targetedHostnames.Add(agent.Hostname);
+                }
             }
 
-            foreach (var agent in activeAgents)
+            // עדכון מיידי של צופי הדשבורד על שינוי המצב
+            foreach (var host in targetedHostnames)
             {
-                _telemetryState.SetAgentStreamState(agent.Hostname, targetEnable);
+                var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, host, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    match.IsStreaming = targetEnable;
+                    match.IsRecording = targetEnable;
+                    match.Status = targetEnable ? AgentStatus.Streaming : AgentStatus.Standby;
+                    _ = _broadcastService.BroadcastAgentUpdateAsync(match);
+                }
             }
 
             return Ok(new
             {
                 Action = targetEnable ? "START_POLICY" : "STOP_POLICY",
                 IsFiltered = request?.Hostnames != null && request.Hostnames.Any(),
-                TargetStationCount = activeAgents.Count,
-                TargetHostnames = activeAgents.Select(agent => agent.Hostname).ToList(),
+                TargetStationCount = targetedHostnames.Count,
+                TargetHostnames = targetedHostnames,
                 TimestampUtc = DateTime.UtcNow
             });
         }

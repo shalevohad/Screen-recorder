@@ -1,4 +1,4 @@
-﻿// Client/src/components/Dashboard/SearchShelf.jsx
+// Client/src/components/Dashboard/SearchShelf.jsx
 import './SearchShelf.scss';
 
 export default function SearchShelf({
@@ -9,7 +9,9 @@ export default function SearchShelf({
     handleClearFilter,
     currentTabFilter,
     setFilterForTab,
-    resultCount
+    resultCount,
+    hideOffline,
+    onToggleHideOffline
 }) {
     return (
         <div className={`fleet-search-shelf ${isSearchOpen ? 'is-open' : ''}`}>
@@ -37,7 +39,20 @@ export default function SearchShelf({
                     <button className={currentTabFilter === 'ONLINE' ? 'active' : ''} onClick={() => setFilterForTab('ONLINE')}>ONLINE</button>
                     <button className={currentTabFilter === 'RECORDING' ? 'active' : ''} onClick={() => setFilterForTab('RECORDING')}>REC</button>
                     <button className={currentTabFilter === 'IDLE' ? 'active' : ''} onClick={() => setFilterForTab('IDLE')}>IDLE</button>
+                    <button className={currentTabFilter === 'OFFLINE' ? 'active' : ''} onClick={() => setFilterForTab('OFFLINE')}>OFFLINE</button>
                 </div>
+
+                {onToggleHideOffline && (
+                    <button
+                        type="button"
+                        className={`filter-chip-offline-toggle ${!hideOffline ? 'show-offline' : ''}`}
+                        onClick={onToggleHideOffline}
+                        title={hideOffline ? "Offline stations are currently hidden. Click to show all stations including offline." : "Offline stations are visible. Click to hide offline stations."}
+                    >
+                        <span className="dot-indicator" />
+                        <span>{hideOffline ? "SHOW OFFLINE" : "HIDE OFFLINE"}</span>
+                    </button>
+                )}
 
                 <div className="search-actions-group">
                     {searchQuery && (

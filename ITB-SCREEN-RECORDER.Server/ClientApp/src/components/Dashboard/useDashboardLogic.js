@@ -154,6 +154,19 @@ export function useDashboardLogic({
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('itb_dashboard_view_mode') || 'grid');
     useEffect(() => localStorage.setItem('itb_dashboard_view_mode', viewMode), [viewMode]);
 
+    // 🎯 מצב תצוגת מקשים: 'burn-in' (צריבה קשיחה) | 'caption' (כתובית רכה) | 'none' (כבוי)
+    const [keystrokeMode, setKeystrokeMode] = useState(() => localStorage.getItem('itb_dashboard_keystroke_mode') || 'burn-in');
+    useEffect(() => localStorage.setItem('itb_dashboard_keystroke_mode', keystrokeMode), [keystrokeMode]);
+
+    const handleCycleKeystrokeMode = () => {
+        setKeystrokeMode(prev => {
+            const norm = (prev || 'burn-in').toLowerCase().replace('_', '-');
+            if (norm === 'burn-in') return 'caption';
+            if (norm === 'caption') return 'none';
+            return 'burn-in';
+        });
+    };
+
     const [isSearchOpen, setIsSearchOpen] = useState(() => {
         const saved = localStorage.getItem('itb_dashboard_search_open');
         return saved !== null ? JSON.parse(saved) : false;
@@ -197,11 +210,11 @@ export function useDashboardLogic({
     const processedStations = useMemo(() => {
         let list = [...tabFilteredStations];
         if (isFaultFilterActive) list = list.filter(isStationFaulty);
+        else if (currentTabFilter === 'OFFLINE') list = list.filter(s => !s.isOnline);
         else if (hideOffline) list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
 
         if (currentTabFilter === 'RECORDING') list = list.filter(s => s.isStreaming);
         else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !s.isStreaming);
-        else if (currentTabFilter === 'OFFLINE') list = list.filter(s => !s.isOnline);
         else if (currentTabFilter === 'ONLINE') list = list.filter(s => s.isOnline);
 
         if (searchQuery.trim()) {
@@ -355,6 +368,7 @@ export function useDashboardLogic({
         inspectedStation, fullscreenStation,
 
         canSort, canStartAny, canStopAny,
+        keystrokeMode, setKeystrokeMode, handleCycleKeystrokeMode,
 
         handleToggleFeature, handleCloseFeature, handleFeatureQuickExport,
         handleZoomOut, handleZoomIn, handleSliderChange,

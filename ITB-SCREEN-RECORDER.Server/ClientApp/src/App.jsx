@@ -115,18 +115,24 @@ function CommandCenterApp() {
         if (!keys || !keys.length || !hostname) return;
         const hostKey = hostname.toLowerCase();
         const now = Date.now();
-        const incoming = keys.map(k => ({
-            id: `${k.epochMs || now}_${Math.random()}`,
-            combo: k.keyCombination,
-            epochMs: k.epochMs || now,
-            receivedAt: now
-        }));
+        const incoming = keys.map(k => {
+            const combo = k.keyCombination || k.KeyCombination || k.combo || (typeof k === 'string' ? k : '');
+            const epoch = k.epochMs || k.EpochMs || now;
+            return {
+                id: `${epoch}_${Math.random()}`,
+                combo,
+                epochMs: epoch,
+                receivedAt: now
+            };
+        }).filter(item => item.combo && item.combo.trim() !== '');
+
+        if (!incoming.length) return;
 
         setLiveKeystrokes(prev => {
-            const existing = (prev[hostKey] || []).filter(k => now - k.receivedAt < 3000);
+            const existing = (prev[hostKey] || []).filter(k => now - k.receivedAt < 3500);
             return {
                 ...prev,
-                [hostKey]: [...existing, ...incoming].slice(-6)
+                [hostKey]: [...existing, ...incoming].slice(-8)
             };
         });
     }, []);
@@ -469,8 +475,9 @@ function CommandCenterApp() {
                 return [...prev, { ...report, isOnline, status }];
             });
 
-            if (report.keystrokes && report.keystrokes.length > 0) {
-                handleIncomingKeystrokes(report.hostname, report.keystrokes);
+            const rawKeys = report.keystrokes || report.Keystrokes;
+            if (rawKeys && rawKeys.length > 0) {
+                handleIncomingKeystrokes(report.hostname || report.Hostname || host, rawKeys);
             }
         });
 
@@ -584,6 +591,84 @@ function CommandCenterApp() {
         }
     };
 
+    const handleBulkStart = useCallback(async (targetHostnames = [], policy = {}) => {
+        if (!targetHostnames || !targetHostnames.length) return;
+
+        const nextPending = {};
+        targetHostnames.forEach(hostname => {
+            if (actionPendingTimeoutsRef.current[hostname]) {
+                clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+            }
+            nextPending[hostname] = 'starting';
+            actionPendingTimeoutsRef.current[hostname] = setTimeout(() => {
+                setActionPending(prev => {
+                    if (!prev[hostname]) return prev;
+                    const next = { ...prev };
+                    delete next[hostname];
+                    return next;
+                });
+                delete actionPendingTimeoutsRef.current[hostname];
+            }, 25000);
+        });
+
+        setActionPending(prev => ({ ...prev, ...nextPending }));
+
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enable: true,
+                    hostnames: targetHostnames
+                })
+            });
+            if (res.ok) {
+                await fetchStations();
+            }
+        } catch (err) {
+            console.error('[App] Failed to execute bulk start:', err);
+        }
+    }, [apiBaseUrl, fetchStations]);
+
+    const handleBulkStop = useCallback(async (targetHostnames = []) => {
+        if (!targetHostnames || !targetHostnames.length) return;
+
+        const nextPending = {};
+        targetHostnames.forEach(hostname => {
+            if (actionPendingTimeoutsRef.current[hostname]) {
+                clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+            }
+            nextPending[hostname] = 'stopping';
+            actionPendingTimeoutsRef.current[hostname] = setTimeout(() => {
+                setActionPending(prev => {
+                    if (!prev[hostname]) return prev;
+                    const next = { ...prev };
+                    delete next[hostname];
+                    return next;
+                });
+                delete actionPendingTimeoutsRef.current[hostname];
+            }, 25000);
+        });
+
+        setActionPending(prev => ({ ...prev, ...nextPending }));
+
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enable: false,
+                    hostnames: targetHostnames
+                })
+            });
+            if (res.ok) {
+                await fetchStations();
+            }
+        } catch (err) {
+            console.error('[App] Failed to execute bulk stop:', err);
+        }
+    }, [apiBaseUrl, fetchStations]);
+
     if (!isInitialized) return null;
 
     // 1. שער המערכות הראשי (PORTAL LAUNCHER)
@@ -641,8 +726,8 @@ function CommandCenterApp() {
                             stations={sortedStations}
                             actionPending={actionPending}
                             onToggleStream={handleToggleStream}
-                            onBulkStart={() => { }}
-                            onBulkStop={() => { }}
+                            onBulkStart={handleBulkStart}
+                            onBulkStop={handleBulkStop}
                             onUpdateStationSettings={setStations}
                             systemConfig={systemConfig}
                             onSystemConfigUpdate={setSystemConfig}

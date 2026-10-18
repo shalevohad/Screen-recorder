@@ -268,6 +268,7 @@ export default function FullscreenModal(props) {
                             keystrokes={props.recentKeystrokes || props.keystrokes}
                             isLive={isStreaming}
                             variant="fullscreen"
+                            mode={props.keystrokeMode || 'burn-in'}
                         />
                     )}
 

@@ -203,11 +203,12 @@ export default function StationThumbnail(props) {
                     </div>
                 )}
 
-                {isLive && (
+                {Boolean(isStreaming || isLive) && (
                     <LiveKeystrokeOverlay
                         keystrokes={props.recentKeystrokes || props.keystrokes}
-                        isLive={isLive}
+                        isLive={Boolean(isStreaming || isLive)}
                         variant="viewport"
+                        mode={props.keystrokeMode || 'burn-in'}
                     />
                 )}
 

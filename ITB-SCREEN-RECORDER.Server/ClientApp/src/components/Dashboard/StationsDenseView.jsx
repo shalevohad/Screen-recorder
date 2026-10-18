@@ -16,7 +16,8 @@ export default function StationsDenseView({
     onToggleStream,
     setInspectedHostname,
     setFullscreenHostname,
-    liveKeystrokes = {}
+    liveKeystrokes = {},
+    keystrokeMode = 'burn-in'
 }) {
     return (
         <div className="stations-dense-container">
@@ -82,6 +83,7 @@ export default function StationsDenseView({
                                         keystrokes={s.recentKeystrokes || liveKeystrokes[s.hostname?.toLowerCase()]}
                                         isLive={isRec}
                                         variant="compact"
+                                        mode={keystrokeMode}
                                     />
                                 )}
                             </div>

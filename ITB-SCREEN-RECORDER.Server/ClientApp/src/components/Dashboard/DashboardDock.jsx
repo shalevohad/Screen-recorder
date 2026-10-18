@@ -14,8 +14,8 @@ export default function DashboardDock({
     handleFilteredBulkStart,
     canStopAny,
     handleFilteredBulkStop,
-    hideOffline,
-    onToggleHideOffline,
+    keystrokeMode = 'burn-in',
+    handleCycleKeystrokeMode,
     sortAsc,
     setSortAsc,
     canSort,
@@ -134,19 +134,24 @@ export default function DashboardDock({
 
             <div className="dock-divider" />
 
+            {/* 🎯 כפתור שליטה תלת-מצבי על תצוגת מקשים: BURN-IN -> CAPTION -> OFF */}
             <button
-                className={`dock-icon-btn tactical-btn-filter ${hideOffline ? 'is-engaged' : ''} ${isFeatureActive ? 'disabled' : ''}`}
-                onClick={onToggleHideOffline}
+                className={`dock-icon-btn tactical-btn-keystroke mode-${keystrokeMode} ${isFeatureActive ? 'disabled' : ''}`}
+                onClick={!isFeatureActive ? handleCycleKeystrokeMode : undefined}
                 disabled={isFeatureActive}
-                title={isFeatureActive ? "Filtering unavailable in Feature Mode" : hideOffline ? "Filter: Active only" : "Filter: All stations"}
+                title={
+                    isFeatureActive
+                        ? "Keystroke overlay unavailable in Feature Mode"
+                        : `Keystroke Overlay: ${keystrokeMode === 'burn-in' ? 'HARD BURN-IN' : keystrokeMode === 'caption' ? 'SOFT CAPTION' : 'OFF'} (Click to cycle)`
+                }
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                    <circle cx="12" cy="12" r="9.5" />
-                    <path d="M12 2.5a9.5 9.5 0 0 1 9.5 9.5" strokeWidth="3.2" />
-                    <line x1="12" y1="12" x2="18.5" y2="5.5" strokeWidth="2.6" />
-                    <circle cx="12" cy="12" r="2.2" fill="currentColor" />
-                    {hideOffline && <circle cx="16" cy="8" r="1.8" fill="currentColor" />}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <rect x="2" y="4" width="20" height="16" rx="2" />
+                    <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8" />
                 </svg>
+                <span className={`dock-mode-indicator ${keystrokeMode}`}>
+                    {keystrokeMode === 'burn-in' ? 'BURN' : keystrokeMode === 'caption' ? 'CAPT' : 'OFF'}
+                </span>
             </button>
 
             <button
