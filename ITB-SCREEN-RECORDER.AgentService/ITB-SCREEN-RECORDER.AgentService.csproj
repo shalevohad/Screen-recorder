@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk.Worker">
 
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
@@ -7,6 +7,8 @@
 		<RootNamespace>ITB_SCREEN_RECORDER.AgentService</RootNamespace>
 		<DebugType>none</DebugType>
 		<DebugSymbols>false</DebugSymbols>
+		<PublishSingleFile>true</PublishSingleFile>
+		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 	</PropertyGroup>
 
 	<!-- הגדרת WINDOWS מותנית ב-RuntimeIdentifier של היעד לקרוס-קומפילציה נקייה -->
