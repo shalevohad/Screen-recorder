@@ -152,6 +152,9 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
 
                 int priority = discoveryConfig.Priority > 0 ? discoveryConfig.Priority : 1;
 
+                bool hasVip = discoveryConfig.EnableVirtualIp && !string.IsNullOrWhiteSpace(discoveryConfig.VirtualIp);
+                string effectiveIp = hasVip ? discoveryConfig.VirtualIp!.Trim() : preferredIp;
+
                 var response = new ServerDiscoveryResponse
                 {
                     ServerId = Environment.MachineName,
@@ -161,8 +164,8 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
                     Priority = priority,
                     HttpPort = httpPort,
                     RtmpPort = rtmpPort,
-                    ApiBaseUrl = $"https://{preferredIp}:{httpPort}",
-                    RtmpBaseUrl = $"rtmps://{preferredIp}:{rtmpPort}/live",
+                    ApiBaseUrl = $"https://{effectiveIp}:{httpPort}",
+                    RtmpBaseUrl = $"rtmps://{effectiveIp}:{rtmpPort}/live",
                     ServerIps = localIps,
                     ServerUtcTime = DateTime.UtcNow,
                     AcceptingNewAgents = true,

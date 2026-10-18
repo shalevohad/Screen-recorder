@@ -175,6 +175,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     _serverBaseUrl = _config.DashboardApiUrl.Replace("http://", "").Replace("https://", "").TrimEnd('/');
                 }
                 _logger.LogInformation("Loaded Server Endpoint from AppConfig: {ServerBaseUrl}", _serverBaseUrl);
+                OfflineBufferDrainingService.ActiveServerBaseUrl = _serverBaseUrl;
             }
             else
             {
@@ -190,6 +191,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     _serverBaseUrl = envIp.Trim().Contains(':') ? envIp.Trim() : $"{envIp.Trim()}:5090";
                     _logger.LogInformation("Loaded Server IP from Environment Variable: {ServerBaseUrl}", _serverBaseUrl);
+                    OfflineBufferDrainingService.ActiveServerBaseUrl = _serverBaseUrl;
                 }
                 else
                 {
@@ -574,8 +576,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
 
-                    // בדוק האם אנחנו מחוברים כרגע לשרת Standby והשרת הראשי התאושש (Failback)
-                    if (_activeServer != null && (_activeServer.Priority > 1 || string.Equals(_activeServer.Role, "Standby", StringComparison.OrdinalIgnoreCase)))
+                    // בדוק האם אנחנו מחוברים כרגע לשרת Standby והשרת הראשי התאושש (Failback) - רלוונטי רק כשאין VIP
+                    if (_activeServer != null && !_activeServer.EnableVirtualIp && (_activeServer.Priority > 1 || string.Equals(_activeServer.Role, "Standby", StringComparison.OrdinalIgnoreCase)))
                     {
                         if ((DateTime.UtcNow - _lastFailbackCheckUtc).TotalSeconds >= 30)
                         {
@@ -612,23 +614,39 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
 
                 // בדיקת מעבר מיידי לשרת גיבוי (Failover) במקרה של כשל רצוף
-                if (_consecutiveServerFailures >= 3 && _discoveredServers.Count > 1)
+                if (_consecutiveServerFailures >= 3)
                 {
-                    var backupCandidate = _discoveredServers
-                        .Where(s => !string.Equals(s.ServerId, _activeServer?.ServerId, StringComparison.OrdinalIgnoreCase))
-                        .OrderBy(s => s.Priority)
-                        .FirstOrDefault();
-
-                    if (backupCandidate != null)
+                    // If VIP is enabled, wait a few cycles for cluster ARP migration before abandoning VIP
+                    if (_activeServer != null && _activeServer.EnableVirtualIp && !string.IsNullOrWhiteSpace(_activeServer.VirtualIp))
                     {
-                        bool isStandbyAlive = await ServerDiscoveryClient.VerifyServerHealthAsync(backupCandidate.ApiBaseUrl, 1500, ct);
-                        if (isStandbyAlive)
+                        if (_consecutiveServerFailures < 6)
                         {
-                            _logger.LogWarning("[FAILOVER] Current server '{Current}' unreachable for {Failures} cycles. Failing over to Standby server '{Standby}' [Role: {Role}, Priority: {Priority}]",
-                                _activeServer?.ServerName ?? _serverBaseUrl, _consecutiveServerFailures, backupCandidate.ServerName, backupCandidate.Role, backupCandidate.Priority);
+                            _logger.LogWarning("[FAILOVER-VIP] Cluster VIP connection interrupted for {Failures} cycles. Awaiting network ARP takeover to surviving active cluster node...", _consecutiveServerFailures);
+                        }
+                        else if (_consecutiveServerFailures % 3 == 0)
+                        {
+                            _logger.LogWarning("[FAILOVER-VIP] Cluster VIP unreachable for {Failures} cycles. Re-probing cluster nodes...", _consecutiveServerFailures);
+                            _ = Task.Run(() => PerformAutonomousDiscoveryAsync(ct), ct);
+                        }
+                    }
+                    else if (_discoveredServers.Count > 1)
+                    {
+                        var backupCandidate = _discoveredServers
+                            .Where(s => !string.Equals(s.ServerId, _activeServer?.ServerId, StringComparison.OrdinalIgnoreCase))
+                            .OrderBy(s => s.Priority)
+                            .FirstOrDefault();
 
-                            await SwitchActiveServerAsync(backupCandidate, ct);
-                            return;
+                        if (backupCandidate != null)
+                        {
+                            bool isPeerAlive = await ServerDiscoveryClient.VerifyServerHealthAsync(backupCandidate.ApiBaseUrl, 1500, ct);
+                            if (isPeerAlive)
+                            {
+                                _logger.LogWarning("[FAILOVER] Current server '{Current}' unreachable for {Failures} cycles. Failing over to cluster peer '{Peer}' [Role: {Role}, Priority: {Priority}]",
+                                    _activeServer?.ServerName ?? _serverBaseUrl, _consecutiveServerFailures, backupCandidate.ServerName, backupCandidate.Role, backupCandidate.Priority);
+
+                                await SwitchActiveServerAsync(backupCandidate, ct);
+                                return;
+                            }
                         }
                     }
                 }
@@ -705,23 +723,37 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private async Task SwitchActiveServerAsync(ServerDiscoveryResponse server, CancellationToken ct)
         {
             _activeServer = server;
-            if (Uri.TryCreate(server.ApiBaseUrl, UriKind.Absolute, out Uri? parsedUri))
+
+            if (server.EnableVirtualIp && !string.IsNullOrWhiteSpace(server.VirtualIp))
             {
-                _serverBaseUrl = parsedUri.Authority;
+                string vip = server.VirtualIp.Trim();
+                _serverBaseUrl = $"{vip}:{server.HttpPort}";
+                _currentPolicy.RtmpServerBaseUrl = $"rtmps://{vip}:{server.RtmpPort}/live";
+                _logger.LogInformation("[SERVER SELECTION] Connected to Cluster Virtual IP (VIP) '{Vip}' (Leader: '{Name}', Priority: {Priority}) -> {Endpoint}",
+                    vip, server.ServerName, server.Priority, _serverBaseUrl);
             }
             else
             {
-                string ip = server.ServerIps.Count > 0 ? server.ServerIps[0] : "127.0.0.1";
-                _serverBaseUrl = $"{ip}:{server.HttpPort}";
+                if (Uri.TryCreate(server.ApiBaseUrl, UriKind.Absolute, out Uri? parsedUri))
+                {
+                    _serverBaseUrl = parsedUri.Authority;
+                }
+                else
+                {
+                    string ip = server.ServerIps.Count > 0 ? server.ServerIps[0] : "127.0.0.1";
+                    _serverBaseUrl = $"{ip}:{server.HttpPort}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(server.RtmpBaseUrl))
+                {
+                    _currentPolicy.RtmpServerBaseUrl = server.RtmpBaseUrl;
+                }
+
+                _logger.LogInformation("[SERVER SELECTION] Connected to Server '{Name}' [Role: {Role}, Priority: {Priority}] -> {Endpoint}",
+                    server.ServerName, server.Role, server.Priority, _serverBaseUrl);
             }
 
-            if (!string.IsNullOrWhiteSpace(server.RtmpBaseUrl))
-            {
-                _currentPolicy.RtmpServerBaseUrl = server.RtmpBaseUrl;
-            }
-
-            _logger.LogInformation("[SERVER SELECTION] Connected to Server '{Name}' [Role: {Role}, Priority: {Priority}] -> {Endpoint}",
-                server.ServerName, server.Role, server.Priority, _serverBaseUrl);
+            OfflineBufferDrainingService.ActiveServerBaseUrl = _serverBaseUrl;
 
             await RegisterWithServerAsync(_serverBaseUrl, ct);
             _consecutiveServerFailures = 0;

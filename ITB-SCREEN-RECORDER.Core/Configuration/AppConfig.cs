@@ -8,8 +8,8 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         // 1. שדה קונפיגורציה פשוט ונקי לחלוטין
         public string FFmpegPath { get; set; } = string.Empty;
 
-        public string RtmpServerBaseUrl { get; set; } = "rtmp://128.200.3.10:19350/live/";
-        public string DashboardApiUrl { get; set; } = "http://128.200.3.10:5090/api/v1/agent/telemetry";
+        public string RtmpServerBaseUrl { get; set; } = "AUTO";
+        public string DashboardApiUrl { get; set; } = "AUTO";
         public int ReconnectDelaySeconds { get; set; } = 5;
         public int TargetFps { get; set; } = 30;
         public string VideoBitrate { get; set; } = "5M";

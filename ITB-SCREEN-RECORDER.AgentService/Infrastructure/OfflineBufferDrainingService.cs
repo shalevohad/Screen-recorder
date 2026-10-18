@@ -24,6 +24,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private readonly string _uploadUrl;
 
         public static BufferCommand CurrentCommand { get; set; } = BufferCommand.WAIT;
+        public static string? ActiveServerBaseUrl { get; set; }
 
         public OfflineBufferDrainingService(ILogger<OfflineBufferDrainingService> logger, AppConfig config)
         {
@@ -45,10 +46,24 @@ namespace ITB_SCREEN_RECORDER.AgentService
             Logger.AlwaysInfo($"[DRAINER] Initialized. Buffer Path: '{_bufferPath}', Target Upload Endpoint: '{_uploadUrl}'");
         }
 
+        public string GetEffectiveUploadEndpoint()
+        {
+            if (!string.IsNullOrWhiteSpace(ActiveServerBaseUrl) && !string.Equals(ActiveServerBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                string host = ActiveServerBaseUrl.TrimEnd('/');
+                return host.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? $"{host}/api/v1/agent/upload-buffer"
+                    : host.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                        ? $"https://{host.Substring("http://".Length)}/api/v1/agent/upload-buffer"
+                        : $"https://{host}/api/v1/agent/upload-buffer";
+            }
+            return _uploadUrl;
+        }
+
         private static string ResolveUploadEndpoint(string? dashboardApiUrl)
         {
             string fallback = "https://127.0.0.1:5090/api/v1/agent/upload-buffer";
-            if (string.IsNullOrWhiteSpace(dashboardApiUrl))
+            if (string.IsNullOrWhiteSpace(dashboardApiUrl) || string.Equals(dashboardApiUrl.Trim(), "AUTO", StringComparison.OrdinalIgnoreCase))
             {
                 return fallback;
             }
@@ -175,7 +190,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     Logger.AlwaysInfo($"[DRAINER] No sidecar file found for {Path.GetFileName(filePath)} (no keystrokes recorded).");
                 }
 
-                var response = await _httpClient.PostAsync(_uploadUrl, content, ct);
+                string targetUrl = GetEffectiveUploadEndpoint();
+                var response = await _httpClient.PostAsync(targetUrl, content, ct);
                 return response.IsSuccessStatusCode;
             }
             catch (Exception ex)

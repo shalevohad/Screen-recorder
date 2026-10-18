@@ -8,6 +8,7 @@ CURRENT_DIR="$(dirname "$(readlink -f "$0")")"
 SERVER_HOST=""
 DISCOVERY_PORT=5098
 DISCOVERY_MULTICAST="239.255.10.90"
+DISCOVERY_BROADCAST="255.255.255.255"
 
 for arg in "$@"; do
     case "$arg" in
@@ -22,6 +23,9 @@ for arg in "$@"; do
             ;;
         --discovery-multicast=*)
             DISCOVERY_MULTICAST="${arg#*=}"
+            ;;
+        --discovery-broadcast=*)
+            DISCOVERY_BROADCAST="${arg#*=}"
             ;;
     esac
 done
@@ -68,6 +72,7 @@ try:
 
     cfg["DiscoveryPort"] = int("$DISCOVERY_PORT")
     cfg["DiscoveryMulticastAddress"] = "$DISCOVERY_MULTICAST"
+    cfg["DiscoveryBroadcastAddress"] = "$DISCOVERY_BROADCAST"
 
     with open("$json_file", "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)

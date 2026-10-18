@@ -20,13 +20,15 @@
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentService.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentWorker.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 
+		<Property Id="SERVER_IP" Value="AUTO" Secure="yes" />
 		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
 		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
+		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes" />
 
 		<!-- הכנת ארגומנטים לעדכון ה-JSON -->
 		<CustomAction Id="SetJsonDataArgs"
 					  Property="UpdateAgentJson"
-					  Value="[INSTALLFOLDER]|[SERVER_IP]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]"
+					  Value="[INSTALLFOLDER]|[SERVER_IP]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]|[DISCOVERY_BROADCAST]"
 					  Execute="immediate" />
 
 		<!-- הפעלת סקריפט ה-PowerShell החיצוני לעדכון הקונפיגורציה -->
@@ -46,7 +48,6 @@
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<Property Id="SERVER_IP" Value="AUTO" />
 
 		<UI>
 			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">

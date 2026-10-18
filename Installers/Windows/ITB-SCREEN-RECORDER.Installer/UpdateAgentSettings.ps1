@@ -11,8 +11,9 @@ try {
     $serverIp = if ($arr.Length -gt 1 -and -not [string]::IsNullOrWhiteSpace($arr[1])) { $arr[1].Trim() } else { "AUTO" }
     $discPort = if ($arr.Length -gt 2 -and -not [string]::IsNullOrWhiteSpace($arr[2])) { $arr[2].Trim() } else { "5098" }
     $discMcast = if ($arr.Length -gt 3 -and -not [string]::IsNullOrWhiteSpace($arr[3])) { $arr[3].Trim() } else { "239.255.10.90" }
+    $discBcast = if ($arr.Length -gt 4 -and -not [string]::IsNullOrWhiteSpace($arr[4])) { $arr[4].Trim() } else { "255.255.255.255" }
 
-    "Config: ServerIp='$serverIp', DiscoveryPort=$discPort, Multicast='$discMcast'" | Out-File $log -Append
+    "Config: ServerIp='$serverIp', DiscoveryPort=$discPort, Multicast='$discMcast', Broadcast='$discBcast'" | Out-File $log -Append
 
     $targetFiles = @(
         (Join-Path $cleanDir 'appsettings.json'),
@@ -50,6 +51,13 @@ try {
             $content = $content -replace ('(?i)' + $q + 'DiscoveryMulticastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'DiscoveryMulticastAddress' + $q + ': ' + $q + $discMcast + $q)
         } else {
             $content = $content -replace ('(?i)\{'), ("{`r`n  " + $q + "DiscoveryMulticastAddress" + $q + ": " + $q + $discMcast + $q + ",")
+        }
+
+        # Update DiscoveryBroadcastAddress
+        if ($content -match ('(?i)' + $q + 'DiscoveryBroadcastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q)) {
+            $content = $content -replace ('(?i)' + $q + 'DiscoveryBroadcastAddress' + $q + '\s*:\s*' + $q + '.*?' + $q), ($q + 'DiscoveryBroadcastAddress' + $q + ': ' + $q + $discBcast + $q)
+        } else {
+            $content = $content -replace ('(?i)\{'), ("{`r`n  " + $q + "DiscoveryBroadcastAddress" + $q + ": " + $q + $discBcast + $q + ",")
         }
 
         $content | Set-Content $file -Encoding UTF8

@@ -121,26 +121,36 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
 
                         if (response != null && response.Magic == ServerDiscoveryConstants.ResponseMagic)
                         {
-                            // If ApiBaseUrl is relative or loopback, enrich with the actual remote IP that answered
-                            string respondingIp = result.RemoteEndPoint.Address.ToString();
-                            if (string.IsNullOrWhiteSpace(response.ApiBaseUrl) || response.ApiBaseUrl.Contains("127.0.0.1") || response.ApiBaseUrl.Contains("localhost"))
+                            // If VirtualIp is present and enabled, ensure ApiBaseUrl and RtmpBaseUrl point directly to the VIP!
+                            if (response.EnableVirtualIp && !string.IsNullOrWhiteSpace(response.VirtualIp))
                             {
-                                response.ApiBaseUrl = $"https://{respondingIp}:{response.HttpPort}";
+                                string vip = response.VirtualIp.Trim();
+                                response.ApiBaseUrl = $"https://{vip}:{response.HttpPort}";
+                                response.RtmpBaseUrl = $"rtmps://{vip}:{response.RtmpPort}/live";
                             }
-                            if (string.IsNullOrWhiteSpace(response.RtmpBaseUrl) || response.RtmpBaseUrl.Contains("127.0.0.1") || response.RtmpBaseUrl.Contains("localhost"))
+                            else
                             {
-                                response.RtmpBaseUrl = $"rtmps://{respondingIp}:{response.RtmpPort}/live";
-                            }
+                                // If ApiBaseUrl is relative or loopback, enrich with the actual remote IP that answered
+                                string respondingIp = result.RemoteEndPoint.Address.ToString();
+                                if (string.IsNullOrWhiteSpace(response.ApiBaseUrl) || response.ApiBaseUrl.Contains("127.0.0.1") || response.ApiBaseUrl.Contains("localhost"))
+                                {
+                                    response.ApiBaseUrl = $"https://{respondingIp}:{response.HttpPort}";
+                                }
+                                if (string.IsNullOrWhiteSpace(response.RtmpBaseUrl) || response.RtmpBaseUrl.Contains("127.0.0.1") || response.RtmpBaseUrl.Contains("localhost"))
+                                {
+                                    response.RtmpBaseUrl = $"rtmps://{respondingIp}:{response.RtmpPort}/live";
+                                }
 
-                            if (!response.ServerIps.Contains(respondingIp))
-                            {
-                                response.ServerIps.Insert(0, respondingIp);
+                                if (!response.ServerIps.Contains(respondingIp))
+                                {
+                                    response.ServerIps.Insert(0, respondingIp);
+                                }
                             }
 
                             string key = !string.IsNullOrWhiteSpace(response.ServerId) ? response.ServerId : response.ApiBaseUrl;
                             discoveredServers.TryAdd(key, response);
-                            _logger?.LogInformation("[DISCOVERY] Discovered server '{Name}' at {Api} (Status: accepting={Accepting})",
-                                response.ServerName, response.ApiBaseUrl, response.AcceptingNewAgents);
+                            _logger?.LogInformation("[DISCOVERY] Discovered server '{Name}' at {Api} (VIP: {Vip}, Status: accepting={Accepting})",
+                                response.ServerName, response.ApiBaseUrl, response.VirtualIp ?? "None", response.AcceptingNewAgents);
                         }
                     }
                     catch (OperationCanceledException)
@@ -170,6 +180,7 @@ namespace ITB_SCREEN_RECORDER.Core.Network.Discovery
 
             return discoveredServers.Values
                 .OrderByDescending(s => s.AcceptingNewAgents)
+                .ThenByDescending(s => s.EnableVirtualIp && !string.IsNullOrWhiteSpace(s.VirtualIp))
                 .ThenBy(s => s.Priority > 0 ? s.Priority : 100)
                 .ThenByDescending(s => s.IsActiveActive || s.IsPrimary)
                 .ThenByDescending(s => string.Equals(s.Environment, _targetEnvironment, StringComparison.OrdinalIgnoreCase))
