@@ -214,8 +214,22 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     if (ct.IsCancellationRequested) break;
 
-                    _requiresRestart = false;
-                    await RunStreamingSessionAsync(guard, ct).ConfigureAwait(false);
+                    try
+                    {
+                        _requiresRestart = false;
+                        await RunStreamingSessionAsync(guard, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"[WORKER:STREAM] Streaming session faulted: {ex.Message}\n{ex.StackTrace}");
+                        _isStreaming = false;
+                        _sessionStartTimeUtc = null;
+                        await Task.Delay(2000, ct).ConfigureAwait(false);
+                    }
                 }
             }
             finally

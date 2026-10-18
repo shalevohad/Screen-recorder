@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -124,12 +124,12 @@ namespace ITB_SCREEN_RECORDER.Core.Common
 
         public static void Info(string message)
         {
-            if (DebugHelper.IsDebugModeEnabled()) Log("INFO", message);
+            Log("INFO", message);
         }
 
         public static void Warn(string message)
         {
-            if (DebugHelper.IsDebugModeEnabled()) Log("WARN", message);
+            Log("WARN", message);
         }
 
         public static void Error(string message)
@@ -140,6 +140,11 @@ namespace ITB_SCREEN_RECORDER.Core.Common
         public static void AlwaysInfo(string message)
         {
             Log("INFO", message);
+        }
+
+        public static void Debug(string message)
+        {
+            if (DebugHelper.IsDebugModeEnabled()) Log("DEBUG", message);
         }
 
         private static void Log(string level, string message)

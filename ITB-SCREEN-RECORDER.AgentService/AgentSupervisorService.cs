@@ -48,6 +48,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private bool _isWorkerStreaming;
         private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
+        private DateTime _lastWorkerLaunchTime = DateTime.MinValue;
         private StreamWriter? _workerCommandWriter;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
         private IpcTelemetryDto? _lastTelemetry = null;
@@ -252,10 +253,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch (Exception ex)
                 {
-                    if (DebugHelper.IsDebugModeEnabled())
-                    {
-                        _logger.LogError("Supervisor tick error: {Msg}", ex.Message);
-                    }
+                    _logger.LogError("Supervisor tick error: {Msg}", ex.Message);
                 }
 
                 int delayMs = _isWorkerStreaming ? 1000 : 3000;
@@ -312,9 +310,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     using var pipeServer = IpcServerFactory.CreateSecureServerPipe("ITB_Agent_IPC");
 
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Waiting for Worker IPC connection...");
+                    _logger.LogInformation("Waiting for Worker IPC connection...");
                     await pipeServer.WaitForConnectionAsync(ct);
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Worker connected to IPC.");
+                    _logger.LogInformation("Worker connected to IPC.");
 
                     using var reader = new StreamReader(pipeServer);
                     using var writer = new StreamWriter(pipeServer) { AutoFlush = true };
@@ -340,11 +338,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     if (string.Equals(token, _ipcSecretToken, StringComparison.Ordinal) || string.IsNullOrEmpty(_ipcSecretToken))
                                     {
                                         isIpcAuthenticated = true;
-                                        if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
+                                        _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
                                         continue;
                                     }
                                 }
-                                _logger.LogWarning("[IPC-SECURITY] Rejecting unauthorized IPC client connection.");
+                                _logger.LogWarning("[IPC-SECURITY] Rejecting unauthorized IPC client connection (Token received: '{Received}').", line);
                                 break;
                             }
 
@@ -357,6 +355,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     _workerRecordingStartedAtUtc = status.RecordingStartedAtUtc;
                                     _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
+                                    _lastWorkerLaunchTime = DateTime.MinValue;
 
                                     _lastWorkerHasAudio = status.HasAudio || (status.Telemetry?.HasAudio ?? false);
                                     _lastWorkerHasActiveSpeakers = status.HasActiveSpeakers || (status.Telemetry?.HasActiveSpeakers ?? false);
@@ -383,12 +382,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogTrace("IPC server tick warning: {Msg}", ex.Message);
+                    _logger.LogWarning("IPC server tick warning: {Msg}", ex.Message);
                     await Task.Delay(1000, ct);
                 }
                 finally
                 {
                     _workerCommandWriter = null;
+                    _lastWorkerHeartbeat = DateTime.MinValue;
+                    _isWorkerStreaming = false;
                 }
             }
         }
@@ -396,9 +397,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private async Task SendTelemetryToServerAsync(CancellationToken ct)
         {
             bool isServerConnectedThisTick = false;
+            string targetEndpoint = _serverBaseUrl;
             try
             {
-                bool isWorkerAlive = (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 6;
+                bool isWorkerAlive = _workerCommandWriter != null && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 10;
                 bool isStreaming = isWorkerAlive && _isWorkerStreaming;
 
                 var fallbackHwStats = HardwareProbe.GetTelemetrySnapshot();
@@ -487,7 +489,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
 
                 string cleanBase = _serverBaseUrl.TrimEnd('/');
-                string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
                     ? $"{cleanBase}/api/v1/agent/telemetry"
                     : cleanBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
                         ? $"https://{cleanBase.Substring("http://".Length)}/api/v1/agent/telemetry"
@@ -601,6 +603,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 else
                 {
                     _consecutiveServerFailures++;
+                    _logger.LogWarning("Server returned non-success during telemetry ({Endpoint}): {StatusCode} {Reason}", targetEndpoint, (int)response.StatusCode, response.ReasonPhrase);
                     // שחזור המקשים לתור אם השרת החזיר שגיאה
                     foreach (var k in keysBatch) _pendingKeystrokes.Enqueue(k);
                 }
@@ -608,10 +611,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             catch (Exception ex)
             {
                 _consecutiveServerFailures++;
-                if (DebugHelper.IsDebugModeEnabled())
-                {
-                    _logger.LogWarning("Telemetry transmission failed: {Msg}", ex.Message);
-                }
+                _logger.LogWarning("Telemetry transmission failed ({Endpoint}): {Msg}", targetEndpoint, ex.Message);
 
                 // בדיקת מעבר מיידי לשרת גיבוי (Failover) במקרה של כשל רצוף
                 if (_consecutiveServerFailures >= 3)
@@ -831,12 +831,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 string processName = Path.GetFileNameWithoutExtension(_workerPath);
                 var procs = Process.GetProcessesByName(processName);
 
-                bool hasEverConnected = _lastWorkerHeartbeat != DateTime.MinValue;
-                bool isHeartbeatDead = hasEverConnected && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds > 15;
+                bool hasEverReceivedHeartbeat = _lastWorkerHeartbeat != DateTime.MinValue;
+                bool isHeartbeatDead = hasEverReceivedHeartbeat && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds > 15;
+                bool isLaunchTimeout = !hasEverReceivedHeartbeat && _lastWorkerLaunchTime != DateTime.MinValue && (DateTime.UtcNow - _lastWorkerLaunchTime).TotalSeconds > 30;
 
-                if (procs.Length > 0 && isHeartbeatDead)
+                if (procs.Length > 0 && (isHeartbeatDead || isLaunchTimeout))
                 {
-                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead. Terminating process...");
+                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead (HeartbeatDead: {H}, LaunchTimeout: {L}). Terminating process...", isHeartbeatDead, isLaunchTimeout);
                     foreach (var proc in procs)
                     {
                         try
@@ -849,6 +850,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     procs = Array.Empty<Process>();
                     _lastWorkerHeartbeat = DateTime.MinValue;
+                    _lastWorkerLaunchTime = DateTime.MinValue;
                     _isWorkerStreaming = false;
                 }
                 else if (procs.Length == 0 && File.Exists(_workerPath))
@@ -875,7 +877,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         else
                         {
                             _logger.LogInformation("AgentWorker launched successfully into active session with secure IPC token.");
-                            _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchTime = DateTime.UtcNow;
                             _lastWorkerLaunchFailed = false;
                         }
 #endif
@@ -893,7 +895,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         try
                         {
                             Process.Start(psi);
-                            _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchTime = DateTime.UtcNow;
                             _lastWorkerLaunchFailed = false;
                         }
                         catch (Exception ex)

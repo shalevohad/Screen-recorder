@@ -7,6 +7,7 @@ using System.IO.Pipes;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using ITB_SCREEN_RECORDER.Core.Common;
 
 namespace ITBRecorderAgent.Engine
 {
@@ -24,28 +25,45 @@ namespace ITBRecorderAgent.Engine
         {
             return Task.Run(async () =>
             {
+                bool loggedConnecting = false;
                 while (!ct.IsCancellationRequested)
                 {
                     try
                     {
                         using var client = new NamedPipeClientStream(".", "ITB_Agent_IPC", PipeDirection.InOut, PipeOptions.Asynchronous);
+                        if (!loggedConnecting)
+                        {
+                            Logger.Info("[WORKER:IPC] Connecting to Supervisor IPC pipe 'ITB_Agent_IPC'...");
+                            loggedConnecting = true;
+                        }
+
                         await client.ConnectAsync(3000, ct).ConfigureAwait(false);
 
                         using var reader = new StreamReader(client);
                         using var writer = new StreamWriter(client) { AutoFlush = true };
 
                         string? ipcToken = GetIpcToken();
+                        Logger.Info($"[WORKER:IPC] Connected to Supervisor IPC pipe. AuthTokenPresent: {!string.IsNullOrEmpty(ipcToken)}");
                         if (!string.IsNullOrEmpty(ipcToken))
                         {
                             await writer.WriteLineAsync($"Auth|{ipcToken}").ConfigureAwait(false);
                         }
 
+                        loggedConnecting = false;
+
                         var listenerTask = Task.Run(async () =>
                         {
-                            while (!ct.IsCancellationRequested && client.IsConnected)
+                            try
                             {
-                                string? line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
-                                if (!string.IsNullOrWhiteSpace(line)) ProcessCommand(line.Trim());
+                                while (!ct.IsCancellationRequested && client.IsConnected)
+                                {
+                                    string? line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+                                    if (!string.IsNullOrWhiteSpace(line)) ProcessCommand(line.Trim());
+                                }
+                            }
+                            catch (Exception ex) when (!ct.IsCancellationRequested)
+                            {
+                                Logger.Warn($"[WORKER:IPC] Command listener stream terminated: {ex.Message}");
                             }
                         }, ct);
 
@@ -56,8 +74,13 @@ namespace ITBRecorderAgent.Engine
                             await Task.Delay(1000, ct).ConfigureAwait(false);
                         }
                     }
-                    catch
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
                     {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"[WORKER:IPC] IPC pipe connection interrupted or waiting for supervisor: {ex.Message}");
                         if (!ct.IsCancellationRequested) await Task.Delay(2000, ct).ConfigureAwait(false);
                     }
                 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.Extensions.Logging;
 
 namespace ITB_SCREEN_RECORDER.Core.Common
@@ -52,7 +52,7 @@ namespace ITB_SCREEN_RECORDER.Core.Common
                     break;
                 case LogLevel.Debug:
                 case LogLevel.Trace:
-                    Logger.Info(formattedMessage);
+                    Logger.Debug(formattedMessage);
                     break;
             }
         }
