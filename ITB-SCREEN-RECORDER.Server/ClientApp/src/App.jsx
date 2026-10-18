@@ -7,7 +7,6 @@ import CommandCenterHeader from './components/Layout/CommandCenterHeader';
 import GlobalJobIndicator from './components/Layout/GlobalJobIndicator';
 import DashboardGrid from './components/Dashboard/DashboardGrid';
 import SettingsView from './components/Settings/SettingsView';
-import ClusterOperationsView from './components/Cluster/ClusterOperationsView';
 import SystemLauncher from './components/Auth/SystemLauncher';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.scss';
@@ -466,13 +465,8 @@ function CommandCenterApp() {
                             fetchClusterConfig();
                         }}
                     />
-                ) : currentSubsystem === 'cluster' ? (
-                    /* 3. מוקד אשכול ומופע השרת (CLUSTER & SERVER OPERATIONS) */
-                    <ClusterOperationsView
-                        onNavigate={(target) => setCurrentSubsystem(target)}
-                    />
                 ) : (
-                    /* 4. מרכז הקלטות המסכים (SCREEN RECORDING CENTER) */
+                    /* 3. מרכז הקלטות המסכים (SCREEN RECORDING CENTER) */
                     <>
                         <CommandCenterHeader
                             stations={sortedStations}

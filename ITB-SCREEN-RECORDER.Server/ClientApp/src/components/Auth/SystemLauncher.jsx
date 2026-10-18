@@ -47,18 +47,7 @@ export default function SystemLauncher({ onLaunchApp }) {
             return;
         }
 
-        // 🌐 מוקד אשכול ו-VIP:
-        if (appId === 'cluster') {
-            if (isOpenMode || (isAuthenticated && (canAccessSettings || user))) {
-                onLaunchApp('cluster');
-                return;
-            }
-            setPendingTargetApp('cluster');
-            setUsername('');
-            setPassword('');
-            setLoginError(null);
-            return;
-        }
+
 
         // 🎬 מרכז הקלטות המסכים:
         if (isOpenMode) {
@@ -193,38 +182,7 @@ export default function SystemLauncher({ onLaunchApp }) {
                             </div>
                         </div>
                     </div>
-                       {/* מערכת 2: מוקד אשכול ומופע השרת (Active-Active / VIP / Topology) */}
-                    <div
-                        className="system-app-card cluster-card"
-                        onClick={() => handleSelectSystem('cluster')}
-                    >
-                        <div className="card-ambient-glow" />
-                        <div className="card-content">
-                            <div className="system-icon-box">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                                    <rect x="2" y="2" width="20" height="8" rx="2" />
-                                    <rect x="2" y="14" width="20" height="8" rx="2" />
-                                    <line x1="6" y1="6" x2="6.01" y2="6" />
-                                    <line x1="6" y1="18" x2="6.01" y2="18" />
-                                    <path d="M12 10v4" />
-                                </svg>
-                            </div>
-                            <div className="system-meta">
-                                <span className="system-tag">ARCHITECTURE & REDUNDANCY</span>
-                                <h3>Server Cluster & Operations</h3>
-                                <p>Interactive topology map, Virtual IP (VIP) ownership, real-time hardware load balancing, partner connectivity, and auto-discovery radar.</p>
-                            </div>
-
-                            <div className="card-actions-row">
-                                <div className="system-enter-pill">
-                                    <span>ENTER CLUSTER OPERATIONS</span>
-                                    <span className="arrow">→</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* מערכת 3: ניהול והגדרות מערכת (נעולה לחלוטין – מנהל בלבד) */}
+                    {/* מערכת 2: ניהול והגדרות מערכת (נעולה לחלוטין – מנהל בלבד) */}
                     <div
                         className={`system-app-card settings-card ${!canAccessSettings ? 'admin-required' : ''}`}
                         onClick={() => handleSelectSystem('settings')}
@@ -270,8 +228,8 @@ export default function SystemLauncher({ onLaunchApp }) {
                     <div className="portal-login-card" onClick={e => e.stopPropagation()}>
                         <div className="modal-top-accent" />
                         <div className="modal-title-row">
-                            <span className={`target-pill ${pendingTargetApp === 'settings' ? 'admin' : (pendingTargetApp === 'cluster' ? 'cluster' : '')}`}>
-                                {pendingTargetApp === 'settings' ? 'SYSTEM SETTINGS (ADMIN ONLY)' : (pendingTargetApp === 'cluster' ? 'CLUSTER & SERVER OPERATIONS' : 'SCREEN RECORDING CENTER')}
+                            <span className={`target-pill ${pendingTargetApp === 'settings' ? 'admin' : ''}`}>
+                                {pendingTargetApp === 'settings' ? 'SYSTEM SETTINGS (ADMIN ONLY)' : 'SCREEN RECORDING CENTER'}
                             </span>
                             <h3>Enterprise Authentication</h3>
                         </div>
