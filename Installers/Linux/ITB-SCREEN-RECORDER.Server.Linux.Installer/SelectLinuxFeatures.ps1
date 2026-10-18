@@ -1,8 +1,8 @@
-﻿param(
+param(
     [Parameter(Mandatory=$true)][string]$FeaturesDir
 )
 
-$isCI = ($env:CI -eq 'true' -or $env:TF_BUILD -eq 'True' -or $env:GITHUB_ACTIONS -eq 'true')
+$isCI = ($env:CI -eq 'true' -or $env:TF_BUILD -eq 'True' -or $env:GITHUB_ACTIONS -eq 'true' -or $env:NO_GUI -eq 'true' -or $env:ITB_HEADLESS -eq 'true' -or $env:TESTING -eq 'true')
 
 # 1. סריקת הפיצ'רים ופענוח המניפסטים (כולל ID ו-Supersedes)
 $discoveredFeatures = @()

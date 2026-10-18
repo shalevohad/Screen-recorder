@@ -6,7 +6,14 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
 using ITB_SCREEN_RECORDER.Server.Models.Security;
 
-public record StationOverrideRecord(string Hostname, string? VideoBitrate, int? TargetFps, long UpdatedAtUtc);
+public record StationOverrideRecord(string Hostname, string? VideoBitrate, int? TargetFps, long UpdatedAtUtc)
+{
+    public StationOverrideRecord() : this(string.Empty, null, null, 0) { }
+    public StationOverrideRecord(string Hostname, string? VideoBitrate, long? TargetFps, long UpdatedAtUtc)
+        : this(Hostname, VideoBitrate, (int?)TargetFps, UpdatedAtUtc) { }
+    public StationOverrideRecord(string Hostname, string? VideoBitrate, long TargetFps, long UpdatedAtUtc)
+        : this(Hostname, VideoBitrate, (int?)TargetFps, UpdatedAtUtc) { }
+}
 
 public record CustomTabRecord(
     string Id,

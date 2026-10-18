@@ -112,6 +112,8 @@ public sealed class CatalogRepository : ICatalogRepository
 
     public async Task<IReadOnlyList<ChunkFinalizedEvent>> GetChunksForWindowAsync(string stationId, long fromEpochMs, long toEpochMs)
     {
+        if (fromEpochMs > toEpochMs) return Array.Empty<ChunkFinalizedEvent>();
+
         using var db = _factory.CreateConnection();
         const string sql = @"
             SELECT station_id AS StationId, file_path AS FilePath, 
