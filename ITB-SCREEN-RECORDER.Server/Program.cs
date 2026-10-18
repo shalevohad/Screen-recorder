@@ -206,15 +206,30 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.WebHost.ConfigureKestrel(options =>
                 {
                     options.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
+
+                    // הגדרת ברירת המחדל הגלובלית עבור כל ערוץ HTTPS ב-Kestrel (כולל Endpoints מ-appsettings.json ו-launchSettings)
+                    options.ConfigureHttpsDefaults(httpsOptions =>
+                    {
+                        var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+                        httpsOptions.ServerCertificate = bundle.ServerCertificate;
+                        httpsOptions.ServerCertificateSelector = (connectionContext, name) =>
+                        {
+                            var active = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+                            return active.ServerCertificate;
+                        };
+                    });
+
                     options.ListenAnyIP(finalListeningPort, listenOptions =>
                     {
                         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
                         listenOptions.UseHttps(httpsOptions =>
                         {
+                            var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+                            httpsOptions.ServerCertificate = bundle.ServerCertificate;
                             httpsOptions.ServerCertificateSelector = (connectionContext, name) =>
                             {
-                                var current = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
-                                return current.ServerCertificate;
+                                var active = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+                                return active.ServerCertificate;
                             };
                         });
                     });
