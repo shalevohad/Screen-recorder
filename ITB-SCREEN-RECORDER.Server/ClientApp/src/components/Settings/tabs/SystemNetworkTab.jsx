@@ -248,54 +248,30 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
 
             <div className="security-subpanel">
                 <div className="subpanel-header">
-                    <h4>AUTONOMOUS CLUSTER DISCOVERY & HIGH AVAILABILITY (HA)</h4>
-                    <span className="subpanel-desc">Configure server redundancy role, multicast beacon discovery, and dashboard auto-failover.</span>
+                    <h4>AUTONOMOUS SERVER DISCOVERY & AGENT REGISTRATION</h4>
+                    <span className="subpanel-desc">Configure UDP beacon discovery, multicast/broadcast settings, and network adapter binding for autonomous agent registration.</span>
                 </div>
 
                 <div className="settings-fields-row">
                     <div className="settings-field">
-                        <span>Server Cluster Mode</span>
-                        <select
-                            value={discovery.role || 'Active-Active'}
-                            onChange={e => updateDiscoveryField('role', e.target.value)}
-                            className="tactical-select"
-                        >
-                            <option value="Active-Active">Active-Active (Distributed Mesh)</option>
-                            <option value="Standalone">Standalone (Single Server)</option>
-                            <option value="Aggregate">Aggregate (Super-Server Studio)</option>
-                        </select>
-                    </div>
-
-                    <div className="settings-field">
-                        <span>VIP Election Priority</span>
+                        <span>UDP Discovery Port</span>
                         <input
                             type="number"
-                            min="1"
-                            max="1000"
-                            value={discovery.priority ?? 1}
-                            onChange={e => updateDiscoveryField('priority', Number(e.target.value))}
+                            min="1024"
+                            max="65535"
+                            placeholder="5098"
+                            value={discovery.port ?? 5098}
+                            onChange={e => updateDiscoveryField('port', Number(e.target.value))}
                             required
                         />
                     </div>
 
                     <div className="settings-field">
-                        <span>Peer Cluster Server URL</span>
-                        <input
-                            type="text"
-                            placeholder="e.g. http://192.168.1.11:5090"
-                            value={discovery.partnerServerUrl || ''}
-                            onChange={e => updateDiscoveryField('partnerServerUrl', e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="settings-fields-row">
-                    <div className="settings-field">
                         <span>UDP Multicast Address</span>
                         <input
                             type="text"
                             placeholder="e.g. 239.255.10.90"
-                            value={discovery.multicastAddress ?? ''}
+                            value={discovery.multicastAddress ?? '239.255.10.90'}
                             onChange={e => updateDiscoveryField('multicastAddress', e.target.value)}
                         />
                     </div>
@@ -305,56 +281,8 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                         <input
                             type="text"
                             placeholder="e.g. 255.255.255.255"
-                            value={discovery.broadcastAddress ?? ''}
+                            value={discovery.broadcastAddress ?? '255.255.255.255'}
                             onChange={e => updateDiscoveryField('broadcastAddress', e.target.value)}
-                        />
-                    </div>
-
-                    <div className="settings-field">
-                        <span>UDP Discovery Port</span>
-                        <input
-                            type="number"
-                            min="1024"
-                            max="65535"
-                            placeholder="5098"
-                            value={discovery.port ?? ''}
-                            onChange={e => updateDiscoveryField('port', Number(e.target.value))}
-                            required
-                        />
-                    </div>
-
-                    <div className="settings-field">
-                        <span>Failover Delay (Seconds)</span>
-                        <input
-                            type="number"
-                            min="3"
-                            max="60"
-                            placeholder="8"
-                            value={discovery.dashboardFailoverDelaySeconds ?? ''}
-                            onChange={e => updateDiscoveryField('dashboardFailoverDelaySeconds', Number(e.target.value))}
-                            required
-                        />
-                    </div>
-                </div>
-
-                <div className="settings-fields-row" style={{ marginTop: '12px' }}>
-                    <div className="settings-field">
-                        <span>Cluster Virtual IP (VIP)</span>
-                        <input
-                            type="text"
-                            placeholder="e.g. 192.168.1.10"
-                            value={discovery.virtualIp || ''}
-                            onChange={e => updateDiscoveryField('virtualIp', e.target.value)}
-                        />
-                    </div>
-
-                    <div className="settings-field">
-                        <span>VIP Subnet Mask</span>
-                        <input
-                            type="text"
-                            placeholder="e.g. 255.255.255.0"
-                            value={discovery.virtualIpSubnetMask ?? ''}
-                            onChange={e => updateDiscoveryField('virtualIpSubnetMask', e.target.value)}
                         />
                     </div>
 
@@ -373,19 +301,10 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                     <label className="tactical-checkbox-label">
                         <input
                             type="checkbox"
-                            checked={Boolean(discovery.enableVirtualIp)}
-                            onChange={e => updateDiscoveryField('enableVirtualIp', e.target.checked)}
+                            checked={discovery.enableBroadcastFallback !== false}
+                            onChange={e => updateDiscoveryField('enableBroadcastFallback', e.target.checked)}
                         />
-                        <span>Enable Autonomous Cluster Virtual IP (VIP) Management</span>
-                    </label>
-
-                    <label className="tactical-checkbox-label">
-                        <input
-                            type="checkbox"
-                            checked={discovery.autoFailoverDashboard !== false}
-                            onChange={e => updateDiscoveryField('autoFailoverDashboard', e.target.checked)}
-                        />
-                        <span>Enable Automatic Dashboard Failover on Disconnect</span>
+                        <span>Enable Subnet Broadcast Fallback (Auto-fallback when multicast packets are blocked by network switches)</span>
                     </label>
                 </div>
             </div>

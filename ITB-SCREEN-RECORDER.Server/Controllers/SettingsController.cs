@@ -179,16 +179,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         if (updatedConfig.Discovery.Port > 0) config.Discovery.Port = updatedConfig.Discovery.Port;
                         if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.MulticastAddress))
                             config.Discovery.MulticastAddress = updatedConfig.Discovery.MulticastAddress;
-                        config.Discovery.Role = updatedConfig.Discovery.Role;
-                        if (updatedConfig.Discovery.Priority > 0) config.Discovery.Priority = updatedConfig.Discovery.Priority;
-                        config.Discovery.PartnerServerUrl = updatedConfig.Discovery.PartnerServerUrl;
-                        config.Discovery.AutoFailoverDashboard = updatedConfig.Discovery.AutoFailoverDashboard;
-                        if (updatedConfig.Discovery.DashboardFailoverDelaySeconds > 0)
-                            config.Discovery.DashboardFailoverDelaySeconds = updatedConfig.Discovery.DashboardFailoverDelaySeconds;
-                        config.Discovery.EnableVirtualIp = updatedConfig.Discovery.EnableVirtualIp;
-                        config.Discovery.VirtualIp = updatedConfig.Discovery.VirtualIp;
-                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.VirtualIpSubnetMask))
-                            config.Discovery.VirtualIpSubnetMask = updatedConfig.Discovery.VirtualIpSubnetMask;
+                        if (!string.IsNullOrWhiteSpace(updatedConfig.Discovery.BroadcastAddress))
+                            config.Discovery.BroadcastAddress = updatedConfig.Discovery.BroadcastAddress;
+                        config.Discovery.EnableBroadcastFallback = updatedConfig.Discovery.EnableBroadcastFallback;
                         config.Discovery.NetworkInterfaceName = updatedConfig.Discovery.NetworkInterfaceName;
                     }
                 });
