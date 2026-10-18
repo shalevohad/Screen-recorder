@@ -137,7 +137,10 @@ jobs:
         }
 
     - name: Restore NuGet dependencies
-      run: dotnet restore ITB-Screen-Recorder.sln
+      run: |
+        dotnet restore ITB-Screen-Recorder.sln
+        dotnet restore Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj
+        dotnet restore Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj
 
     - name: Run Central Unit Tests (Quality Gate)
       timeout-minutes: 2
@@ -151,8 +154,8 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.AgentWorker/ITB-SCREEN-RECORDER.AgentWorker.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
         dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
         dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
-        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
-        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --configuration Release -p:Version=${{ needs.version.outputs.version }}
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --configuration Release -p:Version=${{ needs.version.outputs.version }}
 
     - name: Upload Windows Artifacts
       uses: actions/upload-artifact@v4
