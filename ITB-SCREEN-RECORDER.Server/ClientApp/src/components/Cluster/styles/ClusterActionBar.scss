@@ -1,0 +1,123 @@
+// ==========================================
+// File: ClientApp/src/components/Cluster/styles/ClusterActionBar.scss
+// ==========================================
+.cluster-action-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px 20px;
+    margin-bottom: 24px;
+
+    .action-bar-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 800;
+        color: #94a3b8;
+        letter-spacing: 0.06em;
+    }
+
+    .action-buttons-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+
+        .btn-action-tool {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: rgba(30, 41, 59, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #e2e8f0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+
+            &:hover:not(:disabled) {
+                background: rgba(51, 65, 85, 0.95);
+                border-color: rgba(56, 189, 248, 0.4);
+                color: #38bdf8;
+            }
+
+            &.vip-takeover {
+                background: linear-gradient(135deg, #f59e0b, #d97706);
+                border: 1px solid #fbbf24;
+                color: #000;
+                font-weight: 800;
+                box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
+
+                &:hover:not(:disabled) {
+                    transform: translateY(-1px);
+                    box-shadow: 0 0 24px rgba(245, 158, 11, 0.6);
+                }
+            }
+
+            &.vip-release {
+                background: rgba(100, 116, 139, 0.25);
+                border: 1px solid rgba(100, 116, 139, 0.4);
+                color: #cbd5e1;
+                font-weight: 800;
+
+                &:hover:not(:disabled) {
+                    background: rgba(100, 116, 139, 0.4);
+                    color: #ffffff;
+                }
+            }
+
+            &.radar {
+                background: rgba(56, 189, 248, 0.12);
+                border-color: rgba(56, 189, 248, 0.3);
+                color: #38bdf8;
+
+                &:hover:not(:disabled) {
+                    background: rgba(56, 189, 248, 0.22);
+                }
+            }
+
+            &.secondary {
+                background: rgba(148, 163, 184, 0.1);
+                border-color: rgba(148, 163, 184, 0.25);
+                color: #cbd5e1;
+
+                &:hover {
+                    background: rgba(148, 163, 184, 0.2);
+                    color: #ffffff;
+                }
+            }
+
+            &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+        }
+    }
+
+    .action-feedback-pill {
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        margin-left: auto;
+
+        &.success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #34d399;
+        }
+
+        &.error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #f87171;
+        }
+    }
+}

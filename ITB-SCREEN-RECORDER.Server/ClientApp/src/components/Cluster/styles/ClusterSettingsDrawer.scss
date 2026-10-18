@@ -1,0 +1,177 @@
+// ==========================================
+// File: ClientApp/src/components/Cluster/styles/ClusterSettingsDrawer.scss
+// ==========================================
+.cluster-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: flex-end;
+    z-index: 1000;
+
+    .cluster-drawer-panel {
+        width: 100%;
+        max-width: 440px;
+        height: 100%;
+        background: #0b1120;
+        border-left: 1px solid rgba(56, 189, 248, 0.3);
+        box-shadow: -12px 0 40px rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+
+        .drawer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+            .drawer-title-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+
+                h3 {
+                    margin: 0;
+                    font-size: 16px;
+                    font-weight: 800;
+                    color: #f8fafc;
+                }
+            }
+
+            .btn-close-drawer {
+                background: transparent;
+                border: none;
+                color: #94a3b8;
+                font-size: 16px;
+                cursor: pointer;
+                &:hover { color: #f8fafc; }
+            }
+        }
+
+        .drawer-form {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+
+            .form-group {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+
+                label {
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #cbd5e1;
+                }
+
+                input[type="text"],
+                input[type="number"],
+                select {
+                    background: rgba(30, 41, 59, 0.8);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 8px;
+                    padding: 9px 12px;
+                    color: #f8fafc;
+                    font-size: 13px;
+                    outline: none;
+
+                    &:focus {
+                        border-color: #38bdf8;
+                        box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+                    }
+                }
+
+                .helper-txt {
+                    font-size: 10px;
+                    color: #64748b;
+                }
+
+                &.checkbox-group {
+                    .custom-check-row {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        cursor: pointer;
+
+                        input[type="checkbox"] {
+                            width: 16px;
+                            height: 16px;
+                            accent-color: #38bdf8;
+                        }
+
+                        .check-title {
+                            font-size: 13px;
+                            font-weight: 700;
+                            color: #f8fafc;
+                        }
+                    }
+                }
+            }
+
+            .form-divider {
+                height: 1px;
+                background: rgba(255, 255, 255, 0.08);
+                margin: 6px 0;
+            }
+
+            .drawer-feedback-pill {
+                padding: 8px 14px;
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: 700;
+
+                &.success {
+                    background: rgba(16, 185, 129, 0.2);
+                    color: #34d399;
+                    border: 1px solid rgba(16, 185, 129, 0.3);
+                }
+                &.error {
+                    background: rgba(239, 68, 68, 0.2);
+                    color: #f87171;
+                    border: 1px solid rgba(239, 68, 68, 0.3);
+                }
+            }
+
+            .drawer-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                margin-top: 10px;
+
+                .btn-cancel {
+                    background: transparent;
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    color: #cbd5e1;
+                    padding: 9px 16px;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    &:hover { background: rgba(255, 255, 255, 0.05); }
+                }
+
+                .btn-save {
+                    background: linear-gradient(135deg, #0284c7, #38bdf8);
+                    border: none;
+                    color: #000;
+                    padding: 9px 20px;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: 800;
+                    cursor: pointer;
+                    box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+
+                    &:hover:not(:disabled) {
+                        box-shadow: 0 0 24px rgba(56, 189, 248, 0.6);
+                    }
+
+                    &:disabled { opacity: 0.5; cursor: not-allowed; }
+                }
+            }
+        }
+    }
+}

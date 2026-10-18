@@ -1,0 +1,180 @@
+// ==========================================
+// File: ClientApp/src/components/Cluster/styles/LanDiscoveryModal.scss
+// ==========================================
+.cluster-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+
+    .cluster-modal-window {
+        background: #0f172a;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 640px;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+        overflow: hidden;
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 18px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+            .modal-title-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+
+                h3 {
+                    margin: 0;
+                    font-size: 16px;
+                    font-weight: 800;
+                    color: #f8fafc;
+                }
+            }
+
+            .btn-close-modal {
+                background: transparent;
+                border: none;
+                color: #94a3b8;
+                font-size: 16px;
+                cursor: pointer;
+                &:hover { color: #f8fafc; }
+            }
+        }
+
+        .modal-body {
+            padding: 24px;
+
+            .modal-desc {
+                margin: 0 0 20px;
+                font-size: 12px;
+                color: #94a3b8;
+            }
+
+            .scanning-state-box {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 14px;
+                padding: 30px 0;
+                color: #38bdf8;
+                font-size: 13px;
+                font-weight: 600;
+
+                .radar-spinner {
+                    width: 44px;
+                    height: 44px;
+                    border: 3px solid rgba(56, 189, 248, 0.2);
+                    border-top-color: #38bdf8;
+                    border-radius: 50%;
+                    animation: spin 0.8s linear infinite;
+                }
+            }
+
+            .discovered-nodes-list {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+
+                .discovered-node-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    background: rgba(30, 41, 59, 0.5);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 10px;
+                    padding: 12px 16px;
+
+                    .item-left {
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+
+                        .node-details {
+                            .node-head {
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+
+                                .name {
+                                    font-size: 13px;
+                                    font-weight: 800;
+                                    color: #f8fafc;
+                                }
+
+                                .pill {
+                                    padding: 2px 6px;
+                                    border-radius: 4px;
+                                    font-size: 9px;
+                                    font-weight: 800;
+
+                                    &.primary { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+                                    &.secondary { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+                                }
+
+                                .vip-chip {
+                                    background: rgba(234, 179, 8, 0.15);
+                                    border: 1px solid rgba(234, 179, 8, 0.3);
+                                    color: #fef08a;
+                                    padding: 1px 6px;
+                                    border-radius: 4px;
+                                    font-size: 9px;
+                                    font-family: monospace;
+                                }
+                            }
+
+                            .ip-info {
+                                font-size: 11px;
+                                color: #94a3b8;
+                                font-family: monospace;
+                            }
+                        }
+                    }
+
+                    .btn-use-partner {
+                        background: rgba(56, 189, 248, 0.15);
+                        border: 1px solid rgba(56, 189, 248, 0.35);
+                        color: #38bdf8;
+                        border-radius: 6px;
+                        padding: 6px 12px;
+                        font-size: 11px;
+                        font-weight: 700;
+                        cursor: pointer;
+
+                        &:hover {
+                            background: rgba(56, 189, 248, 0.3);
+                        }
+                    }
+                }
+            }
+
+            .no-nodes-box {
+                text-align: center;
+                padding: 24px 0;
+                color: #94a3b8;
+                font-size: 12px;
+
+                .btn-rescan {
+                    margin-top: 10px;
+                    background: rgba(56, 189, 248, 0.2);
+                    border: 1px solid rgba(56, 189, 248, 0.4);
+                    color: #38bdf8;
+                    padding: 6px 16px;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 700;
+                    cursor: pointer;
+                }
+            }
+        }
+    }
+}
