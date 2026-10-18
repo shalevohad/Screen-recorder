@@ -89,6 +89,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
             builder.Logging.ClearProviders();
             builder.Logging.AddProvider(new CoreLoggerProvider());
+            builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
             var appConfig = builder.Configuration.GetSection("AppConfig").Get<AppConfig>()
                             ?? new AppConfig

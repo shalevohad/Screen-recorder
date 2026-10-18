@@ -144,7 +144,7 @@ namespace ITB_SCREEN_RECORDER.Core.Common
 
         public static void Debug(string message)
         {
-            if (DebugHelper.IsDebugModeEnabled()) Log("DEBUG", message);
+            Log("DEBUG", message);
         }
 
         private static void Log(string level, string message)

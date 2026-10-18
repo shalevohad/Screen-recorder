@@ -1,4 +1,4 @@
-﻿// Client/src/components/Dashboard/useDashboardLogic.js
+// Client/src/components/Dashboard/useDashboardLogic.js
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
@@ -61,14 +61,15 @@ export function useDashboardLogic({
         return fleetTabsList.find(t => t.id === activeTabId) || null;
     }, [fleetTabsList, activeTabId]);
 
-    // 💡 סינון אמיתי ומדויק של תחנות הטאב
+    // 💡 סינון אמיתי ומדויק של תחנות הטאב עם שמירת יציבות רפרנס למניעת קפיצות
+    const prevFilteredStationsRef = useRef([]);
     const tabFilteredStations = useMemo(() => {
         if (activeTabId === 'ALL' || !activeFleetTabConfig) return stations;
 
         const assigned = (activeFleetTabConfig.assignedHostnames || []).map(h => h.toLowerCase());
         const assignedOus = (activeFleetTabConfig.assignedOus || []).map(ou => ou.toLowerCase());
 
-        return stations.filter(station => {
+        const filtered = stations.filter(station => {
             const host = (station.hostname || '').toLowerCase();
             const disp = (station.displayName || '').toLowerCase();
             const matchesNames = assigned.includes(host) || assigned.includes(disp);
@@ -79,6 +80,22 @@ export function useDashboardLogic({
 
             return matchesNames || matchesOu;
         });
+
+        // 💡 בדיקת שוויון רדודה למניעת קפיצות מסך אם תחנה מחוץ לטאב השתנתה/התווספה/ירדה
+        const prev = prevFilteredStationsRef.current;
+        if (prev && prev.length === filtered.length) {
+            let isIdentical = true;
+            for (let i = 0; i < filtered.length; i++) {
+                if (prev[i] !== filtered[i]) {
+                    isIdentical = false;
+                    break;
+                }
+            }
+            if (isIdentical) return prev;
+        }
+
+        prevFilteredStationsRef.current = filtered;
+        return filtered;
     }, [stations, activeTabId, activeFleetTabConfig]);
 
     const [availableFeatures, setAvailableFeatures] = useState([]);

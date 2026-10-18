@@ -21,6 +21,9 @@ export default function RemoteWidgetHost({
     }
 
     const serializedProps = JSON.stringify(widgetProps);
+    const propsRef = useRef(widgetProps);
+    propsRef.current = widgetProps;
+    const moduleRef = useRef(null);
 
     useEffect(() => {
         if (!scriptUrl) return;
@@ -37,15 +40,14 @@ export default function RemoteWidgetHost({
             document.head.appendChild(link);
         }
 
-        const parsedProps = JSON.parse(serializedProps);
-
         import(/* @vite-ignore */ scriptUrl)
             .then((mod) => {
                 if (!isMounted) return;
+                moduleRef.current = mod;
                 setLoadState({ loading: false, error: null });
 
                 if (typeof mod.mount === 'function' && containerRef.current) {
-                    cleanupFn = mod.mount(containerRef.current, parsedProps);
+                    cleanupFn = mod.mount(containerRef.current, propsRef.current);
                 } else {
                     throw new Error('Module does not export a mount() function.');
                 }
@@ -61,6 +63,7 @@ export default function RemoteWidgetHost({
 
         return () => {
             isMounted = false;
+            moduleRef.current = null;
             if (typeof cleanupFn === 'function') {
                 try {
                     cleanupFn();
@@ -69,7 +72,15 @@ export default function RemoteWidgetHost({
                 }
             }
         };
-    }, [scriptUrl, serializedProps]);
+    }, [scriptUrl]);
+
+    useEffect(() => {
+        if (moduleRef.current && typeof moduleRef.current.update === 'function' && containerRef.current) {
+            try {
+                moduleRef.current.update(containerRef.current, widgetProps);
+            } catch { }
+        }
+    }, [serializedProps]);
 
     if (loadState.error) {
         return (

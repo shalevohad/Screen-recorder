@@ -1,7 +1,7 @@
 // ==========================================
 // File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
 // ==========================================
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import { useDashboardLogic } from './useDashboardLogic';
 
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
@@ -38,8 +38,12 @@ export default function DashboardGrid(props) {
         logic.handleCloseFeature(featId);
     }, [logic]);
 
-    // 💡 גזירה ישירה ונקייה של ה-Host הפעיל ללא שימוש ב-ref בזמן רינדור
-    const activeTargetHost = logic.focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP';
+    // 💡 שמירה על יציבות ה-Host הפעיל כך שהווידג'ט בסטודיו לא יאותחל כשעמדה אחרת מתנתקת או מתחברת
+    const stableDefaultHostRef = useRef(null);
+    if (!stableDefaultHostRef.current && stations.length > 0) {
+        stableDefaultHostRef.current = stations[0]?.hostname;
+    }
+    const activeTargetHost = logic.focusedWidgetHost || stableDefaultHostRef.current || stations[0]?.hostname || 'OHAD-DESKTOP';
     const activeFeatureId = logic.activeFeatureObject?.id;
 
     const extractorWidgetProps = useMemo(() => ({

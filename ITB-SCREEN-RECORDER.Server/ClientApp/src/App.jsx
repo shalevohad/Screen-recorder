@@ -55,6 +55,13 @@ function CommandCenterApp() {
 
     const [systemConfig, setSystemConfig] = useState(null);
     const [actionPending, setActionPending] = useState({});
+    const actionPendingTimeoutsRef = useRef({});
+
+    useEffect(() => {
+        return () => {
+            Object.values(actionPendingTimeoutsRef.current).forEach(t => clearTimeout(t));
+        };
+    }, []);
 
     const [isServerOfflineModal, setIsServerOfflineModal] = useState(false);
     const [lastServerContact, setLastServerContact] = useState(() => new Date());
@@ -166,6 +173,29 @@ function CommandCenterApp() {
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
+                    setActionPending(prev => {
+                        let hasChanges = false;
+                        const next = { ...prev };
+                        for (const hostKey of Object.keys(prev)) {
+                            const pending = prev[hostKey];
+                            const match = data.find(s => (s.hostname || s.stationId || '').toLowerCase() === hostKey.toLowerCase());
+                            if (match) {
+                                const isConfirmed =
+                                    (pending === 'starting' && match.isStreaming) ||
+                                    (pending === 'stopping' && !match.isStreaming) ||
+                                    (match.isOnline === false);
+                                if (isConfirmed) {
+                                    if (actionPendingTimeoutsRef.current[hostKey]) {
+                                        clearTimeout(actionPendingTimeoutsRef.current[hostKey]);
+                                        delete actionPendingTimeoutsRef.current[hostKey];
+                                    }
+                                    delete next[hostKey];
+                                    hasChanges = true;
+                                }
+                            }
+                        }
+                        return hasChanges ? next : prev;
+                    });
                     setStations(data);
                 }
                 registerServerHeartbeat();
@@ -366,12 +396,33 @@ function CommandCenterApp() {
         connection.on('ReceiveAgentMetrics', (report) => {
             if (!report) return;
             registerServerHeartbeat();
-            setStations(prev => {
-                const host = (report.hostname || report.stationId || '').toLowerCase();
-                const idx = prev.findIndex(s => (s.hostname || s.stationId || '').toLowerCase() === host);
-                const isOnline = report.isOnline !== undefined ? Boolean(report.isOnline) : true;
-                const status = typeof report.status === 'string' ? report.status : (report.isStreaming ? 'Recording' : 'Standby');
+            const host = (report.hostname || report.stationId || '').toLowerCase();
+            const isOnline = report.isOnline !== undefined ? Boolean(report.isOnline) : true;
+            const status = typeof report.status === 'string' ? report.status : (report.isStreaming ? 'Recording' : 'Standby');
 
+            setActionPending(prev => {
+                const key = Object.keys(prev).find(k => k.toLowerCase() === host);
+                if (!key) return prev;
+                const pending = prev[key];
+                const isConfirmed =
+                    (pending === 'starting' && report.isStreaming) ||
+                    (pending === 'stopping' && !report.isStreaming) ||
+                    (!isOnline);
+
+                if (isConfirmed) {
+                    if (actionPendingTimeoutsRef.current[key]) {
+                        clearTimeout(actionPendingTimeoutsRef.current[key]);
+                        delete actionPendingTimeoutsRef.current[key];
+                    }
+                    const next = { ...prev };
+                    delete next[key];
+                    return next;
+                }
+                return prev;
+            });
+
+            setStations(prev => {
+                const idx = prev.findIndex(s => (s.hostname || s.stationId || '').toLowerCase() === host);
                 if (idx > -1) {
                     const copy = [...prev];
                     copy[idx] = { ...copy[idx], ...report, isOnline, status };
@@ -384,6 +435,29 @@ function CommandCenterApp() {
         connection.on('ReceiveAllStations', (allStations) => {
             if (Array.isArray(allStations)) {
                 registerServerHeartbeat();
+                setActionPending(prev => {
+                    let hasChanges = false;
+                    const next = { ...prev };
+                    for (const hostKey of Object.keys(prev)) {
+                        const pending = prev[hostKey];
+                        const match = allStations.find(s => (s.hostname || s.stationId || '').toLowerCase() === hostKey.toLowerCase());
+                        if (match) {
+                            const isConfirmed =
+                                (pending === 'starting' && match.isStreaming) ||
+                                (pending === 'stopping' && !match.isStreaming) ||
+                                (match.isOnline === false);
+                            if (isConfirmed) {
+                                if (actionPendingTimeoutsRef.current[hostKey]) {
+                                    clearTimeout(actionPendingTimeoutsRef.current[hostKey]);
+                                    delete actionPendingTimeoutsRef.current[hostKey];
+                                }
+                                delete next[hostKey];
+                                hasChanges = true;
+                            }
+                        }
+                    }
+                    return hasChanges ? next : prev;
+                });
                 setStations(allStations);
             }
         });
@@ -410,8 +484,25 @@ function CommandCenterApp() {
     }, [stations]);
 
     const handleToggleStream = async (hostname, isCurrentlyStreaming, policy = {}) => {
-        setActionPending(prev => ({ ...prev, [hostname]: true }));
         const targetEnable = !isCurrentlyStreaming;
+        const pendingState = targetEnable ? 'starting' : 'stopping';
+
+        if (actionPendingTimeoutsRef.current[hostname]) {
+            clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+        }
+
+        setActionPending(prev => ({ ...prev, [hostname]: pendingState }));
+
+        actionPendingTimeoutsRef.current[hostname] = setTimeout(() => {
+            setActionPending(prev => {
+                if (!prev[hostname]) return prev;
+                const next = { ...prev };
+                delete next[hostname];
+                return next;
+            });
+            delete actionPendingTimeoutsRef.current[hostname];
+        }, 25000);
+
         const queryParams = new URLSearchParams({ enable: targetEnable });
         if (targetEnable && policy.bitrate) queryParams.append('bitrate', policy.bitrate);
         if (targetEnable && policy.fps) queryParams.append('fps', policy.fps);
@@ -421,11 +512,28 @@ function CommandCenterApp() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-            if (res.ok) {
-                setStations(prev => prev.map(st => st.hostname === hostname ? { ...st, isStreaming: targetEnable } : st));
+            if (!res.ok) {
+                if (actionPendingTimeoutsRef.current[hostname]) {
+                    clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+                    delete actionPendingTimeoutsRef.current[hostname];
+                }
+                setActionPending(prev => {
+                    const next = { ...prev };
+                    delete next[hostname];
+                    return next;
+                });
             }
-        } finally {
-            setActionPending(prev => ({ ...prev, [hostname]: false }));
+        } catch (err) {
+            console.error('[App] Failed to send stream command:', err);
+            if (actionPendingTimeoutsRef.current[hostname]) {
+                clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+                delete actionPendingTimeoutsRef.current[hostname];
+            }
+            setActionPending(prev => {
+                const next = { ...prev };
+                delete next[hostname];
+                return next;
+            });
         }
     };
 

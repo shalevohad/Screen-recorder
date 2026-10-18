@@ -33,6 +33,7 @@ Logger.AlwaysInfo("[SERVICE] ITB-SCREEN-RECORDER Agent Supervisor Service is sta
 
 builder.Logging.ClearProviders();
 builder.Logging.AddProvider(new CoreLoggerProvider());
+builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
 builder.Services.AddSingleton(appConfig);
 

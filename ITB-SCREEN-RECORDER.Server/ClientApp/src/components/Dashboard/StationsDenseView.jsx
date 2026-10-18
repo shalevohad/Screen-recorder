@@ -37,9 +37,11 @@ export default function StationsDenseView({
 
             <div className="stations-dense-grid">
                 {paginatedStations.map((s) => {
-                    const isRec = Boolean(s.isStreaming);
                     const hasDrops = (s.droppedFrames || 0) > 0;
                     const isPending = actionPending[s.hostname] || false;
+                    const isStarting = isPending === 'starting' || (Boolean(isPending) && !s.isStreaming);
+                    const isStopping = isPending === 'stopping' || (Boolean(isPending) && s.isStreaming);
+                    const isRec = Boolean(s.isStreaming) && !isPending;
                     const primaryTitle = s.roleAlias || s.displayName || s.hostname;
                     const secondaryHost = s.roleAlias ? s.hostname : null;
 
@@ -64,7 +66,11 @@ export default function StationsDenseView({
                             </div>
 
                             <div className="dense-col tag-col">
-                                {isRec ? (
+                                {isStarting ? (
+                                    <span className="dense-badge pending" style={{ background: 'rgba(6, 182, 212, 0.2)', color: '#38BDF8', border: '1px solid rgba(6, 182, 212, 0.4)' }}>STARTING</span>
+                                ) : isStopping ? (
+                                    <span className="dense-badge pending" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.4)' }}>STOPPING</span>
+                                ) : isRec ? (
                                     <span className="dense-badge rec">REC</span>
                                 ) : (
                                     <span className="dense-badge idle">IDLE</span>
@@ -81,14 +87,14 @@ export default function StationsDenseView({
                                 <Can permission="stations.control" disabled disabledTooltip="No stream control permissions">
                                     <button
                                         type="button"
-                                        className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
-                                        disabled={!s.isOnline || isPending}
-                                        onClick={() => onToggleStream(s.hostname, isRec, {
+                                        className={`dense-act-btn ${s.isStreaming ? 'stop' : 'start'}`}
+                                        disabled={!s.isOnline || Boolean(isPending)}
+                                        onClick={() => onToggleStream(s.hostname, Boolean(s.isStreaming), {
                                             bitrate: s.effectiveBitrate,
                                             fps: s.effectiveFps
                                         })}
                                     >
-                                        {isPending ? '...' : isRec ? 'STOP' : 'START'}
+                                        {isStarting ? '...' : isStopping ? '...' : s.isStreaming ? 'STOP' : 'START'}
                                     </button>
                                 </Can>
                                 <button
