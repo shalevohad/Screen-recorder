@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import './StationThumbnail.scss';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
+import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { useAuth } from '../../context/AuthContext';
 
 export default function StationThumbnail(props) {
@@ -200,6 +201,14 @@ export default function StationThumbnail(props) {
                     <div className="offline-screen-matte">
                         <span>{isOnline ? 'STANDBY' : 'OFFLINE'}</span>
                     </div>
+                )}
+
+                {isLive && (
+                    <LiveKeystrokeOverlay
+                        keystrokes={props.recentKeystrokes || props.keystrokes}
+                        isLive={isLive}
+                        variant="viewport"
+                    />
                 )}
 
                 <div

@@ -92,11 +92,43 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
 
                 _hookThreadId = GetCurrentThreadId();
 
-                using var curProcess = Process.GetCurrentProcess();
-                using var curModule = curProcess.MainModule;
-                IntPtr hMod = GetModuleHandle(curModule?.ModuleName ?? "");
+                try
+                {
+                    ITBRecorderAgent.Providers.Video.DesktopSecurityManager.TryAttachToInputDesktop();
+                }
+                catch { }
+
+                IntPtr hMod = GetModuleHandle(null);
+                if (hMod == IntPtr.Zero)
+                {
+                    try
+                    {
+                        using var curProcess = Process.GetCurrentProcess();
+                        using var curModule = curProcess.MainModule;
+                        hMod = GetModuleHandle(curModule?.ModuleName ?? "");
+                    }
+                    catch { }
+                }
 
                 _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, hMod, 0);
+                if (_hookId == IntPtr.Zero)
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, IntPtr.Zero, 0);
+                    if (_hookId == IntPtr.Zero)
+                    {
+                        ITB_SCREEN_RECORDER.Core.Common.Logger.Error($"[KEYBOARD] Failed to register WH_KEYBOARD_LL hook. Win32Error: {Marshal.GetLastWin32Error()} (initial: {err})");
+                    }
+                    else
+                    {
+                        ITB_SCREEN_RECORDER.Core.Common.Logger.Info($"[KEYBOARD] Registered WH_KEYBOARD_LL hook with IntPtr.Zero fallback: {_hookId}");
+                    }
+                }
+                else
+                {
+                    ITB_SCREEN_RECORDER.Core.Common.Logger.Info($"[KEYBOARD] Registered WH_KEYBOARD_LL hook with module handle: {_hookId}");
+                }
+
                 readyEvent.Set();
 
                 while (GetMessage(out MSG msg, IntPtr.Zero, 0, 0) > 0)

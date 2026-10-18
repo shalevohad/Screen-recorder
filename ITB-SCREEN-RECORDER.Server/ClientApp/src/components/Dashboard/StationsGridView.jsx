@@ -15,7 +15,8 @@ export default function StationsGridView({
     setFullscreenHostname,
     onQuickBookmark,
     onQuickPlayback,
-    handleFeatureQuickExport
+    handleFeatureQuickExport,
+    liveKeystrokes = {}
 }) {
     return (
         <div
@@ -56,6 +57,7 @@ export default function StationsGridView({
                         onQuickBookmark={onQuickBookmark}
                         onQuickPlayback={onQuickPlayback}
                         onQuickExport={handleFeatureQuickExport}
+                        recentKeystrokes={station.recentKeystrokes || liveKeystrokes[station.hostname?.toLowerCase()]}
                     />
                 </div>
             ))}

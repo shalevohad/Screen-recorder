@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using System.Threading.Tasks;
 
@@ -31,6 +31,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         public async Task BroadcastAgentUpdateAsync(AgentTelemetryReport report)
         {
             await _hubContext.Clients.Group("DashboardWatchers").SendAsync("ReceiveAgentMetrics", report);
+        }
+
+        public async Task BroadcastLiveKeystrokesAsync(string hostname, System.Collections.Generic.IReadOnlyList<ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.KeystrokeEventDto> keystrokes)
+        {
+            await _hubContext.Clients.Group("DashboardWatchers").SendAsync("ReceiveLiveKeystrokes", hostname, keystrokes);
         }
 
         public async Task BroadcastServerTelemetryAsync(object serverTelemetry)

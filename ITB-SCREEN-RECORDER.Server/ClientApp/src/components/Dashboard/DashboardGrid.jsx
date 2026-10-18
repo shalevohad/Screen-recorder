@@ -23,7 +23,7 @@ export default function DashboardGrid(props) {
         stations = [], actionPending, onToggleStream,
         onQuickBookmark, onQuickPlayback, systemConfig, onSystemConfigUpdate,
         direction, hideOffline, onToggleHideOffline,
-        isFaultFilterActive, onExitFaultFilter
+        isFaultFilterActive, onExitFaultFilter, liveKeystrokes = {}
     } = props;
 
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
@@ -227,6 +227,7 @@ export default function DashboardGrid(props) {
                                         onQuickBookmark={onQuickBookmark}
                                         onQuickPlayback={onQuickPlayback}
                                         handleFeatureQuickExport={logic.handleFeatureQuickExport}
+                                        liveKeystrokes={liveKeystrokes}
                                     />
                                 ) : (
                                     <StationsDenseView
@@ -239,6 +240,7 @@ export default function DashboardGrid(props) {
                                         onToggleStream={onToggleStream}
                                         setInspectedHostname={logic.setInspectedHostname}
                                         setFullscreenHostname={logic.setFullscreenHostname}
+                                        liveKeystrokes={liveKeystrokes}
                                     />
                                 )}
 
@@ -332,6 +334,7 @@ export default function DashboardGrid(props) {
                     hostname={logic.fullscreenStation.hostname}
                     isStreaming={logic.fullscreenStation.isStreaming}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                    recentKeystrokes={liveKeystrokes[logic.fullscreenStation?.hostname?.toLowerCase()]}
                     onClose={() => logic.setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
                     onQuickBookmark={onQuickBookmark}

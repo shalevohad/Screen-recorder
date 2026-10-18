@@ -98,6 +98,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(validationErrors);
             }
 
+            List<KeystrokeEventDto>? decryptedKeystrokes = null;
             if (report.Keystrokes != null && report.Keystrokes.Count > 0)
             {
                 try
@@ -108,6 +109,21 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[TELEMETRY] Failed to insert live keystrokes for {Host}", report.Hostname);
+                }
+
+                decryptedKeystrokes = new List<KeystrokeEventDto>(report.Keystrokes.Count);
+                foreach (var k in report.Keystrokes)
+                {
+                    string clearTextCombo = _keyRingService != null
+                        ? _keyRingService.Decrypt(k.KeyCombination)
+                        : k.KeyCombination;
+
+                    decryptedKeystrokes.Add(new KeystrokeEventDto
+                    {
+                        EpochMs = k.EpochMs,
+                        TimestampUtc = k.TimestampUtc,
+                        KeyCombination = clearTextCombo
+                    });
                 }
             }
 
@@ -120,7 +136,54 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 heartbeatResponse.ServerUtcTime = DateTime.UtcNow;
             }
 
-            _ = _broadcastService.BroadcastAgentUpdateAsync(report);
+            var broadcastReport = report;
+            if (decryptedKeystrokes != null && decryptedKeystrokes.Count > 0)
+            {
+                broadcastReport = new AgentTelemetryReport
+                {
+                    Hostname = report.Hostname,
+                    IpAddress = report.IpAddress,
+                    Status = report.Status,
+                    ClientTimestamp = report.ClientTimestamp,
+                    IsProcessRunning = report.IsProcessRunning,
+                    IsScreenCapturing = report.IsScreenCapturing,
+                    ScreenWidth = report.ScreenWidth,
+                    ScreenHeight = report.ScreenHeight,
+                    HasActiveSpeakers = report.HasActiveSpeakers,
+                    HasActiveMicrophone = report.HasActiveMicrophone,
+                    HasAudio = report.HasAudio,
+                    IsAudioStreaming = report.IsAudioStreaming,
+                    IsStreaming = report.IsStreaming,
+                    IsRecording = report.IsRecording,
+                    RecordingStartedAtUtc = report.RecordingStartedAtUtc,
+                    AutoStartRecordingOnLaunch = report.AutoStartRecordingOnLaunch,
+                    Timestamp = report.Timestamp,
+                    ActualFps = report.ActualFps,
+                    DroppedFrames = report.DroppedFrames,
+                    InternalCaptureFps = report.InternalCaptureFps,
+                    QosTier = report.QosTier,
+                    MediaTxMbps = report.MediaTxMbps,
+                    TelemetryTxKbps = report.TelemetryTxKbps,
+                    NicUtilizationPct = report.NicUtilizationPct,
+                    LinkSpeedMbps = report.LinkSpeedMbps,
+                    HostCpuPct = report.HostCpuPct,
+                    ProcessCpuPct = report.ProcessCpuPct,
+                    ProcessRamMb = report.ProcessRamMb,
+                    HostRamPct = report.HostRamPct,
+                    HostTotalRamMb = report.HostTotalRamMb,
+                    Gpu3dPct = report.Gpu3dPct,
+                    GpuNvencPct = report.GpuNvencPct,
+                    OfflineFilesCount = report.OfflineFilesCount,
+                    OfflineFilesTotalSizeMb = report.OfflineFilesTotalSizeMb,
+                    NicTotalTxMbps = report.NicTotalTxMbps,
+                    NicTotalRxMbps = report.NicTotalRxMbps,
+                    Keystrokes = decryptedKeystrokes
+                };
+
+                _ = _broadcastService.BroadcastLiveKeystrokesAsync(report.Hostname, decryptedKeystrokes);
+            }
+
+            _ = _broadcastService.BroadcastAgentUpdateAsync(broadcastReport);
 
             return Ok(heartbeatResponse);
         }

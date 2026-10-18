@@ -2,6 +2,7 @@
 // File: Client/src/components/Dashboard/StationsDenseView.jsx
 // ==========================================
 import RemoteWidgetHost from '../Plugins/RemoteWidgetHost';
+import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { Can } from '../../context/AuthContext';
 import './StationsDenseView.scss';
 
@@ -14,7 +15,8 @@ export default function StationsDenseView({
     actionPending = {},
     onToggleStream,
     setInspectedHostname,
-    setFullscreenHostname
+    setFullscreenHostname,
+    liveKeystrokes = {}
 }) {
     return (
         <div className="stations-dense-container">
@@ -74,6 +76,13 @@ export default function StationsDenseView({
                                     <span className="dense-badge rec">REC</span>
                                 ) : (
                                     <span className="dense-badge idle">IDLE</span>
+                                )}
+                                {isRec && (
+                                    <LiveKeystrokeOverlay
+                                        keystrokes={s.recentKeystrokes || liveKeystrokes[s.hostname?.toLowerCase()]}
+                                        isLive={isRec}
+                                        variant="compact"
+                                    />
                                 )}
                             </div>
 

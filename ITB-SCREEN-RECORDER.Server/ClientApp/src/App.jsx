@@ -109,6 +109,44 @@ function CommandCenterApp() {
     const [hideOffline, setHideOffline] = useState(true);
     const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
     const [timeOfDay, setTimeOfDay] = useState(resolveTimeOfDay);
+    const [liveKeystrokes, setLiveKeystrokes] = useState({});
+
+    const handleIncomingKeystrokes = useCallback((hostname, keys) => {
+        if (!keys || !keys.length || !hostname) return;
+        const hostKey = hostname.toLowerCase();
+        const now = Date.now();
+        const incoming = keys.map(k => ({
+            id: `${k.epochMs || now}_${Math.random()}`,
+            combo: k.keyCombination,
+            epochMs: k.epochMs || now,
+            receivedAt: now
+        }));
+
+        setLiveKeystrokes(prev => {
+            const existing = (prev[hostKey] || []).filter(k => now - k.receivedAt < 3000);
+            return {
+                ...prev,
+                [hostKey]: [...existing, ...incoming].slice(-6)
+            };
+        });
+    }, []);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const now = Date.now();
+            setLiveKeystrokes(prev => {
+                let changed = false;
+                const next = {};
+                for (const [host, keys] of Object.entries(prev)) {
+                    const filtered = keys.filter(k => now - k.receivedAt < 3000);
+                    if (filtered.length !== keys.length) changed = true;
+                    if (filtered.length > 0) next[host] = filtered;
+                }
+                return changed ? next : prev;
+            });
+        }, 500);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -430,6 +468,15 @@ function CommandCenterApp() {
                 }
                 return [...prev, { ...report, isOnline, status }];
             });
+
+            if (report.keystrokes && report.keystrokes.length > 0) {
+                handleIncomingKeystrokes(report.hostname, report.keystrokes);
+            }
+        });
+
+        connection.on('ReceiveLiveKeystrokes', (host, keys) => {
+            registerServerHeartbeat();
+            handleIncomingKeystrokes(host, keys);
         });
 
         connection.on('ReceiveAllStations', (allStations) => {
@@ -605,6 +652,7 @@ function CommandCenterApp() {
                             isFaultFilterActive={isFaultFilterActive}
                             onExitFaultFilter={() => setIsFaultFilterActive(false)}
                             isServerConnected={!isServerOfflineModal}
+                            liveKeystrokes={liveKeystrokes}
                         />
                     </>
                 )}
