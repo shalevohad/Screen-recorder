@@ -170,6 +170,33 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
 
         private static string FormatKeyStroke(int vkCode)
         {
+            bool isCtrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+            bool isAlt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+            bool isShift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            bool isWin = ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) || ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
+
+            bool isControlModifier = isCtrl || isAlt || isWin;
+
+            // 💡 אבטחת פרטיות (אפשרות א'): סינון והסוואת תווים חופשיים, ספרות וסיסמאות.
+            // כאשר המשתמש מקליד טקסט חופשי או סיסמה (ללא Ctrl/Alt/Win), המקש נרשם כ-* בלבד.
+            if (!isControlModifier)
+            {
+                bool isPrintable = vkCode switch
+                {
+                    0x20 => true, // Space
+                    >= 0x30 and <= 0x39 => true, // 0-9
+                    >= 0x41 and <= 0x5A => true, // A-Z (והתאמת מקשים מקבילים בשפות אחרות)
+                    >= 0x60 and <= 0x69 => true, // Num 0-9
+                    0xBA or 0xBB or 0xBC or 0xBD or 0xBE or 0xBF or 0xC0 or 0xDB or 0xDC or 0xDD or 0xDE or 0xE2 => true, // סימני פיסוק
+                    _ => false
+                };
+
+                if (isPrintable)
+                {
+                    return "*";
+                }
+            }
+
             string keyText = vkCode switch
             {
                 0x08 => "Backspace",
@@ -223,15 +250,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
                 _ => $"Key({vkCode})"
             };
 
-            bool isCtrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-            bool isAlt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-            bool isShift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-            bool isWin = ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) || ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
-
             var sb = new StringBuilder();
             if (isCtrl && keyText != "Ctrl" && keyText != "RCtrl") sb.Append("Ctrl+");
             if (isAlt && keyText != "Alt" && keyText != "RAlt") sb.Append("Alt+");
-            if (isShift && keyText != "Shift" && keyText != "RShift") sb.Append("Shift+");
+            if (isShift && keyText != "Shift" && keyText != "RShift" && isControlModifier) sb.Append("Shift+");
             if (isWin && keyText != "Win" && keyText != "RWin") sb.Append("Win+");
 
             sb.Append(keyText);

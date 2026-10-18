@@ -93,6 +93,14 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
                     updated_at_utc INTEGER NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS encryption_keyring (
+                    key_id TEXT PRIMARY KEY,
+                    key_material TEXT NOT NULL,
+                    algorithm TEXT NOT NULL DEFAULT 'AES-256-GCM',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at_utc INTEGER NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS roles (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL UNIQUE,

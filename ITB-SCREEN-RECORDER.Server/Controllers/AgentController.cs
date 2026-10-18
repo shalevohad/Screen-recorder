@@ -56,6 +56,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly StoragePathResolver _storageResolver;
         private readonly ICatalogRepository _catalogRepository;
         private readonly IVideoProbeService _probeService;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? _keyRingService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
@@ -66,7 +67,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             StoragePathResolver storageResolver,
             ICatalogRepository catalogRepository,
             IVideoProbeService probeService,
-            ILogger<AgentController> logger)
+            ILogger<AgentController> logger,
+            ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? keyRingService = null)
         {
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
@@ -76,6 +78,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _catalogRepository = catalogRepository;
             _probeService = probeService;
             _logger = logger;
+            _keyRingService = keyRingService;
         }
 
         [HttpPost("telemetry")]
@@ -145,6 +148,20 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 ServerUtcTime = DateTime.UtcNow,
                 ServerUtcEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             };
+
+            if (_keyRingService != null)
+            {
+                try
+                {
+                    var (keyId, keyBytes) = _keyRingService.GetActiveKey();
+                    response.KeystrokeKeyId = keyId;
+                    response.KeystrokeKeyMaterial = Convert.ToBase64String(keyBytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[AGENT REGISTRATION] Failed to resolve active encryption key from keyring.");
+                }
+            }
 
             _logger.LogInformation("[AGENT REGISTRATION] Successfully registered agent for host '{MachineName}' (OS: {Os}, StreamKey: {Key})",
                 request.MachineName, request.OsVersion ?? "Unknown", safeStreamKey);

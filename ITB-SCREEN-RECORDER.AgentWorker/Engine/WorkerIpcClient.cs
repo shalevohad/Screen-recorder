@@ -20,6 +20,7 @@ namespace ITBRecorderAgent.Engine
         public event Action<TimeSpan>? ClockSyncRequested;
         public event Action? ServerDisconnected;
         public event Action? ServerConnected;
+        public event Action<string, string>? EncryptionKeyConfigured;
 
         public Task RunAsync(Func<object> getTelemetryPayload, CancellationToken ct)
         {
@@ -117,6 +118,13 @@ namespace ITBRecorderAgent.Engine
                 if (parts.Length > 1 && int.TryParse(parts[1], out int requestedFps))
                 {
                     CaptureFpsRequested?.Invoke(requestedFps);
+                }
+            }
+            else if (cmd.Equals("SetEncryptionKey", StringComparison.OrdinalIgnoreCase))
+            {
+                if (parts.Length > 2)
+                {
+                    EncryptionKeyConfigured?.Invoke(parts[1], parts[2]);
                 }
             }
             else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))

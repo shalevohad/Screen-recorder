@@ -164,5 +164,11 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("serverUtcEpochMs")]
         public long ServerUtcEpochMs { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        [JsonPropertyName("keystrokeKeyId")]
+        public string? KeystrokeKeyId { get; set; }
+
+        [JsonPropertyName("keystrokeKeyMaterial")]
+        public string? KeystrokeKeyMaterial { get; set; }
     }
 }

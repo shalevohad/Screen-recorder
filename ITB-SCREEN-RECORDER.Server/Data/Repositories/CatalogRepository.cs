@@ -13,10 +13,12 @@ using ITB_SCREEN_RECORDER.Server.Models.Security;
 public sealed class CatalogRepository : ICatalogRepository
 {
     private readonly ICatalogConnectionFactory _factory;
+    private readonly ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? _keyRing;
 
-    public CatalogRepository(ICatalogConnectionFactory factory)
+    public CatalogRepository(ICatalogConnectionFactory factory, ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? keyRing = null)
     {
         _factory = factory;
+        _keyRing = keyRing;
     }
 
     #region Recording Chunks
@@ -198,7 +200,18 @@ public sealed class CatalogRepository : ICatalogRepository
         ";
 
         var results = await db.QueryAsync<KeystrokeEventDto>(sql, new { stationId, fromEpochMs, toEpochMs });
-        return results.AsList();
+        var list = results.AsList();
+        if (_keyRing != null)
+        {
+            foreach (var item in list)
+            {
+                if (!string.IsNullOrEmpty(item.KeyCombination))
+                {
+                    item.KeyCombination = _keyRing.Decrypt(item.KeyCombination);
+                }
+            }
+        }
+        return list;
     }
 
     public async Task<int> PurgeExpiredKeystrokesAsync(long cutoffEpochMs)

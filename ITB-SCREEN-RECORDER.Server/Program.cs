@@ -305,6 +305,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 builder.Services.AddSingleton<ICatalogConnectionFactory, CatalogConnectionFactory>();
                 builder.Services.AddSingleton<IFeatureDbInitializer, CatalogDbInitializer>();
+                builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService, ITB_SCREEN_RECORDER.Server.Services.Security.KeyRingService>();
                 builder.Services.AddSingleton<ICatalogRepository, CatalogRepository>();
                 builder.Services.AddSingleton<IKeystrokeRepository>(sp => sp.GetRequiredService<ICatalogRepository>());
                 builder.Services.AddSingleton<IKeystrokeSrtGenerator, KeystrokeSrtGenerator>();
@@ -367,6 +368,9 @@ namespace ITB_SCREEN_RECORDER.Server
                             throw;
                         }
                     }
+
+                    var keyRing = scope.ServiceProvider.GetRequiredService<ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService>();
+                    keyRing.InitializeAsync().GetAwaiter().GetResult();
                 }
 
                 app.UseSwagger();

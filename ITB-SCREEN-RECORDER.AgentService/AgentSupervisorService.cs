@@ -52,6 +52,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private StreamWriter? _workerCommandWriter;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
         private IpcTelemetryDto? _lastTelemetry = null;
+        private string? _activeKeystrokeKeyId;
+        private string? _activeKeystrokeKeyMaterial;
 
         private bool _lastWorkerHasAudio = false;
         private bool _lastWorkerHasActiveSpeakers = false;
@@ -353,6 +355,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     {
                                         isIpcAuthenticated = true;
                                         _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
+                                        if (!string.IsNullOrEmpty(_activeKeystrokeKeyId) && !string.IsNullOrEmpty(_activeKeystrokeKeyMaterial))
+                                        {
+                                            await writer.WriteLineAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
+                                        }
                                         continue;
                                     }
                                 }
@@ -814,6 +820,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         _currentPolicy = regResponse.Policy;
                         _logger.LogInformation("[HANDSHAKE] Handshake completed successfully with server. StreamKey: {Key}, FPS: {Fps}, Bitrate: {Bitrate}",
                             regResponse.AssignedStreamKey, _currentPolicy.TargetFps, _currentPolicy.VideoBitrate);
+                    }
+
+                    if (!string.IsNullOrEmpty(regResponse?.KeystrokeKeyId) && !string.IsNullOrEmpty(regResponse?.KeystrokeKeyMaterial))
+                    {
+                        _activeKeystrokeKeyId = regResponse.KeystrokeKeyId;
+                        _activeKeystrokeKeyMaterial = regResponse.KeystrokeKeyMaterial;
+                        _logger.LogInformation("[SECURITY:KEYRING] Received active encryption key from server: {KeyId}", _activeKeystrokeKeyId);
+                        _ = SendCommandToWorkerAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
                     }
                 }
             }
