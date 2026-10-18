@@ -36,51 +36,77 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _logger = logger;
         }
 
-        [HttpPost("{streamPath}/whep")]
-        [Consumes("application/sdp")]
-        [Produces("application/sdp")]
-        public async Task<IActionResult> ProxyWhepOffer(string streamPath)
+        [HttpPost("{*streamPath}")]
+        [HttpPatch("{*streamPath}")]
+        [HttpDelete("{*streamPath}")]
+        [HttpOptions("{*streamPath}")]
+        public async Task<IActionResult> ProxyWhepRequest(string? streamPath)
         {
             try
             {
-                using var reader = new StreamReader(Request.Body, Encoding.UTF8);
-                string offerSdp = await reader.ReadToEndAsync();
+                int webrtcPort = 8889; // MediaMTX WebRTC default
+                string rawPath = streamPath?.TrimStart('/') ?? "";
 
-                if (string.IsNullOrWhiteSpace(offerSdp))
+                // Normalize path for MediaMTX WHEP endpoint:
+                // If it does not end with /whep and is not a sub-session path (e.g. patch/delete on session), append /whep
+                string targetSubPath = rawPath;
+                if (!targetSubPath.EndsWith("/whep", StringComparison.OrdinalIgnoreCase) &&
+                    !targetSubPath.Contains("/whep/", StringComparison.OrdinalIgnoreCase))
                 {
-                    return BadRequest("SDP Offer body is empty.");
+                    targetSubPath += "/whep";
                 }
 
-                int webrtcPort = 8889; // ברירת המחדל של MediaMTX עבור WebRTC
-                string targetUrl = $"http://127.0.0.1:{webrtcPort}/{streamPath}/whep";
+                string targetUrl = $"http://127.0.0.1:{webrtcPort}/{targetSubPath}";
 
                 var client = _httpClientFactory.CreateClient("WhepProxyClient");
                 client.Timeout = TimeSpan.FromSeconds(5);
 
-                using var requestMessage = new HttpRequestMessage(HttpMethod.Post, targetUrl)
+                var method = new HttpMethod(Request.Method);
+                using var requestMessage = new HttpRequestMessage(method, targetUrl);
+
+                if (Request.ContentLength > 0 || (Request.ContentType != null && Request.Method != "GET" && Request.Method != "OPTIONS"))
                 {
-                    Content = new StringContent(offerSdp, Encoding.UTF8, "application/sdp")
-                };
+                    using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+                    string bodyContent = await reader.ReadToEndAsync();
+                    if (!string.IsNullOrWhiteSpace(bodyContent))
+                    {
+                        var content = new StringContent(bodyContent, Encoding.UTF8);
+                        var rawContentType = Request.ContentType?.Split(';')[0].Trim();
+                        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                            string.IsNullOrEmpty(rawContentType) ? "application/sdp" : rawContentType);
+                        requestMessage.Content = content;
+                    }
+                }
 
                 var response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
-                string answerSdp = await response.Content.ReadAsStringAsync();
+                string responseContent = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("[WHEP-PROXY] MediaMTX returned {Status} for path '{StreamPath}'", response.StatusCode, streamPath);
-                    return StatusCode((int)response.StatusCode, answerSdp);
+                    _logger.LogWarning("[WHEP-PROXY] MediaMTX returned {Status} for path '{StreamPath}' -> Target: {TargetUrl}", response.StatusCode, streamPath, targetUrl);
+                    return StatusCode((int)response.StatusCode, responseContent);
                 }
 
                 if (response.Headers.Location != null)
                 {
-                    Response.Headers.Location = response.Headers.Location.ToString();
+                    var loc = response.Headers.Location.ToString();
+                    if (loc.StartsWith("/"))
+                    {
+                        Response.Headers.Location = $"/api/v1/whep{loc}";
+                    }
+                    else
+                    {
+                        Response.Headers.Location = loc;
+                    }
                 }
 
-                return Content(answerSdp, "application/sdp", Encoding.UTF8);
+                string contentType = response.Content.Headers.ContentType?.ToString() ?? "application/sdp";
+                Response.StatusCode = (int)response.StatusCode;
+                return Content(responseContent, contentType, Encoding.UTF8);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[WHEP-PROXY] Failed to proxy WHEP offer for '{StreamPath}': {Message}", streamPath, ex.Message);
+                _logger.LogError(ex, "[WHEP-PROXY] Failed to proxy WHEP for '{StreamPath}': {Message}", streamPath, ex.Message);
                 return StatusCode(502, $"MediaMTX WHEP Gateway Error: {ex.Message}");
             }
         }
