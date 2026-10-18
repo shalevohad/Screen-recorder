@@ -184,6 +184,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             long startEpochMs = 0;
             var matchUtcPattern = Regex.Match(safeFileName, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})Z", RegexOptions.IgnoreCase);
             var matchEpochPattern = Regex.Match(safeFileName, @"(\d{10,13})", RegexOptions.IgnoreCase);
+            var matchLegacyPattern = Regex.Match(safeFileName, @"(\d{8}_\d{6})", RegexOptions.IgnoreCase);
 
             if (matchUtcPattern.Success)
             {
@@ -192,6 +193,15 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime chunkUtcTime))
                 {
                     startEpochMs = new DateTimeOffset(chunkUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                }
+            }
+            else if (matchLegacyPattern.Success)
+            {
+                string legacyString = matchLegacyPattern.Groups[1].Value;
+                if (DateTime.TryParseExact(legacyString, "yyyyMMdd_HHmmss",
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime legacyUtcTime))
+                {
+                    startEpochMs = new DateTimeOffset(legacyUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
                 }
             }
             else if (matchEpochPattern.Success && long.TryParse(matchEpochPattern.Groups[1].Value, out long parsedEpochValue))

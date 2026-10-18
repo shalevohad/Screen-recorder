@@ -147,7 +147,29 @@ namespace ITBRecorderAgent.Engine
                     return args[i + 1];
                 }
             }
-            return Environment.GetEnvironmentVariable("ITB_IPC_TOKEN");
+
+            var envToken = Environment.GetEnvironmentVariable("ITB_IPC_TOKEN");
+            if (!string.IsNullOrWhiteSpace(envToken)) return envToken.Trim();
+
+            try
+            {
+                string tokenFilePath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "ITB-SCREEN-RECORDER",
+                    ".ipc_token");
+
+                if (File.Exists(tokenFilePath))
+                {
+                    string fileToken = File.ReadAllText(tokenFilePath).Trim();
+                    if (!string.IsNullOrWhiteSpace(fileToken))
+                    {
+                        return fileToken;
+                    }
+                }
+            }
+            catch { }
+
+            return null;
         }
     }
 }

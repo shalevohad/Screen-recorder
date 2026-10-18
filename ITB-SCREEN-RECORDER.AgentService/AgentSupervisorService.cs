@@ -108,6 +108,20 @@ namespace ITB_SCREEN_RECORDER.AgentService
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _policyFilePath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
 
+            try
+            {
+                Environment.SetEnvironmentVariable("ITB_IPC_TOKEN", _ipcSecretToken, EnvironmentVariableTarget.Process);
+                string tokenDir = OperatingSystem.IsWindows()
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ITB-SCREEN-RECORDER")
+                    : "/tmp/ITB-SCREEN-RECORDER";
+                if (!Directory.Exists(tokenDir)) Directory.CreateDirectory(tokenDir);
+                File.WriteAllText(Path.Combine(tokenDir, ".ipc_token"), _ipcSecretToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Failed to persist IPC token to shared storage: {Msg}", ex.Message);
+            }
+
             _currentPolicy = new AgentStreamPolicy
             {
                 TargetFps = _config.TargetFps > 0 ? _config.TargetFps : 30,
@@ -832,8 +846,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 var procs = Process.GetProcessesByName(processName);
 
                 bool hasEverReceivedHeartbeat = _lastWorkerHeartbeat != DateTime.MinValue;
+                if (procs.Length > 0 && !hasEverReceivedHeartbeat && _lastWorkerLaunchTime == DateTime.MinValue)
+                {
+                    _lastWorkerLaunchTime = DateTime.UtcNow;
+                }
+
                 bool isHeartbeatDead = hasEverReceivedHeartbeat && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds > 15;
-                bool isLaunchTimeout = !hasEverReceivedHeartbeat && _lastWorkerLaunchTime != DateTime.MinValue && (DateTime.UtcNow - _lastWorkerLaunchTime).TotalSeconds > 30;
+                bool isLaunchTimeout = !hasEverReceivedHeartbeat && _lastWorkerLaunchTime != DateTime.MinValue && (DateTime.UtcNow - _lastWorkerLaunchTime).TotalSeconds > 25;
 
                 if (procs.Length > 0 && (isHeartbeatDead || isLaunchTimeout))
                 {

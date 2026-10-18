@@ -130,10 +130,23 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 if (ct.IsCancellationRequested || CurrentCommand != BufferCommand.UPLOAD_GRANTED) break;
 
-                Logger.AlwaysInfo($"[DRAINER] Starting upload for {file.Name} ({file.Length / 1024 / 1024}MB)...");
-                bool success = await UploadFileAsync(file.FullName, ct);
+                if (file.Length < 64)
+                {
+                    Logger.Warn($"[DRAINER] Removing corrupt/empty buffer file '{file.Name}' ({file.Length} bytes).");
+                    try
+                    {
+                        file.Delete();
+                        string sidecarPath = Path.ChangeExtension(file.FullName, ".keys.jsonl");
+                        if (File.Exists(sidecarPath)) File.Delete(sidecarPath);
+                    }
+                    catch { }
+                    continue;
+                }
 
-                if (success)
+                Logger.AlwaysInfo($"[DRAINER] Starting upload for {file.Name} ({file.Length / 1024 / 1024}MB)...");
+                var (success, shouldDiscard) = await UploadFileAsync(file.FullName, ct);
+
+                if (success || shouldDiscard)
                 {
                     try
                     {
@@ -150,11 +163,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             catch { }
                         }
 
-                        Logger.AlwaysInfo($"[DRAINER] Upload Verified (200 OK). Video {file.Name} deleted locally.");
+                        if (success)
+                        {
+                            Logger.AlwaysInfo($"[DRAINER] Upload Verified (200 OK). Video {file.Name} deleted locally.");
+                        }
+                        else
+                        {
+                            Logger.Warn($"[DRAINER] Permanently discarded invalid/rejected video {file.Name} locally.");
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warn($"[DRAINER] Uploaded successfully but failed local deletion: {ex.Message}");
+                        Logger.Warn($"[DRAINER] Uploaded/discarded successfully but failed local deletion: {ex.Message}");
                     }
                 }
                 else
@@ -164,7 +184,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
-        private async Task<bool> UploadFileAsync(string filePath, CancellationToken ct)
+        private async Task<(bool Success, bool ShouldDiscard)> UploadFileAsync(string filePath, CancellationToken ct)
         {
             FileStream? sidecarStream = null;
             try
@@ -192,12 +212,24 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 string targetUrl = GetEffectiveUploadEndpoint();
                 var response = await _httpClient.PostAsync(targetUrl, content, ct);
-                return response.IsSuccessStatusCode;
+                if (response.IsSuccessStatusCode)
+                {
+                    return (true, false);
+                }
+
+                if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    Logger.Warn($"[DRAINER] Server rejected file '{Path.GetFileName(filePath)}' as invalid/corrupt (400 BadRequest). It will be discarded.");
+                    return (false, true);
+                }
+
+                Logger.Warn($"[DRAINER] Server returned {response.StatusCode} for {Path.GetFileName(filePath)}.");
+                return (false, false);
             }
             catch (Exception ex)
             {
                 Logger.Warn($"[DRAINER] Upload exception for {Path.GetFileName(filePath)}: {ex.Message}");
-                return false;
+                return (false, false);
             }
             finally
             {

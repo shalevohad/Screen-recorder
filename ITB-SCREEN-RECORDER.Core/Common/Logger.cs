@@ -66,7 +66,16 @@ namespace ITB_SCREEN_RECORDER.Core.Common
 
                     UpdateLogFilePath();
 
-                    File.AppendAllText(_currentLogFilePath, $"\n--- LOG INITIALIZED AT {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC ---\n");
+                    try
+                    {
+                        File.AppendAllText(_currentLogFilePath, $"\n--- LOG INITIALIZED AT {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC ---\n");
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        string safeUser = Environment.UserName.Replace("\\", "_");
+                        _currentLogFilePath = Path.Combine(_logDirectory, $"{_baseFileName}_{DateTime.UtcNow:yyyy-MM-dd}_{safeUser}{_fileExtension}");
+                        File.AppendAllText(_currentLogFilePath, $"\n--- LOG INITIALIZED AT {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC (User Fallback) ---\n");
+                    }
 
                     Task.Run(() => CleanupOldLogs());
                 }
@@ -84,7 +93,26 @@ namespace ITB_SCREEN_RECORDER.Core.Common
             if (_currentDateString != today)
             {
                 _currentDateString = today;
-                _currentLogFilePath = Path.Combine(_logDirectory, $"{_baseFileName}_{today}{_fileExtension}");
+                string defaultPath = Path.Combine(_logDirectory, $"{_baseFileName}_{today}{_fileExtension}");
+
+                // בדיקה מקדימה: אם הקובץ קיים אך הרשאת הכתיבה אליו חסומה (למשל נוצר ע"י תהליך SYSTEM)
+                try
+                {
+                    if (File.Exists(defaultPath))
+                    {
+                        using var testFs = new FileStream(defaultPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                    }
+                    _currentLogFilePath = defaultPath;
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    string safeUser = Environment.UserName.Replace("\\", "_");
+                    _currentLogFilePath = Path.Combine(_logDirectory, $"{_baseFileName}_{today}_{safeUser}{_fileExtension}");
+                }
+                catch
+                {
+                    _currentLogFilePath = defaultPath;
+                }
             }
         }
 
@@ -164,6 +192,22 @@ namespace ITB_SCREEN_RECORDER.Core.Common
                     using var fs = new FileStream(_currentLogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
                     using var writer = new StreamWriter(fs, Encoding.UTF8);
                     writer.WriteLine(formattedMessage);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    try
+                    {
+                        string safeUser = Environment.UserName.Replace("\\", "_");
+                        string fallbackPath = Path.Combine(_logDirectory, $"{_baseFileName}_{_currentDateString}_{safeUser}{_fileExtension}");
+                        _currentLogFilePath = fallbackPath;
+                        using var fsFallback = new FileStream(fallbackPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                        using var writerFallback = new StreamWriter(fsFallback, Encoding.UTF8);
+                        writerFallback.WriteLine(formattedMessage);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[LOGGER FAULT] Could not write to fallback log file: {ex.Message}");
+                    }
                 }
                 catch (Exception ex)
                 {
