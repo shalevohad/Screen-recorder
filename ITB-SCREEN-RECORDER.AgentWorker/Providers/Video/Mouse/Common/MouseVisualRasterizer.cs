@@ -245,10 +245,10 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             int r2 = BADGE_RADIUS * BADGE_RADIUS;
             int innerR2 = (BADGE_RADIUS - 2) * (BADGE_RADIUS - 2);
 
-            int minX = cx - BADGE_RADIUS;
-            int maxX = cx + BADGE_RADIUS;
-            int minY = cy - BADGE_RADIUS;
-            int maxY = cy + BADGE_RADIUS;
+            int minX = Math.Max(0, cx - BADGE_RADIUS);
+            int maxX = Math.Min(width - 1, cx + BADGE_RADIUS);
+            int minY = Math.Max(0, cy - BADGE_RADIUS);
+            int maxY = Math.Min(height - 1, cy + BADGE_RADIUS);
 
             for (int y = minY; y <= maxY; y++)
             {

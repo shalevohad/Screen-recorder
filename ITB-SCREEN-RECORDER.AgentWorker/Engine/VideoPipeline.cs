@@ -2,6 +2,7 @@
 // File: ITBRecorderAgent/Engine/VideoPipeline.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
+using ITBRecorderAgent.Providers.Video;
 using ITBRecorderAgent.Providers.Video.Mouse;
 using System;
 using System.Diagnostics;
@@ -102,6 +103,12 @@ namespace ITBRecorderAgent.Engine
             CancellationToken ct)
         {
             Logger.Info($"[WORKER:VIDEO-PIPE] Frame pacer loop engaged at {baselineFps} FPS target.");
+#if WINDOWS
+            if (OperatingSystem.IsWindows())
+            {
+                DesktopSecurityManager.TryAttachToInputDesktop();
+            }
+#endif
             double targetFrameTimeMs = 1000.0 / baselineFps;
             long framesProcessed = 1;
             int pushedThisSec = 0;

@@ -12,8 +12,21 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private static async Task Main(string[] args)
         {
+#if WINDOWS
+            if (OperatingSystem.IsWindows())
+            {
+                ITBRecorderAgent.Providers.Video.WindowsDpiHelper.EnablePerMonitorDpiAwareness();
+            }
+#endif
             var config = ConfigLoader.Load();
             Logger.Initialize(config, "Worker");
+
+#if WINDOWS
+            if (OperatingSystem.IsWindows())
+            {
+                ITBRecorderAgent.Providers.Video.DesktopSecurityManager.EnsureProcessWindowStation();
+            }
+#endif
 
             Logger.AlwaysInfo($"[WORKER:STARTUP] Process started. PID: {Environment.ProcessId}, Args: '{string.Join(" ", args)}', WorkDir: '{AppContext.BaseDirectory}'");
 
