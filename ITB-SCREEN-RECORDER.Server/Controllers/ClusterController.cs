@@ -126,7 +126,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             string detectedEncoder = "libx264";
             try
             {
-                string ffmpegPath = _configuration["Extractor:FfmpegPath"] ?? "ffmpeg";
+                string? configuredFfmpeg = _configuration["Extractor:FfmpegPath"];
+                string ffmpegPath = !string.IsNullOrWhiteSpace(configuredFfmpeg)
+                    ? configuredFfmpeg
+                    : (AppConfig.TryGetResolvedFFmpegPath(out var resolved) ? resolved : "ffmpeg");
                 detectedEncoder = await HardwareProbe.ResolveEncoderAsync(
                     ffmpegPath,
                     "auto"

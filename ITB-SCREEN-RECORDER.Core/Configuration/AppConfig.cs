@@ -56,12 +56,26 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             string parentPath = Path.GetFullPath(Path.Combine(baseDir, "..", binaryName));
             if (File.Exists(parentPath)) return parentPath;
 
-            // 4. בתיקיית Tools המרכזית בפתרון (גיבוי לפיתוח)
+            // 4. בתוך תיקיית Tools המקומית (למשל Tools\Win\ffmpeg.exe או Tools\Linux\ffmpeg)
             string toolsSubFolder = OperatingSystem.IsWindows() ? "Win" : "Linux";
+            string localToolsPath = Path.Combine(baseDir, "Tools", toolsSubFolder, binaryName);
+            if (File.Exists(localToolsPath)) return localToolsPath;
+
+            string localToolsDirect = Path.Combine(baseDir, "Tools", binaryName);
+            if (File.Exists(localToolsDirect)) return localToolsDirect;
+
+            // 5. בתיקיית Tools בדרג האב (למשל בהרצה מתוך bin\Debug\net8.0\win-x64)
+            string parentToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "Tools", toolsSubFolder, binaryName));
+            if (File.Exists(parentToolsPath)) return parentToolsPath;
+
+            string devServerToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "Tools", toolsSubFolder, binaryName));
+            if (File.Exists(devServerToolsPath)) return devServerToolsPath;
+
+            // 6. בתיקיית Tools המרכזית בפתרון (גיבוי לפיתוח)
             string devToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Tools", toolsSubFolder, binaryName));
             if (File.Exists(devToolsPath)) return devToolsPath;
 
-            // 5. חיפוש ב-PATH של מערכת ההפעלה
+            // 7. חיפוש ב-PATH של מערכת ההפעלה
             string? pathEnv = Environment.GetEnvironmentVariable("PATH");
             if (!string.IsNullOrEmpty(pathEnv))
             {
@@ -74,7 +88,27 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             }
 
             throw new FileNotFoundException(
-                $"CRITICAL: FFmpeg executable is missing. Probed '{directPath}', '{ridPath}', and '{devToolsPath}'. Expected: {binaryName}");
+                $"CRITICAL: FFmpeg executable is missing. Probed '{directPath}', '{ridPath}', '{localToolsPath}', and '{devToolsPath}'. Expected: {binaryName}");
+        }
+
+        public static bool TryGetResolvedFFmpegPath(out string resolvedPath, string? explicitPath = null)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath))
+            {
+                resolvedPath = explicitPath;
+                return true;
+            }
+
+            try
+            {
+                resolvedPath = GetResolvedFFmpegPath();
+                return true;
+            }
+            catch
+            {
+                resolvedPath = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+                return false;
+            }
         }
     }
 }

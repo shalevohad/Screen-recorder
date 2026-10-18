@@ -139,7 +139,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Network
             // 1. Initial encoder detection
             try
             {
-                string ffmpegPath = _configuration["Extractor:FfmpegPath"] ?? "ffmpeg";
+                string? configuredFfmpeg = _configuration["Extractor:FfmpegPath"];
+                string ffmpegPath = !string.IsNullOrWhiteSpace(configuredFfmpeg)
+                    ? configuredFfmpeg
+                    : (AppConfig.TryGetResolvedFFmpegPath(out var resolved) ? resolved : "ffmpeg");
                 _resolvedEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, "auto").ConfigureAwait(false);
                 _cachedCapacityWeight = NodeHardwareProfile.CalculateCapacityWeight(_resolvedEncoder, Environment.ProcessorCount);
                 _logger.LogInformation("[CLUSTER MESH] Detected video encoder: {Encoder} (Capacity Weight: {Weight}x)",

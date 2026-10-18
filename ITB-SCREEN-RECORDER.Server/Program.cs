@@ -148,14 +148,33 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 if (Directory.Exists(featuresBaseDir))
                 {
-                    var featureDlls = Directory.GetFiles(featuresBaseDir, "ITB-SCREEN-RECORDER.Features.*.dll", SearchOption.AllDirectories);
+                    var featureDlls = Directory.GetFiles(featuresBaseDir, "ITB-SCREEN-RECORDER.Features.*.dll", SearchOption.AllDirectories)
+                        .OrderBy(p =>
+                        {
+                            var dirName = new DirectoryInfo(Path.GetDirectoryName(p)!).Name;
+                            var fileNameNoExt = Path.GetFileNameWithoutExtension(p);
+                            return fileNameNoExt.EndsWith(dirName, StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+                        })
+                        .DistinctBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    var activatedStartupTypes = new HashSet<Type>();
+
                     foreach (var dllPath in featureDlls)
                     {
                         var fileName = Path.GetFileName(dllPath);
+                        var asmName = Path.GetFileNameWithoutExtension(dllPath);
+
                         try
                         {
-                            var asm = AssemblyLoadContext.Default.LoadFromAssemblyPath(dllPath);
-                            loadedFeatureAssemblies.Add(asm);
+                            var asm = AppDomain.CurrentDomain.GetAssemblies()
+                                .FirstOrDefault(a => string.Equals(a.GetName().Name, asmName, StringComparison.OrdinalIgnoreCase))
+                                ?? AssemblyLoadContext.Default.LoadFromAssemblyPath(dllPath);
+
+                            if (!loadedFeatureAssemblies.Contains(asm))
+                            {
+                                loadedFeatureAssemblies.Add(asm);
+                            }
 
                             Type[] types;
                             try { types = asm.GetTypes(); }
@@ -169,9 +188,12 @@ namespace ITB_SCREEN_RECORDER.Server
                             var startupTypes = types.Where(t => typeof(IHostingStartup).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract).ToList();
                             foreach (var startupType in startupTypes)
                             {
-                                var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
-                                startup.Configure(builder.WebHost);
-                                Logger.AlwaysInfo($"[PLUGIN-LOADER] Activated modular feature: {startupType.FullName}");
+                                if (activatedStartupTypes.Add(startupType))
+                                {
+                                    var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
+                                    startup.Configure(builder.WebHost);
+                                    Logger.AlwaysInfo($"[PLUGIN-LOADER] Activated modular feature: {startupType.FullName}");
+                                }
                             }
                         }
                         catch (Exception ex)
