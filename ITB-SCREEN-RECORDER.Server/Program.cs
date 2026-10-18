@@ -222,16 +222,7 @@ namespace ITB_SCREEN_RECORDER.Server
                     options.ListenAnyIP(finalListeningPort, listenOptions =>
                     {
                         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-                        listenOptions.UseHttps(httpsOptions =>
-                        {
-                            var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
-                            httpsOptions.ServerCertificate = bundle.ServerCertificate;
-                            httpsOptions.ServerCertificateSelector = (connectionContext, name) =>
-                            {
-                                var active = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
-                                return active.ServerCertificate;
-                            };
-                        });
+                        listenOptions.UseHttps();
                     });
                 });
 
