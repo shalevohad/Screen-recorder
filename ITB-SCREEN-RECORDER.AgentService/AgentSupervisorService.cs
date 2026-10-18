@@ -429,7 +429,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     Hostname = Environment.MachineName,
                     IpAddress = HardwareProbe.GetLocalIpAddress(),
-                    Status = isStreaming ? AgentStatus.Streaming : (isWorkerAlive ? AgentStatus.Standby : AgentStatus.Offline),
+                    Status = isStreaming ? AgentStatus.Streaming : AgentStatus.Standby,
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
                     IsRecording = isStreaming,

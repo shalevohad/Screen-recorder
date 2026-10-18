@@ -369,14 +369,15 @@ function CommandCenterApp() {
             setStations(prev => {
                 const host = (report.hostname || report.stationId || '').toLowerCase();
                 const idx = prev.findIndex(s => (s.hostname || s.stationId || '').toLowerCase() === host);
-                const isOnline = report.status === 1 || report.status === 2 || report.isProcessRunning || report.isOnline;
+                const isOnline = report.isOnline !== undefined ? Boolean(report.isOnline) : true;
+                const status = typeof report.status === 'string' ? report.status : (report.isStreaming ? 'Recording' : 'Standby');
 
                 if (idx > -1) {
                     const copy = [...prev];
-                    copy[idx] = { ...copy[idx], ...report, isOnline };
+                    copy[idx] = { ...copy[idx], ...report, isOnline, status };
                     return copy;
                 }
-                return [...prev, { ...report, isOnline }];
+                return [...prev, { ...report, isOnline, status }];
             });
         });
 
