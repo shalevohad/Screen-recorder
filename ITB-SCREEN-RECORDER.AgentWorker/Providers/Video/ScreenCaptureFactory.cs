@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace ITBRecorderAgent.Providers.Video
 {
@@ -9,7 +9,7 @@ namespace ITBRecorderAgent.Providers.Video
             #if WINDOWS
             if (OperatingSystem.IsWindows())
             {
-                return new DxgiScreenCapture();
+                return new ResilientScreenCapture();
             }
             #endif
 

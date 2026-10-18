@@ -246,6 +246,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private async Task RunStreamingSessionAsync(ISessionGuard guard, CancellationToken ct)
         {
             Logger.Info("[WORKER:LIFECYCLE] Initializing hardware capture providers...");
+#if WINDOWS
+            DesktopSecurityManager.TryAttachToInputDesktop();
+#endif
             using var screen = ScreenCaptureFactory.Create();
             screen.Initialize();
             Logger.Info($"[WORKER:LIFECYCLE] Screen capture provider ready ({screen.Width}x{screen.Height}).");
@@ -334,6 +337,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             var captureTask = Task.Run(async () =>
             {
                 Logger.Info("[WORKER:LIFECYCLE] Screen capture sampling thread started.");
+#if WINDOWS
+                DesktopSecurityManager.TryAttachToInputDesktop();
+#endif
                 long lastTicks = Stopwatch.GetTimestamp();
                 int consecutiveHardErrors = 0;
 
