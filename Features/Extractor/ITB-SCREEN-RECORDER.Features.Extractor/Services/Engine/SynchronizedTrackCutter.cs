@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/Engine/SynchronizedTrackCutter.cs
 // ==========================================
 using System;
@@ -230,12 +230,22 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             if (plan.KeystrokeMode != KeystrokeExportMode.None && _srtGenerator != null)
             {
-                long startEpochMs = new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds();
-                long endEpochMs = new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds();
+                var segments = plan.ActiveSegments
+                    .Select(s => (
+                        StartEpochMs: new DateTimeOffset(s.StartUtc).ToUnixTimeMilliseconds(),
+                        EndEpochMs: new DateTimeOffset(s.EndUtc).ToUnixTimeMilliseconds()))
+                    .ToList();
+
+                if (segments.Count == 0)
+                {
+                    segments.Add((
+                        new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds(),
+                        new DateTimeOffset(cutEndUtc).ToUnixTimeMilliseconds()));
+                }
 
                 if (plan.KeystrokeMode == KeystrokeExportMode.BurnIn)
                 {
-                    subtitleTempPath = await _srtGenerator.CreateAssKeycapsFileAsync(stationId, startEpochMs, endEpochMs, ct);
+                    subtitleTempPath = await _srtGenerator.CreateAssKeycapsFileForSegmentsAsync(stationId, segments, ct);
                     if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
                     {
                         string escapedAss = subtitleTempPath.Replace("\\", "/").Replace(":", "\\:").Replace("'", "\\'");
@@ -244,7 +254,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
                 else if (plan.KeystrokeMode == KeystrokeExportMode.Caption)
                 {
-                    subtitleTempPath = await _srtGenerator.CreateSrtFileAsync(stationId, startEpochMs, endEpochMs, ct);
+                    subtitleTempPath = await _srtGenerator.CreateSrtFileForSegmentsAsync(stationId, segments, ct);
                     if (subtitleTempPath != null && File.Exists(subtitleTempPath) && new FileInfo(subtitleTempPath).Length > 0)
                     {
                         subInputArgs = $"-i \"{subtitleTempPath.Replace('\\', '/')}\"";
