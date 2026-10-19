@@ -159,6 +159,10 @@
                 object-fit: contain;
                 background-color: #020617;
                 transition: opacity 0.15s ease-out;
+                image-rendering: -webkit-optimize-contrast;
+                image-rendering: crisp-edges;
+                transform: translateZ(0);
+                backface-visibility: hidden;
             }
 
             .spotlight-active-video {

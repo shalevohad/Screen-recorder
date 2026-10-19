@@ -361,7 +361,9 @@ export default function StudioVideoFeed({
                     style={{
                         opacity: isVideoRendering && activeSlot === 'A' ? 1 : 0,
                         zIndex: activeSlot === 'A' ? 3 : 1,
-                        pointerEvents: activeSlot === 'A' ? 'auto' : 'none'
+                        pointerEvents: activeSlot === 'A' ? 'auto' : 'none',
+                        imageRendering: '-webkit-optimize-contrast',
+                        transform: 'translateZ(0)'
                     }}
                     playsInline
                     autoPlay={activeSlot === 'A'}
@@ -409,7 +411,9 @@ export default function StudioVideoFeed({
                     style={{
                         opacity: isVideoRendering && activeSlot === 'B' ? 1 : 0,
                         zIndex: activeSlot === 'B' ? 3 : 1,
-                        pointerEvents: activeSlot === 'B' ? 'auto' : 'none'
+                        pointerEvents: activeSlot === 'B' ? 'auto' : 'none',
+                        imageRendering: '-webkit-optimize-contrast',
+                        transform: 'translateZ(0)'
                     }}
                     playsInline
                     autoPlay={activeSlot === 'B'}
@@ -460,6 +464,10 @@ export default function StudioVideoFeed({
                         src={frameResult}
                         className="feed-static-image"
                         alt="Playback Frame"
+                        style={{
+                            imageRendering: '-webkit-optimize-contrast',
+                            transform: 'translateZ(0)'
+                        }}
                     />
                 ) : !isPlaying ? (
                     <div className="feed-decode-pending">

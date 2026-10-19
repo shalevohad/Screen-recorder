@@ -247,21 +247,21 @@ namespace ITBRecorderAgent.Engine
 
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // 3. קידוד וידאו - IDR כפוי
+            // 3. קידוד וידאו - התנעה מהירה בביטרייט, איכות חדה וחיסכון מסיבי בנפח בעת תמונה סטטית (True Constrained VBR)
             string pixFmt = "yuv420p";
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 21 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
                 // QSV encodes natively in NV12. Avoiding yuv420p avoids an unnecessary double software color conversion.
                 pixFmt = "nv12";
-                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
+                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 21 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
-                ffmpegArgs.Append($"-c:v libx264 -preset ultrafast -tune zerolatency -crf 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -sc_threshold 0 ");
+                ffmpegArgs.Append($"-c:v libx264 -preset ultrafast -tune zerolatency -crf 21 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -sc_threshold 0 ");
             }
 
             // 4. כפיית Keyframe כל שנייה

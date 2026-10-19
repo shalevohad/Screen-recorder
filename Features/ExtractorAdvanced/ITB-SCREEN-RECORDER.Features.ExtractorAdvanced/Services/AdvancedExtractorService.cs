@@ -266,7 +266,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                 $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                 $"-t {targetSpan.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                 $"-i \"{sampleChunk.FullPath.Replace('\\', '/')}\" " +
-                                $"-vf \"{filter}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 4 -f image2pipe -vcodec mjpeg pipe:1",
+                                $"-vf \"{filter}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 2 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,
                     UseShellExecute = false,
@@ -322,9 +322,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = ffmpegPath,
-                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 -flags2 +fast " +
+                    Arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 131072 -analyzeduration 200000 " +
                                 $"-ss {offsetSeconds.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                                $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 1 -frames:v 1 -q:v 3 -f image2pipe -vcodec mjpeg pipe:1",
+                                $"-i \"{inputPath.Replace('\\', '/')}\" -an -sn -dn -threads 2 -frames:v 1 -q:v 1 -f image2pipe -vcodec mjpeg pipe:1",
                     RedirectStandardOutput = true,
                     RedirectStandardError = false,
                     UseShellExecute = false,

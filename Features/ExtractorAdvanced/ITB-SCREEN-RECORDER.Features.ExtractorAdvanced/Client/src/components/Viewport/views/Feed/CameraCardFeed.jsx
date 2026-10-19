@@ -303,7 +303,9 @@ export default function CameraCardFeed({
                         objectFit: 'contain',
                         opacity: isVideoReady ? 1 : 0,
                         transition: 'opacity 0.2s ease-out',
-                        zIndex: isVideoReady ? 3 : 1
+                        zIndex: isVideoReady ? 3 : 1,
+                        imageRendering: '-webkit-optimize-contrast',
+                        transform: 'translateZ(0)'
                     }}
                     playsInline
                     autoPlay
@@ -345,6 +347,10 @@ export default function CameraCardFeed({
                         src={frameSrc}
                         alt={stationName}
                         className="station-live-frame"
+                        style={{
+                            imageRendering: '-webkit-optimize-contrast',
+                            transform: 'translateZ(0)'
+                        }}
                         onError={() => setHasError(true)}
                     />
                 ) : (!frameSrc || hasError || !isInRecordingSegment) && !streamSrc ? (

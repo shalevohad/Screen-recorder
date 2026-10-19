@@ -73,6 +73,16 @@ export default function WebRTCPlayer({
             pc.addTransceiver('audio', { direction: 'recvonly' });
 
             pc.ontrack = (event) => {
+                if (event.receiver) {
+                    try {
+                        if ('playoutDelayHint' in event.receiver) {
+                            event.receiver.playoutDelayHint = 0;
+                        }
+                        if ('jitterBufferTarget' in event.receiver) {
+                            event.receiver.jitterBufferTarget = 0;
+                        }
+                    } catch { }
+                }
                 if (currentVideo && event.streams && event.streams[0]) {
                     currentVideo.srcObject = event.streams[0];
                     currentVideo.play().catch(err => {
@@ -95,7 +105,22 @@ export default function WebRTCPlayer({
 
             try {
                 const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
+
+                // 💡 SDP Bandwidth allocation for High-Definition Screen Streaming:
+                // Instruct browser WebRTC BWE and MediaMTX to allocate high bandwidth (up to 12Mbps)
+                // for crisp, sharp high-resolution screen rendering without downsampling or blur.
+                let mungedSdp = offer.sdp || '';
+                if (mungedSdp.includes('m=video')) {
+                    mungedSdp = mungedSdp.replace(
+                        /(m=video [^\r\n]+[\r\n]+)/,
+                        '$1b=AS:12000\r\nb=TIAS:12000000\r\n'
+                    );
+                }
+
+                await pc.setLocalDescription({
+                    type: offer.type,
+                    sdp: mungedSdp
+                });
 
                 const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
                 const effectiveBase = (isHttps && webrtcBaseUrl.startsWith('http:')) ? '/api/v1/whep' : webrtcBaseUrl;
@@ -103,7 +128,7 @@ export default function WebRTCPlayer({
                 const response = await fetch(whepUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/sdp' },
-                    body: pc.localDescription.sdp
+                    body: pc.localDescription?.sdp || mungedSdp
                 });
 
                 if (!response.ok) throw new Error(`WHEP failed with status ${response.status}`);
@@ -234,7 +259,14 @@ export default function WebRTCPlayer({
                 onCanPlay={() => {
                     if (onPlaying) onPlaying();
                 }}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    imageRendering: '-webkit-optimize-contrast',
+                    transform: 'translateZ(0)',
+                    backfaceVisibility: 'hidden'
+                }}
             />
 
             {showControls && (
