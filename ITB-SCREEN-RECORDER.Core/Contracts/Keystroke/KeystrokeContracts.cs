@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -6,12 +6,51 @@ using System.Threading.Tasks;
 
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
 {
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    using System.Text.Json;
+
+    [JsonConverter(typeof(FlexibleKeystrokeExportModeConverter))]
     public enum KeystrokeExportMode
     {
-        Caption = 0, // רצועת כתוביות רכה (mov_text) - ללא Re-encoding
-        BurnIn = 1,  // צריבה קשיחה על גבי הפיקסלים (subtitles filter)
-        None = 2     // חיתוך נקי ללא כתוביות או צריבה
+        None = 0,     // חיתוך נקי ללא כתוביות או צריבה
+        Caption = 1,  // רצועת כתוביות רכה (mov_text)
+        BurnIn = 2    // צריבה קשיחה על גבי הפיקסלים (subtitles filter)
+    }
+
+    public class FlexibleKeystrokeExportModeConverter : JsonConverter<KeystrokeExportMode>
+    {
+        public override KeystrokeExportMode Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                string? str = reader.GetString();
+                if (string.IsNullOrWhiteSpace(str)) return KeystrokeExportMode.None;
+
+                str = str.Trim().ToUpperInvariant().Replace("-", "_");
+                if (str == "BURN_IN" || str == "BURNIN" || str == "HARD") return KeystrokeExportMode.BurnIn;
+                if (str == "CAPTION" || str == "SOFT" || str == "SUBTITLE") return KeystrokeExportMode.Caption;
+                if (str == "NONE" || str == "OFF" || str == "CLEAN") return KeystrokeExportMode.None;
+
+                if (Enum.TryParse<KeystrokeExportMode>(str, true, out var parsed)) return parsed;
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                int val = reader.GetInt32();
+                return val switch
+                {
+                    0 => KeystrokeExportMode.None,
+                    1 => KeystrokeExportMode.Caption,
+                    2 => KeystrokeExportMode.BurnIn,
+                    _ => KeystrokeExportMode.None
+                };
+            }
+
+            return KeystrokeExportMode.None;
+        }
+
+        public override void Write(Utf8JsonWriter writer, KeystrokeExportMode value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.ToString());
+        }
     }
 
     public sealed class KeystrokeEventDto

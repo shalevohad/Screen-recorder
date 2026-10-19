@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/Engine/SynchronizedTrackCutter.cs
 // ==========================================
 using System;
@@ -289,6 +289,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 {
                     using var reader = process.StandardOutput;
                     string? line;
+                    double currentSeconds = 0;
+                    double currentFps = 0;
+                    double currentSpeed = 1.0;
+
                     while ((line = await reader.ReadLineAsync(ct)) != null)
                     {
                         var parts = line.Split('=', 2);
@@ -299,11 +303,24 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
                         if (key == "out_time_us" && long.TryParse(val, out long us))
                         {
-                            progress?.Report((us / 1_000_000.0, 0, 1.0));
+                            currentSeconds = Math.Max(currentSeconds, us / 1_000_000.0);
+                            progress?.Report((currentSeconds, currentFps, currentSpeed));
                         }
                         else if (key == "fps" && double.TryParse(val, NumberStyles.Any, CultureInfo.InvariantCulture, out double f))
                         {
-                            progress?.Report((0, f, 1.0));
+                            currentFps = f;
+                        }
+                        else if (key == "speed")
+                        {
+                            string sClean = val.TrimEnd('x', 'X').Trim();
+                            if (double.TryParse(sClean, NumberStyles.Any, CultureInfo.InvariantCulture, out double sp) && sp > 0)
+                            {
+                                currentSpeed = sp;
+                            }
+                        }
+                        else if (key == "progress")
+                        {
+                            progress?.Report((currentSeconds, currentFps, currentSpeed));
                         }
                     }
                 }, ct);

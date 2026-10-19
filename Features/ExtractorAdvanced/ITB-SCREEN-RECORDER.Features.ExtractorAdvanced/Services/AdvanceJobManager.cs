@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvanceJobManager.cs
 // ==========================================
 using System;
@@ -274,6 +274,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                            + 3.0;
 
                         job.EstimatedSecondsRemaining = Math.Round(totalRemSec, 0);
+                        job.EtaSeconds = (int)job.EstimatedSecondsRemaining;
 
                         long currentBuiltBytes = 0;
                         try
@@ -292,7 +293,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
 
                         double builtMb = currentBuiltBytes / (1024.0 * 1024.0);
-                        job.StatusMessage = $"Rendering Track {i + 1} of {job.StationIds.Count}: {stationId} • Built: {builtMb:0.1} MB";
+                        string speedTxt = p.SpeedMultiplier > 0.1 ? $"{p.SpeedMultiplier:0.1}x" : $"{job.SpeedMBps:0.1} MB/s";
+                        job.StatusMessage = $"Rendering Track {i + 1} of {job.StationIds.Count}: {stationId} ({p.Fps:0} fps, {speedTxt}) • Built: {builtMb:0.1} MB";
 
                         if ((DateTime.UtcNow - lastPersistUtc).TotalSeconds >= 1.0)
                         {

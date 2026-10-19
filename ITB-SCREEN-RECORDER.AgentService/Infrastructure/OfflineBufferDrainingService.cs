@@ -26,6 +26,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
         public static BufferCommand CurrentCommand { get; set; } = BufferCommand.WAIT;
         public static string? ActiveServerBaseUrl { get; set; }
 
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int FailCount, DateTime NextRetryUtc)> _failedFileRetries = new();
+
         public OfflineBufferDrainingService(ILogger<OfflineBufferDrainingService> logger, AppConfig config)
         {
             _logger = logger;
@@ -33,7 +35,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             AgentCertificateValidator.ConfigureHandler(handler);
             _httpClient = new HttpClient(handler)
             {
-                Timeout = TimeSpan.FromMinutes(10)
+                Timeout = TimeSpan.FromMinutes(30)
             };
 
             _bufferPath = string.IsNullOrWhiteSpace(config.LocalBufferPath)
@@ -130,6 +132,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 if (ct.IsCancellationRequested || CurrentCommand != BufferCommand.UPLOAD_GRANTED) break;
 
+                if (_failedFileRetries.TryGetValue(file.FullName, out var retryInfo) && nowUtc < retryInfo.NextRetryUtc)
+                {
+                    continue;
+                }
+
                 if (file.Length < 64)
                 {
                     Logger.Warn($"[DRAINER] Removing corrupt/empty buffer file '{file.Name}' ({file.Length} bytes).");
@@ -140,6 +147,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         if (File.Exists(sidecarPath)) File.Delete(sidecarPath);
                     }
                     catch { }
+                    _failedFileRetries.TryRemove(file.FullName, out _);
+                    continue;
+                }
+
+                if (file.Length > BufferLimits.MaxFileSizeBytes)
+                {
+                    if (!_failedFileRetries.ContainsKey(file.FullName))
+                    {
+                        Logger.Warn($"[DRAINER] File '{file.Name}' ({file.Length / (1024 * 1024)}MB) exceeds MaxFileSizeBytes ({BufferLimits.MaxBufferFileSizeMb}MB). Upload suspended.");
+                    }
+                    _failedFileRetries[file.FullName] = (1, DateTime.UtcNow.AddMinutes(30));
                     continue;
                 }
 
@@ -148,6 +166,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 if (success || shouldDiscard)
                 {
+                    _failedFileRetries.TryRemove(file.FullName, out _);
                     try
                     {
                         file.Delete();
@@ -179,7 +198,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 else
                 {
-                    Logger.Warn($"[DRAINER] Upload failed for {file.Name}. Will retry on next tick.");
+                    int fails = _failedFileRetries.TryGetValue(file.FullName, out var prev) ? prev.FailCount + 1 : 1;
+                    int backoffSec = Math.Min(300, (int)Math.Pow(2, Math.Min(fails, 6)) * 5); // 10s, 20s, 40s, 80s, 160s, 300s
+                    var nextRetry = DateTime.UtcNow.AddSeconds(backoffSec);
+                    _failedFileRetries[file.FullName] = (fails, nextRetry);
+                    Logger.Warn($"[DRAINER] Upload failed for {file.Name} (attempt {fails}). Next retry in {backoffSec}s (at {nextRetry:HH:mm:ss} UTC).");
                 }
             }
         }

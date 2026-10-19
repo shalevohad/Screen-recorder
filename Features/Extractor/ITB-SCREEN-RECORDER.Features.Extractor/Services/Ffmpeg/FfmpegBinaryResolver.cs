@@ -129,7 +129,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     HardwareType = "NVIDIA NVENC",
                     VideoEncoder = "h264_nvenc",
                     EncoderArgs = "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 21 -b:v 0 -maxrate 6000k -bufsize 6000k",
-                    ZeroLatencyEncoderArgs = "-c:v h264_nvenc -preset p2 -tune zerolatency -zerolatency 1 -rc vbr -cq 21 -b:v 0 -maxrate 6000k -bufsize 6000k -pix_fmt yuv420p",
+                    ZeroLatencyEncoderArgs = "-c:v h264_nvenc -preset p2 -tune ull -zerolatency 1 -rc vbr -cq 21 -b:v 0 -maxrate 6000k -bufsize 6000k -pix_fmt yuv420p",
                     HwaccelDecodeArgs = "-hwaccel cuda",
                     IsGpuAccelerated = true
                 };

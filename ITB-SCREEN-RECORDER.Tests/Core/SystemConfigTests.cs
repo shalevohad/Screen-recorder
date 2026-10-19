@@ -121,10 +121,10 @@ public class SystemConfigTests
     [Fact]
     public void BufferLimits_CalculationsAreConsistent()
     {
-        Assert.Equal(300L, BufferLimits.MaxBufferFileSizeMb);
-        Assert.Equal(20L, BufferLimits.RequestOverheadMb);
-        Assert.Equal(300L * 1024L * 1024L, BufferLimits.MaxFileSizeBytes);
-        Assert.Equal(320L * 1024L * 1024L, BufferLimits.MaxRequestSizeBytes);
+        Assert.Equal(4096L, BufferLimits.MaxBufferFileSizeMb);
+        Assert.Equal(50L, BufferLimits.RequestOverheadMb);
+        Assert.Equal(4096L * 1024L * 1024L, BufferLimits.MaxFileSizeBytes);
+        Assert.Equal(4146L * 1024L * 1024L, BufferLimits.MaxRequestSizeBytes);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
-﻿using System.IO;
+using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
@@ -9,5 +10,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
     {
         Task<ExtractionPreviewResponseDto> GetPreviewAsync(ExtractionRequestDto request);
         Task StreamTarArchiveAsync(ExtractionRequestDto request, Stream destinationStream, CancellationToken ct);
+        Task StreamTarArchiveAsync(ExtractionRequestDto request, Stream destinationStream, IProgress<(int Percent, string Message, double SpeedMBps, int EtaSeconds)>? progress, CancellationToken ct);
     }
 }
