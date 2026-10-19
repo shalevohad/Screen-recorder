@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Modals/MasterTimeRangeModal.jsx
 // ==========================================
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -25,10 +25,8 @@ const parseInputDateTime = (dtStr, mode) => {
     const min = timeParts[1] || 0;
     const sec = timeParts[2] || 0;
 
-    if (mode === 'UTC') {
-        return new Date(Date.UTC(year, month - 1, day, hour, min, sec));
-    }
-    return new Date(year, month - 1, day, hour, min, sec);
+    // Use Date.UTC so that dt.getTime() represents nominal wall-clock milliseconds without browser timezone interference
+    return new Date(Date.UTC(year, month - 1, day, hour, min, sec));
 };
 
 export default function MasterTimeRangeModal({
