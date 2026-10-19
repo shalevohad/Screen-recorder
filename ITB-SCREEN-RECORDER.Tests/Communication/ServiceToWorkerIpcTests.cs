@@ -375,5 +375,27 @@ public class ServiceToWorkerIpcTests
         Assert.Equal(sentCommand, receivedCommand);
     }
 
+    [Fact]
+    public void WorkerIpc_FastKeystrokeMessage_FramingAndParsing_PreservesFidelity()
+    {
+        var originalKey = new KeystrokeEventDto
+        {
+            EpochMs = 1791583060123L,
+            TimestampUtc = DateTime.UtcNow,
+            KeyCombination = "F3"
+        };
+
+        string json = JsonSerializer.Serialize(originalKey);
+        string framedMessage = $"Key|{json}";
+
+        Assert.StartsWith("Key|", framedMessage, StringComparison.OrdinalIgnoreCase);
+        string payload = framedMessage.Substring(4).Trim();
+        var parsedKey = JsonSerializer.Deserialize<KeystrokeEventDto>(payload, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        Assert.NotNull(parsedKey);
+        Assert.Equal("F3", parsedKey.KeyCombination);
+        Assert.Equal(1791583060123L, parsedKey.EpochMs);
+    }
+
     #endregion
 }

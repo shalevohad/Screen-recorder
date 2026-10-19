@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Core/Contracts/Network/CommunicationModels.cs
 // ==========================================
 using System;
@@ -169,5 +169,14 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 
         [JsonPropertyName("offlineBufferAction")]
         public BufferCommand OfflineBufferAction { get; set; } = BufferCommand.WAIT;
+    }
+
+    public class AgentLiveKeystrokesBatchRequest
+    {
+        [JsonPropertyName("hostname")]
+        public string Hostname { get; set; } = string.Empty;
+
+        [JsonPropertyName("keystrokes")]
+        public List<KeystrokeEventDto> Keystrokes { get; set; } = new();
     }
 }

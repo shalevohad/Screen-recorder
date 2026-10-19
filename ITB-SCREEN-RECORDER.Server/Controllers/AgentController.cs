@@ -188,6 +188,50 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(heartbeatResponse);
         }
 
+        [HttpPost("keystrokes")]
+        public IActionResult ReceiveLiveKeystrokes([FromBody] AgentLiveKeystrokesBatchRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Hostname) || request.Keystrokes == null || request.Keystrokes.Count == 0)
+            {
+                return BadRequest("Invalid keystroke payload.");
+            }
+
+            // 1. Asynchronously queue DB bulk insertion in background without blocking SignalR broadcast
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _catalogRepository.BulkInsertKeystrokesAsync(request.Hostname, request.Keystrokes);
+                    _logger.LogDebug("[KEYSTROKES:FAST] Ingested {Count} fast keystrokes for {Host}", request.Keystrokes.Count, request.Hostname);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[KEYSTROKES:FAST] Failed to insert fast keystrokes for {Host}", request.Hostname);
+                }
+            });
+
+            // 2. Decrypt keystrokes if end-to-end encryption is configured
+            var decryptedKeystrokes = new List<KeystrokeEventDto>(request.Keystrokes.Count);
+            foreach (var k in request.Keystrokes)
+            {
+                string clearTextCombo = _keyRingService != null
+                    ? _keyRingService.Decrypt(k.KeyCombination)
+                    : k.KeyCombination;
+
+                decryptedKeystrokes.Add(new KeystrokeEventDto
+                {
+                    EpochMs = k.EpochMs,
+                    TimestampUtc = k.TimestampUtc,
+                    KeyCombination = clearTextCombo
+                });
+            }
+
+            // 3. Immediately broadcast to SignalR clients (WebRTC player overlay)
+            _ = _broadcastService.BroadcastLiveKeystrokesAsync(request.Hostname, decryptedKeystrokes);
+
+            return Ok();
+        }
+
         [HttpPost("register")]
         public async Task<IActionResult> RegisterAgent([FromBody] AgentRegistrationRequest request)
         {

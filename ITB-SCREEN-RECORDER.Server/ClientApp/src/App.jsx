@@ -128,13 +128,22 @@ function CommandCenterApp() {
 
         if (!incoming.length) return;
 
-        setLiveKeystrokes(prev => {
-            const existing = (prev[hostKey] || []).filter(k => now - k.receivedAt < 3500);
-            return {
-                ...prev,
-                [hostKey]: [...existing, ...incoming].slice(-8)
-            };
-        });
+        // 💡 סנכרון תצוגת מקשים עם לטנסי ה-WebRTC (120ms): מונע הופעה מוקדמת מדי ומנעיל את ה-overlay לסרטון בדיוק כשהעכבר מגיע לנקודה
+        setTimeout(() => {
+            setLiveKeystrokes(prev => {
+                const currentNow = Date.now();
+                const existing = (prev[hostKey] || []).filter(k => currentNow - k.receivedAt < 3500);
+                // מניעת כפילויות של אותו מקש תוך 400ms (בין אם מה-Fast Path או מטלמטריה שוטפת)
+                const uniqueIncoming = incoming.filter(inc =>
+                    !existing.some(ex => ex.combo === inc.combo && Math.abs((ex.epochMs || 0) - (inc.epochMs || 0)) < 400)
+                );
+                if (!uniqueIncoming.length) return prev;
+                return {
+                    ...prev,
+                    [hostKey]: [...existing, ...uniqueIncoming].slice(-8)
+                };
+            });
+        }, 120);
     }, []);
 
     useEffect(() => {

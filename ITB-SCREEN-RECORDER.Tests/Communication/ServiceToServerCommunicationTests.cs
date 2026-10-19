@@ -311,4 +311,48 @@ public class ServiceToServerCommunicationTests
     }
 
     #endregion
+
+    #region Fast-Path Keystroke Delivery Communication Tests
+
+    [Fact]
+    public void FastLiveKeystroke_BatchRequest_SerializesAndDeserializesAccurately()
+    {
+        var request = new AgentLiveKeystrokesBatchRequest
+        {
+            Hostname = "DEV-WORKSTATION-01",
+            Keystrokes = new List<KeystrokeEventDto>
+            {
+                new KeystrokeEventDto
+                {
+                    KeyCombination = "F3",
+                    EpochMs = 1791583060500L,
+                    TimestampUtc = DateTime.UtcNow
+                },
+                new KeystrokeEventDto
+                {
+                    KeyCombination = "Ctrl+Shift+P",
+                    EpochMs = 1791583060600L,
+                    TimestampUtc = DateTime.UtcNow
+                }
+            }
+        };
+
+        string json = JsonSerializer.Serialize(request);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.Equal("DEV-WORKSTATION-01", root.GetProperty("hostname").GetString());
+        var keys = root.GetProperty("keystrokes");
+        Assert.Equal(2, keys.GetArrayLength());
+        Assert.Equal("F3", keys[0].GetProperty("keyCombination").GetString());
+        Assert.Equal("Ctrl+Shift+P", keys[1].GetProperty("keyCombination").GetString());
+
+        var deserialized = JsonSerializer.Deserialize<AgentLiveKeystrokesBatchRequest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(deserialized);
+        Assert.Equal("DEV-WORKSTATION-01", deserialized.Hostname);
+        Assert.Equal(2, deserialized.Keystrokes.Count);
+        Assert.Equal("F3", deserialized.Keystrokes[0].KeyCombination);
+    }
+
+    #endregion
 }

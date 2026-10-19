@@ -20,6 +20,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 #if WINDOWS
@@ -65,6 +66,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         // 💡 תור צבירה של אירועי מקלדת לדיווח ברפורט הטלמטריה
         private readonly ConcurrentQueue<KeystrokeEventDto> _pendingKeystrokes = new();
+
+        // 💡 ערוץ מהיר לשידור מקשים מיידי מה-Worker לשרת באפס השהייה (Fast Path)
+        private readonly Channel<KeystrokeEventDto> _fastKeystrokesChannel = Channel.CreateBounded<KeystrokeEventDto>(new BoundedChannelOptions(1000)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
 
         private class IpcMessageDto
         {
@@ -250,6 +259,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
             _ = Task.Run(() => ListenToWorkerIpcAsync(stoppingToken), stoppingToken);
             _ = Task.Run(() => PeriodicTrustSyncLoopAsync(stoppingToken), stoppingToken);
+            _ = Task.Run(() => ProcessFastKeystrokesOutboundAsync(stoppingToken), stoppingToken);
 
             if (string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
             {
@@ -364,6 +374,46 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 }
                                 _logger.LogWarning("[IPC-SECURITY] Rejecting unauthorized IPC client connection (Token received: '{Received}').", line);
                                 break;
+                            }
+
+                            // 💡 בדיקת הודעות Fast Path להעברת מקשים מיידית
+                            if (line.StartsWith("Key|", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    string keyJson = line.Substring(4).Trim();
+                                    var key = JsonSerializer.Deserialize<KeystrokeEventDto>(keyJson, jsonOptions);
+                                    if (key != null)
+                                    {
+                                        _fastKeystrokesChannel.Writer.TryWrite(key);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning("Failed to parse immediate keystroke from worker: {Msg}", ex.Message);
+                                }
+                                continue;
+                            }
+
+                            if (line.StartsWith("Keys|", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    string keysJson = line.Substring(5).Trim();
+                                    var keys = JsonSerializer.Deserialize<List<KeystrokeEventDto>>(keysJson, jsonOptions);
+                                    if (keys != null)
+                                    {
+                                        foreach (var k in keys)
+                                        {
+                                            _fastKeystrokesChannel.Writer.TryWrite(k);
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning("Failed to parse immediate keystrokes list from worker: {Msg}", ex.Message);
+                                }
+                                continue;
                             }
 
                             try
@@ -683,6 +733,76 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     await SendCommandToWorkerAsync("ServerDisconnected");
                 }
+            }
+        }
+
+        private async Task ProcessFastKeystrokesOutboundAsync(CancellationToken ct)
+        {
+            var reader = _fastKeystrokesChannel.Reader;
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    if (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
+                    {
+                        var batch = new List<KeystrokeEventDto>();
+                        while (reader.TryRead(out var k) && batch.Count < 50)
+                        {
+                            batch.Add(k);
+                        }
+
+                        if (batch.Count > 0)
+                        {
+                            await SendLiveKeystrokesToServerAsync(batch, ct).ConfigureAwait(false);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("[KEYSTROKE:OUTBOUND] Fast dispatcher error: {Msg}", ex.Message);
+                }
+            }
+        }
+
+        private async Task SendLiveKeystrokesToServerAsync(List<KeystrokeEventDto> keys, CancellationToken ct)
+        {
+            if (keys == null || keys.Count == 0 || string.IsNullOrWhiteSpace(_serverBaseUrl) || string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            try
+            {
+                string cleanBase = _serverBaseUrl.TrimEnd('/');
+                string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? $"{cleanBase}/api/v1/agent/keystrokes"
+                    : cleanBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                        ? $"https://{cleanBase.Substring("http://".Length)}/api/v1/agent/keystrokes"
+                        : $"https://{cleanBase}/api/v1/agent/keystrokes";
+
+                var payload = new AgentLiveKeystrokesBatchRequest
+                {
+                    Hostname = Environment.MachineName,
+                    Keystrokes = keys
+                };
+
+                string jsonPayload = JsonSerializer.Serialize(payload);
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(targetEndpoint, content, ct).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogDebug("[KEYSTROKE:FAST] Server returned non-success ({Status}) for fast keystrokes", response.StatusCode);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("[KEYSTROKE:FAST] Fast keystroke dispatch failed: {Msg}", ex.Message);
             }
         }
 

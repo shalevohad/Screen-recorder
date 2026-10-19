@@ -110,7 +110,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             }
             else
             {
-                _onlineKeystrokes.Enqueue(k);
+                // 💡 שידור מיידי ב-Fast Path לאפס השהייה בסנכרון עם הווידאו
+                _ipc.SendKeystrokeImmediate(k);
             }
         }
 

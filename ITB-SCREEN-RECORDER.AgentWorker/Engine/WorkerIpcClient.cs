@@ -6,8 +6,10 @@ using System.IO;
 using System.IO.Pipes;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 
 namespace ITBRecorderAgent.Engine
 {
@@ -21,6 +23,27 @@ namespace ITBRecorderAgent.Engine
         public event Action? ServerDisconnected;
         public event Action? ServerConnected;
         public event Action<string, string>? EncryptionKeyConfigured;
+
+        private readonly Channel<string> _outgoingChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(500)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
+
+        public void SendKeystrokeImmediate(KeystrokeEventDto key)
+        {
+            if (key == null) return;
+            try
+            {
+                string json = JsonSerializer.Serialize(key);
+                _outgoingChannel.Writer.TryWrite($"Key|{json}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[WORKER:IPC] Failed to enqueue immediate keystroke: {ex.Message}");
+            }
+        }
 
         public Task RunAsync(Func<object> getTelemetryPayload, CancellationToken ct)
         {
@@ -52,28 +75,74 @@ namespace ITBRecorderAgent.Engine
 
                         loggedConnecting = false;
 
+                        using var connCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
                         var listenerTask = Task.Run(async () =>
                         {
                             try
                             {
-                                while (!ct.IsCancellationRequested && client.IsConnected)
+                                while (!connCts.Token.IsCancellationRequested && client.IsConnected)
                                 {
-                                    string? line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+                                    string? line = await reader.ReadLineAsync(connCts.Token).ConfigureAwait(false);
                                     if (!string.IsNullOrWhiteSpace(line)) ProcessCommand(line.Trim());
                                 }
                             }
-                            catch (Exception ex) when (!ct.IsCancellationRequested)
+                            catch (Exception ex) when (!connCts.Token.IsCancellationRequested)
                             {
                                 Logger.Warn($"[WORKER:IPC] Command listener stream terminated: {ex.Message}");
                             }
-                        }, ct);
+                            finally
+                            {
+                                connCts.Cancel();
+                            }
+                        }, connCts.Token);
 
-                        while (!ct.IsCancellationRequested && client.IsConnected)
+                        var channelWriterTask = Task.Run(async () =>
                         {
-                            var report = getTelemetryPayload();
-                            await writer.WriteLineAsync(JsonSerializer.Serialize(report)).ConfigureAwait(false);
-                            await Task.Delay(1000, ct).ConfigureAwait(false);
-                        }
+                            try
+                            {
+                                while (!connCts.Token.IsCancellationRequested && client.IsConnected)
+                                {
+                                    if (await _outgoingChannel.Reader.WaitToReadAsync(connCts.Token).ConfigureAwait(false))
+                                    {
+                                        while (_outgoingChannel.Reader.TryRead(out var msg))
+                                        {
+                                            await writer.WriteLineAsync(msg).ConfigureAwait(false);
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception ex) when (!connCts.Token.IsCancellationRequested)
+                            {
+                                Logger.Warn($"[WORKER:IPC] Channel writer stream terminated: {ex.Message}");
+                            }
+                            finally
+                            {
+                                connCts.Cancel();
+                            }
+                        }, connCts.Token);
+
+                        var telemetryTask = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                while (!connCts.Token.IsCancellationRequested && client.IsConnected)
+                                {
+                                    var report = getTelemetryPayload();
+                                    string telemJson = JsonSerializer.Serialize(report);
+                                    _outgoingChannel.Writer.TryWrite(telemJson);
+                                    await Task.Delay(1000, connCts.Token).ConfigureAwait(false);
+                                }
+                            }
+                            catch (OperationCanceledException) { }
+                            finally
+                            {
+                                connCts.Cancel();
+                            }
+                        }, connCts.Token);
+
+                        await Task.WhenAny(listenerTask, channelWriterTask, telemetryTask).ConfigureAwait(false);
+                        connCts.Cancel();
                     }
                     catch (OperationCanceledException) when (ct.IsCancellationRequested)
                     {
