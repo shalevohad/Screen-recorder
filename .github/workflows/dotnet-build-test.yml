@@ -115,8 +115,10 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.AgentService/ITB-SCREEN-RECORDER.AgentService.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj --no-restore --configuration Release
         dotnet build ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-restore --configuration Release
-        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --no-restore --configuration Release
-        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --no-restore --configuration Release
+        dotnet restore Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer/ITB-SCREEN-RECORDER.Server.Installer.wixproj --configuration Release
+        dotnet restore Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj
+        dotnet build Installers/Windows/ITB-SCREEN-RECORDER.Installer/ITB-SCREEN-RECORDER.Installer.wixproj --configuration Release
 
     - name: Build Solution (Release Configuration - Linux)
       if: startsWith(matrix.os, 'ubuntu')
