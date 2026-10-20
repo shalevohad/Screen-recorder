@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <Company>ITB</Company>
+    <Authors>ITB</Authors>
+    <Product>ITB Screen Recorder</Product>
+    <Copyright>Copyright © ITB 2026</Copyright>
+    <AssemblyCompany>ITB</AssemblyCompany>
+    <AssemblyProduct>ITB Screen Recorder</AssemblyProduct>
+    <AssemblyCopyright>Copyright © ITB 2026</AssemblyCopyright>
+  </PropertyGroup>
+</Project>

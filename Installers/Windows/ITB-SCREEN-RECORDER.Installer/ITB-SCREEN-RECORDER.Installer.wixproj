@@ -1,4 +1,4 @@
-﻿<Project Sdk="WixToolset.Sdk/5.0.0">
+<Project Sdk="WixToolset.Sdk/5.0.0">
 	<PropertyGroup>
 		<OutputType>Package</OutputType>
 		<Platform>x64</Platform>
@@ -27,7 +27,6 @@
 
 	<ItemGroup>
 		<Content Include="LICENSE-FFMPEG.txt" />
-		<Content Include="UpdateAgentSettings.ps1" />
 	</ItemGroup>
 
 	<ItemGroup>

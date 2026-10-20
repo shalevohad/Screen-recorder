@@ -5,10 +5,11 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RootNamespace>ITB_SCREEN_RECORDER.AgentService</RootNamespace>
-		<DebugType>none</DebugType>
-		<DebugSymbols>false</DebugSymbols>
-		<PublishSingleFile>true</PublishSingleFile>
-		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+		<DebugType>embedded</DebugType>
+		<DebugSymbols>true</DebugSymbols>
+		<PublishSingleFile>false</PublishSingleFile>
+		<EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+		<Description>ITB Screen Recorder Supervisor Service</Description>
 	</PropertyGroup>
 
 	<!-- הגדרת WINDOWS מותנית ב-RuntimeIdentifier של היעד לקרוס-קומפילציה נקייה -->

@@ -10,6 +10,11 @@ using ITB_SCREEN_RECORDER.Core.Common;
 
 Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
+if (args.Length >= 2 && string.Equals(args[0], "--configure", StringComparison.OrdinalIgnoreCase))
+{
+    return AgentConfigurator.ApplyConfig(args[1]);
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 
 if (OperatingSystem.IsWindows())
@@ -55,3 +60,5 @@ finally
 {
     Logger.AlwaysInfo("[SERVICE] Service stopped cleanly.");
 }
+
+return 0;

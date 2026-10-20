@@ -1,4 +1,4 @@
-﻿<Project Sdk="WixToolset.Sdk/5.0.0">
+<Project Sdk="WixToolset.Sdk/5.0.0">
 	<PropertyGroup>
 		<OutputType>Package</OutputType>
 		<Platform>x64</Platform>
@@ -24,10 +24,6 @@
 	<ItemGroup>
 		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\Tools\LICENSE-MEDIAMTX.txt" Link="LICENSE-MEDIAMTX.txt" />
 		<Content Include="$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\Tools\mediamtx.yml" Link="mediamtx.yml" />
-		<!-- 💡 סקריפטים מובנים לטעינה והחלת הגדרות ב-MSI -->
-		<Content Include="PreloadSettings.js" />
-		<Content Include="ApplySettings.js" />
-		<Content Include="UpdateSettings.ps1" />
 		<Content Include="PublishFeatures.ps1" />
 	</ItemGroup>
 

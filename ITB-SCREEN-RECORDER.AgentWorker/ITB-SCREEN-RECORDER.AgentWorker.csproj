@@ -7,11 +7,12 @@
 		<Nullable>enable</Nullable>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<RootNamespace>ITB_SCREEN_RECORDER.AgentWorker</RootNamespace>
-		<DebugType>none</DebugType>
-		<DebugSymbols>false</DebugSymbols>
+		<DebugType>embedded</DebugType>
+		<DebugSymbols>true</DebugSymbols>
 		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
-		<PublishSingleFile>true</PublishSingleFile>
-		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+		<PublishSingleFile>false</PublishSingleFile>
+		<EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+		<Description>ITB Screen Recorder Interactive Capture Worker</Description>
 	</PropertyGroup>
 
 	<ItemGroup>

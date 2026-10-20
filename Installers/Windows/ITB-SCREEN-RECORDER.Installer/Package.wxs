@@ -20,10 +20,18 @@
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentService.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentWorker.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 
-		<Property Id="SERVER_IP" Value="AUTO" Secure="yes" />
-		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
-		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
-		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes" />
+		<Property Id="SERVER_IP" Value="AUTO" Secure="yes">
+			<RegistrySearch Id="SearchServerIp" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Agent" Name="ServerIp" Type="raw" />
+		</Property>
+		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes">
+			<RegistrySearch Id="SearchDiscoveryPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Agent" Name="DiscoveryPort" Type="raw" />
+		</Property>
+		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes">
+			<RegistrySearch Id="SearchDiscoveryMulticast" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Agent" Name="DiscoveryMulticast" Type="raw" />
+		</Property>
+		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes">
+			<RegistrySearch Id="SearchDiscoveryBroadcast" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Agent" Name="DiscoveryBroadcast" Type="raw" />
+		</Property>
 
 		<!-- הכנת ארגומנטים לעדכון ה-JSON -->
 		<CustomAction Id="SetJsonDataArgs"
@@ -31,10 +39,10 @@
 					  Value="[INSTALLFOLDER]|[SERVER_IP]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]|[DISCOVERY_BROADCAST]"
 					  Execute="immediate" />
 
-		<!-- הפעלת סקריפט ה-PowerShell החיצוני לעדכון הקונפיגורציה -->
+		<!-- הפעלת עדכון הקונפיגורציה ישירות דרך ה-Service הבינארי ללא PowerShell -->
 		<CustomAction Id="UpdateAgentJson"
-					  Directory="System64Folder"
-					  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -File &quot;[INSTALLFOLDER]UpdateAgentSettings.ps1&quot; &quot;[UpdateAgentJson]&quot;"
+					  Directory="INSTALLFOLDER"
+					  ExeCommand="&quot;[INSTALLFOLDER]ITB-SCREEN-RECORDER.AgentService.exe&quot; --configure &quot;[UpdateAgentJson]&quot;"
 					  Execute="deferred"
 					  Impersonate="no"
 					  Return="ignore" />
@@ -112,9 +120,6 @@
 				<File Id="FfmpegLicenseTxt" Source="LICENSE-FFMPEG.txt" KeyPath="yes" />
 			</Component>
 
-			<Component Id="UpdateAgentSettingsScriptComp" Bitness="always64" Guid="B82D7C1E-4A5F-6D7E-8F9A-0B1C2D3E4F5A">
-				<File Id="UpdateAgentSettingsScriptFile" Source="UpdateAgentSettings.ps1" KeyPath="yes" />
-			</Component>
 
 			<Files Include="$(var.PublishDir)\**">
 				<Exclude Files="$(var.PublishDir)\ITB-SCREEN-RECORDER.AgentService.exe" />

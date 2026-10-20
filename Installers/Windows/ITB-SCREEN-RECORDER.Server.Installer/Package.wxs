@@ -27,28 +27,51 @@
 			</ComponentSearch>
 		</Property>
 
-		<!-- 2. מאפיינים מאובטחים להעברה אמינה מה-UI לתהליך ההתקנה המוגבה -->
-		<Property Id="HTTP_PORT" Value="5090" Secure="yes" />
-		<Property Id="RTMP_PORT" Value="19350" Secure="yes" />
-		<Property Id="API_PORT" Value="9997" Secure="yes" />
-		<Property Id="HLS_PORT" Value="8888" Secure="yes" />
-		<Property Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" Secure="yes" />
-		<Property Id="SERVER_ROLE" Value="Active-Active" Secure="yes" />
-		<Property Id="SERVER_PRIORITY" Value="1" Secure="yes" />
-		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
-		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
-		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes" />
-		<Property Id="ENABLE_VIP" Value="0" Secure="yes" />
-		<Property Id="VIRTUAL_IP" Secure="yes" />
-		<Property Id="VIRTUAL_IP_SUBNET" Value="255.255.255.0" Secure="yes" />
-		<Property Id="PARTNER_URL" Secure="yes" />
+		<!-- 2. מאפיינים מאובטחים עם טעינה אוטומטית מה-Registry ללא סקריפטים -->
+		<Property Id="HTTP_PORT" Value="5090" Secure="yes">
+			<RegistrySearch Id="SearchHttpPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="HttpPort" Type="raw" />
+		</Property>
+		<Property Id="RTMP_PORT" Value="19350" Secure="yes">
+			<RegistrySearch Id="SearchRtmpPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="RtmpPort" Type="raw" />
+		</Property>
+		<Property Id="API_PORT" Value="9997" Secure="yes">
+			<RegistrySearch Id="SearchApiPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="ApiPort" Type="raw" />
+		</Property>
+		<Property Id="HLS_PORT" Value="8888" Secure="yes">
+			<RegistrySearch Id="SearchHlsPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="HlsPort" Type="raw" />
+		</Property>
+		<Property Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" Secure="yes">
+			<RegistrySearch Id="SearchDataDir" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="DataDir" Type="raw" />
+		</Property>
+		<Property Id="SERVER_ROLE" Value="Active-Active" Secure="yes">
+			<RegistrySearch Id="SearchServerRole" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="ServerRole" Type="raw" />
+		</Property>
+		<Property Id="SERVER_PRIORITY" Value="1" Secure="yes">
+			<RegistrySearch Id="SearchServerPriority" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="ServerPriority" Type="raw" />
+		</Property>
+		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes">
+			<RegistrySearch Id="SearchDiscoveryPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="DiscoveryPort" Type="raw" />
+		</Property>
+		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes">
+			<RegistrySearch Id="SearchDiscoveryMulticast" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="DiscoveryMulticast" Type="raw" />
+		</Property>
+		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes">
+			<RegistrySearch Id="SearchDiscoveryBroadcast" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="DiscoveryBroadcast" Type="raw" />
+		</Property>
+		<Property Id="ENABLE_VIP" Value="0" Secure="yes">
+			<RegistrySearch Id="SearchEnableVip" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="EnableVip" Type="raw" />
+		</Property>
+		<Property Id="VIRTUAL_IP" Secure="yes">
+			<RegistrySearch Id="SearchVirtualIp" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="VirtualIp" Type="raw" />
+		</Property>
+		<Property Id="VIRTUAL_IP_SUBNET" Value="255.255.255.0" Secure="yes">
+			<RegistrySearch Id="SearchVipSubnet" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="VirtualIpSubnet" Type="raw" />
+		</Property>
+		<Property Id="PARTNER_URL" Secure="yes">
+			<RegistrySearch Id="SearchPartnerUrl" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Server" Name="PartnerUrl" Type="raw" />
+		</Property>
 
 		<SetProperty Id="INSTALLFOLDER" Value="[PREVIOUS_INSTALLFOLDER]" After="AppSearch" Condition="PREVIOUS_INSTALLFOLDER" />
-
-		<!-- 3. קריאת הגדרות קודמות לפני הצגת מסכי ההתקנה -->
-		<CustomAction Id="PreloadConfigSettings"
-					  Script="jscript"
-					  ScriptSourceFile="PreloadSettings.js" />
 
 		<!-- עצירת תהליכים לפני החלפת קבצים -->
 		<CustomAction Id="KillServerProcElevated"
@@ -65,23 +88,19 @@
 					  Impersonate="no"
 					  Return="ignore" />
 
-		<!-- 💡 4. הכנת נתוני ההתקנה עבור הפעולה הנדחית (Deferred Custom Action) -->
+		<!-- 💡 הכנת נתוני ההתקנה עבור הפעולה הנדחית -->
 		<CustomAction Id="SetApplySettingsData"
 					  Property="ApplySettingsAction"
 					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]|[SERVER_ROLE]|[SERVER_PRIORITY]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]|[ENABLE_VIP]|[VIRTUAL_IP]|[PARTNER_URL]|[VIRTUAL_IP_SUBNET]|[DISCOVERY_BROADCAST]"
 					  Execute="immediate" />
 
-		<!-- 💡 5. החלת ההגדרות ישירות דרך מנוע ה-MSI ללא תלות ב-PowerShell -->
+		<!-- 💡 החלת ההגדרות ישירות דרך קובץ ה-Server הבינארי ללא JScript או PowerShell -->
 		<CustomAction Id="ApplySettingsAction"
-					  Script="jscript"
-					  ScriptSourceFile="ApplySettings.js"
+					  Directory="INSTALLFOLDER"
+					  ExeCommand="&quot;[INSTALLFOLDER]ITB-SCREEN-RECORDER.Server.exe&quot; --configure &quot;[ApplySettingsAction]&quot;"
 					  Execute="deferred"
 					  Impersonate="no"
 					  Return="check" />
-
-		<InstallUISequence>
-			<Custom Action="PreloadConfigSettings" After="CostFinalize" Condition="1" />
-		</InstallUISequence>
 
 		<InstallExecuteSequence>
 			<Custom Action="KillServerProcElevated" Before="StopServices" />

@@ -39,9 +39,15 @@ namespace ITB_SCREEN_RECORDER.Server
     {
         private const string MutexName = "ITB_SERVER_SINGLE_INSTANCE_DEV";
 
-        public static void Main(string[] args)
+        public static int Main(string[] args)
         {
             Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+
+            if (args.Length >= 2 && string.Equals(args[0], "--configure", StringComparison.OrdinalIgnoreCase))
+            {
+                return ServerConfigurator.ApplyConfig(args[1]);
+            }
+
             Environment.SetEnvironmentVariable("ASPNETCORE_HOSTINGSTARTUPASSEMBLIES", null);
 
             int minWorkerThreads = Math.Max(64, Environment.ProcessorCount * 8);
@@ -119,7 +125,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 var conflictMsg = "[CRITICAL] Another instance of ITB-SCREEN-RECORDER Server is already running. Shutting down.";
                 Console.WriteLine(conflictMsg);
                 Logger.Error(conflictMsg);
-                return;
+                return 1;
             }
 
             try
@@ -353,7 +359,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 if (RootPasswordRecovery.TryHandleCliRecovery(args, app))
                 {
-                    return;
+                    return 0;
                 }
 
                 using (var scope = app.Services.CreateScope())
@@ -420,6 +426,8 @@ namespace ITB_SCREEN_RECORDER.Server
             {
                 serverMutex?.Dispose();
             }
+
+            return 0;
         }
 
         private static void EnsureMediaMtxConfiguration(int apiPort = 9997)
