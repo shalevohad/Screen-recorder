@@ -98,14 +98,39 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // 💡 יצירת Master Dummy יחיד לכל אורך ה-Timeline
+            // 💡 הכנת Master Dummy באופן Lazy אך ורק בסנכרון רב-עמדתי (Multicam) כשנמצא פער פנימי
             string? masterDummyPath = null;
-            double totalDurationSecs = (cutEndUtc - cutStartUtc).TotalSeconds;
-            if (totalDurationSecs > 0 && (plan.ActiveSegments.Count > 1 || orderedChunks.Count == 0))
+
+            async Task AppendDummyGapAsync(double gapSeconds)
             {
-                double requiredDummyLength = Math.Max(3600, totalDurationSecs + 60);
-                masterDummyPath = await _dummyGenerator.GetOrCreateDummyVideoAsync(
-                    requiredDummyLength, baselineProbe.Width, baselineProbe.Height, baselineProbe.Fps, trackHasAudio, ct);
+                // שקף No Signal נדרש אך ורק ב-Multicam לשמירה על סנכרון מול עמדה מקבילה; בעמדה בודדת מרווחים נחתכים כ-Global Gaps
+                if (!isMultiStation || gapSeconds <= 0.02) return;
+
+                if (masterDummyPath == null)
+                {
+                    try
+                    {
+                        masterDummyPath = await _dummyGenerator.GetOrCreateDummyVideoAsync(
+                            5.0, baselineProbe.Width, baselineProbe.Height, baselineProbe.Fps, trackHasAudio, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[SynchronizedTrackCutter] Failed creating 5s dummy video for station {StationId}", stationId);
+                    }
+                }
+
+                if (string.IsNullOrEmpty(masterDummyPath)) return;
+
+                double rem = gapSeconds;
+                while (rem > 0.02)
+                {
+                    double slice = Math.Min(rem, 5.0);
+                    manifestLines.Add($"file '{masterDummyPath.Replace('\\', '/')}'");
+                    manifestLines.Add("inpoint 0.000");
+                    manifestLines.Add(string.Format(CultureInfo.InvariantCulture, "outpoint {0:F3}", slice));
+                    rem -= slice;
+                }
+                runningSeconds += gapSeconds;
             }
 
             var manifestLines = new List<string> { "ffconcat version 1.0" };
@@ -129,13 +154,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 if (segChunks.Count == 0)
                 {
                     double gapDur = seg.DurationSeconds;
-                    if (gapDur > 0.05 && masterDummyPath != null)
+                    if (gapDur > 0.05)
                     {
-                        // 💡 חיתוך וירטואלי מתוך ה-Master
-                        manifestLines.Add($"file '{masterDummyPath.Replace('\\', '/')}'");
-                        manifestLines.Add("inpoint 0.000");
-                        manifestLines.Add(string.Format(CultureInfo.InvariantCulture, "outpoint {0:F3}", gapDur));
-                        runningSeconds += gapDur;
+                        await AppendDummyGapAsync(gapDur);
                     }
                     continue;
                 }
@@ -145,13 +166,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     if (chunk.StartUtc > cursor.AddSeconds(0.2))
                     {
                         double gapDur = (chunk.StartUtc - cursor).TotalSeconds;
-                        if (masterDummyPath != null)
-                        {
-                            manifestLines.Add($"file '{masterDummyPath.Replace('\\', '/')}'");
-                            manifestLines.Add("inpoint 0.000");
-                            manifestLines.Add(string.Format(CultureInfo.InvariantCulture, "outpoint {0:F3}", gapDur));
-                            runningSeconds += gapDur;
-                        }
+                        await AppendDummyGapAsync(gapDur);
                     }
 
                     DateTime effStart = chunk.StartUtc < cursor ? cursor : chunk.StartUtc;
@@ -182,13 +197,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 if (cursor < seg.EndUtc.AddSeconds(-0.2))
                 {
                     double gapDur = (seg.EndUtc - cursor).TotalSeconds;
-                    if (masterDummyPath != null)
-                    {
-                        manifestLines.Add($"file '{masterDummyPath.Replace('\\', '/')}'");
-                        manifestLines.Add("inpoint 0.000");
-                        manifestLines.Add(string.Format(CultureInfo.InvariantCulture, "outpoint {0:F3}", gapDur));
-                        runningSeconds += gapDur;
-                    }
+                    await AppendDummyGapAsync(gapDur);
                 }
             }
 
@@ -258,8 +267,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             vfFilters.Add("format=yuv420p");
             string videoFilterArg = string.Join(",", vfFilters);
 
+            int safeAudioRate = baselineProbe.AudioSampleRate > 0 ? baselineProbe.AudioSampleRate : 48000;
+            int safeAudioChannels = baselineProbe.AudioChannels > 0 ? baselineProbe.AudioChannels : 2;
+
             string audioArg = trackHasAudio
-                ? $"-c:a aac -b:a 128k -ar {baselineProbe.AudioSampleRate} -ac {baselineProbe.AudioChannels}"
+                ? $"-c:a aac -b:a 128k -ar {safeAudioRate} -ac {safeAudioChannels}"
                 : "-an";
 
             string ffmpegPath = _binaryResolver.ResolveFfmpeg();
@@ -340,12 +352,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 _concurrencyThrottle.Release();
                 if (File.Exists(tempManifestPath)) try { File.Delete(tempManifestPath); } catch { }
                 if (subtitleTempPath != null && File.Exists(subtitleTempPath)) try { File.Delete(subtitleTempPath); } catch { }
-
-                // מחיקת ה-Master Dummy של התחנה בסוף התהליך כדי לפנות מקום
-                if (masterDummyPath != null && File.Exists(masterDummyPath))
-                {
-                    try { File.Delete(masterDummyPath); } catch { }
-                }
             }
         }
     }

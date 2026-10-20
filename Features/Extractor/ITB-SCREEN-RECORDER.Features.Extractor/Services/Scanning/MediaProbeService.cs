@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/Scanning/MediaProbeService.cs
 // ==========================================
 using System;
@@ -132,7 +132,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 FileName = ffprobePath,
                 Arguments = $"-v error -show_streams -show_format -of json \"{filePath.Replace('\\', '/')}\"",
                 RedirectStandardOutput = true,
-                RedirectStandardError = true, // We don't read standard error to avoid blocks
+                RedirectStandardError = false, // 💡 חובה false כדי למנוע deadlock ב-OS pipe buffer כש-ffprobe רושם אזהרות
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -143,9 +143,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 proc.Start();
 
-                // 💡 קריאה חסכונית בזיכרון (Stream-based) ללא StringBuilder
-                using var doc = await JsonDocument.ParseAsync(proc.StandardOutput.BaseStream, default, ct);
-                await proc.WaitForExitAsync(ct);
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+
+                // 💡 קריאה חסכונית בזיכרון (Stream-based) ללא StringBuilder עם הגבלת זמן למניעת תקיעות
+                using var doc = await JsonDocument.ParseAsync(proc.StandardOutput.BaseStream, default, timeoutCts.Token);
+                await proc.WaitForExitAsync(timeoutCts.Token);
 
                 if (doc.RootElement.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
                 {
