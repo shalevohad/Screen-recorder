@@ -245,13 +245,13 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
             new KeystrokeEventDto
             {
                 EpochMs = baseEpoch + 1000,
-                KeyCombination = PayloadEncryptionManager.Encrypt("Ctrl + Shift + Escape", activeKeyId, activeKeyBytes),
+                KeyCombination = PayloadEncryptionManager.Encrypt("Ctrl + Shift + Esc", activeKeyId, activeKeyBytes),
                 TimestampUtc = DateTime.UtcNow
             },
             new KeystrokeEventDto
             {
                 EpochMs = baseEpoch + 4000,
-                KeyCombination = PayloadEncryptionManager.Encrypt("WIN + D", activeKeyId, activeKeyBytes),
+                KeyCombination = PayloadEncryptionManager.Encrypt("Win + D", activeKeyId, activeKeyBytes),
                 TimestampUtc = DateTime.UtcNow
             }
         };
@@ -269,8 +269,8 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
         try
         {
             string srtContent = await File.ReadAllTextAsync(srtPath);
-            Assert.Contains("[ Ctrl + Shift + Escape ]", srtContent);
-            Assert.Contains("[ WIN + D ]", srtContent);
+            Assert.Contains("[ Ctrl + Shift + Esc ]", srtContent);
+            Assert.Contains("[ Win + D ]", srtContent);
             Assert.DoesNotContain(PayloadEncryptionManager.EnvelopePrefix, srtContent);
         }
         finally
@@ -290,7 +290,7 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
             Assert.Contains("[V4+ Styles]", assContent);
             Assert.Contains("CTRL", assContent);
             Assert.Contains("SHIFT", assContent);
-            Assert.Contains("ESCAPE", assContent);
+            Assert.Contains("ESC", assContent);
             Assert.Contains("WIN", assContent);
             Assert.Contains("D", assContent);
             Assert.DoesNotContain(PayloadEncryptionManager.EnvelopePrefix, assContent);
