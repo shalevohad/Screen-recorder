@@ -63,6 +63,15 @@ The absolute source of truth for behavioral invariants is [RULES.md](file:///c:/
      new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
      ```
    - FFmpeg probe commands must include `-analyzeduration 1M -probesize 1M -threads 2`.
+7. **Rule 11: Multi-Monitor Per-Adapter Capture & Dynamic Hot-Plug (Enforced)**
+   - Displays are enumerated across all GPU adapters via DXGI (Windows) or XRandR/PipeWire (Linux). Zero cross-GPU PCIe texture transfers.
+   - Stream paths: `live/{hostname}/mon-0` (primary + audio), `live/{hostname}/mon-1` (secondary video).
+   - Display hot-plug/unplug dynamically spins up or flushes discrete pipelines without interrupting surviving streams.
+8. **Rule 12: High-Density Stream Governance, Canvas Default & Audio Solo Sink (Enforced)**
+   - Station cards in Dashboard default to **Virtual Desktop Canvas** layout.
+   - Cards off-screen are virtualized (Intersection Observer) to guarantee zero browser decoder exhaustion.
+   - **Exclusive Audio Solo**: Only one station plays live audio at any given time in the grid; all other stations remain muted.
+   - **Fullscreen Minimap Radar**: Navigating away from Canvas in Fullscreen spawns a clickable Picture-in-Picture Minimap for instant display switching.
 
 ---
 
@@ -83,6 +92,11 @@ All frontend development in `ClientApp` and `ExtractorAdvanced/Client` must conf
   - Backgrounds: `--bg-app: #070A10`, `--surface-panel: #0F172A`, `--surface-card: #151E2E`
   - Accents: `--accent-cyan: #06B6D4`, `--accent-emerald: #10B981` (Live/Healthy), `--accent-rose: #F43F5E` (Drop/Alert), `--accent-amber: #F59E0B`
 - **Dynamic Living UI**: Ambient radar pulses, live micro-bars for telemetry, smooth transitions, glassmorphic floating bars.
+- **Multi-Monitor Components**:
+  - `VirtualTopologyCanvas`: Proportionally positioned monitors reflecting real OS virtual desktop bounds.
+  - `StationThumbnail` Switcher: `[ ⊞ Canvas | 🖥 1 | 🖥 2 ]` directly on grid cards.
+  - `FullscreenMinimapNavigator`: Interactive HUD minimap with glowing focus indicator and click-to-switch.
+  - `MasterAudioDock`: Floating bottom bar for the single active audio listener with live VU meter and volume slider.
 - **NEVER** use plain HTML/CSS default colors (`red`, `green`, `blue`).
 
 ---

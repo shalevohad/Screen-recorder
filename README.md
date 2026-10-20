@@ -86,6 +86,13 @@ The codebase is structured into clear architectural layers:
 - Low-level keyboard hook logs operational keystroke metadata.
 - Automated `.srt` subtitle generation allows forensic analysts to review entered commands and hotkeys synchronized directly with video playback.
 
+### 7. Multi-Monitor & Multi-GPU Topology Capture
+- Native multi-adapter DXGI capture on Windows and XRandR/PipeWire on Linux without PCIe texture copying across GPUs.
+- Seamless dynamic hot-plug/unplug: adding or removing a monitor starts or flushes independent encoder pipelines without interrupting surviving screens.
+- Default **Virtual Desktop Canvas** in dashboard: renders multi-screen workstations in their real-world physical geometry.
+- Interactive **HUD Minimap Radar Navigator** in Fullscreen mode with live display highlight and click-to-switch.
+- **Exclusive Audio Solo (Intercom)**: Single-click audio monitoring for any station in the fleet with a floating master audio dock and zero CPU decoding for unselected feeds.
+
 ---
 
 ## 📜 System Rules & Invariants
@@ -100,6 +107,8 @@ This platform is governed by strict operational rules documented in [RULES.md](f
 - **Rule 8 (Tri-Tier GPU Probing)**: NVENC &rarr; Intel QuickSync &rarr; CPU libx264.
 - **Rule 9 (Multicam Track Cutting)**: Identical timeline durations with synthetic "No Signal" gap fills.
 - **Rule 10 (Near-Live Hot-Window Access)**: Non-locking file streams (`FileShare.ReadWrite | FileShare.Delete`) for zero-collision inspection during active recording.
+- **Rule 11 (Multi-Monitor Capture & Hot-Plug)**: Discrete per-adapter encoder pipelines, `live/{hostname}/mon-N` paths, and resilient runtime add/remove.
+- **Rule 12 (NOC Stream Governance & Audio Solo)**: Default Canvas layout, viewport virtualization via Intersection Observer, and exclusive audio solo sink.
 
 ---
 

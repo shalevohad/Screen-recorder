@@ -135,3 +135,41 @@ Forensic investigation and time-scrubbing must allow operators to inspect record
     preventing file access collisions with MediaMTX while it is actively writing or rotating chunks.
   - FFmpeg probe commands on hot files inject `-analyzeduration 1M -probesize 1M -threads 2` to prevent stream-read blocking.
 
+---
+
+## 11. Multi-Monitor Per-Adapter Capture & Dynamic Hot-Plug — Enforced
+
+Workstations equipped with multiple physical displays (whether driven by a single GPU, multiple distinct GPUs such as NVIDIA dGPU + Intel iGPU, or USB DisplayLink adapters) must capture each display as a discrete, independent stream.
+
+- **Implementation**: `DxgiMultiScreenCapture` (Windows), `LinuxX11ScreenCapture` (Linux XRandR / Wayland PipeWire), and `StationDisplayTopologyDto`.
+- **Per-Adapter Isolation**:
+  - Monitors are enumerated via DXGI (`EnumAdapters1` → `EnumOutputs`). Each display attaches directly to a Direct3D 11 device allocated on the specific hardware adapter driving that display. Zero cross-GPU PCIe texture transfers.
+  - Primary displays stream by default to `live/{hostname}/mon-0` (or `live/{hostname}` for single-monitor compatibility). Secondary displays stream to `live/{hostname}/mon-1`, `mon-2`, etc.
+- **Dynamic Hot-Plug & Unplug Resilience**:
+  - Display connection or disconnection events (`WM_DISPLAYCHANGE`, DXGI `DXGI_ERROR_ACCESS_LOST`, XRandR notifications) must NOT interrupt or restart existing healthy streams.
+  - When a monitor is disconnected, its specific FFmpeg encoder pipeline gracefully flushes and closes its active chunk. The primary stream continues recording without dropping a frame.
+  - When a new monitor is connected at runtime, a dedicated capture pipeline spins up dynamically and begins streaming/recording from the next keyframe.
+- **Forensic Slate Gap Filling**:
+  - In multicam/multi-monitor exports, asymmetric timelines (e.g. Monitor 2 plugged in 15 minutes after Monitor 1 started) are bridged automatically by `SynchronizedTrackCutter` with a synthetic "No Signal / Disconnected" slate, maintaining 100% timecode synchronization across all tracks.
+
+---
+
+## 12. High-Density NOC Stream Governance, Canvas Default & Audio Solo Sink — Enforced
+
+In large-scale operations (70–100+ workstations, 150–250+ video feeds), the web dashboard must maintain zero browser crashes and strict resource bounds.
+
+- **Default Virtual Topology Canvas**:
+  - In the primary Dashboard grid, station thumbnails display the **Virtual Desktop Canvas** by default, rendering displays proportionally according to their real-world OS coordinate geometry (`X, Y, Width, Height`).
+  - Every card features a local switcher (`[ ⊞ Canvas | 🖥 1 | 🖥 2 ]`), allowing operators to collapse any station to a single monitor feed, instantly shedding decoder overhead.
+- **Viewport-Based Virtualization (Intersection Observer)**:
+  - WebRTC WHEP connections are established exclusively for station cards currently inside the browser's visible viewport (typically 8–16 cards). Cards scrolled off-screen pause or disconnect their media sessions, bounding active client-side decoders.
+- **Exclusive Audio Solo Sink (Radio Intercom Model)**:
+  - All station cards in the Dashboard grid are muted by default (`audio: false` / zero audio DSP processing).
+  - Clicking the 🎧 icon on any card grants **Exclusive Audio Solo**: that station immediately unmutes and streams live audio into the operator's headphones/speakers, while any previously active station is instantly muted.
+  - Exactly ONE station produces audio at any time in the grid view.
+- **Fullscreen Minimap Radar Navigator**:
+  - When viewing a station in Fullscreen Solo or Spotlight mode, an interactive Picture-in-Picture Minimap of the full Canvas layout is displayed in the viewport corner.
+  - The currently viewed monitor is highlighted with a radiant glow and active radar tag.
+  - All monitor boxes in the minimap are interactive: clicking a box immediately switches the full-screen view to that display, and clicking the canvas frame returns to full Canvas mode.
+
+
