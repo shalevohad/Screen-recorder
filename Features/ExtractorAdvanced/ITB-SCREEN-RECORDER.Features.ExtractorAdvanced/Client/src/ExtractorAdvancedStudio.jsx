@@ -156,7 +156,7 @@ export default function ExtractorAdvancedStudio() {
         return allStations.find(s => s.id === spotlightStationId) || null;
     }, [allStations, spotlightStationId]);
 
-    // 💡 האם Spotlight מוצג כעת במסך מלא
+    // Spotlight fullscreen display state
     const isSpotlightOpen = Boolean(spotlightStationId && spotlightStation);
 
     const lastViewBeforeFullscreenRef = useRef('grid');
@@ -536,7 +536,7 @@ export default function ExtractorAdvancedStudio() {
                             <div className="alert-text">
                                 <span className="alert-title">NO RECORDING SESSIONS FOUND IN SELECTED TIME SCOPE</span>
                                 <span className="alert-desc">
-                                    לא אותרו תחנות או מקטעי וידאו מוקלטים בטווח הזמן שנבחר ({timeRange.start} — {timeRange.end}).
+                                    No stations or recorded video segments were found in the selected time range ({timeRange.start} — {timeRange.end}).
                                 </span>
                             </div>
                         </div>
@@ -579,7 +579,7 @@ export default function ExtractorAdvancedStudio() {
                                     playheadMs={playheadMs}
                                     playheadEpochMs={currentPlayheadEpochMs}
                                     timeMode={timeMode}
-                                    /* 💡 קריטי: כאשר Spotlight פתוח, משביתים את הניגון והסאונד ב-Viewport שמתחתיו */
+                                    /* Critical: When Spotlight is open, disable playback and audio in the underlying Viewport */
                                     isPlaying={isSpotlightOpen ? false : isPlaying}
                                     setIsPlaying={setIsPlaying}
                                     totalDurationMs={totalTimelineDurationMs}
