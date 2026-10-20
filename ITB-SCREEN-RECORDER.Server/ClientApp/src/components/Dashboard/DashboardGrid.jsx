@@ -1,7 +1,7 @@
 // ==========================================
 // File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
 // ==========================================
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import { useDashboardLogic } from './useDashboardLogic';
 
 import StationInspectorDrawer from '../Station/StationInspectorDrawer';
@@ -23,7 +23,7 @@ export default function DashboardGrid(props) {
         stations = [], actionPending, onToggleStream,
         onQuickBookmark, onQuickPlayback, systemConfig, onSystemConfigUpdate,
         direction, hideOffline, onToggleHideOffline,
-        isFaultFilterActive, onExitFaultFilter
+        isFaultFilterActive, onExitFaultFilter, liveKeystrokes = {}
     } = props;
 
     const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
@@ -38,8 +38,12 @@ export default function DashboardGrid(props) {
         logic.handleCloseFeature(featId);
     }, [logic]);
 
-    // 💡 גזירה ישירה ונקייה של ה-Host הפעיל ללא שימוש ב-ref בזמן רינדור
-    const activeTargetHost = logic.focusedWidgetHost || stations[0]?.hostname || 'OHAD-DESKTOP';
+    // 💡 שמירה על יציבות ה-Host הפעיל כך שהווידג'ט בסטודיו לא יאותחל כשעמדה אחרת מתנתקת או מתחברת
+    const stableDefaultHostRef = useRef(null);
+    if (!stableDefaultHostRef.current && stations.length > 0) {
+        stableDefaultHostRef.current = stations[0]?.hostname;
+    }
+    const activeTargetHost = logic.focusedWidgetHost || stableDefaultHostRef.current || stations[0]?.hostname || 'OHAD-DESKTOP';
     const activeFeatureId = logic.activeFeatureObject?.id;
 
     const extractorWidgetProps = useMemo(() => ({
@@ -64,8 +68,8 @@ export default function DashboardGrid(props) {
                     handleFilteredBulkStart={logic.handleFilteredBulkStart}
                     canStopAny={logic.canStopAny}
                     handleFilteredBulkStop={logic.handleFilteredBulkStop}
-                    hideOffline={hideOffline}
-                    onToggleHideOffline={onToggleHideOffline}
+                    keystrokeMode={logic.keystrokeMode}
+                    handleCycleKeystrokeMode={logic.handleCycleKeystrokeMode}
                     sortAsc={logic.sortAsc}
                     setSortAsc={logic.setSortAsc}
                     canSort={logic.canSort}
@@ -151,6 +155,8 @@ export default function DashboardGrid(props) {
                         currentTabFilter={logic.currentTabFilter}
                         setFilterForTab={logic.setFilterForTab}
                         resultCount={logic.processedStations.length}
+                        hideOffline={hideOffline}
+                        onToggleHideOffline={onToggleHideOffline}
                     />
 
                     <FleetTabs
@@ -223,6 +229,8 @@ export default function DashboardGrid(props) {
                                         onQuickBookmark={onQuickBookmark}
                                         onQuickPlayback={onQuickPlayback}
                                         handleFeatureQuickExport={logic.handleFeatureQuickExport}
+                                        liveKeystrokes={liveKeystrokes}
+                                        keystrokeMode={logic.keystrokeMode}
                                     />
                                 ) : (
                                     <StationsDenseView
@@ -235,6 +243,8 @@ export default function DashboardGrid(props) {
                                         onToggleStream={onToggleStream}
                                         setInspectedHostname={logic.setInspectedHostname}
                                         setFullscreenHostname={logic.setFullscreenHostname}
+                                        liveKeystrokes={liveKeystrokes}
+                                        keystrokeMode={logic.keystrokeMode}
                                     />
                                 )}
 
@@ -328,6 +338,8 @@ export default function DashboardGrid(props) {
                     hostname={logic.fullscreenStation.hostname}
                     isStreaming={logic.fullscreenStation.isStreaming}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                    recentKeystrokes={liveKeystrokes[logic.fullscreenStation?.hostname?.toLowerCase()]}
+                    keystrokeMode={logic.keystrokeMode}
                     onClose={() => logic.setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
                     onQuickBookmark={onQuickBookmark}

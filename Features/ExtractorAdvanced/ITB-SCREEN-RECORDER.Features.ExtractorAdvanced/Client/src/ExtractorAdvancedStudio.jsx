@@ -422,11 +422,11 @@ export default function ExtractorAdvancedStudio() {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return alert('No active stations selected in timeline.');
 
-        let numericMode = 2;
+        let resolvedMode = 'BurnIn';
         const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        if (normMode === 'NONE' || normMode === 'OFF') numericMode = 0;
-        else if (normMode === 'CAPTION') numericMode = 1;
-        else numericMode = 2;
+        if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
+        else if (normMode === 'CAPTION') resolvedMode = 'Caption';
+        else resolvedMode = 'BurnIn';
 
         try {
             const response = await fetch('/api/v1/extractor-advanced/cut', {
@@ -436,7 +436,7 @@ export default function ExtractorAdvancedStudio() {
                     stationIds: targetStationIds,
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
-                    keystrokeMode: numericMode
+                    keystrokeMode: resolvedMode
                 })
             });
 

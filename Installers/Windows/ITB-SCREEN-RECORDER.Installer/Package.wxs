@@ -20,10 +20,15 @@
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentService.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 		<util:CloseApplication Target="ITB-SCREEN-RECORDER.AgentWorker.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
 
+		<Property Id="SERVER_IP" Value="AUTO" Secure="yes" />
+		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
+		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
+		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes" />
+
 		<!-- הכנת ארגומנטים לעדכון ה-JSON -->
 		<CustomAction Id="SetJsonDataArgs"
 					  Property="UpdateAgentJson"
-					  Value="[INSTALLFOLDER]|[SERVER_IP]"
+					  Value="[INSTALLFOLDER]|[SERVER_IP]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]|[DISCOVERY_BROADCAST]"
 					  Execute="immediate" />
 
 		<!-- הפעלת סקריפט ה-PowerShell החיצוני לעדכון הקונפיגורציה -->
@@ -43,7 +48,6 @@
 		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
 
-		<Property Id="SERVER_IP" Value="127.0.0.1" />
 
 		<UI>
 			<Dialog Id="ConfigurationDlg" Width="370" Height="270" Title="[ProductName] Setup">
@@ -52,10 +56,18 @@
 				<Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
 
 				<Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Agent Configuration" />
-				<Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter the IP address or Hostname of the Central ITB Server." />
+				<Control Id="Description" Type="Text" X="25" Y="23" Width="320" Height="15" Transparent="yes" NoPrefix="yes" Text="Central ITB Server discovery and connection settings." />
 
-				<Control Id="IpLabel" Type="Text" X="20" Y="60" Width="330" Height="15" Text="Central Server IP/Host (e.g. 192.168.1.50):" />
-				<Control Id="IpEdit" Type="Edit" X="20" Y="75" Width="200" Height="18" Property="SERVER_IP" />
+				<Control Id="IpLabel" Type="Text" X="20" Y="52" Width="330" Height="13" Text="Central Server IP/Host (Default: AUTO for Autonomous Discovery):" />
+				<Control Id="IpEdit" Type="Edit" X="20" Y="66" Width="180" Height="18" Property="SERVER_IP" />
+
+				<Control Id="DiscPortLabel" Type="Text" X="20" Y="94" Width="90" Height="13" Text="Discovery Port:" />
+				<Control Id="DiscPortEdit" Type="Edit" X="20" Y="108" Width="70" Height="18" Property="DISCOVERY_PORT" />
+
+				<Control Id="DiscMcastLabel" Type="Text" X="115" Y="94" Width="180" Height="13" Text="Discovery Multicast Group IP:" />
+				<Control Id="DiscMcastEdit" Type="Edit" X="115" Y="108" Width="140" Height="18" Property="DISCOVERY_MULTICAST" />
+
+				<Control Id="AutoNote" Type="Text" X="20" Y="135" Width="330" Height="30" Text="Leave as 'AUTO' to autonomously discover and register with Central Server via UDP Multicast and corporate DNS. Enter specific IP or hostname only to override." />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />

@@ -1,0 +1,218 @@
+// ==========================================
+// File: ClientApp/src/components/Keystroke/LiveKeystrokeOverlay.scss
+// ==========================================
+
+.live-keystroke-overlay-root {
+    position: absolute;
+    pointer-events: none;
+    user-select: none;
+    z-index: 35;
+    transition: opacity 0.1s ease-out;
+
+    .keycap-cluster {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        background: rgba(10, 15, 26, 0.88);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(0, 240, 255, 0.35);
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 240, 255, 0.25);
+        animation: keycap-pop 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .keycap-badge {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+        border: 1.5px solid #00f0ff;
+        border-radius: 6px;
+        box-shadow: 0 0 10px rgba(0, 240, 255, 0.35), 0 3px 8px rgba(0, 0, 0, 0.8), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+
+        &.is-masked {
+            border-color: #38bdf8;
+            background: linear-gradient(180deg, #1e293b 0%, #091322 100%);
+            .keycap-text {
+                color: #38bdf8;
+            }
+        }
+
+        .keycap-text {
+            font-family: 'JetBrains Mono', 'Segoe UI', monospace;
+            font-weight: 800;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            line-height: 1;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+        }
+    }
+
+    .keycap-plus {
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 800;
+        color: #00f0ff;
+        text-shadow: 0 0 6px rgba(0, 240, 255, 0.8);
+        margin: 0 1px;
+    }
+
+    // 🎯 מצב VIEWPORT בכרטיס התחנה
+    &.mode-viewport {
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+
+        .keycap-badge {
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+
+            .keycap-text {
+                font-size: 13px;
+            }
+        }
+
+        .keycap-plus {
+            font-size: 13px;
+        }
+    }
+
+    // 🎯 מצב CAPTION: כתובית סרטים רכה בתחתית
+    &.mode-caption {
+        .caption-bar {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(9, 14, 26, 0.94);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1.5px solid rgba(0, 240, 255, 0.45);
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85), 0 0 12px rgba(0, 240, 255, 0.25);
+            animation: keycap-pop 0.16s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+            .caption-text {
+                font-family: 'JetBrains Mono', monospace;
+                font-weight: 800;
+                color: #ffffff;
+                letter-spacing: 0.6px;
+                white-space: nowrap;
+                text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+            }
+        }
+
+        &.mode-viewport {
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+
+            .caption-bar {
+                padding: 3px 10px;
+
+                .caption-text {
+                    font-size: 11.5px;
+                }
+            }
+        }
+
+        &.mode-fullscreen {
+            bottom: 42px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 55;
+
+            .caption-bar {
+                padding: 6px 18px;
+                border-radius: 8px;
+
+                .caption-text {
+                    font-size: 16px;
+                    letter-spacing: 0.8px;
+                }
+            }
+        }
+    }
+
+    // 🎯 מצב FULLSCREEN / THEATER
+    &.mode-fullscreen {
+        bottom: 36px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+
+        .keycap-cluster {
+            gap: 10px;
+            padding: 10px 16px;
+            border-radius: 12px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.9), 0 0 25px rgba(0, 240, 255, 0.4);
+        }
+
+        .keycap-badge {
+            min-width: 52px;
+            height: 48px;
+            padding: 0 16px;
+            border-width: 2.5px;
+            border-radius: 8px;
+            box-shadow: 0 0 16px rgba(0, 240, 255, 0.5), 0 6px 16px rgba(0, 0, 0, 0.9), inset 0 2px 2px rgba(255, 255, 255, 0.4);
+
+            .keycap-text {
+                font-size: 20px;
+                letter-spacing: 0.8px;
+            }
+        }
+
+        .keycap-plus {
+            font-size: 20px;
+            margin: 0 3px;
+        }
+    }
+}
+
+// 🎯 תצוגה דחוסה לטבלת תחנות
+.live-keystroke-compact-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    background: rgba(6, 182, 212, 0.15);
+    border: 1px solid rgba(6, 182, 212, 0.45);
+    border-radius: 4px;
+    color: #38bdf8;
+    box-shadow: 0 0 8px rgba(6, 182, 212, 0.25);
+    animation: keycap-pop 0.15s ease-out;
+
+    .live-key-beacon {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #00f0ff;
+        box-shadow: 0 0 6px #00f0ff;
+        animation: tactical-pulse 0.8s ease-in-out infinite alternate;
+    }
+
+    .live-key-text {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.3px;
+        line-height: 1;
+        white-space: nowrap;
+    }
+}
+
+@keyframes keycap-pop {
+    0% {
+        transform: scale(0.85);
+        opacity: 0.5;
+    }
+    60% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/FfmpegBinaryResolver.cs
 // ==========================================
 using System;
@@ -107,7 +107,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             if (bitrateKbps.HasValue && bitrateKbps.Value > 0)
             {
-                return $"{baseArgs} -b:v {bitrateKbps.Value}k";
+                return $"{baseArgs} -maxrate {bitrateKbps.Value}k -bufsize {bitrateKbps.Value}k";
             }
             return baseArgs;
         }
@@ -128,8 +128,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 {
                     HardwareType = "NVIDIA NVENC",
                     VideoEncoder = "h264_nvenc",
-                    EncoderArgs = "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 20",
-                    ZeroLatencyEncoderArgs = "-c:v h264_nvenc -preset p1 -tune zerolatency -zerolatency 1 -rc cbr -pix_fmt yuv420p",
+                    EncoderArgs = "-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 21 -b:v 0 -maxrate 6000k -bufsize 6000k",
+                    ZeroLatencyEncoderArgs = "-c:v h264_nvenc -preset p2 -tune ull -zerolatency 1 -rc vbr -cq 21 -b:v 0 -maxrate 6000k -bufsize 6000k -pix_fmt yuv420p",
                     HwaccelDecodeArgs = "-hwaccel cuda",
                     IsGpuAccelerated = true
                 };
@@ -143,8 +143,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 {
                     HardwareType = "Intel QSV",
                     VideoEncoder = "h264_qsv",
-                    EncoderArgs = "-c:v h264_qsv -preset veryfast -global_quality 20",
-                    ZeroLatencyEncoderArgs = "-c:v h264_qsv -preset veryfast -pix_fmt yuv420p",
+                    EncoderArgs = "-c:v h264_qsv -preset veryfast -global_quality 21 -b:v 0 -maxrate 6000k -bufsize 6000k",
+                    ZeroLatencyEncoderArgs = "-c:v h264_qsv -preset veryfast -global_quality 21 -b:v 0 -maxrate 6000k -bufsize 6000k -pix_fmt yuv420p",
                     HwaccelDecodeArgs = "-hwaccel qsv",
                     IsGpuAccelerated = true
                 };
@@ -156,8 +156,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 HardwareType = "CPU",
                 VideoEncoder = "libx264",
-                EncoderArgs = "-c:v libx264 -preset veryfast -crf 20",
-                ZeroLatencyEncoderArgs = "-c:v libx264 -preset ultrafast -tune zerolatency -threads 2 -pix_fmt yuv420p",
+                EncoderArgs = "-c:v libx264 -preset veryfast -crf 21 -maxrate 6000k -bufsize 6000k",
+                ZeroLatencyEncoderArgs = "-c:v libx264 -preset veryfast -tune zerolatency -crf 21 -maxrate 6000k -bufsize 6000k -threads 2 -pix_fmt yuv420p",
                 HwaccelDecodeArgs = "-hwaccel auto",
                 IsGpuAccelerated = false
             };

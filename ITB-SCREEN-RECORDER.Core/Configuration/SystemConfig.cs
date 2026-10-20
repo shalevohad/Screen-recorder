@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Core/Configuration/SystemConfig.cs
 // ==========================================
 using System;
@@ -50,6 +50,49 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Required]
         [Range(10, 60, ErrorMessage = "DefaultTargetFps must be between 10 and 60.")]
         public int DefaultTargetFps { get; set; } = 20;
+
+        [Required]
+        public DiscoverySettings Discovery { get; set; } = new DiscoverySettings();
+    }
+
+    public class DiscoverySettings
+    {
+        public bool Enabled { get; set; } = true;
+
+        [Range(1024, 65535)]
+        public int Port { get; set; } = 5098;
+
+        public string MulticastAddress { get; set; } = "239.255.10.90";
+
+        public bool EnableBroadcastFallback { get; set; } = true;
+
+        public string BroadcastAddress { get; set; } = "255.255.255.255";
+
+        public string ServerDisplayName { get; set; } = "ITB Central Server";
+
+        public string EnvironmentName { get; set; } = "Production";
+
+        public string ServiceName { get; set; } = "ITB-SCREEN-RECORDER";
+
+        public string Role { get; set; } = "Active-Active"; // "Active-Active", "Standalone", "Aggregate"
+
+        [Range(0, 100)]
+        public int Priority { get; set; } = 1;
+
+        public string? PartnerServerUrl { get; set; }
+
+        public bool AutoFailoverDashboard { get; set; } = true;
+
+        [Range(1, 60)]
+        public int DashboardFailoverDelaySeconds { get; set; } = 8;
+
+        public bool EnableVirtualIp { get; set; } = false;
+
+        public string? VirtualIp { get; set; }
+
+        public string VirtualIpSubnetMask { get; set; } = "255.255.255.0";
+
+        public string? NetworkInterfaceName { get; set; }
     }
 
     public class DstTransitionRule

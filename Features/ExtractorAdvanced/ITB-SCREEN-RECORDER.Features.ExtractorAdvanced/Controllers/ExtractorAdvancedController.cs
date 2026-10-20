@@ -380,7 +380,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 FileName = ffmpegPath,
                 Arguments = arguments,
                 RedirectStandardOutput = true,
-                RedirectStandardError = false,
+                RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -391,6 +391,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             try
             {
                 process.Start();
+                var stderrTask = process.StandardError.ReadToEndAsync(ct);
 
                 byte[] buffer = new byte[32768];
                 int bytesRead;
@@ -400,6 +401,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 {
                     await Response.Body.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
                     await Response.Body.FlushAsync(ct);
+                }
+
+                if (process.HasExited && process.ExitCode != 0)
+                {
+                    string err = await stderrTask;
+                    _logger.LogWarning("[Stream:FFmpeg] Process exited with code {Code}: {Err}", process.ExitCode, err);
                 }
             }
             catch (OperationCanceledException)

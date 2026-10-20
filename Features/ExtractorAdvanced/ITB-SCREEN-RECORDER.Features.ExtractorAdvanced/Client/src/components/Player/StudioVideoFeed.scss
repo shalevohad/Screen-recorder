@@ -21,6 +21,10 @@
         object-fit: contain;
         background-color: #020617;
         transition: opacity 0.25s ease-out;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+        transform: translateZ(0);
+        backface-visibility: hidden;
     }
 
     .feed-static-layer {
@@ -36,6 +40,10 @@
             height: 100%;
             object-fit: contain;
             background-color: #020617;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            transform: translateZ(0);
+            backface-visibility: hidden;
         }
 
         .feed-decode-pending {

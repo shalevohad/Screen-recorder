@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/ExtractorService.cs
 // ==========================================
 using System;
@@ -109,13 +109,22 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             return preview;
         }
 
-        public virtual async Task StreamTarArchiveAsync(ExtractionRequestDto request, Stream destinationStream, CancellationToken ct)
+        public virtual Task StreamTarArchiveAsync(ExtractionRequestDto request, Stream destinationStream, CancellationToken ct) =>
+            StreamTarArchiveAsync(request, destinationStream, null, ct);
+
+        public virtual async Task StreamTarArchiveAsync(
+            ExtractionRequestDto request,
+            Stream destinationStream,
+            IProgress<(int Percent, string Message, double SpeedMBps, int EtaSeconds)>? progress,
+            CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(destinationStream);
 
             string stagingDir = Path.Combine(Path.GetTempPath(), $"extractor_staging_{Guid.NewGuid():N}");
             Directory.CreateDirectory(stagingDir);
+
+            progress?.Report((2, "Preparing synchronization plan...", 0, 0));
 
             await _concurrencyThrottle.WaitAsync(ct);
             try
@@ -153,15 +162,30 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 var generatedTracks = new List<(string StationId, string FilePath, bool HasAudio)>();
                 bool isMultiStation = request.Hostnames.Count > 1;
 
-                foreach (var host in request.Hostnames)
+                int hostCount = request.Hostnames.Count;
+                double slicePerHost = 80.0 / Math.Max(1, hostCount);
+
+                for (int i = 0; i < hostCount; i++)
                 {
                     ct.ThrowIfCancellationRequested();
+                    var host = request.Hostnames[i];
                     var chunks = allStationChunks[host];
+                    double basePct = 3.0 + (i * slicePerHost);
 
                     if (_trackCutter != null)
                     {
+                        var stationProgress = new Progress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>(p =>
+                        {
+                            double fraction = Math.Clamp(p.SecondsProcessed / Math.Max(0.1, exportedDurationSec), 0.0, 1.0);
+                            int pct = (int)Math.Clamp(Math.Round(basePct + fraction * slicePerHost, 0), 2, 84);
+                            double effectiveSpeed = Math.Max(0.2, p.SpeedMultiplier);
+                            double remSec = (Math.Max(0, exportedDurationSec - p.SecondsProcessed) / effectiveSpeed)
+                                          + ((hostCount - 1 - i) * (exportedDurationSec / effectiveSpeed));
+                            progress?.Report((pct, $"Rendering station {i + 1}/{hostCount} ({host}): {p.Fps:0} fps", 0, (int)Math.Round(remSec, 0)));
+                        });
+
                         var trackResult = await _trackCutter.CutSynchronizedTrackAsync(
-                            host, plan, chunks, stagingDir, isMultiStation, null, ct);
+                            host, plan, chunks, stagingDir, isMultiStation, stationProgress, ct);
 
                         generatedTracks.Add((host, trackResult.OutputFilePath, trackResult.HasAudio));
                     }
@@ -178,12 +202,18 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     }
                 }
 
+                progress?.Report((85, "Bundling synchronized archive (Tar)...", 0, 2));
+
                 await using var tarWriter = new TarWriter(destinationStream, TarEntryFormat.Pax, leaveOpen: true);
                 var sessionTracks = new List<SessionTrackInfo>();
 
-                foreach (var track in generatedTracks)
+                for (int k = 0; k < generatedTracks.Count; k++)
                 {
+                    var track = generatedTracks[k];
                     if (!File.Exists(track.FilePath)) continue;
+
+                    int tarPct = (int)Math.Round(85.0 + (((k + 1.0) / generatedTracks.Count) * 12.0), 0);
+                    progress?.Report((tarPct, $"Packaging archive entry: {Path.GetFileName(track.FilePath)}...", 0, 1));
 
                     string entryName = $"recordings/{Path.GetFileName(track.FilePath)}";
                     await using (var trackStream = new FileStream(track.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))

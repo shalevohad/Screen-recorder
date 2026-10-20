@@ -10,6 +10,7 @@ using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using ITB_SCREEN_RECORDER.Server.Data;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Server.Services;
+using ITB_SCREEN_RECORDER.Server.Services.Network;
 using ITB_SCREEN_RECORDER.Server.Services.Retention;
 using ITB_SCREEN_RECORDER.Server.Services.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -88,6 +89,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
             builder.Logging.ClearProviders();
             builder.Logging.AddProvider(new CoreLoggerProvider());
+            builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
             var appConfig = builder.Configuration.GetSection("AppConfig").Get<AppConfig>()
                             ?? new AppConfig
@@ -147,14 +149,33 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 if (Directory.Exists(featuresBaseDir))
                 {
-                    var featureDlls = Directory.GetFiles(featuresBaseDir, "ITB-SCREEN-RECORDER.Features.*.dll", SearchOption.AllDirectories);
+                    var featureDlls = Directory.GetFiles(featuresBaseDir, "ITB-SCREEN-RECORDER.Features.*.dll", SearchOption.AllDirectories)
+                        .OrderBy(p =>
+                        {
+                            var dirName = new DirectoryInfo(Path.GetDirectoryName(p)!).Name;
+                            var fileNameNoExt = Path.GetFileNameWithoutExtension(p);
+                            return fileNameNoExt.EndsWith(dirName, StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+                        })
+                        .DistinctBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    var activatedStartupTypes = new HashSet<Type>();
+
                     foreach (var dllPath in featureDlls)
                     {
                         var fileName = Path.GetFileName(dllPath);
+                        var asmName = Path.GetFileNameWithoutExtension(dllPath);
+
                         try
                         {
-                            var asm = AssemblyLoadContext.Default.LoadFromAssemblyPath(dllPath);
-                            loadedFeatureAssemblies.Add(asm);
+                            var asm = AppDomain.CurrentDomain.GetAssemblies()
+                                .FirstOrDefault(a => string.Equals(a.GetName().Name, asmName, StringComparison.OrdinalIgnoreCase))
+                                ?? AssemblyLoadContext.Default.LoadFromAssemblyPath(dllPath);
+
+                            if (!loadedFeatureAssemblies.Contains(asm))
+                            {
+                                loadedFeatureAssemblies.Add(asm);
+                            }
 
                             Type[] types;
                             try { types = asm.GetTypes(); }
@@ -168,9 +189,12 @@ namespace ITB_SCREEN_RECORDER.Server
                             var startupTypes = types.Where(t => typeof(IHostingStartup).IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract).ToList();
                             foreach (var startupType in startupTypes)
                             {
-                                var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
-                                startup.Configure(builder.WebHost);
-                                Logger.AlwaysInfo($"[PLUGIN-LOADER] Activated modular feature: {startupType.FullName}");
+                                if (activatedStartupTypes.Add(startupType))
+                                {
+                                    var startup = (IHostingStartup)Activator.CreateInstance(startupType)!;
+                                    startup.Configure(builder.WebHost);
+                                    Logger.AlwaysInfo($"[PLUGIN-LOADER] Activated modular feature: {startupType.FullName}");
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -183,17 +207,23 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.WebHost.ConfigureKestrel(options =>
                 {
                     options.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
+
+                    // הגדרת ברירת המחדל הגלובלית עבור כל ערוץ HTTPS ב-Kestrel (כולל Endpoints מ-appsettings.json ו-launchSettings)
+                    options.ConfigureHttpsDefaults(httpsOptions =>
+                    {
+                        var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+                        httpsOptions.ServerCertificate = bundle.ServerCertificate;
+                        httpsOptions.ServerCertificateSelector = (connectionContext, name) =>
+                        {
+                            var active = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
+                            return active.ServerCertificate;
+                        };
+                    });
+
                     options.ListenAnyIP(finalListeningPort, listenOptions =>
                     {
                         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-                        listenOptions.UseHttps(httpsOptions =>
-                        {
-                            httpsOptions.ServerCertificateSelector = (connectionContext, name) =>
-                            {
-                                var current = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
-                                return current.ServerCertificate;
-                            };
-                        });
+                        listenOptions.UseHttps();
                     });
                 });
 
@@ -275,6 +305,7 @@ namespace ITB_SCREEN_RECORDER.Server
 
                 builder.Services.AddSingleton<ICatalogConnectionFactory, CatalogConnectionFactory>();
                 builder.Services.AddSingleton<IFeatureDbInitializer, CatalogDbInitializer>();
+                builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService, ITB_SCREEN_RECORDER.Server.Services.Security.KeyRingService>();
                 builder.Services.AddSingleton<ICatalogRepository, CatalogRepository>();
                 builder.Services.AddSingleton<IKeystrokeRepository>(sp => sp.GetRequiredService<ICatalogRepository>());
                 builder.Services.AddSingleton<IKeystrokeSrtGenerator, KeystrokeSrtGenerator>();
@@ -304,9 +335,15 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<CatalogMaintenanceService>());
 
                 builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
-                builder.Services.AddHostedService<RecordingChunkScheduler>();
-                builder.Services.AddHostedService<ServerTelemetryHostService>();
+
+                builder.Services.AddSingleton<RecordingChunkScheduler>();
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<RecordingChunkScheduler>());
+
+                builder.Services.AddSingleton<ServerTelemetryHostService>();
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerTelemetryHostService>());
+
                 builder.Services.AddHostedService<CertificateRenewalWorker>();
+                builder.Services.AddHostedService<ServerDiscoveryHostedService>();
 
                 builder.Services.AddSingleton<IRetentionTask, StorageChunksRetentionTask>();
                 builder.Services.AddSingleton<IRetentionTask, KeystrokesRetentionTask>();
@@ -336,6 +373,9 @@ namespace ITB_SCREEN_RECORDER.Server
                             throw;
                         }
                     }
+
+                    var keyRing = scope.ServiceProvider.GetRequiredService<ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService>();
+                    keyRing.InitializeAsync().GetAwaiter().GetResult();
                 }
 
                 app.UseSwagger();

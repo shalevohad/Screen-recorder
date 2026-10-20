@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 #if WINDOWS
@@ -9,36 +9,65 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 {
     public static class DebugHelper
     {
+        private static bool? _manualDebugOverride;
+
+        public static void SetDebugMode(bool enabled)
+        {
+            _manualDebugOverride = enabled;
+        }
+
         public static bool IsDebugModeEnabled()
         {
-            if (OperatingSystem.IsLinux())
+            if (_manualDebugOverride.HasValue) return _manualDebugOverride.Value;
+
+            // 1. בדיקת משתנה סביבה (תקף גם תחת Windows וגם תחת Linux)
+            var envDebug = Environment.GetEnvironmentVariable("ITB_DEBUG_MODE");
+            if (envDebug == "1" || string.Equals(envDebug, "true", StringComparison.OrdinalIgnoreCase))
             {
-                var envDebug = Environment.GetEnvironmentVariable("ITB_DEBUG_MODE");
-                return envDebug == "1" || string.Equals(envDebug, "true", StringComparison.OrdinalIgnoreCase);
+                return true;
             }
 
+            // 2. בדיקת פרמטרי שורת פקודה (--debug או -d)
+            try
+            {
+                var args = Environment.GetCommandLineArgs();
+                for (int i = 0; i < args.Length; i++)
+                {
+                    if (string.Equals(args[i], "--debug", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(args[i], "-d", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch { }
+
+            // 3. בדיקת Windows Registry (בדיקה ב-HKLM ולאחר מכן ב-HKCU)
             if (OperatingSystem.IsWindows())
             {
 #if WINDOWS
 #pragma warning disable CA1416
-                foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+                foreach (var hive in new[] { RegistryHive.LocalMachine, RegistryHive.CurrentUser })
                 {
-                    try
+                    foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
                     {
-                        using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-                        using var key = baseKey.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
-                        if (key != null)
+                        try
                         {
-                            var val = key.GetValue("DebugMode");
-                            if (val != null && int.TryParse(val.ToString(), out int debugVal))
+                            using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                            using var key = baseKey.OpenSubKey(@"SOFTWARE\ITB\ScreenRecorder");
+                            if (key != null)
                             {
-                                return debugVal == 1;
+                                var val = key.GetValue("DebugMode");
+                                if (val != null && int.TryParse(val.ToString(), out int debugVal))
+                                {
+                                    if (debugVal == 1) return true;
+                                }
                             }
                         }
-                    }
-                    catch
-                    {
-                        // התעלמות והמשך ניסיון בנתיב המקביל
+                        catch
+                        {
+                            // התעלמות והמשך ניסיון בנתיב המקביל
+                        }
                     }
                 }
 #pragma warning restore CA1416

@@ -1,7 +1,8 @@
-﻿// ==========================================
+// ==========================================
 // File: ITBRecorderAgent/Engine/VideoPipeline.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
+using ITBRecorderAgent.Providers.Video;
 using ITBRecorderAgent.Providers.Video.Mouse;
 using System;
 using System.Diagnostics;
@@ -22,8 +23,11 @@ namespace ITBRecorderAgent.Engine
         public int CurrentQosTier { get; private set; } = 3;
         public int InternalCaptureFps { get; private set; }
 
+        private readonly int _baselineFps;
+
         public VideoPipeline(int width, int height, int baselineFps)
         {
+            _baselineFps = baselineFps > 0 ? baselineFps : 15;
             InternalCaptureFps = baselineFps;
             _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(3)
             {
@@ -44,6 +48,9 @@ namespace ITBRecorderAgent.Engine
             {
                 Logger.Info("[WORKER:VIDEO-PIPE] Stdin writer loop started.");
                 var reader = _channel.Reader;
+                long lastWarningTicks = 0;
+                double warningThresholdMs = Math.Max(120.0, (1000.0 / _baselineFps) * 2.0);
+
                 try
                 {
                     while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
@@ -61,9 +68,13 @@ namespace ITBRecorderAgent.Engine
                                 return;
                             }
 
-                            if (sw.ElapsedMilliseconds > 25)
+                            if (sw.ElapsedMilliseconds > warningThresholdMs)
                             {
-                                Logger.Warn($"[WORKER:VIDEO-PIPE] Slow pipe write detected: {sw.ElapsedMilliseconds}ms for single frame. FFmpeg input buffer may be backing up.");
+                                if (Stopwatch.GetElapsedTime(lastWarningTicks).TotalSeconds >= 5)
+                                {
+                                    lastWarningTicks = Stopwatch.GetTimestamp();
+                                    Logger.Warn($"[WORKER:VIDEO-PIPE] High pipe write latency detected: {sw.ElapsedMilliseconds}ms (Threshold: {warningThresholdMs:F0}ms). Native encoder may be under heavy load.");
+                                }
                             }
 
                             onBytesSent(frame.Length);
@@ -92,6 +103,12 @@ namespace ITBRecorderAgent.Engine
             CancellationToken ct)
         {
             Logger.Info($"[WORKER:VIDEO-PIPE] Frame pacer loop engaged at {baselineFps} FPS target.");
+#if WINDOWS
+            if (OperatingSystem.IsWindows())
+            {
+                DesktopSecurityManager.TryAttachToInputDesktop();
+            }
+#endif
             double targetFrameTimeMs = 1000.0 / baselineFps;
             long framesProcessed = 1;
             int pushedThisSec = 0;

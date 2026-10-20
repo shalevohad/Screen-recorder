@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 
 namespace ITB_SCREEN_RECORDER.Core.Configuration
@@ -8,12 +8,21 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         // 1. שדה קונפיגורציה פשוט ונקי לחלוטין
         public string FFmpegPath { get; set; } = string.Empty;
 
-        public string RtmpServerBaseUrl { get; set; } = "rtmp://128.200.3.10:19350/live/";
-        public string DashboardApiUrl { get; set; } = "http://128.200.3.10:5090/api/v1/agent/telemetry";
+        public string RtmpServerBaseUrl { get; set; } = "AUTO";
+        public string DashboardApiUrl { get; set; } = "AUTO";
         public int ReconnectDelaySeconds { get; set; } = 5;
         public int TargetFps { get; set; } = 30;
         public string VideoBitrate { get; set; } = "5M";
         public string VideoEncoder { get; set; } = "auto";
+
+        public int DiscoveryPort { get; set; } = 5098;
+        public string DiscoveryMulticastAddress { get; set; } = "239.255.10.90";
+        public string DiscoveryBroadcastAddress { get; set; } = "255.255.255.255";
+        public System.Collections.Generic.List<string> DiscoveryDnsHostnames { get; set; } = new() { "itb-server", "screenrecorder" };
+        public int DiscoveryTimeoutMs { get; set; } = 2500;
+        public string DiscoveryTargetEnvironment { get; set; } = "Production";
+        public int DiscoveryFallbackHttpPort { get; set; } = 5090;
+        public int DiscoveryFallbackRtmpPort { get; set; } = 19350;
 
         public string LocalBufferPath { get; set; } = OperatingSystem.IsWindows()
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
@@ -47,12 +56,26 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             string parentPath = Path.GetFullPath(Path.Combine(baseDir, "..", binaryName));
             if (File.Exists(parentPath)) return parentPath;
 
-            // 4. בתיקיית Tools המרכזית בפתרון (גיבוי לפיתוח)
+            // 4. בתוך תיקיית Tools המקומית (למשל Tools\Win\ffmpeg.exe או Tools\Linux\ffmpeg)
             string toolsSubFolder = OperatingSystem.IsWindows() ? "Win" : "Linux";
+            string localToolsPath = Path.Combine(baseDir, "Tools", toolsSubFolder, binaryName);
+            if (File.Exists(localToolsPath)) return localToolsPath;
+
+            string localToolsDirect = Path.Combine(baseDir, "Tools", binaryName);
+            if (File.Exists(localToolsDirect)) return localToolsDirect;
+
+            // 5. בתיקיית Tools בדרג האב (למשל בהרצה מתוך bin\Debug\net8.0\win-x64)
+            string parentToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "Tools", toolsSubFolder, binaryName));
+            if (File.Exists(parentToolsPath)) return parentToolsPath;
+
+            string devServerToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "Tools", toolsSubFolder, binaryName));
+            if (File.Exists(devServerToolsPath)) return devServerToolsPath;
+
+            // 6. בתיקיית Tools המרכזית בפתרון (גיבוי לפיתוח)
             string devToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Tools", toolsSubFolder, binaryName));
             if (File.Exists(devToolsPath)) return devToolsPath;
 
-            // 5. חיפוש ב-PATH של מערכת ההפעלה
+            // 7. חיפוש ב-PATH של מערכת ההפעלה
             string? pathEnv = Environment.GetEnvironmentVariable("PATH");
             if (!string.IsNullOrEmpty(pathEnv))
             {
@@ -65,7 +88,27 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             }
 
             throw new FileNotFoundException(
-                $"CRITICAL: FFmpeg executable is missing. Probed '{directPath}', '{ridPath}', and '{devToolsPath}'. Expected: {binaryName}");
+                $"CRITICAL: FFmpeg executable is missing. Probed '{directPath}', '{ridPath}', '{localToolsPath}', and '{devToolsPath}'. Expected: {binaryName}");
+        }
+
+        public static bool TryGetResolvedFFmpegPath(out string resolvedPath, string? explicitPath = null)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath))
+            {
+                resolvedPath = explicitPath;
+                return true;
+            }
+
+            try
+            {
+                resolvedPath = GetResolvedFFmpegPath();
+                return true;
+            }
+            catch
+            {
+                resolvedPath = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
+                return false;
+            }
         }
     }
 }

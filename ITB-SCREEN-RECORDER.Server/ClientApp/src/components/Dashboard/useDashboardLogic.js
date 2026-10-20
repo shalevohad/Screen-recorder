@@ -1,4 +1,4 @@
-﻿// Client/src/components/Dashboard/useDashboardLogic.js
+// Client/src/components/Dashboard/useDashboardLogic.js
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
@@ -61,14 +61,15 @@ export function useDashboardLogic({
         return fleetTabsList.find(t => t.id === activeTabId) || null;
     }, [fleetTabsList, activeTabId]);
 
-    // 💡 סינון אמיתי ומדויק של תחנות הטאב
+    // 💡 סינון אמיתי ומדויק של תחנות הטאב עם שמירת יציבות רפרנס למניעת קפיצות
+    const prevFilteredStationsRef = useRef([]);
     const tabFilteredStations = useMemo(() => {
         if (activeTabId === 'ALL' || !activeFleetTabConfig) return stations;
 
         const assigned = (activeFleetTabConfig.assignedHostnames || []).map(h => h.toLowerCase());
         const assignedOus = (activeFleetTabConfig.assignedOus || []).map(ou => ou.toLowerCase());
 
-        return stations.filter(station => {
+        const filtered = stations.filter(station => {
             const host = (station.hostname || '').toLowerCase();
             const disp = (station.displayName || '').toLowerCase();
             const matchesNames = assigned.includes(host) || assigned.includes(disp);
@@ -79,6 +80,22 @@ export function useDashboardLogic({
 
             return matchesNames || matchesOu;
         });
+
+        // 💡 בדיקת שוויון רדודה למניעת קפיצות מסך אם תחנה מחוץ לטאב השתנתה/התווספה/ירדה
+        const prev = prevFilteredStationsRef.current;
+        if (prev && prev.length === filtered.length) {
+            let isIdentical = true;
+            for (let i = 0; i < filtered.length; i++) {
+                if (prev[i] !== filtered[i]) {
+                    isIdentical = false;
+                    break;
+                }
+            }
+            if (isIdentical) return prev;
+        }
+
+        prevFilteredStationsRef.current = filtered;
+        return filtered;
     }, [stations, activeTabId, activeFleetTabConfig]);
 
     const [availableFeatures, setAvailableFeatures] = useState([]);
@@ -137,6 +154,19 @@ export function useDashboardLogic({
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('itb_dashboard_view_mode') || 'grid');
     useEffect(() => localStorage.setItem('itb_dashboard_view_mode', viewMode), [viewMode]);
 
+    // 🎯 מצב תצוגת מקשים: 'burn-in' (צריבה קשיחה) | 'caption' (כתובית רכה) | 'none' (כבוי)
+    const [keystrokeMode, setKeystrokeMode] = useState(() => localStorage.getItem('itb_dashboard_keystroke_mode') || 'burn-in');
+    useEffect(() => localStorage.setItem('itb_dashboard_keystroke_mode', keystrokeMode), [keystrokeMode]);
+
+    const handleCycleKeystrokeMode = () => {
+        setKeystrokeMode(prev => {
+            const norm = (prev || 'burn-in').toLowerCase().replace('_', '-');
+            if (norm === 'burn-in') return 'caption';
+            if (norm === 'caption') return 'none';
+            return 'burn-in';
+        });
+    };
+
     const [isSearchOpen, setIsSearchOpen] = useState(() => {
         const saved = localStorage.getItem('itb_dashboard_search_open');
         return saved !== null ? JSON.parse(saved) : false;
@@ -180,11 +210,11 @@ export function useDashboardLogic({
     const processedStations = useMemo(() => {
         let list = [...tabFilteredStations];
         if (isFaultFilterActive) list = list.filter(isStationFaulty);
+        else if (currentTabFilter === 'OFFLINE') list = list.filter(s => !s.isOnline);
         else if (hideOffline) list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
 
         if (currentTabFilter === 'RECORDING') list = list.filter(s => s.isStreaming);
         else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !s.isStreaming);
-        else if (currentTabFilter === 'OFFLINE') list = list.filter(s => !s.isOnline);
         else if (currentTabFilter === 'ONLINE') list = list.filter(s => s.isOnline);
 
         if (searchQuery.trim()) {
@@ -338,6 +368,7 @@ export function useDashboardLogic({
         inspectedStation, fullscreenStation,
 
         canSort, canStartAny, canStopAny,
+        keystrokeMode, setKeystrokeMode, handleCycleKeystrokeMode,
 
         handleToggleFeature, handleCloseFeature, handleFeatureQuickExport,
         handleZoomOut, handleZoomIn, handleSliderChange,

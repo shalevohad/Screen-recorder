@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Client/src/components/Auth/SystemLauncher.scss
 // ==========================================
 .system-launcher-backdrop {
@@ -14,7 +14,7 @@
 
     .launcher-canvas {
         width: 100%;
-        max-width: 920px;
+        max-width: 980px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -159,8 +159,12 @@
         .systems-dual-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 22px;
+            gap: 24px;
             width: 100%;
+
+            @media (max-width: 768px) {
+                grid-template-columns: 1fr;
+            }
 
             .system-app-card {
                 position: relative;

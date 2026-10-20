@@ -3,11 +3,12 @@
 // ==========================================
 import React from 'react';
 
-export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField }) {
+export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField }) {
     if (!form) return null;
 
     const dashboard = form.dashboard || {};
     const mediaMtx = form.mediaMtx || {};
+    const discovery = form.discovery || {};
 
     const timezones = [
         { val: 'Asia/Jerusalem', label: 'Asia/Jerusalem (Israel Standard Time)' },
@@ -241,6 +242,69 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                             onChange={e => updateMediaMtxField('enablePlayback', e.target.checked)}
                         />
                         <span>Enable MediaMTX Native Playback API</span>
+                    </label>
+                </div>
+            </div>
+
+            <div className="security-subpanel">
+                <div className="subpanel-header">
+                    <h4>AUTONOMOUS SERVER DISCOVERY & AGENT REGISTRATION</h4>
+                    <span className="subpanel-desc">Configure UDP beacon discovery, multicast/broadcast settings, and network adapter binding for autonomous agent registration.</span>
+                </div>
+
+                <div className="settings-fields-row">
+                    <div className="settings-field">
+                        <span>UDP Discovery Port</span>
+                        <input
+                            type="number"
+                            min="1024"
+                            max="65535"
+                            placeholder="5098"
+                            value={discovery.port ?? 5098}
+                            onChange={e => updateDiscoveryField('port', Number(e.target.value))}
+                            required
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>UDP Multicast Address</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. 239.255.10.90"
+                            value={discovery.multicastAddress ?? '239.255.10.90'}
+                            onChange={e => updateDiscoveryField('multicastAddress', e.target.value)}
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Subnet Broadcast Address</span>
+                        <input
+                            type="text"
+                            placeholder="e.g. 255.255.255.255"
+                            value={discovery.broadcastAddress ?? '255.255.255.255'}
+                            onChange={e => updateDiscoveryField('broadcastAddress', e.target.value)}
+                        />
+                    </div>
+
+                    <div className="settings-field">
+                        <span>Network Interface (Optional)</span>
+                        <input
+                            type="text"
+                            placeholder="Auto-detect active adapter"
+                            value={discovery.networkInterfaceName || ''}
+                            onChange={e => updateDiscoveryField('networkInterfaceName', e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap' }}>
+                    <label className="tactical-checkbox-label">
+                        <input
+                            type="checkbox"
+                            checked={discovery.enableBroadcastFallback !== false}
+                            onChange={e => updateDiscoveryField('enableBroadcastFallback', e.target.checked)}
+                        />
+                        <span>Enable Subnet Broadcast Fallback (Auto-fallback when multicast packets are blocked by network switches)</span>
                     </label>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-﻿#if WINDOWS
+#if WINDOWS
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITBRecorderAgent;
 using System;
@@ -33,8 +33,10 @@ namespace ITBRecorderAgent.Providers.Video
         {
             try
             {
+                DesktopSecurityManager.TryAttachToInputDesktop();
+
                 D3D11.D3D11CreateDevice(
-                    null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
+                    (IDXGIAdapter?)null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
                     new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
                     out _device, out _context);
 
@@ -48,6 +50,8 @@ namespace ITBRecorderAgent.Providers.Video
                 Width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
                 Height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
 
+                // מוודאים שיוך שולחן עבודה גם מיד לפני שכפול הפלט
+                DesktopSecurityManager.TryAttachToInputDesktop();
                 _deskDupl = output1.DuplicateOutput(_device);
 
                 var textureDesc = new Texture2DDescription

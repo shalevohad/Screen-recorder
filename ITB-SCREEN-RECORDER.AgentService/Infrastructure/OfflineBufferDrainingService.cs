@@ -24,6 +24,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private readonly string _uploadUrl;
 
         public static BufferCommand CurrentCommand { get; set; } = BufferCommand.WAIT;
+        public static string? ActiveServerBaseUrl { get; set; }
+
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int FailCount, DateTime NextRetryUtc)> _failedFileRetries = new();
 
         public OfflineBufferDrainingService(ILogger<OfflineBufferDrainingService> logger, AppConfig config)
         {
@@ -32,7 +35,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             AgentCertificateValidator.ConfigureHandler(handler);
             _httpClient = new HttpClient(handler)
             {
-                Timeout = TimeSpan.FromMinutes(10)
+                Timeout = TimeSpan.FromMinutes(30)
             };
 
             _bufferPath = string.IsNullOrWhiteSpace(config.LocalBufferPath)
@@ -45,10 +48,24 @@ namespace ITB_SCREEN_RECORDER.AgentService
             Logger.AlwaysInfo($"[DRAINER] Initialized. Buffer Path: '{_bufferPath}', Target Upload Endpoint: '{_uploadUrl}'");
         }
 
+        public string GetEffectiveUploadEndpoint()
+        {
+            if (!string.IsNullOrWhiteSpace(ActiveServerBaseUrl) && !string.Equals(ActiveServerBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                string host = ActiveServerBaseUrl.TrimEnd('/');
+                return host.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? $"{host}/api/v1/agent/upload-buffer"
+                    : host.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                        ? $"https://{host.Substring("http://".Length)}/api/v1/agent/upload-buffer"
+                        : $"https://{host}/api/v1/agent/upload-buffer";
+            }
+            return _uploadUrl;
+        }
+
         private static string ResolveUploadEndpoint(string? dashboardApiUrl)
         {
             string fallback = "https://127.0.0.1:5090/api/v1/agent/upload-buffer";
-            if (string.IsNullOrWhiteSpace(dashboardApiUrl))
+            if (string.IsNullOrWhiteSpace(dashboardApiUrl) || string.Equals(dashboardApiUrl.Trim(), "AUTO", StringComparison.OrdinalIgnoreCase))
             {
                 return fallback;
             }
@@ -115,11 +132,41 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 if (ct.IsCancellationRequested || CurrentCommand != BufferCommand.UPLOAD_GRANTED) break;
 
-                Logger.AlwaysInfo($"[DRAINER] Starting upload for {file.Name} ({file.Length / 1024 / 1024}MB)...");
-                bool success = await UploadFileAsync(file.FullName, ct);
-
-                if (success)
+                if (_failedFileRetries.TryGetValue(file.FullName, out var retryInfo) && nowUtc < retryInfo.NextRetryUtc)
                 {
+                    continue;
+                }
+
+                if (file.Length < 64)
+                {
+                    Logger.Warn($"[DRAINER] Removing corrupt/empty buffer file '{file.Name}' ({file.Length} bytes).");
+                    try
+                    {
+                        file.Delete();
+                        string sidecarPath = Path.ChangeExtension(file.FullName, ".keys.jsonl");
+                        if (File.Exists(sidecarPath)) File.Delete(sidecarPath);
+                    }
+                    catch { }
+                    _failedFileRetries.TryRemove(file.FullName, out _);
+                    continue;
+                }
+
+                if (file.Length > BufferLimits.MaxFileSizeBytes)
+                {
+                    if (!_failedFileRetries.ContainsKey(file.FullName))
+                    {
+                        Logger.Warn($"[DRAINER] File '{file.Name}' ({file.Length / (1024 * 1024)}MB) exceeds MaxFileSizeBytes ({BufferLimits.MaxBufferFileSizeMb}MB). Upload suspended.");
+                    }
+                    _failedFileRetries[file.FullName] = (1, DateTime.UtcNow.AddMinutes(30));
+                    continue;
+                }
+
+                Logger.AlwaysInfo($"[DRAINER] Starting upload for {file.Name} ({file.Length / 1024 / 1024}MB)...");
+                var (success, shouldDiscard) = await UploadFileAsync(file.FullName, ct);
+
+                if (success || shouldDiscard)
+                {
+                    _failedFileRetries.TryRemove(file.FullName, out _);
                     try
                     {
                         file.Delete();
@@ -135,21 +182,32 @@ namespace ITB_SCREEN_RECORDER.AgentService
                             catch { }
                         }
 
-                        Logger.AlwaysInfo($"[DRAINER] Upload Verified (200 OK). Video {file.Name} deleted locally.");
+                        if (success)
+                        {
+                            Logger.AlwaysInfo($"[DRAINER] Upload Verified (200 OK). Video {file.Name} deleted locally.");
+                        }
+                        else
+                        {
+                            Logger.Warn($"[DRAINER] Permanently discarded invalid/rejected video {file.Name} locally.");
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warn($"[DRAINER] Uploaded successfully but failed local deletion: {ex.Message}");
+                        Logger.Warn($"[DRAINER] Uploaded/discarded successfully but failed local deletion: {ex.Message}");
                     }
                 }
                 else
                 {
-                    Logger.Warn($"[DRAINER] Upload failed for {file.Name}. Will retry on next tick.");
+                    int fails = _failedFileRetries.TryGetValue(file.FullName, out var prev) ? prev.FailCount + 1 : 1;
+                    int backoffSec = Math.Min(300, (int)Math.Pow(2, Math.Min(fails, 6)) * 5); // 10s, 20s, 40s, 80s, 160s, 300s
+                    var nextRetry = DateTime.UtcNow.AddSeconds(backoffSec);
+                    _failedFileRetries[file.FullName] = (fails, nextRetry);
+                    Logger.Warn($"[DRAINER] Upload failed for {file.Name} (attempt {fails}). Next retry in {backoffSec}s (at {nextRetry:HH:mm:ss} UTC).");
                 }
             }
         }
 
-        private async Task<bool> UploadFileAsync(string filePath, CancellationToken ct)
+        private async Task<(bool Success, bool ShouldDiscard)> UploadFileAsync(string filePath, CancellationToken ct)
         {
             FileStream? sidecarStream = null;
             try
@@ -175,13 +233,26 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     Logger.AlwaysInfo($"[DRAINER] No sidecar file found for {Path.GetFileName(filePath)} (no keystrokes recorded).");
                 }
 
-                var response = await _httpClient.PostAsync(_uploadUrl, content, ct);
-                return response.IsSuccessStatusCode;
+                string targetUrl = GetEffectiveUploadEndpoint();
+                var response = await _httpClient.PostAsync(targetUrl, content, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    return (true, false);
+                }
+
+                if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    Logger.Warn($"[DRAINER] Server rejected file '{Path.GetFileName(filePath)}' as invalid/corrupt (400 BadRequest). It will be discarded.");
+                    return (false, true);
+                }
+
+                Logger.Warn($"[DRAINER] Server returned {response.StatusCode} for {Path.GetFileName(filePath)}.");
+                return (false, false);
             }
             catch (Exception ex)
             {
                 Logger.Warn($"[DRAINER] Upload exception for {Path.GetFileName(filePath)}: {ex.Message}");
-                return false;
+                return (false, false);
             }
             finally
             {

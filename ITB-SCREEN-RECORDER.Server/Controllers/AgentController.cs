@@ -56,6 +56,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly StoragePathResolver _storageResolver;
         private readonly ICatalogRepository _catalogRepository;
         private readonly IVideoProbeService _probeService;
+        private readonly ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? _keyRingService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
@@ -66,7 +67,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             StoragePathResolver storageResolver,
             ICatalogRepository catalogRepository,
             IVideoProbeService probeService,
-            ILogger<AgentController> logger)
+            ILogger<AgentController> logger,
+            ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService? keyRingService = null)
         {
             _telemetryState = telemetryState;
             _broadcastService = broadcastService;
@@ -76,6 +78,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _catalogRepository = catalogRepository;
             _probeService = probeService;
             _logger = logger;
+            _keyRingService = keyRingService;
         }
 
         [HttpPost("telemetry")]
@@ -95,6 +98,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(validationErrors);
             }
 
+            List<KeystrokeEventDto>? decryptedKeystrokes = null;
             if (report.Keystrokes != null && report.Keystrokes.Count > 0)
             {
                 try
@@ -105,6 +109,21 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[TELEMETRY] Failed to insert live keystrokes for {Host}", report.Hostname);
+                }
+
+                decryptedKeystrokes = new List<KeystrokeEventDto>(report.Keystrokes.Count);
+                foreach (var k in report.Keystrokes)
+                {
+                    string clearTextCombo = _keyRingService != null
+                        ? _keyRingService.Decrypt(k.KeyCombination)
+                        : k.KeyCombination;
+
+                    decryptedKeystrokes.Add(new KeystrokeEventDto
+                    {
+                        EpochMs = k.EpochMs,
+                        TimestampUtc = k.TimestampUtc,
+                        KeyCombination = clearTextCombo
+                    });
                 }
             }
 
@@ -117,9 +136,144 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 heartbeatResponse.ServerUtcTime = DateTime.UtcNow;
             }
 
-            _ = _broadcastService.BroadcastAgentUpdateAsync(report);
+            var broadcastReport = report;
+            if (decryptedKeystrokes != null && decryptedKeystrokes.Count > 0)
+            {
+                broadcastReport = new AgentTelemetryReport
+                {
+                    Hostname = report.Hostname,
+                    IpAddress = report.IpAddress,
+                    Status = report.Status,
+                    ClientTimestamp = report.ClientTimestamp,
+                    IsProcessRunning = report.IsProcessRunning,
+                    IsScreenCapturing = report.IsScreenCapturing,
+                    ScreenWidth = report.ScreenWidth,
+                    ScreenHeight = report.ScreenHeight,
+                    HasActiveSpeakers = report.HasActiveSpeakers,
+                    HasActiveMicrophone = report.HasActiveMicrophone,
+                    HasAudio = report.HasAudio,
+                    IsAudioStreaming = report.IsAudioStreaming,
+                    IsStreaming = report.IsStreaming,
+                    IsRecording = report.IsRecording,
+                    RecordingStartedAtUtc = report.RecordingStartedAtUtc,
+                    AutoStartRecordingOnLaunch = report.AutoStartRecordingOnLaunch,
+                    Timestamp = report.Timestamp,
+                    ActualFps = report.ActualFps,
+                    DroppedFrames = report.DroppedFrames,
+                    InternalCaptureFps = report.InternalCaptureFps,
+                    QosTier = report.QosTier,
+                    MediaTxMbps = report.MediaTxMbps,
+                    TelemetryTxKbps = report.TelemetryTxKbps,
+                    NicUtilizationPct = report.NicUtilizationPct,
+                    LinkSpeedMbps = report.LinkSpeedMbps,
+                    HostCpuPct = report.HostCpuPct,
+                    ProcessCpuPct = report.ProcessCpuPct,
+                    ProcessRamMb = report.ProcessRamMb,
+                    HostRamPct = report.HostRamPct,
+                    HostTotalRamMb = report.HostTotalRamMb,
+                    Gpu3dPct = report.Gpu3dPct,
+                    GpuNvencPct = report.GpuNvencPct,
+                    OfflineFilesCount = report.OfflineFilesCount,
+                    OfflineFilesTotalSizeMb = report.OfflineFilesTotalSizeMb,
+                    NicTotalTxMbps = report.NicTotalTxMbps,
+                    NicTotalRxMbps = report.NicTotalRxMbps,
+                    Keystrokes = decryptedKeystrokes
+                };
+
+                _ = _broadcastService.BroadcastLiveKeystrokesAsync(report.Hostname, decryptedKeystrokes);
+            }
+
+            _ = _broadcastService.BroadcastAgentUpdateAsync(broadcastReport);
 
             return Ok(heartbeatResponse);
+        }
+
+        [HttpPost("keystrokes")]
+        public IActionResult ReceiveLiveKeystrokes([FromBody] AgentLiveKeystrokesBatchRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Hostname) || request.Keystrokes == null || request.Keystrokes.Count == 0)
+            {
+                return BadRequest("Invalid keystroke payload.");
+            }
+
+            // 1. Asynchronously queue DB bulk insertion in background without blocking SignalR broadcast
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _catalogRepository.BulkInsertKeystrokesAsync(request.Hostname, request.Keystrokes);
+                    _logger.LogDebug("[KEYSTROKES:FAST] Ingested {Count} fast keystrokes for {Host}", request.Keystrokes.Count, request.Hostname);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[KEYSTROKES:FAST] Failed to insert fast keystrokes for {Host}", request.Hostname);
+                }
+            });
+
+            // 2. Decrypt keystrokes if end-to-end encryption is configured
+            var decryptedKeystrokes = new List<KeystrokeEventDto>(request.Keystrokes.Count);
+            foreach (var k in request.Keystrokes)
+            {
+                string clearTextCombo = _keyRingService != null
+                    ? _keyRingService.Decrypt(k.KeyCombination)
+                    : k.KeyCombination;
+
+                decryptedKeystrokes.Add(new KeystrokeEventDto
+                {
+                    EpochMs = k.EpochMs,
+                    TimestampUtc = k.TimestampUtc,
+                    KeyCombination = clearTextCombo
+                });
+            }
+
+            // 3. Immediately broadcast to SignalR clients (WebRTC player overlay)
+            _ = _broadcastService.BroadcastLiveKeystrokesAsync(request.Hostname, decryptedKeystrokes);
+
+            return Ok();
+        }
+
+        [HttpPost("register")]
+        public async Task<IActionResult> RegisterAgent([FromBody] AgentRegistrationRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.MachineName))
+            {
+                return BadRequest("Invalid registration payload: MachineName is required.");
+            }
+
+            string requestHost = Request.Host.Host;
+            var policy = await _telemetryState.GetAgentPolicyAsync(request.MachineName, requestHost);
+            string safeStreamKey = Uri.EscapeDataString(request.MachineName.Trim().Replace(" ", "_"));
+
+            var response = new AgentRegistrationResponse
+            {
+                AgentId = !string.IsNullOrWhiteSpace(request.HardwareUuid) ? request.HardwareUuid : Guid.NewGuid().ToString(),
+                ServerName = Environment.MachineName,
+                AssignedStreamKey = safeStreamKey,
+                RtmpServerBaseUrl = policy.RtmpServerBaseUrl,
+                Policy = policy,
+                HeartbeatIntervalSeconds = 2,
+                ServerUtcTime = DateTime.UtcNow,
+                ServerUtcEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+
+            if (_keyRingService != null)
+            {
+                try
+                {
+                    var (keyId, keyBytes) = _keyRingService.GetActiveKey();
+                    response.KeystrokeKeyId = keyId;
+                    response.KeystrokeKeyMaterial = Convert.ToBase64String(keyBytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[AGENT REGISTRATION] Failed to resolve active encryption key from keyring.");
+                }
+            }
+
+            _logger.LogInformation("[AGENT REGISTRATION] Successfully registered agent for host '{MachineName}' (OS: {Os}, StreamKey: {Key})",
+                request.MachineName, request.OsVersion ?? "Unknown", safeStreamKey);
+
+            return Ok(response);
         }
 
         [HttpPost("upload-buffer")]
@@ -154,6 +308,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             long startEpochMs = 0;
             var matchUtcPattern = Regex.Match(safeFileName, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{6})Z", RegexOptions.IgnoreCase);
             var matchEpochPattern = Regex.Match(safeFileName, @"(\d{10,13})", RegexOptions.IgnoreCase);
+            var matchLegacyPattern = Regex.Match(safeFileName, @"(\d{8}_\d{6})", RegexOptions.IgnoreCase);
 
             if (matchUtcPattern.Success)
             {
@@ -162,6 +317,15 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime chunkUtcTime))
                 {
                     startEpochMs = new DateTimeOffset(chunkUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                }
+            }
+            else if (matchLegacyPattern.Success)
+            {
+                string legacyString = matchLegacyPattern.Groups[1].Value;
+                if (DateTime.TryParseExact(legacyString, "yyyyMMdd_HHmmss",
+                    CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime legacyUtcTime))
+                {
+                    startEpochMs = new DateTimeOffset(legacyUtcTime, TimeSpan.Zero).ToUnixTimeMilliseconds();
                 }
             }
             else if (matchEpochPattern.Success && long.TryParse(matchEpochPattern.Groups[1].Value, out long parsedEpochValue))
@@ -383,29 +547,52 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             [FromQuery] bool? enable)
         {
             bool targetEnable = request?.Enable ?? enable ?? false;
-            var allAgents = _telemetryState.GetAllAgents();
-
-            var activeAgents = allAgents
-                .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15)
-                .ToList();
+            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var targetedHostnames = new List<string>();
 
             if (request?.Hostnames != null && request.Hostnames.Any())
             {
-                var targetHostnameFilter = new HashSet<string>(request.Hostnames, StringComparer.OrdinalIgnoreCase);
-                activeAgents = activeAgents.Where(agent => targetHostnameFilter.Contains(agent.Hostname)).ToList();
+                foreach (var host in request.Hostnames)
+                {
+                    if (!string.IsNullOrWhiteSpace(host))
+                    {
+                        _telemetryState.SetAgentStreamState(host, targetEnable);
+                        targetedHostnames.Add(host);
+                    }
+                }
+            }
+            else
+            {
+                var activeAgents = allAgents
+                    .Where(agent => (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 30)
+                    .ToList();
+
+                foreach (var agent in activeAgents)
+                {
+                    _telemetryState.SetAgentStreamState(agent.Hostname, targetEnable);
+                    targetedHostnames.Add(agent.Hostname);
+                }
             }
 
-            foreach (var agent in activeAgents)
+            // עדכון מיידי של צופי הדשבורד על שינוי המצב
+            foreach (var host in targetedHostnames)
             {
-                _telemetryState.SetAgentStreamState(agent.Hostname, targetEnable);
+                var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, host, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    match.IsStreaming = targetEnable;
+                    match.IsRecording = targetEnable;
+                    match.Status = targetEnable ? AgentStatus.Streaming : AgentStatus.Standby;
+                    _ = _broadcastService.BroadcastAgentUpdateAsync(match);
+                }
             }
 
             return Ok(new
             {
                 Action = targetEnable ? "START_POLICY" : "STOP_POLICY",
                 IsFiltered = request?.Hostnames != null && request.Hostnames.Any(),
-                TargetStationCount = activeAgents.Count,
-                TargetHostnames = activeAgents.Select(agent => agent.Hostname).ToList(),
+                TargetStationCount = targetedHostnames.Count,
+                TargetHostnames = targetedHostnames,
                 TimestampUtc = DateTime.UtcNow
             });
         }

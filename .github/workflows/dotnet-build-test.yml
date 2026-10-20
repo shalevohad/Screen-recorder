@@ -81,18 +81,18 @@ jobs:
         mkdir -p "$TOOLS_DIR"
         mkdir -p "$AGENT_DIR"
         
-        # 1. הורדת FFmpeg ללינוקס
-        echo "Downloading FFmpeg static build for Linux..."
-        curl -L https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -o ffmpeg.tar.xz
-        tar -xf ffmpeg.tar.xz
-        EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-amd64-static")
+        # 1. FFmpeg ללינוקס (שימוש ב-pre-installed ב-GitHub Actions או apt)
+        echo "Configuring FFmpeg & FFprobe for Linux..."
+        if ! which ffmpeg > /dev/null 2>&1 || ! which ffprobe > /dev/null 2>&1; then
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+        fi
         
-        cp "$EXTRACTED_DIR/ffmpeg" "$TOOLS_DIR/ffmpeg"
-        cp "$EXTRACTED_DIR/ffprobe" "$TOOLS_DIR/ffprobe"
+        cp "$(which ffmpeg)" "$TOOLS_DIR/ffmpeg"
+        cp "$(which ffprobe)" "$TOOLS_DIR/ffprobe"
         chmod +x "$TOOLS_DIR/ffmpeg" "$TOOLS_DIR/ffprobe"
         
-        cp "$EXTRACTED_DIR/ffmpeg" "$AGENT_DIR/ffmpeg"
-        cp "$EXTRACTED_DIR/ffprobe" "$AGENT_DIR/ffprobe"
+        cp "$(which ffmpeg)" "$AGENT_DIR/ffmpeg"
+        cp "$(which ffprobe)" "$AGENT_DIR/ffprobe"
         chmod +x "$AGENT_DIR/ffmpeg" "$AGENT_DIR/ffprobe"
 
         # 2. הורדת MediaMTX ללינוקס

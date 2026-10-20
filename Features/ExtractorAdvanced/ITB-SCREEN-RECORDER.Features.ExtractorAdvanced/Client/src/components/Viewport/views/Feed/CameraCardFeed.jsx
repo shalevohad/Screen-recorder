@@ -70,6 +70,7 @@ export default function CameraCardFeed({
 
     useEffect(() => {
         if (videoRef.current) {
+            videoRef.current.defaultPlaybackRate = playbackSpeed;
             videoRef.current.playbackRate = playbackSpeed;
         }
     }, [playbackSpeed]);
@@ -145,7 +146,7 @@ export default function CameraCardFeed({
             debounceTimer = setTimeout(() => {
                 const initialSeekMs = currentRelativeMsRef.current;
                 streamStartOffsetMsRef.current = initialSeekMs;
-                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&speed=1&_t=${Date.now()}`;
+                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&_t=${Date.now()}`;
 
                 setIsVideoReady(false);
                 setStreamSrc(url);
@@ -212,7 +213,7 @@ export default function CameraCardFeed({
                     streamStartOffsetMsRef.current = gapEndOffsetMs;
                     lastEmittedMs = gapEndOffsetMs;
 
-                    const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&speed=1&_t=${Date.now()}`;
+                    const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&_t=${Date.now()}`;
                     setIsVideoReady(false);
                     setStreamSrc(newUrl);
 
@@ -263,7 +264,7 @@ export default function CameraCardFeed({
             const nextMs = nextSeg.start - baseEpochMs;
             setPlayheadMs(nextMs);
             streamStartOffsetMsRef.current = nextMs;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + nextMs}&speed=1&_t=${Date.now()}`;
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + nextMs}&_t=${Date.now()}`;
 
             setIsVideoReady(false);
             setStreamSrc(newUrl);
@@ -303,21 +304,33 @@ export default function CameraCardFeed({
                         objectFit: 'contain',
                         opacity: isVideoReady ? 1 : 0,
                         transition: 'opacity 0.2s ease-out',
-                        zIndex: isVideoReady ? 3 : 1
+                        zIndex: isVideoReady ? 3 : 1,
+                        imageRendering: '-webkit-optimize-contrast',
+                        transform: 'translateZ(0)'
                     }}
                     playsInline
                     autoPlay
                     muted={getAudioSettings().isMuted}
                     onLoadedData={() => {
-                        if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
+                        if (videoRef.current) {
+                            videoRef.current.defaultPlaybackRate = playbackSpeed;
+                            videoRef.current.playbackRate = playbackSpeed;
+                        }
                     }}
                     onCanPlay={() => {
                         applyAudioToVideo();
-                        if (videoRef.current) videoRef.current.playbackRate = playbackSpeed;
+                        if (videoRef.current) {
+                            videoRef.current.defaultPlaybackRate = playbackSpeed;
+                            videoRef.current.playbackRate = playbackSpeed;
+                        }
                         if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
                     onPlaying={() => {
                         setIsVideoReady(true);
+                        if (videoRef.current) {
+                            videoRef.current.defaultPlaybackRate = playbackSpeed;
+                            videoRef.current.playbackRate = playbackSpeed;
+                        }
                     }}
                     onWaiting={() => {
                         setIsVideoReady(false);
@@ -345,6 +358,10 @@ export default function CameraCardFeed({
                         src={frameSrc}
                         alt={stationName}
                         className="station-live-frame"
+                        style={{
+                            imageRendering: '-webkit-optimize-contrast',
+                            transform: 'translateZ(0)'
+                        }}
                         onError={() => setHasError(true)}
                     />
                 ) : (!frameSrc || hasError || !isInRecordingSegment) && !streamSrc ? (

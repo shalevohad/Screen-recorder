@@ -85,12 +85,16 @@ export default function StudioVideoFeed({
         if (videoRefA.current) {
             videoRefA.current.volume = audio.volume;
             videoRefA.current.muted = activeSlot !== 'A' || audio.isMuted;
+            videoRefA.current.defaultPlaybackRate = playbackSpeed;
+            videoRefA.current.playbackRate = playbackSpeed;
         }
         if (videoRefB.current) {
             videoRefB.current.volume = audio.volume;
             videoRefB.current.muted = activeSlot !== 'B' || audio.isMuted;
+            videoRefB.current.defaultPlaybackRate = playbackSpeed;
+            videoRefB.current.playbackRate = playbackSpeed;
         }
-    }, [activeSlot]);
+    }, [activeSlot, playbackSpeed]);
 
     useEffect(() => {
         const handleAudioChange = (e) => {
@@ -104,8 +108,14 @@ export default function StudioVideoFeed({
     }, []);
 
     useEffect(() => {
-        if (videoRefA.current) videoRefA.current.playbackRate = playbackSpeed;
-        if (videoRefB.current) videoRefB.current.playbackRate = playbackSpeed;
+        if (videoRefA.current) {
+            videoRefA.current.defaultPlaybackRate = playbackSpeed;
+            videoRefA.current.playbackRate = playbackSpeed;
+        }
+        if (videoRefB.current) {
+            videoRefB.current.defaultPlaybackRate = playbackSpeed;
+            videoRefB.current.playbackRate = playbackSpeed;
+        }
     }, [playbackSpeed]);
 
     // שליפת פריים במצב Pause
@@ -158,8 +168,8 @@ export default function StudioVideoFeed({
         const startEpochVal = Math.round(baseEpochMs);
         const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
         const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + seekMs)));
-        return `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&speed=${playbackSpeed}&_t=${Date.now()}`;
-    }, [baseEpochMs, totalDurationMs, hostname, playbackSpeed]);
+        return `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&_t=${Date.now()}`;
+    }, [baseEpochMs, totalDurationMs, hostname]);
 
     // 💡 אתחול הזרמה בעת לחיצה על Play
     useEffect(() => {
@@ -361,7 +371,9 @@ export default function StudioVideoFeed({
                     style={{
                         opacity: isVideoRendering && activeSlot === 'A' ? 1 : 0,
                         zIndex: activeSlot === 'A' ? 3 : 1,
-                        pointerEvents: activeSlot === 'A' ? 'auto' : 'none'
+                        pointerEvents: activeSlot === 'A' ? 'auto' : 'none',
+                        imageRendering: '-webkit-optimize-contrast',
+                        transform: 'translateZ(0)'
                     }}
                     playsInline
                     autoPlay={activeSlot === 'A'}
@@ -377,6 +389,10 @@ export default function StudioVideoFeed({
                         if (activeSlot === 'A') {
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
+                            if (videoRefA.current) {
+                                videoRefA.current.defaultPlaybackRate = playbackSpeed;
+                                videoRefA.current.playbackRate = playbackSpeed;
+                            }
                         }
                     }}
                     onWaiting={() => {
@@ -386,6 +402,10 @@ export default function StudioVideoFeed({
                         if (activeSlot === 'A' && !isVideoRendering && videoRefA.current?.currentTime > 0) {
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
+                            if (videoRefA.current) {
+                                videoRefA.current.defaultPlaybackRate = playbackSpeed;
+                                videoRefA.current.playbackRate = playbackSpeed;
+                            }
                         }
                     }}
                     onError={() => {
@@ -409,7 +429,9 @@ export default function StudioVideoFeed({
                     style={{
                         opacity: isVideoRendering && activeSlot === 'B' ? 1 : 0,
                         zIndex: activeSlot === 'B' ? 3 : 1,
-                        pointerEvents: activeSlot === 'B' ? 'auto' : 'none'
+                        pointerEvents: activeSlot === 'B' ? 'auto' : 'none',
+                        imageRendering: '-webkit-optimize-contrast',
+                        transform: 'translateZ(0)'
                     }}
                     playsInline
                     autoPlay={activeSlot === 'B'}
@@ -425,6 +447,10 @@ export default function StudioVideoFeed({
                         if (activeSlot === 'B') {
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
+                            if (videoRefB.current) {
+                                videoRefB.current.defaultPlaybackRate = playbackSpeed;
+                                videoRefB.current.playbackRate = playbackSpeed;
+                            }
                         }
                     }}
                     onWaiting={() => {
@@ -434,6 +460,10 @@ export default function StudioVideoFeed({
                         if (activeSlot === 'B' && !isVideoRendering && videoRefB.current?.currentTime > 0) {
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
+                            if (videoRefB.current) {
+                                videoRefB.current.defaultPlaybackRate = playbackSpeed;
+                                videoRefB.current.playbackRate = playbackSpeed;
+                            }
                         }
                     }}
                     onError={() => {
@@ -460,6 +490,10 @@ export default function StudioVideoFeed({
                         src={frameResult}
                         className="feed-static-image"
                         alt="Playback Frame"
+                        style={{
+                            imageRendering: '-webkit-optimize-contrast',
+                            transform: 'translateZ(0)'
+                        }}
                     />
                 ) : !isPlaying ? (
                     <div className="feed-decode-pending">

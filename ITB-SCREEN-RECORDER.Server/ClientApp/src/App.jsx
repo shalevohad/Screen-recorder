@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ClientApp/src/App.jsx
 // ==========================================
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -55,10 +55,50 @@ function CommandCenterApp() {
 
     const [systemConfig, setSystemConfig] = useState(null);
     const [actionPending, setActionPending] = useState({});
+    const actionPendingTimeoutsRef = useRef({});
+
+    useEffect(() => {
+        return () => {
+            Object.values(actionPendingTimeoutsRef.current).forEach(t => clearTimeout(t));
+        };
+    }, []);
 
     const [isServerOfflineModal, setIsServerOfflineModal] = useState(false);
     const [lastServerContact, setLastServerContact] = useState(() => new Date());
     const [isRetryingConnection, setIsRetryingConnection] = useState(false);
+
+    const [clusterConfig, setClusterConfig] = useState(() => {
+        try {
+            return {
+                role: localStorage.getItem('itb_cluster_role') || 'Active-Active',
+                partnerServerUrl: localStorage.getItem('itb_cluster_partner_url') || '',
+                autoFailoverDashboard: localStorage.getItem('itb_cluster_failover_enabled') !== 'false',
+                failoverDelaySeconds: Number(localStorage.getItem('itb_cluster_failover_delay')) || 8,
+                virtualIp: localStorage.getItem('itb_cluster_vip') || '',
+                enableVirtualIp: localStorage.getItem('itb_cluster_vip_enabled') === 'true',
+                isHoldingVip: false,
+                isStandalone: true,
+                totalActiveNodes: 1,
+                clusterMode: 'Standalone'
+            };
+        } catch {
+            return {
+                role: 'Active-Active',
+                partnerServerUrl: '',
+                autoFailoverDashboard: true,
+                failoverDelaySeconds: 8,
+                virtualIp: '',
+                enableVirtualIp: false,
+                isHoldingVip: false,
+                isStandalone: true,
+                totalActiveNodes: 1,
+                clusterMode: 'Standalone'
+            };
+        }
+    });
+
+    const [failoverCountdown, setFailoverCountdown] = useState(8);
+    const [isFailoverPaused, setIsFailoverPaused] = useState(false);
 
     const lastContactTimestampRef = useRef(0);
 
@@ -69,6 +109,59 @@ function CommandCenterApp() {
     const [hideOffline, setHideOffline] = useState(true);
     const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
     const [timeOfDay, setTimeOfDay] = useState(resolveTimeOfDay);
+    const [liveKeystrokes, setLiveKeystrokes] = useState({});
+
+    const handleIncomingKeystrokes = useCallback((hostname, keys) => {
+        if (!keys || !keys.length || !hostname) return;
+        const hostKey = hostname.toLowerCase();
+        const now = Date.now();
+        const incoming = keys.map(k => {
+            const combo = k.keyCombination || k.KeyCombination || k.combo || (typeof k === 'string' ? k : '');
+            const epoch = k.epochMs || k.EpochMs || now;
+            return {
+                id: `${epoch}_${Math.random()}`,
+                combo,
+                epochMs: epoch,
+                receivedAt: now
+            };
+        }).filter(item => item.combo && item.combo.trim() !== '');
+
+        if (!incoming.length) return;
+
+        // 💡 סנכרון תצוגת מקשים עם לטנסי ה-WebRTC (120ms): מונע הופעה מוקדמת מדי ומנעיל את ה-overlay לסרטון בדיוק כשהעכבר מגיע לנקודה
+        setTimeout(() => {
+            setLiveKeystrokes(prev => {
+                const currentNow = Date.now();
+                const existing = (prev[hostKey] || []).filter(k => currentNow - k.receivedAt < 3500);
+                // מניעת כפילויות של אותו מקש תוך 400ms (בין אם מה-Fast Path או מטלמטריה שוטפת)
+                const uniqueIncoming = incoming.filter(inc =>
+                    !existing.some(ex => ex.combo === inc.combo && Math.abs((ex.epochMs || 0) - (inc.epochMs || 0)) < 400)
+                );
+                if (!uniqueIncoming.length) return prev;
+                return {
+                    ...prev,
+                    [hostKey]: [...existing, ...uniqueIncoming].slice(-8)
+                };
+            });
+        }, 120);
+    }, []);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const now = Date.now();
+            setLiveKeystrokes(prev => {
+                let changed = false;
+                const next = {};
+                for (const [host, keys] of Object.entries(prev)) {
+                    const filtered = keys.filter(k => now - k.receivedAt < 3000);
+                    if (filtered.length !== keys.length) changed = true;
+                    if (filtered.length > 0) next[host] = filtered;
+                }
+                return changed ? next : prev;
+            });
+        }, 500);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -133,6 +226,29 @@ function CommandCenterApp() {
             if (res.ok) {
                 const data = await res.json();
                 if (Array.isArray(data)) {
+                    setActionPending(prev => {
+                        let hasChanges = false;
+                        const next = { ...prev };
+                        for (const hostKey of Object.keys(prev)) {
+                            const pending = prev[hostKey];
+                            const match = data.find(s => (s.hostname || s.stationId || '').toLowerCase() === hostKey.toLowerCase());
+                            if (match) {
+                                const isConfirmed =
+                                    (pending === 'starting' && match.isStreaming) ||
+                                    (pending === 'stopping' && !match.isStreaming) ||
+                                    (match.isOnline === false);
+                                if (isConfirmed) {
+                                    if (actionPendingTimeoutsRef.current[hostKey]) {
+                                        clearTimeout(actionPendingTimeoutsRef.current[hostKey]);
+                                        delete actionPendingTimeoutsRef.current[hostKey];
+                                    }
+                                    delete next[hostKey];
+                                    hasChanges = true;
+                                }
+                            }
+                        }
+                        return hasChanges ? next : prev;
+                    });
                     setStations(data);
                 }
                 registerServerHeartbeat();
@@ -163,6 +279,95 @@ function CommandCenterApp() {
         }
     }, [apiBaseUrl, registerServerHeartbeat]);
 
+    const fetchClusterConfig = useCallback(async () => {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const res = await fetch(`${apiBaseUrl}/api/v1/dashboard/cluster`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+                const data = await res.json();
+                const role = data.role || data.Role || 'Active-Active';
+                const partner = (data.partnerServerUrl || data.PartnerServerUrl || '').trim();
+                const autoFailover = data.autoFailoverDashboard ?? data.AutoFailoverDashboard ?? true;
+                const delay = Number(data.failoverDelaySeconds || data.FailoverDelaySeconds) || 8;
+                const virtualIp = (data.virtualIp || data.VirtualIp || '').trim();
+                const enableVip = Boolean(data.enableVirtualIp ?? data.EnableVirtualIp);
+                const isHoldingVip = Boolean(data.isHoldingVip ?? data.IsHoldingVip);
+                const isStandalone = Boolean(data.isStandalone ?? data.IsStandalone ?? true);
+                const totalActiveNodes = Number(data.totalActiveNodes || data.TotalActiveNodes) || 1;
+                const clusterMode = data.clusterMode || data.ClusterMode || (isStandalone ? 'Standalone' : 'Active-Active Mesh');
+
+                localStorage.setItem('itb_cluster_role', role);
+                localStorage.setItem('itb_cluster_partner_url', partner);
+                localStorage.setItem('itb_cluster_failover_enabled', String(autoFailover));
+                localStorage.setItem('itb_cluster_failover_delay', String(delay));
+                localStorage.setItem('itb_cluster_vip', virtualIp);
+                localStorage.setItem('itb_cluster_vip_enabled', String(enableVip));
+
+                setClusterConfig({
+                    role,
+                    priority: data.priority ?? data.Priority,
+                    serverName: data.serverName || data.ServerName,
+                    discoveryPort: data.discoveryPort || data.DiscoveryPort,
+                    multicastAddress: data.multicastAddress || data.MulticastAddress,
+                    broadcastAddress: data.broadcastAddress || data.BroadcastAddress,
+                    partnerServerUrl: partner,
+                    autoFailoverDashboard: autoFailover,
+                    failoverDelaySeconds: delay,
+                    virtualIp,
+                    enableVirtualIp: enableVip,
+                    isHoldingVip,
+                    isStandalone,
+                    totalActiveNodes,
+                    clusterMode,
+                    activeInterface: data.activeInterface || data.ActiveInterface || ''
+                });
+                setFailoverCountdown(delay);
+            }
+        } catch (err) {
+            console.warn('[App] fetchClusterConfig error:', err.message);
+        }
+    }, [apiBaseUrl]);
+
+    // ניהול ספירה לאחור ומעבר אוטומטי לצומת עמית / כתובת VIP בעת ניתוק
+    useEffect(() => {
+        if (!isServerOfflineModal) {
+            setFailoverCountdown(clusterConfig.failoverDelaySeconds || 8);
+            setIsFailoverPaused(false);
+            return;
+        }
+
+        const canFailover = clusterConfig.autoFailoverDashboard && (
+            Boolean(clusterConfig.partnerServerUrl?.trim()) ||
+            (clusterConfig.enableVirtualIp && Boolean(clusterConfig.virtualIp?.trim()))
+        );
+        if (!canFailover || isFailoverPaused) return;
+
+        const timer = setInterval(() => {
+            setFailoverCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(timer);
+                    const isAlreadyOnVip = clusterConfig.virtualIp && window.location.hostname === clusterConfig.virtualIp;
+                    if (isAlreadyOnVip) {
+                        // המשתמש כבר גולש דרך כתובת ה-VIP: כתובת ה-VIP עברה אוטונומית לצומת הבא, רענון פשוט מחדש את החיבור
+                        window.location.reload();
+                    } else if (clusterConfig.enableVirtualIp && clusterConfig.virtualIp) {
+                        const port = window.location.port ? `:${window.location.port}` : '';
+                        window.location.href = `${window.location.protocol}//${clusterConfig.virtualIp}${port}`;
+                    } else if (clusterConfig.partnerServerUrl?.trim()) {
+                        window.location.href = clusterConfig.partnerServerUrl.trim();
+                    }
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [isServerOfflineModal, isFailoverPaused, clusterConfig]);
+
     useEffect(() => {
         if (!isAuthenticated) return;
 
@@ -171,7 +376,8 @@ function CommandCenterApp() {
             try {
                 await Promise.allSettled([
                     fetchStations(),
-                    fetchSystemConfig()
+                    fetchSystemConfig(),
+                    fetchClusterConfig()
                 ]);
             } catch (err) {
                 console.error('[App] Failed to load initial data:', err);
@@ -188,7 +394,7 @@ function CommandCenterApp() {
             isMounted = false;
             clearInterval(heartbeatInterval);
         };
-    }, [isAuthenticated, fetchStations, fetchSystemConfig]);
+    }, [isAuthenticated, fetchStations, fetchSystemConfig, fetchClusterConfig]);
 
     useEffect(() => {
         if (!isAuthenticated) return;
@@ -209,6 +415,7 @@ function CommandCenterApp() {
             registerServerHeartbeat();
             fetchStations();
             fetchSystemConfig();
+            fetchClusterConfig();
         });
 
         connection.onclose(() => {
@@ -225,6 +432,7 @@ function CommandCenterApp() {
                 return {
                     ...base,
                     ...telemetry,
+                    storage: telemetry.storage ?? base.storage ?? null,
                     uptimeSeconds: telemetry.uptimeSeconds ?? telemetry.systemUptimeSeconds ?? base.uptimeSeconds ?? 0,
                     cpuPct: telemetry.cpuPct ?? telemetry.hostCpuPct ?? base.cpuPct ?? 0,
                     hostRamPct: telemetry.hostRamPct ?? telemetry.ramPct ?? base.hostRamPct ?? 0,
@@ -232,6 +440,12 @@ function CommandCenterApp() {
                     netUtilPct: telemetry.netUtilPct ?? base.netUtilPct ?? 0
                 };
             });
+        });
+
+        connection.on('ReceiveSystemConfig', (newConfig) => {
+            if (!newConfig) return;
+            registerServerHeartbeat();
+            setSystemConfig(newConfig);
         });
 
         connection.on('ReceiveMaintenanceJob', (job) => {
@@ -242,23 +456,78 @@ function CommandCenterApp() {
         connection.on('ReceiveAgentMetrics', (report) => {
             if (!report) return;
             registerServerHeartbeat();
-            setStations(prev => {
-                const host = (report.hostname || report.stationId || '').toLowerCase();
-                const idx = prev.findIndex(s => (s.hostname || s.stationId || '').toLowerCase() === host);
-                const isOnline = report.status === 1 || report.status === 2 || report.isProcessRunning || report.isOnline;
+            const host = (report.hostname || report.stationId || '').toLowerCase();
+            const isOnline = report.isOnline !== undefined ? Boolean(report.isOnline) : true;
+            const status = typeof report.status === 'string' ? report.status : (report.isStreaming ? 'Recording' : 'Standby');
 
+            setActionPending(prev => {
+                const key = Object.keys(prev).find(k => k.toLowerCase() === host);
+                if (!key) return prev;
+                const pending = prev[key];
+                const isConfirmed =
+                    (pending === 'starting' && report.isStreaming) ||
+                    (pending === 'stopping' && !report.isStreaming) ||
+                    (!isOnline);
+
+                if (isConfirmed) {
+                    if (actionPendingTimeoutsRef.current[key]) {
+                        clearTimeout(actionPendingTimeoutsRef.current[key]);
+                        delete actionPendingTimeoutsRef.current[key];
+                    }
+                    const next = { ...prev };
+                    delete next[key];
+                    return next;
+                }
+                return prev;
+            });
+
+            setStations(prev => {
+                const idx = prev.findIndex(s => (s.hostname || s.stationId || '').toLowerCase() === host);
                 if (idx > -1) {
                     const copy = [...prev];
-                    copy[idx] = { ...copy[idx], ...report, isOnline };
+                    copy[idx] = { ...copy[idx], ...report, isOnline, status };
                     return copy;
                 }
-                return [...prev, { ...report, isOnline }];
+                return [...prev, { ...report, isOnline, status }];
             });
+
+            const rawKeys = report.keystrokes || report.Keystrokes;
+            if (rawKeys && rawKeys.length > 0) {
+                handleIncomingKeystrokes(report.hostname || report.Hostname || host, rawKeys);
+            }
+        });
+
+        connection.on('ReceiveLiveKeystrokes', (host, keys) => {
+            registerServerHeartbeat();
+            handleIncomingKeystrokes(host, keys);
         });
 
         connection.on('ReceiveAllStations', (allStations) => {
             if (Array.isArray(allStations)) {
                 registerServerHeartbeat();
+                setActionPending(prev => {
+                    let hasChanges = false;
+                    const next = { ...prev };
+                    for (const hostKey of Object.keys(prev)) {
+                        const pending = prev[hostKey];
+                        const match = allStations.find(s => (s.hostname || s.stationId || '').toLowerCase() === hostKey.toLowerCase());
+                        if (match) {
+                            const isConfirmed =
+                                (pending === 'starting' && match.isStreaming) ||
+                                (pending === 'stopping' && !match.isStreaming) ||
+                                (match.isOnline === false);
+                            if (isConfirmed) {
+                                if (actionPendingTimeoutsRef.current[hostKey]) {
+                                    clearTimeout(actionPendingTimeoutsRef.current[hostKey]);
+                                    delete actionPendingTimeoutsRef.current[hostKey];
+                                }
+                                delete next[hostKey];
+                                hasChanges = true;
+                            }
+                        }
+                    }
+                    return hasChanges ? next : prev;
+                });
                 setStations(allStations);
             }
         });
@@ -285,8 +554,25 @@ function CommandCenterApp() {
     }, [stations]);
 
     const handleToggleStream = async (hostname, isCurrentlyStreaming, policy = {}) => {
-        setActionPending(prev => ({ ...prev, [hostname]: true }));
         const targetEnable = !isCurrentlyStreaming;
+        const pendingState = targetEnable ? 'starting' : 'stopping';
+
+        if (actionPendingTimeoutsRef.current[hostname]) {
+            clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+        }
+
+        setActionPending(prev => ({ ...prev, [hostname]: pendingState }));
+
+        actionPendingTimeoutsRef.current[hostname] = setTimeout(() => {
+            setActionPending(prev => {
+                if (!prev[hostname]) return prev;
+                const next = { ...prev };
+                delete next[hostname];
+                return next;
+            });
+            delete actionPendingTimeoutsRef.current[hostname];
+        }, 25000);
+
         const queryParams = new URLSearchParams({ enable: targetEnable });
         if (targetEnable && policy.bitrate) queryParams.append('bitrate', policy.bitrate);
         if (targetEnable && policy.fps) queryParams.append('fps', policy.fps);
@@ -296,13 +582,108 @@ function CommandCenterApp() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-            if (res.ok) {
-                setStations(prev => prev.map(st => st.hostname === hostname ? { ...st, isStreaming: targetEnable } : st));
+            if (!res.ok) {
+                if (actionPendingTimeoutsRef.current[hostname]) {
+                    clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+                    delete actionPendingTimeoutsRef.current[hostname];
+                }
+                setActionPending(prev => {
+                    const next = { ...prev };
+                    delete next[hostname];
+                    return next;
+                });
             }
-        } finally {
-            setActionPending(prev => ({ ...prev, [hostname]: false }));
+        } catch (err) {
+            console.error('[App] Failed to send stream command:', err);
+            if (actionPendingTimeoutsRef.current[hostname]) {
+                clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+                delete actionPendingTimeoutsRef.current[hostname];
+            }
+            setActionPending(prev => {
+                const next = { ...prev };
+                delete next[hostname];
+                return next;
+            });
         }
     };
+
+    const handleBulkStart = useCallback(async (targetHostnames = [], policy = {}) => {
+        if (!targetHostnames || !targetHostnames.length) return;
+
+        const nextPending = {};
+        targetHostnames.forEach(hostname => {
+            if (actionPendingTimeoutsRef.current[hostname]) {
+                clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+            }
+            nextPending[hostname] = 'starting';
+            actionPendingTimeoutsRef.current[hostname] = setTimeout(() => {
+                setActionPending(prev => {
+                    if (!prev[hostname]) return prev;
+                    const next = { ...prev };
+                    delete next[hostname];
+                    return next;
+                });
+                delete actionPendingTimeoutsRef.current[hostname];
+            }, 25000);
+        });
+
+        setActionPending(prev => ({ ...prev, ...nextPending }));
+
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enable: true,
+                    hostnames: targetHostnames
+                })
+            });
+            if (res.ok) {
+                await fetchStations();
+            }
+        } catch (err) {
+            console.error('[App] Failed to execute bulk start:', err);
+        }
+    }, [apiBaseUrl, fetchStations]);
+
+    const handleBulkStop = useCallback(async (targetHostnames = []) => {
+        if (!targetHostnames || !targetHostnames.length) return;
+
+        const nextPending = {};
+        targetHostnames.forEach(hostname => {
+            if (actionPendingTimeoutsRef.current[hostname]) {
+                clearTimeout(actionPendingTimeoutsRef.current[hostname]);
+            }
+            nextPending[hostname] = 'stopping';
+            actionPendingTimeoutsRef.current[hostname] = setTimeout(() => {
+                setActionPending(prev => {
+                    if (!prev[hostname]) return prev;
+                    const next = { ...prev };
+                    delete next[hostname];
+                    return next;
+                });
+                delete actionPendingTimeoutsRef.current[hostname];
+            }, 25000);
+        });
+
+        setActionPending(prev => ({ ...prev, ...nextPending }));
+
+        try {
+            const res = await fetch(`${apiBaseUrl}/api/v1/agent/fleet-streaming-policy`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enable: false,
+                    hostnames: targetHostnames
+                })
+            });
+            if (res.ok) {
+                await fetchStations();
+            }
+        } catch (err) {
+            console.error('[App] Failed to execute bulk stop:', err);
+        }
+    }, [apiBaseUrl, fetchStations]);
 
     if (!isInitialized) return null;
 
@@ -335,9 +716,11 @@ function CommandCenterApp() {
                 {currentSubsystem === 'settings' ? (
                     <SettingsView
                         onReturnToPortal={() => setCurrentSubsystem('portal')}
-                        onSettingsSaved={() => {
+                        onSettingsSaved={(savedConfig) => {
+                            if (savedConfig) setSystemConfig(savedConfig);
                             fetchStations();
                             fetchSystemConfig();
+                            fetchClusterConfig();
                         }}
                     />
                 ) : (
@@ -347,7 +730,8 @@ function CommandCenterApp() {
                             stations={sortedStations}
                             serverTelemetry={serverTelemetry}
                             systemConfig={systemConfig}
-                            onOpenAppSwitcher={() => setCurrentSubsystem('portal')}
+                            clusterConfig={clusterConfig}
+                            onOpenAppSwitcher={(target) => setCurrentSubsystem(typeof target === 'string' ? target : 'portal')}
                             hideOffline={hideOffline}
                             isFaultFilterActive={isFaultFilterActive}
                             onToggleFaultFilter={() => setIsFaultFilterActive(prev => !prev)}
@@ -359,8 +743,8 @@ function CommandCenterApp() {
                             stations={sortedStations}
                             actionPending={actionPending}
                             onToggleStream={handleToggleStream}
-                            onBulkStart={() => { }}
-                            onBulkStop={() => { }}
+                            onBulkStart={handleBulkStart}
+                            onBulkStop={handleBulkStop}
                             onUpdateStationSettings={setStations}
                             systemConfig={systemConfig}
                             onSystemConfigUpdate={setSystemConfig}
@@ -370,6 +754,7 @@ function CommandCenterApp() {
                             isFaultFilterActive={isFaultFilterActive}
                             onExitFaultFilter={() => setIsFaultFilterActive(false)}
                             isServerConnected={!isServerOfflineModal}
+                            liveKeystrokes={liveKeystrokes}
                         />
                     </>
                 )}
@@ -408,18 +793,98 @@ function CommandCenterApp() {
                                         {lastServerContact ? lastServerContact.toLocaleTimeString() : 'N/A'}
                                     </span>
                                 </div>
+                                {clusterConfig.clusterMode && (
+                                    <div className="diag-row">
+                                        <span className="diag-label">CLUSTER MODE</span>
+                                        <span className="diag-val cyan">
+                                            {clusterConfig.clusterMode.toUpperCase()}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Autonomous Active-Active Failover / VIP Redirection Card */}
+                            {clusterConfig.autoFailoverDashboard && (clusterConfig.virtualIp || clusterConfig.partnerServerUrl) ? (
+                                <div className="failover-automation-box">
+                                    <div className="failover-box-header">
+                                        <span className="pulse-warning-dot" />
+                                        <span className="failover-title">AUTONOMOUS FAILOVER IN PROGRESS</span>
+                                        <span className="failover-countdown-pill">
+                                            {isFailoverPaused ? 'PAUSED' : `${failoverCountdown}s`}
+                                        </span>
+                                    </div>
+                                    <p className="failover-desc">
+                                        {clusterConfig.enableVirtualIp && clusterConfig.virtualIp ? (
+                                            <>
+                                                {window.location.hostname === clusterConfig.virtualIp ? (
+                                                    <>Virtual IP (<strong>{clusterConfig.virtualIp}</strong>) has floated to surviving Active-Active node. Reconnecting...</>
+                                                ) : (
+                                                    <>Cluster Virtual IP (VIP): <strong>{clusterConfig.virtualIp}</strong> (Auto-routing to active node)</>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>Active Cluster Peer: <strong>{clusterConfig.partnerServerUrl}</strong></>
+                                        )}
+                                    </p>
+                                    <div className="failover-progress-track">
+                                        <div
+                                            className={`failover-progress-fill ${isFailoverPaused ? 'paused' : ''}`}
+                                            style={{
+                                                width: `${Math.max(0, Math.min(100, (failoverCountdown / (clusterConfig.failoverDelaySeconds || 8)) * 100))}%`
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
                         </div>
 
                         <div className="modal-actions-section">
-                            <button
-                                type="button"
-                                className="btn-modal-reconnect"
-                                onClick={handleManualRetry}
-                                disabled={isRetryingConnection}
-                            >
-                                {isRetryingConnection ? 'CHECKING CONNECTION...' : '⟳ RECONNECT NOW'}
-                            </button>
+                            {clusterConfig.enableVirtualIp && clusterConfig.virtualIp && window.location.hostname !== clusterConfig.virtualIp && (
+                                <button
+                                    type="button"
+                                    className="btn-modal-failover"
+                                    onClick={() => {
+                                        const port = window.location.port ? `:${window.location.port}` : '';
+                                        window.location.href = `${window.location.protocol}//${clusterConfig.virtualIp}${port}`;
+                                    }}
+                                >
+                                    👑 CONNECT VIA CLUSTER VIP ({clusterConfig.virtualIp})
+                                </button>
+                            )}
+
+                            {clusterConfig.partnerServerUrl && (
+                                <button
+                                    type="button"
+                                    className="btn-modal-failover"
+                                    onClick={() => {
+                                        const target = clusterConfig.partnerServerUrl.trim();
+                                        if (target) window.location.href = target;
+                                    }}
+                                >
+                                    ⚡ SWITCH TO ACTIVE PEER NODE
+                                </button>
+                            )}
+
+                            <div className="modal-actions-secondary-row">
+                                <button
+                                    type="button"
+                                    className="btn-modal-reconnect"
+                                    onClick={handleManualRetry}
+                                    disabled={isRetryingConnection}
+                                >
+                                    {isRetryingConnection ? 'CHECKING CONNECTION...' : '⟳ RECONNECT NOW'}
+                                </button>
+
+                                {clusterConfig.autoFailoverDashboard && (clusterConfig.partnerServerUrl || clusterConfig.virtualIp) && (
+                                    <button
+                                        type="button"
+                                        className="btn-modal-pause-failover"
+                                        onClick={() => setIsFailoverPaused(p => !p)}
+                                    >
+                                        {isFailoverPaused ? '▶ RESUME FAILOVER' : '⏸ PAUSE FAILOVER'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

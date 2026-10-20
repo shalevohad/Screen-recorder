@@ -2,6 +2,7 @@
 bin/
 obj/
 .vs/
+.tmp_dotnet/
 TestResults/
 *.user
 *.suo
@@ -61,3 +62,4 @@ mediamtx.exe
 scratch/
 .dotnet_temp*
 
+/ITB-SCREEN-RECORDER.Server/Tools/Linux/ffmpeg

@@ -78,9 +78,16 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 report.RecordingStartedAtUtc = null;
             }
 
+            // עדכון חותמת הזמן על פי שעון השרת הנוכחי למניעת בעיות Clock Skew בין עמדות הקצה לשרת
+            report.Timestamp = DateTime.UtcNow;
+
             _latestReports[key] = report;
 
-            string hostToUse = !string.IsNullOrWhiteSpace(requestHost) ? requestHost : "128.200.3.10";
+            string hostToUse = !string.IsNullOrWhiteSpace(requestHost)
+                ? requestHost
+                : (!string.IsNullOrWhiteSpace(_configMonitor.CurrentValue.Discovery?.VirtualIp)
+                    ? _configMonitor.CurrentValue.Discovery.VirtualIp
+                    : "127.0.0.1");
 
             // מדרג מדיניות (Overrides -> Tab Settings -> Global Defaults)
             var currentPolicy = await GetAgentPolicyAsync(report.Hostname, hostToUse);

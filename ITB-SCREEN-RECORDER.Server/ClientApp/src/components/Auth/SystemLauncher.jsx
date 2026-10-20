@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Client/src/components/Auth/SystemLauncher.jsx
 // ==========================================
 import { useState } from 'react';
@@ -46,6 +46,8 @@ export default function SystemLauncher({ onLaunchApp }) {
             );
             return;
         }
+
+
 
         // 🎬 מרכז הקלטות המסכים:
         if (isOpenMode) {
@@ -180,7 +182,6 @@ export default function SystemLauncher({ onLaunchApp }) {
                             </div>
                         </div>
                     </div>
-
                     {/* מערכת 2: ניהול והגדרות מערכת (נעולה לחלוטין – מנהל בלבד) */}
                     <div
                         className={`system-app-card settings-card ${!canAccessSettings ? 'admin-required' : ''}`}

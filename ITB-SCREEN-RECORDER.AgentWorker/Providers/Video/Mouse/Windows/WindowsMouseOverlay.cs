@@ -1,8 +1,11 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading;
+using ITB_SCREEN_RECORDER.Core.Common;
+using ITBRecorderAgent.Providers.Video;
 using ITBRecorderAgent.Providers.Video.Mouse.Common;
 
 namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
@@ -73,8 +76,12 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         private const int WM_RBUTTONDOWN = 0x0204;
         private const int WM_MBUTTONDOWN = 0x0207;
         private const int WM_MOUSEWHEEL = 0x020A;
+        private static readonly IntPtr IDC_ARROW = new IntPtr(32512);
 
         private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string? lpModuleName);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
@@ -97,10 +104,16 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         [DllImport("user32.dll")]
         private static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
         private static extern bool GetCursorInfo(out CURSORINFO pci);
 
         [DllImport("user32.dll")]
+        private static extern bool GetCursorPos(out POINT lpPoint);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr LoadCursor(IntPtr hInstance, IntPtr lpCursorName);
+
+        [DllImport("user32.dll", SetLastError = true)]
         private static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO piconinfo);
 
         [DllImport("user32.dll")]
@@ -136,9 +149,38 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
 
             _hookThread = new Thread(() =>
             {
+                DesktopSecurityManager.TryAttachToInputDesktop();
                 _hookThreadId = GetCurrentThreadId();
                 _hookProc = HookCallback;
-                _hookId = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, IntPtr.Zero, 0);
+
+                IntPtr hMod = IntPtr.Zero;
+                try
+                {
+                    using var curProcess = Process.GetCurrentProcess();
+                    using var curModule = curProcess.MainModule;
+                    hMod = GetModuleHandle(curModule?.ModuleName);
+                }
+                catch { }
+
+                _hookId = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, hMod, 0);
+                if (_hookId == IntPtr.Zero)
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    Logger.Warn($"[MOUSE] SetWindowsHookEx with module handle failed ({err}). Retrying with IntPtr.Zero...");
+                    _hookId = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, IntPtr.Zero, 0);
+                    if (_hookId == IntPtr.Zero)
+                    {
+                        Logger.Error($"[MOUSE] SetWindowsHookEx fallback also failed: {Marshal.GetLastWin32Error()}");
+                    }
+                    else
+                    {
+                        Logger.Info("[MOUSE] Low-level mouse hook successfully registered with IntPtr.Zero fallback.");
+                    }
+                }
+                else
+                {
+                    Logger.Info("[MOUSE] Low-level mouse hook successfully registered.");
+                }
 
                 while (GetMessage(out MSG msg, IntPtr.Zero, 0, 0) > 0)
                 {
@@ -208,11 +250,46 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
             MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
         }
 
+        private static int _debugLogCounter = 0;
+
         private bool DrawSystemCursorWithPulse(byte[] frameBuffer, int width, int height)
         {
             var pci = new CURSORINFO { cbSize = Marshal.SizeOf(typeof(CURSORINFO)) };
-            if (!GetCursorInfo(out pci) || pci.flags != CURSOR_SHOWING) return true;
-            if (!GetIconInfo(pci.hCursor, out var iconInfo)) return true;
+            bool gotCursor = GetCursorInfo(out pci);
+
+            if (!gotCursor)
+            {
+                DesktopSecurityManager.TryAttachToInputDesktop();
+                gotCursor = GetCursorInfo(out pci);
+            }
+
+            int cursorPosX = pci.ptScreenPos.x;
+            int cursorPosY = pci.ptScreenPos.y;
+            IntPtr hCursor = pci.hCursor;
+
+            // אם CURSORINFO נכשל או לא סיפק מיקום, מחלצים מיקום מדויק עם GetCursorPos
+            if (!gotCursor || (cursorPosX == 0 && cursorPosY == 0))
+            {
+                if (GetCursorPos(out var pt))
+                {
+                    cursorPosX = pt.x;
+                    cursorPosY = pt.y;
+                }
+            }
+
+            if (hCursor == IntPtr.Zero)
+            {
+                hCursor = LoadCursor(IntPtr.Zero, IDC_ARROW);
+            }
+
+            if (!GetIconInfo(hCursor, out var iconInfo))
+            {
+                hCursor = LoadCursor(IntPtr.Zero, IDC_ARROW);
+                if (hCursor == IntPtr.Zero || !GetIconInfo(hCursor, out iconInfo))
+                {
+                    return true;
+                }
+            }
 
             bool isBright = true;
 
@@ -275,22 +352,22 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                 // --- טיפול 2: סמני צבע (32bpp Alpha או 24bpp צבע מלא) ---
                 else
                 {
-                    cursorW = 64;
-                    cursorH = 64;
-                    _cursorBmp ??= new Bitmap(64, 64, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                    cursorW = 128;
+                    cursorH = 128;
+                    _cursorBmp ??= new Bitmap(128, 128, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
 
                     using (var g = Graphics.FromImage(_cursorBmp))
                     {
                         g.Clear(Color.Transparent);
                         IntPtr hdc = g.GetHdc();
-                        DrawIconEx(hdc, 0, 0, pci.hCursor, 0, 0, 0, IntPtr.Zero, DI_NORMAL);
+                        DrawIconEx(hdc, 0, 0, hCursor, 0, 0, 0, IntPtr.Zero, DI_NORMAL);
                         g.ReleaseHdc(hdc);
                     }
 
-                    var rect = new Rectangle(0, 0, 64, 64);
+                    var rect = new Rectangle(0, 0, 128, 128);
                     var bmpData = _cursorBmp.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
 
-                    int[] tempBits = new int[64 * 64];
+                    int[] tempBits = new int[128 * 128];
                     Marshal.Copy(bmpData.Scan0, tempBits, 0, tempBits.Length);
                     _cursorBmp.UnlockBits(bmpData);
 
@@ -305,11 +382,11 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                     }
 
                     // העתקה לבאפר 128
-                    for (int y = 0; y < 64; y++)
+                    for (int y = 0; y < 128; y++)
                     {
-                        for (int x = 0; x < 64; x++)
+                        for (int x = 0; x < 128; x++)
                         {
-                            int px = tempBits[y * 64 + x];
+                            int px = tempBits[y * 128 + x];
                             if (!hasAlpha && (px & 0x00FFFFFF) != 0)
                             {
                                 px |= unchecked((int)0xFF000000); // תיקון Alpha לסמני 24bpp
@@ -349,8 +426,13 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                 float scale = MouseVisualRasterizer.GetCurrentCursorScale();
                 int drawW = (int)(cursorW * scale);
                 int drawH = (int)(cursorH * scale);
-                int startX = pci.ptScreenPos.x - (int)(hotspotX * scale);
-                int startY = pci.ptScreenPos.y - (int)(hotspotY * scale);
+                int startX = cursorPosX - (int)(hotspotX * scale);
+                int startY = cursorPosY - (int)(hotspotY * scale);
+
+                if (++_debugLogCounter % 60 == 1)
+                {
+                    Logger.Info($"[MOUSE:PULSE] got={gotCursor}, pos=({cursorPosX},{cursorPosY}), flags={pci.flags}, hCur={hCursor}, hotspot=({iconInfo.xHotspot},{iconInfo.yHotspot}), size=({cursorW}x{cursorH}), scale={scale:F2}, isBright={isBright}");
+                }
 
                 for (int dy = 0; dy < drawH; dy++)
                 {

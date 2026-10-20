@@ -30,6 +30,36 @@ try {
         var apiPort = parts[3] || "9997";
         var hlsPort = parts[4] || "8888";
         var dataDir = parts[5] || "C:\\ProgramData\\ITB-SCREEN-RECORDER\\Server";
+        var serverRole = parts[6] || "Active-Active";
+        var serverPriority = parts[7] || "1";
+        var discPort = parts[8] || "5098";
+        var discMcast = parts[9] || "239.255.10.90";
+        var enableVip = (parts[10] === "1" || parts[10] === "true");
+        var virtualIp = parts[11] || "";
+        var partnerUrl = parts[12] || "";
+        var vipSubnet = parts[13] || "255.255.255.0";
+        var discBcast = parts[14] || "255.255.255.255";
+        if (virtualIp.length > 0) enableVip = true;
+
+        // נירמול תפקיד השרת ועדיפות תקנית
+        var cleanRole = (serverRole + "").toLowerCase().replace(/^\s+|\s+$/g, "");
+        if (cleanRole === "aggregate" || cleanRole === "aggrigate" || cleanRole === "agg" || cleanRole === "super") {
+            serverRole = "Aggregate";
+            if (serverPriority === "1" || !serverPriority) {
+                serverPriority = "0";
+            }
+        } else if (cleanRole === "standalone" || cleanRole === "single") {
+            serverRole = "Standalone";
+            if (!serverPriority || serverPriority === "0") {
+                serverPriority = "1";
+            }
+        } else {
+            // כלל צמתי האשכול הם Active-Active
+            serverRole = "Active-Active";
+            if (!serverPriority || serverPriority === "0") {
+                serverPriority = "1";
+            }
+        }
 
         // ניקוי לוכסנים עודפים
         while (installDir.length > 0 && (installDir.charAt(installDir.length - 1) === "\\" || installDir.charAt(installDir.length - 1) === "/")) {
@@ -41,7 +71,7 @@ try {
 
         var dataDirJson = dataDir.split("\\").join("\\\\");
 
-        log("Parsed settings: HTTP=" + httpPort + ", RTMP=" + rtmpPort + ", API=" + apiPort + ", HLS=" + hlsPort);
+        log("Parsed settings: HTTP=" + httpPort + ", RTMP=" + rtmpPort + ", API=" + apiPort + ", HLS=" + hlsPort + ", Role=" + serverRole + ", Priority=" + serverPriority + ", DiscPort=" + discPort + ", DiscMcast=" + discMcast);
         log("InstallDir: " + installDir);
         log("DataDir: " + dataDir);
 
@@ -80,6 +110,65 @@ try {
                 content = content.replace(/"BaseDirectory"\s*:\s*"[^"]*"/gi, '"BaseDirectory": "' + dataDirJson + '\\\\Data"');
                 content = content.replace(/"ExportPath"\s*:\s*"[^"]*"/gi, '"ExportPath": "' + dataDirJson + '\\\\Exports"');
                 content = content.replace(/"ChunkEventLogPath"\s*:\s*"[^"]*"/gi, '"ChunkEventLogPath": "' + dataDirJson + '\\\\Logs\\\\chunk-events.log"');
+
+                // תפקיד ועדיפות בארכיטקטורת שרתים (Discovery)
+                if (/"Role"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"Role"\s*:\s*"[^"]*"/gi, '"Role": "' + serverRole + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "Role": "' + serverRole + '",');
+                }
+
+                if (/"Priority"\s*:\s*\d+/i.test(content)) {
+                    content = content.replace(/"Priority"\s*:\s*\d+/gi, '"Priority": ' + serverPriority);
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "Priority": ' + serverPriority + ',');
+                }
+
+                // פורט ומולטיקאסט של Discovery
+                if (/"Port"\s*:\s*\d+/i.test(content)) {
+                    content = content.replace(/"Port"\s*:\s*\d+/gi, '"Port": ' + discPort);
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "Port": ' + discPort + ',');
+                }
+
+                if (/"MulticastAddress"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"MulticastAddress"\s*:\s*"[^"]*"/gi, '"MulticastAddress": "' + discMcast + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "MulticastAddress": "' + discMcast + '",');
+                }
+
+                if (/"BroadcastAddress"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"BroadcastAddress"\s*:\s*"[^"]*"/gi, '"BroadcastAddress": "' + discBcast + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "BroadcastAddress": "' + discBcast + '",');
+                }
+
+                // Virtual IP (VIP) and Partner Server URL
+                if (/"EnableVirtualIp"\s*:\s*(true|false)/i.test(content)) {
+                    content = content.replace(/"EnableVirtualIp"\s*:\s*(true|false)/gi, '"EnableVirtualIp": ' + (enableVip ? "true" : "false"));
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "EnableVirtualIp": ' + (enableVip ? "true" : "false") + ',');
+                }
+
+                if (/"VirtualIp"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"VirtualIp"\s*:\s*"[^"]*"/gi, '"VirtualIp": "' + virtualIp + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "VirtualIp": "' + virtualIp + '",');
+                }
+
+                if (/"VirtualIpSubnetMask"\s*:\s*"[^"]*"/i.test(content)) {
+                    content = content.replace(/"VirtualIpSubnetMask"\s*:\s*"[^"]*"/gi, '"VirtualIpSubnetMask": "' + vipSubnet + '"');
+                } else {
+                    content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "VirtualIpSubnetMask": "' + vipSubnet + '",');
+                }
+
+                if (partnerUrl && partnerUrl.length > 0) {
+                    if (/"PartnerServerUrl"\s*:\s*"[^"]*"/i.test(content)) {
+                        content = content.replace(/"PartnerServerUrl"\s*:\s*"[^"]*"/gi, '"PartnerServerUrl": "' + partnerUrl + '"');
+                    } else {
+                        content = content.replace(/("Discovery"\s*:\s*\{)/i, '$1\r\n      "PartnerServerUrl": "' + partnerUrl + '",');
+                    }
+                }
 
                 var outJ = fso.CreateTextFile(jp, true);
                 outJ.Write(content);

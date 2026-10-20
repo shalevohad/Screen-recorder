@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Server.Services;
 using ITB_SCREEN_RECORDER.Server.Services.Security;
+using ITB_SCREEN_RECORDER.Server.Services.Network;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 
@@ -33,6 +34,33 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _tabsService = tabsService;
             _catalogRepository = catalogRepository;
             _configMonitor = configMonitor;
+        }
+
+        [HttpGet("cluster")]
+        [HttpGet("discovery")]
+        [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+        public IActionResult GetDiscoveryStatus()
+        {
+            var config = _configMonitor.CurrentValue;
+            var disc = config.Discovery ?? new DiscoverySettings();
+
+            return Ok(new
+            {
+                Role = !string.IsNullOrWhiteSpace(disc.Role) ? disc.Role : "Standalone",
+                Priority = disc.Priority > 0 ? disc.Priority : 1,
+                ServerName = disc.ServerDisplayName,
+                ServerId = Environment.MachineName,
+                DiscoveryPort = disc.Port > 0 ? disc.Port : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultDiscoveryPort,
+                MulticastAddress = !string.IsNullOrWhiteSpace(disc.MulticastAddress) ? disc.MulticastAddress : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultMulticastAddress,
+                BroadcastAddress = !string.IsNullOrWhiteSpace(disc.BroadcastAddress) ? disc.BroadcastAddress : ITB_SCREEN_RECORDER.Core.Contracts.Network.ServerDiscoveryConstants.DefaultBroadcastAddress,
+                PartnerServerUrl = disc.PartnerServerUrl ?? string.Empty,
+                AutoFailoverDashboard = disc.AutoFailoverDashboard,
+                FailoverDelaySeconds = disc.DashboardFailoverDelaySeconds > 0 ? disc.DashboardFailoverDelaySeconds : 8,
+                IsStandalone = true,
+                TotalActiveNodes = 1,
+                ClusterMode = "Standalone",
+                ActiveInterface = disc.NetworkInterfaceName ?? string.Empty
+            });
         }
 
         [HttpGet("stations")]

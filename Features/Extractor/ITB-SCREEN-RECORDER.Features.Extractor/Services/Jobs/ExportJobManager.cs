@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/ExportJobManager.cs
 // ==========================================
 using System;
@@ -185,27 +185,41 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     bufferSize: 1048576,
                     useAsync: true);
 
-                await using var progressStream = new ProgressReportingStream(fileStream, bytesWritten =>
+                var jobProgress = new Progress<(int Percent, string Message, double SpeedMBps, int EtaSeconds)>(p =>
                 {
-                    double elapsedSec = Math.Max(0.5, (DateTime.UtcNow - transferStartTime).TotalSeconds);
-                    double bytesPerSec = bytesWritten / elapsedSec;
-                    job.SpeedMBps = Math.Round(bytesPerSec / (1024 * 1024), 1);
+                    job.ProgressPercent = p.Percent;
+                    job.StatusMessage = p.Message;
+                    if (p.SpeedMBps > 0) job.SpeedMBps = p.SpeedMBps;
+                    if (p.EtaSeconds >= 0) job.EtaSeconds = p.EtaSeconds;
 
-                    int pct = (int)Math.Min(99, (bytesWritten * 100) / Math.Max(1, totalEstimatedBytes));
-                    job.ProgressPercent = pct;
-
-                    long remainingBytes = Math.Max(0, totalEstimatedBytes - bytesWritten);
-                    job.EtaSeconds = bytesPerSec > 0 ? (int)(remainingBytes / bytesPerSec) : 0;
-                    job.StatusMessage = $"Packaging: {pct}% ({(bytesWritten / (1024 * 1024)):F0}MB / {(totalEstimatedBytes / (1024 * 1024)):F0}MB) | {job.SpeedMBps:F1} MB/s";
-
-                    if ((DateTime.UtcNow - lastDbUpdate).TotalSeconds >= 1.5)
+                    if ((DateTime.UtcNow - lastDbUpdate).TotalSeconds >= 1.0)
                     {
                         lastDbUpdate = DateTime.UtcNow;
                         _ = _jobRepository.UpsertJobAsync(job);
                     }
                 });
 
-                await _extractorService.StreamTarArchiveAsync(job.Request, progressStream, CancellationToken.None);
+                await using var progressStream = new ProgressReportingStream(fileStream, bytesWritten =>
+                {
+                    double elapsedSec = Math.Max(0.5, (DateTime.UtcNow - transferStartTime).TotalSeconds);
+                    double bytesPerSec = bytesWritten / elapsedSec;
+                    job.SpeedMBps = Math.Round(bytesPerSec / (1024 * 1024), 1);
+
+                    if (job.ProgressPercent >= 84)
+                    {
+                        int pct = (int)Math.Clamp(85 + ((bytesWritten * 14) / Math.Max(1, totalEstimatedBytes)), 85, 99);
+                        job.ProgressPercent = pct;
+                        job.StatusMessage = $"Bundling archive: {pct}% ({(bytesWritten / (1024 * 1024)):F0}MB) | {job.SpeedMBps:F1} MB/s";
+                    }
+
+                    if ((DateTime.UtcNow - lastDbUpdate).TotalSeconds >= 1.0)
+                    {
+                        lastDbUpdate = DateTime.UtcNow;
+                        _ = _jobRepository.UpsertJobAsync(job);
+                    }
+                });
+
+                await _extractorService.StreamTarArchiveAsync(job.Request, progressStream, jobProgress, CancellationToken.None);
                 await fileStream.FlushAsync();
 
                 var fi = new FileInfo(job.OutputFilePath);

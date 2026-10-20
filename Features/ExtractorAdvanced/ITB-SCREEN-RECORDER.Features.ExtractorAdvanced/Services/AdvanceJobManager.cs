@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvanceJobManager.cs
 // ==========================================
 using System;
@@ -209,7 +209,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private async Task ProcessSynchronizedExportAsync(AdvancedModels.AdvanceJobInfo job, DateTime startUtc, DateTime endUtc)
         {
             job.Status = "Processing";
-            job.StatusMessage = $"Synchronizing {job.StationIds.Count} stations...";
+            job.StatusMessage = $"Scanning timeline & chunks ({job.StationIds.Count} stations)...";
+            job.ProgressPercent = 1;
             _ = _advanceRepository.UpsertJobAsync(job);
 
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
@@ -236,6 +237,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     }
                 }
 
+                job.StatusMessage = "Calculating gap alignment & synchronization plan...";
+                job.ProgressPercent = 3;
+                _ = _advanceRepository.UpsertJobAsync(job);
+
                 var plan = _advancedExtractorService.BuildSynchronizationPlan(job.StationIds, startUtc, endUtc, allStationChunks);
 
                 // 💡 העברת מצב המקלדת הנבחר מהג'וב ישירות לתוך ה-SynchronizationPlan שנמסר ל-TrackCutter
@@ -253,20 +258,24 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var sessionTracks = new List<object>();
 
                 bool isMultiStation = job.StationIds.Count > 1;
-                double slicePerStation = 80.0 / job.StationIds.Count;
+                double slicePerStation = 78.0 / Math.Max(1, job.StationIds.Count);
                 var stopwatch = Stopwatch.StartNew();
                 DateTime lastPersistUtc = DateTime.UtcNow;
+
+                job.StatusMessage = $"Starting synchronized render ({job.StationIds.Count} stations)...";
+                job.ProgressPercent = 5;
+                _ = _advanceRepository.UpsertJobAsync(job);
 
                 for (int i = 0; i < job.StationIds.Count; i++)
                 {
                     string stationId = job.StationIds[i];
-                    double baseStationProgress = i * slicePerStation;
+                    double baseStationProgress = 5.0 + (i * slicePerStation);
 
                     var trackProgress = new Progress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>(p =>
                     {
                         double fraction = Math.Clamp(p.SecondsProcessed / exportedDurationSec, 0.0, 1.0);
                         double totalProgress = baseStationProgress + (fraction * slicePerStation);
-                        job.ProgressPercent = (int)Math.Clamp(Math.Round(totalProgress, 0), 0, 84);
+                        job.ProgressPercent = (int)Math.Clamp(Math.Round(totalProgress, 0), 5, 84);
 
                         double remainingStationSec = Math.Max(0, exportedDurationSec - p.SecondsProcessed);
                         double totalRemSec = (remainingStationSec / Math.Max(0.1, p.SpeedMultiplier))
@@ -274,6 +283,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                            + 3.0;
 
                         job.EstimatedSecondsRemaining = Math.Round(totalRemSec, 0);
+                        job.EtaSeconds = (int)job.EstimatedSecondsRemaining;
 
                         long currentBuiltBytes = 0;
                         try
@@ -292,7 +302,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
 
                         double builtMb = currentBuiltBytes / (1024.0 * 1024.0);
-                        job.StatusMessage = $"Rendering Track {i + 1} of {job.StationIds.Count}: {stationId} • Built: {builtMb:0.1} MB";
+                        string speedTxt = p.SpeedMultiplier > 0.1 ? $"{p.SpeedMultiplier:0.1}x" : $"{job.SpeedMBps:0.1} MB/s";
+                        job.StatusMessage = $"Rendering Track {i + 1} of {job.StationIds.Count}: {stationId} ({p.Fps:0} fps, {speedTxt}) • Built: {builtMb:0.1} MB";
 
                         if ((DateTime.UtcNow - lastPersistUtc).TotalSeconds >= 1.0)
                         {

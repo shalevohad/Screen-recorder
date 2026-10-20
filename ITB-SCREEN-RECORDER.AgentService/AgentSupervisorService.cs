@@ -6,6 +6,7 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
+using ITB_SCREEN_RECORDER.Core.Network.Discovery;
 using ITB_SCREEN_RECORDER.Core.Security.Pki;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 #if WINDOWS
@@ -38,14 +40,21 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private readonly string _localBufferPath;
 
         private string _serverBaseUrl = "127.0.0.1:5090";
+        private int _consecutiveServerFailures = 0;
         private AgentStreamPolicy _currentPolicy;
+        private List<ServerDiscoveryResponse> _discoveredServers = new();
+        private ServerDiscoveryResponse? _activeServer;
+        private DateTime _lastFailbackCheckUtc = DateTime.MinValue;
 
         private bool _isWorkerStreaming;
         private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
+        private DateTime _lastWorkerLaunchTime = DateTime.MinValue;
         private StreamWriter? _workerCommandWriter;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
         private IpcTelemetryDto? _lastTelemetry = null;
+        private string? _activeKeystrokeKeyId;
+        private string? _activeKeystrokeKeyMaterial;
 
         private bool _lastWorkerHasAudio = false;
         private bool _lastWorkerHasActiveSpeakers = false;
@@ -57,6 +66,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         // 💡 תור צבירה של אירועי מקלדת לדיווח ברפורט הטלמטריה
         private readonly ConcurrentQueue<KeystrokeEventDto> _pendingKeystrokes = new();
+
+        // 💡 ערוץ מהיר לשידור מקשים מיידי מה-Worker לשרת באפס השהייה (Fast Path)
+        private readonly Channel<KeystrokeEventDto> _fastKeystrokesChannel = Channel.CreateBounded<KeystrokeEventDto>(new BoundedChannelOptions(1000)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
 
         private class IpcMessageDto
         {
@@ -101,6 +118,20 @@ namespace ITB_SCREEN_RECORDER.AgentService
             _logger = logger;
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _policyFilePath = Path.Combine(AppContext.BaseDirectory, "agent-policy.json");
+
+            try
+            {
+                Environment.SetEnvironmentVariable("ITB_IPC_TOKEN", _ipcSecretToken, EnvironmentVariableTarget.Process);
+                string tokenDir = OperatingSystem.IsWindows()
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ITB-SCREEN-RECORDER")
+                    : "/tmp/ITB-SCREEN-RECORDER";
+                if (!Directory.Exists(tokenDir)) Directory.CreateDirectory(tokenDir);
+                File.WriteAllText(Path.Combine(tokenDir, ".ipc_token"), _ipcSecretToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Failed to persist IPC token to shared storage: {Msg}", ex.Message);
+            }
 
             _currentPolicy = new AgentStreamPolicy
             {
@@ -154,6 +185,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
         {
             if (!string.IsNullOrWhiteSpace(_config.DashboardApiUrl))
             {
+                if (string.Equals(_config.DashboardApiUrl.Trim(), "AUTO", StringComparison.OrdinalIgnoreCase))
+                {
+                    _serverBaseUrl = "AUTO";
+                    _logger.LogInformation("DashboardApiUrl is set to 'AUTO' - autonomous discovery will locate the central server.");
+                    return;
+                }
+
                 if (Uri.TryCreate(_config.DashboardApiUrl, UriKind.Absolute, out Uri? parsedUri))
                 {
                     _serverBaseUrl = parsedUri.Authority;
@@ -163,18 +201,28 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     _serverBaseUrl = _config.DashboardApiUrl.Replace("http://", "").Replace("https://", "").TrimEnd('/');
                 }
                 _logger.LogInformation("Loaded Server Endpoint from AppConfig: {ServerBaseUrl}", _serverBaseUrl);
+                OfflineBufferDrainingService.ActiveServerBaseUrl = _serverBaseUrl;
             }
             else
             {
                 var envIp = Environment.GetEnvironmentVariable("ITB_SERVER_IP");
                 if (!string.IsNullOrWhiteSpace(envIp))
                 {
+                    if (string.Equals(envIp.Trim(), "AUTO", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _serverBaseUrl = "AUTO";
+                        _logger.LogInformation("ITB_SERVER_IP is set to 'AUTO' - autonomous discovery will locate the central server.");
+                        return;
+                    }
+
                     _serverBaseUrl = envIp.Trim().Contains(':') ? envIp.Trim() : $"{envIp.Trim()}:5090";
                     _logger.LogInformation("Loaded Server IP from Environment Variable: {ServerBaseUrl}", _serverBaseUrl);
+                    OfflineBufferDrainingService.ActiveServerBaseUrl = _serverBaseUrl;
                 }
                 else
                 {
-                    _logger.LogWarning("Using fallback Server URL: {ServerBaseUrl}", _serverBaseUrl);
+                    _serverBaseUrl = "AUTO";
+                    _logger.LogInformation("No server endpoint configured; defaulting to autonomous discovery (AUTO).");
                 }
             }
         }
@@ -211,6 +259,16 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
             _ = Task.Run(() => ListenToWorkerIpcAsync(stoppingToken), stoppingToken);
             _ = Task.Run(() => PeriodicTrustSyncLoopAsync(stoppingToken), stoppingToken);
+            _ = Task.Run(() => ProcessFastKeystrokesOutboundAsync(stoppingToken), stoppingToken);
+
+            if (string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                await PerformAutonomousDiscoveryAsync(stoppingToken);
+            }
+            else
+            {
+                await RegisterWithServerAsync(_serverBaseUrl, stoppingToken);
+            }
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -221,10 +279,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch (Exception ex)
                 {
-                    if (DebugHelper.IsDebugModeEnabled())
-                    {
-                        _logger.LogError("Supervisor tick error: {Msg}", ex.Message);
-                    }
+                    _logger.LogError("Supervisor tick error: {Msg}", ex.Message);
                 }
 
                 int delayMs = _isWorkerStreaming ? 1000 : 3000;
@@ -259,7 +314,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 try
                 {
-                    if (!string.IsNullOrWhiteSpace(_serverBaseUrl))
+                    if (!string.IsNullOrWhiteSpace(_serverBaseUrl) && !string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
                     {
                         await AgentCertificateValidator.RefreshTrustFromServerAsync(_serverBaseUrl, ct);
                     }
@@ -281,9 +336,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     using var pipeServer = IpcServerFactory.CreateSecureServerPipe("ITB_Agent_IPC");
 
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Waiting for Worker IPC connection...");
+                    _logger.LogInformation("Waiting for Worker IPC connection...");
                     await pipeServer.WaitForConnectionAsync(ct);
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("Worker connected to IPC.");
+                    _logger.LogInformation("Worker connected to IPC.");
 
                     using var reader = new StreamReader(pipeServer);
                     using var writer = new StreamWriter(pipeServer) { AutoFlush = true };
@@ -309,12 +364,56 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     if (string.Equals(token, _ipcSecretToken, StringComparison.Ordinal) || string.IsNullOrEmpty(_ipcSecretToken))
                                     {
                                         isIpcAuthenticated = true;
-                                        if (DebugHelper.IsDebugModeEnabled()) _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
+                                        _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
+                                        if (!string.IsNullOrEmpty(_activeKeystrokeKeyId) && !string.IsNullOrEmpty(_activeKeystrokeKeyMaterial))
+                                        {
+                                            await writer.WriteLineAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
+                                        }
                                         continue;
                                     }
                                 }
-                                _logger.LogWarning("[IPC-SECURITY] Rejecting unauthorized IPC client connection.");
+                                _logger.LogWarning("[IPC-SECURITY] Rejecting unauthorized IPC client connection (Token received: '{Received}').", line);
                                 break;
+                            }
+
+                            // 💡 בדיקת הודעות Fast Path להעברת מקשים מיידית
+                            if (line.StartsWith("Key|", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    string keyJson = line.Substring(4).Trim();
+                                    var key = JsonSerializer.Deserialize<KeystrokeEventDto>(keyJson, jsonOptions);
+                                    if (key != null)
+                                    {
+                                        _fastKeystrokesChannel.Writer.TryWrite(key);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning("Failed to parse immediate keystroke from worker: {Msg}", ex.Message);
+                                }
+                                continue;
+                            }
+
+                            if (line.StartsWith("Keys|", StringComparison.OrdinalIgnoreCase))
+                            {
+                                try
+                                {
+                                    string keysJson = line.Substring(5).Trim();
+                                    var keys = JsonSerializer.Deserialize<List<KeystrokeEventDto>>(keysJson, jsonOptions);
+                                    if (keys != null)
+                                    {
+                                        foreach (var k in keys)
+                                        {
+                                            _fastKeystrokesChannel.Writer.TryWrite(k);
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning("Failed to parse immediate keystrokes list from worker: {Msg}", ex.Message);
+                                }
+                                continue;
                             }
 
                             try
@@ -326,6 +425,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     _workerRecordingStartedAtUtc = status.RecordingStartedAtUtc;
                                     _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
+                                    _lastWorkerLaunchTime = DateTime.MinValue;
 
                                     _lastWorkerHasAudio = status.HasAudio || (status.Telemetry?.HasAudio ?? false);
                                     _lastWorkerHasActiveSpeakers = status.HasActiveSpeakers || (status.Telemetry?.HasActiveSpeakers ?? false);
@@ -352,12 +452,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
-                    if (DebugHelper.IsDebugModeEnabled()) _logger.LogTrace("IPC server tick warning: {Msg}", ex.Message);
+                    _logger.LogWarning("IPC server tick warning: {Msg}", ex.Message);
                     await Task.Delay(1000, ct);
                 }
                 finally
                 {
                     _workerCommandWriter = null;
+                    _lastWorkerHeartbeat = DateTime.MinValue;
+                    _isWorkerStreaming = false;
                 }
             }
         }
@@ -365,9 +467,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private async Task SendTelemetryToServerAsync(CancellationToken ct)
         {
             bool isServerConnectedThisTick = false;
+            string targetEndpoint = _serverBaseUrl;
             try
             {
-                bool isWorkerAlive = (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 6;
+                bool isWorkerAlive = _workerCommandWriter != null && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 10;
                 bool isStreaming = isWorkerAlive && _isWorkerStreaming;
 
                 var fallbackHwStats = HardwareProbe.GetTelemetrySnapshot();
@@ -398,7 +501,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     Hostname = Environment.MachineName,
                     IpAddress = HardwareProbe.GetLocalIpAddress(),
-                    Status = isStreaming ? AgentStatus.Streaming : (isWorkerAlive ? AgentStatus.Standby : AgentStatus.Offline),
+                    Status = isStreaming ? AgentStatus.Streaming : AgentStatus.Standby,
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
                     IsRecording = isStreaming,
@@ -446,8 +549,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 string jsonPayload = JsonSerializer.Serialize(report);
                 _lastTelemetryPayloadSizeBytes = Encoding.UTF8.GetByteCount(jsonPayload);
 
+                if (string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool discovered = await PerformAutonomousDiscoveryAsync(ct);
+                    if (!discovered)
+                    {
+                        return;
+                    }
+                }
+
                 string cleanBase = _serverBaseUrl.TrimEnd('/');
-                string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
                     ? $"{cleanBase}/api/v1/agent/telemetry"
                     : cleanBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
                         ? $"https://{cleanBase.Substring("http://".Length)}/api/v1/agent/telemetry"
@@ -461,6 +573,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                 if (response.IsSuccessStatusCode)
                 {
+                    _consecutiveServerFailures = 0;
                     isServerConnectedThisTick = true;
                     await SendCommandToWorkerAsync("ServerConnected");
 
@@ -534,18 +647,84 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     {
                         _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
+
+                    // בדוק האם אנחנו מחוברים כרגע לשרת Standby והשרת הראשי התאושש (Failback) - רלוונטי רק כשאין VIP
+                    if (_activeServer != null && !_activeServer.EnableVirtualIp && (_activeServer.Priority > 1 || string.Equals(_activeServer.Role, "Standby", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if ((DateTime.UtcNow - _lastFailbackCheckUtc).TotalSeconds >= 30)
+                        {
+                            _lastFailbackCheckUtc = DateTime.UtcNow;
+                            var primaryCandidate = _discoveredServers
+                                .FirstOrDefault(s => (s.Priority == 1 || string.Equals(s.Role, "Primary", StringComparison.OrdinalIgnoreCase)) &&
+                                                     !string.Equals(s.ServerId, _activeServer.ServerId, StringComparison.OrdinalIgnoreCase));
+
+                            if (primaryCandidate != null)
+                            {
+                                bool primaryRecovered = await ServerDiscoveryClient.VerifyServerHealthAsync(primaryCandidate.ApiBaseUrl, 1500, ct);
+                                if (primaryRecovered)
+                                {
+                                    _logger.LogInformation("[FAILBACK] Primary server '{Primary}' has recovered and is healthy! Switching connection back from Standby.", primaryCandidate.ServerName);
+                                    await SwitchActiveServerAsync(primaryCandidate, ct);
+                                }
+                            }
+                        }
+                    }
                 }
                 else
                 {
+                    _consecutiveServerFailures++;
+                    _logger.LogWarning("Server returned non-success during telemetry ({Endpoint}): {StatusCode} {Reason}", targetEndpoint, (int)response.StatusCode, response.ReasonPhrase);
                     // שחזור המקשים לתור אם השרת החזיר שגיאה
                     foreach (var k in keysBatch) _pendingKeystrokes.Enqueue(k);
                 }
             }
             catch (Exception ex)
             {
-                if (DebugHelper.IsDebugModeEnabled())
+                _consecutiveServerFailures++;
+                _logger.LogWarning("Telemetry transmission failed ({Endpoint}): {Msg}", targetEndpoint, ex.Message);
+
+                // בדיקת מעבר מיידי לשרת גיבוי (Failover) במקרה של כשל רצוף
+                if (_consecutiveServerFailures >= 3)
                 {
-                    _logger.LogWarning("Telemetry transmission failed: {Msg}", ex.Message);
+                    // If VIP is enabled, wait a few cycles for cluster ARP migration before abandoning VIP
+                    if (_activeServer != null && _activeServer.EnableVirtualIp && !string.IsNullOrWhiteSpace(_activeServer.VirtualIp))
+                    {
+                        if (_consecutiveServerFailures < 6)
+                        {
+                            _logger.LogWarning("[FAILOVER-VIP] Cluster VIP connection interrupted for {Failures} cycles. Awaiting network ARP takeover to surviving active cluster node...", _consecutiveServerFailures);
+                        }
+                        else if (_consecutiveServerFailures % 3 == 0)
+                        {
+                            _logger.LogWarning("[FAILOVER-VIP] Cluster VIP unreachable for {Failures} cycles. Re-probing cluster nodes...", _consecutiveServerFailures);
+                            _ = Task.Run(() => PerformAutonomousDiscoveryAsync(ct), ct);
+                        }
+                    }
+                    else if (_discoveredServers.Count > 1)
+                    {
+                        var backupCandidate = _discoveredServers
+                            .Where(s => !string.Equals(s.ServerId, _activeServer?.ServerId, StringComparison.OrdinalIgnoreCase))
+                            .OrderBy(s => s.Priority)
+                            .FirstOrDefault();
+
+                        if (backupCandidate != null)
+                        {
+                            bool isPeerAlive = await ServerDiscoveryClient.VerifyServerHealthAsync(backupCandidate.ApiBaseUrl, 1500, ct);
+                            if (isPeerAlive)
+                            {
+                                _logger.LogWarning("[FAILOVER] Current server '{Current}' unreachable for {Failures} cycles. Failing over to cluster peer '{Peer}' [Role: {Role}, Priority: {Priority}]",
+                                    _activeServer?.ServerName ?? _serverBaseUrl, _consecutiveServerFailures, backupCandidate.ServerName, backupCandidate.Role, backupCandidate.Priority);
+
+                                await SwitchActiveServerAsync(backupCandidate, ct);
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                if (_consecutiveServerFailures >= 10 && _consecutiveServerFailures % 5 == 0)
+                {
+                    _logger.LogInformation("[DISCOVERY] Server communication disconnected for {Count} cycles. Attempting autonomous server rediscovery...", _consecutiveServerFailures);
+                    _ = Task.Run(() => PerformAutonomousDiscoveryAsync(ct), ct);
                 }
             }
             finally
@@ -554,6 +733,227 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     await SendCommandToWorkerAsync("ServerDisconnected");
                 }
+            }
+        }
+
+        private async Task ProcessFastKeystrokesOutboundAsync(CancellationToken ct)
+        {
+            var reader = _fastKeystrokesChannel.Reader;
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    if (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
+                    {
+                        var batch = new List<KeystrokeEventDto>();
+                        while (reader.TryRead(out var k) && batch.Count < 50)
+                        {
+                            batch.Add(k);
+                        }
+
+                        if (batch.Count > 0)
+                        {
+                            await SendLiveKeystrokesToServerAsync(batch, ct).ConfigureAwait(false);
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("[KEYSTROKE:OUTBOUND] Fast dispatcher error: {Msg}", ex.Message);
+                }
+            }
+        }
+
+        private async Task SendLiveKeystrokesToServerAsync(List<KeystrokeEventDto> keys, CancellationToken ct)
+        {
+            if (keys == null || keys.Count == 0 || string.IsNullOrWhiteSpace(_serverBaseUrl) || string.Equals(_serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            try
+            {
+                string cleanBase = _serverBaseUrl.TrimEnd('/');
+                string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? $"{cleanBase}/api/v1/agent/keystrokes"
+                    : cleanBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                        ? $"https://{cleanBase.Substring("http://".Length)}/api/v1/agent/keystrokes"
+                        : $"https://{cleanBase}/api/v1/agent/keystrokes";
+
+                var payload = new AgentLiveKeystrokesBatchRequest
+                {
+                    Hostname = Environment.MachineName,
+                    Keystrokes = keys
+                };
+
+                string jsonPayload = JsonSerializer.Serialize(payload);
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync(targetEndpoint, content, ct).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogDebug("[KEYSTROKE:FAST] Server returned non-success ({Status}) for fast keystrokes", response.StatusCode);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("[KEYSTROKE:FAST] Fast keystroke dispatch failed: {Msg}", ex.Message);
+            }
+        }
+
+        private async Task<bool> PerformAutonomousDiscoveryAsync(CancellationToken ct)
+        {
+            try
+            {
+                int discPort = _config.DiscoveryPort > 0 ? _config.DiscoveryPort : ServerDiscoveryConstants.DefaultDiscoveryPort;
+                string discMcast = !string.IsNullOrWhiteSpace(_config.DiscoveryMulticastAddress) ? _config.DiscoveryMulticastAddress : ServerDiscoveryConstants.DefaultMulticastAddress;
+                var dnsHostnames = _config.DiscoveryDnsHostnames != null && _config.DiscoveryDnsHostnames.Count > 0
+                    ? _config.DiscoveryDnsHostnames
+                    : new List<string> { "itb-server", "screenrecorder" };
+                string discBcast = !string.IsNullOrWhiteSpace(_config.DiscoveryBroadcastAddress)
+                    ? _config.DiscoveryBroadcastAddress
+                    : ServerDiscoveryConstants.DefaultBroadcastAddress;
+                int discTimeout = _config.DiscoveryTimeoutMs > 0 ? _config.DiscoveryTimeoutMs : 2500;
+                string targetEnv = !string.IsNullOrWhiteSpace(_config.DiscoveryTargetEnvironment) ? _config.DiscoveryTargetEnvironment : "Production";
+                int fallbackHttp = _config.DiscoveryFallbackHttpPort > 0 ? _config.DiscoveryFallbackHttpPort : 5090;
+                int fallbackRtmp = _config.DiscoveryFallbackRtmpPort > 0 ? _config.DiscoveryFallbackRtmpPort : 19350;
+
+                _logger.LogInformation("[DISCOVERY] Initiating autonomous server discovery on {Address}:{Port} (Broadcast: {Bcast}, DNS fallback names: {DnsNames}, TargetEnv: {Env})...",
+                    discMcast, discPort, discBcast, string.Join(", ", dnsHostnames), targetEnv);
+
+                var discoveryClient = new ServerDiscoveryClient(
+                    _logger,
+                    discoveryPort: discPort,
+                    multicastAddress: discMcast,
+                    broadcastAddress: discBcast,
+                    dnsSearchHostnames: dnsHostnames,
+                    fallbackHttpPort: fallbackHttp,
+                    fallbackRtmpPort: fallbackRtmp,
+                    targetEnvironment: targetEnv);
+
+                var servers = await discoveryClient.DiscoverServersAsync(timeoutMs: discTimeout, ct);
+                if (servers.Count > 0)
+                {
+                    _discoveredServers = servers;
+                    var bestServer = servers.FirstOrDefault();
+                    if (bestServer != null)
+                    {
+                        await SwitchActiveServerAsync(bestServer, ct);
+                        return true;
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("[DISCOVERY] Autonomous server discovery timed out without response. Retrying on next cycle.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[DISCOVERY] Autonomous server discovery probe encountered an issue.");
+            }
+
+            return false;
+        }
+
+        private async Task SwitchActiveServerAsync(ServerDiscoveryResponse server, CancellationToken ct)
+        {
+            _activeServer = server;
+
+            if (server.EnableVirtualIp && !string.IsNullOrWhiteSpace(server.VirtualIp))
+            {
+                string vip = server.VirtualIp.Trim();
+                _serverBaseUrl = $"{vip}:{server.HttpPort}";
+                _currentPolicy.RtmpServerBaseUrl = $"rtmps://{vip}:{server.RtmpPort}/live";
+                _logger.LogInformation("[SERVER SELECTION] Connected to Cluster Virtual IP (VIP) '{Vip}' (Leader: '{Name}', Priority: {Priority}) -> {Endpoint}",
+                    vip, server.ServerName, server.Priority, _serverBaseUrl);
+            }
+            else
+            {
+                if (Uri.TryCreate(server.ApiBaseUrl, UriKind.Absolute, out Uri? parsedUri))
+                {
+                    _serverBaseUrl = parsedUri.Authority;
+                }
+                else
+                {
+                    string ip = server.ServerIps.Count > 0 ? server.ServerIps[0] : "127.0.0.1";
+                    _serverBaseUrl = $"{ip}:{server.HttpPort}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(server.RtmpBaseUrl))
+                {
+                    _currentPolicy.RtmpServerBaseUrl = server.RtmpBaseUrl;
+                }
+
+                _logger.LogInformation("[SERVER SELECTION] Connected to Server '{Name}' [Role: {Role}, Priority: {Priority}] -> {Endpoint}",
+                    server.ServerName, server.Role, server.Priority, _serverBaseUrl);
+            }
+
+            OfflineBufferDrainingService.ActiveServerBaseUrl = _serverBaseUrl;
+
+            await RegisterWithServerAsync(_serverBaseUrl, ct);
+            _consecutiveServerFailures = 0;
+
+            if (_isWorkerStreaming)
+            {
+                string dest = GetEffectiveRtmpDestination();
+                await SendCommandToWorkerAsync($"Restart|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+            }
+        }
+
+        private async Task RegisterWithServerAsync(string serverBaseUrl, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(serverBaseUrl) || string.Equals(serverBaseUrl, "AUTO", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            try
+            {
+                string cleanBase = serverBaseUrl.TrimEnd('/');
+                string targetEndpoint = cleanBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    ? $"{cleanBase}/api/v1/agent/register"
+                    : cleanBase.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                        ? $"https://{cleanBase.Substring("http://".Length)}/api/v1/agent/register"
+                        : $"https://{cleanBase}/api/v1/agent/register";
+
+                var request = new AgentRegistrationRequest
+                {
+                    MachineName = Environment.MachineName,
+                    OsVersion = Environment.OSVersion.ToString(),
+                    AgentVersion = "1.0.4",
+                    RequestTimestampUtc = DateTime.UtcNow
+                };
+
+                using var content = new StringContent(JsonSerializer.Serialize(request), Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(targetEndpoint, content, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    string json = await response.Content.ReadAsStringAsync(ct);
+                    var regResponse = JsonSerializer.Deserialize<AgentRegistrationResponse>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (regResponse?.Policy != null)
+                    {
+                        _currentPolicy = regResponse.Policy;
+                        _logger.LogInformation("[HANDSHAKE] Handshake completed successfully with server. StreamKey: {Key}, FPS: {Fps}, Bitrate: {Bitrate}",
+                            regResponse.AssignedStreamKey, _currentPolicy.TargetFps, _currentPolicy.VideoBitrate);
+                    }
+
+                    if (!string.IsNullOrEmpty(regResponse?.KeystrokeKeyId) && !string.IsNullOrEmpty(regResponse?.KeystrokeKeyMaterial))
+                    {
+                        _activeKeystrokeKeyId = regResponse.KeystrokeKeyId;
+                        _activeKeystrokeKeyMaterial = regResponse.KeystrokeKeyMaterial;
+                        _logger.LogInformation("[SECURITY:KEYRING] Received active encryption key from server: {KeyId}", _activeKeystrokeKeyId);
+                        _ = SendCommandToWorkerAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("[HANDSHAKE] Initial registration ping completed with info: {Msg}", ex.Message);
             }
         }
 
@@ -579,12 +979,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 string processName = Path.GetFileNameWithoutExtension(_workerPath);
                 var procs = Process.GetProcessesByName(processName);
 
-                bool hasEverConnected = _lastWorkerHeartbeat != DateTime.MinValue;
-                bool isHeartbeatDead = hasEverConnected && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds > 15;
-
-                if (procs.Length > 0 && isHeartbeatDead)
+                bool hasEverReceivedHeartbeat = _lastWorkerHeartbeat != DateTime.MinValue;
+                if (procs.Length > 0 && !hasEverReceivedHeartbeat && _lastWorkerLaunchTime == DateTime.MinValue)
                 {
-                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead. Terminating process...");
+                    _lastWorkerLaunchTime = DateTime.UtcNow;
+                }
+
+                bool isHeartbeatDead = hasEverReceivedHeartbeat && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds > 15;
+                bool isLaunchTimeout = !hasEverReceivedHeartbeat && _lastWorkerLaunchTime != DateTime.MinValue && (DateTime.UtcNow - _lastWorkerLaunchTime).TotalSeconds > 25;
+
+                if (procs.Length > 0 && (isHeartbeatDead || isLaunchTimeout))
+                {
+                    _logger.LogWarning("Worker process detected but IPC heartbeat is dead (HeartbeatDead: {H}, LaunchTimeout: {L}). Terminating process...", isHeartbeatDead, isLaunchTimeout);
                     foreach (var proc in procs)
                     {
                         try
@@ -597,6 +1003,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     procs = Array.Empty<Process>();
                     _lastWorkerHeartbeat = DateTime.MinValue;
+                    _lastWorkerLaunchTime = DateTime.MinValue;
                     _isWorkerStreaming = false;
                 }
                 else if (procs.Length == 0 && File.Exists(_workerPath))
@@ -623,7 +1030,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         else
                         {
                             _logger.LogInformation("AgentWorker launched successfully into active session with secure IPC token.");
-                            _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchTime = DateTime.UtcNow;
                             _lastWorkerLaunchFailed = false;
                         }
 #endif
@@ -641,7 +1048,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         try
                         {
                             Process.Start(psi);
-                            _lastWorkerHeartbeat = DateTime.UtcNow;
+                            _lastWorkerLaunchTime = DateTime.UtcNow;
                             _lastWorkerLaunchFailed = false;
                         }
                         catch (Exception ex)

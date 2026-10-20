@@ -33,6 +33,15 @@
 		<Property Id="API_PORT" Value="9997" Secure="yes" />
 		<Property Id="HLS_PORT" Value="8888" Secure="yes" />
 		<Property Id="DATA_DIR" Value="C:\ProgramData\ITB-SCREEN-RECORDER\Server" Secure="yes" />
+		<Property Id="SERVER_ROLE" Value="Active-Active" Secure="yes" />
+		<Property Id="SERVER_PRIORITY" Value="1" Secure="yes" />
+		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes" />
+		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
+		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes" />
+		<Property Id="ENABLE_VIP" Value="0" Secure="yes" />
+		<Property Id="VIRTUAL_IP" Value="" Secure="yes" />
+		<Property Id="VIRTUAL_IP_SUBNET" Value="255.255.255.0" Secure="yes" />
+		<Property Id="PARTNER_URL" Value="" Secure="yes" />
 
 		<SetProperty Id="INSTALLFOLDER" Value="[PREVIOUS_INSTALLFOLDER]" After="AppSearch" Condition="PREVIOUS_INSTALLFOLDER" />
 
@@ -59,7 +68,7 @@
 		<!-- 💡 4. הכנת נתוני ההתקנה עבור הפעולה הנדחית (Deferred Custom Action) -->
 		<CustomAction Id="SetApplySettingsData"
 					  Property="ApplySettingsAction"
-					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]"
+					  Value="[INSTALLFOLDER]|[HTTP_PORT]|[RTMP_PORT]|[API_PORT]|[HLS_PORT]|[DATA_DIR]|[SERVER_ROLE]|[SERVER_PRIORITY]|[DISCOVERY_PORT]|[DISCOVERY_MULTICAST]|[ENABLE_VIP]|[VIRTUAL_IP]|[PARTNER_URL]|[VIRTUAL_IP_SUBNET]|[DISCOVERY_BROADCAST]"
 					  Execute="immediate" />
 
 		<!-- 💡 5. החלת ההגדרות ישירות דרך מנוע ה-MSI ללא תלות ב-PowerShell -->
@@ -107,9 +116,21 @@
 				<Control Id="HlsEdit" Type="Edit" X="265" Y="80" Width="65" Height="18" Property="HLS_PORT" />
 
 				<!-- ספריית הנתונים והאחסון -->
-				<Control Id="DataDirLabel" Type="Text" X="20" Y="120" Width="330" Height="13" Text="Data &amp; Video Storage Directory:" />
-				<Control Id="DataDirEdit" Type="Edit" X="20" Y="135" Width="330" Height="18" Property="DATA_DIR" />
-				<Control Id="DataDirHelp" Type="Text" X="20" Y="158" Width="330" Height="30" Text="Specifies where SQLite catalogs, event logs, local buffers, and video recordings will be persisted." />
+				<Control Id="DataDirLabel" Type="Text" X="20" Y="112" Width="330" Height="13" Text="Data &amp; Video Storage Directory:" />
+				<Control Id="DataDirEdit" Type="Edit" X="20" Y="126" Width="330" Height="18" Property="DATA_DIR" />
+				<Control Id="DataDirHelp" Type="Text" X="20" Y="147" Width="330" Height="24" Text="Specifies where SQLite catalogs, event logs, local buffers, and video recordings will be persisted." />
+
+				<!-- ארכיטקטורת שרתים: תפקיד ועדיפות -->
+				<Control Id="RoleLabel" Type="Text" X="20" Y="170" Width="120" Height="13" Text="Server Role:" />
+				<Control Id="RoleEdit" Type="Edit" X="20" Y="184" Width="110" Height="18" Property="SERVER_ROLE" />
+
+				<Control Id="PriorityLabel" Type="Text" X="140" Y="170" Width="50" Height="13" Text="Priority:" />
+				<Control Id="PriorityEdit" Type="Edit" X="140" Y="184" Width="40" Height="18" Property="SERVER_PRIORITY" />
+
+				<Control Id="VipLabel" Type="Text" X="190" Y="170" Width="150" Height="13" Text="Cluster Virtual IP (VIP):" />
+				<Control Id="VipEdit" Type="Edit" X="190" Y="184" Width="150" Height="18" Property="VIRTUAL_IP" />
+
+				<Control Id="RoleHelp" Type="Text" X="20" Y="208" Width="330" Height="22" Text="Active-Active mesh node (or Standalone). When Virtual IP is enabled, nodes coordinate seamless VIP ingress failover." />
 
 				<Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
 				<Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)" />

@@ -9,6 +9,7 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Diagnostics;
 using ITB_SCREEN_RECORDER.Core.Ipc;
+using ITB_SCREEN_RECORDER.Core.Security;
 using ITBRecorderAgent.Engine;
 using ITBRecorderAgent.Providers.Audio;
 using ITBRecorderAgent.Providers.Video;
@@ -55,6 +56,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private readonly ConcurrentQueue<KeystrokeEventDto> _onlineKeystrokes = new();
         private string? _currentOfflineKeysPath = null;
         private readonly object _offlineWriteLock = new();
+        private string? _activeKeyId;
+        private byte[]? _activeKeyBytes;
 
         public WorkerEngine(AppConfig config)
         {
@@ -79,6 +82,19 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             // 💡 רישום טלמטריה של מקשים מותר אך ורק בזמן שהסוכן מקליט בפועל! מונע זליגת מקשים ל-Gaps ולזמנים שבהם אין וידאו
             if (!_isStreaming) return;
 
+            // 💡 הצפנת מקשים מקצה לקצה (Option ג') עוד בתוך ה-Worker לפני כל שמירה או שידור
+            if (!string.IsNullOrEmpty(_activeKeyId) && _activeKeyBytes != null && !string.IsNullOrEmpty(k.KeyCombination))
+            {
+                try
+                {
+                    k.KeyCombination = PayloadEncryptionManager.Encrypt(k.KeyCombination, _activeKeyId, _activeKeyBytes);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[WORKER:CRYPTO] Failed to encrypt keystroke: {ex.Message}");
+                }
+            }
+
             if (_isOffline && !string.IsNullOrEmpty(_currentOfflineKeysPath))
             {
                 lock (_offlineWriteLock)
@@ -94,12 +110,27 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             }
             else
             {
-                _onlineKeystrokes.Enqueue(k);
+                // 💡 שידור מיידי ב-Fast Path לאפס השהייה בסנכרון עם הווידאו
+                _ipc.SendKeystrokeImmediate(k);
             }
         }
 
         private void WireIpcEvents()
         {
+            _ipc.EncryptionKeyConfigured += (keyId, material) =>
+            {
+                try
+                {
+                    _activeKeyId = keyId;
+                    _activeKeyBytes = Convert.FromBase64String(material);
+                    Logger.Info($"[WORKER:CRYPTO] Loaded active keystroke encryption key: {keyId}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[WORKER:CRYPTO] Failed to configure encryption key: {ex.Message}");
+                }
+            };
+
             _ipc.StartRequested += (dest, offset, fps, bitrate) =>
             {
                 Logger.Info($"[WORKER:IPC] START_COMMAND received -> Dest: '{dest}', ServerOffsetTicks: {offset.Ticks}, Fps: {fps}, Bitrate: {bitrate}");
@@ -214,8 +245,22 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
                     if (ct.IsCancellationRequested) break;
 
-                    _requiresRestart = false;
-                    await RunStreamingSessionAsync(guard, ct).ConfigureAwait(false);
+                    try
+                    {
+                        _requiresRestart = false;
+                        await RunStreamingSessionAsync(guard, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"[WORKER:STREAM] Streaming session faulted: {ex.Message}\n{ex.StackTrace}");
+                        _isStreaming = false;
+                        _sessionStartTimeUtc = null;
+                        await Task.Delay(2000, ct).ConfigureAwait(false);
+                    }
                 }
             }
             finally
@@ -232,6 +277,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private async Task RunStreamingSessionAsync(ISessionGuard guard, CancellationToken ct)
         {
             Logger.Info("[WORKER:LIFECYCLE] Initializing hardware capture providers...");
+#if WINDOWS
+            DesktopSecurityManager.TryAttachToInputDesktop();
+#endif
             using var screen = ScreenCaptureFactory.Create();
             screen.Initialize();
             Logger.Info($"[WORKER:LIFECYCLE] Screen capture provider ready ({screen.Width}x{screen.Height}).");
@@ -320,6 +368,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             var captureTask = Task.Run(async () =>
             {
                 Logger.Info("[WORKER:LIFECYCLE] Screen capture sampling thread started.");
+#if WINDOWS
+                DesktopSecurityManager.TryAttachToInputDesktop();
+#endif
                 long lastTicks = Stopwatch.GetTimestamp();
                 int consecutiveHardErrors = 0;
 

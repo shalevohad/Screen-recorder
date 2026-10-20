@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Models/ExtractorContracts.cs
 // ==========================================
 using System;
@@ -57,6 +57,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public int Height { get; set; } = 1080;
         public double Fps { get; set; } = 30.0;
         public bool HasAudio { get; set; } = true;
+        public bool IsFinalized { get; set; } = true;
     }
 
     public class SessionManifest

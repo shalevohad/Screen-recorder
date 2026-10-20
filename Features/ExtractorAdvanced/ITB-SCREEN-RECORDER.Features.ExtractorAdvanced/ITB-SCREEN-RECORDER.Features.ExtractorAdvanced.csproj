@@ -104,10 +104,10 @@
 			<ExcludeAssets>runtime</ExcludeAssets>
 		</ProjectReference>
 
-		<!-- 💡 Extractor: נארז עצמאית, ה-DLL מועתק לפלט -->
+		<!-- 💡 Extractor: משותף ורץ במודול Extractor עצמאי, לכן לא משוכפל לפלט של ExtractorAdvanced -->
 		<ProjectReference Include="..\..\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj">
-			<Private>true</Private>
-			<CopyLocalSatelliteAssemblies>true</CopyLocalSatelliteAssemblies>
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
 		</ProjectReference>
 	</ItemGroup>
 

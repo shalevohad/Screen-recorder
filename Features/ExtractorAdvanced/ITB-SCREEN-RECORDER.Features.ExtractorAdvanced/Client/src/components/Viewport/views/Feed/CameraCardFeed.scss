@@ -57,6 +57,10 @@
         object-fit: contain;
         background-color: #020617;
         pointer-events: none;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+        transform: translateZ(0);
+        backface-visibility: hidden;
     }
 
     .tactical-feed-buffering-overlay {

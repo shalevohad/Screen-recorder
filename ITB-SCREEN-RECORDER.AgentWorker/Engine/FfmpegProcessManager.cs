@@ -145,9 +145,17 @@ namespace ITBRecorderAgent.Engine
 
                 _ffmpegProcess.ErrorDataReceived += (sender, e) =>
                 {
-                    if (!string.IsNullOrWhiteSpace(e.Data) && e.Data.Contains("Error", StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrWhiteSpace(e.Data))
                     {
-                        Logger.Error($"[FFMPEG NATIVE ERROR] {e.Data}");
+                        if (e.Data.Contains("Error", StringComparison.OrdinalIgnoreCase) ||
+                            e.Data.Contains("fatal", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Logger.Error($"[FFMPEG NATIVE ERROR] {e.Data}");
+                        }
+                        else if (e.Data.Contains("warning", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Logger.Warn($"[FFMPEG NATIVE WARN] {e.Data}");
+                        }
                     }
                 };
 
@@ -239,23 +247,25 @@ namespace ITBRecorderAgent.Engine
 
             ffmpegArgs.Append("-map 0:v -map 1:a ");
 
-            // 3. קידוד וידאו - IDR כפוי
+            // 3. קידוד וידאו - התנעה מהירה בביטרייט, איכות חדה וחיסכון מסיבי בנפח בעת תמונה סטטית (True Constrained VBR)
+            string pixFmt = "yuv420p";
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 21 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
-                string hwDevice = OperatingSystem.IsWindows() ? "-init_hw_device d3d11va " : "-init_hw_device vaapi ";
-                ffmpegArgs.Append($"{hwDevice}-c:v h264_qsv -preset veryfast -global_quality 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
+                // QSV encodes natively in NV12. Avoiding yuv420p avoids an unnecessary double software color conversion.
+                pixFmt = "nv12";
+                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 21 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
-                ffmpegArgs.Append($"-c:v libx264 -preset veryfast -tune zerolatency -crf 26 -b:v 500k -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} ");
+                ffmpegArgs.Append($"-c:v libx264 -preset ultrafast -tune zerolatency -crf 21 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -sc_threshold 0 ");
             }
 
             // 4. כפיית Keyframe כל שנייה
-            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -sc_threshold 0 -force_key_frames \"expr:gte(t,n_forced*1)\" -fps_mode cfr -r {effectiveFps} -pix_fmt yuv420p ");
+            ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -force_key_frames \"expr:gte(t,n_forced*1)\" -fps_mode cfr -r {effectiveFps} -pix_fmt {pixFmt} ");
 
             // 5. סנכרון רציף של אודיו והטבעת METADATA (UTC ו-Epoch)
             ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");

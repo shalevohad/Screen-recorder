@@ -15,7 +15,8 @@ export default function CommandCenterHeader({
     onOpenAppSwitcher,
     isFaultFilterActive = false,
     onToggleFaultFilter,
-    systemConfig: propSystemConfig
+    systemConfig: propSystemConfig,
+    clusterConfig
 }) {
     const totalCount = stations.length;
     const [fetchedConfig, setFetchedConfig] = useState(null);

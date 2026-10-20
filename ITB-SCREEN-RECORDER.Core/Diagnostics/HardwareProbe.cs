@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
 using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 {
@@ -48,6 +49,22 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             if (_resolvedEncoder != null)
                 return _resolvedEncoder;
 
+            if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(ffmpegPath))
+            {
+                if (AppConfig.TryGetResolvedFFmpegPath(out var autoResolved, ffmpegPath))
+                {
+                    ffmpegPath = autoResolved;
+                }
+                else if (string.IsNullOrWhiteSpace(ffmpegPath))
+                {
+                    _resolvedEncoder = "libx264";
+                    Logger.Info("[PROBE] No FFmpeg executable provided or discovered. Defaulting to CPU encoder: libx264");
+                    return _resolvedEncoder;
+                }
+            }
+
+            Logger.Info($"[PROBE] Probing hardware acceleration using FFmpeg: '{ffmpegPath}'");
+
             Logger.Info("[PROBE] Testing NVIDIA NVENC hardware acceleration...");
             if (await TestEncoderSupportAsync(ffmpegPath, "h264_nvenc").ConfigureAwait(false))
             {
@@ -79,6 +96,12 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
         private static async Task<bool> TestEncoderSupportAsync(string ffmpegPath, string encoderName)
         {
+            if (string.IsNullOrWhiteSpace(ffmpegPath))
+            {
+                Logger.Warn($"[PROBE] Cannot test {encoderName}: FFmpeg binary path was not provided.");
+                return false;
+            }
+
             try
             {
                 var psi = new ProcessStartInfo
@@ -99,7 +122,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 if (!completed)
                 {
-                    proc.Kill();
+                    try { proc.Kill(); } catch { }
                     Logger.Warn($"[PROBE] FFmpeg probe for {encoderName} timed out and was terminated.");
                     return false;
                 }
@@ -114,7 +137,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             }
             catch (Exception ex)
             {
-                Logger.Error($"[PROBE] Probe execution for {encoderName} failed to start. Exception: {ex.Message}");
+                Logger.Warn($"[PROBE] Probe execution for {encoderName} failed to start ({ex.Message}). Assuming unsupported.");
                 return false;
             }
         }

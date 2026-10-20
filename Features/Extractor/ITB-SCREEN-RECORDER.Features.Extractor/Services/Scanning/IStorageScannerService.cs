@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,5 +14,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc);
         Task<string> BuildConcatManifestAsync(List<RecordingChunkMetadata> chunks, DateTime rangeStartUtc, DateTime rangeEndUtc);
         Task<ReindexResult> ScanAndIndexMissingFilesAsync(CancellationToken ct = default);
+        Task<int> ForceIndexStationAsync(string hostname, CancellationToken ct = default);
     }
 }

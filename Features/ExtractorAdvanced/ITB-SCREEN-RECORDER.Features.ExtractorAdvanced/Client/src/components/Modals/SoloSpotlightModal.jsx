@@ -239,13 +239,20 @@ export default function SoloSpotlightModal({
     const handleTriggerExport = useCallback(async () => {
         if (!station || Math.abs(outPointMs - inPointMs) < 1000) return;
 
+        const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+        let resolvedMode = 'BurnIn';
+        if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
+        else if (normMode === 'CAPTION') resolvedMode = 'Caption';
+        else resolvedMode = 'BurnIn';
+
         const payload = {
             stationIds: [station.id],
             stations: [station.id],
             stationId: station.id,
             hostname: station.hostname || station.name || station.id,
             inEpochMs: baseEpochMs + Math.round(inPointMs),
-            outEpochMs: baseEpochMs + Math.round(outPointMs)
+            outEpochMs: baseEpochMs + Math.round(outPointMs),
+            keystrokeMode: resolvedMode
         };
 
         try {

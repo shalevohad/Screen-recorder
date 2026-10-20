@@ -2,9 +2,11 @@
 // File: Server/Services/KeystrokeSrtGenerator.cs
 // ==========================================
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
@@ -13,11 +15,125 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 {
     public class KeystrokeSrtGenerator : IKeystrokeSrtGenerator
     {
+        private static readonly Regex KeyPattern = new(@"^Key\((\d+)\)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Dictionary<int, string> VkMap = new()
+        {
+            // עכבר ומקשי שליטה
+            [1] = "LButton", [2] = "RButton", [3] = "Cancel", [4] = "MButton", [5] = "XButton1", [6] = "XButton2",
+            [8] = "Backspace", [9] = "Tab", [12] = "Clear", [13] = "Enter",
+            [16] = "Shift", [17] = "Ctrl", [18] = "Alt", [19] = "Pause", [20] = "Caps Lock", [27] = "Esc",
+            [32] = "Space", [33] = "Page Up", [34] = "Page Down", [35] = "End", [36] = "Home",
+            [37] = "Left", [38] = "Up", [39] = "Right", [40] = "Down",
+            [41] = "Select", [42] = "Print", [43] = "Execute", [44] = "Print Screen", [45] = "Insert", [46] = "Delete", [47] = "Help",
+
+            // ספרות עליונות (0-9)
+            [48] = "0", [49] = "1", [50] = "2", [51] = "3", [52] = "4",
+            [53] = "5", [54] = "6", [55] = "7", [56] = "8", [57] = "9",
+
+            // אותיות לטיניות (A-Z)
+            [65] = "A", [66] = "B", [67] = "C", [68] = "D", [69] = "E", [70] = "F",
+            [71] = "G", [72] = "H", [73] = "I", [74] = "J", [75] = "K", [76] = "L",
+            [77] = "M", [78] = "N", [79] = "O", [80] = "P", [81] = "Q", [82] = "R",
+            [83] = "S", [84] = "T", [85] = "U", [86] = "V", [87] = "W", [88] = "X",
+            [89] = "Y", [90] = "Z",
+
+            // מערכת / Windows
+            [91] = "Win", [92] = "RWin", [93] = "Apps", [95] = "Sleep",
+
+            // Numpad
+            [96] = "Num 0", [97] = "Num 1", [98] = "Num 2", [99] = "Num 3", [100] = "Num 4",
+            [101] = "Num 5", [102] = "Num 6", [103] = "Num 7", [104] = "Num 8", [105] = "Num 9",
+            [106] = "Num *", [107] = "Num +", [108] = "Separator", [109] = "Num -", [110] = "Num .", [111] = "Num /",
+
+            // מקשי פונקציה (F1 - F24)
+            [112] = "F1", [113] = "F2", [114] = "F3", [115] = "F4",
+            [116] = "F5", [117] = "F6", [118] = "F7", [119] = "F8",
+            [120] = "F9", [121] = "F10", [122] = "F11", [123] = "F12",
+            [124] = "F13", [125] = "F14", [126] = "F15", [127] = "F16",
+            [128] = "F17", [129] = "F18", [130] = "F19", [131] = "F20",
+            [132] = "F21", [133] = "F22", [134] = "F23", [135] = "F24",
+
+            // נעילות
+            [144] = "Num Lock", [145] = "Scroll Lock",
+
+            // מקשי Modifiers פרטניים
+            [160] = "Shift", [161] = "RShift", [162] = "Ctrl", [163] = "RCtrl", [164] = "Alt", [165] = "RAlt",
+
+            // מקשי דפדפן
+            [166] = "Browser Back", [167] = "Browser Forward", [168] = "Browser Refresh",
+            [169] = "Browser Stop", [170] = "Browser Search", [171] = "Browser Favorites", [172] = "Browser Home",
+
+            // מקשי שליטה במדיה
+            [173] = "Mute", [174] = "Vol -", [175] = "Vol +", [176] = "Next Track",
+            [177] = "Prev Track", [178] = "Stop", [179] = "Play/Pause",
+            [180] = "Mail", [181] = "Media Select", [182] = "App 1", [183] = "App 2",
+
+            // מקשי פיסוק וסימנים מיוחדים (OEM)
+            [186] = ";", [187] = "=", [188] = ",", [189] = "-", [190] = ".", [191] = "/", [192] = "`",
+            [219] = "[", [220] = "\\", [221] = "]", [222] = "'", [226] = "\\"
+        };
+
         private readonly IKeystrokeRepository _keystrokeRepository;
 
         public KeystrokeSrtGenerator(IKeystrokeRepository keystrokeRepository)
         {
             _keystrokeRepository = keystrokeRepository;
+        }
+
+        /// <summary>
+        /// מנרמל מקש יחיד (תרגום קוד וירטואלי, טיפול ב-Modifiers)
+        /// </summary>
+        public static string NormalizeKeyPart(string? part)
+        {
+            if (string.IsNullOrWhiteSpace(part)) return string.Empty;
+            string trimmed = part.Trim();
+
+            var match = KeyPattern.Match(trimmed);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int code))
+            {
+                return VkMap.TryGetValue(code, out var mapped) ? mapped : $"Key({code})";
+            }
+
+            string lower = trimmed.ToLowerInvariant();
+            return lower switch
+            {
+                "ctrl" or "control" or "rctrl" or "lctrl" => "Ctrl",
+                "shift" or "rshift" or "lshift" => "Shift",
+                "alt" or "ralt" or "lalt" => "Alt",
+                "win" or "windows" or "rwin" or "lwin" => "Win",
+                "backspace" => "Backspace",
+                "enter" or "return" => "Enter",
+                "escape" or "esc" => "Esc",
+                "space" => "Space",
+                "delete" or "del" => "Delete",
+                "capslock" or "caps lock" => "Caps Lock",
+                _ => trimmed
+            };
+        }
+
+        /// <summary>
+        /// מפרק צירוף מקשים ומסיר כפילויות (למשל: SHIFT + KEY(160) -> ["Shift"])
+        /// </summary>
+        public static List<string> ParseKeyCombination(string? rawCombo)
+        {
+            if (string.IsNullOrWhiteSpace(rawCombo)) return new List<string>();
+
+            var parts = rawCombo.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<string>();
+
+            foreach (var p in parts)
+            {
+                string norm = NormalizeKeyPart(p);
+                if (string.IsNullOrWhiteSpace(norm)) continue;
+                if (seen.Add(norm))
+                {
+                    result.Add(norm);
+                }
+            }
+
+            return result;
         }
 
         public Task<string?> CreateSrtFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default)
@@ -43,12 +159,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             var keys = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, globalStart, globalEnd);
             if (keys == null || keys.Count == 0) return null;
 
+            var sortedKeys = keys.OrderBy(k => k.EpochMs).ToList();
             long totalActiveMs = activeSegments.Sum(s => Math.Max(0, s.EndEpochMs - s.StartEpochMs));
-            string srtPath = Path.Combine(Path.GetTempPath(), $"sub_{stationId}_{Guid.NewGuid():N}.srt");
-            var sb = new StringBuilder();
-            int index = 1;
 
-            foreach (var k in keys)
+            // מיפוי מקשים למקטעים פעילים בלבד וחישוב זמנים יחסיים לאחר הסרת פערים (Gaps)
+            var activeKeys = new List<(long StartRelMs, long EpochMs, List<string> Parsed)>();
+            foreach (var k in sortedKeys)
             {
                 long prevActiveMs = 0;
                 for (int i = 0; i < activeSegments.Count; i++)
@@ -56,21 +172,56 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     var seg = activeSegments[i];
                     if (k.EpochMs >= seg.StartEpochMs && k.EpochMs <= seg.EndEpochMs)
                     {
-                        long startRelMs = prevActiveMs + (k.EpochMs - seg.StartEpochMs);
-                        long endRelMs = Math.Min(totalActiveMs, startRelMs + 2000);
-
-                        sb.AppendLine(index.ToString());
-                        sb.AppendLine($"{FormatSrtTimestamp(startRelMs)} --> {FormatSrtTimestamp(endRelMs)}");
-                        sb.AppendLine($"[ {k.KeyCombination} ]");
-                        sb.AppendLine();
-                        index++;
+                        var parsed = ParseKeyCombination(k.KeyCombination);
+                        if (parsed.Count > 0)
+                        {
+                            long startRelMs = prevActiveMs + (k.EpochMs - seg.StartEpochMs);
+                            activeKeys.Add((startRelMs, k.EpochMs, parsed));
+                        }
                         break;
                     }
                     prevActiveMs += Math.Max(0, seg.EndEpochMs - seg.StartEpochMs);
                 }
             }
 
-            if (index == 1) return null; // No keys fell into active segments
+            if (activeKeys.Count == 0) return null;
+
+            string srtPath = Path.Combine(Path.GetTempPath(), $"sub_{stationId}_{Guid.NewGuid():N}.srt");
+            var sb = new StringBuilder();
+            int index = 1;
+
+            for (int i = 0; i < activeKeys.Count; i++)
+            {
+                var current = activeKeys[i];
+
+                // דילוג על אירועי מקשים רצופים תוך פחות מ-50ms
+                if (i + 1 < activeKeys.Count && (activeKeys[i + 1].EpochMs - current.EpochMs) < 50)
+                {
+                    continue;
+                }
+
+                long startRelMs = Math.Max(0, current.StartRelMs);
+                long nextStartRelMs = (i + 1 < activeKeys.Count)
+                    ? Math.Max(0, activeKeys[i + 1].StartRelMs)
+                    : totalActiveMs;
+
+                long endRelMs = Math.Min(startRelMs + 2000, nextStartRelMs);
+                if (endRelMs <= startRelMs)
+                {
+                    endRelMs = startRelMs + 200;
+                }
+                endRelMs = Math.Min(totalActiveMs, endRelMs);
+
+                string comboText = string.Join(" + ", current.Parsed);
+
+                sb.AppendLine(index.ToString());
+                sb.AppendLine($"{FormatSrtTimestamp(startRelMs)} --> {FormatSrtTimestamp(endRelMs)}");
+                sb.AppendLine($"[ {comboText} ]");
+                sb.AppendLine();
+                index++;
+            }
+
+            if (index == 1) return null;
 
             await File.WriteAllTextAsync(srtPath, sb.ToString(), Encoding.UTF8, ct);
             return srtPath;
@@ -78,6 +229,13 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
         /// <summary>
         /// 💡 מייצר קובץ ASS מתקדם עם סגנון Keycaps טקטי (כפתורים כהים עם מסגרת ציאן זוהרת) המותאם למקטעים
+        /// מעוצב במדויק כמו נגן הסטודיו (Studio UI):
+        /// - תגיות מקשים מובחנות עם רקע כהה (#160f0a)
+        /// - מסגרת ניאון ציאן זוהרת (#00f0ff)
+        /// - הילת ציאן רכה סביב המקשים
+        /// - טקסט Segoe UI לבן עבה וממורכז
+        /// - סימן פלוס (+) ציאן זוהר בין המקשים
+        /// - חיתוך זמן מול הלחיצה הבאה למניעת ערימות אנכיות של שורות
         /// </summary>
         public async Task<string?> CreateAssKeycapsFileForSegmentsAsync(
             string stationId,
@@ -92,7 +250,33 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             var keys = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, globalStart, globalEnd);
             if (keys == null || keys.Count == 0) return null;
 
+            var sortedKeys = keys.OrderBy(k => k.EpochMs).ToList();
             long totalActiveMs = activeSegments.Sum(s => Math.Max(0, s.EndEpochMs - s.StartEpochMs));
+
+            // מיפוי מקשים למקטעים פעילים בלבד וחישוב זמנים יחסיים לאחר הסרת פערים (Gaps)
+            var activeKeys = new List<(long StartRelMs, long EpochMs, List<string> Parsed)>();
+            foreach (var k in sortedKeys)
+            {
+                long prevActiveMs = 0;
+                for (int i = 0; i < activeSegments.Count; i++)
+                {
+                    var seg = activeSegments[i];
+                    if (k.EpochMs >= seg.StartEpochMs && k.EpochMs <= seg.EndEpochMs)
+                    {
+                        var parsed = ParseKeyCombination(k.KeyCombination);
+                        if (parsed.Count > 0)
+                        {
+                            long startRelMs = prevActiveMs + (k.EpochMs - seg.StartEpochMs);
+                            activeKeys.Add((startRelMs, k.EpochMs, parsed));
+                        }
+                        break;
+                    }
+                    prevActiveMs += Math.Max(0, seg.EndEpochMs - seg.StartEpochMs);
+                }
+            }
+
+            if (activeKeys.Count == 0) return null;
+
             string assPath = Path.Combine(Path.GetTempPath(), $"badge_{stationId}_{Guid.NewGuid():N}.ass");
             var sb = new StringBuilder();
 
@@ -106,50 +290,81 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             sb.AppendLine("PlayResY: 1080");
             sb.AppendLine();
 
-            // הגדרת סגנון ה-Keycap:
-            // Alignment 5 = מרכז מסך (או 2 עם MarginV למרכז תחתון)
-            // PrimaryColour = לבן, OutlineColour = ציאן זוהר (&H00FFF000), BackColour = רקע כהה שקוף למחצה (&HB0150F08)
+            // הגדרת סגנונות ה-Keycaps:
+            // KeyCapHud: הילה זוהרת רכה מסביב (OutlineColour = &H80FFF000), BorderStyle 3 בעובי 24px עם blur
+            // KeyBorder: מסגרת ניאון ציאן חדה (OutlineColour = &H00FFF000), BorderStyle 3 בעובי 17px
+            // KeyBox: רקע המקש הכהה (OutlineColour = &H00160F0A), טקסט לבן בולט (PrimaryColour = &H00FFFFFF), BorderStyle 3 (Box)
+            // KeyPlus: סימן הפלוס בין המקשים בצבע ציאן זוהר
             sb.AppendLine("[V4+ Styles]");
             sb.AppendLine("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding");
-            sb.AppendLine("Style: KeyCapHud, Segoe UI, 26, &H00FFFFFF, &H00000000, &H00FFF000, &HD0180F08, 1, 0, 0, 0, 100, 100, 1.5, 0, 1, 2.5, 3.5, 5, 20, 20, 140, 1");
+            sb.AppendLine("Style: KeyCapHud, Segoe UI, 34, &H00FFFFFF, &H00000000, &H80FFF000, &H00000000, 1, 0, 0, 0, 100, 100, 2, 0, 3, 24, 0, 5, 10, 10, 10, 1");
+            sb.AppendLine("Style: KeyBorder, Segoe UI, 34, &H00FFFFFF, &H00000000, &H00FFF000, &H00FFF000, 1, 0, 0, 0, 100, 100, 2, 0, 3, 17, 0, 5, 10, 10, 10, 1");
+            sb.AppendLine("Style: KeyBox, Segoe UI, 34, &H00FFFFFF, &H00000000, &H00160F0A, &H00000000, 1, 0, 0, 0, 100, 100, 2, 0, 3, 14, 0, 5, 10, 10, 10, 1");
+            sb.AppendLine("Style: KeyPlus, Segoe UI, 32, &H00FFF000, &H00000000, &H00000000, &H00000000, 1, 0, 0, 0, 100, 100, 1, 0, 1, 0, 0, 5, 10, 10, 10, 1");
             sb.AppendLine();
 
             sb.AppendLine("[Events]");
             sb.AppendLine("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text");
 
-            int writtenCount = 0;
-            foreach (var k in keys)
+            bool hasEntries = false;
+            for (int i = 0; i < activeKeys.Count; i++)
             {
-                long prevActiveMs = 0;
-                for (int i = 0; i < activeSegments.Count; i++)
+                var current = activeKeys[i];
+
+                // דילוג על אירועי מקשים רצופים תוך פחות מ-50ms
+                if (i + 1 < activeKeys.Count && (activeKeys[i + 1].EpochMs - current.EpochMs) < 50)
                 {
-                    var seg = activeSegments[i];
-                    if (k.EpochMs >= seg.StartEpochMs && k.EpochMs <= seg.EndEpochMs)
-                    {
-                        long startRelMs = prevActiveMs + (k.EpochMs - seg.StartEpochMs);
-                        long endRelMs = Math.Min(totalActiveMs, startRelMs + 2200); // תצוגה ל-2.2 שניות
-
-                        string startAss = FormatAssTimestamp(startRelMs);
-                        string endAss = FormatAssTimestamp(endRelMs);
-
-                        // פירוק הצירוף (למשל: "WIN + SHIFT + S") לעיצוב מקש בודד
-                        var parts = k.KeyCombination.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
-                        var formattedKeys = parts.Select(part =>
-                            $"{{\\b1\\fscx105\\fscy105\\c&H00FFFFFF&\\bord2.8\\3c&H00FFF000&\\shad3\\4c&HD0120B04&}}  {part.ToUpperInvariant()}  "
-                        );
-
-                        string formattedLine = string.Join("{\\rKeyCapHud\\c&H00FFF000\\bord0\\shad0}  +  ", formattedKeys);
-
-                        sb.AppendLine($"Dialogue: 0,{startAss},{endAss},KeyCapHud,,0,0,0,,{formattedLine}");
-                        writtenCount++;
-                        break;
-                    }
-                    prevActiveMs += Math.Max(0, seg.EndEpochMs - seg.StartEpochMs);
+                    continue;
                 }
+
+                long startRelMs = Math.Max(0, current.StartRelMs);
+                long nextStartRelMs = (i + 1 < activeKeys.Count)
+                    ? Math.Max(0, activeKeys[i + 1].StartRelMs)
+                    : totalActiveMs;
+
+                // משך התצוגה נחתך כשיש לחיצה חדשה (מונע ערימות שורות אנכיות)
+                long endRelMs = Math.Min(startRelMs + 2200, nextStartRelMs);
+                if (endRelMs <= startRelMs)
+                {
+                    endRelMs = startRelMs + 200;
+                }
+                endRelMs = Math.Min(totalActiveMs, endRelMs);
+
+                string startAss = FormatAssTimestamp(startRelMs);
+                string endAss = FormatAssTimestamp(endRelMs);
+
+                var partsGlow = current.Parsed.Select(p =>
+                {
+                    string u = p.ToUpperInvariant();
+                    string pad = u.Length == 1 ? $"   {u}   " : $"  {u}  ";
+                    return $"{{\\rKeyCapHud\\bord24\\3c&H80FFF000\\blur6}}{pad}";
+                });
+
+                var partsBorder = current.Parsed.Select(p =>
+                {
+                    string u = p.ToUpperInvariant();
+                    string pad = u.Length == 1 ? $"   {u}   " : $"  {u}  ";
+                    return $"{{\\rKeyBorder}}{pad}";
+                });
+
+                var partsBox = current.Parsed.Select(p =>
+                {
+                    string u = p.ToUpperInvariant();
+                    string pad = u.Length == 1 ? $"   {u}   " : $"  {u}  ";
+                    return $"{{\\rKeyBox}}{pad}";
+                });
+
+                string lineGlow = "{\\fad(80,200)}" + string.Join("{\\rKeyPlus\\alpha&HFF&}   +   ", partsGlow);
+                string lineBorder = "{\\fad(80,200)}" + string.Join("{\\rKeyPlus\\alpha&HFF&}   +   ", partsBorder);
+                string lineBox = "{\\fad(80,200)}" + string.Join("{\\rKeyPlus\\b1\\c&H00FFF000}   +   ", partsBox);
+
+                sb.AppendLine($"Dialogue: 0,{startAss},{endAss},KeyCapHud,,0,0,0,,{lineGlow}");
+                sb.AppendLine($"Dialogue: 1,{startAss},{endAss},KeyBorder,,0,0,0,,{lineBorder}");
+                sb.AppendLine($"Dialogue: 2,{startAss},{endAss},KeyBox,,0,0,0,,{lineBox}");
+                hasEntries = true;
             }
 
-            if (writtenCount == 0) return null;
+            if (!hasEntries) return null;
 
             await File.WriteAllTextAsync(assPath, sb.ToString(), new UTF8Encoding(false), ct);
             return assPath;

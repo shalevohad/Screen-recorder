@@ -122,7 +122,13 @@
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 
-		<!-- 💡 העתקת ffprobe עבור שרת Windows -->
+		<!-- 💡 העתקת כלי FFmpeg ו-FFprobe עבור שרת Windows -->
+		<None Include="Tools\Win\ffmpeg.exe" Condition="Exists('Tools\Win\ffmpeg.exe')">
+			<TargetPath>Tools\Win\ffmpeg.exe</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+
 		<None Include="Tools\Win\ffprobe.exe" Condition="Exists('Tools\Win\ffprobe.exe')">
 			<TargetPath>Tools\Win\ffprobe.exe</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -138,7 +144,13 @@
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 
-		<!-- 💡 העתקת ffprobe עבור שרת Linux -->
+		<!-- 💡 העתקת כלי FFmpeg ו-FFprobe עבור שרת Linux -->
+		<None Include="Tools/Linux/ffmpeg" Condition="Exists('Tools/Linux/ffmpeg')">
+			<TargetPath>Tools/Linux/ffmpeg</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+
 		<None Include="Tools/Linux/ffprobe" Condition="Exists('Tools/Linux/ffprobe')">
 			<TargetPath>Tools/Linux/ffprobe</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

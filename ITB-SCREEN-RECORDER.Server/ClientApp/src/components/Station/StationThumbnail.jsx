@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import './StationThumbnail.scss';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
+import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { useAuth } from '../../context/AuthContext';
 
 export default function StationThumbnail(props) {
@@ -42,7 +43,9 @@ export default function StationThumbnail(props) {
         ? '/api/v1/whep'
         : `http://${serverHost}:${webrtcPort}`;
 
-    const isLive = isOnline && isStreaming;
+    const isStarting = isPending === 'starting' || (Boolean(isPending) && !isStreaming);
+    const isStopping = isPending === 'stopping' || (Boolean(isPending) && isStreaming);
+    const isLive = isOnline && isStreaming && !isPending;
     const hasCriticalError = isOnline && (droppedFrames > 5);
 
     const audioHasPlayback = Boolean(hasActiveSpeakers);
@@ -58,13 +61,13 @@ export default function StationThumbnail(props) {
     );
 
     useEffect(() => {
-        if (!isStreaming) return;
+        if (!isLive) return;
         const timer = setInterval(() => setRecordingSeconds(p => p + 1), 1000);
         return () => {
             clearInterval(timer);
             setRecordingSeconds(0);
         };
-    }, [isStreaming]);
+    }, [isLive]);
 
     const formatTimer = (sec) => {
         const m = Math.floor(sec / 60);
@@ -127,17 +130,17 @@ export default function StationThumbnail(props) {
                 <div className="station-header-right">
                     <button
                         type="button"
-                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isStreaming ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
+                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : (isLive || isStreaming) && !isStopping ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
                         onClick={handleQuickToggleRec}
-                        disabled={!isOnline || isPending || !canControl}
+                        disabled={!isOnline || Boolean(isPending) || !canControl}
                         title={!canControl ? "Access restricted (requires stations.control)" : undefined}
                     >
                         <span className="rec-indicator-dot" />
                         <div className="rec-text-wrapper">
                             <span className="rec-state">
-                                {!canControl ? 'LOCKED' : !isOnline ? 'OFFLINE' : isPending ? 'WAIT' : isStreaming ? 'REC' : 'IDLE'}
+                                {!canControl ? 'LOCKED' : !isOnline ? 'OFFLINE' : isStarting ? 'STARTING...' : isStopping ? 'STOPPING...' : isStreaming ? 'REC' : 'IDLE'}
                             </span>
-                            {isStreaming && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
+                            {isLive && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
                         </div>
                     </button>
 
@@ -188,10 +191,25 @@ export default function StationThumbnail(props) {
                             webrtcBaseUrl={dynamicWebrtcBaseUrl}
                         />
                     </div>
+                ) : (isStarting || isStopping) ? (
+                    <div className="stream-loading-matte">
+                        <div className="tactical-stream-spinner" />
+                        <span className="loading-label">{isStarting ? 'INITIALIZING STREAM...' : 'STOPPING STREAM...'}</span>
+                        <span className="loading-sub">{isStarting ? 'CONNECTING MEDIA PIPELINE' : 'FLUSHING RECORDING BUFFER'}</span>
+                    </div>
                 ) : (
                     <div className="offline-screen-matte">
                         <span>{isOnline ? 'STANDBY' : 'OFFLINE'}</span>
                     </div>
+                )}
+
+                {Boolean(isStreaming || isLive) && (
+                    <LiveKeystrokeOverlay
+                        keystrokes={props.recentKeystrokes || props.keystrokes}
+                        isLive={Boolean(isStreaming || isLive)}
+                        variant="viewport"
+                        mode={props.keystrokeMode || 'burn-in'}
+                    />
                 )}
 
                 <div
@@ -228,12 +246,12 @@ export default function StationThumbnail(props) {
                 <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
                     <button
                         type="button"
-                        className={`action-btn ${isStreaming ? 'stop' : 'start'} ${!canControl ? 'disabled' : ''}`}
+                        className={`action-btn ${isStreaming ? 'stop' : 'start'} ${!canControl || Boolean(isPending) ? 'disabled' : ''}`}
                         onClick={handleQuickToggleRec}
-                        disabled={!canControl}
+                        disabled={!canControl || Boolean(isPending)}
                         title={!canControl ? "Access restricted (stations.control)" : (isStreaming ? "Stop Stream" : "Start Stream")}
                     >
-                        {isStreaming ? 'STOP' : 'START'}
+                        {isPending ? '...' : isStreaming ? 'STOP' : 'START'}
                     </button>
                     <button
                         type="button"

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
+import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import './FullscreenModal.scss';
 
 export default function FullscreenModal(props) {
@@ -261,6 +262,15 @@ export default function FullscreenModal(props) {
                         isMuted={isMuted}
                         onPlaying={() => setIsVideoPlaying(true)}
                     />
+
+                    {isStreaming && (
+                        <LiveKeystrokeOverlay
+                            keystrokes={props.recentKeystrokes || props.keystrokes}
+                            isLive={isStreaming}
+                            variant="fullscreen"
+                            mode={props.keystrokeMode || 'burn-in'}
+                        />
+                    )}
 
                     <div className="fullscreen-audio-corner">
                         <button

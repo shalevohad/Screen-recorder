@@ -1,4 +1,4 @@
-﻿#if WINDOWS
+#if WINDOWS
 
 using System;
 using System.IO;
@@ -75,8 +75,26 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
             {
                 if (!WTSQueryUserToken(sessionId, out userToken))
                 {
-                    Console.WriteLine($"[InteractiveLauncher] WTSQueryUserToken failed. Error: {Marshal.GetLastWin32Error()}");
-                    return false;
+                    int lastError = Marshal.GetLastWin32Error();
+                    // אם אנו לא רצים כ-SYSTEM (למשל הרצה ידנית/אינטראקטיבית לצורכי בדיקות או פיתוח), נשגר ישירות בסשן הנוכחי
+                    try
+                    {
+                        var psi = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = appPath,
+                            Arguments = arguments,
+                            WorkingDirectory = Path.GetDirectoryName(appPath) ?? AppContext.BaseDirectory,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        var proc = System.Diagnostics.Process.Start(psi);
+                        return proc != null && !proc.HasExited;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[InteractiveLauncher] WTSQueryUserToken failed ({lastError}) and direct fallback failed: {ex.Message}");
+                        return false;
+                    }
                 }
 
                 // 1. קריטי: בניית סביבת המשתמש (מניעת שגיאת 0xc0000142)
