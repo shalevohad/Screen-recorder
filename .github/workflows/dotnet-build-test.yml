@@ -31,10 +31,20 @@ jobs:
       if: startsWith(matrix.os, 'windows')
       shell: pwsh
       run: |
-        $toolsDir = "Tools/Win"
-        New-Item -ItemType Directory -Force -Path $toolsDir
-        $agentDir = "ITB-SCREEN-RECORDER.AgentWorker"
-        New-Item -ItemType Directory -Force -Path $agentDir
+        $ffmpegDestDirs = @(
+            "Tools/Win",
+            "ITB-SCREEN-RECORDER.AgentWorker",
+            "ITB-SCREEN-RECORDER.AgentWorker/Tools/Win",
+            "ITB-SCREEN-RECORDER.Server/Tools/Win",
+            "Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Tools/Win",
+            "Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Tools/Win",
+            "Features/Extractor/Tools/Win",
+            "Features/ExtractorAdvanced/Tools/Win"
+        )
+
+        foreach ($dir in $ffmpegDestDirs) {
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        }
         
         # 1. הורדת FFmpeg
         $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
@@ -60,10 +70,15 @@ jobs:
         $ffmpegExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
         $ffprobeExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
 
-        Copy-Item $ffmpegExe.FullName -Destination "$toolsDir\ffmpeg.exe"
-        Copy-Item $ffmpegExe.FullName -Destination "$agentDir\ffmpeg.exe"
-        Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe"
-        Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe"
+        if (-not $ffmpegExe -or -not $ffprobeExe) {
+            throw "FFmpeg or FFprobe executable not found in extracted archive."
+        }
+
+        foreach ($dir in $ffmpegDestDirs) {
+            Copy-Item $ffmpegExe.FullName -Destination "$dir\ffmpeg.exe" -Force
+            Copy-Item $ffprobeExe.FullName -Destination "$dir\ffprobe.exe" -Force
+            Write-Host "Copied FFmpeg and FFprobe to $dir"
+        }
 
         # 2. הורדת MediaMTX עבור Windows
         Write-Host "Downloading MediaMTX for Windows..."
@@ -71,37 +86,70 @@ jobs:
         $mediamtxZip = "mediamtx_win.zip"
         Invoke-WebRequest -Uri $mediamtxUrl -OutFile $mediamtxZip
         Expand-Archive -Path $mediamtxZip -DestinationPath "mediamtx_win_extracted" -Force
-        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$toolsDir\mediamtx.exe"
+
+        $mtxExe = Get-ChildItem -Path "mediamtx_win_extracted" -Recurse -Filter "mediamtx.exe" | Select-Object -First 1
+        $mtxDestDirs = @(
+            "Tools/Win",
+            "ITB-SCREEN-RECORDER.Server/MediaMTX",
+            "ITB-SCREEN-RECORDER.Server/Tools/Win"
+        )
+        foreach ($mDir in $mtxDestDirs) {
+            New-Item -ItemType Directory -Force -Path $mDir | Out-Null
+            Copy-Item $mtxExe.FullName -Destination "$mDir\mediamtx.exe" -Force
+            Write-Host "Copied MediaMTX to $mDir"
+        }
 
     - name: Download FFmpeg & MediaMTX for Linux
       if: startsWith(matrix.os, 'ubuntu')
       run: |
-        TOOLS_DIR="Tools/Linux"
-        AGENT_DIR="ITB-SCREEN-RECORDER.AgentWorker"
-        mkdir -p "$TOOLS_DIR"
-        mkdir -p "$AGENT_DIR"
+        TARGET_LINUX_DIRS=(
+          "Tools/Linux"
+          "ITB-SCREEN-RECORDER.AgentWorker"
+          "ITB-SCREEN-RECORDER.AgentWorker/Tools/Linux"
+          "ITB-SCREEN-RECORDER.Server/Tools/Linux"
+          "Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Tools/Linux"
+          "Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Tools/Linux"
+          "Features/Extractor/Tools/Linux"
+          "Features/ExtractorAdvanced/Tools/Linux"
+        )
         
+        for dir in "${TARGET_LINUX_DIRS[@]}"; do
+          mkdir -p "$dir"
+        done
+
         # 1. FFmpeg ללינוקס (שימוש ב-pre-installed ב-GitHub Actions או apt)
         echo "Configuring FFmpeg & FFprobe for Linux..."
         if ! which ffmpeg > /dev/null 2>&1 || ! which ffprobe > /dev/null 2>&1; then
           sudo apt-get update && sudo apt-get install -y ffmpeg
         fi
-        
-        cp "$(which ffmpeg)" "$TOOLS_DIR/ffmpeg"
-        cp "$(which ffprobe)" "$TOOLS_DIR/ffprobe"
-        chmod +x "$TOOLS_DIR/ffmpeg" "$TOOLS_DIR/ffprobe"
-        
-        cp "$(which ffmpeg)" "$AGENT_DIR/ffmpeg"
-        cp "$(which ffprobe)" "$AGENT_DIR/ffprobe"
-        chmod +x "$AGENT_DIR/ffmpeg" "$AGENT_DIR/ffprobe"
+
+        FFMPEG_BIN=$(which ffmpeg)
+        FFPROBE_BIN=$(which ffprobe)
+
+        for dir in "${TARGET_LINUX_DIRS[@]}"; do
+          cp "$FFMPEG_BIN" "$dir/ffmpeg"
+          cp "$FFPROBE_BIN" "$dir/ffprobe"
+          chmod +x "$dir/ffmpeg" "$dir/ffprobe"
+          echo "Copied FFmpeg and FFprobe to $dir"
+        done
 
         # 2. הורדת MediaMTX ללינוקס
         echo "Downloading MediaMTX for Linux..."
         curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.21.0/mediamtx_v1.21.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
         tar -xzf mediamtx_linux.tar.gz mediamtx
-        cp mediamtx "$TOOLS_DIR/mediamtx"
-        chmod +x "$TOOLS_DIR/mediamtx"
         
+        MTX_LINUX_DIRS=(
+          "Tools/Linux"
+          "ITB-SCREEN-RECORDER.Server/MediaMTX"
+          "ITB-SCREEN-RECORDER.Server/Tools/Linux"
+        )
+        for mdir in "${MTX_LINUX_DIRS[@]}"; do
+          mkdir -p "$mdir"
+          cp mediamtx "$mdir/mediamtx"
+          chmod +x "$mdir/mediamtx"
+          echo "Copied MediaMTX to $mdir"
+        done
+
         echo "FFmpeg, FFprobe and MediaMTX placed successfully for Linux."
 
     - name: Restore NuGet dependencies

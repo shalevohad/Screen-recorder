@@ -82,10 +82,20 @@ jobs:
     - name: Download FFmpeg, FFprobe & MediaMTX for Windows (With Retry)
       shell: pwsh
       run: |
-        $toolsDir = "Tools/Win"
-        New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
-        $agentDir = "ITB-SCREEN-RECORDER.AgentWorker"
-        New-Item -ItemType Directory -Force -Path $agentDir | Out-Null
+        $ffmpegDestDirs = @(
+            "Tools/Win",
+            "ITB-SCREEN-RECORDER.AgentWorker",
+            "ITB-SCREEN-RECORDER.AgentWorker/Tools/Win",
+            "ITB-SCREEN-RECORDER.Server/Tools/Win",
+            "Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Tools/Win",
+            "Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Tools/Win",
+            "Features/Extractor/Tools/Win",
+            "Features/ExtractorAdvanced/Tools/Win"
+        )
+        foreach ($dir in $ffmpegDestDirs) {
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        }
+
         $serverMtxDir = "ITB-SCREEN-RECORDER.Server/MediaMTX"
         New-Item -ItemType Directory -Force -Path $serverMtxDir | Out-Null
         
@@ -112,10 +122,15 @@ jobs:
         $ffmpegExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
         $ffprobeExe = Get-ChildItem -Path "ffmpeg_extracted" -Recurse -Filter "ffprobe.exe" | Select-Object -First 1
 
-        Copy-Item $ffmpegExe.FullName -Destination "$toolsDir\ffmpeg.exe" -Force
-        Copy-Item $ffmpegExe.FullName -Destination "$agentDir\ffmpeg.exe" -Force
-        Copy-Item $ffprobeExe.FullName -Destination "$toolsDir\ffprobe.exe" -Force
-        Copy-Item $ffprobeExe.FullName -Destination "$agentDir\ffprobe.exe" -Force
+        if (-not $ffmpegExe -or -not $ffprobeExe) {
+            throw "FFmpeg or FFprobe executable not found in extracted archive."
+        }
+
+        foreach ($dir in $ffmpegDestDirs) {
+            Copy-Item $ffmpegExe.FullName -Destination "$dir\ffmpeg.exe" -Force
+            Copy-Item $ffprobeExe.FullName -Destination "$dir\ffprobe.exe" -Force
+            Write-Host "Copied FFmpeg and FFprobe to $dir"
+        }
 
         # 2. הורדת MediaMTX עבור Windows
         Write-Host "Downloading MediaMTX for Windows..."
@@ -123,8 +138,10 @@ jobs:
         $mediamtxZip = "mediamtx_win.zip"
         Invoke-WebRequest -Uri $mediamtxUrl -OutFile $mediamtxZip
         Expand-Archive -Path $mediamtxZip -DestinationPath "mediamtx_win_extracted" -Force
-        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$toolsDir\mediamtx.exe" -Force
-        Copy-Item "mediamtx_win_extracted/mediamtx.exe" -Destination "$serverMtxDir\mediamtx.exe" -Force
+        $mtxExe = Get-ChildItem -Path "mediamtx_win_extracted" -Recurse -Filter "mediamtx.exe" | Select-Object -First 1
+        Copy-Item $mtxExe.FullName -Destination "Tools/Win\mediamtx.exe" -Force
+        Copy-Item $mtxExe.FullName -Destination "$serverMtxDir\mediamtx.exe" -Force
+        Copy-Item $mtxExe.FullName -Destination "ITB-SCREEN-RECORDER.Server/Tools/Win\mediamtx.exe" -Force
 
     - name: Install Feature Node Dependencies
       shell: pwsh
@@ -190,11 +207,21 @@ jobs:
 
     - name: Download FFmpeg, FFprobe & MediaMTX for Linux
       run: |
-        TOOLS_DIR="Tools/Linux"
-        AGENT_DIR="ITB-SCREEN-RECORDER.AgentWorker"
+        TARGET_LINUX_DIRS=(
+          "Tools/Linux"
+          "ITB-SCREEN-RECORDER.AgentWorker"
+          "ITB-SCREEN-RECORDER.AgentWorker/Tools/Linux"
+          "ITB-SCREEN-RECORDER.Server/Tools/Linux"
+          "Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Tools/Linux"
+          "Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Tools/Linux"
+          "Features/Extractor/Tools/Linux"
+          "Features/ExtractorAdvanced/Tools/Linux"
+        )
+        for dir in "${TARGET_LINUX_DIRS[@]}"; do
+          mkdir -p "$dir"
+        done
+
         SERVER_MTX_DIR="ITB-SCREEN-RECORDER.Server/MediaMTX"
-        mkdir -p "$TOOLS_DIR"
-        mkdir -p "$AGENT_DIR"
         mkdir -p "$SERVER_MTX_DIR"
         
         # 1. FFmpeg & FFprobe
@@ -202,20 +229,20 @@ jobs:
         tar -xf ffmpeg.tar.xz
         EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "ffmpeg-*-amd64-static")
         
-        cp "$EXTRACTED_DIR/ffmpeg" "$TOOLS_DIR/ffmpeg"
-        cp "$EXTRACTED_DIR/ffprobe" "$TOOLS_DIR/ffprobe"
-        chmod +x "$TOOLS_DIR/ffmpeg" "$TOOLS_DIR/ffprobe"
-        
-        cp "$EXTRACTED_DIR/ffmpeg" "$AGENT_DIR/ffmpeg"
-        cp "$EXTRACTED_DIR/ffprobe" "$AGENT_DIR/ffprobe"
-        chmod +x "$AGENT_DIR/ffmpeg" "$AGENT_DIR/ffprobe"
+        for dir in "${TARGET_LINUX_DIRS[@]}"; do
+          cp "$EXTRACTED_DIR/ffmpeg" "$dir/ffmpeg"
+          cp "$EXTRACTED_DIR/ffprobe" "$dir/ffprobe"
+          chmod +x "$dir/ffmpeg" "$dir/ffprobe"
+          echo "Copied FFmpeg and FFprobe to $dir"
+        done
 
         # 2. MediaMTX ללינוקס
         curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
         tar -xzf mediamtx_linux.tar.gz mediamtx
-        cp mediamtx "$TOOLS_DIR/mediamtx"
+        cp mediamtx "Tools/Linux/mediamtx"
         cp mediamtx "$SERVER_MTX_DIR/mediamtx"
-        chmod +x "$TOOLS_DIR/mediamtx" "$SERVER_MTX_DIR/mediamtx"
+        cp mediamtx "ITB-SCREEN-RECORDER.Server/Tools/Linux/mediamtx" || true
+        chmod +x "Tools/Linux/mediamtx" "$SERVER_MTX_DIR/mediamtx" "ITB-SCREEN-RECORDER.Server/Tools/Linux/mediamtx" || true
 
     - name: Install Feature Node Dependencies
       run: |
