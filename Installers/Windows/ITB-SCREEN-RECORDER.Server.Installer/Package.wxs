@@ -39,9 +39,9 @@
 		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes" />
 		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes" />
 		<Property Id="ENABLE_VIP" Value="0" Secure="yes" />
-		<Property Id="VIRTUAL_IP" Value="" Secure="yes" />
+		<Property Id="VIRTUAL_IP" Secure="yes" />
 		<Property Id="VIRTUAL_IP_SUBNET" Value="255.255.255.0" Secure="yes" />
-		<Property Id="PARTNER_URL" Value="" Secure="yes" />
+		<Property Id="PARTNER_URL" Secure="yes" />
 
 		<SetProperty Id="INSTALLFOLDER" Value="[PREVIOUS_INSTALLFOLDER]" After="AppSearch" Condition="PREVIOUS_INSTALLFOLDER" />
 
