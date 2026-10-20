@@ -104,10 +104,9 @@
 			<ExcludeAssets>runtime</ExcludeAssets>
 		</ProjectReference>
 
-		<!-- 💡 Extractor: משותף ורץ במודול Extractor עצמאי, לכן לא משוכפל לפלט של ExtractorAdvanced -->
+		<!-- 💡 Extractor: נדרש לזמן ריצה עבור ExtractorAdvanced כאשר הוא מחליף את Extractor הבסיסי -->
 		<ProjectReference Include="..\..\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj">
-			<Private>false</Private>
-			<ExcludeAssets>runtime</ExcludeAssets>
+			<Private>true</Private>
 		</ProjectReference>
 	</ItemGroup>
 
