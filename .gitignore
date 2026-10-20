@@ -57,7 +57,9 @@ mediamtx.exe
 /Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Tools/Linux/ffprobe
 /Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Tools/Win/ffprobe.exe
 /ITB-SCREEN-RECORDER.Server/Tools/Linux/ffprobe
+/ITB-SCREEN-RECORDER.Server/Tools/Linux/ffmpeg
 /ITB-SCREEN-RECORDER.Server/Tools/Win/ffprobe.exe
 scratch/
+.dotnet_temp*
 
 /ITB-SCREEN-RECORDER.Server/Tools/Linux/ffmpeg

@@ -88,5 +88,15 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
         /// מייצר קובץ ASS מתקדם עם תגיות Keycaps טקטיות עבור צריבה קשיחה בווידאו (Burn-In)
         /// </summary>
         Task<string?> CreateAssKeycapsFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default);
+
+        /// <summary>
+        /// מייצר קובץ SRT המותאם למקטעים פעילים ומפצה על פערים שהוסרו (Global Gaps)
+        /// </summary>
+        Task<string?> CreateSrtFileForSegmentsAsync(string stationId, IReadOnlyList<(long StartEpochMs, long EndEpochMs)> activeSegments, CancellationToken ct = default);
+
+        /// <summary>
+        /// מייצר קובץ ASS המותאם למקטעים פעילים ומפצה על פערים שהוסרו (Global Gaps)
+        /// </summary>
+        Task<string?> CreateAssKeycapsFileForSegmentsAsync(string stationId, IReadOnlyList<(long StartEpochMs, long EndEpochMs)> activeSegments, CancellationToken ct = default);
     }
 }
