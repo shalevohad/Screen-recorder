@@ -27,7 +27,6 @@ export function useDashboardLogic({
     const [tabFilters, setTabFilters] = useState({});
     const currentTabFilter = tabFilters[activeTabId] || 'ALL';
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 24;
 
     // 💡 שליפת רשימת הטאבים הישירה מ-SQLite
     const [fleetTabsList, setFleetTabsList] = useState([]);
@@ -250,38 +249,6 @@ export function useDashboardLogic({
         setCurrentPage(1);
     }
 
-    const totalPages = Math.ceil(processedStations.length / itemsPerPage) || 1;
-    const paginatedStations = useMemo(() => {
-        const start = (currentPage - 1) * itemsPerPage;
-        return processedStations.slice(start, start + itemsPerPage);
-    }, [processedStations, currentPage, itemsPerPage]);
-
-    const canSort = processedStations.length > 1;
-    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming), [processedStations]);
-    const canStopAny = useMemo(() => processedStations.some(s => s.isStreaming), [processedStations]);
-
-    const handleFilteredBulkStart = () => {
-        if (!canStartAny) return;
-        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming).map(s => s.hostname);
-        onBulkStart?.(targetHostnames, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
-    };
-
-    const handleFilteredBulkStop = () => {
-        if (!canStopAny) return;
-        const targetHostnames = processedStations.filter(s => s.isStreaming).map(s => s.hostname);
-        onBulkStop?.(targetHostnames);
-    };
-
-    const handlePolicyApplication = ({ tabData, overrideCustomSettings }) => {
-        if (!overrideCustomSettings) return;
-        onUpdateStationSettings?.(prev => prev.map(st => {
-            const matchesName = tabData.assignedHostnames?.includes(st.hostname);
-            const matchesOu = tabData.assignedOus?.some(ou => st.ou?.toLowerCase().includes(ou.toLowerCase()) || st.group?.toLowerCase().includes(ou.toLowerCase()));
-            if (matchesName || matchesOu) return { ...st, customBitrate: tabData.defaultBitrate, customFps: tabData.defaultFps };
-            return st;
-        }));
-    };
-
     const [containerSize, setContainerSize] = useState({
         width: typeof window !== 'undefined' ? window.innerWidth - 100 : 1400,
         height: typeof window !== 'undefined' ? window.innerHeight - 240 : 700
@@ -314,12 +281,12 @@ export function useDashboardLogic({
     }, []);
 
     const autoOptimalZoom = useMemo(() => {
-        const count = paginatedStations.length + activeInlineFeatures.length;
+        const count = processedStations.length + activeInlineFeatures.length;
         if (count === 0) return 3;
 
         const pane = typeof document !== 'undefined' ? document.querySelector('.tab-pane-content-wrapper') : null;
-        const padY = pane ? (parseFloat(getComputedStyle(pane).paddingTop) + parseFloat(getComputedStyle(pane).paddingBottom)) : 52;
-        const padX = pane ? (parseFloat(getComputedStyle(pane).paddingLeft) + parseFloat(getComputedStyle(pane).paddingRight)) : 32;
+        const padY = pane ? (parseFloat(getComputedStyle(pane).paddingTop) + parseFloat(getComputedStyle(pane).paddingBottom)) : 40;
+        const padX = pane ? (parseFloat(getComputedStyle(pane).paddingLeft) + parseFloat(getComputedStyle(pane).paddingRight)) : 40;
 
         const availW = Math.max(300, (pane ? pane.clientWidth : containerSize.width) - padX);
         const availH = Math.max(160, (pane ? pane.clientHeight : containerSize.height) - padY - 8);
@@ -340,9 +307,75 @@ export function useDashboardLogic({
         }
 
         return 1;
-    }, [paginatedStations.length, activeInlineFeatures.length, containerSize]);
+    }, [processedStations.length, activeInlineFeatures.length, containerSize]);
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
+
+    // 💡 חישוב גודל עמוד דינמי כמכפלה של עמודות ושורות מלאות (cols * rows) למילוי מושלם של כל הריבועים בדף
+    const itemsPerPage = useMemo(() => {
+        const pane = typeof document !== 'undefined' ? document.querySelector('.tab-pane-content-wrapper') : null;
+        const padY = pane ? (parseFloat(getComputedStyle(pane).paddingTop) + parseFloat(getComputedStyle(pane).paddingBottom)) : 40;
+        const padX = pane ? (parseFloat(getComputedStyle(pane).paddingLeft) + parseFloat(getComputedStyle(pane).paddingRight)) : 40;
+
+        const availW = Math.max(300, (pane ? pane.clientWidth : containerSize.width) - padX);
+        const paginationBarH = 76;
+        const availH = Math.max(160, (pane ? pane.clientHeight : containerSize.height) - padY - paginationBarH);
+
+        if (viewMode === 'grid') {
+            const cardWidths = { 5: 700, 4: 570, 3: 450, 2: 360, 1: 290 };
+            const w = getCssPixelValue(`--zoom-card-w-${effectiveZoom}`, cardWidths[effectiveZoom] || 360);
+            const cardH = Math.round(w * (9 / 16) + 82);
+
+            const cols = Math.max(1, Math.floor((availW + 20) / (w + 20)));
+            const rows = Math.max(1, Math.floor((availH + 20) / (cardH + 20)));
+            return Math.max(cols * rows, cols);
+        } else {
+            const denseW = 650;
+            const denseH = 54;
+            const cols = Math.max(1, Math.floor((availW + 12) / (denseW + 12)));
+            const rows = Math.max(1, Math.floor((availH + 12) / (denseH + 12)));
+            return Math.max(cols * rows, cols * 4, 20);
+        }
+    }, [viewMode, effectiveZoom, containerSize]);
+
+    const totalPages = Math.ceil(processedStations.length / itemsPerPage) || 1;
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(Math.max(1, totalPages));
+        }
+    }, [totalPages, currentPage]);
+
+    const paginatedStations = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return processedStations.slice(start, start + itemsPerPage);
+    }, [processedStations, currentPage, itemsPerPage]);
+
+    const canSort = processedStations.length > 1;
+    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming), [processedStations]);
+    const canStopAny = useMemo(() => processedStations.some(s => s.isStreaming), [processedStations]);
+
+    const handleFilteredBulkStart = () => {
+        if (!canStartAny) return;
+        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming).map(s => s.hostname);
+        onBulkStart?.(targetHostnames, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
+    };
+
+    const handleFilteredBulkStop = () => {
+        if (!canStopAny) return;
+        const targetHostnames = processedStations.filter(s => s.isStreaming).map(s => s.hostname);
+        onBulkStop?.(targetHostnames);
+    };
+
+    const handlePolicyApplication = ({ tabData, overrideCustomSettings }) => {
+        if (!overrideCustomSettings) return;
+        onUpdateStationSettings?.(prev => prev.map(st => {
+            const matchesName = tabData.assignedHostnames?.includes(st.hostname);
+            const matchesOu = tabData.assignedOus?.some(ou => st.ou?.toLowerCase().includes(ou.toLowerCase()) || st.group?.toLowerCase().includes(ou.toLowerCase()));
+            if (matchesName || matchesOu) return { ...st, customBitrate: tabData.defaultBitrate, customFps: tabData.defaultFps };
+            return st;
+        }));
+    };
 
     const handleZoomOut = () => { setIsAutoZoom(false); setManualZoom(p => Math.max(p - 1, 1)); };
     const handleZoomIn = () => { setIsAutoZoom(false); setManualZoom(p => Math.min(p + 1, 5)); };

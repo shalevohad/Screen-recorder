@@ -1,4 +1,4 @@
-﻿// Client/src/components/StationDrawer/StationDrawer.jsx
+// Client/src/components/StationDrawer/StationDrawer.jsx
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import StationHubCard from './views/Hub/StationHubCard.jsx';
 import StationHubTableRow from './views/Hub/StationHubTableRow.jsx';
@@ -75,6 +75,17 @@ export default function StationDrawer({
                     .pop() || 5; // ברירת מחדל אם המסך קטן מדי
 
                 setTablePageSize(optimalSize);
+            }
+
+            const containerWidth = listContainerRef.current.clientWidth;
+            if (containerWidth > 0) {
+                const cardMinW = 240;
+                const gap = 12;
+                const cols = Math.max(1, Math.floor((containerWidth + gap) / (cardMinW + gap)));
+                const cardH = 175;
+                const rows = Math.max(1, Math.floor((containerHeight + gap) / (cardH + gap)));
+                const optimalGrid = Math.max(cols * rows, cols);
+                setGridPageSize(optimalGrid);
             }
         };
 

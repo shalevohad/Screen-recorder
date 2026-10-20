@@ -102,6 +102,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 await Parallel.ForEachAsync(availableHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
+                    if (lStart.HasValue && lEnd.HasValue && chunks.Count == 0)
+                    {
+                        return;
+                    }
                     var sample = chunks.LastOrDefault();
 
                     int width = sample?.Width ?? 1920;

@@ -80,6 +80,7 @@ export default function ExtractorAdvancedStudio() {
     const [activeStationId, setActiveStationId] = useState(cached.activeStationId || null);
     const [spotlightStationId, setSpotlightStationId] = useState(null);
     const [globalGaps, setGlobalGaps] = useState([]);
+    const [noStationsAlert, setNoStationsAlert] = useState(false);
 
     const [stationContextMenu, setStationContextMenu] = useState(null);
 
@@ -242,6 +243,35 @@ export default function ExtractorAdvancedStudio() {
             }
         }
     }, [selectedStationIds, activeStationId]);
+
+    useEffect(() => {
+        if (isLoadingStations) return;
+
+        if (allStations.length === 0) {
+            if (selectedStationIds.length > 0 || activeStationId || isWorkspaceActive) {
+                setSelectedStationIds([]);
+                setActiveStationId(null);
+                setSpotlightStationId(null);
+                setIsWorkspaceActive(false);
+            }
+            setIsDrawerOpen(true);
+            setNoStationsAlert(true);
+        } else {
+            setNoStationsAlert(false);
+
+            setSelectedStationIds(prev => {
+                const valid = prev.filter(id => allStations.some(s => s.id === id));
+                if (valid.length !== prev.length) {
+                    if (valid.length === 0) {
+                        setIsWorkspaceActive(false);
+                        setIsDrawerOpen(true);
+                    }
+                    return valid;
+                }
+                return prev;
+            });
+        }
+    }, [isLoadingStations, allStations]);
 
     const handleSelectActiveStation = useCallback((id) => {
         if (selectedStationIds.length <= 1) return;
@@ -413,6 +443,7 @@ export default function ExtractorAdvancedStudio() {
             endEpochMs: endMs,
             durationMs
         });
+        setNoStationsAlert(false);
         setInPointMs(newBuf);
         setOutPointMs(newBuf + durationMs);
         setPlayheadMs(newBuf);
@@ -495,6 +526,43 @@ export default function ExtractorAdvancedStudio() {
                     totalCount={allStations.length}
                     onResetStudio={handleResetStudioSession}
                 />
+
+                {noStationsAlert && (
+                    <div className="studio-scope-alert-banner">
+                        <div className="alert-content">
+                            <svg className="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <div className="alert-text">
+                                <span className="alert-title">NO RECORDING SESSIONS FOUND IN SELECTED TIME SCOPE</span>
+                                <span className="alert-desc">
+                                    לא אותרו תחנות או מקטעי וידאו מוקלטים בטווח הזמן שנבחר ({timeRange.start} — {timeRange.end}).
+                                </span>
+                            </div>
+                        </div>
+                        <div className="alert-actions">
+                            <button
+                                type="button"
+                                className="btn-alert-change-time"
+                                onClick={() => setIsRangeModalOpen(true)}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <polyline points="12 6 12 12 16 14" />
+                                </svg>
+                                <span>CHANGE TIME SCOPE</span>
+                            </button>
+                            <button
+                                type="button"
+                                className="btn-alert-dismiss"
+                                onClick={() => setNoStationsAlert(false)}
+                                title="Dismiss Alert"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="studio-lower-body">
                     {!isInitialSetup && (

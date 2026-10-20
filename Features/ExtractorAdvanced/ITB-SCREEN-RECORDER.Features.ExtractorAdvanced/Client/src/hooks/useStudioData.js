@@ -28,10 +28,14 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
             if (res.ok) {
                 const contentType = res.headers.get("content-type");
                 if (contentType && contentType.includes("application/json")) {
-                    const data = await res.json();
                     const rawList = Array.isArray(data) ? data : (data.stations || data.items || []);
+                    const activeList = rawList.filter(item => {
+                        const count = item.recordingsCount || 0;
+                        const segs = item.segments || [];
+                        return count > 0 || segs.length > 0;
+                    });
 
-                    const normalized = rawList.map(item => ({
+                    const normalized = activeList.map(item => ({
                         id: String(item.id || item.stationId || item.agentId || item.hostname),
                         hostname: item.hostname || item.displayName || item.name || 'Station',
                         displayName: item.displayName || item.hostname || item.name,
