@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Server/Services/RecordingChunkScheduler.cs
 // ==========================================
 namespace ITB_SCREEN_RECORDER.Server.Services;
@@ -98,7 +98,7 @@ public class RecordingChunkScheduler : BackgroundService
         }
     }
 
-    private async Task ApplyMediaMtxStorageConfigAsync(SystemConfig config, CancellationToken ct)
+    public async Task ApplyMediaMtxStorageConfigAsync(SystemConfig config, CancellationToken ct)
     {
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         string cleanRoot = root.Replace('\\', '/').TrimEnd('/');

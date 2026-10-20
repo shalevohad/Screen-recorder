@@ -1,4 +1,35 @@
+import { useState, useEffect, useCallback } from 'react';
+
 export default function StorageRetentionTab({ form, updateField, updateStorageField }) {
+    const [liveStorage, setLiveStorage] = useState(null);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const fetchLiveStorage = useCallback(async () => {
+        setIsRefreshing(true);
+        try {
+            const res = await fetch('/api/v1/settings/storage-status');
+            if (res.ok) {
+                const data = await res.json();
+                setLiveStorage(data);
+            }
+        } catch (err) {
+            console.error('Failed to query storage status:', err);
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchLiveStorage();
+    }, [fetchLiveStorage, form?.storage?.netAppUncPath, form?.storage?.localFallbackPath]);
+
+    const formatBytes = (bytes) => {
+        if (!bytes || bytes <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+    };
+
     const retentionTicks = [
         { val: 7, label: '7d' },
         { val: 30, label: '30d' },
@@ -66,9 +97,62 @@ export default function StorageRetentionTab({ form, updateField, updateStorageFi
         </div>
     );
 
+    const isAccessible = Boolean(liveStorage?.isAccessible);
+    const isFallback = Boolean(liveStorage?.isFallbackActive);
+    const usedPct = liveStorage?.usedPercent ?? 0;
+
     return (
-        <fieldset className="settings-fieldset">
+        <fieldset className="settings-fieldset storage-retention-fieldset">
             <legend>Storage & Retention Policy</legend>
+
+            {/* 💡 באנר טלמטריית אחסון בזמן אמת המשקף את הנתיב הפעיל כעת במערכת */}
+            {liveStorage && (
+                <div className="live-storage-telemetry-banner">
+                    <div className="banner-header-row">
+                        <div className="pool-title-stack">
+                            <span className={`status-beacon-dot ${isAccessible ? (isFallback ? 'warning' : 'healthy') : 'critical'}`} />
+                            <span className="pool-tag">{liveStorage.storageLabel || (isFallback ? 'FALLBACK POOL' : 'STORAGE POOL')}</span>
+                            <span className={`pool-state-badge ${isAccessible ? (isFallback ? 'fallback' : 'accessible') : ''}`}>
+                                {isAccessible ? (isFallback ? 'Fallback Active (Local NVMe)' : 'Active & Reachable (Primary NetApp)') : 'Storage Unreachable'}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            className="btn-refresh-telemetry"
+                            onClick={fetchLiveStorage}
+                            disabled={isRefreshing}
+                            title="Verify and sample active storage path now"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 13, height: 13 }}>
+                                <path d="M23 4v6h-6M1 20v-6h6" />
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                            </svg>
+                            <span>{isRefreshing ? 'Checking…' : 'Probe Path'}</span>
+                        </button>
+                    </div>
+
+                    <div className="active-path-snippet">
+                        <span className="path-label">Active Storage Path:</span>
+                        <span className="path-val">{liveStorage.storagePath || 'None configured'}</span>
+                    </div>
+
+                    {isAccessible && liveStorage.totalSizeBytes > 0 && (
+                        <div className="storage-capacity-bar-container">
+                            <div className="capacity-stats-row">
+                                <span>Used: <strong className="stats-val">{formatBytes(liveStorage.usedSizeBytes)} ({usedPct}%)</strong></span>
+                                <span>Free: <strong className="stats-val">{formatBytes(liveStorage.freeSizeBytes)}</strong></span>
+                                <span>Total: <strong className="stats-val">{formatBytes(liveStorage.totalSizeBytes)}</strong></span>
+                            </div>
+                            <div className="tactical-progress-track">
+                                <div
+                                    className={`tactical-progress-fill ${usedPct > 85 ? 'warning' : 'healthy'}`}
+                                    style={{ width: `${Math.min(100, Math.max(0, usedPct))}%` }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="settings-fields-row">
                 <div className="settings-field">

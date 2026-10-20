@@ -39,17 +39,32 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly ICatalogRepository _catalogRepo;
         private readonly ILdapDirectoryService _ldapDirectoryService;
+        private readonly RecordingChunkScheduler _chunkScheduler;
+        private readonly ServerTelemetryHostService _telemetryHostService;
+        private readonly TelemetryBroadcastService _broadcastService;
+        private readonly IStorageTelemetryService _storageTelemetryService;
+        private readonly Microsoft.Extensions.Logging.ILogger<SettingsController> _logger;
 
         public SettingsController(
             ISystemConfigDbSyncService syncService,
             IOptionsMonitor<SystemConfig> configMonitor,
             ICatalogRepository catalogRepo,
-            ILdapDirectoryService ldapDirectoryService)
+            ILdapDirectoryService ldapDirectoryService,
+            RecordingChunkScheduler chunkScheduler,
+            ServerTelemetryHostService telemetryHostService,
+            TelemetryBroadcastService broadcastService,
+            IStorageTelemetryService storageTelemetryService,
+            Microsoft.Extensions.Logging.ILogger<SettingsController> logger)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
             _catalogRepo = catalogRepo;
             _ldapDirectoryService = ldapDirectoryService;
+            _chunkScheduler = chunkScheduler;
+            _telemetryHostService = telemetryHostService;
+            _broadcastService = broadcastService;
+            _storageTelemetryService = storageTelemetryService;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -186,12 +201,54 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     }
                 });
 
-                return Ok(_configMonitor.CurrentValue);
+                var currentConfig = _configMonitor.CurrentValue;
+
+                // 1. כפיית החלת נתיבי האחסון, הפורמט ופרקי הזמן מיידית ב-MediaMTX
+                try
+                {
+                    await _chunkScheduler.ApplyMediaMtxStorageConfigAsync(currentConfig, HttpContext.RequestAborted);
+                    _logger.LogInformation("[SETTINGS] Successfully propagated live storage configuration to MediaMTX.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[SETTINGS] Failed to apply storage changes to MediaMTX immediately.");
+                }
+
+                // 2. חישוב ושידור מיידי של טלמטריית המערכת והאחסון לכלל הלקוחות המחוברים
+                try
+                {
+                    await _telemetryHostService.BroadcastImmediateTelemetryAsync();
+                    _logger.LogInformation("[SETTINGS] Broadcasted immediate telemetry update after settings save.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting immediate telemetry after settings save.");
+                }
+
+                // 3. שידור הגדרות המערכת החדשות בזמן אמת ל-Dashboard (ReceiveSystemConfig)
+                try
+                {
+                    await _broadcastService.BroadcastSystemConfigUpdateAsync(currentConfig);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting updated system config.");
+                }
+
+                return Ok(currentConfig);
             }
             catch (Exception ex)
             {
                 return Problem($"Failed to synchronize configuration: {ex.Message}", statusCode: 500);
             }
+        }
+
+        [HttpGet("storage-status")]
+        [AuthorizePermission(PermissionKeys.SettingsView)]
+        public IActionResult GetStorageStatus()
+        {
+            var telemetry = _storageTelemetryService.GetCurrentStorageTelemetry();
+            return Ok(telemetry);
         }
 
         #region Security & Policy API

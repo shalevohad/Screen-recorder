@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Server/Services/StorageTelemetryService.cs
 // ==========================================
 using System;
@@ -21,7 +21,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
     public class StorageTelemetryService : IStorageTelemetryService
     {
         private readonly IConfiguration _configuration;
-        private readonly IOptions<SystemConfig> _systemConfig;
+        private readonly IOptionsMonitor<SystemConfig> _configMonitor;
         private readonly ILogger<StorageTelemetryService> _logger;
 
         private PerformanceCounter? _iopsCounter;
@@ -61,11 +61,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
         public StorageTelemetryService(
             IConfiguration configuration,
-            IOptions<SystemConfig> systemConfig,
+            IOptionsMonitor<SystemConfig> configMonitor,
             ILogger<StorageTelemetryService> logger)
         {
             _configuration = configuration;
-            _systemConfig = systemConfig;
+            _configMonitor = configMonitor;
             _logger = logger;
 
             InitCounters();
@@ -94,10 +94,12 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         {
             var telemetry = new StorageTelemetryDto();
 
-            string? primaryPath = _systemConfig.Value?.Storage?.NetAppUncPath
+            var config = _configMonitor.CurrentValue;
+
+            string? primaryPath = config?.Storage?.NetAppUncPath
                 ?? _configuration["SystemConfig:Storage:NetAppUncPath"];
 
-            string? fallbackPath = _systemConfig.Value?.Storage?.LocalFallbackPath
+            string? fallbackPath = config?.Storage?.LocalFallbackPath
                 ?? _configuration["SystemConfig:Storage:LocalFallbackPath"]
                 ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ITB-SCREEN-RECORDER", "Recordings");
 

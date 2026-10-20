@@ -432,6 +432,7 @@ function CommandCenterApp() {
                 return {
                     ...base,
                     ...telemetry,
+                    storage: telemetry.storage ?? base.storage ?? null,
                     uptimeSeconds: telemetry.uptimeSeconds ?? telemetry.systemUptimeSeconds ?? base.uptimeSeconds ?? 0,
                     cpuPct: telemetry.cpuPct ?? telemetry.hostCpuPct ?? base.cpuPct ?? 0,
                     hostRamPct: telemetry.hostRamPct ?? telemetry.ramPct ?? base.hostRamPct ?? 0,
@@ -439,6 +440,12 @@ function CommandCenterApp() {
                     netUtilPct: telemetry.netUtilPct ?? base.netUtilPct ?? 0
                 };
             });
+        });
+
+        connection.on('ReceiveSystemConfig', (newConfig) => {
+            if (!newConfig) return;
+            registerServerHeartbeat();
+            setSystemConfig(newConfig);
         });
 
         connection.on('ReceiveMaintenanceJob', (job) => {
@@ -709,7 +716,8 @@ function CommandCenterApp() {
                 {currentSubsystem === 'settings' ? (
                     <SettingsView
                         onReturnToPortal={() => setCurrentSubsystem('portal')}
-                        onSettingsSaved={() => {
+                        onSettingsSaved={(savedConfig) => {
+                            if (savedConfig) setSystemConfig(savedConfig);
                             fetchStations();
                             fetchSystemConfig();
                             fetchClusterConfig();

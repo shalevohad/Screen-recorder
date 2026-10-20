@@ -101,6 +101,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             // 💡 הכנת Master Dummy באופן Lazy אך ורק בסנכרון רב-עמדתי (Multicam) כשנמצא פער פנימי
             string? masterDummyPath = null;
 
+            var manifestLines = new List<string> { "ffconcat version 1.0" };
+            var cutJunctions = new List<double>();
+            double runningSeconds = 0;
+
             async Task AppendDummyGapAsync(double gapSeconds)
             {
                 // שקף No Signal נדרש אך ורק ב-Multicam לשמירה על סנכרון מול עמדה מקבילה; בעמדה בודדת מרווחים נחתכים כ-Global Gaps
@@ -132,10 +136,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
                 runningSeconds += gapSeconds;
             }
-
-            var manifestLines = new List<string> { "ffconcat version 1.0" };
-            var cutJunctions = new List<double>();
-            double runningSeconds = 0;
 
             for (int segIdx = 0; segIdx < plan.ActiveSegments.Count; segIdx++)
             {

@@ -335,8 +335,13 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddHostedService(sp => sp.GetRequiredService<CatalogMaintenanceService>());
 
                 builder.Services.AddHostedService<MediaMtxSupervisorWorker>();
-                builder.Services.AddHostedService<RecordingChunkScheduler>();
-                builder.Services.AddHostedService<ServerTelemetryHostService>();
+
+                builder.Services.AddSingleton<RecordingChunkScheduler>();
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<RecordingChunkScheduler>());
+
+                builder.Services.AddSingleton<ServerTelemetryHostService>();
+                builder.Services.AddHostedService(sp => sp.GetRequiredService<ServerTelemetryHostService>());
+
                 builder.Services.AddHostedService<CertificateRenewalWorker>();
                 builder.Services.AddHostedService<ServerDiscoveryHostedService>();
 

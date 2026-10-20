@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Server/Services/ServerTelemetryHostService.cs
 // ==========================================
 using System;
@@ -39,28 +39,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             {
                 try
                 {
-                    var hw = HardwareProbe.GetTelemetrySnapshot();
-                    var net = _networkTelemetry.GetMetricsSnapshot();
-                    var storage = _storageService.GetCurrentStorageTelemetry();
-
-                    var payload = new
-                    {
-                        cpuUsagePct = hw.HostCpuUsagePct,
-                        appCpuUsagePct = hw.ProcessCpuUsagePct,
-                        hostRamPct = hw.HostRamUsagePct,
-                        hostTotalRamMb = hw.HostTotalRamMb,
-                        appRamMb = hw.ProcessRamMb,
-                        nicTotalTxMbps = net.NicTotalTxMbps,
-                        nicTotalRxMbps = net.NicTotalRxMbps,
-                        linkSpeedMbps = net.NicLinkSpeedMbps,
-                        nicUtilizationPct = net.AppLineUtilizationPct,
-                        uptimeSeconds = Math.Round((DateTime.UtcNow - _serverStartTime).TotalSeconds, 0),
-
-                        // 💡 נתוני האחסון (Storage Pool & IOPS) המשודרים ישירות ל-ServerTelemetryWidget ב-Header
-                        storage = storage
-                    };
-
-                    await _broadcastService.BroadcastServerTelemetryAsync(payload);
+                    await BroadcastImmediateTelemetryAsync();
                 }
                 catch (Exception ex)
                 {
@@ -68,6 +47,39 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 }
 
                 await Task.Delay(1000, stoppingToken);
+            }
+        }
+
+        public async Task BroadcastImmediateTelemetryAsync()
+        {
+            try
+            {
+                var hw = HardwareProbe.GetTelemetrySnapshot();
+                var net = _networkTelemetry.GetMetricsSnapshot();
+                var storage = _storageService.GetCurrentStorageTelemetry();
+
+                var payload = new
+                {
+                    cpuUsagePct = hw.HostCpuUsagePct,
+                    appCpuUsagePct = hw.ProcessCpuUsagePct,
+                    hostRamPct = hw.HostRamUsagePct,
+                    hostTotalRamMb = hw.HostTotalRamMb,
+                    appRamMb = hw.ProcessRamMb,
+                    nicTotalTxMbps = net.NicTotalTxMbps,
+                    nicTotalRxMbps = net.NicTotalRxMbps,
+                    linkSpeedMbps = net.NicLinkSpeedMbps,
+                    nicUtilizationPct = net.AppLineUtilizationPct,
+                    uptimeSeconds = Math.Round((DateTime.UtcNow - _serverStartTime).TotalSeconds, 0),
+
+                    // 💡 נתוני האחסון (Storage Pool & IOPS) המשודרים ישירות ל-ServerTelemetryWidget ב-Header
+                    storage = storage
+                };
+
+                await _broadcastService.BroadcastServerTelemetryAsync(payload);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"[ServerTelemetry] Failed broadcasting immediate metrics: {ex.Message}");
             }
         }
     }

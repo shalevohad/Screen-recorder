@@ -42,5 +42,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         {
             await _hubContext.Clients.Group("DashboardWatchers").SendAsync("ReceiveServerTelemetry", serverTelemetry);
         }
+
+        public async Task BroadcastSystemConfigUpdateAsync(object systemConfig)
+        {
+            await _hubContext.Clients.Group("DashboardWatchers").SendAsync("ReceiveSystemConfig", systemConfig);
+        }
     }
 }
