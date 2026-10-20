@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       custom_version:
-        description: 'גרסה מותאמת אישית (לדוגמה: 2.1.4)'
+        description: 'Custom version (e.g. 2.1.4)'
         required: false
         default: ''
         type: string
@@ -99,7 +99,7 @@ jobs:
         $serverMtxDir = "ITB-SCREEN-RECORDER.Server/MediaMTX"
         New-Item -ItemType Directory -Force -Path $serverMtxDir | Out-Null
         
-        # 1. הורדת FFmpeg & FFprobe
+        # 1. Download FFmpeg & FFprobe
         $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         $zipPath = "ffmpeg.zip"
         
@@ -132,7 +132,7 @@ jobs:
             Write-Host "Copied FFmpeg and FFprobe to $dir"
         }
 
-        # 2. הורדת MediaMTX עבור Windows
+        # 2. Download MediaMTX for Windows
         Write-Host "Downloading MediaMTX for Windows..."
         $mediamtxUrl = "https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_windows_amd64.zip"
         $mediamtxZip = "mediamtx_win.zip"
@@ -236,7 +236,7 @@ jobs:
           echo "Copied FFmpeg and FFprobe to $dir"
         done
 
-        # 2. MediaMTX ללינוקס
+        # 2. Download MediaMTX for Linux
         curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.3.0/mediamtx_v1.3.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
         tar -xzf mediamtx_linux.tar.gz mediamtx
         cp mediamtx "Tools/Linux/mediamtx"
@@ -263,13 +263,13 @@ jobs:
 
     - name: Publish Linux Binaries & Installers (.run)
       run: |
-        # פריסה ובניית מתקין השרת ללינוקס
+        # Build Server Linux installer (.run)
         dotnet build Installers/Linux/ITB-SCREEN-RECORDER.Server.Linux.Installer/ITB-SCREEN-RECORDER.Server.Linux.Installer.csproj -c Release -p:Version=${{ needs.version.outputs.version }}
         
-        # פריסה ובניית מתקין ה-Agent ללינוקס
+        # Build Agent Linux installer (.run)
         dotnet build Installers/Linux/ITB-SCREEN-RECORDER.Agent.Linux.Installer/ITB-SCREEN-RECORDER.Agent.Linux.Installer.csproj -c Release -p:Version=${{ needs.version.outputs.version }}
         
-        # וידוא הרשאות ריצה לחבילות ה-run הנוצרות
+        # Ensure execute permissions for generated .run packages
         chmod +x Publish/Server/linux/*.run Publish/Agent/linux/*.run || true
 
     - name: Upload Linux Artifacts (.run packages)

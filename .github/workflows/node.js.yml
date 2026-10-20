@@ -26,13 +26,13 @@ jobs:
       with:
         node-version: '20.x'
         cache: 'npm'
-        # חיפוש דינמי של קובץ הנעילה בכל רחבי ה-Repository
+        # Dynamic search for lockfiles across repository
         cache-dependency-path: '**/package-lock.json'
         
     - name: Install dependencies (Linux)
       if: matrix.os == 'ubuntu-latest'
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
-      # כפיית התקנת חבילות הנייטיב הנדרשות עבור Rolldown/Vite 8 בלינוקס
+      # Install optional native packages for Linux
       run: npm ci --include=optional
       
     - name: Install dependencies (Windows)

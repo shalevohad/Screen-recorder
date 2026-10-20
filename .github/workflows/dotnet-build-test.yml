@@ -46,7 +46,7 @@ jobs:
             New-Item -ItemType Directory -Force -Path $dir | Out-Null
         }
         
-        # 1. הורדת FFmpeg
+        # 1. Download FFmpeg & FFprobe
         $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         $zipPath = "ffmpeg.zip"
         
@@ -80,7 +80,7 @@ jobs:
             Write-Host "Copied FFmpeg and FFprobe to $dir"
         }
 
-        # 2. הורדת MediaMTX עבור Windows
+        # 2. Download MediaMTX for Windows
         Write-Host "Downloading MediaMTX for Windows..."
         $mediamtxUrl = "https://github.com/bluenviron/mediamtx/releases/download/v1.21.0/mediamtx_v1.21.0_windows_amd64.zip"
         $mediamtxZip = "mediamtx_win.zip"
@@ -117,7 +117,7 @@ jobs:
           mkdir -p "$dir"
         done
 
-        # 1. FFmpeg ללינוקס (שימוש ב-pre-installed ב-GitHub Actions או apt)
+        # 1. FFmpeg for Linux (pre-installed or via apt)
         echo "Configuring FFmpeg & FFprobe for Linux..."
         if ! which ffmpeg > /dev/null 2>&1 || ! which ffprobe > /dev/null 2>&1; then
           sudo apt-get update && sudo apt-get install -y ffmpeg
@@ -133,7 +133,7 @@ jobs:
           echo "Copied FFmpeg and FFprobe to $dir"
         done
 
-        # 2. הורדת MediaMTX ללינוקס
+        # 2. Download MediaMTX for Linux
         echo "Downloading MediaMTX for Linux..."
         curl -L https://github.com/bluenviron/mediamtx/releases/download/v1.21.0/mediamtx_v1.21.0_linux_amd64.tar.gz -o mediamtx_linux.tar.gz
         tar -xzf mediamtx_linux.tar.gz mediamtx

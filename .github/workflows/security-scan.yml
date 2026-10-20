@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ "master", "release" ]
   schedule:
-    # הרצה אוטומטית בכל יום ראשון ב-00:00 בלילה (שעון UTC)
+    # Run every Sunday at 00:00 UTC
     - cron: '0 0 * * 0'
 
 jobs:
@@ -17,7 +17,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # --- סריקת חולשות עבור ה-Backend (.NET) ---
+    # --- Vulnerability scan for Backend (.NET) ---
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
       with:
@@ -29,7 +29,7 @@ jobs:
     - name: Scan .NET packages for known vulnerabilities
       run: dotnet list ITB-Screen-Recorder.sln package --vulnerable
 
-# --- סריקת חולשות עבור כלל סביבות ה-Frontend (NPM) ---
+    # --- Vulnerability scan for Frontend (NPM) ---
     - name: Use Node.js 20.x
       uses: actions/setup-node@v4
       with:
@@ -39,7 +39,7 @@ jobs:
 
     - name: Scan all NPM projects for vulnerabilities
       run: |
-        # רשימת התיקיות שבהן יש קובצי package.json / package-lock.json
+        # Directories containing package.json / package-lock.json
         PROJECTS=(
           "./ITB-SCREEN-RECORDER.Server/ClientApp"
           "./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Client"
@@ -60,21 +60,10 @@ jobs:
             echo "-> Running security audit..."
             npm audit --audit-level=high
             
-            # חזרה חזרה לתיקיית השורש של הריפו
+            # Return to repository root
             cd - > /dev/null
             echo ""
           else
             echo "::warning:: Directory $dir not found, skipping."
           fi
         done
-```[cite: 15]
-
----
-
-### הודעת Commit מומלצת:
-
-```git
-fix(ci): correct solution file name casing in security-scan.yml
-
-- Update dependency security architecture workflow to reference 'ITB-Screen-Recorder.sln' with exact casing.
-- Prevent MSBuild MSB1009 file not found errors during scheduled and PR security scans on Ubuntu runners.
