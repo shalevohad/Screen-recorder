@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
 		<OutputType>Library</OutputType>
@@ -24,7 +24,7 @@
 		<None Include="SelectLinuxFeatures.ps1" />
 	</ItemGroup>
 
-	<Target Name="BuildLinuxServerPackage" AfterTargets="Build">
+	<Target Name="BuildLinuxServerPackage" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
 		<Message Importance="high" Text="=== [1/5] Preparing Clean Server Staging ===" />
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 		<MakeDir Directories="$(StagingDir)/server" />
