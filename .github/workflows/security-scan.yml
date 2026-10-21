@@ -31,9 +31,11 @@ jobs:
         OUTPUT=$(dotnet list ITB-Screen-Recorder.sln package --vulnerable --include-transitive 2>&1)
         echo "$OUTPUT"
         # Exit non-zero only when an actual vulnerability is reported.
-        # The command exits 1 on "no assets file" errors as well as on real CVEs;
-        # we distinguish them by checking for the CVE advisory keyword.
-        if echo "$OUTPUT" | grep -qi "critical\|high\|moderate\|low"; then
+        # When CVEs exist, dotnet prints "has the following vulnerable packages".
+        # We match that exact phrase to avoid false positives (e.g. the word
+        # "following" in "The following sources were used" contains "low" and
+        # would trip a naive severity-word grep).
+        if echo "$OUTPUT" | grep -q "has the following vulnerable"; then
           echo "::error::Vulnerable NuGet packages detected. Review the output above."
           exit 1
         fi
