@@ -27,7 +27,16 @@ jobs:
       run: dotnet restore ITB-Screen-Recorder.sln
 
     - name: Scan .NET packages for known vulnerabilities
-      run: dotnet list ITB-Screen-Recorder.sln package --vulnerable
+      run: |
+        OUTPUT=$(dotnet list ITB-Screen-Recorder.sln package --vulnerable 2>&1 || true)
+        echo "$OUTPUT"
+        # Exit non-zero only when an actual vulnerability is reported.
+        # WiX projects on Linux skip restore and emit 'No assets file was found',
+        # exiting 1. We check specifically for actual vulnerability reports.
+        if echo "$OUTPUT" | grep -q "has the following vulnerable"; then
+          echo "::error::Vulnerable NuGet packages detected. Review the output above."
+          exit 1
+        fi
 
     # ─── NPM Vulnerability Scan ──────────────────────────────────────────────
     - name: Use Node.js 20.x
