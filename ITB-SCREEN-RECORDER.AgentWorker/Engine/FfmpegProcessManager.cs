@@ -110,9 +110,13 @@ namespace ITBRecorderAgent.Engine
 
                 string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
 
-                _tcpListener = new TcpListener(IPAddress.Loopback, 0);
-                _tcpListener.Start();
-                int localPort = ((IPEndPoint)_tcpListener.LocalEndpoint).Port;
+                int localPort = 0;
+                if (audioChannels > 0)
+                {
+                    _tcpListener = new TcpListener(IPAddress.Loopback, 0);
+                    _tcpListener.Start();
+                    localPort = ((IPEndPoint)_tcpListener.LocalEndpoint).Port;
+                }
 
                 string arguments = BuildFfmpegArguments(
                     destinationUrl,
@@ -181,7 +185,7 @@ namespace ITBRecorderAgent.Engine
 
         public async Task<bool> CompleteAudioHandshakeAsync(CancellationToken cancellationToken)
         {
-            if (_tcpListener == null) return false;
+            if (_tcpListener == null) return true; // Video-only secondary stream
             try
             {
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -242,10 +246,16 @@ namespace ITBRecorderAgent.Engine
             // 1. קלט וידאו דרך צינור הקלט (Stdin)
             ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
 
-            // 2. קלט שמע דרך Loopback TCP
-            ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
-
-            ffmpegArgs.Append("-map 0:v -map 1:a ");
+            // 2. קלט שמע דרך Loopback TCP אם הוגדר
+            if (audioChannels > 0)
+            {
+                ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+                ffmpegArgs.Append("-map 0:v -map 1:a ");
+            }
+            else
+            {
+                ffmpegArgs.Append("-map 0:v -an ");
+            }
 
             // 3. קידוד וידאו - התנעה מהירה בביטרייט, איכות חדה וחיסכון מסיבי בנפח בעת תמונה סטטית (True Constrained VBR)
             string pixFmt = "yuv420p";
@@ -268,7 +278,10 @@ namespace ITBRecorderAgent.Engine
             ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -force_key_frames \"expr:gte(t,n_forced*1)\" -fps_mode cfr -r {effectiveFps} -pix_fmt {pixFmt} ");
 
             // 5. סנכרון רציף של אודיו והטבעת METADATA (UTC ו-Epoch)
-            ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
+            if (audioChannels > 0)
+            {
+                ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
+            }
             ffmpegArgs.Append($"-metadata creation_time=\"{utcIso}\" ");
             ffmpegArgs.Append($"-metadata itb_start_epoch_ms=\"{startEpochMs}\" ");
             ffmpegArgs.Append($"-metadata comment=\"ITB_EPOCH:{startEpochMs}\" ");

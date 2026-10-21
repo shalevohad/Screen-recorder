@@ -1,0 +1,116 @@
+.virtual-topology-canvas-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    background: #070A10;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .virtual-canvas-grid-bg {
+        position: absolute;
+        inset: 0;
+        background-image: 
+            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 20px 20px;
+        pointer-events: none;
+        z-index: 1;
+    }
+
+    .sub-display-box {
+        position: absolute;
+        border: 1px solid rgba(6, 182, 212, 0.4);
+        border-radius: 4px;
+        overflow: hidden;
+        background: #0B1120;
+        cursor: pointer;
+        z-index: 2;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+
+        &:hover {
+            border-color: #06B6D4;
+            box-shadow: 0 0 16px rgba(6, 182, 212, 0.45);
+            z-index: 10;
+        }
+
+        &.is-primary {
+            border-color: rgba(16, 185, 129, 0.55);
+
+            &:hover {
+                border-color: #10B981;
+                box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+            }
+        }
+
+        .sub-display-overlay {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            z-index: 5;
+            pointer-events: none;
+
+            .display-index-pill {
+                font-size: 0.65rem;
+                font-weight: 800;
+                background: rgba(15, 23, 42, 0.85);
+                backdrop-filter: blur(4px);
+                color: #FFFFFF;
+                padding: 1px 6px;
+                border-radius: 4px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+            }
+
+            .display-res-pill {
+                font-size: 0.6rem;
+                font-weight: 600;
+                background: rgba(0, 0, 0, 0.6);
+                color: #94A3B8;
+                padding: 1px 5px;
+                border-radius: 4px;
+            }
+        }
+    }
+}
+
+.virtual-topology-solo-viewport {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #000000;
+    overflow: hidden;
+
+    .solo-display-badge {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(6px);
+        padding: 3px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(6, 182, 212, 0.4);
+
+        .solo-indicator {
+            color: #10B981;
+            font-size: 0.75rem;
+            animation: pulseGlow 2s infinite;
+        }
+
+        .solo-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #F8FAFC;
+            letter-spacing: 0.05em;
+        }
+    }
+}

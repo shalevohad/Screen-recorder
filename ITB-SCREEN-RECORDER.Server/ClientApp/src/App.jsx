@@ -9,6 +9,8 @@ import DashboardGrid from './components/Dashboard/DashboardGrid';
 import SettingsView from './components/Settings/SettingsView';
 import SystemLauncher from './components/Auth/SystemLauncher';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { AudioSoloProvider } from './context/AudioSoloContext';
+import MasterAudioDock from './components/Station/MasterAudioDock';
 import './App.scss';
 
 const LOCAL_WALLPAPERS = {
@@ -31,7 +33,9 @@ const DISCONNECT_GRACE_PERIOD_MS = 8000;
 export default function App() {
     return (
         <AuthProvider>
-            <CommandCenterApp />
+            <AudioSoloProvider>
+                <CommandCenterApp />
+            </AudioSoloProvider>
         </AuthProvider>
     );
 }
@@ -760,6 +764,7 @@ function CommandCenterApp() {
                 )}
 
                 <GlobalJobIndicator />
+                <MasterAudioDock stations={stations} />
             </div>
 
             {/* דיאלוג ניתוק שרת */}

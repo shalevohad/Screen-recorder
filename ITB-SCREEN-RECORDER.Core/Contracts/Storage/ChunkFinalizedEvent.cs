@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+namespace ITB_SCREEN_RECORDER.Core.Contracts.Storage;
 
 public readonly record struct ChunkFinalizedEvent(
     string StationId,
@@ -10,5 +10,6 @@ public readonly record struct ChunkFinalizedEvent(
     int Width = 1920,
     int Height = 1080,
     int Fps = 30,
-    bool HasAudio = true
+    bool HasAudio = true,
+    string DisplayId = "mon-0"
 );

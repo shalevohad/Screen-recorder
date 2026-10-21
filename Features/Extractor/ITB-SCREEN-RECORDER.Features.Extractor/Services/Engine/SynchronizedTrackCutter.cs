@@ -48,7 +48,16 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
             CancellationToken ct = default)
         {
-            var orderedChunks = stationChunks.OrderBy(c => c.StartUtc).ToList();
+            var targetChunks = stationChunks;
+            if (targetChunks.Any(c => !string.IsNullOrEmpty(c.DisplayId) && !string.Equals(c.DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase)))
+            {
+                var primaryChunks = targetChunks.Where(c => string.Equals(c.DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase) || c.IsPrimary).ToList();
+                if (primaryChunks.Count > 0)
+                {
+                    targetChunks = primaryChunks;
+                }
+            }
+            var orderedChunks = targetChunks.OrderBy(c => c.StartUtc).ToList();
             var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
 
             async Task<ProbedStationMetadata> GetChunkProbeAsync(RecordingChunkMetadata? chunk)

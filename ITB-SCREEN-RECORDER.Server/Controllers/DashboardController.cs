@@ -113,6 +113,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     Gpu3dPct = agent.Gpu3dPct,
                     GpuNvencPct = agent.GpuNvencPct,
 
+                    DisplayTopology = agent.DisplayTopology,
+                    Displays = agent.DisplayTopology?.Displays ?? new List<ITB_SCREEN_RECORDER.Core.Contracts.Topology.DisplayMetadataDto>(),
+
                     HlsUrl = $"{Request.Scheme}://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });

@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import './StationThumbnail.scss';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
+import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { useAuth } from '../../context/AuthContext';
+import { useAudioSolo } from '../../context/AudioSoloContext';
 
 export default function StationThumbnail(props) {
     const {
@@ -30,8 +32,11 @@ export default function StationThumbnail(props) {
     } = props;
 
     const [recordingSeconds, setRecordingSeconds] = useState(0);
+    const [activeDisplayId, setActiveDisplayId] = useState('canvas');
 
     const { hasPermission } = useAuth();
+    const { activeAudioStationId, audioVolume, isGlobalMuted, toggleAudioSolo } = useAudioSolo();
+    const isListeningThisStation = activeAudioStationId === hostname && !isGlobalMuted;
     const canControl = hasPermission('stations.control');
     const canBookmark = hasPermission('bookmarks.manage');
     const canPlayback = hasPermission('playback.view');
@@ -69,6 +74,12 @@ export default function StationThumbnail(props) {
         };
     }, [isLive]);
 
+    const displays = useMemo(() => {
+        if (props.Displays && props.Displays.length > 0) return props.Displays;
+        if (props.DisplayTopology?.Displays && props.DisplayTopology.Displays.length > 0) return props.DisplayTopology.Displays;
+        return [];
+    }, [props.Displays, props.DisplayTopology]);
+
     const formatTimer = (sec) => {
         const m = Math.floor(sec / 60);
         const s = sec % 60;
@@ -78,7 +89,7 @@ export default function StationThumbnail(props) {
     const triggerFullscreenModal = (e) => {
         e?.stopPropagation?.();
         if (!isLive) return;
-        onOpenFullscreen?.(props);
+        onOpenFullscreen?.({ ...props, initialDisplayId: activeDisplayId });
     };
 
     const handleViewportClick = (e) => {
@@ -127,7 +138,44 @@ export default function StationThumbnail(props) {
                     <span className="station-ip">{ipAddress}</span>
                 </div>
 
+                {displays.length > 1 && (
+                    <div className="card-display-switcher" onClick={e => e.stopPropagation()}>
+                        <button
+                            type="button"
+                            className={`pill-btn ${activeDisplayId === 'canvas' ? 'is-active' : ''}`}
+                            onClick={() => setActiveDisplayId('canvas')}
+                            title="Virtual Desktop Canvas Layout"
+                        >
+                            ⊞ Canvas
+                        </button>
+                        {displays.map((d, idx) => (
+                            <button
+                                key={d.DisplayId}
+                                type="button"
+                                className={`pill-btn ${activeDisplayId === d.DisplayId ? 'is-active' : ''}`}
+                                onClick={() => setActiveDisplayId(d.DisplayId)}
+                                title={`Solo Monitor ${idx + 1}`}
+                            >
+                                🖥 {idx + 1}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
                 <div className="station-header-right">
+                    <button
+                        type="button"
+                        className={`tactical-audio-listen-btn ${isListeningThisStation ? 'listening' : ''}`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleAudioSolo(hostname);
+                        }}
+                        title={isListeningThisStation ? "Mute audio intercom" : "Listen to audio feed (Exclusive Solo)"}
+                    >
+                        <span className="audio-icon">{isListeningThisStation ? '🟢' : '🎧'}</span>
+                        <span>{isListeningThisStation ? 'LISTENING' : 'LISTEN'}</span>
+                    </button>
+
                     <button
                         type="button"
                         className={`one-click-rec-btn ${!isOnline ? 'is-offline' : (isLive || isStreaming) && !isStopping ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
@@ -186,9 +234,12 @@ export default function StationThumbnail(props) {
             >
                 {isLive ? (
                     <div className="webrtc-container" style={{ pointerEvents: 'none' }}>
-                        <WebRTCPlayer
-                            streamPath={`live/${hostname}`}
-                            webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                        <VirtualTopologyCanvas
+                            station={props}
+                            activeDisplayId={activeDisplayId}
+                            onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
+                            isMuted={!isListeningThisStation}
+                            volume={audioVolume}
                         />
                     </div>
                 ) : (isStarting || isStopping) ? (

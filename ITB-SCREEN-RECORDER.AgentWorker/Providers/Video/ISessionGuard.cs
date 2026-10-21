@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.Versioning;
@@ -14,12 +14,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
 
     public static class SessionGuardFactory
     {
-        public static ISessionGuard Create(Action onSessionRestored)
+        public static ISessionGuard Create(Action onSessionRestored, Action? onDisplaySettingsChanged = null)
         {
 #if WINDOWS
             if (OperatingSystem.IsWindows())
             {
-                return new WindowsDesktopSessionGuard(onSessionRestored);
+                return new WindowsDesktopSessionGuard(onSessionRestored, onDisplaySettingsChanged);
             }
 #endif
             return new LinuxDesktopSessionGuard(onSessionRestored);
@@ -31,11 +31,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
     internal sealed class WindowsDesktopSessionGuard : ISessionGuard
     {
         private readonly Action _onSessionRestored;
+        private readonly Action? _onDisplaySettingsChanged;
         private Microsoft.Win32.SessionSwitchEventHandler? _switchHandler;
+        private EventHandler? _displayHandler;
 
-        public WindowsDesktopSessionGuard(Action onSessionRestored)
+        public WindowsDesktopSessionGuard(Action onSessionRestored, Action? onDisplaySettingsChanged = null)
         {
             _onSessionRestored = onSessionRestored ?? throw new ArgumentNullException(nameof(onSessionRestored));
+            _onDisplaySettingsChanged = onDisplaySettingsChanged;
 
             _switchHandler = (s, e) =>
             {
@@ -57,6 +60,25 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
             catch (Exception ex)
             {
                 Logger.Warn($"[SessionGuard] Failed to register Windows SessionSwitch: {ex.Message}");
+            }
+
+            _displayHandler = (s, e) =>
+            {
+                Logger.Info("[SessionGuard] Windows DisplaySettingsChanged detected. Scheduling topology refresh...");
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(500).ConfigureAwait(false);
+                    _onDisplaySettingsChanged?.Invoke();
+                });
+            };
+
+            try
+            {
+                Microsoft.Win32.SystemEvents.DisplaySettingsChanged += _displayHandler;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[SessionGuard] Failed to register Windows DisplaySettingsChanged: {ex.Message}");
             }
         }
 
@@ -88,6 +110,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
             if (_switchHandler != null)
             {
                 try { Microsoft.Win32.SystemEvents.SessionSwitch -= _switchHandler; } catch { }
+            }
+            if (_displayHandler != null)
+            {
+                try { Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= _displayHandler; } catch { }
             }
         }
     }

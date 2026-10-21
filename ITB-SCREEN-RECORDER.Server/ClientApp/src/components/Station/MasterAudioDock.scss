@@ -1,0 +1,221 @@
+.master-audio-dock {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 0.65rem 1.25rem;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    border-radius: 9999px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 24px rgba(6, 182, 212, 0.2);
+    color: #F8FAFC;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    animation: dockSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+    @media (max-width: 768px) {
+        width: calc(100% - 32px);
+        left: 16px;
+        transform: none;
+        flex-wrap: wrap;
+        border-radius: 16px;
+    }
+
+    .dock-left-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+
+        .intercom-pulse-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #10B981;
+            box-shadow: 0 0 10px #10B981;
+            animation: pulseGlow 1.8s infinite;
+
+            &.muted {
+                background: #F43F5E;
+                box-shadow: 0 0 10px #F43F5E;
+                animation: none;
+            }
+        }
+
+        .intercom-badge {
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #06B6D4;
+            text-transform: uppercase;
+        }
+
+        .station-name-pill {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #FFFFFF;
+            background: rgba(30, 41, 59, 0.85);
+            padding: 0.2rem 0.65rem;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 180px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    }
+
+    .dock-spectral-vu {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 22px;
+        padding: 0 0.5rem;
+        background: rgba(0, 0, 0, 0.35);
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+
+        .vu-bar {
+            width: 4px;
+            background: linear-gradient(180deg, #10B981, #06B6D4);
+            border-radius: 1px;
+            transition: height 0.1s ease;
+        }
+
+        &.active {
+            .bar-1 { animation: vuJitter1 0.7s infinite alternate ease-in-out; }
+            .bar-2 { animation: vuJitter2 0.5s infinite alternate ease-in-out; }
+            .bar-3 { animation: vuJitter3 0.8s infinite alternate ease-in-out; }
+            .bar-4 { animation: vuJitter4 0.6s infinite alternate ease-in-out; }
+            .bar-5 { animation: vuJitter5 0.75s infinite alternate ease-in-out; }
+        }
+
+        &.silent {
+            .vu-bar {
+                height: 3px !important;
+                background: #64748B;
+                animation: none;
+            }
+        }
+    }
+
+    .dock-volume-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+
+        .btn-mute-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #F8FAFC;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.55rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+
+            &:hover {
+                background: rgba(51, 65, 85, 0.9);
+                border-color: #06B6D4;
+            }
+
+            &.is-muted {
+                background: rgba(244, 63, 94, 0.2);
+                border-color: #F43F5E;
+                color: #FDA4AF;
+            }
+
+            .hotkey-pill {
+                font-size: 0.65rem;
+                background: rgba(0, 0, 0, 0.4);
+                color: #94A3B8;
+                padding: 1px 4px;
+                border-radius: 3px;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+            }
+        }
+
+        .volume-slider-tactical {
+            -webkit-appearance: none;
+            width: 85px;
+            height: 5px;
+            border-radius: 5px;
+            background: rgba(51, 65, 85, 0.8);
+            outline: none;
+            cursor: pointer;
+
+            &::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                background: #06B6D4;
+                box-shadow: 0 0 6px rgba(6, 182, 212, 0.6);
+                cursor: pointer;
+                transition: transform 0.1s ease;
+
+                &:hover {
+                    transform: scale(1.2);
+                }
+            }
+        }
+
+        .volume-pct {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #94A3B8;
+            min-width: 34px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+    }
+
+    .btn-dock-close {
+        background: transparent;
+        border: none;
+        color: #94A3B8;
+        font-size: 1rem;
+        cursor: pointer;
+        padding: 0.2rem 0.4rem;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+
+        &:hover {
+            color: #F43F5E;
+            background: rgba(244, 63, 94, 0.15);
+        }
+    }
+}
+
+@keyframes dockSlideUp {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 20px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+@keyframes pulseGlow {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@keyframes vuJitter1 { 0% { height: 4px; } 100% { height: 18px; } }
+@keyframes vuJitter2 { 0% { height: 16px; } 100% { height: 6px; } }
+@keyframes vuJitter3 { 0% { height: 8px; } 100% { height: 21px; } }
+@keyframes vuJitter4 { 0% { height: 19px; } 100% { height: 9px; } }
+@keyframes vuJitter5 { 0% { height: 5px; } 100% { height: 15px; } }
