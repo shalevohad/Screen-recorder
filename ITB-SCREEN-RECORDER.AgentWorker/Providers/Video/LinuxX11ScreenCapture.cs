@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using ITB_SCREEN_RECORDER.Core.Common;
 
@@ -46,6 +46,18 @@ namespace ITBRecorderAgent.Providers.Video
         private const int ZPixmap = 2;
         private IntPtr _display = IntPtr.Zero;
         private IntPtr _rootWindow = IntPtr.Zero;
+        private readonly int _x;
+        private readonly int _y;
+        public string DisplayId { get; }
+
+        public LinuxX11ScreenCapture(int x = 0, int y = 0, int width = 0, int height = 0, string displayId = "mon-0")
+        {
+            _x = x;
+            _y = y;
+            Width = width;
+            Height = height;
+            DisplayId = displayId;
+        }
 
         public void Initialize()
         {
@@ -60,13 +72,15 @@ namespace ITBRecorderAgent.Providers.Video
                 }
 
                 _rootWindow = XDefaultRootWindow(_display);
-                XGetWindowAttributes(_display, _rootWindow, out var attr);
-
-                Width = attr.width;
-                Height = attr.height;
+                if (Width <= 0 || Height <= 0)
+                {
+                    XGetWindowAttributes(_display, _rootWindow, out var attr);
+                    Width = attr.width;
+                    Height = attr.height;
+                }
                 IsInitialized = true;
 
-                Logger.Info($"[VIDEO] Linux X11 Capture initialized: {Width}x{Height}");
+                Logger.Info($"[VIDEO] Linux X11 Capture initialized for '{DisplayId}' ({_x},{_y} {Width}x{Height})");
             }
             catch (Exception ex)
             {
@@ -85,7 +99,7 @@ namespace ITBRecorderAgent.Providers.Video
             IntPtr imgPtr = IntPtr.Zero;
             try
             {
-                imgPtr = XGetImage(_display, _rootWindow, 0, 0, (uint)Width, (uint)Height, ~0UL, ZPixmap);
+                imgPtr = XGetImage(_display, _rootWindow, _x, _y, (uint)Width, (uint)Height, ~0UL, ZPixmap);
                 if (imgPtr == IntPtr.Zero) return false;
 
                 var img = Marshal.PtrToStructure<XImage>(imgPtr);

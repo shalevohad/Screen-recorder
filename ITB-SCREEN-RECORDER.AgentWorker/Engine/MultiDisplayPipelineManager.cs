@@ -87,14 +87,23 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             }
 #endif
 
-            // Fallback for single display or non-Windows systems
+            if (OperatingSystem.IsLinux())
+            {
+                var linuxDisplays = LinuxX11DisplayEnumerator.EnumerateDisplays();
+                if (linuxDisplays.Count > 0)
+                {
+                    return linuxDisplays;
+                }
+            }
+
+            // Fallback for single display or fallback systems
             return new List<DxgiDisplayDescriptor>
             {
                 new DxgiDisplayDescriptor(
-                    AdapterIndex: 0,
+                    AdapterIndex: uint.MaxValue,
                     OutputIndex: 0,
                     DisplayId: "mon-0",
-                    DeviceName: @"\\.\DISPLAY1",
+                    DeviceName: OperatingSystem.IsWindows() ? @"\\.\DISPLAY1" : ":0.0",
                     AdapterName: "Default Display Adapter",
                     AdapterLuid: "0x0",
                     X: 0,
@@ -230,7 +239,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
         {
             IScreenCaptureProvider screenCapture;
 #if WINDOWS
-            if (OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows() && desc.AdapterIndex != uint.MaxValue)
             {
                 screenCapture = new DxgiScreenCapture(desc.AdapterIndex, desc.OutputIndex, desc.DisplayId);
             }
@@ -239,7 +248,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
                 screenCapture = ScreenCaptureFactory.Create();
             }
 #else
-            screenCapture = ScreenCaptureFactory.Create();
+            if (OperatingSystem.IsLinux())
+            {
+                screenCapture = ScreenCaptureFactory.CreateForDisplay(desc.X, desc.Y, desc.Width, desc.Height, desc.DisplayId);
+            }
+            else
+            {
+                screenCapture = ScreenCaptureFactory.Create();
+            }
 #endif
 
             screenCapture.Initialize();

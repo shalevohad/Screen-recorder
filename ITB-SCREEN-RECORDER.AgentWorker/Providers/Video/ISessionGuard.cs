@@ -22,7 +22,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
                 return new WindowsDesktopSessionGuard(onSessionRestored, onDisplaySettingsChanged);
             }
 #endif
-            return new LinuxDesktopSessionGuard(onSessionRestored);
+            return new LinuxDesktopSessionGuard(onSessionRestored, onDisplaySettingsChanged);
         }
     }
 
@@ -122,10 +122,46 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
     internal sealed class LinuxDesktopSessionGuard : ISessionGuard
     {
         private readonly Action _onSessionRestored;
+        private readonly Action? _onDisplaySettingsChanged;
+        private readonly CancellationTokenSource _cts = new();
+        private int _lastMonitorCount = -1;
 
-        public LinuxDesktopSessionGuard(Action onSessionRestored)
+        public LinuxDesktopSessionGuard(Action onSessionRestored, Action? onDisplaySettingsChanged = null)
         {
             _onSessionRestored = onSessionRestored ?? throw new ArgumentNullException(nameof(onSessionRestored));
+            _onDisplaySettingsChanged = onDisplaySettingsChanged;
+
+            if (_onDisplaySettingsChanged != null)
+            {
+                _ = Task.Run(() => MonitorLinuxDisplayHotPlugAsync(_cts.Token));
+            }
+        }
+
+        private async Task MonitorLinuxDisplayHotPlugAsync(CancellationToken ct)
+        {
+            try
+            {
+                var initial = LinuxX11DisplayEnumerator.EnumerateDisplays();
+                _lastMonitorCount = initial.Count;
+            }
+            catch { }
+
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(3000, ct).ConfigureAwait(false);
+                    var current = LinuxX11DisplayEnumerator.EnumerateDisplays();
+                    if (_lastMonitorCount != -1 && current.Count != _lastMonitorCount)
+                    {
+                        Logger.Info($"[SessionGuard:Linux] Display count changed from {_lastMonitorCount} to {current.Count}. Scheduling topology refresh...");
+                        _lastMonitorCount = current.Count;
+                        _onDisplaySettingsChanged?.Invoke();
+                    }
+                }
+                catch (OperationCanceledException) { break; }
+                catch { }
+            }
         }
 
         public async Task MonitorUntilRestoredAsync(CancellationToken ct)
@@ -151,6 +187,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
             }
         }
 
-        public void Dispose() { }
+        public void Dispose()
+        {
+            try { _cts.Cancel(); _cts.Dispose(); } catch { }
+        }
     }
 }

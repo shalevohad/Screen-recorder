@@ -9,7 +9,6 @@ using Vortice.DXGI;
 
 namespace ITBRecorderAgent.Providers.Video
 {
-    [SupportedOSPlatform("windows")]
     public record DxgiDisplayDescriptor(
         uint AdapterIndex,
         uint OutputIndex,

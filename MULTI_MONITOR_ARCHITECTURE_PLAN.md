@@ -305,14 +305,19 @@ All six decoupled agent tasks have been implemented, tested, and validated with 
   - `ITB-SCREEN-RECORDER.Tests/Core/StationDisplayTopologyTests.cs`: Verified JSON serialization round-trip, camelCase property naming, and desktop coordinates.
   - `ITB-SCREEN-RECORDER.Tests/Server/Data/MultiDisplayCatalogRepositoryTests.cs`: Verified multi-display upsert, query covering index, and `DisplayId` retrieval.
 
-### 🔵 Agent Task 2: `AgentWorker` Multi-GPU DXGI & Hot-Plug Engine — [x] COMPLETED
-- **Implemented Components**:
-  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiDisplayEnumerator.cs`: Cross-GPU output enumeration via Vortice.DXGI with physical desktop bounds and LUID mapping.
-  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiScreenCapture.cs`: Direct D3D11 device creation on explicit GPU adapter driving each monitor.
-  - `ITB-SCREEN-RECORDER.AgentWorker/Engine/MultiDisplayPipelineManager.cs`: Multi-pipeline supervisor handling discrete display capture, RTMP streaming, dynamic hot-plug spawn, and graceful unplug flushes.
-  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/ISessionGuard.cs`: Hooked `SystemEvents.DisplaySettingsChanged` to trigger pipeline synchronization callbacks.
+### 🔵 Agent Task 2: `AgentWorker` Multi-GPU DXGI & Linux X11/Xinerama Hot-Plug Engine — [x] COMPLETED
+- **Implemented Components (Windows & Linux Cross-Platform)**:
+  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiDisplayEnumerator.cs`: Windows cross-GPU output enumeration via Vortice.DXGI with physical desktop bounds and LUID mapping.
+  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiScreenCapture.cs`: Direct D3D11 device creation on explicit GPU adapter driving each monitor on Windows.
+  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/LinuxX11DisplayEnumerator.cs`: Linux native P/Invoke discovery using `libXinerama.so.1` (`XineramaQueryScreens`) to enumerate discrete physical monitors, virtual desktop bounding box, and fallback to root window geometry.
+  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/LinuxX11ScreenCapture.cs`: Linux monitor sub-rectangle capture via native `XGetImage` on the root window, enabling independent capture of each physical screen without compositor overhead.
+  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/ScreenCaptureFactory.cs`: Platform-neutral factory (`CreateForDisplay`) dynamically routing between DXGI (Windows) and X11/Xinerama (Linux).
+  - `ITB-SCREEN-RECORDER.AgentWorker/Engine/MultiDisplayPipelineManager.cs`: Multi-pipeline supervisor handling discrete display capture, RTMP streaming, dynamic hot-plug spawn, and graceful unplug flushes on both Windows and Linux.
+  - `ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/ISessionGuard.cs`: `WindowsSessionGuard` hooks `SystemEvents.DisplaySettingsChanged`; `LinuxDesktopSessionGuard` provides background display polling to trigger pipeline dynamic synchronization.
   - `ITB-SCREEN-RECORDER.AgentWorker/Engine/FfmpegProcessManager.cs`: Handled video-only streams with `audioChannels <= 0` (`-map 0:v -an`) and instant socket handshake bypass.
   - `ITB-SCREEN-RECORDER.AgentWorker/Engine/WorkerEngine.cs`: Integrated `MultiDisplayPipelineManager` into session lifecycle and telemetry reporting.
+- **Unit Tests**:
+  - `ITB-SCREEN-RECORDER.Tests/Core/StationDisplayTopologyTests.cs`: Verified `LinuxX11DisplayEnumerator.BuildTopologyDto` fallback, bounds, and cross-platform serialization.
 
 ### 🟡 Agent Task 3: `Server` WHEP Routing, Telemetry & C2 — [x] COMPLETED
 - **Implemented Components**:

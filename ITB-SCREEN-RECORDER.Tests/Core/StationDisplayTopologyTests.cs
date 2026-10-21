@@ -110,4 +110,16 @@ public class StationDisplayTopologyTests
         Assert.Equal("mon-0", deserialized.DisplayTopology.Displays[0].DisplayId);
         Assert.True(deserialized.DisplayTopology.Displays[0].IsPrimary);
     }
+
+    [Fact]
+    public void LinuxDisplayTopology_BuildTopologyDto_ReturnsValidTopologyStructure()
+    {
+        var topology = ITB_SCREEN_RECORDER.AgentWorker.Providers.Video.LinuxX11DisplayEnumerator.BuildTopologyDto("LINUX-STATION-01");
+        Assert.NotNull(topology);
+        Assert.Equal("LINUX-STATION-01", topology.Hostname);
+        Assert.NotNull(topology.VirtualDesktopBounds);
+        Assert.True(topology.VirtualDesktopBounds.Width > 0);
+        Assert.True(topology.VirtualDesktopBounds.Height > 0);
+        Assert.NotNull(topology.Displays);
+    }
 }
