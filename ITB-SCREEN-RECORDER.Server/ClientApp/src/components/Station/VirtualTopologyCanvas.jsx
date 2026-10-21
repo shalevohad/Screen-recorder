@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
+import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout';
 import './VirtualTopologyCanvas.scss';
 
 export default function VirtualTopologyCanvas({
@@ -30,22 +31,7 @@ export default function VirtualTopologyCanvas({
         ];
     }, [station]);
 
-    const bounds = useMemo(() => {
-        if (!displays || displays.length === 0) {
-            return { minX: 0, minY: 0, totalWidth: 1920, totalHeight: 1080 };
-        }
-        const minX = Math.min(...displays.map(d => d.X ?? 0));
-        const minY = Math.min(...displays.map(d => d.Y ?? 0));
-        const maxX = Math.max(...displays.map(d => (d.X ?? 0) + (d.Width || 1920)));
-        const maxY = Math.max(...displays.map(d => (d.Y ?? 0) + (d.Height || 1080)));
-
-        return {
-            minX,
-            minY,
-            totalWidth: Math.max(1, maxX - minX),
-            totalHeight: Math.max(1, maxY - minY)
-        };
-    }, [displays]);
+    const bounds = useMemo(() => calculateTopologyBounds(displays), [displays]);
 
     // Single display solo view when not in 'canvas' mode
     if (activeDisplayId !== 'canvas') {
@@ -81,10 +67,7 @@ export default function VirtualTopologyCanvas({
             <div className="virtual-canvas-grid-bg" />
 
             {displays.map((d, index) => {
-                const leftPct = ((d.X - bounds.minX) / bounds.totalWidth) * 100;
-                const topPct = ((d.Y - bounds.minY) / bounds.totalHeight) * 100;
-                const widthPct = (d.Width / bounds.totalWidth) * 100;
-                const heightPct = (d.Height / bounds.totalHeight) * 100;
+                const { leftPct, topPct, widthPct, heightPct } = calculateNormalizedDisplayRect(d, bounds);
                 const streamPath = `live/${station.Hostname}/${d.DisplayId}`;
 
                 return (

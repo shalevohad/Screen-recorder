@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
+import { audioSoloReducer, INITIAL_AUDIO_SOLO_STATE } from '../utils/topologyLayout';
 
 const AudioSoloContext = createContext({
     activeAudioStationId: null,
@@ -11,31 +12,22 @@ const AudioSoloContext = createContext({
 });
 
 export function AudioSoloProvider({ children }) {
-    const [activeAudioStationId, setActiveAudioStationId] = useState(null);
-    const [audioVolume, setAudioVolume] = useState(0.8);
-    const [isGlobalMuted, setIsGlobalMuted] = useState(false);
+    const [state, dispatch] = useReducer(audioSoloReducer, INITIAL_AUDIO_SOLO_STATE);
 
     const toggleAudioSolo = useCallback((stationId) => {
-        if (!stationId) {
-            setActiveAudioStationId(null);
-            return;
-        }
-
-        setActiveAudioStationId(current => {
-            if (current === stationId) {
-                return null;
-            }
-            setIsGlobalMuted(false);
-            return stationId;
-        });
+        dispatch({ type: 'TOGGLE_SOLO', stationId });
     }, []);
 
     const stopAudioSolo = useCallback(() => {
-        setActiveAudioStationId(null);
+        dispatch({ type: 'STOP_SOLO' });
     }, []);
 
     const toggleGlobalMute = useCallback(() => {
-        setIsGlobalMuted(m => !m);
+        dispatch({ type: 'TOGGLE_GLOBAL_MUTE' });
+    }, []);
+
+    const setAudioVolume = useCallback((volume) => {
+        dispatch({ type: 'SET_VOLUME', volume });
     }, []);
 
     // Hotkey listener: 'M' or 'm' toggles mute for active audio solo sink
@@ -45,7 +37,7 @@ export function AudioSoloProvider({ children }) {
                 return;
             }
             if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.altKey && !e.metaKey) {
-                if (activeAudioStationId) {
+                if (state.activeAudioStationId) {
                     e.preventDefault();
                     toggleGlobalMute();
                 }
@@ -54,14 +46,14 @@ export function AudioSoloProvider({ children }) {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeAudioStationId, toggleGlobalMute]);
+    }, [state.activeAudioStationId, toggleGlobalMute]);
 
     return (
         <AudioSoloContext.Provider
             value={{
-                activeAudioStationId,
-                audioVolume,
-                isGlobalMuted,
+                activeAudioStationId: state.activeAudioStationId,
+                audioVolume: state.audioVolume,
+                isGlobalMuted: state.isGlobalMuted,
                 toggleAudioSolo,
                 setAudioVolume,
                 toggleGlobalMute,

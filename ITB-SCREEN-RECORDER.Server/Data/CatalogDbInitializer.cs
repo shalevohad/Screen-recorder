@@ -197,7 +197,7 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
 
             db.Execute(@"
                 CREATE INDEX IF NOT EXISTS idx_chunks_station_window_covering 
-                ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms, is_finalized, file_path, file_size_bytes, fps, width, height, has_audio);
+                ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms, is_finalized, file_path, file_size_bytes, fps, width, height, has_audio, display_id);
 
                 CREATE INDEX IF NOT EXISTS idx_chunks_station_display
                 ON recording_chunks (station_id COLLATE NOCASE, display_id, start_epoch_ms, end_epoch_ms);
