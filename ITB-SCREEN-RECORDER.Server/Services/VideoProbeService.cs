@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services;
+namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
 using System.Diagnostics;
@@ -45,7 +45,7 @@ public class VideoProbeService : IVideoProbeService
             var startInfo = new ProcessStartInfo
             {
                 FileName = _ffprobePath,
-                Arguments = $"-v error -show_entries stream=codec_type,width,height,r_frame_rate -show_entries format=duration -of json \"{filePath}\"",
+                Arguments = $"-v error -analyzeduration 1M -probesize 1M -threads 2 -show_entries stream=codec_type,width,height,r_frame_rate -show_entries format=duration -of json \"{filePath}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -56,10 +56,19 @@ public class VideoProbeService : IVideoProbeService
             process.Start();
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(8));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(4));
 
-            string stdout = await process.StandardOutput.ReadToEndAsync(timeoutCts.Token).ConfigureAwait(false);
-            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            string stdout;
+            try
+            {
+                stdout = await process.StandardOutput.ReadToEndAsync(timeoutCts.Token).ConfigureAwait(false);
+                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return null;
+            }
 
             if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
             {

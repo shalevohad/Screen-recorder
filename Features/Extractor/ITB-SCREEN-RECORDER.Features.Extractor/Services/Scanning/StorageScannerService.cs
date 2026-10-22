@@ -516,7 +516,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     var psi = new ProcessStartInfo
                     {
                         FileName = ffprobePath,
-                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
+                        Arguments = $"-v error -analyzeduration 1M -probesize 1M -threads 2 -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,

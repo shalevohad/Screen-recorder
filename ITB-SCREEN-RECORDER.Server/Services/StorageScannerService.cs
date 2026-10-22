@@ -62,14 +62,15 @@ public class StorageScannerService : IStorageScannerService
         StatusMessage: "System Idle"
     );
 
-    private static readonly HashSet<string> ReservedDirNames = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> ReservedDirNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "logs", "export", "exports", "recordingsbuffer", "buffer", "temp", ".git"
+        "logs", "export", "exports", "recordingsbuffer", "buffer", "temp", ".git",
+        ".snapshot", "~snapshot", ".zfs", "$RECYCLE.BIN", "System Volume Information", "lost+found", "@Recycle"
     };
 
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp4", ".fmp4", ".flv", ".mkv", ".ts"
+        ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov"
     };
 
     public StorageScannerService(
