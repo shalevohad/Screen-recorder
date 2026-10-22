@@ -146,12 +146,19 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     FROM recording_chunks 
                     WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs
                     UNION
+                    SELECT station_id FROM recording_chunks
+                    UNION
                     SELECT station_id FROM station_nodes;";
 
                 var dbHosts = await conn.QueryAsync<string>(sql, new { startMs, endMs });
                 foreach (var h in dbHosts.Where(s => !string.IsNullOrWhiteSpace(s)))
                 {
                     string clean = h.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? h.Substring(5) : h;
+                    int slashIdx = clean.IndexOf('/');
+                    if (slashIdx > 0)
+                    {
+                        clean = clean.Substring(0, slashIdx);
+                    }
                     hostsSet.Add(clean);
                 }
             }
@@ -198,7 +205,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     string.Equals(dirName, "recordings", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(dirName, "temp", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(dirName, "buffer", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(dirName, "logs", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(dirName, "logs", StringComparison.OrdinalIgnoreCase) ||
+                    dirName.StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                    dirName.StartsWith("display-", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -264,7 +273,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 var existing = await conn.QueryAsync<string>(
                     @"SELECT file_path FROM recording_chunks 
-                      WHERE (station_id = @cleanHost OR station_id = ('live/' || @cleanHost) OR station_id = @rawHost) 
+                      WHERE (station_id = @cleanHost 
+                             OR station_id = ('live/' || @cleanHost) 
+                             OR station_id = @rawHost 
+                             OR station_id LIKE (@cleanHost || '/%') 
+                             OR station_id LIKE ('live/' || @cleanHost || '/%')) 
                         AND is_finalized = 1;",
                     new { cleanHost, rawHost = hostname });
                 foreach (var p in existing) knownFinalizedPaths.Add(p);
@@ -300,7 +313,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                        COALESCE(display_id, 'mon-0') AS DisplayId,
                        COALESCE(is_primary, 1) AS IsPrimary
                 FROM recording_chunks
-                WHERE (station_id = @cleanHost OR station_id = ('live/' || @cleanHost) OR station_id = @rawHost) COLLATE NOCASE
+                WHERE (station_id = @cleanHost 
+                       OR station_id = ('live/' || @cleanHost) 
+                       OR station_id = @rawHost
+                       OR station_id LIKE (@cleanHost || '/%')
+                       OR station_id LIKE ('live/' || @cleanHost || '/%')) COLLATE NOCASE
                   AND end_epoch_ms >= @startMs
                   AND start_epoch_ms <= @endMsTolerance
                 ORDER BY start_epoch_ms ASC;";
