@@ -172,4 +172,24 @@ In large-scale operations (70–100+ workstations, 150–250+ video feeds), the 
   - The currently viewed monitor is highlighted with a radiant glow and active radar tag.
   - All monitor boxes in the minimap are interactive: clicking a box immediately switches the full-screen view to that display, and clicking the canvas frame returns to full Canvas mode.
 
+---
+
+## 13. Multi-Monitor Export & DVR Dynamic Focus (Persistent HUD & Millisecond Dip-to-Black) — Enforced
+
+To deliver pristine readability for high-density multi-monitor workstations without occluding primary workspace surfaces during forensic playback and file export:
+
+- **Full-Resolution Hero Surface**:
+  - The currently focused or operator-selected monitor renders at 100% natural resolution and full viewport area, avoiding destructive downscaling or illegible multi-screen grid letterboxing.
+- **Persistent Tactical Minimap HUD Overlay**:
+  - A compact, semi-transparent (60–70% opacity) dark-glass topology wireframe sits persistently in the viewport corner.
+  - Displays the workstation's real physical monitor layout, clearly illuminating the active display with a radiant glow indicator (`● ACTIVE: Mon X`) while non-active monitors remain subtle wireframe boxes with their respective display index tags.
+  - **HUD Persistence Invariant**: The Minimap HUD is rendered on an independent overlay plane. During video transitions, the Minimap NEVER blinks out, fades, or dips to black; it remains 100% visible and crisp, dynamically updating its highlight indicator at the precise inflection point of the transition.
+- **Millisecond-Locked Dip-to-Black Video Transition**:
+  - Transitions between monitors (whether triggered automatically by recorded mouse/keystroke activity or manually by operator timeline cuts) execute as a **Dip to Black** transition (fade-to-black -> keyframe cut -> fade-in).
+  - **Zero-Time-Drift Invariant**: The transition duration is strictly accounted for in master timecode calculations. Not a single millisecond is added, dropped, or desynchronized relative to concurrent stations or continuous multi-track audio.
+- **Dual-Plane DVR & Extractor Foundation**:
+  - Raw video streams (`mon-0`, `mon-1`, `mon-2`) remain completely un-baked and clean in storage.
+  - Telemetry and topology timecodes are indexed from time 0, allowing both client-side interactive DVR scrubbing and server-side FFmpeg MP4 export to reconstruct the identical synchronized experience deterministically.
+
+
 
