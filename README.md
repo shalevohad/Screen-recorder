@@ -87,11 +87,29 @@ The codebase is structured into clear architectural layers:
 - Automated `.srt` subtitle generation allows forensic analysts to review entered commands and hotkeys synchronized directly with video playback.
 
 ### 7. Multi-Monitor & Multi-GPU Topology Capture
-- Native multi-adapter DXGI capture on Windows and XRandR/PipeWire on Linux without PCIe texture copying across GPUs.
-- Seamless dynamic hot-plug/unplug: adding or removing a monitor starts or flushes independent encoder pipelines without interrupting surviving screens.
-- Default **Virtual Desktop Canvas** in dashboard: renders multi-screen workstations in their real-world physical geometry.
-- Interactive **HUD Minimap Radar Navigator** in Fullscreen mode with live display highlight and click-to-switch.
-- **Exclusive Audio Solo (Intercom)**: Single-click audio monitoring for any station in the fleet with a floating master audio dock and zero CPU decoding for unselected feeds.
+- **Native Per-Adapter DXGI Capture**: Captures each monitor directly on its owning GPU adapter (Windows DXGI Desktop Duplication API / Linux XRandR & PipeWire), avoiding cross-GPU PCIe texture transfer overhead and bus bottlenecks.
+- **Independent Stream Pipelines**: Each display is encoded and streamed as an independent MediaMTX path: `live/{hostname}/mon-0` (primary display + audio), `live/{hostname}/mon-1`, `live/{hostname}/mon-2`, etc.
+- **Dynamic Hot-Plug & Unplug Resilience**: Connecting or disconnecting a display automatically spawns or cleanly flushes that display's encoder pipeline on the fly without interrupting surviving screens or restarting the agent.
+- **Tactical Virtual Desktop Canvas**: Proportional multi-screen workspace in the C2 Dashboard rendering physical monitor layouts according to actual OS virtual desktop coordinates $(X, Y, W, H)$.
+- **Station Display Bar**: Direct toggle on each station card `[ ⊞ Canvas | 🖥 1 | 🖥 2 | ... ]` for instant single-display or combined-canvas focus.
+- **Interactive Fullscreen Minimap Radar**: Floating Picture-in-Picture topology radar HUD allowing operators to switch between displays with a single click while in fullscreen mode.
+- **Exclusive Audio Solo (Intercom)**: Single-click audio monitoring for any station across the entire fleet with a floating master audio dock, volume slider, and live VU meter—unselected feeds decode zero audio, eliminating browser audio buffer contention.
+
+### 8. AI Auto-Director & Forensic Multi-Monitor Replay
+- **The Forensic Single-Screen Dilemma**: Traditional side-by-side multi-screen exports shrink 4K/QHD workstation screens into unreadable miniature thumbnails, while floating Picture-in-Picture (PiP) windows obscure critical application corners.
+- **Intelligent Activity Focus (`ActivityFocusAnalyzer`)**: Evaluates real-time telemetry of mouse clicks, keystrokes, and active application windows across display coordinates, automatically generating an intelligent director cut (`StationDirectorPlanDto`).
+- **1-Second Pre-Roll Lead-In Invariant ($T - 1000\text{ms}$)**: When user interaction occurs on monitor $B$ at timestamp $T$, the transition to monitor $B$ initiates **1.0 second prior**. This preserves human cognitive continuity—analysts see the new screen, watch the cursor approach, and understand the visual context *before* the action occurs, eliminating abrupt, disorienting jump-cuts.
+- **Anti-Flicker Dwell Hysteresis**: Minimum duration thresholds (2.0–3.0s) prevent erratic camera bouncing during momentary cursor crossings over display boundaries.
+- **Persistent Tactical Minimap HUD (`PersistentMinimapHud`)**:
+  - Semi-transparent, dark-glass vector HUD overlay in the viewport corner displaying the workstation's real-world monitor arrangement.
+  - Active screen glows in tactical cyan/emerald (`● ACTIVE: Mon X`), while inactive screens appear as subtle wireframes (`[1]`, `[2]`).
+  - **HUD Persistence Invariant**: The Minimap HUD is rendered on an independent overlay plane. During video transitions, the Minimap **never** blinks out, fades, or dips to black—it remains crisp and visible, smoothly shifting its active indicator at the exact transition point.
+- **Zero-Time-Drift Millisecond Dip-to-Black Transitions (`DipToBlackFilterBuilder`)**:
+  - Smooth symmetric fade-down to black and fade-up (default 300ms) between monitor cuts.
+  - Strictly preserves frame-accurate audio and multi-station synchronization without dropping or skewing a single millisecond.
+- **Extractor Advanced Multi-Track Studio & Manual Override**:
+  - Dedicated **Director Track** (`DirectorTrack.jsx`) in the multicam timeline board with visual badges (`[⚡ Auto: Mon 1]` vs `[✋ Override: Mon 2]`).
+  - Full investigator control: split at playhead (`S` hotkey), right-click context menu, or click any monitor on the Minimap HUD to override display choice for any temporal segment.
 
 ---
 
@@ -109,6 +127,8 @@ This platform is governed by strict operational rules documented in [RULES.md](f
 - **Rule 10 (Near-Live Hot-Window Access)**: Non-locking file streams (`FileShare.ReadWrite | FileShare.Delete`) for zero-collision inspection during active recording.
 - **Rule 11 (Multi-Monitor Capture & Hot-Plug)**: Discrete per-adapter encoder pipelines, `live/{hostname}/mon-N` paths, and resilient runtime add/remove.
 - **Rule 12 (NOC Stream Governance & Audio Solo)**: Default Canvas layout, viewport virtualization via Intersection Observer, and exclusive audio solo sink.
+- **Rule 13 (Multi-Monitor Export & DVR Dynamic Focus)**: 1-second pre-roll lead-in ($T - 1000\text{ms}$), anti-flicker hysteresis, persistent tactical Minimap HUD (never dips to black), and zero-time-drift Dip-to-Black transitions.
+- **Rule 14 (Air-Gapped & Isolated Environment Invariant)**: 100% self-contained offline architecture; zero public internet CDNs, web fonts, or remote APIs. Full support for enterprise operational intranet subnets (`128.x.x.x`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`), internal LAN DNS hostnames (`itb-server`, `*.local`, `*.internal`), and local multicast.
 
 ---
 

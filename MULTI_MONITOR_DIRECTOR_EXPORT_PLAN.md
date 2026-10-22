@@ -139,15 +139,21 @@ public class StationDirectorPlanDto
 - [x] **Task 3.4**: Unit tests for FFmpeg command-line generation and track segment alignment (`DipToBlackFilterBuilderTests` passed 100%).
 
 ### Phase 4: DVR Player Integration (`ClientApp` & `ExtractorAdvanced`)
-- [ ] **Task 4.1**: Implement client-side Dip-to-Black shader/CSS transition in `MulticamViewport` / `CameraCardFeed`.
-- [ ] **Task 4.2**: Hook playhead timeline scrub to automatically update the Persistent Minimap HUD highlight in real time.
+- [x] **Task 4.1**: Implement client-side Dip-to-Black shader/CSS transition in `MulticamViewport` / `CameraCardFeed`.
+- [x] **Task 4.2**: Hook playhead timeline scrub to automatically update the Persistent Minimap HUD highlight in real time.
 
 ### Phase 5: Verification, Benchmarking & Documentation
-- [ ] **Task 5.1**: Full build verification (`dotnet build`, `npm run build` in ExtractorAdvanced and ClientApp).
-- [ ] **Task 5.2**: Comprehensive test suite run (`dotnet test`).
-- [ ] **Task 5.3**: Update `MULTI_MONITOR_DIRECTOR_EXPORT_PLAN.md` with completed task checks and verification logs.
+- [x] **Task 5.1**: Full build verification (`dotnet build`, `npm run build` in ExtractorAdvanced and ClientApp: Vite build cleanly passed at 510kB, 0 errors).
+- [x] **Task 5.2**: Comprehensive test suite run (`dotnet test`: 295 passed, 0 failed across all suites).
+- [x] **Task 5.3**: Update `README.md`, `RULES.md`, `AGENTS.md`, `GEMINI.md`, and `MULTI_MONITOR_DIRECTOR_EXPORT_PLAN.md` with comprehensive multi-monitor and Auto-Director architectural documentation.
 
 ---
 
 ## 📌 Update Log
-- **2026-10-22**: Initial architecture & implementation roadmap established. Rule 13 codified into `RULES.md`. Pre-roll lead-in (1.0s), persistent HUD invariant, and Dip-to-Black zero-drift rules locked.
+- **2026-10-22**:
+  - Initial architecture & implementation roadmap established. Rule 13 codified into `RULES.md`. Pre-roll lead-in (1.0s), persistent HUD invariant, and Dip-to-Black zero-drift rules locked.
+  - Implemented `StationDirectorPlanDto`, `ActivityFocusAnalyzer`, `DipToBlackFilterBuilder`, and `MinimapOverlaySvgGenerator`. Unit tests verified (7/7 passed).
+  - Implemented React frontend components `PersistentMinimapHud.jsx`, `DirectorTrack.jsx`, and integrated with `TimelineBoard` and `CameraCardFeed`.
+  - Air-gapped & isolated environment invariant codified in Rule 14 with support for operational LAN subnets (`128.x.x.x`, `10.x.x.x`, etc.) and internal LAN DNS hostnames.
+  - Full solution test suite verified (295 passed, 0 failed).
+  - Main `README.md` updated with comprehensive sections for Multi-Monitor capture and AI Auto-Director replay/export.
