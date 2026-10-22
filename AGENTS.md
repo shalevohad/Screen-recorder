@@ -72,6 +72,13 @@ The absolute source of truth for behavioral invariants is [RULES.md](file:///c:/
    - Cards off-screen are virtualized (Intersection Observer) to guarantee zero browser decoder exhaustion.
    - **Exclusive Audio Solo**: Only one station plays live audio at any given time in the grid; all other stations remain muted.
    - **Fullscreen Minimap Radar**: Navigating away from Canvas in Fullscreen spawns a clickable Picture-in-Picture Minimap for instant display switching.
+9. **Rule 13: Multi-Monitor Export & DVR Dynamic Focus (Persistent HUD & Millisecond Dip-to-Black) (Enforced)**
+   - Zero-Time-Drift symmetric fade transitions between active screens.
+   - 1-Second Pre-Roll Lead-In ($T - 1000\text{ms}$) on activity focus changes.
+   - Persistent tactical Minimap HUD overlay that never fades or dips during transitions.
+10. **Rule 14: Air-Gapped & Isolated Environment Invariant (Enforced)**
+   - Zero external internet links, remote CDNs (cdnjs, unpkg, jsdelivr), or Google Fonts in code, templates, or styles.
+   - Zero outbound analytics or cloud calls. All services and assets are 100% locally self-contained.
 
 ---
 

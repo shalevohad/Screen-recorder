@@ -25,7 +25,7 @@ Example (`ChunkIntervalMinutes = 5`): if a station starts streaming at `15:12`, 
 - Boundaries are computed against **UTC**, not local time. This only matters if the intended "wall clock" is a local timezone whose UTC offset isn't a multiple of `ChunkIntervalMinutes` — not the case for the currently configured value (5).
 - The boundary math resets at UTC midnight based on `Hour`/`Minute` alone. If `ChunkIntervalMinutes` does not evenly divide 1440 (e.g. 7, 11, 13 — the config allows any value 1–60), the last chunk before midnight is shortened, producing one irregular chunk per day. The currently configured value (5) divides 1440 evenly, so this does not currently manifest. If `ChunkIntervalMinutes` is ever changed to a non-divisor of 1440, this edge case will appear.
 
-**MediaMTX is pinned to v1.15.4 — do not upgrade without re-verifying.** Starting in MediaMTX v1.15.5, the recorder compares each sample's real arrival wall-clock time against its nominal encoder timestamp and force-resets the current recording segment if they drift apart (source: [`internal/recorder/format_fmp4_track.go`](https://github.com/bluenviron/mediamtx/pull/5239), constant `ntpDriftTolerance`, not exposed via any config option — see [upstream issue #5550](https://github.com/bluenviron/mediamtx/issues/5550)). Under our live CPU-encoded screen-capture pipeline, that drift check tripped every ~15-20 seconds regardless of `ChunkIntervalMinutes`, cutting a fresh segment far more often than configured and defeating this rule entirely. Since Server and MediaMTX always run co-located on the same machine, the clock-jump scenario the check guards against can't occur here, so the fix is a version pin rather than a pipeline change: [`MediaMTX/mediamtx.exe`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.exe) is v1.15.4 (last release before the check was introduced), and [`MediaMTX/mediamtx.yml`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.yml) was regenerated to match that version's schema (the v1.19.3 yml has fields, e.g. `authHTTPFingerprint`, that v1.15.4 rejects at startup). Upgrading the bundled binary again will silently reintroduce this bug — confirm the drift check hasn't landed a config knob upstream, or re-run the verification in this rule's history, before bumping the version.
+**MediaMTX is pinned to v1.15.4 — do not upgrade without re-verifying.** Starting in MediaMTX v1.15.5, the recorder compares each sample's real arrival wall-clock time against its nominal encoder timestamp and force-resets the current recording segment if they drift apart (source: MediaMTX constant `ntpDriftTolerance` in fMP4 recorder, not exposed via any config option — upstream issue #5550 / PR #5239). Under our live CPU-encoded screen-capture pipeline, that drift check tripped every ~15-20 seconds regardless of `ChunkIntervalMinutes`, cutting a fresh segment far more often than configured and defeating this rule entirely. Since Server and MediaMTX always run co-located on the same machine, the clock-jump scenario the check guards against can't occur here, so the fix is a version pin rather than a pipeline change: [`MediaMTX/mediamtx.exe`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.exe) is v1.15.4 (last release before the check was introduced), and [`MediaMTX/mediamtx.yml`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.yml) was regenerated to match that version's schema (the v1.19.3 yml has fields, e.g. `authHTTPFingerprint`, that v1.15.4 rejects at startup). Upgrading the bundled binary again will silently reintroduce this bug — confirm the drift check hasn't landed a config knob upstream, or re-run the verification in this rule's history, before bumping the version.
 - [`FfmpegProcessManager.BuildFfmpegArguments`](ITB-SCREEN-RECORDER.AgentWorker/Engine/FfmpegProcessManager.cs) also passes `-use_wallclock_as_timestamps 1` on both raw inputs (video pipe + audio TCP) so ffmpeg timestamps frames by real arrival time rather than a nominal frame-count clock. This reduces long-run timestamp drift from capture jitter, but did **not** by itself fix the MediaMTX reset behavior above (`-fps_mode cfr` downstream renormalizes output timestamps to a nominal clock regardless) — the version pin is the actual fix; this flag is a complementary accuracy improvement, not a substitute.
 
 ---
@@ -191,6 +191,22 @@ To deliver pristine readability for high-density multi-monitor workstations with
 - **Dual-Plane DVR & Extractor Foundation**:
   - Raw video streams (`mon-0`, `mon-1`, `mon-2`) remain completely un-baked and clean in storage.
   - Telemetry and topology timecodes are indexed from time 0, allowing both client-side interactive DVR scrubbing and server-side FFmpeg MP4 export to reconstruct the identical synchronized experience deterministically.
+
+---
+
+## 14. Air-Gapped & Isolated Environment Invariant (Zero External Internet Dependencies) — Enforced
+
+ITB-SCREEN-RECORDER is engineered strictly for air-gapped, high-security operational environments completely isolated from WAN/Internet access:
+
+- **Zero External Internet Links & CDNs**:
+  - Code, styles, UI views, and scripts must NEVER contain external internet links, CDN references (such as cdnjs, unpkg, jsdelivr), or remote font imports (such as Google Fonts).
+  - All fonts, stylesheets, scripts, icons, and assets must be bundled 100% locally within the application distribution packages (`/css/`, `/assets/`, embedded resources).
+- **Zero Remote Telemetry & Cloud Endpoints**:
+  - Agent and server communications strictly target local/internal LAN IPs (`127.0.0.1`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`) or local multicast (`239.210.1.5:5098`).
+  - No external analytics, crash reporters, license validators, or remote update probes are permitted.
+- **Offline Self-Sufficiency**:
+  - All services, media players (WebRTC WHEP, HLS), installers, and toolchains must install, run, decode, and operate with zero outbound internet network packets.
+
 
 
 
