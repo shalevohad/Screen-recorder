@@ -78,7 +78,7 @@ The absolute source of truth for behavioral invariants is [RULES.md](file:///c:/
    - Persistent tactical Minimap HUD overlay that never fades or dips during transitions.
 10. **Rule 14: Air-Gapped & Isolated Environment Invariant (Enforced)**
    - Zero external internet links, remote CDNs (cdnjs, unpkg, jsdelivr), or Google Fonts in code, templates, or styles.
-   - Zero outbound analytics or cloud calls. All services and assets are 100% locally self-contained.
+   - Zero outbound analytics or cloud calls. All services, telemetry, and assets target internal LAN and operational intranet subnets (e.g. `128.x.x.x`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`, local multicast `239.210.1.5`).
 
 ---
 

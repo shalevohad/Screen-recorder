@@ -202,8 +202,8 @@ ITB-SCREEN-RECORDER is engineered strictly for air-gapped, high-security operati
   - Code, styles, UI views, and scripts must NEVER contain external internet links, CDN references (such as cdnjs, unpkg, jsdelivr), or remote font imports (such as Google Fonts).
   - All fonts, stylesheets, scripts, icons, and assets must be bundled 100% locally within the application distribution packages (`/css/`, `/assets/`, embedded resources).
 - **Zero Remote Telemetry & Cloud Endpoints**:
-  - Agent and server communications strictly target local/internal LAN IPs (`127.0.0.1`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`) or local multicast (`239.210.1.5:5098`).
-  - No external analytics, crash reporters, license validators, or remote update probes are permitted.
+  - Agent and server communications strictly target local/internal LAN and operational intranet IPs (such as `128.x.x.x`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`, `127.0.0.1`, or customer air-gapped subnets) or local multicast (`239.210.1.5:5098`).
+  - No external public analytics, crash reporters, license validators, or remote cloud update probes are permitted.
 - **Offline Self-Sufficiency**:
   - All services, media players (WebRTC WHEP, HLS), installers, and toolchains must install, run, decode, and operate with zero outbound internet network packets.
 
