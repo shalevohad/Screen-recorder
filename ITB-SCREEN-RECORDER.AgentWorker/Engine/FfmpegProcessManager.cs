@@ -60,7 +60,9 @@ namespace ITBRecorderAgent.Engine
         {
             try
             {
-                if (destinationUrl.Contains(":\\") || destinationUrl.StartsWith("/"))
+                if (!destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase) &&
+                    !destinationUrl.StartsWith("rtmps://", StringComparison.OrdinalIgnoreCase) &&
+                    (destinationUrl.Contains(":\\") || destinationUrl.StartsWith("/")))
                 {
                     string? dir = Path.GetDirectoryName(destinationUrl);
                     if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))

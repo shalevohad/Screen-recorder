@@ -382,8 +382,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
                 return baseDestination;
             }
 
-            // Append /{displayId} to RTMP stream URL
-            if (baseDestination.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase))
+            // Append /{displayId} to RTMP/RTMPS stream URL
+            if (baseDestination.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase) ||
+                baseDestination.StartsWith("rtmps://", StringComparison.OrdinalIgnoreCase))
             {
                 return $"{baseDestination.TrimEnd('/')}/{displayId}";
             }
