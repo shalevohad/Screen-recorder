@@ -5,6 +5,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { frameStore } from '../../../../utils/frameStore.js';
 import { getAudioSettings } from '../../../../utils/studioSessionStore.js';
 import NoSignalHero from '../../overlays/NoSignalHero.jsx';
+import PersistentMinimapHud from '../../overlays/PersistentMinimapHud.jsx';
 import './CameraCardFeed.scss';
 
 export default function CameraCardFeed({
@@ -42,6 +43,9 @@ export default function CameraCardFeed({
     const currentRelativeMsRef = useRef(currentEpochMs - baseEpochMs);
     const isSkippingGapRef = useRef(false);
     currentRelativeMsRef.current = currentEpochMs - baseEpochMs;
+
+    const stationDisplays = station?.displays || station?.topology?.displays || [];
+    const [activeDisplayId, setActiveDisplayId] = useState('mon-0');
 
     const stationSegments = recordingSegments[station?.id] || recordingSegments[stationName] || station?.segments || [];
     const isInRecordingSegment = stationSegments.length === 0 || stationSegments.some(seg => {
@@ -389,6 +393,12 @@ export default function CameraCardFeed({
                     </div>
                 </div>
             )}
+
+            <PersistentMinimapHud
+                displays={stationDisplays}
+                activeDisplayId={activeDisplayId}
+                onSelectDisplay={(newDispId) => setActiveDisplayId(newDispId)}
+            />
         </div>
     );
 }

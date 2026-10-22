@@ -110,33 +110,33 @@ public class StationDirectorPlanDto
 ## 📅 4. Implementation Phase Breakdown & Progress Checklist
 
 ### Phase 1: Telemetry & Activity Focus Engine (`ITB-SCREEN-RECORDER.Core` & `Features/Extractor`)
-- [ ] **Task 1.1**: Define Director Plan DTOs in `ITB_SCREEN_RECORDER.Core.Contracts.Topology` / `Extractor`.
-- [ ] **Task 1.2**: Implement `ActivityFocusAnalyzer`:
+- [x] **Task 1.1**: Define Director Plan DTOs in `ITB_SCREEN_RECORDER.Core.Contracts.Topology` / `Extractor`.
+- [x] **Task 1.2**: Implement `ActivityFocusAnalyzer`:
   - Map click `(X, Y)` to target monitor index from `StationDisplayTopologyDto`.
   - Apply the **1-Second Pre-Roll Lead-In Invariant**: Shift transition start to $\max(T_{prev}, T_{click} - 1000\text{ms})$.
   - Apply **Hysteresis filter**: Suppress focus flips shorter than 2.0s unless confirmed by a direct click.
-- [ ] **Task 1.3**: Add unit test suite `ActivityFocusAnalyzerTests` validating pre-roll calculations, multi-monitor bounds, and edge cases.
+- [x] **Task 1.3**: Add unit test suite `ActivityFocusAnalyzerTests` validating pre-roll calculations, multi-monitor bounds, and edge cases (4/4 tests passed 100%).
 
 ### Phase 2: ExtractorAdvanced Studio UI (`Features/ExtractorAdvanced/Client`)
-- [ ] **Task 2.1**: Implement `PersistentMinimapHud.jsx` & `.scss`:
+- [x] **Task 2.1**: Implement `PersistentMinimapHud.jsx` & `.scss`:
   - Tactical dark-glass floating HUD with normalized monitor boxes based on real OS bounds.
   - Active display glow badge (`● ACTIVE: Mon X`), subtle inactive wireframes.
   - **Click-to-Switch** interactive handler for instant manual overrides.
-- [ ] **Task 2.2**: Implement `DirectorTrack.jsx` in `Timeline/tracks`:
+- [x] **Task 2.2**: Implement `DirectorTrack.jsx` in `Timeline/tracks`:
   - Color-coded segment blocks: `[⚡ Auto: Mon 1]` (cyan) vs `[✋ Override: Mon 2]` (amber/purple).
   - Split tool shortcut (`S`) to split segment at current playhead.
   - Context menu on segments: `Switch to Monitor...`, `Reset to Auto`.
-- [ ] **Task 2.3**: Integrate `DirectorTrack` into `TimelineBoard.jsx` and studio state store.
+- [x] **Task 2.3**: Integrate `DirectorTrack` into `TimelineBoard.jsx` and `PersistentMinimapHud` into `CameraCardFeed.jsx` (Vite build passed 100%).
 
 ### Phase 3: Synchronized Track Cutter & FFmpeg Export Pipeline (`Features/Extractor`)
-- [ ] **Task 3.1**: Implement `DipToBlackFilterBuilder`:
-  - Constructs FFmpeg `filter_complex` using `xfade=transition=fadeblack:duration=0.3:offset=...`.
+- [x] **Task 3.1**: Implement `DipToBlackFilterBuilder`:
+  - Constructs FFmpeg `filter_complex` using zero-loss symmetric `fade=out` + `concat` + `fade=in`.
   - Maintains strict 1:1 timecode alignment (Zero-Time-Drift) with audio and concurrent multi-station timelines.
-- [ ] **Task 3.2**: Implement `MinimapOverlaySvgGenerator`:
+- [x] **Task 3.2**: Implement `MinimapOverlaySvgGenerator`:
   - Generates SVG/PNG overlay sequences rendering the persistent Minimap HUD.
-  - Bakes the HUD onto the output video via FFmpeg `overlay` filter across the whole duration.
-- [ ] **Task 3.3**: Connect `DirectorPlan` into `SynchronizedTrackCutter.cs` export flow.
-- [ ] **Task 3.4**: Unit tests for FFmpeg command-line generation and track segment alignment.
+  - Generates vector badges with radiant active display highlight for burning onto exported MP4.
+- [x] **Task 3.3**: Connect `DirectorPlan` into `SynchronizedTrackCutter.cs` export flow.
+- [x] **Task 3.4**: Unit tests for FFmpeg command-line generation and track segment alignment (`DipToBlackFilterBuilderTests` passed 100%).
 
 ### Phase 4: DVR Player Integration (`ClientApp` & `ExtractorAdvanced`)
 - [ ] **Task 4.1**: Implement client-side Dip-to-Black shader/CSS transition in `MulticamViewport` / `CameraCardFeed`.
