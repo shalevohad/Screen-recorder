@@ -24,25 +24,19 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly CustomTabsService _tabsService;
         private readonly ICatalogRepository _catalogRepository;
         private readonly IOptionsMonitor<SystemConfig> _configMonitor;
-        private readonly StoragePathResolver _storageResolver;
-        private readonly ILogger<DashboardController> _logger;
 
         public DashboardController(
             ITelemetryStateService telemetryState,
             StationOverridesService overridesService,
             CustomTabsService tabsService,
             ICatalogRepository catalogRepository,
-            IOptionsMonitor<SystemConfig> configMonitor,
-            StoragePathResolver storageResolver,
-            ILogger<DashboardController> logger)
+            IOptionsMonitor<SystemConfig> configMonitor)
         {
             _telemetryState = telemetryState;
             _overridesService = overridesService;
             _tabsService = tabsService;
             _catalogRepository = catalogRepository;
             _configMonitor = configMonitor;
-            _storageResolver = storageResolver;
-            _logger = logger;
         }
 
         [HttpGet("cluster")]
@@ -82,65 +76,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             var host = Request.Host.Value.Split(':')[0];
             var hlsPort = _configMonitor.CurrentValue.MediaMtx.HlsPort;
 
-            string storageRoot = string.Empty;
-            try
-            {
-                storageRoot = _storageResolver.ResolveActiveRootAsync(_configMonitor.CurrentValue.Storage, _logger).GetAwaiter().GetResult();
-            }
-            catch { }
-
             var result = agents.Select(agent =>
             {
                 bool isOnline = (DateTime.UtcNow - agent.Timestamp).TotalSeconds <= 15;
                 bool isStreaming = agent.IsStreaming;
                 aliases.TryGetValue(agent.Hostname, out string? roleAlias);
 
-                var displays = agent.DisplayTopology?.Displays?.ToList() ?? new List<ITB_SCREEN_RECORDER.Core.Contracts.Topology.DisplayMetadataDto>();
-                if (displays.Count == 0 && !string.IsNullOrWhiteSpace(storageRoot))
-                {
-                    try
-                    {
-                        var stationLiveDir = Path.Combine(storageRoot, "live", agent.Hostname);
-                        if (Directory.Exists(stationLiveDir))
-                        {
-                            var monDirs = Directory.GetDirectories(stationLiveDir, "mon-*");
-                            if (monDirs.Length > 0)
-                            {
-                                Array.Sort(monDirs);
-                                int idx = 0;
-                                displays = monDirs.Select(d =>
-                                {
-                                    var folderName = Path.GetFileName(d);
-                                    return new ITB_SCREEN_RECORDER.Core.Contracts.Topology.DisplayMetadataDto
-                                    {
-                                        DisplayId = folderName,
-                                        DisplayName = $"Display {idx + 1}",
-                                        AdapterName = "Auto-Discovered",
-                                        IsPrimary = idx++ == 0,
-                                        X = (idx - 1) * 1920,
-                                        Y = 0,
-                                        Width = 1920,
-                                        Height = 1080
-                                    };
-                                }).ToList();
-                            }
-                        }
-                    }
-                    catch { }
-                }
-
-                var topology = agent.DisplayTopology ?? (displays.Count > 0 ? new ITB_SCREEN_RECORDER.Core.Contracts.Topology.StationDisplayTopologyDto
-                {
-                    Hostname = agent.Hostname,
-                    Displays = displays,
-                    VirtualDesktopBounds = new ITB_SCREEN_RECORDER.Core.Contracts.Topology.DesktopBoundsDto
-                    {
-                        X = 0,
-                        Y = 0,
-                        Width = displays.Count * 1920,
-                        Height = 1080
-                    }
-                } : null);
+                var topology = agent.DisplayTopology;
+                var displays = topology?.Displays ?? new List<ITB_SCREEN_RECORDER.Core.Contracts.Topology.DisplayMetadataDto>();
 
                 return new
                 {
@@ -182,6 +125,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     HlsUrl = $"{Request.Scheme}://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });
+
 
             return Ok(result);
         }

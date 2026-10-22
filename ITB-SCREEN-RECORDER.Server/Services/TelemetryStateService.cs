@@ -81,6 +81,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             // עדכון חותמת הזמן על פי שעון השרת הנוכחי למניעת בעיות Clock Skew בין עמדות הקצה לשרת
             report.Timestamp = DateTime.UtcNow;
 
+            if (report.DisplayTopology == null && _latestReports.TryGetValue(key, out var prevReport) && prevReport.DisplayTopology != null)
+            {
+                report.DisplayTopology = prevReport.DisplayTopology;
+            }
+
             _latestReports[key] = report;
 
             string hostToUse = !string.IsNullOrWhiteSpace(requestHost)
