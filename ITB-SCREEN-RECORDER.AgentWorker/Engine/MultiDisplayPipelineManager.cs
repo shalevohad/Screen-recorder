@@ -292,6 +292,26 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             if (desc.IsPrimary)
             {
                 var handshakeTask = ffmpeg.CompleteAudioHandshakeAsync(sessionCt);
+
+                // 💡 כתיבת פריים ראשוני מיידית כדי לחלץ את FFmpeg מהמתנה לחקירת (Probe) צינור הווידאו pipe:0
+                // לפני שהוא פותח את ערוץ השמע ב-TCP Loopback. מונע Deadlock של Audio handshake timeout.
+                _ = Task.Run(() =>
+                {
+                    byte[]? initialFrame = null;
+                    try
+                    {
+                        if (screenCapture.TryCaptureFrame(out var captured) && captured != null)
+                        {
+                            initialFrame = new byte[captured.Length];
+                            Buffer.BlockCopy(captured, 0, initialFrame, 0, captured.Length);
+                        }
+                    }
+                    catch { }
+
+                    initialFrame ??= new byte[screenCapture.Width * screenCapture.Height * 4];
+                    ffmpeg.WriteVideoFrame(initialFrame);
+                }, sessionCt);
+
                 if (!await handshakeTask.ConfigureAwait(false))
                 {
                     Logger.Error($"[MULTI-DISPLAY] Audio handshake timed out for primary display '{desc.DisplayId}'.");
