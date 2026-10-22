@@ -9,7 +9,9 @@ export default function VirtualTopologyCanvas({
     onSelectDisplay,
     isMuted = true,
     volume = 1,
-    isInteractive = false
+    isInteractive = false,
+    onPlaying,
+    onStreamAvailable
 }) {
     const stationHost = station?.hostname || station?.Hostname || station?.stationId || station?.StationId || '';
 
@@ -41,7 +43,28 @@ export default function VirtualTopologyCanvas({
 
     const bounds = useMemo(() => calculateTopologyBounds(displays), [displays]);
 
-    // Single display solo view when not in 'canvas' mode
+    // Single display station: Render pure clean player without any topology overhead or redundant solo badges
+    if (displays.length <= 1) {
+        const singleDisplay = displays[0];
+        const streamPath = stationHost ? `live/${stationHost}/${singleDisplay.DisplayId}` : '';
+
+        return (
+            <div className="virtual-topology-solo-viewport single-display-pure">
+                {streamPath && (
+                    <WebRTCPlayer
+                        streamPath={streamPath}
+                        isMuted={isMuted}
+                        volume={volume}
+                        showControls={false}
+                        onPlaying={onPlaying}
+                        onStreamAvailable={onStreamAvailable}
+                    />
+                )}
+            </div>
+        );
+    }
+
+    // Multi-display: Single display target view when not in 'canvas' mode
     if (activeDisplayId !== 'canvas') {
         const soloDisplay = displays.find(d => d.DisplayId === activeDisplayId) || displays[0];
         const streamPath = stationHost ? `live/${stationHost}/${soloDisplay.DisplayId}` : '';
@@ -54,6 +77,8 @@ export default function VirtualTopologyCanvas({
                         isMuted={!soloDisplay.IsPrimary || isMuted}
                         volume={volume}
                         showControls={false}
+                        onPlaying={onPlaying}
+                        onStreamAvailable={soloDisplay.IsPrimary ? onStreamAvailable : undefined}
                     />
                 )}
                 <div className="solo-display-badge">
@@ -66,7 +91,7 @@ export default function VirtualTopologyCanvas({
         );
     }
 
-    // Default: Multi-display Virtual Desktop Canvas
+    // Multi-display: Virtual Desktop Canvas layout
     return (
         <div
             className={`virtual-topology-canvas-container ${isInteractive ? 'interactive' : ''}`}
@@ -90,8 +115,8 @@ export default function VirtualTopologyCanvas({
                             width: `${widthPct}%`,
                             height: `${heightPct}%`
                         }}
-                        onClick={() => onSelectDisplay && onSelectDisplay(d.DisplayId)}
-                        title={`Click to solo ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})`}
+                        onClick={() => isInteractive && onSelectDisplay && onSelectDisplay(d.DisplayId)}
+                        title={isInteractive ? `Switch to ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})` : undefined}
                     >
                         {streamPath && (
                             <WebRTCPlayer
@@ -99,6 +124,8 @@ export default function VirtualTopologyCanvas({
                                 isMuted={!d.IsPrimary || isMuted}
                                 volume={volume}
                                 showControls={false}
+                                onPlaying={onPlaying}
+                                onStreamAvailable={d.IsPrimary ? onStreamAvailable : undefined}
                             />
                         )}
 

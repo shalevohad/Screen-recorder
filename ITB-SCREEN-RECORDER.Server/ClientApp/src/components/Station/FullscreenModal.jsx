@@ -5,9 +5,11 @@ import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import FullscreenMinimapNavigator from './FullscreenMinimapNavigator';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
 import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
+import { useAudioSolo } from '../../context/AudioSoloContext';
 import './FullscreenModal.scss';
 
 export default function FullscreenModal(props) {
+    const { registerStationStream } = useAudioSolo();
     const {
         hostname,
         webrtcBaseUrl,
@@ -62,6 +64,7 @@ export default function FullscreenModal(props) {
             if (!modalBoxRef.current) return;
             const videoEl = modalBoxRef.current.querySelector('video');
             if (videoEl && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+                setIsVideoPlaying(true);
                 const streamRatio = videoEl.videoWidth / videoEl.videoHeight;
                 if (Math.abs(streamRatio - aspectRatio) > 0.01) {
                     setAspectRatio(streamRatio);
@@ -69,7 +72,7 @@ export default function FullscreenModal(props) {
             }
         };
 
-        const interval = setInterval(checkVideoDimensions, 500);
+        const interval = setInterval(checkVideoDimensions, 300);
         return () => clearInterval(interval);
     }, [aspectRatio]);
 
@@ -220,7 +223,7 @@ export default function FullscreenModal(props) {
                                     type="button"
                                     className={`modal-pill-btn ${activeDisplayId === d.DisplayId ? 'is-active' : ''}`}
                                     onClick={() => setActiveDisplayId(d.DisplayId)}
-                                    title={`Solo Monitor ${idx + 1} (${d.Width}x${d.Height})`}
+                                    title={`Monitor ${idx + 1} (${d.Width}x${d.Height})`}
                                 >
                                     🖥 {idx + 1}
                                 </button>
@@ -304,7 +307,11 @@ export default function FullscreenModal(props) {
                         onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
                         isMuted={isMuted}
                         volume={1}
-                        isInteractive={true}
+                        isInteractive={false}
+                        onPlaying={() => setIsVideoPlaying(true)}
+                        onStreamAvailable={(stream) => {
+                            registerStationStream?.(hostname, stream);
+                        }}
                     />
 
                     {isStreaming && (

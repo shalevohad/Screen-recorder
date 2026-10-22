@@ -8,6 +8,7 @@ using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Network.Discovery;
 using ITB_SCREEN_RECORDER.Core.Security.Pki;
+using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
@@ -60,6 +61,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private bool _lastWorkerHasActiveSpeakers = false;
         private bool _lastWorkerHasActiveMicrophone = false;
         private bool _lastWorkerIsAudioStreaming = false;
+        private StationDisplayTopologyDto? _lastWorkerDisplayTopology = null;
 
         private long _lastTelemetryPayloadSizeBytes = 0;
         private DateTime _lastTelemetrySendTime = DateTime.UtcNow;
@@ -87,6 +89,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public bool IsAudioStreaming { get; set; }
             public IpcTelemetryDto? Telemetry { get; set; }
             public List<KeystrokeEventDto>? Keystrokes { get; set; }
+            public StationDisplayTopologyDto? DisplayTopology { get; set; }
         }
 
         private class IpcTelemetryDto
@@ -432,6 +435,11 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     _lastWorkerHasActiveMicrophone = status.HasActiveMicrophone || (status.Telemetry?.HasActiveMicrophone ?? false);
                                     _lastWorkerIsAudioStreaming = status.IsAudioStreaming || (status.Telemetry?.IsAudioStreaming ?? false);
 
+                                    if (status.DisplayTopology != null && status.DisplayTopology.Displays != null && status.DisplayTopology.Displays.Count > 0)
+                                    {
+                                        _lastWorkerDisplayTopology = status.DisplayTopology;
+                                    }
+
                                     // 💡 קליטת מקשים חיים שנשלחו מה-Worker
                                     if (status.Keystrokes != null && status.Keystrokes.Count > 0)
                                     {
@@ -542,6 +550,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     OfflineFilesCount = offlineFilesCount,
                     OfflineFilesTotalSizeMb = offlineFilesSizeMb,
+
+                    DisplayTopology = _lastWorkerDisplayTopology,
 
                     Keystrokes = keysBatch.Count > 0 ? keysBatch : null
                 };

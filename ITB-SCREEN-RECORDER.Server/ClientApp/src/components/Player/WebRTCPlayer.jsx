@@ -5,7 +5,8 @@ export default function WebRTCPlayer({
     streamPath,
     webrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '/api/v1/whep' : 'http://127.0.0.1:8889',
     showControls = false,
-    onPlaying
+    onPlaying,
+    onStreamAvailable
 }) {
     const containerRef = useRef(null);
     const videoRef = useRef(null);
@@ -89,6 +90,9 @@ export default function WebRTCPlayer({
                     currentVideo.play().catch(err => {
                         if (err.name !== 'AbortError') console.warn("[WebRTC] Play error:", err);
                     });
+                    if (onStreamAvailable) {
+                        try { onStreamAvailable(event.streams[0]); } catch { }
+                    }
                 }
             };
 

@@ -36,7 +36,7 @@ export default function StationThumbnail(props) {
     const [activeDisplayId, setActiveDisplayId] = useState('canvas');
 
     const { hasPermission } = useAuth();
-    const { activeAudioStationId, audioVolume, isGlobalMuted, toggleAudioSolo } = useAudioSolo();
+    const { activeAudioStationId, audioVolume, isGlobalMuted, toggleAudioSolo, registerStationStream } = useAudioSolo();
     const isListeningThisStation = activeAudioStationId === hostname && !isGlobalMuted;
     const canControl = hasPermission('stations.control');
     const canBookmark = hasPermission('bookmarks.manage');
@@ -227,6 +227,9 @@ export default function StationThumbnail(props) {
                             onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
                             isMuted={!isListeningThisStation}
                             volume={audioVolume}
+                            onStreamAvailable={(stream) => {
+                                registerStationStream(hostname, stream);
+                            }}
                         />
                     </div>
                 ) : (isStarting || isStopping) ? (
