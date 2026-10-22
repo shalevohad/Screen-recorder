@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import './StationThumbnail.scss';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
 import VirtualTopologyCanvas from './VirtualTopologyCanvas';
+import StationDisplayBar from './StationDisplayBar';
 import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { useAuth } from '../../context/AuthContext';
 import { useAudioSolo } from '../../context/AudioSoloContext';
@@ -148,30 +149,6 @@ export default function StationThumbnail(props) {
                     <span className="station-ip">{ipAddress}</span>
                 </div>
 
-                {displays.length > 1 && (
-                    <div className="card-display-switcher" onClick={e => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            className={`pill-btn ${activeDisplayId === 'canvas' ? 'is-active' : ''}`}
-                            onClick={() => setActiveDisplayId('canvas')}
-                            title="Virtual Desktop Canvas Layout"
-                        >
-                            ⊞ Canvas
-                        </button>
-                        {displays.map((d, idx) => (
-                            <button
-                                key={d.DisplayId}
-                                type="button"
-                                className={`pill-btn ${activeDisplayId === d.DisplayId ? 'is-active' : ''}`}
-                                onClick={() => setActiveDisplayId(d.DisplayId)}
-                                title={`Solo Monitor ${idx + 1}`}
-                            >
-                                🖥 {idx + 1}
-                            </button>
-                        ))}
-                    </div>
-                )}
-
                 <div className="station-header-right">
                     <button
                         type="button"
@@ -262,6 +239,14 @@ export default function StationThumbnail(props) {
                     <div className="offline-screen-matte">
                         <span>{isOnline ? 'STANDBY' : 'OFFLINE'}</span>
                     </div>
+                )}
+
+                {displays.length > 1 && (
+                    <StationDisplayBar
+                        displays={displays}
+                        activeDisplayId={activeDisplayId}
+                        onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
+                    />
                 )}
 
                 {Boolean(isStreaming || isLive) && (

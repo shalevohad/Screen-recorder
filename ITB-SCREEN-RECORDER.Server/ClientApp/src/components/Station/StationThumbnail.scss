@@ -35,6 +35,11 @@
         filter: grayscale(0.3);
     }
 
+    &:has(.display-flyout-menu) {
+        overflow: visible !important;
+        z-index: 50 !important;
+    }
+
     &:has(.card-screen-viewport:hover) {
         .header-action-icon-btn.fullscreen-btn:not(:disabled) {
             background: var(--c2-cyan-tint) !important;
@@ -306,6 +311,11 @@
         aspect-ratio: 16 / 9;
         background: #000;
         cursor: pointer;
+
+        &:has(.display-flyout-menu) {
+            overflow: visible !important;
+            z-index: 50 !important;
+        }
 
         .webrtc-container {
             width: 100%;
