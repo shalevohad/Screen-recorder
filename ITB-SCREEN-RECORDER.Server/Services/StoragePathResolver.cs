@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.Server/Services/StoragePathResolver.cs
 // ==========================================
 using System;
@@ -45,7 +45,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return $"{cleanRoot}/%path/%s_%f";
         }
 
-        private static async Task<bool> IsNetAppReachableAsync(string uncPath)
+        public static async Task<bool> IsNetAppReachableAsync(string uncPath)
         {
             if (string.IsNullOrWhiteSpace(uncPath)) return false;
             try

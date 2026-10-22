@@ -270,8 +270,8 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                         <span>UDP Multicast Address</span>
                         <input
                             type="text"
-                            placeholder="e.g. 239.255.10.90"
-                            value={discovery.multicastAddress ?? '239.255.10.90'}
+                            placeholder="e.g. 239.210.1.5"
+                            value={discovery.multicastAddress ?? '239.210.1.5'}
                             onChange={e => updateDiscoveryField('multicastAddress', e.target.value)}
                         />
                     </div>

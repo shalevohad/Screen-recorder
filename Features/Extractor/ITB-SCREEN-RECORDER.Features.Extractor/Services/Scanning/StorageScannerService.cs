@@ -110,11 +110,20 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         fps INTEGER NOT NULL DEFAULT 0,
                         has_audio INTEGER NOT NULL DEFAULT 0,
                         is_finalized INTEGER NOT NULL DEFAULT 0,
-                        indexed_at_utc INTEGER NOT NULL
+                        indexed_at_utc INTEGER NOT NULL,
+                        display_id TEXT NOT NULL DEFAULT 'mon-0',
+                        is_primary INTEGER NOT NULL DEFAULT 1,
+                        display_bounds TEXT
                     );
                     CREATE INDEX IF NOT EXISTS idx_chunks_station_range 
-                    ON recording_chunks (station_id COLLATE NOCASE, start_epoch_ms, end_epoch_ms);";
+                    ON recording_chunks (station_id COLLATE NOCASE, start_epoch_ms, end_epoch_ms);
+                    CREATE INDEX IF NOT EXISTS idx_chunks_station_display
+                    ON recording_chunks (station_id COLLATE NOCASE, display_id, start_epoch_ms, end_epoch_ms);";
                 cmd.ExecuteNonQuery();
+
+                EnsureColumn(conn, "recording_chunks", "display_id", "TEXT NOT NULL DEFAULT 'mon-0'");
+                EnsureColumn(conn, "recording_chunks", "is_primary", "INTEGER NOT NULL DEFAULT 1");
+                EnsureColumn(conn, "recording_chunks", "display_bounds", "TEXT");
             }
 
             TriggerCatalogSelfHeal();
@@ -137,12 +146,19 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     FROM recording_chunks 
                     WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs
                     UNION
+                    SELECT station_id FROM recording_chunks
+                    UNION
                     SELECT station_id FROM station_nodes;";
 
                 var dbHosts = await conn.QueryAsync<string>(sql, new { startMs, endMs });
                 foreach (var h in dbHosts.Where(s => !string.IsNullOrWhiteSpace(s)))
                 {
                     string clean = h.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? h.Substring(5) : h;
+                    int slashIdx = clean.IndexOf('/');
+                    if (slashIdx > 0)
+                    {
+                        clean = clean.Substring(0, slashIdx);
+                    }
                     hostsSet.Add(clean);
                 }
             }
@@ -189,7 +205,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     string.Equals(dirName, "recordings", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(dirName, "temp", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(dirName, "buffer", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(dirName, "logs", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(dirName, "logs", StringComparison.OrdinalIgnoreCase) ||
+                    dirName.StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                    dirName.StartsWith("display-", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -255,7 +273,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 var existing = await conn.QueryAsync<string>(
                     @"SELECT file_path FROM recording_chunks 
-                      WHERE (station_id = @cleanHost OR station_id = ('live/' || @cleanHost) OR station_id = @rawHost) 
+                      WHERE (station_id = @cleanHost 
+                             OR station_id = ('live/' || @cleanHost) 
+                             OR station_id = @rawHost 
+                             OR station_id LIKE (@cleanHost || '/%') 
+                             OR station_id LIKE ('live/' || @cleanHost || '/%')) 
                         AND is_finalized = 1;",
                     new { cleanHost, rawHost = hostname });
                 foreach (var p in existing) knownFinalizedPaths.Add(p);
@@ -287,9 +309,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                        COALESCE(height, 1080) AS Height,
                        COALESCE(fps, 30) AS Fps,
                        COALESCE(has_audio, 1) AS HasAudio,
-                       COALESCE(is_finalized, 1) AS IsFinalized
+                       COALESCE(is_finalized, 1) AS IsFinalized,
+                       COALESCE(display_id, 'mon-0') AS DisplayId,
+                       COALESCE(is_primary, 1) AS IsPrimary
                 FROM recording_chunks
-                WHERE (station_id = @cleanHost OR station_id = ('live/' || @cleanHost) OR station_id = @rawHost) COLLATE NOCASE
+                WHERE (station_id = @cleanHost 
+                       OR station_id = ('live/' || @cleanHost) 
+                       OR station_id = @rawHost
+                       OR station_id LIKE (@cleanHost || '/%')
+                       OR station_id LIKE ('live/' || @cleanHost || '/%')) COLLATE NOCASE
                   AND end_epoch_ms >= @startMs
                   AND start_epoch_ms <= @endMsTolerance
                 ORDER BY start_epoch_ms ASC;";
@@ -317,7 +345,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     Height = (int)r.Height,
                     Fps = (double)r.Fps,
                     HasAudio = (long)r.HasAudio != 0,
-                    IsFinalized = isFin
+                    IsFinalized = isFin,
+                    DisplayId = r.DisplayId != null ? (string)r.DisplayId : "mon-0",
+                    IsPrimary = r.IsPrimary != null ? ((long)r.IsPrimary != 0) : true
                 });
             }
 
@@ -396,10 +426,28 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 string? targetDir = FindStationDirectory(root, cleanHost);
                 if (targetDir == null) continue;
 
-                var candidateFiles = Directory.EnumerateFiles(targetDir, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase) && !knownPaths.Contains(f))
-                    .OrderBy(f => f)
-                    .ToList();
+                var searchDirs = new List<string> { targetDir };
+                try
+                {
+                    var displaySubDirs = Directory.EnumerateDirectories(targetDir)
+                        .Where(d => Path.GetFileName(d).StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                                    Path.GetFileName(d).StartsWith("display-", StringComparison.OrdinalIgnoreCase));
+                    searchDirs.AddRange(displaySubDirs);
+                }
+                catch { }
+
+                var candidateFiles = new List<string>();
+                foreach (var d in searchDirs)
+                {
+                    try
+                    {
+                        candidateFiles.AddRange(Directory.EnumerateFiles(d, "*.*", SearchOption.TopDirectoryOnly)
+                            .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase) && !knownPaths.Contains(f)));
+                    }
+                    catch { }
+                }
+
+                candidateFiles = candidateFiles.OrderBy(f => f).ToList();
 
                 for (int i = 0; i < candidateFiles.Count; i++)
                 {
@@ -468,7 +516,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     var psi = new ProcessStartInfo
                     {
                         FileName = ffprobePath,
-                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
+                        Arguments = $"-v error -analyzeduration 1M -probesize 1M -threads 2 -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -797,21 +845,28 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             const string sql = @"
                 INSERT INTO recording_chunks (
                     station_id, file_path, start_epoch_ms, end_epoch_ms, 
-                    duration_ms, file_size_bytes, width, height, fps, has_audio, is_finalized, indexed_at_utc
+                    duration_ms, file_size_bytes, width, height, fps, has_audio, is_finalized, indexed_at_utc,
+                    display_id, is_primary
                 ) VALUES (
                     @StationId, @Path, @StartMs, @EndMs, 
-                    (@EndMs - @StartMs), @Size, 1920, 1080, 30, 1, @IsFinalized, @Now
+                    (@EndMs - @StartMs), @Size, 1920, 1080, 30, 1, @IsFinalized, @Now,
+                    @DisplayId, @IsPrimary
                 ) ON CONFLICT(file_path) DO UPDATE SET
                     station_id = excluded.station_id,
                     end_epoch_ms = excluded.end_epoch_ms,
                     duration_ms = (excluded.end_epoch_ms - recording_chunks.start_epoch_ms),
                     file_size_bytes = excluded.file_size_bytes,
                     is_finalized = excluded.is_finalized,
-                    indexed_at_utc = excluded.indexed_at_utc;";
+                    indexed_at_utc = excluded.indexed_at_utc,
+                    display_id = excluded.display_id,
+                    is_primary = excluded.is_primary;";
 
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             foreach (var item in items)
             {
+                string displayId = ExtractDisplayIdFromPath(item.Path);
+                int isPrimary = displayId.Equals("mon-0", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
                 await conn.ExecuteAsync(new CommandDefinition(sql, new { 
                     item.StationId, 
                     item.Path, 
@@ -819,10 +874,58 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     item.EndMs, 
                     item.Size, 
                     IsFinalized = item.IsFinalized ? 1 : 0, 
-                    Now = now 
+                    Now = now,
+                    DisplayId = displayId,
+                    IsPrimary = isPrimary
                 }, tx, cancellationToken: ct));
             }
             await tx.CommitAsync(ct);
+        }
+
+        private static string ExtractDisplayIdFromPath(string filePath)
+        {
+            try
+            {
+                var parent = Directory.GetParent(filePath);
+                if (parent != null)
+                {
+                    if (parent.Name.StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                        parent.Name.StartsWith("display-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return parent.Name;
+                    }
+                }
+            }
+            catch { }
+            return "mon-0";
+        }
+
+        private static void EnsureColumn(SqliteConnection conn, string tableName, string columnName, string columnDefinition)
+        {
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"PRAGMA table_info({tableName});";
+                using var reader = cmd.ExecuteReader();
+                bool exists = false;
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+                reader.Close();
+
+                if (!exists)
+                {
+                    using var alterCmd = conn.CreateCommand();
+                    alterCmd.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};";
+                    alterCmd.ExecuteNonQuery();
+                }
+            }
+            catch { }
         }
 
         private IEnumerable<string> ResolveActiveStorageRoots()

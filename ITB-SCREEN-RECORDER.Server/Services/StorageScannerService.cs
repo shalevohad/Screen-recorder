@@ -62,14 +62,15 @@ public class StorageScannerService : IStorageScannerService
         StatusMessage: "System Idle"
     );
 
-    private static readonly HashSet<string> ReservedDirNames = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly HashSet<string> ReservedDirNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "logs", "export", "exports", "recordingsbuffer", "buffer", "temp", ".git"
+        "logs", "export", "exports", "recordingsbuffer", "buffer", "temp", ".git",
+        ".snapshot", "~snapshot", ".zfs", "$RECYCLE.BIN", "System Volume Information", "lost+found", "@Recycle"
     };
 
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp4", ".fmp4", ".flv", ".mkv", ".ts"
+        ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov"
     };
 
     public StorageScannerService(
@@ -331,6 +332,13 @@ public class StorageScannerService : IStorageScannerService
         int fps = probe.Fps > 0 ? probe.Fps : (config.DefaultTargetFps > 0 ? config.DefaultTargetFps : 30);
         bool hasAudio = probe.HasAudio;
 
+        string displayId = "mon-0";
+        string? parentDir = Path.GetFileName(Path.GetDirectoryName(filePath));
+        if (!string.IsNullOrEmpty(parentDir) && (parentDir.StartsWith("mon-", StringComparison.OrdinalIgnoreCase) || parentDir.StartsWith("display-", StringComparison.OrdinalIgnoreCase)))
+        {
+            displayId = parentDir.ToLowerInvariant();
+        }
+
         return new ChunkFinalizedEvent(
             StationId: stationId,
             FilePath: fileInfo.FullName,
@@ -341,7 +349,8 @@ public class StorageScannerService : IStorageScannerService
             Width: width,
             Height: height,
             Fps: fps,
-            HasAudio: hasAudio
+            HasAudio: hasAudio,
+            DisplayId: displayId
         );
     }
 

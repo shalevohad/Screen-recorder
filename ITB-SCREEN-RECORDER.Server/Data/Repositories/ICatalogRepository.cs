@@ -29,7 +29,7 @@ public interface ICatalogRepository : IKeystrokeRepository
 {
     // Recording Chunks
     Task BulkUpsertChunksAsync(IEnumerable<ChunkFinalizedEvent> chunks);
-    Task UpsertActiveChunkAsync(string stationId, string filePath, long startEpochMs, int fps, int width, int height, bool hasAudio);
+    Task UpsertActiveChunkAsync(string stationId, string filePath, long startEpochMs, int fps, int width, int height, bool hasAudio, string displayId = "mon-0");
     Task FinalizeChunkAsync(string filePath, long endEpochMs, long fileSizeBytes);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetChunksForWindowAsync(string stationId, long fromEpochMs, long toEpochMs);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit);

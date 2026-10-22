@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import WebRTCPlayer from '../Player/WebRTCPlayer';
+import VirtualTopologyCanvas from './VirtualTopologyCanvas';
+import FullscreenMinimapNavigator from './FullscreenMinimapNavigator';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
 import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
+import { useAudioSolo } from '../../context/AudioSoloContext';
 import './FullscreenModal.scss';
 
 export default function FullscreenModal(props) {
+    const { registerStationStream } = useAudioSolo();
     const {
         hostname,
         webrtcBaseUrl,
@@ -33,6 +37,23 @@ export default function FullscreenModal(props) {
     const [confirmStop, setConfirmStop] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const [activeDisplayId, setActiveDisplayId] = useState(props.initialDisplayId || 'canvas');
+
+    const displays = useMemo(() => {
+        const raw = props.displays || props.Displays || props.displayTopology?.displays || props.DisplayTopology?.Displays;
+        if (raw && raw.length > 0) {
+            return raw.map(d => ({
+                DisplayId: d.DisplayId || d.displayId || 'mon-0',
+                DisplayName: d.DisplayName || d.displayName || 'Display',
+                IsPrimary: Boolean(d.IsPrimary ?? d.isPrimary),
+                X: d.X ?? d.x ?? 0,
+                Y: d.Y ?? d.y ?? 0,
+                Width: d.Width || d.width || 1920,
+                Height: d.Height || d.height || 1080
+            }));
+        }
+        return [];
+    }, [props.displays, props.Displays, props.displayTopology, props.DisplayTopology]);
 
     // יחס מסך דינמי שמתאים את עצמו לרזולוציית התחנה (ברירת מחדל 16:9)
     const [aspectRatio, setAspectRatio] = useState(16 / 9);
@@ -43,6 +64,7 @@ export default function FullscreenModal(props) {
             if (!modalBoxRef.current) return;
             const videoEl = modalBoxRef.current.querySelector('video');
             if (videoEl && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+                setIsVideoPlaying(true);
                 const streamRatio = videoEl.videoWidth / videoEl.videoHeight;
                 if (Math.abs(streamRatio - aspectRatio) > 0.01) {
                     setAspectRatio(streamRatio);
@@ -50,7 +72,7 @@ export default function FullscreenModal(props) {
             }
         };
 
-        const interval = setInterval(checkVideoDimensions, 500);
+        const interval = setInterval(checkVideoDimensions, 300);
         return () => clearInterval(interval);
     }, [aspectRatio]);
 
@@ -185,6 +207,30 @@ export default function FullscreenModal(props) {
                         </span>
                     </div>
 
+                    {displays.length > 1 && (
+                        <div className="modal-display-switcher">
+                            <button
+                                type="button"
+                                className={`modal-pill-btn ${activeDisplayId === 'canvas' ? 'is-active' : ''}`}
+                                onClick={() => setActiveDisplayId('canvas')}
+                                title="Virtual Desktop Canvas Layout"
+                            >
+                                ⊞ CANVAS
+                            </button>
+                            {displays.map((d, idx) => (
+                                <button
+                                    key={d.DisplayId}
+                                    type="button"
+                                    className={`modal-pill-btn ${activeDisplayId === d.DisplayId ? 'is-active' : ''}`}
+                                    onClick={() => setActiveDisplayId(d.DisplayId)}
+                                    title={`Monitor ${idx + 1} (${d.Width}x${d.Height})`}
+                                >
+                                    🖥 {idx + 1}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
                     <div className="modal-actions-cluster">
                         {!isStreaming ? (
                             <button
@@ -247,7 +293,7 @@ export default function FullscreenModal(props) {
 
                 <div className="stream-modal-body">
                     {!isVideoPlaying && (
-                        <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
+                        <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
                             <CyberLoadingOverlay
                                 text="ESTABLISHING SECURE STREAM..."
                                 size="large"
@@ -255,12 +301,17 @@ export default function FullscreenModal(props) {
                         </div>
                     )}
 
-                    <WebRTCPlayer
-                        streamPath={`live/${hostname}`}
-                        webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                        showControls={false}
+                    <VirtualTopologyCanvas
+                        station={{ ...props, hostname }}
+                        activeDisplayId={activeDisplayId}
+                        onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
                         isMuted={isMuted}
+                        volume={1}
+                        isInteractive={false}
                         onPlaying={() => setIsVideoPlaying(true)}
+                        onStreamAvailable={(stream) => {
+                            registerStationStream?.(hostname, stream);
+                        }}
                     />
 
                     {isStreaming && (
@@ -269,6 +320,14 @@ export default function FullscreenModal(props) {
                             isLive={isStreaming}
                             variant="fullscreen"
                             mode={props.keystrokeMode || 'burn-in'}
+                        />
+                    )}
+
+                    {activeDisplayId !== 'canvas' && displays.length > 1 && (
+                        <FullscreenMinimapNavigator
+                            station={props}
+                            activeDisplayId={activeDisplayId}
+                            onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
                         />
                     )}
 

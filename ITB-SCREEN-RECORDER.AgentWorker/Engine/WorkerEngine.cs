@@ -1,6 +1,7 @@
 // ==========================================
 // File: ITB-SCREEN-RECORDER.AgentWorker/WorkerEngine.cs
 // ==========================================
+using ITB_SCREEN_RECORDER.AgentWorker.Engine;
 using ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard;
 using ITB_SCREEN_RECORDER.AgentWorker.Providers.Video;
 using ITB_SCREEN_RECORDER.Core.Common;
@@ -47,7 +48,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private DateTime? _sessionStartTimeUtc = null;
 
-        private VideoPipeline? _videoPipe;
+        private readonly MultiDisplayPipelineManager _displayManager;
         private AudioPacer? _audioPacer;
         private IAudioCaptureProvider? _audioCapture;
 
@@ -64,6 +65,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _baselineFps = config.TargetFps > 0 ? config.TargetFps : 30;
             _videoBitrate = string.IsNullOrWhiteSpace(config.VideoBitrate) ? "5000k" : config.VideoBitrate;
+            _displayManager = new MultiDisplayPipelineManager(config);
 
             Logger.Info($"[WORKER:LIFECYCLE] Engine created. TargetFPS: {_baselineFps}, VideoBitrate: {_videoBitrate}");
 
@@ -180,7 +182,13 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 Logger.Info($"[WORKER:CLOCK] Synchronized clock offset with master server: {offset.TotalMilliseconds:F1}ms");
             };
 
-            _ipc.CaptureFpsRequested += fps => _videoPipe?.SetCaptureFps(fps, _baselineFps);
+            _ipc.CaptureFpsRequested += fps =>
+            {
+                foreach (var p in _displayManager.ActivePipelines)
+                {
+                    p.VideoPipe.SetCaptureFps(fps, _baselineFps);
+                }
+            };
 
             _ipc.ServerDisconnected += () =>
             {
@@ -222,14 +230,46 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
             }
 
-            using var guard = SessionGuardFactory.Create(() =>
-            {
-                if (_isStreaming)
+            using var guard = SessionGuardFactory.Create(
+                () =>
                 {
-                    Logger.Info("[WORKER:SESSION] Triggering session restoration restart.");
-                    _requiresRestart = true;
-                }
-            });
+                    if (_isStreaming)
+                    {
+                        Logger.Info("[WORKER:SESSION] Triggering session restoration restart.");
+                        _requiresRestart = true;
+                    }
+                },
+                () =>
+                {
+                    if (_isStreaming)
+                    {
+                        Logger.Info("[WORKER:SESSION] Display topology changed. Dynamically synchronizing pipelines...");
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await _displayManager.SynchronizePipelinesAsync(
+                                    ResolveDestination(),
+                                    _serverUtcOffset,
+                                    _baselineFps,
+                                    _videoBitrate,
+                                    _audioCapture,
+                                    _audioPacer,
+                                    bytes => _netTelemetry.TrackMediaBytes(bytes),
+                                    () =>
+                                    {
+                                        _isOffline = true;
+                                        _requiresRestart = true;
+                                    },
+                                    ct).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.Warn($"[WORKER:TOPOLOGY] Dynamic pipeline sync error: {ex.Message}");
+                            }
+                        });
+                    }
+                });
 
             _ = _ipc.RunAsync(BuildTelemetrySnapshot, ct);
 
@@ -266,6 +306,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             finally
             {
                 _keyboardCapture.Dispose();
+                _displayManager.Dispose();
                 if (OperatingSystem.IsWindows())
                 {
                     try { WindowsNative.TimeEndPeriod(1); } catch { }
@@ -276,156 +317,77 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private async Task RunStreamingSessionAsync(ISessionGuard guard, CancellationToken ct)
         {
-            Logger.Info("[WORKER:LIFECYCLE] Initializing hardware capture providers...");
+            Logger.Info("[WORKER:LIFECYCLE] Initializing multi-display hardware capture pipelines...");
 #if WINDOWS
             DesktopSecurityManager.TryAttachToInputDesktop();
 #endif
-            using var screen = ScreenCaptureFactory.Create();
-            screen.Initialize();
-            Logger.Info($"[WORKER:LIFECYCLE] Screen capture provider ready ({screen.Width}x{screen.Height}).");
-
             using var audio = AudioCaptureFactory.Create();
             audio.Initialize();
             audio.Start();
             _audioCapture = audio;
+            _audioPacer = new AudioPacer();
             Logger.Info("[WORKER:LIFECYCLE] Audio capture provider initialized and started.");
 
-            using var ffmpeg = new FfmpegProcessManager(_config);
-            _videoPipe = new VideoPipeline(screen.Width, screen.Height, _baselineFps);
-            _audioPacer = new AudioPacer();
-
             bool sessionActive = true;
-            byte[]? latestFrame = new byte[screen.Width * screen.Height * 4];
+            string destination = ResolveDestination();
+
+            await _displayManager.SynchronizePipelinesAsync(
+                destination,
+                _serverUtcOffset,
+                _baselineFps,
+                _videoBitrate,
+                audio,
+                _audioPacer,
+                bytes => _netTelemetry.TrackMediaBytes(bytes),
+                () =>
+                {
+                    Logger.Warn("[WORKER:LIFECYCLE] Pipe broken event received. Flagging for session restart.");
+                    _isOffline = true;
+                    _requiresRestart = true;
+                },
+                ct).ConfigureAwait(false);
+
+            var primary = _displayManager.ActivePipelines.FirstOrDefault(p => p.IsPrimary)
+                       ?? _displayManager.ActivePipelines.FirstOrDefault();
+
+            if (primary == null)
+            {
+                Logger.Error("[WORKER:LIFECYCLE] No display pipeline was successfully engaged. Aborting session.");
+                _isStreaming = false;
+                _sessionStartTimeUtc = null;
+                return;
+            }
 
             audio.AudioDataAvailable += (s, data) =>
             {
-                if (ffmpeg.IsRunning && sessionActive)
+                if (primary.Ffmpeg.IsRunning && sessionActive)
                 {
-                    ffmpeg.WriteAudioData(data);
+                    primary.Ffmpeg.WriteAudioData(data);
                     _audioPacer.RecordIncomingBytes(data.Length);
                     _netTelemetry.TrackMediaBytes(data.Length);
                 }
             };
 
-            string destination = ResolveDestination();
-            Logger.Info($"[WORKER:LIFECYCLE] Launching FFmpeg native process -> Destination: {destination}");
-
-            DateTime calibratedUtc = DateTime.UtcNow + _serverUtcOffset;
-
-            bool started = await ffmpeg.StartAsync(destination, calibratedUtc,
-                screen.Width, screen.Height, 48000, 2, "f32le", _baselineFps, _videoBitrate, ct).ConfigureAwait(false);
-
-            if (!started)
-            {
-                Logger.Error("[WORKER:LIFECYCLE] FFmpeg failed to launch. Aborting session.");
-                _isStreaming = false;
-                _sessionStartTimeUtc = null;
-                return;
-            }
-
-            var handshakeTask = ffmpeg.CompleteAudioHandshakeAsync(ct);
-            _ = Task.Run(() =>
-            {
-                byte[]? initialFrame = null;
-                try
-                {
-                    if (screen.TryCaptureFrame(out var captured) && captured != null)
-                    {
-                        initialFrame = new byte[captured.Length];
-                        Buffer.BlockCopy(captured, 0, initialFrame, 0, captured.Length);
-                        latestFrame = initialFrame;
-                    }
-                }
-                catch { }
-
-                initialFrame ??= new byte[screen.Width * screen.Height * 4];
-                ffmpeg.WriteVideoFrame(initialFrame);
-            }, ct);
-
-            if (!await handshakeTask.ConfigureAwait(false))
-            {
-                Logger.Error("[WORKER:LIFECYCLE] TCP loopback audio handshake timed out. Halting session.");
-                _isStreaming = false;
-                _sessionStartTimeUtc = null;
-                return;
-            }
-
             long startTicks = Stopwatch.GetTimestamp();
             _audioPacer.Start(startTicks);
-            Logger.Info("[WORKER:LIFECYCLE] Media pipeline active. Streaming fully engaged.");
-
-            var writerTask = _videoPipe.StartWriterAsync(
-                ffmpeg,
-                () =>
-                {
-                    Logger.Warn("[WORKER:LIFECYCLE] FFmpeg broken pipe event received. Flagging for session restart.");
-                    _isOffline = true;
-                    _requiresRestart = true;
-                },
-                bytes => _netTelemetry.TrackMediaBytes(bytes),
-                ct);
-
-            var captureTask = Task.Run(async () =>
-            {
-                Logger.Info("[WORKER:LIFECYCLE] Screen capture sampling thread started.");
-#if WINDOWS
-                DesktopSecurityManager.TryAttachToInputDesktop();
-#endif
-                long lastTicks = Stopwatch.GetTimestamp();
-                int consecutiveHardErrors = 0;
-
-                while (sessionActive && !ct.IsCancellationRequested)
-                {
-                    if (Stopwatch.GetElapsedTime(lastTicks).TotalMilliseconds >= (1000.0 / _videoPipe.InternalCaptureFps))
-                    {
-                        try
-                        {
-                            if (screen.TryCaptureFrame(out byte[]? f) && f != null)
-                            {
-                                Interlocked.Exchange(ref latestFrame, f);
-                                consecutiveHardErrors = 0;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            consecutiveHardErrors++;
-                            Logger.Warn($"[WORKER:LIFECYCLE] Capture device error ({consecutiveHardErrors}/30): {ex.Message}");
-
-                            if (consecutiveHardErrors >= 30)
-                            {
-                                Logger.Warn("[WORKER:LIFECYCLE] 30 consecutive fatal capture failures. Requesting SessionGuard restoration...");
-                                await guard.MonitorUntilRestoredAsync(ct).ConfigureAwait(false);
-                                consecutiveHardErrors = 0;
-                            }
-                        }
-
-                        lastTicks = Stopwatch.GetTimestamp();
-                    }
-                    else
-                    {
-                        Thread.Sleep(1);
-                    }
-                }
-            }, ct);
 
             var audioTask = _audioPacer.RunPacerLoopAsync(
-                ffmpeg,
+                primary.Ffmpeg,
                 bytes => _netTelemetry.TrackMediaBytes(bytes),
                 () => sessionActive,
                 ct);
 
-            _videoPipe.RunPacerLoop(
-                () => Volatile.Read(ref latestFrame),
-                screen.Width, screen.Height,
-                _baselineFps,
-                startTicks,
-                () => _isStreaming && !_requiresRestart,
-                ct);
+            Logger.Info($"[WORKER:LIFECYCLE] Media pipelines active ({_displayManager.ActivePipelines.Count} displays). Streaming fully engaged.");
+
+            while (sessionActive && _isStreaming && !_requiresRestart && !ct.IsCancellationRequested)
+            {
+                await Task.Delay(250, ct).ConfigureAwait(false);
+            }
 
             Logger.Info("[WORKER:LIFECYCLE] Stopping session components and flushing buffers...");
             sessionActive = false;
-            _videoPipe.Complete();
             audio.Stop();
+            _displayManager.Dispose();
             Logger.Info("[WORKER:LIFECYCLE] Session resources successfully released.");
         }
 
@@ -473,6 +435,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 while (_onlineKeystrokes.TryDequeue(out _)) { }
             }
 
+            var primary = _displayManager.ActivePipelines.FirstOrDefault(p => p.IsPrimary)
+                       ?? _displayManager.ActivePipelines.FirstOrDefault();
+
             return new
             {
                 SessionState = InternalSessionState.ActiveInteractive,
@@ -483,12 +448,13 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 IsOfflineMode = _isOffline,
                 HasAudio = flowing,
                 Keystrokes = keysToSend.Count > 0 ? keysToSend : null,
+                DisplayTopology = _displayManager.CurrentTopology,
                 Telemetry = _isStreaming ? new
                 {
-                    ActualFps = _videoPipe?.RealFps ?? 0,
-                    DroppedFrames = _videoPipe?.DroppedFrames ?? 0,
-                    InternalCaptureFps = _videoPipe?.InternalCaptureFps ?? _baselineFps,
-                    QosTier = _videoPipe?.CurrentQosTier ?? 3,
+                    ActualFps = primary?.VideoPipe?.RealFps ?? 0,
+                    DroppedFrames = primary?.VideoPipe?.DroppedFrames ?? 0,
+                    InternalCaptureFps = primary?.VideoPipe?.InternalCaptureFps ?? _baselineFps,
+                    QosTier = primary?.VideoPipe?.CurrentQosTier ?? 3,
                     HostCpuPct = hw.HostCpuUsagePct,
                     ProcessCpuPct = hw.ProcessCpuUsagePct,
                     ProcessRamMb = hw.ProcessRamMb,

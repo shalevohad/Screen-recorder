@@ -40,7 +40,7 @@ public static class AgentConfigurator
 
             string serverIp = parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1].Trim() : "AUTO";
             string discPort = parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2]) ? parts[2].Trim() : "5098";
-            string discMcast = parts.Length > 3 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3].Trim() : "239.255.10.90";
+            string discMcast = parts.Length > 3 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3].Trim() : "239.210.1.5";
             string discBcast = parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]) ? parts[4].Trim() : "255.255.255.255";
 
             bool isAuto = string.Equals(serverIp, "AUTO", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(serverIp);

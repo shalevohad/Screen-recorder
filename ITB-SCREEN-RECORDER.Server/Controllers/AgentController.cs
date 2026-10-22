@@ -177,6 +177,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     OfflineFilesTotalSizeMb = report.OfflineFilesTotalSizeMb,
                     NicTotalTxMbps = report.NicTotalTxMbps,
                     NicTotalRxMbps = report.NicTotalRxMbps,
+                    DisplayTopology = report.DisplayTopology,
                     Keystrokes = decryptedKeystrokes
                 };
 

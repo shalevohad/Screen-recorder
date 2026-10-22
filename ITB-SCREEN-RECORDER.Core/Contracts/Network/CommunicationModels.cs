@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 
 namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
 {
@@ -148,6 +149,10 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         // 💡 דיווח אירועי מקלדת חיים באותו ערוץ טלמטריה
         [JsonPropertyName("keystrokes")]
         public List<KeystrokeEventDto>? Keystrokes { get; set; }
+
+        // 🖥️ טופולוגיית מסכים מרובים וכרטיסי מסך
+        [JsonPropertyName("displayTopology")]
+        public StationDisplayTopologyDto? DisplayTopology { get; set; }
     }
 
     public class AgentHeartbeatResponse

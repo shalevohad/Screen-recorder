@@ -58,6 +58,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public double Fps { get; set; } = 30.0;
         public bool HasAudio { get; set; } = true;
         public bool IsFinalized { get; set; } = true;
+        public string DisplayId { get; set; } = "mon-0";
+        public bool IsPrimary { get; set; } = true;
     }
 
     public class SessionManifest

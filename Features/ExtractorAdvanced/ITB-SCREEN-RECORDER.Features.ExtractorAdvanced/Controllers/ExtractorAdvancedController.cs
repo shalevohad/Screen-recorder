@@ -97,16 +97,30 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
+                if (availableHosts.Count == 0)
+                {
+                    // Fallback to wider retention window (30 days) so stations with archives are never omitted
+                    availableHosts = await _storageScanner.GetAvailableHostsAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
+                }
+
                 var stationDtos = new ConcurrentBag<object>();
 
                 await Parallel.ForEachAsync(availableHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
-                    if (lStart.HasValue && lEnd.HasValue && chunks.Count == 0)
-                    {
-                        return;
-                    }
                     var sample = chunks.LastOrDefault();
+
+                    if (sample == null)
+                    {
+                        // Check if the host has any recordings overall within storage retention (30 days)
+                        var fallbackChunks = await _storageScanner.GetChunksForStationAsync(host, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
+                        if (fallbackChunks.Count == 0)
+                        {
+                            // Station has zero recordings on disk or in database
+                            return;
+                        }
+                        sample = fallbackChunks.LastOrDefault();
+                    }
 
                     int width = sample?.Width ?? 1920;
                     int height = sample?.Height ?? 1080;

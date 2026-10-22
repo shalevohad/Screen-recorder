@@ -48,7 +48,36 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             IProgress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>? progress = null,
             CancellationToken ct = default)
         {
-            var orderedChunks = stationChunks.OrderBy(c => c.StartUtc).ToList();
+            string safeStationId = stationId.Replace('/', '_').Replace('\\', '_');
+            var targetChunks = stationChunks;
+
+            string? requestedDisplay = null;
+            if (stationId.Contains('/'))
+            {
+                var parts = stationId.Split('/');
+                if (parts.Length > 1 && parts[^1].StartsWith("mon-", StringComparison.OrdinalIgnoreCase))
+                {
+                    requestedDisplay = parts[^1];
+                }
+            }
+
+            if (!string.IsNullOrEmpty(requestedDisplay))
+            {
+                var specificChunks = targetChunks.Where(c => string.Equals(c.DisplayId, requestedDisplay, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (specificChunks.Count > 0)
+                {
+                    targetChunks = specificChunks;
+                }
+            }
+            else if (targetChunks.Any(c => !string.IsNullOrEmpty(c.DisplayId) && !string.Equals(c.DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase)))
+            {
+                var primaryChunks = targetChunks.Where(c => string.Equals(c.DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase) || c.IsPrimary).ToList();
+                if (primaryChunks.Count > 0)
+                {
+                    targetChunks = primaryChunks;
+                }
+            }
+            var orderedChunks = targetChunks.OrderBy(c => c.StartUtc).ToList();
             var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
 
             async Task<ProbedStationMetadata> GetChunkProbeAsync(RecordingChunkMetadata? chunk)
@@ -206,10 +235,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 throw new InvalidOperationException($"No media timeline created for station {stationId}.");
             }
 
-            string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{stationId}_{Guid.NewGuid():N}.txt");
+            string tempManifestPath = Path.Combine(Path.GetTempPath(), $"concat_{safeStationId}_{Guid.NewGuid():N}.txt");
             await File.WriteAllLinesAsync(tempManifestPath, manifestLines, new UTF8Encoding(false), ct);
 
-            string outputPath = Path.Combine(tempOutputDir, $"{stationId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.mp4");
+            string outputPath = Path.Combine(tempOutputDir, $"{safeStationId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.mp4");
 
             var vfFilters = new List<string> { "fade=t=in:st=0:d=0.3:enable='between(t,0,0.3)'" };
 

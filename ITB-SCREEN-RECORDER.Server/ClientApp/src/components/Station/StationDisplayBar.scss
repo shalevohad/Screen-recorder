@@ -1,0 +1,211 @@
+// ClientApp/src/components/Station/StationDisplayBar.scss
+
+.station-display-bar-wrapper {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 30;
+    user-select: none;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    // 1. The Vertical Pill Strip of round buttons
+    .vertical-display-strip {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        padding: 4px;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+        .display-strip-btn {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #cbd5e1;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 0;
+
+            .number-label {
+                font-size: 11px;
+                font-weight: 700;
+                font-family: 'JetBrains Mono', monospace;
+                line-height: 1;
+            }
+
+            &:hover {
+                background: rgba(51, 65, 85, 0.9);
+                border-color: rgba(6, 182, 212, 0.5);
+                color: #f8fafc;
+                transform: scale(1.08);
+            }
+
+            // Selected/Active round button (e.g. * or 1 or 2)
+            &.is-active {
+                background: #0284c7;
+                background: linear-gradient(135deg, #0ea5e9, #0284c7);
+                border-color: #38bdf8;
+                color: #ffffff;
+                box-shadow: 0 0 10px rgba(14, 165, 233, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4);
+                transform: scale(1.05);
+
+                svg {
+                    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+                }
+            }
+
+            &.btn-menu-trigger {
+                &.is-active {
+                    background: rgba(6, 182, 212, 0.25);
+                    border-color: #06b6d4;
+                    color: #22d3ee;
+                }
+            }
+        }
+    }
+
+    // 2. Flyout Popup Menu
+    .display-flyout-menu {
+        position: absolute;
+        top: 0;
+        min-width: 260px;
+        max-width: 320px;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(6, 182, 212, 0.35);
+        border-radius: 8px;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(6, 182, 212, 0.15);
+        padding: 5px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        z-index: 100;
+        animation: flyoutSlideIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+        &.direction-right {
+            left: calc(100% + 8px);
+        }
+
+        &.direction-left {
+            right: calc(100% + 8px);
+        }
+
+        .flyout-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: left;
+
+            &:hover {
+                background: rgba(30, 41, 59, 0.8);
+                border-color: rgba(255, 255, 255, 0.08);
+
+                .item-title {
+                    color: #38bdf8;
+                }
+            }
+
+            &.is-active {
+                background: rgba(6, 182, 212, 0.16);
+                border-color: rgba(6, 182, 212, 0.4);
+
+                .item-title {
+                    color: #22d3ee;
+                    font-weight: 700;
+                }
+
+                .monitor-wireframe-badge .wireframe-svg .wireframe-rect.is-selected {
+                    stroke: #22d3ee;
+                    fill: rgba(34, 211, 238, 0.3);
+                }
+            }
+
+            .item-text-group {
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+
+                .item-title {
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #f1f5f9;
+                    line-height: 1.2;
+                    transition: color 0.15s ease;
+                }
+
+                .item-subtitle {
+                    font-size: 11px;
+                    color: #94a3b8;
+                    line-height: 1.3;
+                    margin-top: 2px;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+            }
+        }
+    }
+
+    // 3. Mini Wireframe SVG Badge
+    .monitor-wireframe-badge {
+        width: 32px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background: rgba(2, 6, 23, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        padding: 2px;
+
+        .wireframe-svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+
+            .wireframe-rect {
+                stroke-width: 120px;
+                transition: all 0.2s ease;
+
+                &.is-selected {
+                    stroke: #0284c7;
+                    fill: rgba(14, 165, 233, 0.35);
+                }
+
+                &.is-dimmed {
+                    stroke: rgba(148, 163, 184, 0.35);
+                    fill: rgba(15, 23, 42, 0.4);
+                }
+            }
+        }
+    }
+}
+
+@keyframes flyoutSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateX(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateX(0);
+    }
+}

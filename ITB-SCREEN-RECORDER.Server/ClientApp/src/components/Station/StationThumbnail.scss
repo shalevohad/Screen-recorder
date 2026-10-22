@@ -35,6 +35,11 @@
         filter: grayscale(0.3);
     }
 
+    &:has(.display-flyout-menu) {
+        overflow: visible !important;
+        z-index: 50 !important;
+    }
+
     &:has(.card-screen-viewport:hover) {
         .header-action-icon-btn.fullscreen-btn:not(:disabled) {
             background: var(--c2-cyan-tint) !important;
@@ -93,11 +98,76 @@
             }
         }
 
+        .card-display-switcher {
+            display: flex;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 2px;
+            gap: 2px;
+
+            .pill-btn {
+                background: transparent;
+                border: none;
+                color: #94A3B8;
+                font-size: 0.65rem;
+                font-weight: 700;
+                padding: 2px 6px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    color: #F8FAFC;
+                    background: rgba(255, 255, 255, 0.08);
+                }
+
+                &.is-active {
+                    background: #06B6D4;
+                    color: #070A10;
+                    box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+                }
+            }
+        }
+
         .station-header-right {
             display: flex;
             align-items: center;
             gap: 6px;
             flex-shrink: 0;
+
+            .tactical-audio-listen-btn {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                background: rgba(30, 41, 59, 0.8);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                color: #94A3B8;
+                font-size: 0.68rem;
+                font-weight: 700;
+                padding: 3px 7px;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+
+                &:hover {
+                    border-color: #06B6D4;
+                    color: #FFFFFF;
+                    background: rgba(6, 182, 212, 0.15);
+                }
+
+                &.listening {
+                    background: rgba(16, 185, 129, 0.2);
+                    border-color: #10B981;
+                    color: #6EE7B7;
+                    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+                }
+
+                .audio-icon {
+                    font-size: 0.75rem;
+                }
+            }
 
             .one-click-rec-btn {
                 display: flex;
@@ -241,6 +311,11 @@
         aspect-ratio: 16 / 9;
         background: #000;
         cursor: pointer;
+
+        &:has(.display-flyout-menu) {
+            overflow: visible !important;
+            z-index: 50 !important;
+        }
 
         .webrtc-container {
             width: 100%;

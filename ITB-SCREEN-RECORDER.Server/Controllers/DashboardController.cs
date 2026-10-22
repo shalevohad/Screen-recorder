@@ -10,6 +10,9 @@ using ITB_SCREEN_RECORDER.Server.Services.Network;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 
+using System.IO;
+using Microsoft.Extensions.Logging;
+
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
     [ApiController]
@@ -79,6 +82,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 bool isStreaming = agent.IsStreaming;
                 aliases.TryGetValue(agent.Hostname, out string? roleAlias);
 
+                var topology = agent.DisplayTopology;
+                var displays = topology?.Displays ?? new List<ITB_SCREEN_RECORDER.Core.Contracts.Topology.DisplayMetadataDto>();
+
                 return new
                 {
                     agent.Hostname,
@@ -113,9 +119,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     Gpu3dPct = agent.Gpu3dPct,
                     GpuNvencPct = agent.GpuNvencPct,
 
+                    DisplayTopology = topology,
+                    Displays = displays,
+
                     HlsUrl = $"{Request.Scheme}://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });
+
 
             return Ok(result);
         }

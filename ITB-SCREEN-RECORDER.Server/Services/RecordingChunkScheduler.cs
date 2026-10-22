@@ -249,8 +249,18 @@ public class RecordingChunkScheduler : BackgroundService
                 endEpochMs = startEpochMs + (intervalMinutes * 60 * 1000);
             }
 
-            string stationName = Path.GetFileName(stationPath);
-            var (width, height, fps, hasAudio) = ResolveTelemetryMetadata(stationName, config);
+            string norm = stationPath.Replace('\\', '/').Trim('/');
+            if (norm.StartsWith("live/", StringComparison.OrdinalIgnoreCase))
+            {
+                norm = norm.Substring("live/".Length);
+            }
+            string[] parts = norm.Split('/');
+            string stationName = parts[0];
+            string displayId = parts.Length > 1 && parts[1].StartsWith("mon-", StringComparison.OrdinalIgnoreCase)
+                ? parts[1]
+                : "mon-0";
+
+            var (width, height, fps, hasAudio) = ResolveTelemetryMetadata(stationName, displayId, config);
 
             return new ChunkFinalizedEvent(
                 StationId: stationName,
@@ -262,7 +272,8 @@ public class RecordingChunkScheduler : BackgroundService
                 Width: width,
                 Height: height,
                 Fps: fps,
-                HasAudio: hasAudio
+                HasAudio: hasAudio,
+                DisplayId: displayId
             );
         }
         catch (Exception ex)
@@ -312,7 +323,7 @@ public class RecordingChunkScheduler : BackgroundService
         return null;
     }
 
-    private (int Width, int Height, int Fps, bool HasAudio) ResolveTelemetryMetadata(string stationId, SystemConfig config)
+    private (int Width, int Height, int Fps, bool HasAudio) ResolveTelemetryMetadata(string stationId, string displayId, SystemConfig config)
     {
         try
         {
@@ -321,10 +332,13 @@ public class RecordingChunkScheduler : BackgroundService
 
             if (agent != null)
             {
-                int width = agent.ScreenWidth > 0 ? agent.ScreenWidth : 0;
-                int height = agent.ScreenHeight > 0 ? agent.ScreenHeight : 0;
-                int fps = agent.ActualFps > 0 ? agent.ActualFps : (agent.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0);
-                bool hasAudio = agent.HasAudio;
+                var display = agent.DisplayTopology?.Displays?
+                    .FirstOrDefault(d => string.Equals(d.DisplayId, displayId, StringComparison.OrdinalIgnoreCase));
+
+                int width = display?.Width ?? (agent.ScreenWidth > 0 ? agent.ScreenWidth : 0);
+                int height = display?.Height ?? (agent.ScreenHeight > 0 ? agent.ScreenHeight : 0);
+                int fps = display?.TargetFps ?? (agent.ActualFps > 0 ? agent.ActualFps : (agent.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0));
+                bool hasAudio = string.Equals(displayId, "mon-0", StringComparison.OrdinalIgnoreCase) && agent.HasAudio;
 
                 return (width, height, fps, hasAudio);
             }

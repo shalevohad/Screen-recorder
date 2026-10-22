@@ -16,6 +16,12 @@ namespace ITBRecorderAgent.Providers.Video
     {
         public int Width { get; private set; }
         public int Height { get; private set; }
+        public int X { get; private set; }
+        public int Y { get; private set; }
+        public string DeviceName { get; private set; } = string.Empty;
+        public uint AdapterIndex { get; }
+        public uint OutputIndex { get; }
+        public string DisplayId { get; }
         public bool IsInitialized { get; private set; }
 
         private ID3D11Device? _device;
@@ -29,30 +35,53 @@ namespace ITBRecorderAgent.Providers.Video
         private DateTime _lastReinitAttemptUtc = DateTime.MinValue;
         private static readonly TimeSpan ReinitRetryInterval = TimeSpan.FromSeconds(2);
 
+        public DxgiScreenCapture(uint adapterIndex = 0, uint outputIndex = 0, string displayId = "mon-0")
+        {
+            AdapterIndex = adapterIndex;
+            OutputIndex = outputIndex;
+            DisplayId = displayId;
+        }
+
         public void Initialize()
         {
             try
             {
                 DesktopSecurityManager.TryAttachToInputDesktop();
 
-                D3D11.D3D11CreateDevice(
-                    (IDXGIAdapter?)null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
-                    new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
-                    out _device, out _context);
+                using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+                if (!factory.EnumAdapters1(AdapterIndex, out var adapter).Success)
+                {
+                    throw new InvalidOperationException($"Cannot find DXGI Adapter {AdapterIndex}");
+                }
 
-                using var dxgiDevice = _device!.QueryInterface<IDXGIDevice>();
-                using var adapter = dxgiDevice.GetAdapter();
+                using (adapter)
+                {
+                    D3D11.D3D11CreateDevice(
+                        adapter, DriverType.Unknown, DeviceCreationFlags.BgraSupport,
+                        new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
+                        out _device, out _context);
 
-                adapter.EnumOutputs(0, out IDXGIOutput output);
-                using var output1 = output.QueryInterface<IDXGIOutput1>();
+                    if (!adapter.EnumOutputs(OutputIndex, out IDXGIOutput output).Success)
+                    {
+                        throw new InvalidOperationException($"Cannot find DXGI Output {OutputIndex} on Adapter {AdapterIndex}");
+                    }
 
-                var desc = output.Description;
-                Width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
-                Height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
+                    using (output)
+                    {
+                        using var output1 = output.QueryInterface<IDXGIOutput1>();
 
-                // מוודאים שיוך שולחן עבודה גם מיד לפני שכפול הפלט
-                DesktopSecurityManager.TryAttachToInputDesktop();
-                _deskDupl = output1.DuplicateOutput(_device);
+                        var desc = output.Description;
+                        Width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
+                        Height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
+                        X = desc.DesktopCoordinates.Left;
+                        Y = desc.DesktopCoordinates.Top;
+                        DeviceName = desc.DeviceName;
+
+                        // מוודאים שיוך שולחן עבודה גם מיד לפני שכפול הפלט
+                        DesktopSecurityManager.TryAttachToInputDesktop();
+                        _deskDupl = output1.DuplicateOutput(_device);
+                    }
+                }
 
                 var textureDesc = new Texture2DDescription
                 {
