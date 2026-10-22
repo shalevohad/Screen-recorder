@@ -189,8 +189,10 @@
 	<Target Name="CompileFrontend" BeforeTargets="Build" Condition="Exists('ClientApp/package.json')">
 		<Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies and building ClientApp..." />
 		<Exec Command="npm install" WorkingDirectory="ClientApp" Condition="!Exists('ClientApp/node_modules')" />
+		<Exec Command="npm test" WorkingDirectory="ClientApp" />
 		<Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
 	</Target>
+
 
 	<!-- ========================================================== -->
 	<!-- מערכת לאיתור ובניית Features                               -->

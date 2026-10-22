@@ -73,6 +73,60 @@ describe('Multi-Monitor Topology Layout Engine', () => {
         assert.equal(rectBottom.heightPct, 50);
     });
 
+    it('computes correct bounds and normalized geometry for 3-monitor layout with portrait and vertically stacked displays', () => {
+        const displays = [
+            { DisplayId: 'mon-0', X: 0, Y: 0, Width: 1920, Height: 1080, IsPrimary: true },
+            { DisplayId: 'mon-1', X: 1920, Y: 0, Width: 1080, Height: 1920, IsPrimary: false }, // Portrait: Height > Width
+            { DisplayId: 'mon-2', X: 0, Y: -1080, Width: 1920, Height: 1080, IsPrimary: false } // Stacked above mon-0
+        ];
+
+        const bounds = calculateTopologyBounds(displays);
+        assert.equal(bounds.minX, 0);
+        assert.equal(bounds.minY, -1080);
+        assert.equal(bounds.totalWidth, 3000); // 1920 + 1080
+        assert.equal(bounds.totalHeight, 3000); // from -1080 to +1920
+
+        // mon-2 (Top stacked): left = 0/3000 = 0%, top = (-1080 - (-1080))/3000 = 0%, width = 1920/3000 = 64%, height = 1080/3000 = 36%
+        const rectTop = calculateNormalizedDisplayRect(displays[2], bounds);
+        assert.equal(rectTop.leftPct, 0);
+        assert.equal(rectTop.topPct, 0);
+        assert.equal(rectTop.widthPct, 64);
+        assert.equal(rectTop.heightPct, 36);
+
+        // mon-0 (Primary center): left = 0/3000 = 0%, top = (0 - (-1080))/3000 = 36%, width = 1920/3000 = 64%, height = 1080/3000 = 36%
+        const rectCenter = calculateNormalizedDisplayRect(displays[0], bounds);
+        assert.equal(rectCenter.leftPct, 0);
+        assert.equal(rectCenter.topPct, 36);
+        assert.equal(rectCenter.widthPct, 64);
+        assert.equal(rectCenter.heightPct, 36);
+
+        // mon-1 (Portrait right): left = 1920/3000 = 64%, top = (0 - (-1080))/3000 = 36%, width = 1080/3000 = 36%, height = 1920/3000 = 64%
+        const rectPortrait = calculateNormalizedDisplayRect(displays[1], bounds);
+        assert.equal(rectPortrait.leftPct, 64);
+        assert.equal(rectPortrait.topPct, 36);
+        assert.equal(rectPortrait.widthPct, 36);
+        assert.equal(rectPortrait.heightPct, 64);
+    });
+
+    it('handles arbitrary 4-monitor layout with negative X offset (extended left wing)', () => {
+        const displays = [
+            { DisplayId: 'mon-0', X: 0, Y: 0, Width: 1920, Height: 1080, IsPrimary: true },
+            { DisplayId: 'mon-1', X: 1920, Y: 0, Width: 1080, Height: 1920, IsPrimary: false },
+            { DisplayId: 'mon-2', X: 0, Y: -1080, Width: 1920, Height: 1080, IsPrimary: false },
+            { DisplayId: 'mon-3', X: -1920, Y: 0, Width: 1920, Height: 1080, IsPrimary: false } // Left wing
+        ];
+
+        const bounds = calculateTopologyBounds(displays);
+        assert.equal(bounds.minX, -1920);
+        assert.equal(bounds.minY, -1080);
+        assert.equal(bounds.totalWidth, 4920); // 1920 + 1920 + 1080
+        assert.equal(bounds.totalHeight, 3000);
+
+        const rectLeft = calculateNormalizedDisplayRect(displays[3], bounds);
+        assert.equal(rectLeft.leftPct, 0); // starts at leftmost minX (-1920)
+        assert.equal(rectLeft.topPct, 36); // (0 - (-1080)) / 3000
+    });
+
     it('clamps volume properly to [0, 1]', () => {
         assert.equal(clampVolume(-0.5), 0);
         assert.equal(clampVolume(1.5), 1);
@@ -80,3 +134,4 @@ describe('Multi-Monitor Topology Layout Engine', () => {
         assert.equal(clampVolume(NaN), 0.8);
     });
 });
+
