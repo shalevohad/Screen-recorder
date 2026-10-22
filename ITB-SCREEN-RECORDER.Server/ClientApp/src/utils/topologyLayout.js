@@ -7,10 +7,10 @@ export function calculateTopologyBounds(displays) {
     if (!displays || displays.length === 0) {
         return { minX: 0, minY: 0, totalWidth: 1920, totalHeight: 1080 };
     }
-    const minX = Math.min(...displays.map(d => d.X ?? 0));
-    const minY = Math.min(...displays.map(d => d.Y ?? 0));
-    const maxX = Math.max(...displays.map(d => (d.X ?? 0) + (d.Width || 1920)));
-    const maxY = Math.max(...displays.map(d => (d.Y ?? 0) + (d.Height || 1080)));
+    const minX = Math.min(...displays.map(d => (d.X ?? d.x ?? 0)));
+    const minY = Math.min(...displays.map(d => (d.Y ?? d.y ?? 0)));
+    const maxX = Math.max(...displays.map(d => ((d.X ?? d.x ?? 0) + (d.Width || d.width || 1920))));
+    const maxY = Math.max(...displays.map(d => ((d.Y ?? d.y ?? 0) + (d.Height || d.height || 1080))));
 
     return {
         minX,
@@ -25,10 +25,10 @@ export function calculateNormalizedDisplayRect(display, bounds) {
         return { leftPct: 0, topPct: 0, widthPct: 100, heightPct: 100 };
     }
 
-    const x = display.X ?? 0;
-    const y = display.Y ?? 0;
-    const width = display.Width || 1920;
-    const height = display.Height || 1080;
+    const x = display.X ?? display.x ?? 0;
+    const y = display.Y ?? display.y ?? 0;
+    const width = display.Width || display.width || 1920;
+    const height = display.Height || display.height || 1080;
 
     return {
         leftPct: ((x - bounds.minX) / bounds.totalWidth) * 100,

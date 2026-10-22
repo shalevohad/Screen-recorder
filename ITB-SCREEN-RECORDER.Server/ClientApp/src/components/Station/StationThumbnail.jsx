@@ -75,10 +75,20 @@ export default function StationThumbnail(props) {
     }, [isLive]);
 
     const displays = useMemo(() => {
-        if (props.Displays && props.Displays.length > 0) return props.Displays;
-        if (props.DisplayTopology?.Displays && props.DisplayTopology.Displays.length > 0) return props.DisplayTopology.Displays;
+        const raw = props.displays || props.Displays || props.displayTopology?.displays || props.DisplayTopology?.Displays;
+        if (raw && raw.length > 0) {
+            return raw.map(d => ({
+                DisplayId: d.DisplayId || d.displayId || 'mon-0',
+                DisplayName: d.DisplayName || d.displayName || 'Display',
+                IsPrimary: Boolean(d.IsPrimary ?? d.isPrimary),
+                X: d.X ?? d.x ?? 0,
+                Y: d.Y ?? d.y ?? 0,
+                Width: d.Width || d.width || 1920,
+                Height: d.Height || d.height || 1080
+            }));
+        }
         return [];
-    }, [props.Displays, props.DisplayTopology]);
+    }, [props.displays, props.Displays, props.displayTopology, props.DisplayTopology]);
 
     const formatTimer = (sec) => {
         const m = Math.floor(sec / 60);
@@ -235,7 +245,7 @@ export default function StationThumbnail(props) {
                 {isLive ? (
                     <div className="webrtc-container" style={{ pointerEvents: 'none' }}>
                         <VirtualTopologyCanvas
-                            station={props}
+                            station={{ ...props, hostname }}
                             activeDisplayId={activeDisplayId}
                             onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
                             isMuted={!isListeningThisStation}

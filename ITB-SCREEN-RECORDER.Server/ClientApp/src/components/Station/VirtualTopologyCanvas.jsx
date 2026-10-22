@@ -11,12 +11,20 @@ export default function VirtualTopologyCanvas({
     volume = 1,
     isInteractive = false
 }) {
+    const stationHost = station?.hostname || station?.Hostname || station?.stationId || station?.StationId || '';
+
     const displays = useMemo(() => {
-        if (station?.Displays && station.Displays.length > 0) {
-            return station.Displays;
-        }
-        if (station?.DisplayTopology?.Displays && station.DisplayTopology.Displays.length > 0) {
-            return station.DisplayTopology.Displays;
+        const raw = station?.displays || station?.Displays || station?.displayTopology?.displays || station?.DisplayTopology?.Displays;
+        if (raw && raw.length > 0) {
+            return raw.map(d => ({
+                DisplayId: d.DisplayId || d.displayId || 'mon-0',
+                DisplayName: d.DisplayName || d.displayName || 'Display',
+                IsPrimary: Boolean(d.IsPrimary ?? d.isPrimary),
+                X: d.X ?? d.x ?? 0,
+                Y: d.Y ?? d.y ?? 0,
+                Width: d.Width || d.width || 1920,
+                Height: d.Height || d.height || 1080
+            }));
         }
         return [
             {
@@ -36,16 +44,18 @@ export default function VirtualTopologyCanvas({
     // Single display solo view when not in 'canvas' mode
     if (activeDisplayId !== 'canvas') {
         const soloDisplay = displays.find(d => d.DisplayId === activeDisplayId) || displays[0];
-        const streamPath = `live/${station.Hostname}/${soloDisplay.DisplayId}`;
+        const streamPath = stationHost ? `live/${stationHost}/${soloDisplay.DisplayId}` : '';
 
         return (
             <div className="virtual-topology-solo-viewport">
-                <WebRTCPlayer
-                    streamPath={streamPath}
-                    isMuted={!soloDisplay.IsPrimary || isMuted}
-                    volume={volume}
-                    showControls={false}
-                />
+                {streamPath && (
+                    <WebRTCPlayer
+                        streamPath={streamPath}
+                        isMuted={!soloDisplay.IsPrimary || isMuted}
+                        volume={volume}
+                        showControls={false}
+                    />
+                )}
                 <div className="solo-display-badge">
                     <span className="solo-indicator">●</span>
                     <span className="solo-label">
@@ -68,7 +78,7 @@ export default function VirtualTopologyCanvas({
 
             {displays.map((d, index) => {
                 const { leftPct, topPct, widthPct, heightPct } = calculateNormalizedDisplayRect(d, bounds);
-                const streamPath = `live/${station.Hostname}/${d.DisplayId}`;
+                const streamPath = stationHost ? `live/${stationHost}/${d.DisplayId}` : '';
 
                 return (
                     <div
@@ -81,14 +91,16 @@ export default function VirtualTopologyCanvas({
                             height: `${heightPct}%`
                         }}
                         onClick={() => onSelectDisplay && onSelectDisplay(d.DisplayId)}
-                        title={`Click to solo ${d.DisplayName || d.DisplayId} (${d.Width}x{d.Height})`}
+                        title={`Click to solo ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})`}
                     >
-                        <WebRTCPlayer
-                            streamPath={streamPath}
-                            isMuted={!d.IsPrimary || isMuted}
-                            volume={volume}
-                            showControls={false}
-                        />
+                        {streamPath && (
+                            <WebRTCPlayer
+                                streamPath={streamPath}
+                                isMuted={!d.IsPrimary || isMuted}
+                                volume={volume}
+                                showControls={false}
+                            />
+                        )}
 
                         <div className="sub-display-overlay">
                             <span className="display-index-pill">

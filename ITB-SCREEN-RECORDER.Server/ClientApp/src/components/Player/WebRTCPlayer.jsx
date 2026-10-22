@@ -59,6 +59,7 @@ export default function WebRTCPlayer({
 
         const connectToWHEP = async () => {
             if (!isSubscribed) return;
+            if (!streamPath || streamPath.includes('undefined')) return;
 
             if (peerRef.current && peerRef.current.signalingState !== 'closed') {
                 peerRef.current.close();

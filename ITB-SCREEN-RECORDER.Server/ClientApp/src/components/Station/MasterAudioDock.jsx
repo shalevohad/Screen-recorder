@@ -16,19 +16,20 @@ export default function MasterAudioDock({ stations = [] }) {
         return null;
     }
 
-    const activeStation = stations.find(s => s.Hostname === activeAudioStationId) || {
-        Hostname: activeAudioStationId,
-        RoleAlias: null
+    const activeStation = stations.find(s => (s.hostname || s.Hostname) === activeAudioStationId) || {
+        hostname: activeAudioStationId,
+        roleAlias: null
     };
 
-    const stationLabel = activeStation.RoleAlias || activeStation.Hostname;
+    const hostName = activeStation.hostname || activeStation.Hostname || activeAudioStationId;
+    const stationLabel = activeStation.roleAlias || activeStation.RoleAlias || hostName;
 
     return (
         <aside className="master-audio-dock" aria-label="Master Audio Intercom Sink" role="region">
             <div className="dock-left-meta">
                 <span className={`intercom-pulse-dot ${isGlobalMuted ? 'muted' : 'live'}`} />
                 <span className="intercom-badge">🎧 LIVE INTERCOM</span>
-                <span className="station-name-pill" title={activeStation.Hostname}>
+                <span className="station-name-pill" title={hostName}>
                     {stationLabel}
                 </span>
             </div>

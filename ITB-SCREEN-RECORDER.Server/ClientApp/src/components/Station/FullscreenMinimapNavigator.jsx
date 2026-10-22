@@ -8,11 +8,17 @@ export default function FullscreenMinimapNavigator({
     onSelectDisplay
 }) {
     const displays = useMemo(() => {
-        if (station?.Displays && station.Displays.length > 0) {
-            return station.Displays;
-        }
-        if (station?.DisplayTopology?.Displays && station.DisplayTopology.Displays.length > 0) {
-            return station.DisplayTopology.Displays;
+        const raw = station?.displays || station?.Displays || station?.displayTopology?.displays || station?.DisplayTopology?.Displays;
+        if (raw && raw.length > 0) {
+            return raw.map(d => ({
+                DisplayId: d.DisplayId || d.displayId || 'mon-0',
+                DisplayName: d.DisplayName || d.displayName || 'Display',
+                IsPrimary: Boolean(d.IsPrimary ?? d.isPrimary),
+                X: d.X ?? d.x ?? 0,
+                Y: d.Y ?? d.y ?? 0,
+                Width: d.Width || d.width || 1920,
+                Height: d.Height || d.height || 1080
+            }));
         }
         return [
             {
