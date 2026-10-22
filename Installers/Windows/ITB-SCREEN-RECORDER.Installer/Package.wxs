@@ -26,7 +26,7 @@
 		<Property Id="DISCOVERY_PORT" Value="5098" Secure="yes">
 			<RegistrySearch Id="SearchDiscoveryPort" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Agent" Name="DiscoveryPort" Type="raw" />
 		</Property>
-		<Property Id="DISCOVERY_MULTICAST" Value="239.255.10.90" Secure="yes">
+		<Property Id="DISCOVERY_MULTICAST" Value="239.210.1.5" Secure="yes">
 			<RegistrySearch Id="SearchDiscoveryMulticast" Root="HKLM" Key="SOFTWARE\ITB\ScreenRecorder\Agent" Name="DiscoveryMulticast" Type="raw" />
 		</Property>
 		<Property Id="DISCOVERY_BROADCAST" Value="255.255.255.255" Secure="yes">

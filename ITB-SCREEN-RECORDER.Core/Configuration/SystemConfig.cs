@@ -62,7 +62,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Range(1024, 65535)]
         public int Port { get; set; } = 5098;
 
-        public string MulticastAddress { get; set; } = "239.255.10.90";
+        public string MulticastAddress { get; set; } = "239.210.1.5";
 
         public bool EnableBroadcastFallback { get; set; } = true;
 

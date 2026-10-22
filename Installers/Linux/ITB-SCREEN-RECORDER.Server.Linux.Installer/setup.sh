@@ -12,7 +12,7 @@ FEATURES_DEST_DIR="$INSTALL_ROOT/Features"
 IS_UNATTENDED=false
 CLI_ROLE_PASSED=false
 DISCOVERY_PORT=5098
-DISCOVERY_MULTICAST="239.255.10.90"
+DISCOVERY_MULTICAST="239.210.1.5"
 DISCOVERY_BROADCAST="${DISCOVERY_BROADCAST:-255.255.255.255}"
 ENABLE_VIP=false
 VIRTUAL_IP=""
@@ -142,7 +142,7 @@ try:
     srv_role_raw = disc_cfg.get("Role", "Active-Active")
     srv_priority = disc_cfg.get("Priority", 1)
     disc_port = disc_cfg.get("Port", 5098)
-    disc_mcast = disc_cfg.get("MulticastAddress", "239.255.10.90")
+    disc_mcast = disc_cfg.get("MulticastAddress", "239.210.1.5")
     disc_bcast = disc_cfg.get("BroadcastAddress", "255.255.255.255")
     en_vip = disc_cfg.get("EnableVirtualIp", False)
     vip_addr = disc_cfg.get("VirtualIp", "")
