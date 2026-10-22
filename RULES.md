@@ -187,6 +187,7 @@ To deliver pristine readability for high-density multi-monitor workstations with
 - **Millisecond-Locked Dip-to-Black Video Transition**:
   - Transitions between monitors (whether triggered automatically by recorded mouse/keystroke activity or manually by operator timeline cuts) execute as a **Dip to Black** transition (fade-to-black -> keyframe cut -> fade-in).
   - **Zero-Time-Drift Invariant**: The transition duration is strictly accounted for in master timecode calculations. Not a single millisecond is added, dropped, or desynchronized relative to concurrent stations or continuous multi-track audio.
+  - **1-Second Pre-Roll Lead-In Invariant (Cognitive Context)**: When an activity transition is triggered by a user action (e.g., mouse click or typing focus shift on Monitor B at timestamp $T$), the Dip-to-Black transition initiates **1.0 second prior** ($T - 1000\text{ms}$). This guarantees the viewer's eyes land comfortably on the new screen, observe the cursor trajectory, and absorb the spatial context before the interaction actually occurs, preventing disorienting jump-cuts.
 - **Dual-Plane DVR & Extractor Foundation**:
   - Raw video streams (`mon-0`, `mon-1`, `mon-2`) remain completely un-baked and clean in storage.
   - Telemetry and topology timecodes are indexed from time 0, allowing both client-side interactive DVR scrubbing and server-side FFmpeg MP4 export to reconstruct the identical synchronized experience deterministically.
