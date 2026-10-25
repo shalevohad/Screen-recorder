@@ -531,7 +531,20 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public IActionResult EnforceStreamingPolicy(string hostname, [FromQuery] bool enable)
         {
             _telemetryState.SetAgentStreamState(hostname, enable);
-            return Ok(new { Hostname = hostname, StreamingRequested = enable });
+            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                match.IsRecording = enable;
+                bool isOnline = (DateTime.UtcNow - match.Timestamp).TotalSeconds <= 30 && match.Status != AgentStatus.Offline;
+                if (isOnline)
+                {
+                    match.IsStreaming = true;
+                    match.Status = AgentStatus.Streaming;
+                }
+                _ = _broadcastService.BroadcastAgentUpdateAsync(match);
+            }
+            return Ok(new { Hostname = hostname, RecordingRequested = enable, StreamingActive = match?.IsStreaming ?? true });
         }
 
         [HttpGet("config/{hostname}")]
@@ -581,9 +594,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, host, StringComparison.OrdinalIgnoreCase));
                 if (match != null)
                 {
-                    match.IsStreaming = targetEnable;
                     match.IsRecording = targetEnable;
-                    match.Status = targetEnable ? AgentStatus.Streaming : AgentStatus.Standby;
+                    bool isOnline = (DateTime.UtcNow - match.Timestamp).TotalSeconds <= 30 && match.Status != AgentStatus.Offline;
+                    if (isOnline)
+                    {
+                        match.IsStreaming = true;
+                        match.Status = AgentStatus.Streaming;
+                    }
                     _ = _broadcastService.BroadcastAgentUpdateAsync(match);
                 }
             }

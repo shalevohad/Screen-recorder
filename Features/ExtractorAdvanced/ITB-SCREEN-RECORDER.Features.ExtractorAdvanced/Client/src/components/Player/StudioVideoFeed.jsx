@@ -31,6 +31,9 @@ export default function StudioVideoFeed({
 
     const playheadMsRef = useRef(playheadMs);
     const streamStartOffsetMsRef = useRef(playheadMs);
+    const lastEmittedMsRef = useRef(playheadMs);
+    const isSeekingRef = useRef(false);
+    const seekDebounceTimerRef = useRef(null);
     const prevIsPlayingRef = useRef(isPlaying);
     const isSkippingGapRef = useRef(false);
 
@@ -118,17 +121,17 @@ export default function StudioVideoFeed({
         }
     }, [playbackSpeed]);
 
-    // שליפת פריים במצב Pause
+    // שליפת פריים במצב Pause או בעת דילוג/Scrubbing
     useEffect(() => {
         if (!stationId || !hostname) return;
 
-        if (isPlaying) {
+        if (isPlaying && isVideoRendering) {
             prevIsPlayingRef.current = true;
             return;
         }
 
         const wasPlaying = prevIsPlayingRef.current;
-        prevIsPlayingRef.current = false;
+        prevIsPlayingRef.current = isPlaying;
 
         let isMounted = true;
         const abortController = new AbortController();
@@ -161,7 +164,7 @@ export default function StudioVideoFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [stationId, hostname, baseEpochMs, playheadMs, isPlaying]);
+    }, [stationId, hostname, baseEpochMs, playheadMs, isPlaying, isVideoRendering]);
 
     // בניית URL מבוסס Epoch
     const buildStreamUrl = useCallback((seekMs) => {
@@ -178,6 +181,8 @@ export default function StudioVideoFeed({
         if (isPlaying && isInRecordingSegment) {
             const currentHead = playheadMsRef.current;
             streamStartOffsetMsRef.current = currentHead;
+            lastEmittedMsRef.current = currentHead;
+            isSeekingRef.current = false;
 
             const url = buildStreamUrl(currentHead);
 
@@ -188,6 +193,8 @@ export default function StudioVideoFeed({
             setSrcB('');
             setPreloadedSegment(null);
         } else if (!isPlaying) {
+            if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+            isSeekingRef.current = false;
             setSrcA('');
             setSrcB('');
             setPreloadedSegment(null);
@@ -197,6 +204,57 @@ export default function StudioVideoFeed({
             if (videoRefB.current) videoRefB.current.pause();
         }
     }, [isPlaying, stationId, hostname, isInRecordingSegment, buildStreamUrl]);
+
+    // 💡 מעבר מיקום ה-Playhead תוך כדי ניגון (Seek while Playing) והמשך ניגון מהנקודה החדשה
+    useEffect(() => {
+        if (!stationId || !hostname) return;
+
+        // אם לא מנגנים, או שהשינוי נובע מפעימה פנימית רגילה של smoothTick
+        const diff = Math.abs(playheadMs - lastEmittedMsRef.current);
+        if (!isPlaying || diff < 15) {
+            lastEmittedMsRef.current = playheadMs;
+            return;
+        }
+
+        // שינוי חיצוני ב-Playhead בזמן ניגון (לחיצה על ציר הזמן, גרירה, Bookmark, Ruler וכו')
+        isSeekingRef.current = true;
+        lastEmittedMsRef.current = playheadMs;
+        streamStartOffsetMsRef.current = playheadMs;
+
+        // הקפאת הנגנים הישנים מיידית כדי שלא ימשיכו לנגן אודיו או וידאו ישן
+        if (videoRefA.current) videoRefA.current.pause();
+        if (videoRefB.current) videoRefB.current.pause();
+
+        setIsVideoRendering(false);
+        setIsBufferingStall(true);
+
+        if (seekDebounceTimerRef.current) {
+            clearTimeout(seekDebounceTimerRef.current);
+        }
+
+        seekDebounceTimerRef.current = setTimeout(() => {
+            if (!isInRecordingSegment) {
+                setSrcA('');
+                setSrcB('');
+                setIsBufferingStall(false);
+                isSeekingRef.current = false;
+                return;
+            }
+
+            const targetMs = playheadMsRef.current;
+            const newUrl = buildStreamUrl(targetMs);
+            setActiveSlot('A');
+            setSrcA(newUrl);
+            setSrcB('');
+            setPreloadedSegment(null);
+        }, 75);
+
+        return () => {
+            if (seekDebounceTimerRef.current) {
+                clearTimeout(seekDebounceTimerRef.current);
+            }
+        };
+    }, [playheadMs, isPlaying, stationId, hostname, isInRecordingSegment, buildStreamUrl]);
 
     // 💡 מנוע Preload חכם: טוען את המקטע הבא לנגן הרקע בזמן שהנגן הראשי מנגן
     useEffect(() => {
@@ -240,7 +298,7 @@ export default function StudioVideoFeed({
 
         const smoothTick = () => {
             const video = activeVideoRef.current;
-            if (video && !video.paused && !video.ended && !isBufferingStall && !isSkippingGapRef.current) {
+            if (video && !video.paused && !video.ended && !isBufferingStall && !isSkippingGapRef.current && !isSeekingRef.current) {
                 const now = performance.now();
                 const currentVideoSec = video.currentTime;
 
@@ -265,6 +323,7 @@ export default function StudioVideoFeed({
                     if (isLooping) {
                         lastEmittedMs = inPointMs;
                         streamStartOffsetMsRef.current = inPointMs;
+                        lastEmittedMsRef.current = inPointMs;
                         if (video) video.currentTime = 0;
                         syncVideoSec = 0;
                         syncWallTime = performance.now();
@@ -285,6 +344,7 @@ export default function StudioVideoFeed({
                     setPlayheadMs?.(gapEndMs);
                     streamStartOffsetMsRef.current = gapEndMs;
                     lastEmittedMs = gapEndMs;
+                    lastEmittedMsRef.current = gapEndMs;
 
                     const url = buildStreamUrl(gapEndMs);
                     if (activeSlot === 'A') setSrcA(url);
@@ -296,6 +356,7 @@ export default function StudioVideoFeed({
 
                 if (calculatedMs !== lastEmittedMs) {
                     lastEmittedMs = calculatedMs;
+                    lastEmittedMsRef.current = calculatedMs;
                     setPlayheadMs?.(calculatedMs);
                 }
             }
@@ -332,6 +393,7 @@ export default function StudioVideoFeed({
         if (preloadedSegment && backgroundVideoRef.current) {
             const nextMs = preloadedSegment.ms;
             streamStartOffsetMsRef.current = nextMs;
+            lastEmittedMsRef.current = nextMs;
             setPlayheadMs?.(nextMs);
 
             const nextSlot = activeSlot === 'A' ? 'B' : 'A';
@@ -347,6 +409,7 @@ export default function StudioVideoFeed({
         if (isLooping) {
             setPlayheadMs?.(inPointMs);
             streamStartOffsetMsRef.current = inPointMs;
+            lastEmittedMsRef.current = inPointMs;
             const url = buildStreamUrl(inPointMs);
             if (activeSlot === 'A') setSrcA(url);
             else setSrcB(url);
@@ -387,6 +450,7 @@ export default function StudioVideoFeed({
                     }}
                     onPlaying={() => {
                         if (activeSlot === 'A') {
+                            isSeekingRef.current = false;
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
                             if (videoRefA.current) {
@@ -400,6 +464,7 @@ export default function StudioVideoFeed({
                     }}
                     onTimeUpdate={() => {
                         if (activeSlot === 'A' && !isVideoRendering && videoRefA.current?.currentTime > 0) {
+                            isSeekingRef.current = false;
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
                             if (videoRefA.current) {
@@ -410,6 +475,7 @@ export default function StudioVideoFeed({
                     }}
                     onError={() => {
                         if (activeSlot === 'A') {
+                            isSeekingRef.current = false;
                             setIsBufferingStall(false);
                             setIsVideoRendering(false);
                         }
@@ -445,6 +511,7 @@ export default function StudioVideoFeed({
                     }}
                     onPlaying={() => {
                         if (activeSlot === 'B') {
+                            isSeekingRef.current = false;
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
                             if (videoRefB.current) {
@@ -458,6 +525,7 @@ export default function StudioVideoFeed({
                     }}
                     onTimeUpdate={() => {
                         if (activeSlot === 'B' && !isVideoRendering && videoRefB.current?.currentTime > 0) {
+                            isSeekingRef.current = false;
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
                             if (videoRefB.current) {
@@ -468,6 +536,7 @@ export default function StudioVideoFeed({
                     }}
                     onError={() => {
                         if (activeSlot === 'B') {
+                            isSeekingRef.current = false;
                             setIsBufferingStall(false);
                             setIsVideoRendering(false);
                         }

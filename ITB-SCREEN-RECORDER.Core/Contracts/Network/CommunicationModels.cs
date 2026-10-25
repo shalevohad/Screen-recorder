@@ -160,6 +160,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("shouldStream")]
         public bool ShouldStream { get; set; }
 
+        [JsonPropertyName("shouldRecord")]
+        public bool ShouldRecord { get; set; }
+
         [JsonPropertyName("command")]
         public ServerCommand Command { get; set; } = ServerCommand.Standby;
 

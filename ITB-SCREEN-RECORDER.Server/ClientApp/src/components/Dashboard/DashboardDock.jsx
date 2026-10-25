@@ -100,8 +100,8 @@ export default function DashboardDock({
                         : isFeatureActive
                         ? "Bulk actions unavailable in Feature Mode"
                         : canStartAny
-                        ? "Start streaming on filtered agents"
-                        : "No idle filtered agents"
+                        ? "Start recording on all unrecorded stations"
+                        : "All stations currently recording"
                 }
             >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
@@ -121,8 +121,8 @@ export default function DashboardDock({
                         : isFeatureActive
                         ? "Bulk actions unavailable in Feature Mode"
                         : canStopAny
-                        ? "Stop active filtered streams"
-                        : "No active streams"
+                        ? "Stop recording on stations (Remain in Live Monitor)"
+                        : "No stations currently recording"
                 }
             >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">

@@ -23,6 +23,7 @@ namespace ITBRecorderAgent.Engine
         public event Action? ServerDisconnected;
         public event Action? ServerConnected;
         public event Action<string, string>? EncryptionKeyConfigured;
+        public event Action<bool>? RecordingStateChanged;
 
         private readonly Channel<string> _outgoingChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(500)
         {
@@ -194,6 +195,13 @@ namespace ITBRecorderAgent.Engine
                 if (parts.Length > 2)
                 {
                     EncryptionKeyConfigured?.Invoke(parts[1], parts[2]);
+                }
+            }
+            else if (cmd.Equals("SetRecording", StringComparison.OrdinalIgnoreCase))
+            {
+                if (parts.Length > 1 && bool.TryParse(parts[1], out bool shouldRecord))
+                {
+                    RecordingStateChanged?.Invoke(shouldRecord);
                 }
             }
             else if (cmd.Equals("Start", StringComparison.OrdinalIgnoreCase) || cmd.Equals("Restart", StringComparison.OrdinalIgnoreCase))

@@ -41,6 +41,9 @@ export default function CameraCardFeed({
     const videoRef = useRef(null);
     const streamStartOffsetMsRef = useRef(0);
     const currentRelativeMsRef = useRef(currentEpochMs - baseEpochMs);
+    const lastEmittedMsRef = useRef(currentEpochMs - baseEpochMs);
+    const isSeekingRef = useRef(false);
+    const seekDebounceTimerRef = useRef(null);
     const isSkippingGapRef = useRef(false);
     currentRelativeMsRef.current = currentEpochMs - baseEpochMs;
 
@@ -82,13 +85,13 @@ export default function CameraCardFeed({
     useEffect(() => {
         if (isOffline || !roundedEpochMs || !stationName) return;
 
-        if (isPlaying && isSolo) {
+        if (isPlaying && isSolo && isVideoReady) {
             prevIsPlayingRef.current = true;
             return;
         }
 
         const wasPlaying = prevIsPlayingRef.current;
-        prevIsPlayingRef.current = false;
+        prevIsPlayingRef.current = isPlaying;
 
         let isMounted = true;
         const abortController = new AbortController();
@@ -139,7 +142,7 @@ export default function CameraCardFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo]);
+    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady]);
 
     useEffect(() => {
         if (!stationName || !isSolo) return;
@@ -150,6 +153,8 @@ export default function CameraCardFeed({
             debounceTimer = setTimeout(() => {
                 const initialSeekMs = currentRelativeMsRef.current;
                 streamStartOffsetMsRef.current = initialSeekMs;
+                lastEmittedMsRef.current = initialSeekMs;
+                isSeekingRef.current = false;
                 const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&_t=${Date.now()}`;
 
                 setIsVideoReady(false);
@@ -157,6 +162,8 @@ export default function CameraCardFeed({
             }, 100);
 
         } else if (!isPlaying) {
+            if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+            isSeekingRef.current = false;
             setStreamSrc('');
             setIsVideoReady(false);
             if (videoRef.current) {
@@ -171,6 +178,48 @@ export default function CameraCardFeed({
         };
     }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
 
+    // 💡 טיפול ב-Seek תוך כדי ניגון במצב Solo בכרטיסייה והמשך ניגון
+    useEffect(() => {
+        if (!stationName || !isSolo) return;
+
+        const currentHead = currentRelativeMsRef.current;
+        const diff = Math.abs(currentHead - lastEmittedMsRef.current);
+        if (!isPlaying || diff < 15) {
+            lastEmittedMsRef.current = currentHead;
+            return;
+        }
+
+        isSeekingRef.current = true;
+        lastEmittedMsRef.current = currentHead;
+        streamStartOffsetMsRef.current = currentHead;
+
+        if (videoRef.current) videoRef.current.pause();
+        setIsVideoReady(false);
+
+        if (seekDebounceTimerRef.current) {
+            clearTimeout(seekDebounceTimerRef.current);
+        }
+
+        seekDebounceTimerRef.current = setTimeout(() => {
+            if (!isInRecordingSegment || isSpotlightActive) {
+                setStreamSrc('');
+                setIsVideoReady(false);
+                isSeekingRef.current = false;
+                return;
+            }
+
+            const targetMs = currentRelativeMsRef.current;
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + targetMs}&_t=${Date.now()}`;
+            setStreamSrc(newUrl);
+        }, 75);
+
+        return () => {
+            if (seekDebounceTimerRef.current) {
+                clearTimeout(seekDebounceTimerRef.current);
+            }
+        };
+    }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
+
     // 💡 מנוע 60fps מונוטוני כאשר כרטיסיית פיד מנוגנת במצב Solo
     useEffect(() => {
         if (!isSolo || !isPlaying || !streamSrc || !isVideoReady || isSpotlightActive) return;
@@ -182,7 +231,7 @@ export default function CameraCardFeed({
 
         const smoothTick = () => {
             const video = videoRef.current;
-            if (video && !video.paused && !video.ended && !isSkippingGapRef.current) {
+            if (video && !video.paused && !video.ended && !isSkippingGapRef.current && !isSeekingRef.current) {
                 const now = performance.now();
                 const currentVideoSec = video.currentTime;
 
@@ -216,6 +265,7 @@ export default function CameraCardFeed({
                     setPlayheadMs(gapEndOffsetMs);
                     streamStartOffsetMsRef.current = gapEndOffsetMs;
                     lastEmittedMs = gapEndOffsetMs;
+                    lastEmittedMsRef.current = gapEndOffsetMs;
 
                     const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + gapEndOffsetMs}&_t=${Date.now()}`;
                     setIsVideoReady(false);
@@ -227,6 +277,7 @@ export default function CameraCardFeed({
 
                 if (calculatedMs !== lastEmittedMs) {
                     lastEmittedMs = calculatedMs;
+                    lastEmittedMsRef.current = calculatedMs;
                     setPlayheadMs?.(calculatedMs);
                 }
             }
@@ -330,6 +381,7 @@ export default function CameraCardFeed({
                         if (isPlaying && videoRef.current) videoRef.current.play().catch(() => { });
                     }}
                     onPlaying={() => {
+                        isSeekingRef.current = false;
                         setIsVideoReady(true);
                         if (videoRef.current) {
                             videoRef.current.defaultPlaybackRate = playbackSpeed;
@@ -341,6 +393,7 @@ export default function CameraCardFeed({
                     }}
                     onTimeUpdate={() => {
                         if (!isVideoReady && videoRef.current?.currentTime > 0) {
+                            isSeekingRef.current = false;
                             setIsVideoReady(true);
                         }
                     }}

@@ -39,6 +39,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private readonly WorkerIpcClient _ipc = new WorkerIpcClient();
 
         private volatile bool _isStreaming = false;
+        private volatile bool _isRecording = false;
         private volatile bool _requiresRestart = false;
         private volatile bool _isOffline = false;
         private string _targetRtmp = string.Empty;
@@ -66,6 +67,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _baselineFps = config.TargetFps > 0 ? config.TargetFps : 30;
             _videoBitrate = string.IsNullOrWhiteSpace(config.VideoBitrate) ? "5000k" : config.VideoBitrate;
+            _isRecording = config.AutoStartRecordingOnLaunch;
             _displayManager = new MultiDisplayPipelineManager(config);
 
             Logger.Info($"[WORKER:LIFECYCLE] Engine created. TargetFPS: {_baselineFps}, VideoBitrate: {_videoBitrate}");
@@ -106,7 +108,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
             }
 
-            if (_isOffline && !string.IsNullOrEmpty(_currentOfflineKeysPath))
+            if (_isOffline && _isRecording && !string.IsNullOrEmpty(_currentOfflineKeysPath))
             {
                 lock (_offlineWriteLock)
                 {
@@ -203,13 +205,34 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 }
             };
 
+            _ipc.RecordingStateChanged += shouldRecord =>
+            {
+                bool prev = _isRecording;
+                _isRecording = shouldRecord;
+                Logger.Info($"[WORKER:RECORDING] Recording state updated to {shouldRecord} (Stream live status: {_isStreaming})");
+                if (!shouldRecord && _isOffline)
+                {
+                    Logger.Info("[WORKER:RECORDING] Recording stopped while in offline buffer mode. Flushing and switching off offline buffer.");
+                    _isOffline = false;
+                    _requiresRestart = true;
+                }
+            };
+
             _ipc.ServerDisconnected += () =>
             {
-                if (!_isOffline && _isStreaming)
+                if (_isRecording)
                 {
-                    Logger.Warn("[WORKER:LIFECYCLE] Server connection dropped. Switching to ISOLATED_OFFLINE_BUFFER mode.");
-                    _isOffline = true;
-                    _requiresRestart = true;
+                    if (!_isOffline && _isStreaming)
+                    {
+                        Logger.Warn("[WORKER:LIFECYCLE] Server connection dropped while RECORDING. Switching to ISOLATED_OFFLINE_BUFFER mode.");
+                        _isOffline = true;
+                        _requiresRestart = true;
+                    }
+                }
+                else
+                {
+                    Logger.Info("[WORKER:LIFECYCLE] Server connection dropped while in MONITOR-ONLY (not recording) mode. Offline buffer suppressed.");
+                    _isOffline = false;
                 }
             };
 
@@ -368,8 +391,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     _consecutivePipeBreaks++;
                     if (_consecutivePipeBreaks >= 3)
                     {
-                        Logger.Warn("[WORKER:LIFECYCLE] Consecutive pipe breaks threshold reached. Temporarily switching to isolated offline buffer.");
-                        _isOffline = true;
+                        if (_isRecording)
+                        {
+                            Logger.Warn("[WORKER:LIFECYCLE] Consecutive pipe breaks threshold reached while RECORDING. Temporarily switching to isolated offline buffer.");
+                            _isOffline = true;
+                        }
+                        else
+                        {
+                            Logger.Info("[WORKER:LIFECYCLE] Consecutive pipe breaks threshold reached while NOT recording. Offline buffer suppressed.");
+                            _isOffline = false;
+                        }
                     }
                     _requiresRestart = true;
                 },
@@ -423,7 +454,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private string ResolveDestination()
         {
-            if (!_isOffline)
+            if (!_isOffline || !_isRecording)
             {
                 _currentOfflineKeysPath = null;
                 return string.IsNullOrWhiteSpace(_targetRtmp)
@@ -473,8 +504,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 SessionState = InternalSessionState.ActiveInteractive,
                 CurrentFps = _baselineFps,
                 IsStreaming = _isStreaming,
-                IsRecording = _isStreaming,
-                RecordingStartedAtUtc = _isStreaming ? _sessionStartTimeUtc : null,
+                IsRecording = _isRecording,
+                RecordingStartedAtUtc = _isRecording ? _sessionStartTimeUtc : null,
                 IsOfflineMode = _isOffline,
                 HasAudio = flowing,
                 Keystrokes = keysToSend.Count > 0 ? keysToSend : null,

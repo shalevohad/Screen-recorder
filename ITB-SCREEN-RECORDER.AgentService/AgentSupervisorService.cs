@@ -48,7 +48,9 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private DateTime _lastFailbackCheckUtc = DateTime.MinValue;
 
         private bool _isWorkerStreaming;
+        private bool _isWorkerRecording;
         private bool? _lastServerShouldStream = null;
+        private bool? _lastServerShouldRecord = null;
         private DateTime _lastStartCommandDispatchUtc = DateTime.MinValue;
         private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
@@ -434,6 +436,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 if (status != null)
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
+                                    _isWorkerRecording = status.IsRecording;
                                     _workerRecordingStartedAtUtc = status.RecordingStartedAtUtc;
 
                                     if (!_isWorkerStreaming && (_lastServerShouldStream == true || (_lastServerShouldStream == null && _config.AutoStartRecordingOnLaunch)))
@@ -532,8 +535,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     Status = isStreaming ? AgentStatus.Streaming : AgentStatus.Standby,
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
-                    IsRecording = isStreaming,
-                    RecordingStartedAtUtc = isStreaming ? _workerRecordingStartedAtUtc : null,
+                    IsRecording = isStreaming && _isWorkerRecording,
+                    RecordingStartedAtUtc = _isWorkerRecording ? _workerRecordingStartedAtUtc : null,
                     AutoStartRecordingOnLaunch = _config.AutoStartRecordingOnLaunch,
                     IsScreenCapturing = isStreaming,
 
@@ -676,6 +679,16 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 _lastStartCommandDispatchUtc = DateTime.UtcNow;
                                 string dest = GetEffectiveRtmpDestination();
                                 await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                bool initialRecord = _lastServerShouldRecord ?? _config.AutoStartRecordingOnLaunch;
+                                await SendCommandToWorkerAsync($"SetRecording|{initialRecord}");
+                            }
+
+                            bool shouldRecord = heartbeatResponse.ShouldRecord;
+                            if (_lastServerShouldRecord != shouldRecord)
+                            {
+                                _lastServerShouldRecord = shouldRecord;
+                                _logger.LogInformation("[RECORDING STATE] Server requested ShouldRecord={ShouldRecord}. Sending SetRecording to worker.", shouldRecord);
+                                await SendCommandToWorkerAsync($"SetRecording|{shouldRecord}");
                             }
                         }
                     }

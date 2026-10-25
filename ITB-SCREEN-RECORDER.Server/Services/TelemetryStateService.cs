@@ -25,17 +25,20 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         private readonly StationOverridesService _overridesService;
         private readonly CustomTabsService _tabsService;
         private readonly OfflineSyncManager _syncManager;
+        private readonly MediaMtxApiClient? _mediaMtxApi;
 
         public TelemetryStateService(
             IOptionsMonitor<SystemConfig> configMonitor,
             StationOverridesService overridesService,
             CustomTabsService tabsService,
-            OfflineSyncManager syncManager)
+            OfflineSyncManager syncManager,
+            MediaMtxApiClient? mediaMtxApi = null)
         {
             _configMonitor = configMonitor;
             _overridesService = overridesService;
             _tabsService = tabsService;
             _syncManager = syncManager;
+            _mediaMtxApi = mediaMtxApi;
         }
 
         public async Task<AgentHeartbeatResponse> ProcessHeartbeatAsync(AgentTelemetryReport report, string requestHost = null)
@@ -108,6 +111,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return new AgentHeartbeatResponse
             {
                 ShouldStream = shouldStream,
+                ShouldRecord = isRecordingDesired,
                 Command = commandToSend,
                 ServerUtcTime = DateTime.UtcNow,
                 Policy = currentPolicy,
@@ -132,6 +136,25 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 {
                     report.RecordingStartedAtUtc = null;
                 }
+            }
+
+            if (_mediaMtxApi != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        int apiPort = _configMonitor.CurrentValue.MediaMtx.ApiPort;
+                        string cleanHost = Uri.EscapeDataString(hostname.Replace(" ", "_"));
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, cleanHost, shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-0", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-1", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-2", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-3", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch { }
+                });
             }
         }
 

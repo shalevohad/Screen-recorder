@@ -121,7 +121,7 @@ export default function StationThumbnail(props) {
     const handleQuickToggleRec = (e) => {
         e.stopPropagation();
         if (!canControl || !isOnline || isPending) return;
-        onToggleStream?.(hostname, isStreaming);
+        onToggleStream?.(hostname, isRecording);
     };
 
     const computeHealthScore = () => {
