@@ -9,6 +9,7 @@ export default function VirtualTopologyCanvas({
     onSelectDisplay,
     isMuted = true,
     volume = 1,
+    webrtcBaseUrl = '/api/v1/whep',
     isInteractive = false,
     onPlaying,
     onStreamAvailable
@@ -53,6 +54,7 @@ export default function VirtualTopologyCanvas({
                 {streamPath && (
                     <WebRTCPlayer
                         streamPath={streamPath}
+                        webrtcBaseUrl={webrtcBaseUrl}
                         isMuted={isMuted}
                         volume={volume}
                         showControls={false}
@@ -74,6 +76,7 @@ export default function VirtualTopologyCanvas({
                 {streamPath && (
                     <WebRTCPlayer
                         streamPath={streamPath}
+                        webrtcBaseUrl={webrtcBaseUrl}
                         isMuted={!soloDisplay.IsPrimary || isMuted}
                         volume={volume}
                         showControls={false}
@@ -121,6 +124,7 @@ export default function VirtualTopologyCanvas({
                         {streamPath && (
                             <WebRTCPlayer
                                 streamPath={streamPath}
+                                webrtcBaseUrl={webrtcBaseUrl}
                                 isMuted={!d.IsPrimary || isMuted}
                                 volume={volume}
                                 showControls={false}

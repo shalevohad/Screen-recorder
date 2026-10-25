@@ -244,6 +244,7 @@ export default function StationThumbnail(props) {
                             onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
                             isMuted={!isListeningThisStation}
                             volume={audioVolume}
+                            webrtcBaseUrl={props.webrtcBaseUrl || '/api/v1/whep'}
                             onStreamAvailable={(stream) => {
                                 registerStationStream(hostname, stream);
                             }}

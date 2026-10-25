@@ -11,7 +11,17 @@ namespace ITBRecorderAgent.Providers.Video
     {
         public int Width { get; private set; }
         public int Height { get; private set; }
+        public int X { get; private set; }
+        public int Y { get; private set; }
         public bool IsInitialized { get; private set; }
+
+        public GdiScreenCapture(int x = 0, int y = 0, int width = 0, int height = 0)
+        {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
 
         private const int SM_CXSCREEN = 0;
         private const int SM_CYSCREEN = 1;
@@ -82,8 +92,13 @@ namespace ITBRecorderAgent.Providers.Video
             {
                 DesktopSecurityManager.TryAttachToInputDesktop();
 
-                Width = GetSystemMetrics(SM_CXSCREEN);
-                Height = GetSystemMetrics(SM_CYSCREEN);
+                if (Width <= 0 || Height <= 0)
+                {
+                    Width = GetSystemMetrics(SM_CXSCREEN);
+                    Height = GetSystemMetrics(SM_CYSCREEN);
+                    X = 0;
+                    Y = 0;
+                }
 
                 if (Width <= 0 || Height <= 0)
                 {
@@ -120,7 +135,7 @@ namespace ITBRecorderAgent.Providers.Video
                 _frameBuffer = new byte[Width * Height * 4];
 
                 IsInitialized = true;
-                Logger.Info($"[VIDEO] Resilient GDI Screen Capture initialized successfully: {Width}x{Height}");
+                Logger.Info($"[VIDEO] Resilient GDI Screen Capture initialized successfully: {Width}x{Height} at ({X},{Y})");
             }
             catch (Exception ex)
             {
@@ -145,12 +160,12 @@ namespace ITBRecorderAgent.Providers.Video
 
             try
             {
-                bool bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, 0, 0, SRCCOPY | CAPTUREBLT);
+                bool bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, X, Y, SRCCOPY | CAPTUREBLT);
                 if (!bltSuccess)
                 {
                     // If desktop switched (e.g. UAC / Lock Screen) or error occurred, re-attach thread to input desktop and retry
                     DesktopSecurityManager.TryAttachToInputDesktop();
-                    bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, 0, 0, SRCCOPY | CAPTUREBLT);
+                    bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, X, Y, SRCCOPY | CAPTUREBLT);
                     if (!bltSuccess) return false;
                 }
 

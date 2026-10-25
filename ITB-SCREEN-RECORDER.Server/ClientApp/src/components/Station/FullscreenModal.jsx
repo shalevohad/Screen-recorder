@@ -306,6 +306,7 @@ export default function FullscreenModal(props) {
                         onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
                         isMuted={isMuted}
                         volume={1}
+                        webrtcBaseUrl={props.webrtcBaseUrl || '/api/v1/whep'}
                         isInteractive={false}
                         onPlaying={() => setIsVideoPlaying(true)}
                         onStreamAvailable={(stream) => {

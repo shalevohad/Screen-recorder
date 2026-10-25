@@ -31,6 +31,7 @@ namespace ITBRecorderAgent.Providers.Video
 
         // Reusable preallocated raw frame buffer to eliminate runtime heap allocations of byte[]
         private byte[]? _frameBuffer;
+        private bool _hasCapturedFrame = false;
 
         private DateTime _lastReinitAttemptUtc = DateTime.MinValue;
         private static readonly TimeSpan ReinitRetryInterval = TimeSpan.FromSeconds(2);
@@ -102,6 +103,19 @@ namespace ITBRecorderAgent.Providers.Video
                 // One-time preallocation of byte array
                 _frameBuffer = new byte[Width * Height * 4];
 
+                // Pre-populate buffer with real desktop snapshot via GDI so it never transmits all-zeroes black frames
+                try
+                {
+                    using var gdi = new GdiScreenCapture(X, Y, Width, Height);
+                    gdi.Initialize();
+                    if (gdi.TryCaptureFrame(out var initial) && initial != null)
+                    {
+                        Buffer.BlockCopy(initial, 0, _frameBuffer, 0, Math.Min(initial.Length, _frameBuffer.Length));
+                        _hasCapturedFrame = true;
+                    }
+                }
+                catch { }
+
                 IsInitialized = true;
                 Logger.Info($"[VIDEO] DXGI Desktop Duplication initialized: {Width}x{Height}");
             }
@@ -144,16 +158,39 @@ namespace ITBRecorderAgent.Providers.Video
                         Logger.Warn($"[VIDEO] DXGI error (0x{result.Code:X8}). Reinitializing capture pipeline...");
                         Reinitialize();
                     }
+
+                    // Static screen / WaitTimeout: return current valid frame buffer rather than failing to black
+                    if (_hasCapturedFrame && _frameBuffer != null)
+                    {
+                        frameData = _frameBuffer;
+                        return true;
+                    }
                     return false;
                 }
 
-                using (desktopResource)
-                using (var desktopTexture = desktopResource.QueryInterface<ID3D11Texture2D>())
+                if (desktopResource == null)
                 {
-                    _context.CopyResource(_stagingTexture, desktopTexture);
+                    _deskDupl.ReleaseFrame();
+                    if (_hasCapturedFrame && _frameBuffer != null)
+                    {
+                        frameData = _frameBuffer;
+                        return true;
+                    }
+                    return false;
                 }
 
-                _deskDupl.ReleaseFrame();
+                try
+                {
+                    using (desktopResource)
+                    using (var desktopTexture = desktopResource.QueryInterface<ID3D11Texture2D>())
+                    {
+                        _context.CopyResource(_stagingTexture, desktopTexture);
+                    }
+                }
+                finally
+                {
+                    _deskDupl.ReleaseFrame();
+                }
 
                 var mapped = _context.Map(_stagingTexture, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
                 try
@@ -174,6 +211,7 @@ namespace ITBRecorderAgent.Providers.Video
                         }
                     }
 
+                    _hasCapturedFrame = true;
                     frameData = _frameBuffer; // Return cached buffer reference (zero runtime GC allocations)
                     return true;
                 }
@@ -184,6 +222,11 @@ namespace ITBRecorderAgent.Providers.Video
             }
             catch
             {
+                if (_hasCapturedFrame && _frameBuffer != null)
+                {
+                    frameData = _frameBuffer;
+                    return true;
+                }
                 return false;
             }
         }
@@ -206,6 +249,7 @@ namespace ITBRecorderAgent.Providers.Video
         public void Dispose()
         {
             IsInitialized = false;
+            _hasCapturedFrame = false;
             _stagingTexture?.Dispose();
             _stagingTexture = null;
             _deskDupl?.Dispose();

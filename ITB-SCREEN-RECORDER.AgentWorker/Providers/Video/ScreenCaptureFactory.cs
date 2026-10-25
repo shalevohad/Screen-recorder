@@ -26,7 +26,7 @@ namespace ITBRecorderAgent.Providers.Video
             #if WINDOWS
             if (OperatingSystem.IsWindows())
             {
-                return new ResilientScreenCapture();
+                return new ResilientScreenCapture(0, 0, displayId, x, y, width, height);
             }
             #endif
 

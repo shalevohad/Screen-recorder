@@ -46,7 +46,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             Ffmpeg = ffmpeg;
             VideoPipe = videoPipe;
             Cts = cts;
-            LatestFrame = new byte[Math.Max(1, descriptor.Width * descriptor.Height * 4)];
+            byte[] initial = new byte[Math.Max(1, descriptor.Width * descriptor.Height * 4)];
+            if (screenCapture.TryCaptureFrame(out var captured) && captured != null)
+            {
+                Buffer.BlockCopy(captured, 0, initial, 0, Math.Min(captured.Length, initial.Length));
+            }
+            LatestFrame = initial;
         }
 
         public void Dispose()
@@ -241,11 +246,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
 #if WINDOWS
             if (OperatingSystem.IsWindows() && desc.AdapterIndex != uint.MaxValue)
             {
-                screenCapture = new DxgiScreenCapture(desc.AdapterIndex, desc.OutputIndex, desc.DisplayId);
+                screenCapture = new ResilientScreenCapture(desc.AdapterIndex, desc.OutputIndex, desc.DisplayId, desc.X, desc.Y, desc.Width, desc.Height);
             }
             else
             {
-                screenCapture = ScreenCaptureFactory.Create();
+                screenCapture = ScreenCaptureFactory.CreateForDisplay(desc.X, desc.Y, desc.Width, desc.Height, desc.DisplayId);
             }
 #else
             if (OperatingSystem.IsLinux())

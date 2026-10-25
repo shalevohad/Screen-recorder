@@ -144,10 +144,12 @@ Session 0 (Isolated Service Context)            Session 1+ (Interactive User Con
 
 The media ingestion engine in `ITB-SCREEN-RECORDER.AgentWorker` is optimized for zero CPU impact and zero packet loss.
 
-### 1. Screen Capture Engine
-- **Windows**: Uses **DirectX Graphics Infrastructure (DXGI) Desktop Duplication API (DDA)** ([`DirectXScreenCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/WindowsDirectXScreenCapture.cs)).
-  - Grabs raw GPU surfaces directly in VRAM without GDI/CPU copying.
-  - Supports dynamic monitor resolution changes and DPI scaling without restarting.
+### 1. Screen Capture Engine & Resilience
+- **Windows Capture Pipeline**: Implemented via [`ResilientScreenCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/ResilientScreenCapture.cs), pairing high-performance DXGI Desktop Duplication with fallback GDI capture.
+  - **DXGI DDA ([`DxgiScreenCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiScreenCapture.cs))**: Grabs GPU surfaces directly in VRAM with zero-copy whenever possible. Supports multi-adapter topologies (`AdapterIndex`, `OutputIndex`).
+  - **Static Screen Frame Retention**: When Windows desktop is idle/static, DXGI returns `WaitTimeout`. The capture engine retains and yields the previously captured frame buffer (`_hasCapturedFrame`), preventing video pipelines from emitting empty/black buffers.
+  - **Initial Startup Snapshot**: On initialization, `DxgiScreenCapture` immediately takes a 1-shot GDI snapshot to seed `_frameBuffer`. This guarantees frame 0 is never pitch black (zero bytes).
+  - **Multi-Monitor GDI Fallback ([`GdiScreenCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/GdiScreenCapture.cs))**: Accepts discrete `(x, y, width, height)` coordinates, enabling accurate BitBlt capture across extended, stacked, or negative-offset secondary monitors when DXGI duplication is unavailable.
 - **Linux**: Uses **X11 / XSHM** or **PipeWire** portal interfaces for headless or modern display servers.
 
 ### 2. Audio Capture & Intercom Mixer
@@ -219,11 +221,16 @@ FFmpeg probes on hot files must include:
 
 ## 7. Multi-Monitor Topology & Dynamic Hot-Plug
 
-### 1. Multi-Monitor Stream Mapping (Rule 11)
+### 1. Multi-Monitor Stream Mapping & WHEP Proxy Routing (Rule 11)
 - Each display is captured on its native GPU adapter via DXGI DDA (Windows) or XRandR/PipeWire (Linux). Zero cross-GPU PCIe bus transfers.
 - Stream paths:
   - Primary Display + Audio: `live/{hostname}/mon-0`
   - Secondary Displays (Video only): `live/{hostname}/mon-1`, `live/{hostname}/mon-2`, etc.
+  - Legacy Single-Monitor Path: `live/{hostname}`
+- **WHEP Reverse Proxy & Stream Path Fallback ([`WhepProxyController.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs))**:
+  - Exposes an air-gapped reverse proxy endpoint `/api/v1/whep/{*streamPath}` routing WebRTC SDP exchanges to MediaMTX.
+  - Automatically handles stream path aliases: if a client requests `live/{hostname}/mon-0` and MediaMTX returns 404 (e.g. older single-monitor agent streaming to root), it seamlessly falls back to `live/{hostname}`. Conversely, if `live/{hostname}` returns 404, it queries `live/{hostname}/mon-0`.
+  - Air-Gapped WebRTC configuration: Client players connect via `/api/v1/whep` with empty ICE server lists (`iceServers: []`), eliminating external STUN lookups and cross-origin localhost connection failures.
 - **Dynamic Hot-Plug**: Display connect/disconnect events spawn or cleanly terminate individual display pipelines without interrupting active recording on surviving displays.
 
 ### 2. Frontend Topology Display & Audio Solo (Rule 12)

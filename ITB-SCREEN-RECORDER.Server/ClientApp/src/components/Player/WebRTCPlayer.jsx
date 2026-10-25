@@ -3,7 +3,7 @@ import './VideoPlayer.scss';
 
 export default function WebRTCPlayer({
     streamPath,
-    webrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '/api/v1/whep' : 'http://127.0.0.1:8889',
+    webrtcBaseUrl = '/api/v1/whep',
     showControls = false,
     onPlaying,
     onStreamAvailable
@@ -66,8 +66,9 @@ export default function WebRTCPlayer({
                 peerRef.current.close();
             }
 
+            // Air-gapped intranet configuration: zero external STUN lookups
             const pc = new RTCPeerConnection({
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                iceServers: []
             });
             peerRef.current = pc;
 
@@ -127,9 +128,12 @@ export default function WebRTCPlayer({
                     sdp: mungedSdp
                 });
 
-                const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-                const effectiveBase = (isHttps && webrtcBaseUrl.startsWith('http:')) ? '/api/v1/whep' : webrtcBaseUrl;
-                const whepUrl = `${effectiveBase}/${streamPath}/whep`;
+                const effectiveBase = webrtcBaseUrl.startsWith('http:')
+                    ? (typeof window !== 'undefined' && window.location.protocol === 'https:' ? '/api/v1/whep' : webrtcBaseUrl)
+                    : (webrtcBaseUrl || '/api/v1/whep');
+                const cleanStreamPath = (streamPath || '').replace(/\/whep\/?$/i, '').replace(/^\/+/, '');
+                const cleanBase = effectiveBase.replace(/\/+$/, '');
+                const whepUrl = `${cleanBase}/${cleanStreamPath}/whep`;
                 const response = await fetch(whepUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/sdp' },
