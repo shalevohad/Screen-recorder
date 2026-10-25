@@ -48,6 +48,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private DateTime _lastFailbackCheckUtc = DateTime.MinValue;
 
         private bool _isWorkerStreaming;
+        private bool? _lastServerShouldStream = null;
+        private DateTime _lastStartCommandDispatchUtc = DateTime.MinValue;
         private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private DateTime _lastWorkerLaunchTime = DateTime.MinValue;
@@ -372,6 +374,13 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                         {
                                             await writer.WriteLineAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
                                         }
+
+                                        if (_lastServerShouldStream == true || (_lastServerShouldStream == null && _config.AutoStartRecordingOnLaunch))
+                                        {
+                                            string dest = GetEffectiveRtmpDestination();
+                                            await writer.WriteLineAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                            _lastStartCommandDispatchUtc = DateTime.UtcNow;
+                                        }
                                         continue;
                                     }
                                 }
@@ -426,6 +435,17 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
                                     _workerRecordingStartedAtUtc = status.RecordingStartedAtUtc;
+
+                                    if (!_isWorkerStreaming && (_lastServerShouldStream == true || (_lastServerShouldStream == null && _config.AutoStartRecordingOnLaunch)))
+                                    {
+                                        if ((DateTime.UtcNow - _lastStartCommandDispatchUtc).TotalSeconds > 10)
+                                        {
+                                            _lastStartCommandDispatchUtc = DateTime.UtcNow;
+                                            _logger.LogInformation("[IPC] Worker is in standby while recording is desired. Dispatching Start command.");
+                                            string dest = GetEffectiveRtmpDestination();
+                                            await writer.WriteLineAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                        }
+                                    }
                                     _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
                                     _lastWorkerLaunchTime = DateTime.MinValue;
@@ -642,12 +662,18 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 }
                             }
 
+                            bool shouldStart = heartbeatResponse.Command == ServerCommand.StartStream
+                                            || (heartbeatResponse.ShouldStream && !_isWorkerStreaming);
+
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
+                                _lastServerShouldStream = false;
                                 await SendCommandToWorkerAsync("Stop");
                             }
-                            else if (heartbeatResponse.Command == ServerCommand.StartStream)
+                            else if (shouldStart)
                             {
+                                _lastServerShouldStream = true;
+                                _lastStartCommandDispatchUtc = DateTime.UtcNow;
                                 string dest = GetEffectiveRtmpDestination();
                                 await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
                             }
@@ -988,6 +1014,39 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 string processName = Path.GetFileNameWithoutExtension(_workerPath);
                 var procs = Process.GetProcessesByName(processName);
+
+#if WINDOWS
+                if (OperatingSystem.IsWindows() && procs.Length > 0)
+                {
+                    uint activeConsoleSession = InteractiveProcessLauncher.GetActiveConsoleSessionId();
+                    if (activeConsoleSession != 0xFFFFFFFF && activeConsoleSession != 0)
+                    {
+                        var mismatchedProcs = procs.Where(p =>
+                        {
+                            try { return p.SessionId == 0 || (uint)p.SessionId != activeConsoleSession; }
+                            catch { return false; }
+                        }).ToList();
+
+                        if (mismatchedProcs.Count > 0)
+                        {
+                            _logger.LogWarning("Found {Count} worker process(es) in invalid/dead sessions (Active session: {ActiveSession}). Terminating...",
+                                mismatchedProcs.Count, activeConsoleSession);
+
+                            foreach (var p in mismatchedProcs)
+                            {
+                                try
+                                {
+                                    p.Kill();
+                                    p.WaitForExit(1000);
+                                }
+                                catch { }
+                            }
+
+                            procs = Process.GetProcessesByName(processName);
+                        }
+                    }
+                }
+#endif
 
                 bool hasEverReceivedHeartbeat = _lastWorkerHeartbeat != DateTime.MinValue;
                 if (procs.Length > 0 && !hasEverReceivedHeartbeat && _lastWorkerLaunchTime == DateTime.MinValue)

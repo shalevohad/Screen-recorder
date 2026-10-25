@@ -63,10 +63,12 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
         // דגל שמורה ל-Windows לקרוא את משתני הסביבה בפורמט הנכון
         private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
 
+        public static uint GetActiveConsoleSessionId() => WTSGetActiveConsoleSessionId();
+
         public static bool StartProcessInActiveSession(string appPath, string arguments = "")
         {
             uint sessionId = WTSGetActiveConsoleSessionId();
-            if (sessionId == 0xFFFFFFFF) return false;
+            if (sessionId == 0xFFFFFFFF || sessionId == 0) return false;
 
             IntPtr userToken = IntPtr.Zero;
             IntPtr envBlock = IntPtr.Zero;
@@ -76,6 +78,20 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 if (!WTSQueryUserToken(sessionId, out userToken))
                 {
                     int lastError = Marshal.GetLastWin32Error();
+                    bool isRunningAsSystem = false;
+                    try
+                    {
+                        isRunningAsSystem = System.Security.Principal.WindowsIdentity.GetCurrent().IsSystem;
+                    }
+                    catch { }
+
+                    if (isRunningAsSystem)
+                    {
+                        // 💡 כשאנו רצים כשירות SYSTEM בסשן 0, אסור בשום אופן לשגר את ה-Worker ישירות לתוך Session 0!
+                        // יש להמתין למשתמש שייכנס לשולחן העבודה האינטראקטיבי (Session 1+)
+                        return false;
+                    }
+
                     // אם אנו לא רצים כ-SYSTEM (למשל הרצה ידנית/אינטראקטיבית לצורכי בדיקות או פיתוח), נשגר ישירות בסשן הנוכחי
                     try
                     {

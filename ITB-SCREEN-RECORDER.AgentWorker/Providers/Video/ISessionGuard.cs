@@ -33,7 +33,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
         private readonly Action _onSessionRestored;
         private readonly Action? _onDisplaySettingsChanged;
         private Microsoft.Win32.SessionSwitchEventHandler? _switchHandler;
+        private Microsoft.Win32.PowerModeChangedEventHandler? _powerHandler;
         private EventHandler? _displayHandler;
+        private readonly CancellationTokenSource _guardCts = new();
+        private bool _wasDesktopInaccessible = false;
 
         public WindowsDesktopSessionGuard(Action onSessionRestored, Action? onDisplaySettingsChanged = null)
         {
@@ -42,12 +45,15 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
 
             _switchHandler = (s, e) =>
             {
-                if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionUnlock)
+                if (e.Reason == Microsoft.Win32.SessionSwitchReason.SessionUnlock ||
+                    e.Reason == Microsoft.Win32.SessionSwitchReason.SessionLogon ||
+                    e.Reason == Microsoft.Win32.SessionSwitchReason.ConsoleConnect ||
+                    e.Reason == Microsoft.Win32.SessionSwitchReason.RemoteConnect)
                 {
-                    Logger.Info("[SessionGuard] Windows SessionUnlock detected. Scheduling recovery...");
+                    Logger.Info($"[SessionGuard] Windows session event ({e.Reason}) detected. Scheduling recovery...");
                     _ = Task.Run(async () =>
                     {
-                        await Task.Delay(400).ConfigureAwait(false);
+                        await Task.Delay(500).ConfigureAwait(false);
                         _onSessionRestored();
                     });
                 }
@@ -60,6 +66,28 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
             catch (Exception ex)
             {
                 Logger.Warn($"[SessionGuard] Failed to register Windows SessionSwitch: {ex.Message}");
+            }
+
+            _powerHandler = (s, e) =>
+            {
+                if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+                {
+                    Logger.Info("[SessionGuard] Windows PowerModes.Resume detected (woke from sleep/modern standby). Scheduling recovery...");
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1500).ConfigureAwait(false); // Give GPU/display drivers 1.5s to restore
+                        _onSessionRestored();
+                    });
+                }
+            };
+
+            try
+            {
+                Microsoft.Win32.SystemEvents.PowerModeChanged += _powerHandler;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[SessionGuard] Failed to register Windows PowerModeChanged: {ex.Message}");
             }
 
             _displayHandler = (s, e) =>
@@ -80,6 +108,35 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
             {
                 Logger.Warn($"[SessionGuard] Failed to register Windows DisplaySettingsChanged: {ex.Message}");
             }
+
+            // 💡 Proactive background watchdog: checks every 2s for desktop restoration even if Windows message pump was delayed
+            Task.Run(async () =>
+            {
+                var ct = _guardCts.Token;
+                while (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(2000, ct).ConfigureAwait(false);
+                        bool isAttached = ITBRecorderAgent.Providers.Video.DesktopSecurityManager.TryAttachToInputDesktop();
+                        if (isAttached)
+                        {
+                            if (_wasDesktopInaccessible)
+                            {
+                                _wasDesktopInaccessible = false;
+                                Logger.Info("[SessionGuard:Watchdog] Desktop became accessible after lock/sleep. Triggering session restoration...");
+                                _onSessionRestored();
+                            }
+                        }
+                        else
+                        {
+                            _wasDesktopInaccessible = true;
+                        }
+                    }
+                    catch (OperationCanceledException) { break; }
+                    catch { }
+                }
+            }, _guardCts.Token);
         }
 
         public async Task MonitorUntilRestoredAsync(CancellationToken ct)
@@ -107,9 +164,16 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
 
         public void Dispose()
         {
+            try { _guardCts.Cancel(); } catch { }
+            try { _guardCts.Dispose(); } catch { }
+
             if (_switchHandler != null)
             {
                 try { Microsoft.Win32.SystemEvents.SessionSwitch -= _switchHandler; } catch { }
+            }
+            if (_powerHandler != null)
+            {
+                try { Microsoft.Win32.SystemEvents.PowerModeChanged -= _powerHandler; } catch { }
             }
             if (_displayHandler != null)
             {

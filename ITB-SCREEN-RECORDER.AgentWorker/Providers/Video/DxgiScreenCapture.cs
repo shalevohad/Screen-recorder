@@ -134,9 +134,9 @@ namespace ITBRecorderAgent.Providers.Video
 
                 if (result.Failure)
                 {
-                    if (result.Code == Vortice.DXGI.ResultCode.AccessLost.Code)
+                    if (result.Code != Vortice.DXGI.ResultCode.WaitTimeout.Code)
                     {
-                        Logger.Warn("[VIDEO] DXGI Access Lost. Reinitializing...");
+                        Logger.Warn($"[VIDEO] DXGI error (0x{result.Code:X8}). Reinitializing capture pipeline...");
                         Reinitialize();
                     }
                     return false;
@@ -187,7 +187,15 @@ namespace ITBRecorderAgent.Providers.Video
         {
             _lastReinitAttemptUtc = DateTime.UtcNow;
             Dispose();
-            Initialize();
+            try
+            {
+                Initialize();
+            }
+            catch
+            {
+                // Desktop may still be locked, sleeping, or in transition.
+                // IsInitialized remains false; TryCaptureFrame will retry per ReinitRetryInterval.
+            }
         }
 
         public void Dispose()

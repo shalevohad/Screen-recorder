@@ -28,7 +28,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer"
             : "/var/lib/itb-screen-recorder/buffer";
 
-        public bool AutoStartRecordingOnLaunch { get; set; } = false;
+        public bool AutoStartRecordingOnLaunch { get; set; } = true;
         public bool EnableFileLogging { get; set; } = true;
 
         public string LogFilePath { get; set; } = OperatingSystem.IsWindows()

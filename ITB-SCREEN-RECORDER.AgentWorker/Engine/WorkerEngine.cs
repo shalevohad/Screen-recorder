@@ -47,6 +47,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private string _videoBitrate;
 
         private DateTime? _sessionStartTimeUtc = null;
+        private int _consecutivePipeBreaks = 0;
 
         private readonly MultiDisplayPipelineManager _displayManager;
         private AudioPacer? _audioPacer;
@@ -77,6 +78,14 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _keyboardCapture.Start();
 
             WireIpcEvents();
+
+            if (_config.AutoStartRecordingOnLaunch)
+            {
+                Logger.Info("[WORKER:LIFECYCLE] AutoStartRecordingOnLaunch enabled. Auto-starting capture pipeline.");
+                _isStreaming = true;
+                _sessionStartTimeUtc = DateTime.UtcNow;
+                if (_permission.CurrentCount == 0) _permission.Release();
+            }
         }
 
         private void OnKeystrokeCaptured(KeystrokeEventDto k)
@@ -141,6 +150,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 _baselineFps = fps > 0 ? fps : _baselineFps;
                 _videoBitrate = !string.IsNullOrWhiteSpace(bitrate) ? bitrate : _videoBitrate;
 
+                _isOffline = false;
+                _consecutivePipeBreaks = 0;
                 if (!_isStreaming)
                 {
                     _sessionStartTimeUtc = DateTime.UtcNow + _serverUtcOffset;
@@ -166,6 +177,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 _baselineFps = fps > 0 ? fps : _baselineFps;
                 _videoBitrate = !string.IsNullOrWhiteSpace(bitrate) ? bitrate : _videoBitrate;
 
+                _isOffline = false;
+                _consecutivePipeBreaks = 0;
                 if (!_isStreaming)
                 {
                     _sessionStartTimeUtc = DateTime.UtcNow + _serverUtcOffset;
@@ -202,9 +215,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
             _ipc.ServerConnected += () =>
             {
-                if (_isOffline && _isStreaming)
+                _consecutivePipeBreaks = 0;
+                if (_isOffline)
                 {
-                    Logger.Info("[WORKER:LIFECYCLE] Server connection restored. Restoring LIVE_RTMP transmission.");
+                    Logger.Info("[WORKER:LIFECYCLE] Server connection confirmed. Restoring LIVE_RTMP transmission.");
                     _isOffline = false;
                     _requiresRestart = true;
                 }
@@ -233,10 +247,19 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             using var guard = SessionGuardFactory.Create(
                 () =>
                 {
+                    Logger.Info("[WORKER:SESSION] Desktop session / power transition detected.");
                     if (_isStreaming)
                     {
                         Logger.Info("[WORKER:SESSION] Triggering session restoration restart.");
                         _requiresRestart = true;
+                    }
+                    else if (_config.AutoStartRecordingOnLaunch)
+                    {
+                        Logger.Info("[WORKER:SESSION] Resuming continuous recording after session restoration.");
+                        _isStreaming = true;
+                        _sessionStartTimeUtc = DateTime.UtcNow + _serverUtcOffset;
+                        _requiresRestart = true;
+                        if (_permission.CurrentCount == 0) _permission.Release();
                     }
                 },
                 () =>
@@ -258,7 +281,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                                     bytes => _netTelemetry.TrackMediaBytes(bytes),
                                     () =>
                                     {
-                                        _isOffline = true;
+                                        Logger.Warn("[WORKER:LIFECYCLE] Pipe broken event received on dynamic sync.");
                                         _requiresRestart = true;
                                     },
                                     ct).ConfigureAwait(false);
@@ -297,8 +320,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                     catch (Exception ex)
                     {
                         Logger.Error($"[WORKER:STREAM] Streaming session faulted: {ex.Message}\n{ex.StackTrace}");
-                        _isStreaming = false;
                         _sessionStartTimeUtc = null;
+                        _requiresRestart = true;
                         await Task.Delay(2000, ct).ConfigureAwait(false);
                     }
                 }
@@ -342,7 +365,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 () =>
                 {
                     Logger.Warn("[WORKER:LIFECYCLE] Pipe broken event received. Flagging for session restart.");
-                    _isOffline = true;
+                    _consecutivePipeBreaks++;
+                    if (_consecutivePipeBreaks >= 3)
+                    {
+                        Logger.Warn("[WORKER:LIFECYCLE] Consecutive pipe breaks threshold reached. Temporarily switching to isolated offline buffer.");
+                        _isOffline = true;
+                    }
                     _requiresRestart = true;
                 },
                 ct).ConfigureAwait(false);
@@ -352,11 +380,13 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
             if (primary == null)
             {
-                Logger.Error("[WORKER:LIFECYCLE] No display pipeline was successfully engaged. Aborting session.");
-                _isStreaming = false;
-                _sessionStartTimeUtc = null;
+                Logger.Warn("[WORKER:LIFECYCLE] No display pipeline was successfully engaged (desktop may be locked, asleep, or in transition). Retrying in 2 seconds...");
+                _requiresRestart = true;
+                await Task.Delay(2000, ct).ConfigureAwait(false);
                 return;
             }
+
+            _consecutivePipeBreaks = 0;
 
             audio.AudioDataAvailable += (s, data) =>
             {
