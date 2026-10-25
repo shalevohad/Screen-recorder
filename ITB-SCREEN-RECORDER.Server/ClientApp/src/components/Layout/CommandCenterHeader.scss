@@ -360,7 +360,7 @@
             }
         }
     }
-    /* 💡 שורת הטלמטריה התחתונה: ממורכזת לחלוטין */
+    /* Bottom telemetry row: centered layout */
     .top-row-telemetry {
         display: flex;
         align-items: center;
@@ -440,7 +440,7 @@
                             color: var(--text-muted, #64748B);
                         }
                     }
-                    /* 💡 התאמת RECORDING AGENTS לעיצוב הזהה ל-NET LOAD */
+                    /* Align RECORDING AGENTS pod styling with NET LOAD pod */
                     &.recording-agents-pod {
                         min-width: 135px;
 

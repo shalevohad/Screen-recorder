@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Server/Services/StorageRetentionWorker.cs
 // ==========================================
 namespace ITB_SCREEN_RECORDER.Server.Services;
@@ -62,7 +62,7 @@ public sealed class StorageRetentionWorker : BackgroundService
                 _logger.LogError(ex, "[RETENTION] Fatal error during unified retention cycle.");
             }
 
-            // הרצה מחזורית כל שעה
+            // Periodic retention execution cycle every 1 hour
             await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
         }
     }

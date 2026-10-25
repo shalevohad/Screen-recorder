@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import { audioSoloReducer, INITIAL_AUDIO_SOLO_STATE } from '../utils/topologyLayout';
 

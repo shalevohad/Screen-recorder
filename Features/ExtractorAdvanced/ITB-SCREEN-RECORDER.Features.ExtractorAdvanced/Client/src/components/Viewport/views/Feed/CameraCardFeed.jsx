@@ -105,7 +105,7 @@ export default function CameraCardFeed({
         }
 
         setIsLoadingFrame(true);
-        // 💡 תגובה סופר-מהירה (40ms במקום 200ms) לעדכון כרטיסי המצלמה
+        // Fast-response debouncing (25ms while playing, 40ms paused) for responsive card scrubbing
         const delayMs = wasPlaying ? 25 : 40;
 
         const timer = setTimeout(() => {
@@ -178,7 +178,7 @@ export default function CameraCardFeed({
         };
     }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
 
-    // 💡 טיפול ב-Seek תוך כדי ניגון במצב Solo בכרטיסייה והמשך ניגון
+    // Handle user seek actions while playing in Solo mode on this card, rebinding stream offset
     useEffect(() => {
         if (!stationName || !isSolo) return;
 
@@ -220,7 +220,7 @@ export default function CameraCardFeed({
         };
     }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
 
-    // 💡 מנוע 60fps מונוטוני כאשר כרטיסיית פיד מנוגנת במצב Solo
+    // Monotonic 60 FPS requestAnimationFrame tick loop when playing card feed in Solo mode
     useEffect(() => {
         if (!isSolo || !isPlaying || !streamSrc || !isVideoReady || isSpotlightActive) return;
 

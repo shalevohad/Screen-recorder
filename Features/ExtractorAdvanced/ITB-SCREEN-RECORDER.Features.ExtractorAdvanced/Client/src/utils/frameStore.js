@@ -2,30 +2,39 @@
 // File: Features/ExtractorAdvanced/Client/src/utils/frameStore.js
 // ==========================================
 
-const MAX_CACHE_SIZE = 600; // הגבלת פריימים מקסימלית ב-RAM
-const QUANTIZE_MS = 250;    // סנכרון מדרגות מול השרת ל-Scrubbing חלק
+const MAX_CACHE_SIZE = 600; // Maximum frame cache capacity in RAM
+const QUANTIZE_MS = 250;    // Quantization step for smooth scrubbing against server probe
 
 const frameCache = new Map();
 const pendingPromises = new Map();
 const listeners = new Set();
 
-const MAX_CONCURRENT = 4; // שמירה על מעבד השרת והדפדפן מתחרות תהליכים
+const MAX_CONCURRENT = 4; // Concurrency limit to prevent network and browser contention
 let activeRequests = 0;
 let requestQueue = [];
 
+/**
+ * Quantizes epoch timestamp to nearest quantization boundary.
+ * 
+ * @param {number} epochMs - Raw timestamp in milliseconds.
+ * @returns {number} Quantized timestamp.
+ */
 function quantize(epochMs) {
     if (!epochMs || isNaN(epochMs)) return 0;
     return Math.round(epochMs / QUANTIZE_MS) * QUANTIZE_MS;
 }
 
+/**
+ * Drains request queue prioritizing recent tasks (LIFO) within concurrency limits.
+ */
 function processQueue() {
     if (activeRequests >= MAX_CONCURRENT || requestQueue.length === 0) return;
 
-    // ניקוי משימות שבוטלו
+    // Remove cancelled/aborted tasks
     requestQueue = requestQueue.filter(t => !t.signal?.aborted);
 
     while (activeRequests < MAX_CONCURRENT && requestQueue.length > 0) {
-        // 💡 LIFO (Last-In-First-Out): שליפת המשימה האחרונה שנוספה (הפריים העדכני ביותר שהמשתמש עומד עליו כעת!)
+        // LIFO (Last-In-First-Out): Pick the most recently enqueued frame under active playhead
         const task = requestQueue.pop();
         if (!task || task.signal?.aborted) continue;
 
@@ -34,6 +43,11 @@ function processQueue() {
     }
 }
 
+/**
+ * Executes a frame retrieval HTTP task.
+ * 
+ * @param {{ key: string, hostname: string, epochMs: number, signal: AbortSignal, resolve: (val: any) => void }} task
+ */
 async function executeTask(task) {
     const { key, hostname, epochMs, signal, resolve } = task;
     try {
@@ -69,23 +83,37 @@ async function executeTask(task) {
 }
 
 export const frameStore = {
+    /**
+     * Gets a cached frame URL by station and timestamp.
+     * 
+     * @param {string} hostname
+     * @param {number} rawEpochMs
+     * @returns {string|null} Blob URL, 'NO_SIGNAL', or null if not cached.
+     */
     get(hostname, rawEpochMs) {
         const epochMs = quantize(rawEpochMs);
         const key = `${hostname}_${epochMs}`;
         if (!frameCache.has(key)) return null;
 
-        // רענון מיקום ב-LRU
+        // Refresh position in LRU cache
         const val = frameCache.get(key);
         frameCache.delete(key);
         frameCache.set(key, val);
         return val;
     },
 
+    /**
+     * Stores a frame value and notifies subscribers.
+     * 
+     * @param {string} hostname
+     * @param {number} rawEpochMs
+     * @param {string} value
+     */
     set(hostname, rawEpochMs, value) {
         const epochMs = quantize(rawEpochMs);
         const key = `${hostname}_${epochMs}`;
 
-        // פינוי זיכרון LRU אם חורגים מהמגבלה
+        // LRU eviction if cache exceeds capacity
         if (frameCache.size >= MAX_CACHE_SIZE) {
             const oldestKey = frameCache.keys().next().value;
             const oldestVal = frameCache.get(oldestKey);
@@ -99,6 +127,9 @@ export const frameStore = {
         listeners.forEach(listener => listener(hostname, epochMs, value));
     },
 
+    /**
+     * Clears all cached frames, releases blob URLs, and flushes queues.
+     */
     clearAll() {
         frameCache.forEach((val) => {
             if (val && val.startsWith('blob:')) {
@@ -111,21 +142,35 @@ export const frameStore = {
         activeRequests = 0;
     },
 
+    /**
+     * Subscribes to frame store updates.
+     * 
+     * @param {(hostname: string, epochMs: number, value: string) => void} listener
+     * @returns {() => void} Unsubscribe callback.
+     */
     subscribe(listener) {
         listeners.add(listener);
         return () => listeners.delete(listener);
     },
 
+    /**
+     * Fetches a frame for the specified station and timestamp with deduplication and queueing.
+     * 
+     * @param {string} hostname
+     * @param {number} rawEpochMs
+     * @param {AbortSignal} [signal=null]
+     * @returns {Promise<string|null>}
+     */
     fetchFrame(hostname, rawEpochMs, signal = null) {
         const epochMs = quantize(rawEpochMs);
         const key = `${hostname}_${epochMs}`;
 
-        // 1. שליפה מיידית מ-RAM (0ms)
+        // 1. Immediate retrieval from RAM cache (0ms)
         if (frameCache.has(key)) {
             return Promise.resolve(this.get(hostname, epochMs));
         }
 
-        // 2. אם כבר קיים Promise באוויר, מחזירים אותו
+        // 2. Return existing in-flight promise if available
         if (pendingPromises.has(key)) {
             return pendingPromises.get(key);
         }
@@ -136,8 +181,7 @@ export const frameStore = {
                 return;
             }
 
-            // 💡 אופטימיזציה קריטית: ביטול משימות קודמות של אותה תחנה הממתינות בתור
-            // אם המשתמש גרר את הפלייהד לתחנה זו, הפריימים הישנים בתור מיותרים לחלוטין!
+            // Optimization: Cancel outdated queued requests for this station
             requestQueue = requestQueue.filter(t => {
                 if (t.hostname === hostname && t.key !== key) {
                     pendingPromises.delete(t.key);

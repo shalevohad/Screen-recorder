@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 // ==========================================
 // File: Client/src/context/AuthContext.jsx
 // ==========================================
@@ -56,7 +57,7 @@ export function AuthProvider({ children }) {
         return { isOpenMode: true, mode: 'Open' };
     }, []);
 
-    // כניסה כאורח – הרשאות מבצעיות בלבד (ללא הגדרות או אבטחה)
+    // Guest login - operational monitoring permissions only (no administrative settings or security modifications)
     const enterAsGuest = useCallback(async () => {
         try {
             const res = await fetch('/api/v1/auth/guest-session', { method: 'POST' });
@@ -167,12 +168,12 @@ export function AuthProvider({ children }) {
         setIsAuthenticated(false);
     }, []);
 
-    // 🔒 בדיקת הרשאות מאובטחת
+    // Secure permission enforcement check
     const hasPermission = useCallback((permissionKey) => {
         if (!permissionKey) return true;
         if (isSystemRoot) return true;
 
-        // במצב Open Mode: מאשר אך ורק הרשאות מבצעיות (לעולם לא הגדרות או אבטחה)
+        // In Open Mode: grants operational permissions only (never settings or security management)
         if (isOpenMode) {
             const isProtectedAdminPermission =
                 permissionKey.startsWith('settings.') || permissionKey.startsWith('security.');

@@ -1,9 +1,9 @@
-﻿// Client/src/components/UI/GlobalJobIndicator.scss
+// Client/src/components/UI/GlobalJobIndicator.scss
 
 .global-job-capsule {
     position: fixed !important;
     bottom: 28px !important;
-    left: 76px !important; // פינוי מלא של סרגל הכלים השמאלי (48px + מרווח)
+    left: 76px !important; // Clear left toolbar width (48px + spacing)
     right: auto !important;
     z-index: 99999 !important;
     width: 320px;

@@ -30,10 +30,10 @@ namespace ITB_SCREEN_RECORDER.Server.Models
         [Required]
         public StorageSettingsDto Storage { get; set; } = null!;
 
-        // 💡 הוספת הגדרות ה-Dashboard הכוללות את הטאבים ל-DTO
+        // Dashboard configuration settings including custom tab views
         public DashboardSettingsDto Dashboard { get; set; } = new DashboardSettingsDto();
 
-        // 💡 הגדרות Discovery ו-Cluster
+        // Local discovery and cluster settings
         public DiscoverySettingsDto Discovery { get; set; } = new DiscoverySettingsDto();
     }
 
@@ -72,7 +72,7 @@ namespace ITB_SCREEN_RECORDER.Server.Models
         public int SnapshotBufferMarginPx { get; set; } = 250;
         public int MaxConcurrentLiveStreams { get; set; } = 9;
 
-        // 💡 רשימת הטאבים שלנו
+        // Custom operational fleet tabs
         public List<FleetTabDto> FleetTabs { get; set; } = new List<FleetTabDto>();
     }
 

@@ -37,14 +37,14 @@ html, body, #root {
     &.is-feature-mode {
         padding-bottom: 12px;
     }
-    /* 💡 מצב ניתוק מהשרת: הקפאת אינטראקציות ועמעום כרטיסיות */
+    /* Disconnected server state: freeze interactions and dim cards */
     &.is-server-offline {
         .station-tactical-card,
         .stations-dense-table {
             filter: grayscale(25%) contrast(95%);
             opacity: 0.85;
             transition: all 0.3s ease;
-            pointer-events: none; // מונע שליחת פקודות כוזבות כשהשרת אינו זמין
+            pointer-events: none; // Disallow sending spurious commands while server is unavailable
         }
 
         .active-radar-listener-stage {
@@ -290,7 +290,7 @@ html, body, #root {
                 }
             }
         }
-        /* משטח ה-Canvas הראשי המאוחד */
+        /* Unified main workspace canvas */
         .tab-pane-content-wrapper {
             flex: 1;
             width: 100%;
@@ -482,7 +482,7 @@ html, body, #root {
             }
         }
     }
-    /* גלולת הזום הצפה */
+    /* Floating zoom control pill */
     .noc-footer-zoom-pill {
         position: fixed;
         bottom: 1.25rem;

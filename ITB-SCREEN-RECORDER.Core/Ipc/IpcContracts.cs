@@ -1,7 +1,7 @@
-﻿namespace ITB_SCREEN_RECORDER.Core.Ipc;
+namespace ITB_SCREEN_RECORDER.Core.Ipc;
 
 /// <summary>
-/// מייצג את המצב הפנימי של ה-Session בסביבת Windows/Linux
+/// Represents internal user session state across Windows (Session 0/1+) and Linux environments.
 /// </summary>
 public enum InternalSessionState
 {
@@ -12,7 +12,7 @@ public enum InternalSessionState
 }
 
 /// <summary>
-/// הודעת הסטטוס (Heartbeat) שה-Worker שולח ל-Service
+/// Inter-process communication heartbeat and status message emitted from AgentWorker to AgentService.
 /// </summary>
 public class WorkerIpcStatusMessage
 {
@@ -24,7 +24,7 @@ public class WorkerIpcStatusMessage
 }
 
 /// <summary>
-/// פקודות ניהול מה-Service ל-Worker
+/// Operational lifecycle control commands dispatched from AgentService to AgentWorker via IPC pipe.
 /// </summary>
 public enum WorkerControlCommand
 {

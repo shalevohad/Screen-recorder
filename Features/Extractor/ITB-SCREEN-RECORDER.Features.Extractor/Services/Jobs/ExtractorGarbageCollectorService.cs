@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/ExtractorGarbageCollectorService.cs
 // ==========================================
 using System;
@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     /// <summary>
-    /// שירות רקע לניקוי קבצי זבל בדיסק וסגירת תהליכי FFmpeg/FFprobe תקועים ויתומים
+    /// Background service that cleans orphaned temporary spool files on disk and terminates runaway or orphaned FFmpeg/FFprobe processes.
     /// </summary>
     public class ExtractorGarbageCollectorService : BackgroundService
     {
@@ -120,7 +120,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             string tempPath = Path.GetTempPath();
 
-            // כולל תחיליות של שני המנועים: itb_spool_, cut_, bridge_, concat_, manifest_
+            // Covers temp prefixes for both extractor engines: itb_spool_, cut_, bridge_, concat_, manifest_
             string[] tempPrefixes = { "spritesheet_", "sync_", "frame_", "stream_", "manifest_", "bridge_", "concat_", "itb_spool_", "cut_" };
 
             try

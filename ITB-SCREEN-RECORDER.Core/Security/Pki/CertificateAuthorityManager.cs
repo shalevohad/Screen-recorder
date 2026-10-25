@@ -29,8 +29,9 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
     }
 
     /// <summary>
-    /// מנהל PKI אוטונומי חוצה פלטפורמות (Windows & Linux).
-    /// מייצר ומחדש אוטומטית תעודות Root CA ו-Server SSL ללא התערבות משתמש וללא צורך בכלים חיצוניים (OpenSSL וכד').
+    /// Autonomous cross-platform PKI authority manager (Windows &amp; Linux).
+    /// Automatically provisions, validates, and rotates Root CA and Server SSL certificates
+    /// without manual intervention or reliance on external utilities (such as openssl.exe).
     /// </summary>
     public static class CertificateAuthorityManager
     {
@@ -46,8 +47,9 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         public static event Action<CertificateBundle>? OnCertificateRenewed;
 
         /// <summary>
-        /// מחזיר את נתיב תיקיית התעודות המאובטחת בהתאם למערכת ההפעלה.
+        /// Resolves the secure OS-specific certificates storage directory path.
         /// </summary>
+        /// <returns>Absolute path to the platform certificates directory.</returns>
         public static string ResolveCertificatesDirectory()
         {
             string dir;
@@ -77,7 +79,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
             }
             catch (Exception ex)
             {
-                // Fallback לתיקיית האפליקציה המקומית במידה ואין הרשאות לתיקיית המערכת (למשל במצב פיתוח)
+                // Fallback to local application base directory if permissions to system directory are restricted (e.g. dev mode)
                 string fallbackDir = Path.Combine(AppContext.BaseDirectory, "Certificates");
                 if (!Directory.Exists(fallbackDir)) Directory.CreateDirectory(fallbackDir);
                 Logger.Warn($"[PKI] Using fallback certificates directory '{fallbackDir}': {ex.Message}");
@@ -88,9 +90,12 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         }
 
         /// <summary>
-        /// מוודא שקיימות תעודות תקפות (Root CA ו-Server SSL).
-        /// אם הן חסרות, עומדות לפוג (פחות מ-30 יום) או כבר פגו תוקף - הן מיוצרות ומחודשות אוטומטית.
+        /// Ensures valid Root CA and Server SSL certificates exist.
+        /// If missing, expired, or expiring within 30 days, regenerates and provisions them automatically.
         /// </summary>
+        /// <param name="extraSanHosts">Optional additional Subject Alternative Names (DNS hostnames or IP addresses).</param>
+        /// <param name="forceRenew">Force immediate generation regardless of certificate validity period.</param>
+        /// <returns>The active certificate bundle containing certs, private keys, and file paths.</returns>
         public static CertificateBundle EnsureCertificates(IEnumerable<string>? extraSanHosts = null, bool forceRenew = false)
         {
             lock (SyncLock)
@@ -121,7 +126,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                 RSA? caPrivateKey = null;
 
                 // ==========================================
-                // שלב 1: אימות והבטחת קיומו של Root CA תקין עם מפתח פרטי
+                // Phase 1: Validate and ensure healthy Root CA with private key
                 // ==========================================
                 if (!needNewCa)
                 {
@@ -138,7 +143,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                         }
                         else
                         {
-                            // טעינת המפתח הפרטי וחיבורו אל תעודת ה-CA (חובה לצורך חתימה על תעודות שרת)
+                            // Load private key and associate with CA certificate (required for signing server leaf certificates)
                             caPrivateKey = RSA.Create();
                             caPrivateKey.ImportFromPem(File.ReadAllText(caKeyPath));
                             caCert = caRaw.CopyWithPrivateKey(caPrivateKey);
@@ -167,26 +172,26 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
 
                     caCert = caReq.CreateSelfSigned(notBefore, notAfter);
 
-                    // שמירת CA CRT ו-KEY ללא BOM עבור תאימות מושלמת עם MediaMTX, Go ו-Linux
+                    // Save CA CRT and KEY without UTF-8 BOM for compatibility with MediaMTX, Go, and Linux
                     string caPem = caCert.ExportCertificatePem();
                     string caKeyPem = caPrivateKey.ExportPkcs8PrivateKeyPem();
 
                     File.WriteAllText(caCrtPath, caPem, Utf8NoBom);
                     File.WriteAllText(caKeyPath, caKeyPem, Utf8NoBom);
 
-                    // עדכון ca-bundle.crt (צובר תעודות CA היסטוריות למעבר שקוף ללא השבתה)
+                    // Update ca-bundle.crt (aggregates historical CA certificates for zero-downtime rolling transitions)
                     AppendToCaBundle(caBundlePath, caPem);
 
                     Logger.AlwaysInfo($"[PKI] Root CA generated successfully. Thumbprint: {caCert.Thumbprint}, Valid until: {caCert.NotAfter:u}");
 
-                    // רישום ה-CA בחנות התעודות של מערכת ההפעלה (Windows / Linux)
+                    // Register Root CA in OS system trust store (Windows / Linux)
                     TryRegisterCaInSystemTrust(caCert, caCrtPath);
 
                     needNewServerCert = true;
                 }
 
                 // ==========================================
-                // שלב 2: אימות והבטחת קיומה של תעודת שרת התואמת את ה-CA הפעיל
+                // Phase 2: Validate and ensure server certificate matching active CA
                 // ==========================================
                 X509Certificate2? serverCert = null;
 
@@ -198,7 +203,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                         DateTime srvNotBeforeUtc = serverCert.NotBefore.ToUniversalTime();
                         DateTime srvNotAfterUtc = serverCert.NotAfter.ToUniversalTime();
 
-                        // בדיקה קריטית: האם תעודת השרת הקיימת אכן נחתמה על ידי ה-Root CA הנוכחי?
+                        // Critical check: Was the existing server certificate signed by the active Root CA?
                         bool isSignedByActiveCa = false;
                         try
                         {
@@ -255,7 +260,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                             new Oid("1.3.6.1.5.5.7.3.2")  // Client Authentication
                         }, critical: false));
 
-                    // 💡 הוספת Subject Alternative Names (SAN) מקיפים לכל הכתובות הפעילות
+                    // Add comprehensive Subject Alternative Names (SAN) for all active endpoint hostnames and IP addresses
                     var sanBuilder = new SubjectAlternativeNameBuilder();
                     sanBuilder.AddDnsName("localhost");
                     sanBuilder.AddIpAddress(IPAddress.Loopback);
@@ -272,7 +277,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     catch { }
 
-                    // איסוף כל כתובות ה-IP המקומיות הפעילות במכונה
+                    // Aggregate all active local IP addresses on the machine
                     foreach (var ip in GetAllLocalIpAddresses())
                     {
                         sanBuilder.AddIpAddress(ip);
@@ -297,7 +302,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     serverReq.CertificateExtensions.Add(sanBuilder.Build());
                     serverReq.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(serverReq.PublicKey, false));
 
-                    // חתימת תעודת השרת באמצעות ה-Root CA (תוקף ל-2 שנים עם חפיפה של 5 דקות לאחור למניעת בעיות סנכרון שעון)
+                    // Sign server leaf certificate using Root CA (valid for 2 years with 5-minute pre-roll to prevent clock drift rejection)
                     byte[] serialNumber = new byte[16];
                     RandomNumberGenerator.Fill(serialNumber);
 
@@ -307,7 +312,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     using var issuedCertWithoutKey = serverReq.Create(caCert!, notBefore, notAfter, serialNumber);
                     using var issuedCertWithKey = issuedCertWithoutKey.CopyWithPrivateKey(serverRsa);
 
-                    // ייצוא PFX עם שרשרת התעודה (כולל שרשרת ה-Root CA)
+                    // Export PFX bundle with full trust chain (including Root CA)
                     var pfxCollection = new X509Certificate2Collection();
                     pfxCollection.Add(issuedCertWithKey);
                     pfxCollection.Add(caCert!);
@@ -317,7 +322,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                         File.WriteAllBytes(serverPfxPath, pfxBytes);
                     }
 
-                    // ייצוא CRT ו-KEY בפורמט PEM עבור MediaMTX
+                    // Export CRT and private key in PEM format for MediaMTX integration
                     string serverCrtPem = issuedCertWithKey.ExportCertificatePem();
                     string serverKeyPem = serverRsa.ExportPkcs8PrivateKeyPem();
 
@@ -394,10 +399,13 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         }
 
         /// <summary>
-        /// רושם את ה-Root CA בחנות התעודות של מערכת ההפעלה באופן שקוף לחלוטין.
-        /// בווינדוס: מוסיף ל-Trusted Root Certification Authorities (LocalMachine) כדי ש-Chrome ודפדפנים יזהו חיבור מאובטח.
-        /// בלינוקס: מעתיק ל-/usr/local/share/ca-certificates/ ומריץ update-ca-certificates אם יש הרשאות.
+        /// Registers the Root CA certificate into the operating system trust store.
+        /// Under Windows: installs to Trusted Root Certification Authorities (LocalMachine) for Chrome and browser trust.
+        /// Under Linux: installs to /usr/local/share/ca-certificates/ and invokes update-ca-certificates if privileged.
         /// </summary>
+        /// <param name="caCert">Root CA certificate.</param>
+        /// <param name="caCrtFilePath">File path to Root CA certificate file.</param>
+        /// <returns>True if registration succeeded or already exists; false otherwise.</returns>
         public static bool TryRegisterCaInSystemTrust(X509Certificate2 caCert, string caCrtFilePath)
         {
             if (OperatingSystem.IsWindows())
@@ -414,7 +422,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     catch { }
 #endif
-                    // 1. בדיקה האם ה-CA כבר קיים בחנות LocalMachine (חנות המכונה הנדרשת עבור Chrome Root Store)
+                    // 1. Verify if Root CA is already trusted in LocalMachine store
                     try
                     {
                         using var checkMachine = new X509Store(StoreName.Root, StoreLocation.LocalMachine);
@@ -427,7 +435,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     catch { }
 
-                    // יצירת סקריפט התקנה מהיר עם UAC Self-Elevation בלחיצה אחת לצד התעודה
+                    // Create one-click helper script with UAC self-elevation alongside certificate
                     try
                     {
                         string scriptDir = Path.GetDirectoryName(caCrtFilePath) ?? AppContext.BaseDirectory;
@@ -471,7 +479,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     }
                     else
                     {
-                        // ניסיון התקנה אוטומטי מבוסס UAC כאשר האפליקציה רצה בסביבה אינטראקטיבית (Dev/Desktop)
+                        // Automated UAC elevation attempt when running in interactive desktop context
                         if (Environment.UserInteractive)
                         {
                             try
@@ -497,7 +505,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                             }
                         }
 
-                        // ניסיון התקנה לחנות משתמש נוכחי (CurrentUser\Root) כ-fallback
+                        // Fallback attempt to install to CurrentUser Root store
                         try
                         {
                             using var userStore = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
@@ -534,7 +542,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                         string destPath = Path.Combine(linuxCaDir, "itb-screen-recorder-ca.crt");
                         File.Copy(caCrtFilePath, destPath, overwrite: true);
 
-                        // הרצת update-ca-certificates אם קיים
+                        // Execute update-ca-certificates utility if present
                         using var proc = Process.Start(new ProcessStartInfo
                         {
                             FileName = "update-ca-certificates",

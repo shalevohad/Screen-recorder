@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, memo } from 'react';
 import { cleanKeyName } from '../../../utils/virtualKeyMap.js';
 import './TimelineKeystrokes.scss';
 
-const MIN_PIXEL_DISTANCE = 8; // סף מרחק בפיקסלים למיזוג אירועים לאשכול
+const MIN_PIXEL_DISTANCE = 8; // Pixel distance threshold for clustering close keystroke events
 
 function TimelineKeystrokes({
     activeStationName = '',
@@ -18,7 +18,7 @@ function TimelineKeystrokes({
     const [keystrokes, setKeystrokes] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    // 💡 שליפת נתונים מותאמת Viewport עם ביטול בקשות קודמות בזמן גרירה/זום מהיר
+    // Viewport-aware data fetching with previous request cancellation on fast drag/zoom
     useEffect(() => {
         if (!activeStationName || !baseEpochMs || viewportDurationMs <= 0) {
             setKeystrokes([]);
@@ -49,7 +49,7 @@ function TimelineKeystrokes({
         return () => abortController.abort();
     }, [activeStationName, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
-    // 💡 אלגוריתם Clustering מבוסס מרחק פיקסלים (מונע לחלוטין עומס וציפוף שנתות)
+    // Pixel distance clustering algorithm (prevents DOM clutter and tick overlap)
     const clusters = useMemo(() => {
         if (!keystrokes.length || viewportDurationMs <= 0 || pixelWidth <= 0) {
             return [];
@@ -58,7 +58,7 @@ function TimelineKeystrokes({
         const viewStartEpoch = baseEpochMs + viewportStartMs;
         const viewEndEpoch = viewStartEpoch + viewportDurationMs;
 
-        // מיון עולה לפי Epoch
+        // Sort ascending by Epoch timestamp
         const sorted = [...keystrokes].sort((a, b) => a.epochMs - b.epochMs);
         const result = [];
         let currentCluster = null;
@@ -73,13 +73,13 @@ function TimelineKeystrokes({
             const currentPixel = ((offsetMs - viewportStartMs) / viewportDurationMs) * pixelWidth;
 
             if (currentCluster && (currentPixel - lastPixel) < MIN_PIXEL_DISTANCE) {
-                // מיזוג לאשכול קיים
+                // Merge into existing cluster
                 currentCluster.events.push(evt);
                 currentCluster.endOffsetMs = offsetMs;
                 currentCluster.endEpochMs = evt.epochMs;
                 lastPixel = currentPixel;
             } else {
-                // פתיחת אשכול חדש
+                // Initialize new cluster
                 const pct = ((offsetMs - viewportStartMs) / viewportDurationMs) * 100;
                 currentCluster = {
                     id: `kc_${evt.epochMs}_${result.length}`,
@@ -104,21 +104,21 @@ function formatBadgeText(cluster) {
     if (cluster.events.length === 1) {
         return cleanKeyName(cluster.events[0].keyCombination);
     }
-    // עדיפות לצירוף עם מקש קיצור (Ctrl/Alt/Shift)
+    // Prefer combination with shortcut modifier (Ctrl/Alt/Shift)
     const combo = cluster.events.find(e => e.keyCombination.includes('+'));
     if (combo) {
         const cleaned = cleanKeyName(combo.keyCombination);
         return cluster.events.length > 1 ? `${cleaned} (+${cluster.events.length - 1})` : cleaned;
     }
 
-    // אם כל המקשים באשכול זהים
+    // If all keys in cluster are identical
     const firstClean = cleanKeyName(cluster.events[0].keyCombination);
     const allSame = cluster.events.every(e => cleanKeyName(e.keyCombination) === firstClean);
     if (allSame) {
         return `${firstClean} ×${cluster.events.length}`;
     }
 
-    // רצף מקשים מעורב: מציג את המקש הראשון ומספר המקשים הנוספים
+    // Mixed key sequence: show first key plus remaining count
     return `${firstClean} (+${cluster.events.length - 1})`;
 }
 
@@ -173,7 +173,7 @@ function groupClusterEvents(events) {
                             {isCluster && <span className="keystroke-pip-count">{count > 9 ? '9+' : count}</span>}
                         </div>
 
-                        {/* תגית Tooltip טקטית */}
+                        {/* Tactical tooltip popover */}
                         <div className={`keystroke-tooltip ${edgeClass}`}>
                             <div className="tooltip-header">
                                 <span className="tooltip-type">

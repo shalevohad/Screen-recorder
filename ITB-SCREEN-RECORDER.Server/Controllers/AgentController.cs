@@ -368,7 +368,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     return BadRequest("Uploaded file is too small or corrupt.");
                 }
 
-                // 💡 בדיקת משך זמן אמיתי של הסרטון באמצעות FFprobe כדי למנוע זיוף זמינות ו-Gaps שגויים
+                // Probe actual video duration using FFprobe to prevent false availability claims and corrupt timeline gaps
                 var probe = await _probeService.ProbeFileAsync(destinationPath);
                 if (probe == null || probe.DurationSeconds <= 0.05)
                 {
@@ -588,7 +588,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 }
             }
 
-            // עדכון מיידי של צופי הדשבורד על שינוי המצב
+            // Immediately notify dashboard viewers regarding recording state change
             foreach (var host in targetedHostnames)
             {
                 var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, host, StringComparison.OrdinalIgnoreCase));

@@ -42,7 +42,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 ? (OperatingSystem.IsWindows() ? @"C:\ProgramData\ITB-SCREEN-RECORDER\Buffer" : "/var/lib/itb-screen-recorder/buffer")
                 : config.LocalBufferPath;
 
-            // 💡 חילוץ מדויק של שרת הבסיס מתוך AppConfig בלבד (מוצפן HTTPS)
+            // Explicit extraction of target endpoint from AppConfig (encrypted HTTPS)
             _uploadUrl = ResolveUploadEndpoint(config.DashboardApiUrl);
 
             Logger.AlwaysInfo($"[DRAINER] Initialized. Buffer Path: '{_bufferPath}', Target Upload Endpoint: '{_uploadUrl}'");
@@ -219,7 +219,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 content.Add(streamContent, "file", Path.GetFileName(filePath));
                 content.Add(new StringContent(Environment.MachineName), "hostname");
 
-                // 💡 בדיקה מפורשת של ה-Sidecar והדפסת לוג ברור
+                // Probe for associated keystroke sidecar file and log inspection status
                 string sidecarPath = Path.ChangeExtension(filePath, ".keys.jsonl");
                 if (File.Exists(sidecarPath))
                 {

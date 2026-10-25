@@ -186,7 +186,7 @@ export default function WebRTCPlayer({
             }
             if (currentVideo) currentVideo.srcObject = null;
         };
-    }, [isVisible, streamPath, webrtcBaseUrl]);
+    }, [isVisible, streamPath, webrtcBaseUrl, onStreamAvailable]);
 
     const togglePlay = () => {
         if (videoRef.current) {

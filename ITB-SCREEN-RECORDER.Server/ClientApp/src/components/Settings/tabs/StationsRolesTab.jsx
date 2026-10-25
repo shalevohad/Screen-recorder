@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: src/components/Settings/tabs/StationsRolesTab.jsx
 // ==========================================
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -9,7 +9,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
     const [editingHost, setEditingHost] = useState(null);
     const [tempAlias, setTempAlias] = useState('');
 
-    // ניהול ייבוא CSV ו-Diff Preview
+    // CSV Import and Diff Preview orchestration
     const [diffPreview, setDiffPreview] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
     const [isApplying, setIsApplying] = useState(false);
@@ -222,7 +222,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                                         type="text"
                                                         value={tempAlias}
                                                         onChange={e => setTempAlias(e.target.value)}
-                                                        placeholder="e.g. עמדת מפקד / Radar 01"
+                                                        placeholder="e.g. Command Station / Radar 01"
                                                         autoFocus
                                                         onKeyDown={e => {
                                                             if (e.key === 'Enter') handleSaveInline(st.hostname);
@@ -273,7 +273,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                 </table>
             </div>
 
-            {/* דיאלוג תצוגת שינויים (Diff Preview Modal) */}
+            {/* Staged changes preview dialog (Diff Preview Modal) */}
             {diffPreview && (
                 <div className="diff-modal-backdrop" onClick={() => setDiffPreview(null)}>
                     <div className="diff-modal-card" onClick={e => e.stopPropagation()}>

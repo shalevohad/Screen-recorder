@@ -43,12 +43,12 @@ export default function App() {
 function CommandCenterApp() {
     const { isInitialized, isAuthenticated } = useAuth();
 
-    // ניווט: 'portal' (שער בחירת מערכת), 'recording' (חמ"ל הקלטות בלבד), 'settings' (ניהול מערכת בלבד)
+    // Navigation subsystem modes: 'portal' (System launcher gateway), 'recording' (C2 Monitoring Dashboard), 'settings' (System Management Console)
     const [currentSubsystem, setCurrentSubsystem] = useState('portal');
 
     const [stations, setStations] = useState([]);
 
-    // 💡 אתחול בטוח למניעת שגיאות של null reading
+    // Safe initialization to prevent null property access errors
     const [serverTelemetry, setServerTelemetry] = useState(() => ({
         cpuPct: 0,
         hostRamPct: 0,
@@ -62,8 +62,9 @@ function CommandCenterApp() {
     const actionPendingTimeoutsRef = useRef({});
 
     useEffect(() => {
+        const timeouts = actionPendingTimeoutsRef.current;
         return () => {
-            Object.values(actionPendingTimeoutsRef.current).forEach(t => clearTimeout(t));
+            Object.values(timeouts).forEach(t => clearTimeout(t));
         };
     }, []);
 
@@ -132,12 +133,12 @@ function CommandCenterApp() {
 
         if (!incoming.length) return;
 
-        // 💡 סנכרון תצוגת מקשים עם לטנסי ה-WebRTC (120ms): מונע הופעה מוקדמת מדי ומנעיל את ה-overlay לסרטון בדיוק כשהעכבר מגיע לנקודה
+        // Synchronize keystroke overlay display with WebRTC latency (120ms): aligns overlay with video action
         setTimeout(() => {
             setLiveKeystrokes(prev => {
                 const currentNow = Date.now();
                 const existing = (prev[hostKey] || []).filter(k => currentNow - k.receivedAt < 3500);
-                // מניעת כפילויות של אותו מקש תוך 400ms (בין אם מה-Fast Path או מטלמטריה שוטפת)
+                // Deduplicate identical keystrokes received within 400ms window (Fast Path vs standard telemetry)
                 const uniqueIncoming = incoming.filter(inc =>
                     !existing.some(ex => ex.combo === inc.combo && Math.abs((ex.epochMs || 0) - (inc.epochMs || 0)) < 400)
                 );
@@ -336,7 +337,7 @@ function CommandCenterApp() {
         }
     }, [apiBaseUrl]);
 
-    // ניהול ספירה לאחור ומעבר אוטומטי לצומת עמית / כתובת VIP בעת ניתוק
+    // Manage failover countdown and automatic redirection to peer cluster node / VIP upon disconnect
     useEffect(() => {
         if (!isServerOfflineModal) {
             setFailoverCountdown(clusterConfig.failoverDelaySeconds || 8);
@@ -356,7 +357,7 @@ function CommandCenterApp() {
                     clearInterval(timer);
                     const isAlreadyOnVip = clusterConfig.virtualIp && window.location.hostname === clusterConfig.virtualIp;
                     if (isAlreadyOnVip) {
-                        // המשתמש כבר גולש דרך כתובת ה-VIP: כתובת ה-VIP עברה אוטונומית לצומת הבא, רענון פשוט מחדש את החיבור
+                        // User is already browsing via VIP address: VIP transitioned autonomously to next node, simple reload re-establishes connection
                         window.location.reload();
                     } else if (clusterConfig.enableVirtualIp && clusterConfig.virtualIp) {
                         const port = window.location.port ? `:${window.location.port}` : '';
@@ -463,6 +464,7 @@ function CommandCenterApp() {
             registerServerHeartbeat();
             const host = (report.hostname || report.stationId || '').toLowerCase();
             const isRec = report.isRecording !== undefined ? Boolean(report.isRecording) : (report.status === 'Recording');
+            const isOnline = report.isOnline !== undefined ? Boolean(report.isOnline) : (report.status !== 'Offline' && report.status !== 'OFFLINE');
             const status = typeof report.status === 'string' ? report.status : (isRec ? 'Recording' : (report.isStreaming ? 'Monitoring' : 'Standby'));
 
             setActionPending(prev => {
@@ -540,7 +542,7 @@ function CommandCenterApp() {
 
         connection.start().then(registerServerHeartbeat).catch(() => { });
         return () => { connection.stop(); };
-    }, [apiBaseUrl, isAuthenticated, fetchStations, fetchSystemConfig, registerServerHeartbeat]);
+    }, [apiBaseUrl, isAuthenticated, fetchStations, fetchSystemConfig, fetchClusterConfig, handleIncomingKeystrokes, registerServerHeartbeat]);
 
     const handleManualRetry = async () => {
         setIsRetryingConnection(true);
@@ -613,7 +615,7 @@ function CommandCenterApp() {
         }
     };
 
-    const handleBulkStart = useCallback(async (targetHostnames = [], policy = {}) => {
+    const handleBulkStart = useCallback(async (targetHostnames = [], _policy = {}) => {
         if (!targetHostnames || !targetHostnames.length) return;
 
         const nextPending = {};
@@ -693,7 +695,7 @@ function CommandCenterApp() {
 
     if (!isInitialized) return null;
 
-    // 1. שער המערכות הראשי (PORTAL LAUNCHER)
+    // 1. Main System Gateway (PORTAL LAUNCHER)
     if (!isAuthenticated || currentSubsystem === 'portal') {
         return (
             <SystemLauncher
@@ -718,7 +720,7 @@ function CommandCenterApp() {
             <div className="dynamic-scrim-overlay" aria-hidden="true" />
 
             <div className="itb-command-center-app">
-                {/* 2. מערכת ההגדרות (SYSTEM SETTINGS) - מערכת עצמאית מקצה לקצה */}
+                {/* 2. System Settings & Management (SYSTEM SETTINGS) */}
                 {currentSubsystem === 'settings' ? (
                     <SettingsView
                         onReturnToPortal={() => setCurrentSubsystem('portal')}
@@ -730,7 +732,7 @@ function CommandCenterApp() {
                         }}
                     />
                 ) : (
-                    /* 3. מרכז הקלטות המסכים (SCREEN RECORDING CENTER) */
+                    /* 3. Screen Recording Command & Control (SCREEN RECORDING CENTER) */
                     <>
                         <CommandCenterHeader
                             stations={sortedStations}
@@ -769,7 +771,7 @@ function CommandCenterApp() {
                 <MasterAudioDock stations={stations} />
             </div>
 
-            {/* דיאלוג ניתוק שרת */}
+            {/* Server disconnection alert modal */}
             {isServerOfflineModal && (
                 <div className="tactical-modal-backdrop" role="dialog" aria-modal="true">
                     <div className="tactical-disconnect-modal-card">

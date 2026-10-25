@@ -77,7 +77,7 @@ export default function RemoteWidgetHost({
     useEffect(() => {
         if (moduleRef.current && typeof moduleRef.current.update === 'function' && containerRef.current) {
             try {
-                moduleRef.current.update(containerRef.current, widgetProps);
+                moduleRef.current.update(containerRef.current, propsRef.current);
             } catch { }
         }
     }, [serializedProps]);

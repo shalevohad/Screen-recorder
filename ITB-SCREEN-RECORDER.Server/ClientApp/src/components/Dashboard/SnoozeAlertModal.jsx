@@ -23,12 +23,12 @@ export default function SnoozeAlertModal({
     onConfirmSnooze,
     onCancelSnooze
 }) {
-    if (!isOpen) return null;
-
     const [selectedMinutes, setSelectedMinutes] = useState(30);
     const [customMinutes, setCustomMinutes] = useState('');
     const [isCustom, setIsCustom] = useState(false);
     const [reason, setReason] = useState('');
+
+    if (!isOpen) return null;
 
     const handleSelectPreset = (mins) => {
         setIsCustom(false);

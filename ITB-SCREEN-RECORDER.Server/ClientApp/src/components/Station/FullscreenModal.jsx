@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import WebRTCPlayer from '../Player/WebRTCPlayer';
 import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import FullscreenMinimapNavigator from './FullscreenMinimapNavigator';
 import CyberLoadingOverlay from '../UI/CyberLoadingOverlay';
@@ -12,7 +11,6 @@ export default function FullscreenModal(props) {
     const { registerStationStream } = useAudioSolo();
     const {
         hostname,
-        webrtcBaseUrl,
         actualFps = 0,
         targetFps = 30,
         droppedFrames = 0,
@@ -55,10 +53,10 @@ export default function FullscreenModal(props) {
         return [];
     }, [props.displays, props.Displays, props.displayTopology, props.DisplayTopology]);
 
-    // יחס מסך דינמי שמתאים את עצמו לרזולוציית התחנה (ברירת מחדל 16:9)
+    // Dynamic aspect ratio that adapts to the station's stream geometry (default 16:9)
     const [aspectRatio, setAspectRatio] = useState(16 / 9);
 
-    // זיהוי רזולוציית הווידאו בפועל והתאמת גבולות החלון אליה ללא פסים
+    // Detect actual video dimensions and adjust modal frame to eliminate black letterbox bars
     useEffect(() => {
         const checkVideoDimensions = () => {
             if (!modalBoxRef.current) return;
@@ -94,7 +92,7 @@ export default function FullscreenModal(props) {
         ? Boolean(props.isRecording)
         : (props.status === 'Recording' || (Boolean(isStreaming) && props.status !== 'Monitoring'));
 
-    // טיימר הקלטה פעילה - מתעדכן רק כשהעמדה מקליטה בפועל
+    // Active recording timer - updates only when station is actively recording
     useEffect(() => {
         if (!isRecording) {
             sessionStartTimeRef.current = null;
@@ -141,13 +139,6 @@ export default function FullscreenModal(props) {
             onClose?.();
         }
     };
-
-    const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
-    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    const dynamicWebrtcBaseUrl = isHttps
-        ? (webrtcBaseUrl && webrtcBaseUrl.startsWith('/') ? webrtcBaseUrl : '/api/v1/whep')
-        : (webrtcBaseUrl || `http://${serverHost}:${webrtcPort}`);
 
     const hostCpu = Number(hostCpuPct || 0);
     const appCpu = Number(appCpuPct || 0);

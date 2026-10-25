@@ -153,7 +153,7 @@ public class VideoProbeService : IVideoProbeService
             return binaryPath;
         }
 
-        // Fallback לסביבת פיתוח (IDE)
+        // Fallback for IDE development environment
         string devPath = isWindows
             ? Path.Combine(baseDir, "..", "..", "..", "Tools", "Win", "ffprobe.exe")
             : Path.Combine(baseDir, "..", "..", "..", "Tools", "Linux", "ffprobe");
@@ -163,7 +163,7 @@ public class VideoProbeService : IVideoProbeService
             return Path.GetFullPath(devPath);
         }
 
-        // בדיקה אחרונה ב-PATH של מערכת ההפעלה
+        // Final fallback: look up in operating system PATH
         return isWindows ? "ffprobe.exe" : "ffprobe";
     }
 }

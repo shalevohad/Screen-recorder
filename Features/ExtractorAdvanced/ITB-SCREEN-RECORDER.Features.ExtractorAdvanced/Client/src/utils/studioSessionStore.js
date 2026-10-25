@@ -41,7 +41,7 @@ export function saveStudioSessionCache(data) {
                 inPointMs: typeof data.inPointMs === 'number' ? data.inPointMs : null,
                 outPointMs: typeof data.outPointMs === 'number' ? data.outPointMs : null,
                 playheadMs: typeof data.playheadMs === 'number' ? data.playheadMs : null,
-                // 💡 שמירת ערכי Epoch מוחלטים עבור נקודות ה-Cut
+                // Absolute Epoch millisecond timestamps for cut points
                 inEpochMs: typeof data.inEpochMs === 'number' ? data.inEpochMs : null,
                 outEpochMs: typeof data.outEpochMs === 'number' ? data.outEpochMs : null,
                 playheadEpochMs: typeof data.playheadEpochMs === 'number' ? data.playheadEpochMs : null,

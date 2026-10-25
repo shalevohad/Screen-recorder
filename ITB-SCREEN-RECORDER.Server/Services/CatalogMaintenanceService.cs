@@ -76,7 +76,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         CompletedAtUtc: null
     );
 
-    // 💡 תיקון קריטי: החרגת תיקיות מיוחדות, Snapshot של NetApp וספריות מערכת למניעת קריסות גישה וזחילה מיותרת
+    // Critical exclusion: filter out system folders, NetApp snapshot directories, and recycle bins to prevent access violations
     private static readonly HashSet<string> ReservedDirNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "logs", "export", "exports", "recordingsbuffer", "buffer", "temp", ".git",
@@ -88,7 +88,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov"
     };
 
-    // 💡 תמיכה כפולה: תבנית תאריך קלאסית + תבנית Epoch של MediaMTX (%s_%f)
+    // Dual support: classic ISO datetime pattern + MediaMTX Epoch pattern (%s_%f)
     private static readonly Regex UniversalChunkRegex = new(
         @"(?:^(?<host>[a-zA-Z0-9_\-\.]+?)[_-])?(?<year>20\d{2})[-_]?(?<month>\d{2})[-_]?(?<day>\d{2})[-_T](?<hour>\d{2})[-_:]?(?<minute>\d{2})[-_:]?(?<sec>\d{2})(?:[_\-\.]\d+)?(?<utc>Z)?\.(mp4|fmp4|flv|mkv|ts)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -143,16 +143,22 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         };
     }
 
+    /// <summary>
+    /// Manually initiates background reindexing of recording files across active storage roots into the catalog.
+    /// Preempts any active silent background job if present.
+    /// </summary>
+    /// <param name="forceFullRecheck">If true, re-verifies indexed records against physical media files.</param>
+    /// <returns>Current MaintenanceJobState model.</returns>
     public async Task<MaintenanceJobState> TriggerReindexAsync(bool forceFullRecheck = false)
     {
-        // 💡 אם משימת רקע שקטה פעילה כרגע - קוטעים אותה לטובת הבקשה היזומה של המשתמש
+        // If a scheduled silent background job is running, preempt it in favor of explicit user request
         if (_isSilentJobRunning && _activeJobCts != null && !_activeJobCts.IsCancellationRequested)
         {
             _logger.LogInformation("[MAINTENANCE] Preempting scheduled silent background job for manual reindex request.");
             try { _activeJobCts.Cancel(); } catch { }
         }
 
-        // המתנה קצרה לשחרור המנעול במקום סירוב מיידי ב-0 מילישניות
+        // Wait briefly for job lock release instead of rejecting immediately with zero-millisecond timeout
         if (!await _jobLock.WaitAsync(TimeSpan.FromSeconds(3)))
         {
             _logger.LogWarning("[MAINTENANCE] Reindex already actively running. Returning current status.");
@@ -310,7 +316,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
     {
         var config = _configMonitor.CurrentValue;
 
-        // 💡 תמיכה בריבוי Storage Roots (גם NetApp UNC וגם LocalFallback בו-זמנית)
+        // Support multiple Storage Roots (concurrently indexing NetApp UNC and LocalFallback directories)
         var roots = new List<string>();
         if (!string.IsNullOrWhiteSpace(config.Storage?.NetAppUncPath))
         {
@@ -368,7 +374,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 MatchCasing = MatchCasing.CaseInsensitive
             };
 
-            // 1. איתור בטוח של תיקיות התחנות והמסכים ללא קריסה על NetApp Snapshot או הרשאות חסומות
+            // 1. Safely locate station and display monitor directories without failing on NetApp snapshots or permission errors
             var candidateStationFolders = new List<(string StationName, string FolderPath, string DisplayId, bool IsPrimary)>();
 
             foreach (var root in roots)
@@ -429,7 +435,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     string rawName = Path.GetFileName(stationPath);
                     string stationName = rawName.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? rawName.Substring(5) : rawName;
 
-                    // 💡 זיהוי מסכים מרובים: תתי-תיקיות mon-0, mon-1, display-0 וכד'
+                    // Multi-monitor topology discovery: scan for subdirectories like mon-0, mon-1, display-0
                     try
                     {
                         foreach (var sub in Directory.EnumerateDirectories(stationPath, "*", enumDirOptions))
@@ -446,7 +452,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     }
                     catch { }
 
-                    // שמירת תיקיית התחנה הראשית עבור הקלטות רגילות / מסך בודד או קבצים היסטוריים בשורש התחנה
+                    // Retain main station root folder for standard recordings, single display setups, or legacy root chunks
                     candidateStationFolders.Add((stationName, stationPath, "mon-0", true));
                 }
             }
@@ -459,7 +465,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 }, forceBroadcast: true);
             }
 
-            // 2. איסוף רשימת קובצי הווידאו
+            // 2. Enumerate video recordings
             var allFilesToScan = new List<(string StationName, string FilePath, string DisplayId, bool IsPrimary)>();
             foreach (var (stationName, folderPath, displayId, isPrimary) in candidateStationFolders)
             {
@@ -480,7 +486,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
             allFilesToScan.Sort((a, b) => string.Compare(a.FilePath, b.FilePath, StringComparison.OrdinalIgnoreCase));
 
-            // 3. מטמון רזולוציה ו-FPS לפי תחנה ומסך למניעת קריאות ffprobe סדרתיות אינסופיות מעל SMB
+            // 3. Resolution and FPS dimension cache per station/display to avoid infinite sequential SMB ffprobe probes
             var dimensionCache = new ConcurrentDictionary<string, (int Width, int Height, int Fps, bool HasAudio)>(StringComparer.OrdinalIgnoreCase);
             try
             {
@@ -529,7 +535,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                             {
                                 long durationMs = 0;
 
-                                // חישוב משך חכם: בדיקת תחילת הקובץ הבא באותו ערוץ ומסך
+                                // Smart duration estimation: check start of next file on identical station and monitor
                                 if (i + 1 < allFilesToScan.Count &&
                                     string.Equals(allFilesToScan[i + 1].StationName, item.StationName, StringComparison.OrdinalIgnoreCase) &&
                                     string.Equals(allFilesToScan[i + 1].DisplayId, item.DisplayId, StringComparison.OrdinalIgnoreCase))
@@ -557,7 +563,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
                                 long endMs = startMs + durationMs;
 
-                                // שליפת מימדי הווידאו: שימוש במטמון מהיר או דגימת Probe בודדת לתחנה
+                                // Extract video dimensions: use fast cached values or single probe per station
                                 string dimKey = $"{item.StationName}:{item.DisplayId}";
                                 int width = 1920;
                                 int height = 1080;
@@ -753,14 +759,20 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         tx.Commit();
     }
 
+    /// <summary>
+    /// Executes a catalog integrity audit to verify chunk files on disk, prune missing entries, and repair inaccurate metadata.
+    /// </summary>
+    /// <param name="isSilentScheduled">Whether this audit was triggered by a silent background timer (limits scope to recent or unfinalized chunks).</param>
+    /// <param name="ct">Cancellation token for aborting the audit.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task RunCatalogIntegrityAuditAsync(bool isSilentScheduled, CancellationToken ct = default)
     {
         try
         {
             using var db = _factory.CreateConnection();
 
-            // 💡 בסריקה שקטה תקופתית: בודקים רק סרטונים אחרונים (4 שעות אחרונות) או סרטונים שלא הושלמו (Unfinalized)
-            // כדי למנוע הצפת Share מרוחק במיליוני שאילתות File.Exists
+            // Periodic silent scan optimization: inspect only recent chunks (last 4 hours) or unfinalized chunks
+            // to avoid overwhelming remote SMB/NFS network shares with millions of File.Exists queries.
             string query = isSilentScheduled
                 ? @"SELECT id AS Id, station_id AS StationId, file_path AS FilePath,
                            start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
@@ -803,7 +815,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     var fi = new FileInfo(chunk.FilePath);
                     bool needsProbe = false;
 
-                    // נדרשת דגימת וידאו רק כאשר המשך או המימדים חסרים או לא הגיוניים
+                    // Probe the file only when duration or epoch boundaries are missing or inconsistent (>2 sec drift)
                     if (chunk.DurationMs <= 0 || chunk.StartEpochMs <= 0)
                     {
                         needsProbe = true;
@@ -957,9 +969,15 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         }
     }
 
+    /// <summary>
+    /// Attempts to parse a recording chunk filename to extract its start timestamp in Unix epoch milliseconds.
+    /// </summary>
+    /// <param name="fileName">The recording chunk filename to parse.</param>
+    /// <param name="configuredTzId">Optional timezone identifier for interpreting local wall-clock timestamps.</param>
+    /// <returns>The start timestamp in Unix epoch milliseconds, or null if the filename does not match known patterns.</returns>
     private static long? TryParseFileTimestamp(string fileName, string? configuredTzId)
     {
-        // 1. עדיפות עליונה: תבנית Epoch של MediaMTX (%s_%f או %s)
+        // 1. Highest priority: MediaMTX Unix Epoch pattern (%s_%f or %s)
         var matchEpoch = EpochChunkRegex.Match(fileName);
         if (matchEpoch.Success)
         {
@@ -970,7 +988,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             }
         }
 
-        // 2. תבנית תאריך קלאסית (YYYY-MM-DD...)
+        // 2. Standard wall-clock timestamp pattern (YYYY-MM-DD...)
         var match = UniversalChunkRegex.Match(fileName);
         if (match.Success)
         {

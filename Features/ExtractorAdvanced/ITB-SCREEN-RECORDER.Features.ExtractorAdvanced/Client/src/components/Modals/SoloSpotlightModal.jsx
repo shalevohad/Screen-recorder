@@ -23,6 +23,17 @@ const formatCutDurationSMPTE = (durationMs, fps = 30) => {
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(frames)}`;
 };
 
+/**
+ * SoloSpotlightModal provides a high-density theater viewport for a single station with full timeline transport and keystroke overlay.
+ * 
+ * @param {Object} props
+ * @param {boolean} props.isOpen - Whether spotlight modal is visible.
+ * @param {Object} props.station - Focused station object.
+ * @param {Array} [props.allStations=[]] - Full list of available stations.
+ * @param {(station: Object) => void} props.onSelectStation - Callback to switch focused station.
+ * @param {() => void} props.onClose - Exit spotlight handler.
+ * @returns {JSX.Element|null}
+ */
 export default function SoloSpotlightModal({
     isOpen,
     station,
@@ -445,7 +456,7 @@ export default function SoloSpotlightModal({
                     showWatermark={true}
                 />
 
-                {/* 💡 שכבת ה-HUD מעל נגן המסך המלא */}
+                {/* HUD Keystroke playback overlay above fullscreen player */}
                 <KeystrokePlaybackOverlay
                     currentEpochMs={currentCalculatedEpoch}
                     keystrokes={keystrokes}

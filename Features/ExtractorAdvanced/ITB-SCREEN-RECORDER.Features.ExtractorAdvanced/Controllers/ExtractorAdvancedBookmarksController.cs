@@ -147,7 +147,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         await _bookmarkRepository.UpsertAsync(record);
                     }
 
-                    // 💡 בנוסף: שמירת רשומת Retention Shield גלובלית ("ALL") כדי שכל תחנה שיש לה הקלטה בזמנים האלו תהיה מוגנת ממחיקה
+                    // Global retention shield record ("ALL") to protect recordings of all stations during this interval from disk purge
                     var globalShieldRecord = new BookmarkInfo
                     {
                         Id = $"{newBookmark.Id}#ALL",

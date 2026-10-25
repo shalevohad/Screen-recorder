@@ -36,12 +36,19 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return selectedRoot;
         }
 
+        /// <summary>
+        /// Builds the MediaMTX recording path pattern targeting the resolved active root directory.
+        /// Enforces Epoch timestamping (%s_%f) for deterministic UTC alignment.
+        /// </summary>
+        /// <param name="root">The resolved active storage root directory.</param>
+        /// <param name="config">Current system configuration.</param>
+        /// <returns>Formatted MediaMTX recordPath pattern string.</returns>
         public string BuildRecordPath(string root, SystemConfig config)
         {
             string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
 
-            // 💡 כפיית Epoch ומיקרו-שניות (%s_%f)
-            // משתנה %s ב-MediaMTX מחושב מ-Unix Time (UTC טהור) ואדיש לאזור הזמן או לשעון המקומי של Windows
+            // Enforce Epoch seconds and microseconds (%s_%f)
+            // %s in MediaMTX is evaluated from Unix Time (pure UTC), immune to timezone shifts or local Windows clock changes
             return $"{cleanRoot}/%path/%s_%f";
         }
 

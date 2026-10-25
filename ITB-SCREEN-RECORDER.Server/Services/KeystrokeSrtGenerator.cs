@@ -19,7 +19,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
         private static readonly Dictionary<int, string> VkMap = new()
         {
-            // עכבר ומקשי שליטה
+            // Mouse and control keys
             [1] = "LButton", [2] = "RButton", [3] = "Cancel", [4] = "MButton", [5] = "XButton1", [6] = "XButton2",
             [8] = "Backspace", [9] = "Tab", [12] = "Clear", [13] = "Enter",
             [16] = "Shift", [17] = "Ctrl", [18] = "Alt", [19] = "Pause", [20] = "Caps Lock", [27] = "Esc",
@@ -27,18 +27,18 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             [37] = "Left", [38] = "Up", [39] = "Right", [40] = "Down",
             [41] = "Select", [42] = "Print", [43] = "Execute", [44] = "Print Screen", [45] = "Insert", [46] = "Delete", [47] = "Help",
 
-            // ספרות עליונות (0-9)
+            // Top-row number keys (0-9)
             [48] = "0", [49] = "1", [50] = "2", [51] = "3", [52] = "4",
             [53] = "5", [54] = "6", [55] = "7", [56] = "8", [57] = "9",
 
-            // אותיות לטיניות (A-Z)
+            // Latin letters (A-Z)
             [65] = "A", [66] = "B", [67] = "C", [68] = "D", [69] = "E", [70] = "F",
             [71] = "G", [72] = "H", [73] = "I", [74] = "J", [75] = "K", [76] = "L",
             [77] = "M", [78] = "N", [79] = "O", [80] = "P", [81] = "Q", [82] = "R",
             [83] = "S", [84] = "T", [85] = "U", [86] = "V", [87] = "W", [88] = "X",
             [89] = "Y", [90] = "Z",
 
-            // מערכת / Windows
+            // System and Windows keys
             [91] = "Win", [92] = "RWin", [93] = "Apps", [95] = "Sleep",
 
             // Numpad
@@ -46,7 +46,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             [101] = "Num 5", [102] = "Num 6", [103] = "Num 7", [104] = "Num 8", [105] = "Num 9",
             [106] = "Num *", [107] = "Num +", [108] = "Separator", [109] = "Num -", [110] = "Num .", [111] = "Num /",
 
-            // מקשי פונקציה (F1 - F24)
+            // Function keys (F1 - F24)
             [112] = "F1", [113] = "F2", [114] = "F3", [115] = "F4",
             [116] = "F5", [117] = "F6", [118] = "F7", [119] = "F8",
             [120] = "F9", [121] = "F10", [122] = "F11", [123] = "F12",
@@ -54,22 +54,22 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             [128] = "F17", [129] = "F18", [130] = "F19", [131] = "F20",
             [132] = "F21", [133] = "F22", [134] = "F23", [135] = "F24",
 
-            // נעילות
+            // Lock keys
             [144] = "Num Lock", [145] = "Scroll Lock",
 
-            // מקשי Modifiers פרטניים
+            // Specific modifier keys
             [160] = "Shift", [161] = "RShift", [162] = "Ctrl", [163] = "RCtrl", [164] = "Alt", [165] = "RAlt",
 
-            // מקשי דפדפן
+            // Browser navigation keys
             [166] = "Browser Back", [167] = "Browser Forward", [168] = "Browser Refresh",
             [169] = "Browser Stop", [170] = "Browser Search", [171] = "Browser Favorites", [172] = "Browser Home",
 
-            // מקשי שליטה במדיה
+            // Media control keys
             [173] = "Mute", [174] = "Vol -", [175] = "Vol +", [176] = "Next Track",
             [177] = "Prev Track", [178] = "Stop", [179] = "Play/Pause",
             [180] = "Mail", [181] = "Media Select", [182] = "App 1", [183] = "App 2",
 
-            // מקשי פיסוק וסימנים מיוחדים (OEM)
+            // Punctuation and OEM special characters
             [186] = ";", [187] = "=", [188] = ",", [189] = "-", [190] = ".", [191] = "/", [192] = "`",
             [219] = "[", [220] = "\\", [221] = "]", [222] = "'", [226] = "\\"
         };
@@ -82,8 +82,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         }
 
         /// <summary>
-        /// מנרמל מקש יחיד (תרגום קוד וירטואלי, טיפול ב-Modifiers)
+        /// Normalizes a single key part, translating virtual key code patterns and standardizing modifiers.
         /// </summary>
+        /// <param name="part">Raw key name or Key(code) string.</param>
+        /// <returns>Normalized key name string.</returns>
         public static string NormalizeKeyPart(string? part)
         {
             if (string.IsNullOrWhiteSpace(part)) return string.Empty;
@@ -113,8 +115,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         }
 
         /// <summary>
-        /// מפרק צירוף מקשים ומסיר כפילויות (למשל: SHIFT + KEY(160) -> ["Shift"])
+        /// Parses a raw key combination string and deduplicates redundant modifiers (e.g. "SHIFT + KEY(160)" -> ["Shift"]).
         /// </summary>
+        /// <param name="rawCombo">Raw combined keystroke string.</param>
+        /// <returns>Deduplicated list of normalized key parts.</returns>
         public static List<string> ParseKeyCombination(string? rawCombo)
         {
             if (string.IsNullOrWhiteSpace(rawCombo)) return new List<string>();
@@ -162,7 +166,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             var sortedKeys = keys.OrderBy(k => k.EpochMs).ToList();
             long totalActiveMs = activeSegments.Sum(s => Math.Max(0, s.EndEpochMs - s.StartEpochMs));
 
-            // מיפוי מקשים למקטעים פעילים בלבד וחישוב זמנים יחסיים לאחר הסרת פערים (Gaps)
+            // Map keystrokes to active timeline segments and compute relative offsets after gap trimming
             var activeKeys = new List<(long StartRelMs, long EpochMs, List<string> Parsed)>();
             foreach (var k in sortedKeys)
             {
@@ -194,7 +198,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             {
                 var current = activeKeys[i];
 
-                // דילוג על אירועי מקשים רצופים תוך פחות מ-50ms
+                // Skip consecutive keystroke events within less than 50ms
                 if (i + 1 < activeKeys.Count && (activeKeys[i + 1].EpochMs - current.EpochMs) < 50)
                 {
                     continue;
@@ -228,14 +232,14 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         }
 
         /// <summary>
-        /// 💡 מייצר קובץ ASS מתקדם עם סגנון Keycaps טקטי (כפתורים כהים עם מסגרת ציאן זוהרת) המותאם למקטעים
-        /// מעוצב במדויק כמו נגן הסטודיו (Studio UI):
-        /// - תגיות מקשים מובחנות עם רקע כהה (#160f0a)
-        /// - מסגרת ניאון ציאן זוהרת (#00f0ff)
-        /// - הילת ציאן רכה סביב המקשים
-        /// - טקסט Segoe UI לבן עבה וממורכז
-        /// - סימן פלוס (+) ציאן זוהר בין המקשים
-        /// - חיתוך זמן מול הלחיצה הבאה למניעת ערימות אנכיות של שורות
+        /// Generates an advanced ASS subtitle file featuring a tactical Keycaps HUD style (dark buttons with glowing cyan borders) adapted to video cut segments.
+        /// Styled to precisely match the Studio UI player:
+        /// - Distinct key badges with dark background (#160f0a)
+        /// - Neon cyan glowing border (#00f0ff)
+        /// - Soft cyan outer glow around key badges
+        /// - Centered bold white Segoe UI text
+        /// - Glowing cyan plus sign (+) between keys
+        /// - Truncated display time when a new key event occurs to prevent vertical stacking
         /// </summary>
         public async Task<string?> CreateAssKeycapsFileForSegmentsAsync(
             string stationId,
@@ -253,7 +257,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             var sortedKeys = keys.OrderBy(k => k.EpochMs).ToList();
             long totalActiveMs = activeSegments.Sum(s => Math.Max(0, s.EndEpochMs - s.StartEpochMs));
 
-            // מיפוי מקשים למקטעים פעילים בלבד וחישוב זמנים יחסיים לאחר הסרת פערים (Gaps)
+            // Map keystrokes to active timeline segments and compute relative offsets after gap trimming
             var activeKeys = new List<(long StartRelMs, long EpochMs, List<string> Parsed)>();
             foreach (var k in sortedKeys)
             {
@@ -280,7 +284,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             string assPath = Path.Combine(Path.GetTempPath(), $"badge_{stationId}_{Guid.NewGuid():N}.ass");
             var sb = new StringBuilder();
 
-            // כותרת והגדרת סקריפט ורזולוציה
+            // Script header, resolution and playback properties
             sb.AppendLine("[Script Info]");
             sb.AppendLine("Title: ITB Tactical Keycaps HUD");
             sb.AppendLine("ScriptType: v4.00+");
@@ -290,11 +294,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             sb.AppendLine("PlayResY: 1080");
             sb.AppendLine();
 
-            // הגדרת סגנונות ה-Keycaps:
-            // KeyCapHud: הילה זוהרת רכה מסביב (OutlineColour = &H80FFF000), BorderStyle 3 בעובי 24px עם blur
-            // KeyBorder: מסגרת ניאון ציאן חדה (OutlineColour = &H00FFF000), BorderStyle 3 בעובי 17px
-            // KeyBox: רקע המקש הכהה (OutlineColour = &H00160F0A), טקסט לבן בולט (PrimaryColour = &H00FFFFFF), BorderStyle 3 (Box)
-            // KeyPlus: סימן הפלוס בין המקשים בצבע ציאן זוהר
+            // Define Keycaps visual styles:
+            // KeyCapHud: Soft outer glow around keys (OutlineColour = &H80FFF000), BorderStyle 3 with 24px blur
+            // KeyBorder: Crisp neon cyan border (OutlineColour = &H00FFF000), BorderStyle 3 with 17px width
+            // KeyBox: Dark keycap background (OutlineColour = &H00160F0A), bold white text (PrimaryColour = &H00FFFFFF), BorderStyle 3 (Box)
+            // KeyPlus: Glowing cyan plus separator (+) between keys
             sb.AppendLine("[V4+ Styles]");
             sb.AppendLine("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding");
             sb.AppendLine("Style: KeyCapHud, Segoe UI, 34, &H00FFFFFF, &H00000000, &H80FFF000, &H00000000, 1, 0, 0, 0, 100, 100, 2, 0, 3, 24, 0, 5, 10, 10, 10, 1");
@@ -311,7 +315,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             {
                 var current = activeKeys[i];
 
-                // דילוג על אירועי מקשים רצופים תוך פחות מ-50ms
+                // Skip consecutive keystroke events within less than 50ms
                 if (i + 1 < activeKeys.Count && (activeKeys[i + 1].EpochMs - current.EpochMs) < 50)
                 {
                     continue;
@@ -322,7 +326,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     ? Math.Max(0, activeKeys[i + 1].StartRelMs)
                     : totalActiveMs;
 
-                // משך התצוגה נחתך כשיש לחיצה חדשה (מונע ערימות שורות אנכיות)
+                // Truncate display duration when a new keystroke occurs to prevent vertical text stacking
                 long endRelMs = Math.Min(startRelMs + 2200, nextStartRelMs);
                 if (endRelMs <= startRelMs)
                 {

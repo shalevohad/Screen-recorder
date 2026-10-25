@@ -303,7 +303,7 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             }
         }
 
-        // גיבוב PBKDF2 תקני עבור SysMaster2026!
+        // Standard PBKDF2 hash for initial bootstrap account SysMaster2026!
         string initialPasswordHash = PasswordHasher.Hash("SysMaster2026!");
 
         db.Execute(@"

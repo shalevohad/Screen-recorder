@@ -90,14 +90,14 @@ export default function TimelineRuler({
         return NICE_INTERVALS_MS[NICE_INTERVALS_MS.length - 1];
     }, [viewportDurationMs, pixelWidth]);
 
-    // 💡 חישוב שנתות מיושרות לפי שעות עגולות אבסולוטיות שאינן תלויות ב-Timezone של מערכת ההפעלה
+    // Calculate aligned ticks according to absolute round hours independent of OS timezone
     const ticks = useMemo(() => {
         if (!baseEpochMs || viewportDurationMs <= 0) return [];
 
         const vpStartEpoch = baseEpochMs + viewportStartMs;
         const vpEndEpoch = vpStartEpoch + viewportDurationMs;
 
-        // שימוש באופסט ה-DST של השרת במצב LOCAL כדי שהשנתות ייפלו תמיד על שעות מקומיות עגולות
+        // Apply server DST offset in LOCAL mode so ticks align to rounded local hours
         const offsetMs = timeMode === 'LOCAL'
             ? (getLocalOffsetMinutes(vpStartEpoch).offsetMin * 60 * 1000)
             : 0;
@@ -134,7 +134,7 @@ export default function TimelineRuler({
         }));
     }, [baseEpochMs, viewportStartMs, viewportDurationMs, timeMode]);
 
-    // 💡 חישוב גבולות תאריכים (00:00) חסין Timezone הפועל ב-UTC נקי ומכייל לפי ה-DST
+    // Date boundary calculations (00:00) operating in UTC and calibrated with server DST
     const dateBoundaries = useMemo(() => {
         if (!viewportDurationMs || !baseEpochMs) return [];
 
@@ -266,7 +266,7 @@ export default function TimelineRuler({
         toPercent
     ]);
 
-    // 💡 שנתות טקטיות בולטות על הסרגל לפריים הראשון (IN) והאחרון (OUT) בטווח שנבחר
+    // Tactical tick pins on ruler indicating first frame (IN) and last frame (OUT) of selected cut range
     const cutRangePins = useMemo(() => {
         const list = [];
         if (typeof inPointMs === 'number' && isVisibleInViewport(inPointMs)) {
@@ -379,7 +379,7 @@ export default function TimelineRuler({
                     </div>
                 ))}
 
-                {/* 💡 שנתות טקטיות בולטות על הסרגל לפריים הראשון (IN) והאחרון (OUT) של הטווח שנבחר */}
+                {/* Tactical tick pins for first frame (IN) and last frame (OUT) of selected cut range */}
                 {cutRangePins.map(pin => (
                     <div
                         key={pin.id}

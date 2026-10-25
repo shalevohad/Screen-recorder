@@ -167,7 +167,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                 }
                 catch (DllNotFoundException)
                 {
-                    // libXtst חסר - מודיעים וממשיכים ל-Polling דרך libX11 בלבד
+                    // libXtst is missing: log informative message and fall back to polling via libX11
                     Logger.Info("[OVERLAY:MOUSE] libXtst.so.6 not found. Falling back to XQueryPointer polling for mouse click detection.");
                     recordStarted = false;
                 }

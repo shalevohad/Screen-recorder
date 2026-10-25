@@ -9,14 +9,14 @@
  */
 
 /**
- * מתרגם את מצב הפעילות של העמדה (OFFLINE / REC / STANDBY)
- * שמירה על עיקרון מבצעי: REC מקבל info פועם, אדום נשמר לתקלות תקשורת בלבד.
+ * Translates station activity state (OFFLINE / REC / STANDBY / MONITOR ONLY).
+ * Preserves operational rule: REC receives pulsing indicator, critical red reserved for communication failures.
  * 
- * @param {Object} station
- * @param {boolean} station.isOnline
- * @param {boolean} station.isStreaming
- * @param {string} [recordingDuration='']
- * @returns {BadgeConfig}
+ * @param {Object} station - Workstation telemetry snapshot.
+ * @param {boolean} station.isOnline - Connectivity status.
+ * @param {boolean} station.isStreaming - Video streaming activity.
+ * @param {string} [recordingDuration=''] - Formatted duration string.
+ * @returns {BadgeConfig} Tactical badge visual properties.
  */
 export function getStationTacticalBadgeConfig(station, recordingDuration = '') {
     if (!station || !station.isOnline) {
@@ -56,11 +56,11 @@ export function getStationTacticalBadgeConfig(station, recordingDuration = '') {
 }
 
 /**
- * מחזיר קונפיגורציית Badge ייעודית עבור איבודי פריימים (Drops)
- * מופיע לצד באדג' ההקלטה אך ורק כאשר קיימים drops בפועל.
+ * Returns dedicated badge configuration for dropped frames.
+ * Displayed adjacent to recording badge only when frame drops are detected.
  * 
- * @param {number} [droppedFrames=0]
- * @returns {BadgeConfig | null}
+ * @param {number} [droppedFrames=0] - Total dropped frames count.
+ * @returns {BadgeConfig | null} Badge config or null if zero drops.
  */
 export function getDropFramesBadgeConfig(droppedFrames = 0) {
     if (!droppedFrames || droppedFrames <= 0) {
@@ -78,10 +78,10 @@ export function getDropFramesBadgeConfig(droppedFrames = 0) {
 }
 
 /**
- * מתרגם סטטוס שמע (WASAPI) לתגית מתאימה ב-Inspector
+ * Translates WASAPI audio status to appropriate inspector badge.
  * 
- * @param {boolean} hasAudio
- * @returns {BadgeConfig}
+ * @param {boolean} hasAudio - Whether audio track is captured.
+ * @returns {BadgeConfig} Badge configuration object.
  */
 export function getAudioStatusBadgeConfig(hasAudio = false) {
     return {

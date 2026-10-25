@@ -139,7 +139,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         private volatile bool _isInitialized;
 
         private Bitmap? _cursorBmp;
-        // באפר 128x128 תומך בכל רזולוציות הסמנים ב-High DPI
+        // 128x128 buffer supporting all High-DPI cursor resolutions
         private static readonly int[] _cursorPixels = new int[128 * 128];
 
         public void Initialize()
@@ -236,22 +236,37 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
             return CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
 
+        /// <summary>
+        /// Renders mouse overlay visuals onto the captured video frame buffer.
+        /// Executes ripple rings, scroll arrows, pulsing system cursor, and action badges.
+        /// </summary>
+        /// <param name="frameBuffer">Raw BGRA frame buffer to draw onto.</param>
+        /// <param name="width">Width of the video frame in pixels.</param>
+        /// <param name="height">Height of the video frame in pixels.</param>
         public void DrawMouseToFrame(byte[] frameBuffer, int width, int height)
         {
             Initialize();
 
-            // 1. רינדור טבעות הרחבה וחיצי גלגול
+            // 1. Render expanding ripple rings and scroll arrows
             MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height);
 
-            // 2. רינדור הסמן (כולל I-Beam וסמנים מונוכרומטיים באפס אובדן)
+            // 2. Render cursor graphic (including I-Beam and monochrome cursors with zero loss)
             bool isCursorBright = DrawSystemCursorWithPulse(frameBuffer, width, height);
 
-            // 3. רינדור תגית L / R מותאמת
+            // 3. Render adaptive L / R / M click badges
             MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
         }
 
         private static int _debugLogCounter = 0;
 
+        /// <summary>
+        /// Extracts and draws the active Windows system cursor at its current screen position onto the frame buffer,
+        /// applying click-pulse scaling, brightness analysis, and contrast-preserving inversion.
+        /// </summary>
+        /// <param name="frameBuffer">Raw BGRA frame buffer to draw onto.</param>
+        /// <param name="width">Width of the frame.</param>
+        /// <param name="height">Height of the frame.</param>
+        /// <returns>True if the cursor body is predominantly bright (used for badge contrast); otherwise, false.</returns>
         private bool DrawSystemCursorWithPulse(byte[] frameBuffer, int width, int height)
         {
             var pci = new CURSORINFO { cbSize = Marshal.SizeOf(typeof(CURSORINFO)) };
@@ -267,7 +282,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
             int cursorPosY = pci.ptScreenPos.y;
             IntPtr hCursor = pci.hCursor;
 
-            // אם CURSORINFO נכשל או לא סיפק מיקום, מחלצים מיקום מדויק עם GetCursorPos
+            // If CURSORINFO failed or returned (0,0), extract position accurately using GetCursorPos
             if (!gotCursor || (cursorPosX == 0 && cursorPosY == 0))
             {
                 if (GetCursorPos(out var pt))
@@ -302,12 +317,12 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
 
                 Array.Clear(_cursorPixels, 0, _cursorPixels.Length);
 
-                // --- טיפול קריטי 1: סמנים מונוכרומטיים (I-Beam, Crosshair, Sizing Arrows) ---
+                // --- Handling Case 1: Monochromatic cursors (I-Beam, Crosshair, Sizing Arrows) ---
                 if (iconInfo.hbmColor == IntPtr.Zero)
                 {
                     GetObject(iconInfo.hbmMask, Marshal.SizeOf<BITMAP>(), out BITMAP bmMask);
                     cursorW = Math.Min(128, bmMask.bmWidth);
-                    cursorH = Math.Min(128, bmMask.bmHeight / 2); // מחצית עליונה = AND, תחתונה = XOR
+                    cursorH = Math.Min(128, bmMask.bmHeight / 2); // Upper half = AND mask, Lower half = XOR mask
                     int stride = bmMask.bmWidthBytes;
 
                     byte[] maskBytes = new byte[bmMask.bmHeight * stride];
@@ -330,26 +345,26 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
 
                             if (andBit && !xorBit)
                             {
-                                _cursorPixels[idx] = 0; // שקוף
+                                _cursorPixels[idx] = 0; // Transparent
                             }
                             else if (!andBit && !xorBit)
                             {
-                                _cursorPixels[idx] = unchecked((int)0xFF000000); // שחור אטום
+                                _cursorPixels[idx] = unchecked((int)0xFF000000); // Opaque Black
                             }
                             else if (!andBit && xorBit)
                             {
-                                _cursorPixels[idx] = unchecked((int)0xFFFFFFFF); // לבן אטום
+                                _cursorPixels[idx] = unchecked((int)0xFFFFFFFF); // Opaque White
                             }
                             else
                             {
-                                // Inverting XOR Pixel (קו ה-I-Beam הקלאסי)
-                                // מקודד ערך מיוחד 0xFE בערוץ האלפא עבור היפוך קונטרסט
+                                // Inverting XOR Pixel (Classic I-Beam line):
+                                // Encodes sentinel value 0xFE in alpha channel for contrast-enforced color inversion
                                 _cursorPixels[idx] = unchecked((int)0xFEFFFFFF);
                             }
                         }
                     }
                 }
-                // --- טיפול 2: סמני צבע (32bpp Alpha או 24bpp צבע מלא) ---
+                // --- Handling Case 2: Color cursors (32bpp Alpha or 24bpp full color) ---
                 else
                 {
                     cursorW = 128;
@@ -381,7 +396,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                         }
                     }
 
-                    // העתקה לבאפר 128
+                    // Copy to 128x128 buffer
                     for (int y = 0; y < 128; y++)
                     {
                         for (int x = 0; x < 128; x++)
@@ -389,14 +404,14 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                             int px = tempBits[y * 128 + x];
                             if (!hasAlpha && (px & 0x00FFFFFF) != 0)
                             {
-                                px |= unchecked((int)0xFF000000); // תיקון Alpha לסמני 24bpp
+                                px |= unchecked((int)0xFF000000); // Correct Alpha channel for 24bpp cursors
                             }
                             _cursorPixels[y * 128 + x] = px;
                         }
                     }
                 }
 
-                // --- חישוב בהירות סמן (Luma) ---
+                // --- Calculate cursor brightness (Luma) ---
                 long totalLuma = 0;
                 int nonTransparentCount = 0;
 
@@ -422,7 +437,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                     isBright = (totalLuma / nonTransparentCount) > 120;
                 }
 
-                // --- ציור הסמן על הפריים כולל Pulse Scale ---
+                // --- Draw cursor onto video frame including Pulse Scale ---
                 float scale = MouseVisualRasterizer.GetCurrentCursorScale();
                 int drawW = (int)(cursorW * scale);
                 int drawH = (int)(cursorH * scale);
@@ -453,7 +468,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
 
                         int bufferIdx = (targetY * width + targetX) * 4;
 
-                        // 💡 מנגנון ייעודי עבור סמן I-Beam: היפוך צבע עם אכיפת קונטרסט
+                        // Dedicated mechanism for I-Beam cursor: color inversion with contrast enforcement
                         if (alpha == 254)
                         {
                             byte origB = frameBuffer[bufferIdx];
@@ -462,7 +477,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
 
                             int bgLuma = (int)(0.299 * origR + 0.587 * origG + 0.114 * origB);
 
-                            // אם הרקע אפור בינוני (שבו היפוך מתמטי נבלע), כופים שחור או לבן מלא
+                            // If background is mid-gray (where direct mathematical inversion is hard to see), force pure black or pure white
                             if (Math.Abs(bgLuma - 128) < 35)
                             {
                                 byte forced = bgLuma > 128 ? (byte)0 : (byte)255;
@@ -479,7 +494,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                             continue;
                         }
 
-                        // ציור רגיל עם Alpha Blending
+                        // Standard drawing with Alpha Blending
                         byte b = (byte)(pixel & 0xFF);
                         byte gCol = (byte)((pixel >> 8) & 0xFF);
                         byte r = (byte)((pixel >> 16) & 0xFF);

@@ -1,4 +1,4 @@
-﻿// Client/src/components/UI/FleetTabs.scss
+// Client/src/components/UI/FleetTabs.scss
 
 .dashboard-tabs-bar-wrapper {
     display: flex;
@@ -26,7 +26,7 @@
             width: 100%;
             overflow-x: auto;
             overflow-y: hidden;
-            /* מפריד טקטי בין טאבי עמדות לטאבי מודולים/סטודיו */
+            /* Tactical divider between station tabs and module/studio tabs */
             .tab-cluster-separator {
                 width: 1px;
                 height: 18px;
@@ -34,7 +34,7 @@
                 margin: 0 6px 8px 6px;
                 flex-shrink: 0;
             }
-            /* מבנה בסיס אחיד לכל הטאבים במערכת */
+            /* Standard base styling for all system tabs */
             .fleet-tab-wrapper {
                 height: 36px;
                 display: flex;
@@ -52,13 +52,13 @@
                     background: rgba(255, 255, 255, 0.05);
                     border-color: var(--border-card);
                 }
-                /* מצב טאב פעיל: Folder Tab Continuity מתחבר ישירות למשטח העבודה */
+                /* Active tab state: Folder Tab Continuity connecting directly to surface panel */
                 &.active {
                     background-color: var(--surface-panel, #0F172A) !important;
                     background-image: none !important;
                     border-color: var(--border-card, rgba(148, 163, 184, 0.18)) !important;
                     border-bottom: 1px solid var(--surface-panel, #0F172A) !important;
-                    height: 37px; /* גובה פיקסל נוסף לכיסוי קו הגבול של הפאנל */
+                    height: 37px; /* Extra 1px height to cover panel border */
                     z-index: 12;
 
                     .fleet-tab-pill {
@@ -117,7 +117,7 @@
                     }
                 }
             }
-                /* התאמות ספציפיות עבור טאב ה-ALL */
+                /* Specific styling overrides for ALL fleet tab */
                 .fleet-tab-wrapper.all-tab {
                     .tab-all-icon {
                         width: 12px;
@@ -141,7 +141,7 @@
                     }
 
                     &.active {
-                        /* פס עליון ציאן טקטי שמדגיש בעדינות את טאב הצי הראשי */
+                        /* Tactical top accent cyan line highlighting main fleet tab */
                         box-shadow: inset 0 2px 0 var(--accent-cyan, #06B6D4);
 
                         .fleet-tab-pill {
@@ -159,7 +159,7 @@
                         }
                     }
                 }
-                /* התאמות לטאבי מודולים וסטודיו */
+                /* Styling overrides for module and studio tabs */
                 .fleet-tab-wrapper.feature-tab {
                     background: rgba(245, 158, 11, 0.06);
 
@@ -207,7 +207,7 @@
                         }
                     }
                 }
-            /* תפריט מודולים פתוחים ברקע */
+            /* Background open modules overflow dropdown menu */
             .windows-overflow-dropdown-wrapper {
                 position: relative;
                 display: inline-block;
@@ -317,7 +317,7 @@
                     }
                 }
             }
-            /* כפתור הוספת טאב */
+            /* Add new tab button */
             .fleet-tab-add-btn {
                 background: transparent;
                 border: 1px dashed var(--border-subtle);

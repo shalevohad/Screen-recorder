@@ -131,7 +131,7 @@ namespace ITBRecorderAgent.Engine
 
                         Buffer.BlockCopy(raw, 0, buffer, 0, raw.Length);
 
-                        // 1. הזרקת סמן העכבר, חיווי קליקים (L/R) וגלגול
+                        // 1. Overlay mouse cursor, click rings (Left/Right), and scroll animations
                         MouseCursorOverlay.DrawMouseToFrame(buffer, width, height);
 
                         if (_channel.Writer.TryWrite(buffer))

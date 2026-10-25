@@ -3,9 +3,15 @@ using System.IO;
 
 namespace ITB_SCREEN_RECORDER.Core.Configuration
 {
+    /// <summary>
+    /// Configuration model for the Agent Service and Agent Worker processes,
+    /// defining encoder targets, RTMP endpoints, network discovery, and binary paths.
+    /// </summary>
     public class AppConfig
     {
-        // 1. שדה קונפיגורציה פשוט ונקי לחלוטין
+        /// <summary>
+        /// Explicit path to the FFmpeg executable. If empty, the engine resolves it automatically.
+        /// </summary>
         public string FFmpegPath { get; set; } = string.Empty;
 
         public string RtmpServerBaseUrl { get; set; } = "AUTO";
@@ -37,26 +43,31 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public int LogRetentionDays { get; set; } = 30;
 
-        // 2. פונקציה מפורשת שה-Worker קורא לה כדי לוודא ש-FFmpeg קיים
+        /// <summary>
+        /// Resolves the absolute path to the FFmpeg binary across local execution directories,
+        /// runtime-identifier (RID) folders, tools directories, and system PATH.
+        /// </summary>
+        /// <returns>Absolute path to the resolved FFmpeg executable.</returns>
+        /// <exception cref="FileNotFoundException">Thrown when FFmpeg binary cannot be located in any probe path.</exception>
         public static string GetResolvedFFmpegPath()
         {
             string binaryName = OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg";
             string ridSubFolder = OperatingSystem.IsWindows() ? "win-x64" : "linux-x64";
             string baseDir = AppContext.BaseDirectory;
 
-            // 1. ישירות בשורש תיקיית הריצה
+            // 1. Directly in execution root directory
             string directPath = Path.Combine(baseDir, binaryName);
             if (File.Exists(directPath)) return directPath;
 
-            // 2. בתוך תת-תיקיית ה-RID (win-x64 / linux-x64)
+            // 2. Inside RID subfolder (win-x64 / linux-x64)
             string ridPath = Path.Combine(baseDir, ridSubFolder, binaryName);
             if (File.Exists(ridPath)) return ridPath;
 
-            // 3. בתיקיית האב (אם התהליך רץ מתוך win-x64 והקובץ בשורש)
+            // 3. In parent directory (if running from a nested binary path)
             string parentPath = Path.GetFullPath(Path.Combine(baseDir, "..", binaryName));
             if (File.Exists(parentPath)) return parentPath;
 
-            // 4. בתוך תיקיית Tools המקומית (למשל Tools\Win\ffmpeg.exe או Tools\Linux\ffmpeg)
+            // 4. In local Tools directory (e.g. Tools\Win\ffmpeg.exe or Tools\Linux\ffmpeg)
             string toolsSubFolder = OperatingSystem.IsWindows() ? "Win" : "Linux";
             string localToolsPath = Path.Combine(baseDir, "Tools", toolsSubFolder, binaryName);
             if (File.Exists(localToolsPath)) return localToolsPath;
@@ -64,18 +75,18 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
             string localToolsDirect = Path.Combine(baseDir, "Tools", binaryName);
             if (File.Exists(localToolsDirect)) return localToolsDirect;
 
-            // 5. בתיקיית Tools בדרג האב (למשל בהרצה מתוך bin\Debug\net8.0\win-x64)
+            // 5. In parent Tools directory (when executing from bin\Debug\net8.0\win-x64)
             string parentToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "Tools", toolsSubFolder, binaryName));
             if (File.Exists(parentToolsPath)) return parentToolsPath;
 
             string devServerToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "Tools", toolsSubFolder, binaryName));
             if (File.Exists(devServerToolsPath)) return devServerToolsPath;
 
-            // 6. בתיקיית Tools המרכזית בפתרון (גיבוי לפיתוח)
+            // 6. In root solution Tools directory (development fallback)
             string devToolsPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "Tools", toolsSubFolder, binaryName));
             if (File.Exists(devToolsPath)) return devToolsPath;
 
-            // 7. חיפוש ב-PATH של מערכת ההפעלה
+            // 7. Search in operating system PATH environment variable
             string? pathEnv = Environment.GetEnvironmentVariable("PATH");
             if (!string.IsNullOrEmpty(pathEnv))
             {
@@ -91,6 +102,12 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
                 $"CRITICAL: FFmpeg executable is missing. Probed '{directPath}', '{ridPath}', '{localToolsPath}', and '{devToolsPath}'. Expected: {binaryName}");
         }
 
+        /// <summary>
+        /// Attempts to resolve the FFmpeg binary path without throwing an exception.
+        /// </summary>
+        /// <param name="resolvedPath">Outputs the resolved path or default binary name.</param>
+        /// <param name="explicitPath">Optional user-specified override path.</param>
+        /// <returns>True if a valid executable exists at the resolved path; false otherwise.</returns>
         public static bool TryGetResolvedFFmpegPath(out string resolvedPath, string? explicitPath = null)
         {
             if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath))

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Models/SynchronizationPlanModels.cs
 // ==========================================
 using System;
@@ -39,7 +39,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public List<StationGapRecord> StationGaps { get; set; } = new();
         public double TotalActiveSeconds => ActiveSegments.Sum(s => s.DurationSeconds);
 
-        // 💡 אופן הצגת המקשים בייצוא (None / Caption / BurnIn)
+        /// <summary>
+        /// Keystroke presentation export mode for forensic rendering (None / Caption / BurnIn).
+        /// </summary>
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
     }
 }

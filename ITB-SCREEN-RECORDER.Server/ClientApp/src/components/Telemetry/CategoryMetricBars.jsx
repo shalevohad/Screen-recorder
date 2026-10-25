@@ -1,4 +1,4 @@
-﻿// Client/src/components/UI/CategoryMetricBars.jsx
+// Client/src/components/UI/CategoryMetricBars.jsx
 import './CategoryMetricBars.scss';
 
 const formatVal = (val, type) => {
@@ -19,14 +19,14 @@ function SingleMetricBar({ label, appVal, hostVal, appFormatted, hostFormatted }
                     <span className="host-val" title="Total Host Load">{hostFormatted}</span>
                 </span>
             </div>
-            {/* פס ייעודי לאפליקציה (ירוק) */}
+            {/* Application Contribution Bar (Green) */}
             <div className="metric-bar-bg">
                 <div
                     className="metric-bar-fill app-fill"
                     style={{ width: `${Math.min(100, Math.max(0, appVal))}%` }}
                 />
             </div>
-            {/* פס ייעודי למארח (כחול) */}
+            {/* Total Host Load Bar (Blue) */}
             <div className="metric-bar-bg">
                 <div
                     className="metric-bar-fill host-fill"

@@ -48,7 +48,7 @@ export default function MulticamViewport({
     timelineStations = [],
     onSelectActiveStation,
     onOpenSpotlight,
-    onStationContextMenu, // 💡 פרופ חדש
+    onStationContextMenu, // Context menu event callback: (stationId, mouseEvent) => void
     baseEpochMs = 0,
     playheadMs = 0,
     playheadEpochMs = 0,

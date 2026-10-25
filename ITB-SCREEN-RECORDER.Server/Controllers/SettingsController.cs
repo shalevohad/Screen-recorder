@@ -203,7 +203,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
                 var currentConfig = _configMonitor.CurrentValue;
 
-                // 1. כפיית החלת נתיבי האחסון, הפורמט ופרקי הזמן מיידית ב-MediaMTX
+                // 1. Immediately apply and propagate storage paths, format, and intervals to MediaMTX
                 try
                 {
                     await _chunkScheduler.ApplyMediaMtxStorageConfigAsync(currentConfig, HttpContext.RequestAborted);
@@ -214,7 +214,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     _logger.LogWarning(ex, "[SETTINGS] Failed to apply storage changes to MediaMTX immediately.");
                 }
 
-                // 2. חישוב ושידור מיידי של טלמטריית המערכת והאחסון לכלל הלקוחות המחוברים
+                // 2. Immediately calculate and broadcast updated system and storage telemetry to all connected clients
                 try
                 {
                     await _telemetryHostService.BroadcastImmediateTelemetryAsync();
@@ -225,7 +225,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting immediate telemetry after settings save.");
                 }
 
-                // 3. שידור הגדרות המערכת החדשות בזמן אמת ל-Dashboard (ReceiveSystemConfig)
+                // 3. Broadcast updated system configuration in real-time to Dashboard (ReceiveSystemConfig)
                 try
                 {
                     await _broadcastService.BroadcastSystemConfigUpdateAsync(currentConfig);
@@ -277,10 +277,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(new { message = "Invalid request payload." });
             }
 
-            // בדיקת הגנה מנעילה (Pre-Flight Lockout Validation)
+            // Pre-Flight Lockout Validation
             if (req.Mode != AuthMode.Open)
             {
-                // בדיקה אם קיים משתמש העל הסודי או משתמש אדמין מקומי פעיל
+                // Verify that either the built-in sys_master account or an active local administrator account exists
                 var rootUser = await _catalogRepo.GetUserByUsernameAsync("sys_master");
                 bool hasRootAdmin = rootUser != null && rootUser.IsActive;
 

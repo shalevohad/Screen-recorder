@@ -105,7 +105,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
 
     return createPortal(
         <div className="export-job-monitor-root">
-            {/* כפתור ה-HUD הצף בפינה הימנית-תחתונה */}
+            {/* Floating HUD trigger button in bottom-right corner */}
             {jobs.length > 0 && (
                 <div
                     className={`export-floating-hud ${activeJobs.length > 0 ? 'has-active' : 'all-ready'}`}
@@ -132,7 +132,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                 </div>
             )}
 
-            {/* מגירת המשימות */}
+            {/* Export task queue drawer panel */}
             {isOpen && (
                 <div className="export-drawer-backdrop" onClick={() => setOpen(false)}>
                     <aside className="export-drawer-panel" onClick={e => e.stopPropagation()}>
@@ -149,7 +149,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                             <button className="btn-close" onClick={() => setOpen(false)}>✕</button>
                         </div>
 
-                        {/* Toolbar: טאבים לסינון בלבד ללא מחיקה גורפת */}
+                        {/* Toolbar: Filter tabs (no bulk purge) */}
                         <div className="drawer-toolbar">
                             <div className="tabs-group">
                                 <button className={`tab-btn ${filterTab === 'ALL' ? 'active' : ''}`} onClick={() => setFilterTab('ALL')}>
@@ -164,7 +164,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                             </div>
                         </div>
 
-                        {/* רשימת המשימות */}
+                        {/* Task card scroll list */}
                         <div className="drawer-cards-scroll">
                             {filteredJobs.length === 0 ? (
                                 <div className="empty-queue-notice">
@@ -177,7 +177,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                     return (
                                         <div key={job.jobId} className={`export-job-card ${job.status.toLowerCase()} ${job.isBookmarked ? 'is-bookmarked' : ''}`}>
 
-                                            {/* קומה 1: פרטי הקובץ והסרה ידנית בודדת */}
+                                            {/* Tier 1: File identity and single item dismiss */}
                                             <div className="card-header-row">
                                                 <div className="identity-group">
                                                     <span className={`status-pill ${job.status.toLowerCase()}`}>
@@ -196,7 +196,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                                 </button>
                                             </div>
 
-                                            {/* קומה 2 (Streaming): אחוזים בולטים + מד התקדמות */}
+                                            {/* Tier 2 (Streaming): Progress meter, percentage & telemetry */}
                                             {isBusy && (
                                                 <div className="job-progress-section">
                                                     <div className="progress-top-line">
@@ -216,7 +216,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                                 </div>
                                             )}
 
-                                            {/* קומה 2 (Ready): נתוני הארכיון */}
+                                            {/* Tier 2 (Ready): Archive metadata box */}
                                             {job.isCompleted && (
                                                 <div className="job-ready-meta-box">
                                                     <div className="meta-item">
@@ -240,7 +240,7 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                                 </div>
                                             )}
 
-                                            {/* קומה 3: כפתורי פעולה */}
+                                            {/* Tier 3: Action buttons (Pin, Open Folder, Download) */}
                                             {job.isCompleted && (
                                                 <div className="card-actions-bar">
                                                     <div className="sub-actions">

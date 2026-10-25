@@ -1,8 +1,25 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/hooks/usePlaybackEngine.js
 // ==========================================
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
+/**
+ * Hook providing playback engine capabilities, animation frame clock, gap-skipping, and looping controls.
+ * 
+ * @param {Object} options
+ * @param {number} options.timelineBaseEpochMs - Base Unix Epoch timestamp in milliseconds.
+ * @param {number} options.inPointMs - In-point boundary offset in milliseconds.
+ * @param {number} options.outPointMs - Out-point boundary offset in milliseconds.
+ * @param {Array} [options.globalGaps=[]] - Global gap ranges across all stations.
+ * @param {Object} options.activeStation - Currently focused station entity.
+ * @param {Object} options.spotlightStation - Optional spotlight station entity.
+ * @param {Object} [options.recordingSegments={}] - Map of station ID to recording segments.
+ * @param {number} [options.initialPlayheadMs=0] - Starting playhead offset.
+ * @param {boolean} [options.initialIsPlaying=false] - Initial playback state.
+ * @param {boolean} [options.initialIsLooping=true] - Loop playback within in/out points.
+ * @param {number} [options.initialPlaybackSpeed=1] - Playback rate multiplier.
+ * @returns {Object} Playback engine controller object.
+ */
 export function usePlaybackEngine({
     timelineBaseEpochMs,
     inPointMs,
@@ -26,7 +43,7 @@ export function usePlaybackEngine({
 
     const currentStationToCheck = spotlightStation || activeStation;
 
-    // 💡 ייצוב רפרנס הסגמנטים ב-useMemo כדי למנוע טריגר מיותר ל-useCallback
+    // Stabilize segments reference in useMemo to prevent redundant useCallback recreations
     const stationSegmentsToCheck = useMemo(() => {
         if (!currentStationToCheck) return [];
         return recordingSegments[currentStationToCheck.id] || currentStationToCheck.segments || [];
@@ -52,7 +69,7 @@ export function usePlaybackEngine({
         });
     }, [inPointMs, outPointMs]);
 
-    // 💡 1. קודם כל מגדירים את ה-updatePlayhead
+    // 1. Declare updatePlayhead handler
     const updatePlayhead = useCallback((timestamp) => {
         if (!lastTickRef.current) lastTickRef.current = timestamp;
 
@@ -87,7 +104,7 @@ export function usePlaybackEngine({
         }
     }, [isPlaying, isLooping, inPointMs, outPointMs, globalGaps, timelineBaseEpochMs, isVideoDirectlyDrivingClock, playbackSpeed]);
 
-    // 💡 2. ה-useEffect שמפעיל את ה-requestAnimationFrame ממוקם לאחר שהפונקציה הוצהרה
+    // 2. Schedule requestAnimationFrame after handler declaration
     useEffect(() => {
         if (isPlaying && !isVideoDirectlyDrivingClock) {
             lastTickRef.current = performance.now();

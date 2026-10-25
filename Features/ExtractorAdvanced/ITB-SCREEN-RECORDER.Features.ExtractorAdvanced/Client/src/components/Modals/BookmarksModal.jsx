@@ -10,6 +10,16 @@ const SHARED_STORAGE_KEYS = ['itb_studio_bookmarks', 'itb_bookmarks', FALLBACK_S
 
 const pad = (n) => String(n).padStart(2, '0');
 
+/**
+ * BookmarksModal manages creating, loading, inline editing, and deleting timeline incident bookmarks.
+ * 
+ * @param {Object} props
+ * @param {boolean} props.isOpen - Whether modal is displayed.
+ * @param {() => void} props.onClose - Modal close handler.
+ * @param {Object} props.currentState - Active studio state containing time range and cut markers.
+ * @param {(bookmark: Object) => void} props.onLoadBookmark - Callback invoked when restoring a bookmark.
+ * @returns {JSX.Element|null}
+ */
 export default function BookmarksModal({
     isOpen,
     onClose,
@@ -21,7 +31,7 @@ export default function BookmarksModal({
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
-    // ניהול עריכה מוטבעת
+    // Inline edit state
     const [editingBmId, setEditingBmId] = useState(null);
     const [editTitleText, setEditTitleText] = useState('');
 
@@ -65,7 +75,7 @@ export default function BookmarksModal({
 
     if (!isOpen) return null;
 
-    // 💡 שמירה מקיפה הכוללת את הטווח הכללי, זמני ה-CUT המדויקים, ורשימת התחנות
+    // Comprehensive save including general scope, exact cut in/out, and selected stations
     const handleSaveCurrentState = async () => {
         if (!noteText.trim() || isSaving) return;
 
@@ -215,7 +225,7 @@ export default function BookmarksModal({
         return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     };
 
-    // 💡 1. טווח הזמנים הכללי שנבחר למשימה (General Mission Scope)
+    // 1. General mission time scope
     const getGeneralScopeDisplay = (bm) => {
         const rawStart = bm.startTime || bm.StartTime;
         const rawEnd = bm.endTime || bm.EndTime;
@@ -226,7 +236,7 @@ export default function BookmarksModal({
         return `${sClean} ➔ ${eClean}`;
     };
 
-    // 💡 2. זמני ה-CUT ומשך החיתוך עבור ה-Header המשני
+    // 2. Cut in/out times and duration for secondary header
     const getCutDetails = (bm) => {
         let inEpoch = bm.inEpochMs || bm.InEpochMs;
         let outEpoch = bm.outEpochMs || bm.OutEpochMs;
@@ -255,7 +265,7 @@ export default function BookmarksModal({
         return { timeText: '--:--:-- ➔ --:--:--', duration: '' };
     };
 
-    // 💡 3. רשימת התחנות שנבחרו ל-CUT
+    // 3. List of stations selected for cut
     const getCutStationsDisplay = (bm) => {
         const names = bm.selectedStationNames || [];
         const ids = bm.selectedStationIds || bm.cutStationIds || bm.stationIds || [];
@@ -364,7 +374,7 @@ export default function BookmarksModal({
                                 >
                                     <div className="card-indicator-accent" />
                                     <div className="bm-info">
-                                        {/* כותרת הסימניה */}
+                                        {/* Bookmark title */}
                                         {isEditing ? (
                                             <div className="bm-edit-inline-wrap" onClick={(e) => e.stopPropagation()}>
                                                 <input
@@ -406,7 +416,7 @@ export default function BookmarksModal({
                                             </div>
                                         )}
 
-                                        {/* 1. שורה ראשית: טווח הזמנים הכללי שנבחר (General Mission Scope) */}
+                                        {/* 1. Primary row: General Mission Scope */}
                                         <div className="bm-primary-scope-row">
                                             <span className="meta-pill main-scope" title="General timeline window selected">
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -427,7 +437,7 @@ export default function BookmarksModal({
                                             )}
                                         </div>
 
-                                        {/* 💡 2. Header משני ייעודי עבור זמני ה-CUT והתחנות שנבחרו ל-CUT */}
+                                        {/* 2. Secondary header for cut window and targeted cut stations */}
                                         <div className="bm-cut-secondary-header">
                                             <div className="cut-time-cell">
                                                 <div className="cut-header-tag">
@@ -450,7 +460,7 @@ export default function BookmarksModal({
                                         </div>
                                     </div>
 
-                                    {/* כפתורי פעולה ימניים (עריכה ומחיקה) */}
+                                    {/* Action controls (Edit and Delete) */}
                                     <div className="bm-card-actions" onClick={(e) => e.stopPropagation()}>
                                         {!isEditing && (
                                             <button

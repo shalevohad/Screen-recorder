@@ -35,13 +35,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     {
                         agentHostname = a.Hostname,
 
-                        // עומס מארח כללי (Total Machine Load)
+                        // Total host machine load
                         hostCpuPct = Math.Round(a.HostCpuPct, 1),
                         hostGpuPct = Math.Round(a.Gpu3dPct, 1),
                         netTotalTxMbps = Math.Round(a.NicTotalTxMbps, 2),
                         netTotalRxMbps = Math.Round(a.NicTotalRxMbps, 2),
 
-                        // תרומת תוכנת ההקלטות (App Specific Load)
+                        // Application-specific recording load
                         appCpuPct = Math.Round(a.ProcessCpuPct, 1),
                         appRamMb = Math.Round(a.ProcessRamMb, 1),
                         appNetTxMbps = Math.Round(a.MediaTxMbps, 2),
@@ -54,16 +54,21 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(agents);
         }
 
+        /// <summary>
+        /// Retrieves telemetry metrics for an individual workstation by hostname.
+        /// </summary>
+        /// <param name="agentHostname">Workstation hostname.</param>
+        /// <returns>200 OK with station telemetry, or 404 Not Found if station is not currently reporting.</returns>
         [HttpGet("fleet/{agentHostname}")]
         public IActionResult GetStationMetrics(string agentHostname)
         {
-            // חיפוש העמדה הספציפית ב-State ללא רגישות לאותיות רישיות/קטנות
+            // Case-insensitive lookup in live telemetry state cache
             var agent = _telemetryState.GetAllAgents()
                 .FirstOrDefault(a => string.Equals(a.Hostname, agentHostname, StringComparison.OrdinalIgnoreCase));
 
             if (agent == null)
             {
-                // החזרת 404 מאפשרת ל-OpManager לדעת מיד שהעמדה לא מדווחת
+                // Returning 404 allows monitoring systems (e.g. OpManager) to immediately register station as non-reporting
                 return NotFound(new { error = $"Station '{agentHostname}' not found or offline" });
             }
 
@@ -71,13 +76,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             {
                 agentHostname = agent.Hostname,
 
-                // עומס מארח כללי
+                // Total host machine load
                 hostCpuPct = Math.Round(agent.HostCpuPct, 1),
                 hostGpuPct = Math.Round(agent.Gpu3dPct, 1),
                 netTotalTxMbps = Math.Round(agent.NicTotalTxMbps, 2),
                 netTotalRxMbps = Math.Round(agent.NicTotalRxMbps, 2),
 
-                // תרומת תוכנת ההקלטות
+                // Application-specific recording load
                 appCpuPct = Math.Round(agent.ProcessCpuPct, 1),
                 appRamMb = Math.Round(agent.ProcessRamMb, 1),
                 appNetTxMbps = Math.Round(agent.MediaTxMbps, 2),
@@ -89,6 +94,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(metrics);
         }
 
+        /// <summary>
+        /// Retrieves central server resource metrics including physical host and process CPU/RAM, thread count, and network card bandwidth.
+        /// </summary>
+        /// <returns>200 OK with server resource and network card metrics.</returns>
         [HttpGet("server")]
         public IActionResult GetServerMetrics()
         {
@@ -105,13 +114,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             {
                 serverHostname = Environment.MachineName,
 
-                // עומס פיזי מלא של השרת מול עומס התוכנה
+                // Full physical server host load vs. recording server process load
                 hostCpuPct = Math.Round(hardwareSnapshot.HostCpuUsagePct, 1),
                 processCpuPct = Math.Round(hardwareSnapshot.ProcessCpuUsagePct, 1),
                 hostTotalRamMb = Math.Round(hardwareSnapshot.HostTotalRamMb, 1),
                 processRamMb = Math.Round(hardwareSnapshot.ProcessRamMb, 1),
 
-                // 💡 הנתונים עבור השעון (HUD): נמשכים נטו מהכרטיס הרלוונטי המנותב לאחסון/תחנות
+                // Primary network adapter throughput for HUD telemetry
                 serverNetworkTxMbps = Math.Round(netSnapshot.NicTotalTxMbps, 2),
                 serverNetworkRxMbps = Math.Round(netSnapshot.NicTotalRxMbps, 2),
                 serverNetworkLinkSpeed = Math.Round(netSnapshot.NicLinkSpeedMbps, 2),
@@ -120,7 +129,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 uptimeSeconds = Math.Round(uptime.TotalSeconds, 0),
                 connectedAgents = activeAgentsCount,
 
-                // 💡 רשימת כלל הכרטיסים מוחזרת במלואה כפי שהייתה
+                // Full list of physical and virtual network adapters
                 nics = netSnapshot.Nics.Select(n => new
                 {
                     nicName = n.Name,
@@ -134,7 +143,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(serverMetrics);
         }
 
-        // 💡 נתוני חובות וסנכרון - ה-Endpoint הכללי 
+        /// <summary>
+        /// Retrieves offline buffer debt and ingestion sync metrics across all fleet stations.
+        /// </summary>
+        /// <returns>200 OK with global and per-station sync metrics.</returns>
         [HttpGet("sync-status")]
         public IActionResult GetSyncStatusMetrics()
         {

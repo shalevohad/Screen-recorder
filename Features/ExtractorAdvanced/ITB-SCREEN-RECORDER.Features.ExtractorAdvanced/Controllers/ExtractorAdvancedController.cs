@@ -310,8 +310,16 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
         }
 
-        // 💡 הזרמת וידאו מיידית באפס השהיה (Single-Chunk Direct Stream)
-        // מבטל לחלוטין את לולאות ה-Concat Demuxer, לא צורך מעבד, ומזרים תוך 10ms
+        /// <summary>
+        /// Instant zero-latency video streaming endpoint (Single-Chunk Direct Stream).
+        /// Eliminates Concat Demuxer processing loops, consumes near-zero CPU at 1x speed, and starts streaming within 10ms.
+        /// </summary>
+        /// <param name="hostname">Station hostname.</param>
+        /// <param name="startEpoch">Timeline start Unix epoch in milliseconds.</param>
+        /// <param name="endEpoch">Timeline end Unix epoch in milliseconds.</param>
+        /// <param name="seekEpoch">Optional seek position in Unix epoch milliseconds.</param>
+        /// <param name="speed">Playback speed factor (e.g. 1.0, 2.0, 4.0).</param>
+        /// <param name="ct">Cancellation token.</param>
         [HttpGet("stream")]
         public async Task StreamContinuousStationVideo(
             [FromQuery] string hostname,
@@ -339,7 +347,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             DateTime rangeStartUtc = DateTimeOffset.FromUnixTimeMilliseconds(effectiveStartEpoch).UtcDateTime;
             DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
-            // שליפת המקטעים הרלוונטיים החל מנקודת הזמן המבוקשת (משתמש במטמון DB המהיר)
+            // Retrieve relevant chunks from the requested seek point using fast DB indexing
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc.AddSeconds(-2), rangeEndUtc);
 
             if (chunks == null || chunks.Count == 0)
@@ -348,7 +356,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return;
             }
 
-            // 💡 איתור המקטע הספציפי שבו נמצא ה-Seek הנוכחי
+            // Locate the exact chunk containing the current seek position
             var targetChunk = chunks.FirstOrDefault(c => rangeStartUtc >= c.StartUtc && rangeStartUtc <= c.EndUtc)
                               ?? chunks.FirstOrDefault(c => c.StartUtc >= rangeStartUtc)
                               ?? chunks.LastOrDefault();
@@ -372,7 +380,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             string codecArgs;
             if (Math.Abs(safeSpeed - 1.0) < 0.05)
             {
-                // מהירות 1x: העתקת זרם ישירה ב-0% CPU וב-10ms
+                // 1x Playback speed: direct stream copy with 0% CPU overhead and instant start
                 codecArgs = "-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
             else
@@ -386,7 +394,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 codecArgs = $"-vf \"{vfFilter}\" -an {optimalEncoder} -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
 
-            // הזנה מינימלית ל-Probe ו-Seek מהיר לאפס השהייה בפתיחת הזרמה
+            // Minimal probe buffers and fast seeking for zero-latency playback startup
             string arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
                                $"-ss {seekOffsetSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                $"-i \"{normalizedPath}\" -t {chunkDurationSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
@@ -428,7 +436,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (OperationCanceledException)
             {
-                // לקוח עצר את הניגון או דילג קדימה
+                // Client stopped playback or scrubbed to another timestamp
             }
             catch (Exception ex)
             {

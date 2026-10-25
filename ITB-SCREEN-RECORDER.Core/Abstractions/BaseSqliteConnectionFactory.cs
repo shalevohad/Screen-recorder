@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Core.Abstractions;
+namespace ITB_SCREEN_RECORDER.Core.Abstractions;
 
 using System;
 using System.Data;
@@ -27,7 +27,7 @@ public abstract class BaseSqliteConnectionFactory
             string rid = isWindows ? "win-x64" : "linux-x64";
             string baseDir = AppContext.BaseDirectory;
 
-            // נתיבי חיפוש אפשריים: שורש הפלט, תת-ספריית runtimes של NuGet, או סביבת פיתוח
+            // Search paths: output root, NuGet runtimes subdirectory, or development environment
             string[] probePaths =
             [
                 Path.Combine(baseDir, libName),
@@ -43,18 +43,20 @@ public abstract class BaseSqliteConnectionFactory
                 }
             }
 
-            // אתחול מנוע הסוללות של SQLitePCL
+            // Initialize SQLitePCL batteries v2 provider
             SQLitePCL.Batteries_V2.Init();
         }
         catch
         {
-            // המשך - ייכשל עם פירוט מדויק בעת פתיחת החיבור אם הקובץ לא יימצא
+            // Fall through: will fail with descriptive error upon connection open if native binary is missing
         }
     }
 
     /// <summary>
-    /// קונסטרקטור מבוסס IConfiguration - שולף נתיבים וזמני Timeout מתוך הקונפיגורציה
+    /// Initializes a new instance based on IConfiguration, resolving database paths and busy timeout intervals.
     /// </summary>
+    /// <param name="configuration">Configuration provider containing database directory and timeout options.</param>
+    /// <param name="dbFileName">The target SQLite database file name.</param>
     protected BaseSqliteConnectionFactory(IConfiguration configuration, string dbFileName)
         : this(
             dbFileName: dbFileName,
@@ -64,8 +66,11 @@ public abstract class BaseSqliteConnectionFactory
     }
 
     /// <summary>
-    /// קונסטרקטור בסיסי - תומך בנתיב ישיר ומטפל בברירות מחדל חוצות-פלטפורמות
+    /// Basic constructor that supports an explicit directory path and resolves cross-platform defaults.
     /// </summary>
+    /// <param name="dbFileName">The target SQLite database file name.</param>
+    /// <param name="customDirectory">Optional custom directory override. If null, standard OS data paths are used.</param>
+    /// <param name="busyTimeoutSeconds">SQLite busy timeout in seconds before throwing locking exceptions.</param>
     protected BaseSqliteConnectionFactory(string dbFileName, string? customDirectory = null, int busyTimeoutSeconds = 5)
     {
         if (string.IsNullOrWhiteSpace(dbFileName))
@@ -83,7 +88,7 @@ public abstract class BaseSqliteConnectionFactory
         }
         catch
         {
-            // Fallback: במקרה של חוסר הרשאות בנתיב היעד (כגון סביבת Linux מוגבלת), שימוש בתיקיית הריצה
+            // Fallback: in case of permission restriction on destination path (e.g. locked Linux container), use app base directory
             targetDirectory = AppContext.BaseDirectory;
             Directory.CreateDirectory(targetDirectory);
         }

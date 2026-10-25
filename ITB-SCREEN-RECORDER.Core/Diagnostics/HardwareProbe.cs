@@ -170,7 +170,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
             var sysState = _telemetryEngine.GetSystemUsage();
 
-            // נתב את דגימת ה-GPU בהתאם למערכת ההפעלה
+            // Route GPU telemetry collection based on operating system
             UpdateGpuMetrics(out double host3d, out double appNvenc);
 
             return new HardwareMetricsSnapshot
@@ -290,7 +290,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         {
             lock (_gpuLock)
             {
-                // שימוש במטמון של 2 שניות ב-Linux למניעת זלילת מעבד עקב יצירת תהליכים (Process.Start)
+                // Cache for 2 seconds on Linux to prevent CPU spikes from frequent Process.Start invocations
                 if ((DateTime.UtcNow - _lastLinuxGpuRefresh).TotalSeconds < 2)
                 {
                     host3d = _cachedLinux3d;
@@ -300,7 +300,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 try
                 {
-                    // נסיון שליפה ראשון: כרטיסי NVIDIA (דרך nvidia-smi)
+                    // Primary probe: NVIDIA GPU adapter telemetry via nvidia-smi
                     var psi = new ProcessStartInfo
                     {
                         FileName = "nvidia-smi",
@@ -336,14 +336,14 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 try
                 {
-                    // נסיון שליפה שני (Fallback): כרטיסי AMD Radeon ו-Intel (דרך SysFs)
+                    // Secondary probe fallback: AMD Radeon and Intel GPUs via Linux SysFs
                     if (System.IO.File.Exists("/sys/class/drm/card0/device/gpu_busy_percent"))
                     {
                         string busy = System.IO.File.ReadAllText("/sys/class/drm/card0/device/gpu_busy_percent");
                         if (double.TryParse(busy.Trim(), out double amdBusy))
                         {
                             _cachedLinux3d = Math.Round(amdBusy, 1);
-                            _cachedLinuxNvenc = 0; // קבצי ה-SysFs לא חושפים עומס מקודד בנפרד בקלות
+                            _cachedLinuxNvenc = 0; // SysFs does not expose discrete hardware encode load
 
                             host3d = _cachedLinux3d;
                             appNvenc = _cachedLinuxNvenc;
@@ -354,7 +354,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 }
                 catch { }
 
-                // כישלון כללי - החזרת תוצאה ריקה כדי לא להקריס את השרת
+                // General fallback: return cached or zero value to preserve stability
                 _lastLinuxGpuRefresh = DateTime.UtcNow;
                 host3d = _cachedLinux3d;
                 appNvenc = _cachedLinuxNvenc;

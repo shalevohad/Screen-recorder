@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Client/src/index.js
 // ==========================================
 import React from 'react';
@@ -9,7 +9,8 @@ import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
 const DAEMON_CONTAINER_ID = 'itb-extractor-daemon-container';
 
 /**
- * הרצת מנהל המשימות ישירות ב-document.body כ-Service עצמאי
+ * Bootstraps the export job monitor daemon directly on document.body as an independent background service.
+ * @returns {void}
  */
 function bootstrapBackgroundDaemon() {
     if (typeof window === 'undefined') return;
@@ -31,11 +32,14 @@ function bootstrapBackgroundDaemon() {
     }
 }
 
-// הפעלה ברגע שהקובץ נטען על ידי RemoteWidgetHost
+// Bootstrap daemon immediately when file is loaded by RemoteWidgetHost
 bootstrapBackgroundDaemon();
 
 /**
- * מתודת ה-Mount הנקראת על ידי RemoteWidgetHost.jsx
+ * Mount method invoked by RemoteWidgetHost.jsx to mount the tile widget inside a dashboard container.
+ * @param {HTMLElement} container - Target DOM container node.
+ * @param {Object} [props={}] - Properties passed into the widget tile.
+ * @returns {Function} Cleanup function to unmount the tile.
  */
 export function mount(container, props = {}) {
     bootstrapBackgroundDaemon();
@@ -43,8 +47,8 @@ export function mount(container, props = {}) {
     const root = ReactDOM.createRoot(container);
     root.render(React.createElement(ExtractorTile, props));
 
-    // Cleanup: בעת יציאה מהטאב מנקים אך ורק את ה-Tile
-    // ה-Daemon שיושב ב-document.body ממשיך ללוות את המשתמש בכל המערכת
+    // Cleanup: When navigating away from tab, unmount only the tile widget.
+    // The background daemon mounted on document.body remains active across the app.
     return () => {
         root.unmount();
     };

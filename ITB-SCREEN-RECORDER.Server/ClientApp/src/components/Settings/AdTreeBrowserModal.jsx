@@ -10,7 +10,6 @@ export default function AdTreeBrowserModal({
     alreadySelectedNames = []
 }) {
     const [currentDn, setCurrentDn] = useState('');
-    const [currentName, setCurrentName] = useState('');
     const [subOus, setSubOus] = useState([]);
     const [entities, setEntities] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -51,7 +50,6 @@ export default function AdTreeBrowserModal({
             const data = await res.json();
 
             setCurrentDn(data.currentDn || '');
-            setCurrentName(data.currentName || 'Root Domain');
             setSubOus(data.subOus || []);
             setEntities(data.entities || []);
             setIsSimulated(Boolean(data.isSimulated));

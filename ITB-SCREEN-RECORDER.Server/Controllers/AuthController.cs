@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Controllers;
+namespace ITB_SCREEN_RECORDER.Server.Controllers;
 
 using System;
 using System.Collections.Generic;
@@ -84,8 +84,9 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// הנפקת סשן אורח במצב Open Mode – מכיל הרשאות מבצעיות בלבד (לעולם לא הגדרות או אבטחה)
+    /// Issues an anonymous guest session in Open Mode, granting operational monitoring permissions only (excluding settings or security management).
     /// </summary>
+    /// <returns>JSON payload containing JWT token, guest role, and operational permissions, or 403 Forbidden if system is not in Open Mode.</returns>
     [HttpPost("guest-session")]
     [AllowAnonymous]
     public async Task<IActionResult> CreateGuestSession()

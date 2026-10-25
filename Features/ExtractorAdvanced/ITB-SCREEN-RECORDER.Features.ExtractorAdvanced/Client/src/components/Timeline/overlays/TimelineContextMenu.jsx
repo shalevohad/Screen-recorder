@@ -24,7 +24,7 @@ export default function TimelineContextMenu({
 
     if (!contextMenu) return null;
 
-    // הגנה מפני חריגה מגבולות המסך (Edge Clamping)
+    // Edge clamping protection to keep context menu within viewport bounds
     const menuWidth = 210;
     const menuHeight = 150;
     const posX = Math.min(contextMenu.x, window.innerWidth - menuWidth - 12);
@@ -72,6 +72,6 @@ export default function TimelineContextMenu({
         </div>
     );
 
-    // רינדור ב-Portal כדי למנוע חסימות ו-overflow מה-Parent containers
+    // Render via React Portal to prevent layout clipping and parent overflow issues
     return createPortal(content, document.body);
 }

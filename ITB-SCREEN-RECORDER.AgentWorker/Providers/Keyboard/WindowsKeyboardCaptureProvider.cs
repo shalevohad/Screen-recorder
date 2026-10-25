@@ -164,13 +164,21 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
             }
         }
 
+        /// <summary>
+        /// Low-level keyboard hook callback procedure processing WM_KEYDOWN and WM_SYSKEYDOWN messages.
+        /// Filters modifier keys and raises KeystrokeCaptured for valid key events.
+        /// </summary>
+        /// <param name="nCode">Hook code indicating whether to process message.</param>
+        /// <param name="wParam">Windows message identifier (e.g. WM_KEYDOWN).</param>
+        /// <param name="lParam">Pointer to KBDLLHOOKSTRUCT containing virtual key details.</param>
+        /// <returns>Result of CallNextHookEx to continue the hook chain.</returns>
         private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
             {
                 int vkCode = Marshal.ReadInt32(lParam);
 
-                // סינון מקיף לכל מקשי ה-Modifiers (כלליים, שמאל וימין) למניעת רעשי Key(162) וכד'
+                // Comprehensive filtering for all modifier keys (generic, left, right) to prevent noise like Key(162)
                 bool isModifierKey = vkCode switch
                 {
                     0x10 or 0xA0 or 0xA1 => true, // Shift, LShift, RShift
@@ -200,6 +208,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
             return CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
 
+        /// <summary>
+        /// Formats a virtual key code into a human-readable combination string with active modifiers,
+        /// or redacts printable text keys into '*' for privacy protection.
+        /// </summary>
+        /// <param name="vkCode">Virtual key code to format.</param>
+        /// <returns>Formatted key string (e.g. "Ctrl+C"), "*" for masked text, or empty string if ignored.</returns>
         private static string FormatKeyStroke(int vkCode)
         {
             bool isCtrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -209,17 +223,17 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
 
             bool isControlModifier = isCtrl || isAlt || isWin;
 
-            // 💡 אבטחת פרטיות (אפשרות א'): סינון והסוואת תווים חופשיים, ספרות וסיסמאות.
-            // כאשר המשתמש מקליד טקסט חופשי או סיסמה (ללא Ctrl/Alt/Win), המקש נרשם כ-* בלבד.
+            // Privacy protection: redact freeform text, digits, and passwords.
+            // When user types free text without Ctrl/Alt/Win combinations, the key is recorded as '*' only.
             if (!isControlModifier)
             {
                 bool isPrintable = vkCode switch
                 {
                     0x20 => true, // Space
                     >= 0x30 and <= 0x39 => true, // 0-9
-                    >= 0x41 and <= 0x5A => true, // A-Z (והתאמת מקשים מקבילים בשפות אחרות)
+                    >= 0x41 and <= 0x5A => true, // A-Z (and equivalent keys in other keyboard layouts)
                     >= 0x60 and <= 0x69 => true, // Num 0-9
-                    0xBA or 0xBB or 0xBC or 0xBD or 0xBE or 0xBF or 0xC0 or 0xDB or 0xDC or 0xDD or 0xDE or 0xE2 => true, // סימני פיסוק
+                    0xBA or 0xBB or 0xBC or 0xBD or 0xBE or 0xBF or 0xC0 or 0xDB or 0xDC or 0xDD or 0xDE or 0xE2 => true, // Punctuation marks
                     _ => false
                 };
 

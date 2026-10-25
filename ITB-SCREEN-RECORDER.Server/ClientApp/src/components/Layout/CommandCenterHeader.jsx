@@ -16,7 +16,7 @@ export default function CommandCenterHeader({
     isFaultFilterActive = false,
     onToggleFaultFilter,
     systemConfig: propSystemConfig,
-    clusterConfig
+    clusterConfig: _clusterConfig
 }) {
     const totalCount = stations.length;
     const [fetchedConfig, setFetchedConfig] = useState(null);
@@ -205,7 +205,7 @@ export default function CommandCenterHeader({
                 </div>
 
                 <div className="header-telemetry-wrapper">
-                    {/* מגן כנגד ערך null למניעת קריסות רינדור */}
+                    {/* Null-safe fallback guard preventing telemetry render exceptions */}
                     <ServerTelemetryWidget
                         serverTelemetry={serverTelemetry || {}}
                         fleetC2Kbps={agentMetrics.aggregateC2Kbps}

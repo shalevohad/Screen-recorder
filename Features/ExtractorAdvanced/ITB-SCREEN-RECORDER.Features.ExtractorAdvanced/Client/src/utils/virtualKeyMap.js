@@ -3,12 +3,12 @@
 // ==========================================
 
 /**
- * מילון מקיף לכלל מקשי המקלדת (Virtual Key Codes 0–255)
- * כולל מקשים סטנדרטיים, מקשי עריכה וניווט, מקשי Numpad, פונקציות F1-F24,
- * מקשי מדיה, דפדפן ומקשי פיסוק וסימנים מיוחדים (OEM).
+ * Comprehensive dictionary of keyboard Virtual Key Codes (0–255).
+ * Covers standard keys, navigation and editing, Numpad, function keys (F1–F24),
+ * media, browser controls, and OEM punctuation symbols.
  */
 export const VK_MAP = {
-    // עכבר ומקשי שליטה
+    // Mouse and control keys
     1: 'LButton',
     2: 'RButton',
     3: 'Cancel',
@@ -42,18 +42,18 @@ export const VK_MAP = {
     46: 'Delete',
     47: 'Help',
 
-    // ספרות עליונות (0-9)
+    // Top row digits (0-9)
     48: '0', 49: '1', 50: '2', 51: '3', 52: '4',
     53: '5', 54: '6', 55: '7', 56: '8', 57: '9',
 
-    // אותיות לטיניות (A-Z)
+    // Latin alphabet (A-Z)
     65: 'A', 66: 'B', 67: 'C', 68: 'D', 69: 'E', 70: 'F',
     71: 'G', 72: 'H', 73: 'I', 74: 'J', 75: 'K', 76: 'L',
     77: 'M', 78: 'N', 79: 'O', 80: 'P', 81: 'Q', 82: 'R',
     83: 'S', 84: 'T', 85: 'U', 86: 'V', 87: 'W', 88: 'X',
     89: 'Y', 90: 'Z',
 
-    // מקשי מערכת / Windows
+    // System / Windows keys
     91: 'Win',
     92: 'RWin',
     93: 'Apps',
@@ -77,7 +77,7 @@ export const VK_MAP = {
     110: 'Num .',
     111: 'Num /',
 
-    // מקשי פונקציה (F1 - F24)
+    // Function keys (F1 - F24)
     112: 'F1', 113: 'F2', 114: 'F3', 115: 'F4',
     116: 'F5', 117: 'F6', 118: 'F7', 119: 'F8',
     120: 'F9', 121: 'F10', 122: 'F11', 123: 'F12',
@@ -85,11 +85,11 @@ export const VK_MAP = {
     128: 'F17', 129: 'F18', 130: 'F19', 131: 'F20',
     132: 'F21', 133: 'F22', 134: 'F23', 135: 'F24',
 
-    // נעילות
+    // Locks
     144: 'Num Lock',
     145: 'Scroll Lock',
 
-    // מקשי Modifiers פרטניים (שמאל וימין)
+    // Specific modifier keys (Left & Right)
     160: 'Shift',
     161: 'RShift',
     162: 'Ctrl',
@@ -97,7 +97,7 @@ export const VK_MAP = {
     164: 'Alt',
     165: 'RAlt',
 
-    // מקשי דפדפן
+    // Browser navigation keys
     166: 'Browser Back',
     167: 'Browser Forward',
     168: 'Browser Refresh',
@@ -106,7 +106,7 @@ export const VK_MAP = {
     171: 'Browser Favorites',
     172: 'Browser Home',
 
-    // מקשי שליטה במדיה ועוצמת שמע
+    // Media & Volume controls
     173: 'Mute',
     174: 'Vol -',
     175: 'Vol +',
@@ -119,7 +119,7 @@ export const VK_MAP = {
     182: 'App 1',
     183: 'App 2',
 
-    // מקשי פיסוק וסימנים מיוחדים (OEM)
+    // OEM punctuation and symbols
     186: ';',
     187: '=',
     188: ',',
@@ -135,20 +135,23 @@ export const VK_MAP = {
 };
 
 /**
- * מנרמל חלק בודד בצירוף מקשים
+ * Normalizes an individual key token in a combination string.
+ * 
+ * @param {string} part - Raw key token (e.g. "Key(162)" or "control").
+ * @returns {string} Normalized key name.
  */
 export function normalizeKeyPart(part) {
     if (!part) return '';
     const trimmed = part.trim();
 
-    // בדיקת תבנית Key(XXX)
+    // Check Key(XXX) pattern
     const match = trimmed.match(/^Key\((\d+)\)$/i);
     if (match) {
         const code = parseInt(match[1], 10);
         return VK_MAP[code] || `Key(${code})`;
     }
 
-    // נרמול שמות Modifiers
+    // Normalize modifier aliases
     const lower = trimmed.toLowerCase();
     if (lower === 'ctrl' || lower === 'control') return 'Ctrl';
     if (lower === 'shift') return 'Shift';
@@ -168,7 +171,10 @@ export function normalizeKeyPart(part) {
 }
 
 /**
- * מפרק צירוף מקשים ומסיר כפילויות (למשל: Ctrl+Key(162) -> ['Ctrl'])
+ * Splits key combination string and eliminates duplicates (e.g. Ctrl+Key(162) -> ['Ctrl']).
+ * 
+ * @param {string} rawCombo - Raw key combination string.
+ * @returns {string[]} Array of unique normalized key tokens.
  */
 export function parseKeyCombination(rawCombo) {
     if (!rawCombo || typeof rawCombo !== 'string') return [];
@@ -176,7 +182,7 @@ export function parseKeyCombination(rawCombo) {
     const parts = rawCombo.split('+').map(p => p.trim()).filter(Boolean);
     const normalized = parts.map(normalizeKeyPart);
 
-    // הסרת כפילויות תוך שמירה על סדר המקשים
+    // Deduplicate while preserving token order
     const seen = new Set();
     const result = [];
 
@@ -192,9 +198,11 @@ export function parseKeyCombination(rawCombo) {
 }
 
 /**
- * מחזיר מחרוזת נקייה, מעוצבת וקריאה של צירוף המקשים
- * @param {string} rawCombo 
- * @param {string} joiner ברירת מחדל: ' + '
+ * Returns a cleaned, formatted string representation of a key combination.
+ * 
+ * @param {string} rawCombo - Raw key combination string.
+ * @param {string} [joiner=' + '] - Token separator.
+ * @returns {string} Formatted key combination.
  */
 export function cleanKeyCombination(rawCombo, joiner = ' + ') {
     const keys = parseKeyCombination(rawCombo);
@@ -202,7 +210,10 @@ export function cleanKeyCombination(rawCombo, joiner = ' + ') {
 }
 
 /**
- * עזר ייעודי לתגיות ו-Badges בציר הזמן (חיבור קומפקטי ללא רווחים)
+ * Helper for compact timeline badges and tags (joins without surrounding spaces).
+ * 
+ * @param {string} rawKey - Raw key string.
+ * @returns {string} Clean compact key string.
  */
 export function cleanKeyName(rawKey) {
     return cleanKeyCombination(rawKey, '+');

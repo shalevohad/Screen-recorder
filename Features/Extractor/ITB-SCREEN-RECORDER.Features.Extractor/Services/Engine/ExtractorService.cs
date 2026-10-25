@@ -311,7 +311,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             if (_trackCutter != null && _planBuilder != null)
             {
                 var dict = new Dictionary<string, List<RecordingChunkMetadata>> { [stationId] = chunks };
-                // תיקון: העברת List<string> במקום מערך string[]
+                // Pass List<string> for single station synchronization plan
                 var plan = _planBuilder.BuildSynchronizationPlan(new List<string> { stationId }, startUtc, endUtc, dict);
                 plan.KeystrokeMode = keystrokeMode;
 

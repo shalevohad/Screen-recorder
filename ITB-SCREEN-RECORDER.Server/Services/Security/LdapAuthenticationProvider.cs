@@ -78,7 +78,7 @@ public sealed class LdapAuthenticationProvider : IAuthenticationProvider
 
             connection.Bind(credential);
 
-            // שליפת קבוצות המשתמש (MemberOf)
+            // Retrieve user group memberships (memberOf)
             var groups = new List<string>();
             string searchBase = !string.IsNullOrWhiteSpace(policy.LdapBaseDn) ? policy.LdapBaseDn : "";
 
@@ -116,7 +116,7 @@ public sealed class LdapAuthenticationProvider : IAuthenticationProvider
                 }
             }
 
-            // גזירת תפקידים מקבוצות ה-AD לפי המיפוי השמור
+            // Derive application roles from Active Directory groups according to configured mappings
             var mappings = await _repository.GetAllLdapGroupMappingsAsync();
             var assignedRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

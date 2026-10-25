@@ -70,10 +70,10 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private long _lastTelemetryPayloadSizeBytes = 0;
         private DateTime _lastTelemetrySendTime = DateTime.UtcNow;
 
-        // 💡 תור צבירה של אירועי מקלדת לדיווח ברפורט הטלמטריה
+        // Accumulation queue for keystroke events to be transmitted in periodic telemetry reports
         private readonly ConcurrentQueue<KeystrokeEventDto> _pendingKeystrokes = new();
 
-        // 💡 ערוץ מהיר לשידור מקשים מיידי מה-Worker לשרת באפס השהייה (Fast Path)
+        // High-priority low-latency channel for real-time keystroke transmission from Worker to Server (Fast Path)
         private readonly Channel<KeystrokeEventDto> _fastKeystrokesChannel = Channel.CreateBounded<KeystrokeEventDto>(new BoundedChannelOptions(1000)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
@@ -164,7 +164,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 Timeout = TimeSpan.FromSeconds(5)
             };
 
-            // 💡 האזנה לרענון תעודות אוטומטי במקרה של עמדה שנותקה זמן רב או שתעודתה חודשה
+            // Listen for automatic certificate trust refresh when an endpoint reconnects after a long partition
             AgentCertificateValidator.OnTrustRefreshRequired += () =>
             {
                 _logger.LogInformation("[PKI-AUTO-RECOVERY] Station recovery detected. Refreshing Root CA bundle from server...");
@@ -315,7 +315,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private async Task PeriodicTrustSyncLoopAsync(CancellationToken ct)
         {
-            // בדיקה ראשונית זמן קצר לאחר עליית השירות
+            // Initial trust probe shortly after service launch
             await Task.Delay(TimeSpan.FromSeconds(5), ct);
             while (!ct.IsCancellationRequested)
             {
@@ -328,7 +328,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch { }
 
-                // סנכרון תעודות תקופתי אחת ל-6 שעות
+                // Periodic certificate synchronization every 6 hours
                 await Task.Delay(TimeSpan.FromHours(6), ct);
             }
         }
@@ -390,7 +390,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 break;
                             }
 
-                            // 💡 בדיקת הודעות Fast Path להעברת מקשים מיידית
+                            // Check for Fast Path messages to forward immediate keystrokes
                             if (line.StartsWith("Key|", StringComparison.OrdinalIgnoreCase))
                             {
                                 try
@@ -463,7 +463,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                         _lastWorkerDisplayTopology = status.DisplayTopology;
                                     }
 
-                                    // 💡 קליטת מקשים חיים שנשלחו מה-Worker
+                                    // Ingest live keystroke batch sent from the Worker
                                     if (status.Keystrokes != null && status.Keystrokes.Count > 0)
                                     {
                                         foreach (var k in status.Keystrokes)
@@ -521,7 +521,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch { }
 
-                // 💡 שליפת מקשים מתוך התור לשידור בטיק הנוכחי
+                // Dequeue keystrokes to transmit in current telemetry report tick
                 var keysBatch = new List<KeystrokeEventDto>();
                 while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
                 {
@@ -697,7 +697,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
 
-                    // בדוק האם אנחנו מחוברים כרגע לשרת Standby והשרת הראשי התאושש (Failback) - רלוונטי רק כשאין VIP
+                    // Check if currently connected to a Standby server while the Primary has recovered (Failback) - relevant when VIP is disabled
                     if (_activeServer != null && !_activeServer.EnableVirtualIp && (_activeServer.Priority > 1 || string.Equals(_activeServer.Role, "Standby", StringComparison.OrdinalIgnoreCase)))
                     {
                         if ((DateTime.UtcNow - _lastFailbackCheckUtc).TotalSeconds >= 30)
@@ -723,7 +723,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     _consecutiveServerFailures++;
                     _logger.LogWarning("Server returned non-success during telemetry ({Endpoint}): {StatusCode} {Reason}", targetEndpoint, (int)response.StatusCode, response.ReasonPhrase);
-                    // שחזור המקשים לתור אם השרת החזיר שגיאה
+                    // Requeue failed keystrokes for subsequent retry
                     foreach (var k in keysBatch) _pendingKeystrokes.Enqueue(k);
                 }
             }
@@ -732,7 +732,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 _consecutiveServerFailures++;
                 _logger.LogWarning("Telemetry transmission failed ({Endpoint}): {Msg}", targetEndpoint, ex.Message);
 
-                // בדיקת מעבר מיידי לשרת גיבוי (Failover) במקרה של כשל רצוף
+                // Proactive failover to backup cluster node on persistent server unreachable error
                 if (_consecutiveServerFailures >= 3)
                 {
                     // If VIP is enabled, wait a few cycles for cluster ARP migration before abandoning VIP

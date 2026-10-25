@@ -50,23 +50,23 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             string key = report.Hostname.ToUpperInvariant();
 
-            // 💡 העמדות משדרות תמיד בלייב כשהן פעילות (24/7 Continuous Live Surveillance)
+            // Workstations always stream live video when online (24/7 Continuous Live Surveillance)
             bool shouldStream = true;
 
-            // ניהול מצב הקלטה רצוי (Record vs Monitor-Only)
+            // Desired recording state governance (Record vs Monitor-Only)
             _agentDesiredStates.CustomGetOrAdd(key, () => report.IsRecording || report.RecordingStartedAtUtc.HasValue || report.AutoStartRecordingOnLaunch);
 
             bool isRecordingDesired = _agentDesiredStates[key];
             report.IsRecording = isRecordingDesired;
 
-            // העמדה מקבלת פקודת שידור תמידית כל עוד היא אינה משדרת
+            // Station receives continuous streaming command while not currently streaming
             ServerCommand commandToSend = ServerCommand.Standby;
             if (!report.IsStreaming)
             {
                 commandToSend = ServerCommand.StartStream;
             }
 
-            // ניהול טיימר הקלטה עבור עמדה מקליטה בלבד
+            // Manage recording duration timer for actively recording stations only
             if (report.IsRecording)
             {
                 if (!report.RecordingStartedAtUtc.HasValue)
@@ -86,7 +86,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 report.RecordingStartedAtUtc = null;
             }
 
-            // עדכון חותמת הזמן על פי שעון השרת הנוכחי למניעת בעיות Clock Skew בין עמדות הקצה לשרת
+            // Stamp server UTC time to prevent endpoint clock skew issues between agents and server
             report.Timestamp = DateTime.UtcNow;
 
             if (report.DisplayTopology == null && _latestReports.TryGetValue(key, out var prevReport) && prevReport.DisplayTopology != null)
@@ -102,10 +102,10 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     ? _configMonitor.CurrentValue.Discovery.VirtualIp
                     : "127.0.0.1");
 
-            // מדרג מדיניות (Overrides -> Tab Settings -> Global Defaults)
+            // Policy hierarchy resolution (Overrides -> Tab Settings -> Global Defaults)
             var currentPolicy = await GetAgentPolicyAsync(report.Hostname, hostToUse);
 
-            // ניהול תור העלאת באפרים מאופליין
+            // Manage offline buffer draining and upload queue
             var bufferAction = _syncManager.GetSyncCommand(report.Hostname, report.OfflineFilesTotalSizeMb);
 
             return new AgentHeartbeatResponse
@@ -168,11 +168,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             var config = _configMonitor.CurrentValue;
             int rtmpPort = config.MediaMtx?.RtmpPort > 0 ? config.MediaMtx.RtmpPort : 19350;
 
-            // 1. ברירות מחדל גלובליות דינמיות מתוך SystemConfig (מתעדכן בלייב)
+            // 1. Dynamic global defaults from live SystemConfig
             int fps = config.DefaultTargetFps >= 10 && config.DefaultTargetFps <= 60 ? config.DefaultTargetFps : 20;
             string bitrate = !string.IsNullOrWhiteSpace(config.DefaultVideoBitrate) ? config.DefaultVideoBitrate : "3000k";
 
-            // 2. בדיקת מדיניות לפי Tab (אם העמדה משויכת ל-Tab ייעודי)
+            // 2. Tab-assigned policy (if station belongs to a specific non-default tab)
             if (_tabsService != null)
             {
                 var allTabs = await _tabsService.GetAllTabsAsync();
@@ -190,7 +190,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 }
             }
 
-            // 3. דריסה פרטנית לתחנה (העדיפות הגבוהה ביותר)
+            // 3. Station-level specific override (highest priority)
             if (_overridesService != null)
             {
                 var overrides = await _overridesService.GetAllAsync();

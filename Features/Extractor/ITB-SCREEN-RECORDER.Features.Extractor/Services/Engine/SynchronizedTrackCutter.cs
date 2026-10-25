@@ -127,7 +127,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // 💡 הכנת Master Dummy באופן Lazy אך ורק בסנכרון רב-עמדתי (Multicam) כשנמצא פער פנימי
+            // Lazy creation of a master dummy video asset only in multicam synchronization when an internal station gap exists
             string? masterDummyPath = null;
 
             var manifestLines = new List<string> { "ffconcat version 1.0" };
@@ -136,7 +136,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             async Task AppendDummyGapAsync(double gapSeconds)
             {
-                // שקף No Signal נדרש אך ורק ב-Multicam לשמירה על סנכרון מול עמדה מקבילה; בעמדה בודדת מרווחים נחתכים כ-Global Gaps
+                // A "No Signal" placeholder video slate is only required in Multicam exports to preserve timeline alignment
+                // with surviving concurrent stations; in single-station exports, timeline intervals are trimmed as global gaps.
                 if (!isMultiStation || gapSeconds <= 0.02) return;
 
                 if (masterDummyPath == null)

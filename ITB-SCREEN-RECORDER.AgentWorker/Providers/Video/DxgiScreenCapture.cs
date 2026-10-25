@@ -29,7 +29,7 @@ namespace ITBRecorderAgent.Providers.Video
         private IDXGIOutputDuplication? _deskDupl;
         private ID3D11Texture2D? _stagingTexture;
 
-        // באפר קבוע ורב-פעמי. אין יותר הקצאות של byte[] בזמן ריצה!
+        // Reusable preallocated raw frame buffer to eliminate runtime heap allocations of byte[]
         private byte[]? _frameBuffer;
 
         private DateTime _lastReinitAttemptUtc = DateTime.MinValue;
@@ -77,7 +77,7 @@ namespace ITBRecorderAgent.Providers.Video
                         Y = desc.DesktopCoordinates.Top;
                         DeviceName = desc.DeviceName;
 
-                        // מוודאים שיוך שולחן עבודה גם מיד לפני שכפול הפלט
+                        // Ensure thread desktop attachment immediately before duplicating output surface
                         DesktopSecurityManager.TryAttachToInputDesktop();
                         _deskDupl = output1.DuplicateOutput(_device);
                     }
@@ -99,7 +99,7 @@ namespace ITBRecorderAgent.Providers.Video
 
                 _stagingTexture = _device.CreateTexture2D(textureDesc);
 
-                // הקצאה חד-פעמית
+                // One-time preallocation of byte array
                 _frameBuffer = new byte[Width * Height * 4];
 
                 IsInitialized = true;
@@ -113,6 +113,11 @@ namespace ITBRecorderAgent.Providers.Video
             }
         }
 
+        /// <summary>
+        /// Attempts to acquire the next screen frame from DXGI Desktop Duplication into a preallocated byte buffer.
+        /// </summary>
+        /// <param name="frameData">Outputs reference to preallocated BGRA frame buffer on success, or null on timeout/error.</param>
+        /// <returns>True if a frame was successfully acquired and mapped; false on timeout or initialization error.</returns>
         public bool TryCaptureFrame(out byte[]? frameData)
         {
             frameData = null;
@@ -129,7 +134,7 @@ namespace ITBRecorderAgent.Providers.Video
 
             try
             {
-                // Timeout שונה ל-5ms. אנחנו רוצים שהלולאה תחזור לעבוד מיד אם אין שינוי!
+                // 5ms acquire timeout: returns immediately to capture loop if frame is unchanged
                 var result = _deskDupl.AcquireNextFrame(5, out _, out var desktopResource);
 
                 if (result.Failure)
@@ -155,7 +160,7 @@ namespace ITBRecorderAgent.Providers.Video
                 {
                     int rowPitch = Width * 4;
 
-                    // אופטימיזציה מטורפת: אם ה-RowPitch מושלם, מבצעים העתקת בלוק אחת בלבד
+                    // Optimization: if row pitch equals tightly packed width * 4, execute single block copy
                     if (mapped.RowPitch == rowPitch)
                     {
                         Marshal.Copy(mapped.DataPointer, _frameBuffer, 0, _frameBuffer.Length);
@@ -169,7 +174,7 @@ namespace ITBRecorderAgent.Providers.Video
                         }
                     }
 
-                    frameData = _frameBuffer; // מחזירים רפרנס לבאפר שלנו (אפס אובייקטים חדשים ב-RAM!)
+                    frameData = _frameBuffer; // Return cached buffer reference (zero runtime GC allocations)
                     return true;
                 }
                 finally

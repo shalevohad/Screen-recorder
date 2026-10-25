@@ -53,10 +53,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             Directory.CreateDirectory(_exportDirectory);
 
-            // שחזור משימות מ-extractor.db בעליית השרת
+            // Recover and reconcile export tasks from extractor.db on server boot
             _ = RecoverJobsFromDatabaseAsync();
 
-            // טיימר לניקוי קובצי ארכיון שחלפו 24 שעות מסיומם (מוגן מפני מחיקה אם מסומן כ-Bookmark)
+            // Periodic retention timer to purge completed archive files older than 24 hours (protected from deletion if bookmarked)
             _retentionTimer = new Timer(ExecuteRetentionPurge, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(30));
         }
 

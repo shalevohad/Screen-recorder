@@ -19,7 +19,7 @@ export default function StationsDenseView({
     liveKeystrokes = {},
     keystrokeMode = 'burn-in',
     onOpenSnoozeModal,
-    onCancelSnooze
+    _onCancelSnooze
 }) {
     return (
         <div className="stations-dense-container">

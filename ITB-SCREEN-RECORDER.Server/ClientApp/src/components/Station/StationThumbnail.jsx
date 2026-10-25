@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import './StationThumbnail.scss';
-import WebRTCPlayer from '../Player/WebRTCPlayer';
 import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import StationDisplayBar from './StationDisplayBar';
 import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
@@ -42,12 +41,6 @@ export default function StationThumbnail(props) {
     const canBookmark = hasPermission('bookmarks.manage');
     const canPlayback = hasPermission('playback.view');
     const canExport = hasPermission('playback.export');
-
-    const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
-    const dynamicWebrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:'
-        ? '/api/v1/whep'
-        : `http://${serverHost}:${webrtcPort}`;
 
     const isRecording = props.isRecording !== undefined
         ? Boolean(props.isRecording)

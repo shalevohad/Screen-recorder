@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout';
+import { calculateTopologyBounds } from '../../utils/topologyLayout';
 import './StationDisplayBar.scss';
 
 /**

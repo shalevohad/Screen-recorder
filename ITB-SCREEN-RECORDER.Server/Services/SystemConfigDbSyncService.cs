@@ -38,6 +38,10 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         _logger = logger;
     }
 
+    /// <summary>
+    /// Synchronizes active installation and configuration file settings into the SQLite database upon service startup.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for startup operation.</param>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
@@ -45,11 +49,11 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         {
             _logger.LogInformation("[CONFIG SYNC] Aligning system configuration across installation, files, and SQLite...");
 
-            // 💡 ההגדרות מקובצי הקונפיגורציה (שהוגדרו בהתקנה) הן הסמכות העליונה (SSOT) בעליית השירות
+            // Settings from disk configuration files (configured at installation) are the single source of truth (SSOT) at service startup
             var currentFileConfig = _configMonitor.CurrentValue;
             string fileConfigJson = JsonSerializer.Serialize(currentFileConfig, new JsonSerializerOptions { WriteIndented = true });
 
-            // סנכרון ישיר ל-SQLite: יוצר רשומה בהתקנה נקייה או מעדכן התקנה קיימת
+            // Direct SQLite synchronization: seeds on clean install or updates existing installation record
             await _catalogRepo.SetConfigurationAsync("SystemConfig", fileConfigJson);
             _logger.LogInformation("[CONFIG SYNC] Successfully synchronized active file settings into SQLite database.");
         }
@@ -63,6 +67,10 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
         }
     }
 
+    /// <summary>
+    /// Modifies system configuration via delegate, updating the SQLite database and flushing changes to all disk configuration files.
+    /// </summary>
+    /// <param name="updateAction">Delegate action that mutates the SystemConfig instance.</param>
     public async Task UpdateSystemConfigAsync(Action<SystemConfig> updateAction)
     {
         await _lock.WaitAsync();
@@ -73,10 +81,10 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
             string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
 
-            // 1. עדכון מסד הנתונים SQLite
+            // 1. Update SQLite catalog database
             await _catalogRepo.SetConfigurationAsync("SystemConfig", updatedJson);
 
-            // 2. שמירה ויישור קו בכל קובצי ה-JSON בדיסק
+            // 2. Persist and synchronize across all JSON config files on disk
             await WriteConfigToDiskFilesAsync(updatedJson);
 
             _logger.LogInformation("[CONFIG SYNC] System configuration updated in SQLite and flushed to disk configuration files.");
@@ -108,7 +116,7 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
             if (File.Exists(linuxBinFile)) candidatePaths.Add(linuxBinFile);
         }
 
-        // סנכרון לתיקיית המקור בסביבת פיתוח (אם קיימת)
+        // Synchronize to development source directory (if present in IDE development environment)
         try
         {
             string projectRoot = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));

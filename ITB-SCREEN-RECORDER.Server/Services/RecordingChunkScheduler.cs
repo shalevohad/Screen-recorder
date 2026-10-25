@@ -103,7 +103,7 @@ public class RecordingChunkScheduler : BackgroundService
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
 
-        // 💡 שימוש בתבנית Epoch (%s_%f) למניעת בעיות אזורי זמן ושעוני מערכת הפעלה
+        // Use Epoch template (%s_%f) to eliminate OS timezone differences and local clock skew
         string recordPath = $"{cleanRoot}/%path/%s_%f";
         string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
@@ -201,7 +201,7 @@ public class RecordingChunkScheduler : BackgroundService
             long startEpochMs = 0;
             long endEpochMs = new DateTimeOffset(boundaryUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-            // 1. קריאת מטא-דאטה מוטבע מתוך הקובץ (In-Band Metadata) כעדיפות עליונה
+            // 1. Read in-band embedded metadata from video container (highest priority)
             var fileMeta = TryExtractFileMetadata(lastClosedFile.FullName);
             if (fileMeta.HasValue)
             {
@@ -212,12 +212,12 @@ public class RecordingChunkScheduler : BackgroundService
                 }
             }
 
-            // 2. אם המטא-דאטה לא זמין, חילוץ משם הקובץ (Epoch או תאריך)
+            // 2. If embedded metadata is unavailable, extract timestamp from filename (Epoch or legacy datetime)
             if (startEpochMs <= 0)
             {
                 string fileNameWithoutExt = Path.GetFileNameWithoutExtension(lastClosedFile.Name);
 
-                // א. בדיקת תבנית Epoch (%s_%f או %s)
+                // a. Check Epoch regex pattern (%s_%f or %s)
                 var matchEpoch = Regex.Match(fileNameWithoutExt, @"(?:^|[_-])(?<sec>\d{10})(?:[_-](?<micro>\d{1,6}))?");
                 if (matchEpoch.Success && long.TryParse(matchEpoch.Groups["sec"].Value, out long sec))
                 {
@@ -230,7 +230,7 @@ public class RecordingChunkScheduler : BackgroundService
                 }
                 else
                 {
-                    // ב. בדיקת תבניות תאריך קודמות
+                    // b. Check legacy hyphenated and compact datetime patterns
                     var matchHyphen = Regex.Match(fileNameWithoutExt, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?)");
                     var matchCompact = Regex.Match(fileNameWithoutExt, @"(\d{8}_\d{6})");
 
@@ -251,7 +251,7 @@ public class RecordingChunkScheduler : BackgroundService
                 }
             }
 
-            // ג. ברירת מחדל אם טרם חולץ
+            // c. Default interval calculation if timestamp extraction yielded nothing
             int intervalMinutes = Math.Max(1, config.Storage.ChunkIntervalMinutes);
             if (startEpochMs <= 0)
             {
@@ -307,7 +307,7 @@ public class RecordingChunkScheduler : BackgroundService
 
             string headerText = Encoding.ASCII.GetString(buffer, 0, read);
 
-            // בדיקת תגית ITB_EPOCH:1759583561000 שהוטבעה ע"י הסוכן
+            // Check for ITB_EPOCH:1759583561000 tag embedded by agent
             var matchEpoch = Regex.Match(headerText, @"ITB_EPOCH:(\d{10,13})");
             if (matchEpoch.Success && long.TryParse(matchEpoch.Groups[1].Value, out long epoch))
             {
@@ -315,7 +315,7 @@ public class RecordingChunkScheduler : BackgroundService
                 return (startMs, 0);
             }
 
-            // בדיקת תגית itb_start_epoch_ms
+            // Check for itb_start_epoch_ms metadata tag
             var matchStartEpoch = Regex.Match(headerText, @"itb_start_epoch_ms[^\d]*(\d{10,13})");
             if (matchStartEpoch.Success && long.TryParse(matchStartEpoch.Groups[1].Value, out long startEpoch))
             {
@@ -323,7 +323,7 @@ public class RecordingChunkScheduler : BackgroundService
                 return (startMs, 0);
             }
 
-            // בדיקת תגית creation_time בפורמט ISO
+            // Check for creation_time in ISO datetime format
             var matchIso = Regex.Match(headerText, @"creation_time[^\d]*(\d{4}-\d{2}-\d{2}[T_ ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)");
             if (matchIso.Success && DateTime.TryParse(matchIso.Groups[1].Value, CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime dtUtc))

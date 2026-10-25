@@ -26,21 +26,6 @@ function loadStoredSnoozes() {
 export function useAlertSnooze() {
     const [snoozedMap, setSnoozedMap] = useState(loadStoredSnoozes);
 
-    // Sync with localStorage & purge expired entries
-    const purgeAndSave = useCallback((updated) => {
-        const now = Date.now();
-        const valid = {};
-        for (const [h, info] of Object.entries(updated)) {
-            if (info && info.until && info.until > now) {
-                valid[h.toLowerCase()] = info;
-            }
-        }
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(valid));
-        } catch { /* storage full / unavailable */ }
-        setSnoozedMap(valid);
-    }, []);
-
     // Periodic sweep for expired snoozes
     useEffect(() => {
         const timer = setInterval(() => {

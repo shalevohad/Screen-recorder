@@ -167,13 +167,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 _logger.LogWarning(ex, "[STORAGE SCANNER] Failed querying available hosts from DB.");
             }
 
-            // DB-FIRST: אם נמצאו עמדות במסד הנתונים, מחזירים אותן מיד ב-0 I/O וללא סריקת אחסון רשת
+            // DB-FIRST: If stations are indexed in the database, return them immediately with 0 disk/network I/O
             if (hostsSet.Count > 0)
             {
                 return hostsSet.OrderBy(h => h).ToList();
             }
 
-            // Fallback מתבצע אך ורק אם מסד הנתונים ריק לחלוטין (Cold Start / התקנה ראשונית)
+            // Fallback scan is executed ONLY if the database catalog is completely empty (cold start / fresh installation)
             foreach (var root in ResolveActiveStorageRoots().Where(Directory.Exists))
             {
                 try
@@ -286,18 +286,18 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             long startMs = new DateTimeOffset(startUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
             long endMs = new DateTimeOffset(endUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-            // 1. DB-FIRST: שליפה סופר-מהירה מה-DB ב-0 I/O (מילישניות בודדות)
+            // 1. DB-FIRST: High-speed indexed query from database with 0 disk I/O (a few milliseconds)
             var dbChunks = await QueryChunksFromDbAsync(cleanHost, startMs, endMs);
 
             bool isHistorical = endUtc < DateTime.UtcNow.AddMinutes(-15);
 
-            // טווח היסטורי שקיים ב-DB: מחזירים מיד! אפס גישה לדיסק ולאחסון הרשת!
+            // Historical range found in DB: return immediately! Zero disk or network share access!
             if (isHistorical && dbChunks.Count > 0)
             {
                 return dbChunks;
             }
 
-            // בדיקת Cooldown לגישה לדיסק עבור עמדה זו
+            // Disk access cooldown check per station
             bool isRecentScope = !isHistorical;
             double cooldownSeconds = isRecentScope ? 3.0 : 60.0;
             bool hasRecentScan = _lastDiskScanTimes.TryGetValue(cleanHost, out var lastScan) && (DateTime.UtcNow - lastScan).TotalSeconds < cooldownSeconds;
@@ -307,12 +307,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 return dbChunks;
             }
 
-            // האם נדרש לסרוק דיסק לאיתור חוסרים או עדכון מקטע פעיל?
+            // Determine if a disk scan is necessary to locate gaps or update the active hot chunk
             bool shouldScanDisk = false;
 
             if (dbChunks.Count == 0)
             {
-                // DB לא מכיל מקטעים כלל לעמדה בטווח המבוקש - סורקים דיסק לאיתור חוסרים
+                // DB contains no chunks for station in requested range - scan disk to discover segments
                 shouldScanDisk = true;
             }
             else if (isRecentScope)
@@ -551,7 +551,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
                     long fStart = new DateTimeOffset(parsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-                    // סינון מהיר בזיכרון לפני גישה לדיסק: דילוג מיידי על קבצים מחוץ לטווח המבוקש
+                    // Fast in-memory boundary filtering prior to disk access: skip files outside requested range
                     if (fStart > (endMs + 300000) || (fStart + 3600000) < startMs)
                     {
                         continue;
@@ -569,7 +569,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                             long nextStart = new DateTimeOffset(nextParsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
                             if (nextStart > fStart && (nextStart - fStart) <= (30 * 60 * 1000))
                             {
-                                // משך המקטע מוגדר ע"י תחילת המקטע העוקב ללא צורך ב-FFprobe
+                                // Chunk duration is defined by the start of the succeeding chunk without FFprobe invocation
                                 fEnd = nextStart;
                             }
                         }
@@ -629,14 +629,14 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 var fi = new FileInfo(filePath);
                 if (!fi.Exists || fi.Length < 1024) return fallbackDurationMs;
 
-                // בדיקה אם הקובץ עדיין נכתב פעיל (Locked / DVR)
+                // Check if file is still being actively written (Locked / Near-Live DVR)
                 if (IsFileLocked(filePath))
                 {
                     long activeDurMs = (long)(DateTime.UtcNow - startUtc).TotalMilliseconds;
                     return activeDurMs > 500 ? activeDurMs : fallbackDurationMs;
                 }
 
-                // בדיקה מהירה ללא תהליכים חיצוניים לפי שעת סגירת הקובץ בדיסק (LastWriteTimeUtc)
+                // Fast check without external child processes based on disk file modification time (LastWriteTimeUtc)
                 if (fi.LastWriteTimeUtc > startUtc)
                 {
                     long diffMs = (long)(fi.LastWriteTimeUtc - startUtc).TotalMilliseconds;
@@ -646,9 +646,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     }
                 }
 
-                // Fallback סופי בלבד באמצעות FFprobe (רק אם לא ניתן לחשב לפי קובץ)
-
-                // הקובץ סגור! נדגום משך מדויק באמצעות FFprobe
+                // Final fallback probe via FFprobe only if not derivable from file metadata
+                // The file is finalized on disk: sample accurate duration using FFprobe
                 string? ffprobePath = ResolveFfprobePath();
                 if (!string.IsNullOrWhiteSpace(ffprobePath) && File.Exists(ffprobePath))
                 {
@@ -1101,7 +1100,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // בדיקת תבנית Epoch ישירה במילישניות (13 ספרות)
+            // Direct Unix epoch timestamp pattern in milliseconds (13 digits)
             var matchEpochMs = Regex.Match(fileName, @"(?:^(?<host>[a-zA-Z0-9_\-\.]+?)[_-])?(?<epoch>\d{13})\.(mp4|fmp4|flv|mkv|ts|mov)$", RegexOptions.IgnoreCase);
             if (matchEpochMs.Success)
             {

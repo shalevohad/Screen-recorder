@@ -54,7 +54,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         private AudioPacer? _audioPacer;
         private IAudioCaptureProvider? _audioCapture;
 
-        // 💡 שימוש ב-Provider וב-Factory חוצי-פלטפורמות
+        // Cross-platform keyboard capture provider and factory abstraction
         private readonly IKeyboardCaptureProvider _keyboardCapture;
         private readonly ConcurrentQueue<KeystrokeEventDto> _onlineKeystrokes = new();
         private string? _currentOfflineKeysPath = null;
@@ -72,7 +72,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
             Logger.Info($"[WORKER:LIFECYCLE] Engine created. TargetFPS: {_baselineFps}, VideoBitrate: {_videoBitrate}");
 
-            // יצירת ה-Provider דרך ה-Factory (Windows / Linux)
+            // Instantiate platform-specific provider via factory (Windows / Linux)
             _keyboardCapture = KeyboardCaptureFactory.Create(() =>
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds);
 
@@ -92,10 +92,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
         private void OnKeystrokeCaptured(KeystrokeEventDto k)
         {
-            // 💡 רישום טלמטריה של מקשים מותר אך ורק בזמן שהסוכן מקליט בפועל! מונע זליגת מקשים ל-Gaps ולזמנים שבהם אין וידאו
+            // Keystroke telemetry recording is strictly permitted only while the station is actively streaming/recording
             if (!_isStreaming) return;
 
-            // 💡 הצפנת מקשים מקצה לקצה (Option ג') עוד בתוך ה-Worker לפני כל שמירה או שידור
+            // In-worker end-to-end payload encryption prior to disk storage or network dispatch
             if (!string.IsNullOrEmpty(_activeKeyId) && _activeKeyBytes != null && !string.IsNullOrEmpty(k.KeyCombination))
             {
                 try
@@ -114,7 +114,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 {
                     try
                     {
-                        // 💡 שמירה ישירה של האובייקט המלא כדי להתאים לסכמת השרת
+                        // Store full serialized keystroke event DTO matching server ingestion schema
                         string line = JsonSerializer.Serialize(k) + Environment.NewLine;
                         File.AppendAllText(_currentOfflineKeysPath, line);
                     }
@@ -123,7 +123,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             }
             else
             {
-                // 💡 שידור מיידי ב-Fast Path לאפס השהייה בסנכרון עם הווידאו
+                // Dispatch immediately over IPC Fast Path for sub-millisecond audio/video sync
                 _ipc.SendKeystrokeImmediate(k);
             }
         }
@@ -471,7 +471,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             long syncedEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds;
             string videoPath = Path.Combine(buf, $"{Uri.EscapeDataString(Environment.MachineName)}_{syncedEpochMs}.mp4");
 
-            // 💡 הגדרת קובץ ה-Sidecar המקומי במקביל לקובץ הווידאו
+            // Configure local offline sidecar keystroke storage alongside buffered MP4 video segment
             _currentOfflineKeysPath = Path.ChangeExtension(videoPath, ".keys.jsonl");
 
             return videoPath;

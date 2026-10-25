@@ -177,7 +177,7 @@ namespace ITBRecorderAgent.Engine
             }
             else if (cmd.Equals("SyncClock", StringComparison.OrdinalIgnoreCase))
             {
-                // 💡 קליטת עדכון סטיית שעון בזמן אמת מהסופרווייזר
+                // Ingest calibrated wall-clock drift offset from AgentSupervisor in real time
                 if (parts.Length > 1 && long.TryParse(parts[1], out long ticks))
                 {
                     ClockSyncRequested?.Invoke(TimeSpan.FromTicks(ticks));

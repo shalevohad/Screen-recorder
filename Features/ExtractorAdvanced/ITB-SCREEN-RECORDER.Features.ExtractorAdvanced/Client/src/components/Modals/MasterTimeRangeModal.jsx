@@ -29,6 +29,20 @@ const parseInputDateTime = (dtStr, mode) => {
     return new Date(Date.UTC(year, month - 1, day, hour, min, sec));
 };
 
+/**
+ * MasterTimeRangeModal provides an interactive dialog for picking mission time scope
+ * via a synchronized calendar and dual 24-hour tactical clock dials with bookmark integration.
+ * 
+ * @param {Object} props
+ * @param {boolean} props.isOpen - Whether modal is visible.
+ * @param {() => void} props.onClose - Modal close handler.
+ * @param {{ start: string, end: string }} props.currentRange - Active start and end time strings.
+ * @param {(range: { start: string, end: string }) => void} props.onApplyRange - Apply callback.
+ * @param {(bm: Object) => void} props.onLoadBookmark - Bookmark load callback.
+ * @param {'LOCAL'|'UTC'} [props.timeMode='LOCAL'] - Timezone display mode.
+ * @param {(mode: 'LOCAL'|'UTC') => void} props.onTimeModeChange - Timezone mode change handler.
+ * @returns {JSX.Element|null}
+ */
 export default function MasterTimeRangeModal({
     isOpen,
     onClose,
@@ -47,7 +61,7 @@ export default function MasterTimeRangeModal({
     const [calendarViewDate, setCalendarViewDate] = useState(() => new Date());
     const [hoverDateStr, setHoverDateStr] = useState(null);
 
-    // ניהול Bookmarks
+    // Bookmarks management
     const [bookmarks, setBookmarks] = useState([]);
     const [isBookmarksDrawerOpen, setIsBookmarksDrawerOpen] = useState(false);
     const [bookmarkSearchTerm, setBookmarkSearchTerm] = useState('');
@@ -112,7 +126,7 @@ export default function MasterTimeRangeModal({
         setCalendarViewDate(new Date(sObj));
     }, [isOpen, currentRange, timeMode, loadBookmarksFromStorage]);
 
-    // 💡 הבטחה שאם נבחר רק תאריך התחלה וניגשים לשעון, תאריך הסיום יהיה זהה
+    // Ensure end date defaults to start date if interacting with clocks while end date is empty
     const ensureSameDayIfEmpty = useCallback(() => {
         if (startDateStr && !endDateStr) {
             setEndDateStr(startDateStr);
@@ -371,7 +385,7 @@ export default function MasterTimeRangeModal({
         <div className="modal-backdrop-overlay" dir="ltr">
             <div className="master-time-modal-card tactical-dual-clocks" onClick={(e) => e.stopPropagation()}>
 
-                {/* כותרת עליונה */}
+                {/* Modal Header */}
                 <div className="modal-header">
                     <div className="title-block">
                         <span className="modal-title">MISSION RECORDING SCOPE</span>
@@ -430,7 +444,7 @@ export default function MasterTimeRangeModal({
                     </div>
                 )}
 
-                {/* פריסטים מהירים */}
+                {/* Quick Presets */}
                 <div className="quick-presets-grid">
                     <button
                         className={`btn-preset ${activePreset === '7d' ? 'active' : ''}`}
@@ -458,7 +472,7 @@ export default function MasterTimeRangeModal({
                     </button>
                 </div>
 
-                {/* מגירת סימניות */}
+                {/* Bookmarks Drawer */}
                 {isBookmarksDrawerOpen && (
                     <div className="modal-bookmarks-shelf-drawer">
                         <div className="drawer-shelf-header">
@@ -542,10 +556,10 @@ export default function MasterTimeRangeModal({
                     </div>
                 )}
 
-                {/* מתחם הבחירה האחוד: לוח שנה בצד שמאל + שני שעונים במקביל בצד ימין */}
+                {/* Unified Picker Area: Calendar on the left + Dual Clocks on the right */}
                 <div className="tactical-pickers-split dual-clocks-mode">
 
-                    {/* צד שמאל: לוח שנה עם סימוני Bookmarks */}
+                    {/* Left: Calendar with Bookmark tags */}
                     <div className="picker-panel calendar-panel">
                         <div className="panel-top-nav">
                             <span className="nav-title">
@@ -618,10 +632,10 @@ export default function MasterTimeRangeModal({
                         </div>
                     </div>
 
-                    {/* 💡 צד ימין: שני שעונים במקביל (שעון התחלה + שעון סיום) */}
+                    {/* Right: Parallel Dual Clocks (Start + End Clock) */}
                     <div className="picker-panel dual-clocks-wrapper" onPointerDown={ensureSameDayIfEmpty}>
 
-                        {/* שעון 1: התחלה (CYAN) */}
+                        {/* Clock 1: Start Time (Cyan) */}
                         <div className="single-clock-box start-clock">
                             <Tactical24HClockPicker
                                 label="START TIME (FROM)"
@@ -636,7 +650,7 @@ export default function MasterTimeRangeModal({
                             />
                         </div>
 
-                        {/* שעון 2: סיום (AMBER) */}
+                        {/* Clock 2: End Time (Amber) */}
                         <div className="single-clock-box end-clock">
                             <Tactical24HClockPicker
                                 label="END TIME (TO)"
@@ -653,7 +667,7 @@ export default function MasterTimeRangeModal({
                     </div>
                 </div>
 
-                {/* פתרון עמימות DST */}
+                {/* DST Ambiguity Resolution */}
                 {(startAmbiguity.isAmbiguous || endAmbiguity.isAmbiguous) && (
                     <div className="ambiguity-strip-banner">
                         {startAmbiguity.isAmbiguous && (

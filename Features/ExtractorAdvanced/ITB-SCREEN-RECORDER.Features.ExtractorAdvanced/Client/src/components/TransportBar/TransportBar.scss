@@ -207,7 +207,7 @@
                         color: #34D399;
                     }
                 }
-                // 💡 כפתורי קפיצה ישירה ל-IN ול-OUT (הכפתורים החיצוניים)
+                // Direct jump buttons to IN and OUT points (outer buttons)
                 &.btn-jump-cut {
                     &.accent-in:hover:not(:disabled) {
                         background: rgba(0, 229, 255, 0.2);
@@ -223,7 +223,7 @@
                         box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
                     }
                 }
-                // 💡 כפתורי צעד פריים צמודים ל-Play (בלחיצה רציפה)
+                // Step frame buttons adjacent to Play (supports continuous hold)
                 &.btn-step {
                     user-select: none;
                     -webkit-user-select: none;

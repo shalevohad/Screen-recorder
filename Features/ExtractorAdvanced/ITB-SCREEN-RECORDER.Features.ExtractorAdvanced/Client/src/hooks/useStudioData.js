@@ -3,6 +3,16 @@
 // ==========================================
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
+/**
+ * Hook for loading stations, coverage, and timeline recording segments for the active studio time range.
+ * 
+ * @param {number} timelineBaseEpochMs - Base Unix Epoch timestamp in milliseconds.
+ * @param {number} totalTimelineDurationMs - Total span of the timeline in milliseconds.
+ * @param {{ start: string, end: string }} timeRange - Range string bounds.
+ * @param {'LOCAL'|'UTC'} timeMode - Active time display mode.
+ * @param {string|null} [activeStationId=null] - Currently selected station ID.
+ * @returns {{ allStations: Array, recordingSegments: Object, isLoadingStations: boolean, setAllStations: Function }}
+ */
 export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, timeRange, timeMode, activeStationId = null) {
     const [allStations, setAllStations] = useState([]);
     const [recordingSegments, setRecordingSegments] = useState({});
@@ -93,7 +103,7 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
         fetchActiveStationsForTimeScope();
     }, [fetchActiveStationsForTimeScope]);
 
-    // 💡 שליחת מזהים ייחודיים (כולל שמות מחשב) למניעת איבוד מקטעים
+    // Distinct query keys (IDs and hostnames) to prevent segment omissions
     const stationQueryKeys = useMemo(() => {
         const set = new Set();
         allStations.forEach(s => {
@@ -117,7 +127,7 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
                 if (res.ok && isMounted) {
                     const rawData = await res.json() || {};
 
-                    // 💡 מיפוי כפול (Dual Keying): הנגשת המקטעים גם לפי station.id וגם לפי station.hostname
+                    // Dual Keying: Map segments by both station.id and station.hostname
                     const normalizedMap = {};
                     (allStationsRef.current || []).forEach(st => {
                         const segs = rawData[st.id] || rawData[st.hostname] || rawData[st.displayName] || [];
@@ -125,7 +135,7 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
                         normalizedMap[st.hostname] = segs;
                     });
 
-                    // שמירה גם של כל מפתח ישיר שהשרת החזיר
+                    // Retain any direct server key
                     Object.keys(rawData).forEach(k => {
                         if (!normalizedMap[k]) normalizedMap[k] = rawData[k];
                     });

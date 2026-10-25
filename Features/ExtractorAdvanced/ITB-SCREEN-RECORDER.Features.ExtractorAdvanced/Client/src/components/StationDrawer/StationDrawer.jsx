@@ -12,6 +12,18 @@ import './StationDrawer.scss';
 const DEFAULT_SYSTEM_TABS = Object.freeze([]);
 const AUTO_GRID_CAPACITY_LIMIT = 12;
 
+/**
+ * StationDrawer renders the interactive station catalog drawer with multi-view modes (table/grid),
+ * pagination, health status, and batch selection controls.
+ * 
+ * @param {Object} props
+ * @param {boolean} props.isOpen - Whether drawer is open.
+ * @param {() => void} props.onToggle - Toggle open/close state.
+ * @param {() => void} props.onClose - Close handler.
+ * @param {Array} [props.allStations=[]] - Full station entities array.
+ * @param {Array} [props.selectedStationIds=[]] - Array of selected station IDs.
+ * @returns {JSX.Element}
+ */
 export default function StationDrawer({
     isOpen,
     onToggle,
@@ -43,7 +55,7 @@ export default function StationDrawer({
     const [currentPage, setCurrentPage] = useState(1);
 
     const hasFetchedRef = useRef(false);
-    const listContainerRef = useRef(null); // 💡 Ref למדידת גובה הרשימה ב-DOM
+    const listContainerRef = useRef(null); // Ref for measuring list container height in DOM
 
     const isInitialDiscovery = isLoadingStations && allStations.length === 0;
     const isEmptyState = allStations.length === 0 && !isLoadingStations;
@@ -52,7 +64,7 @@ export default function StationDrawer({
     if (isInitialSetup || isEmptyState || isInitialDiscovery) panelClass = 'is-full-width';
     else if (isOpen) panelClass = 'is-open';
 
-    // 💡 בחירת גודל עמוד אך ורק מתוך קטגוריות תקניות (ללא מספרים שרירותיים וללא סקרול)
+    // Page size calculation strictly from standard categories without arbitrary overflow
     useLayoutEffect(() => {
         const calculateOptimalPageSize = () => {
             if (!listContainerRef.current) return;
@@ -63,16 +75,16 @@ export default function StationDrawer({
             const rowHeight = firstRow ? firstRow.offsetHeight : 40;
 
             if (rowHeight > 0) {
-                // חישוב מספר השורות המקסימלי שנכנס ללא חריגה
+                // Calculate max rows fitting inside viewport without clipping
                 const calculatedRows = Math.floor(containerHeight / rowHeight) - 2;
 
-                // קטגוריות הגדלים המותרות לבחירה
+                // Standard allowed category page sizes
                 const standardCategories = [5, 10, 15, 20, 25, 30];
 
-                // מציאת הקטגוריה הגדולה ביותר שלא עוברת את מספר השורות המקסימלי
+                // Select largest standard category that fits within container
                 const optimalSize = standardCategories
                     .filter(cat => cat <= calculatedRows)
-                    .pop() || 5; // ברירת מחדל אם המסך קטן מדי
+                    .pop() || 5; // Fallback for small screens
 
                 setTablePageSize(optimalSize);
             }
@@ -488,7 +500,7 @@ export default function StationDrawer({
                             </div>
                         )}
 
-                        {/* 💡 חיבור ה-Ref כאן כדי למדוד את גובה ה-DOM בזמן אמת */}
+                        {/* Connect Ref to measure DOM height in real-time */}
                         <div
                             ref={listContainerRef}
                             className={`station-list ${panelClass === 'is-full-width' ? (effectiveViewMode === 'grid' ? 'initial-cards-grid' : 'initial-dense-table') : ''}`}

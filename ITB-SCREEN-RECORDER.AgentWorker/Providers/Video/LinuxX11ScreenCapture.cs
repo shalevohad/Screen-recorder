@@ -90,6 +90,11 @@ namespace ITBRecorderAgent.Providers.Video
             }
         }
 
+        /// <summary>
+        /// Captures a screen frame from the X11 root window using XGetImage.
+        /// </summary>
+        /// <param name="frameData">Outputs newly allocated raw BGRA byte buffer, or null on failure.</param>
+        /// <returns>True if frame was successfully acquired; otherwise, false.</returns>
         public bool TryCaptureFrame(out byte[]? frameData)
         {
             frameData = null;
@@ -106,7 +111,7 @@ namespace ITBRecorderAgent.Providers.Video
                 int totalBytes = Width * Height * 4;
                 frameData = new byte[totalBytes];
 
-                // העתקת ה-Frame הנקי בלבד. ציור העכבר והאפקטים מנוהל ב-MouseOverlayProvider
+                // Copy clean desktop frame only. Mouse cursor rendering and click effects are managed by MouseOverlayProvider.
                 Marshal.Copy(img.data, frameData, 0, totalBytes);
 
                 return true;

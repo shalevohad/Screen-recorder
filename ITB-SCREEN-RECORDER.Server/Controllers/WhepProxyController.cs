@@ -14,8 +14,8 @@ using Microsoft.Extensions.Options;
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
     /// <summary>
-    /// פרוקסי WHEP פנימי המאפשר לנגן ה-WebRTC בדפדפן לפעול בתוך אותו Origin של ה-HTTPS
-    /// ללא שגיאות Mixed Content וללא צורך באישור תעודות כפול בפורטים שונים בדפדפן.
+    /// Internal WHEP (WebRTC HTTP Egress Protocol) reverse proxy enabling browser WebRTC players
+    /// to operate within the identical HTTPS origin, eliminating Mixed Content restrictions and multi-port certificate trust prompts.
     /// </summary>
     [ApiController]
     [Route("api/v1/whep")]

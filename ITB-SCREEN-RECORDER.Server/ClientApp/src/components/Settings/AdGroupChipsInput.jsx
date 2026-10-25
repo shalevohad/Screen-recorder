@@ -1,7 +1,7 @@
 // ==========================================
 // File: src/components/Settings/AdGroupChipsInput.jsx
 // ==========================================
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 export default function AdGroupChipsInput({
     chips = [],
@@ -22,13 +22,13 @@ export default function AdGroupChipsInput({
     const debounceTimerRef = useRef(null);
 
     // Normalize chips into { id, name }
-    const normalizedChips = chips.map((c, idx) => {
+    const normalizedChips = useMemo(() => chips.map((c, idx) => {
         if (typeof c === 'string') return { id: `chip_${idx}_${c}`, name: c };
         return { id: c.id || `chip_${idx}_${c.groupName}`, name: c.groupName };
-    });
+    }), [chips]);
 
     // Existing group names lowercase for deduplication
-    const existingNamesSet = new Set(normalizedChips.map(c => c.name.toLowerCase()));
+    const existingNamesSet = useMemo(() => new Set(normalizedChips.map(c => c.name.toLowerCase())), [normalizedChips]);
 
     // Search autocomplete
     const fetchSuggestions = useCallback(async (query) => {

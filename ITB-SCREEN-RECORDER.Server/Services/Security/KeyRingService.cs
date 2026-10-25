@@ -46,7 +46,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Security
 
             if (!rows.Any())
             {
-                // יצירה אוטומטית של מפתח מאסטר ראשוני אם המערכת חדשה
+                // Automatically generate initial master key on clean system deployment
                 byte[] newKey = PayloadEncryptionManager.GenerateKey();
                 string newKeyId = $"KEY-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
                 string base64Material = Convert.ToBase64String(newKey);
@@ -103,7 +103,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Security
             {
                 if (_activeKeyId == null || _activeKeyBytes == null)
                 {
-                    // Fallback חירום
+                    // Emergency synchronous fallback
                     InitializeAsync().GetAwaiter().GetResult();
                 }
                 return (_activeKeyId!, _activeKeyBytes!);
@@ -115,7 +115,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Security
             if (string.IsNullOrEmpty(keyId)) return null;
             if (_keys.TryGetValue(keyId, out var key)) return key;
 
-            // אם המפתח עדיין לא בזיכרון, בדיקה במסד
+            // If key is not yet cached in memory, query SQLite catalog
             using var db = _factory.CreateConnection();
             string? material = db.QuerySingleOrDefault<string?>(
                 "SELECT key_material FROM encryption_keyring WHERE key_id = @keyId;", new { keyId });
@@ -180,7 +180,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services.Security
                 return input;
             }
 
-            // נסיון פענוח עיוור כנגד כלל המפתחות השמורים ב-Keyring
+            // Blind decryption attempt against all known keys stored in keyring (most recent first)
             foreach (var kvp in _keys.Reverse())
             {
                 try

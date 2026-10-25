@@ -7,6 +7,9 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 {
+    /// <summary>
+    /// Parameters requesting video extraction across workstations and time range.
+    /// </summary>
     public class ExtractionRequestDto
     {
         public DateTime StartTimeUtc { get; set; }
@@ -14,7 +17,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public List<string> Hostnames { get; set; } = new();
         public bool ExportRawChunks { get; set; } = false;
 
-        // 💡 אופן הצגת המקשים בייצוא ה-TAR
+        /// <summary>
+        /// Keystroke presentation mode for forensic export (e.g., BurnIn, Caption SRT, or None).
+        /// </summary>
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
     }
 
@@ -43,6 +48,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public TimeSpan GapDuration => ActualNextStartUtc - ExpectedUtc;
     }
 
+    /// <summary>
+    /// Metadata describing an individual recorded video segment on disk.
+    /// </summary>
     public class RecordingChunkMetadata
     {
         public string FullPath { get; set; } = string.Empty;
@@ -52,7 +60,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public TimeSpan Duration => EndUtc - StartUtc;
         public long FileSizeBytes { get; set; }
 
-        // נתוני מדיה הנשלפים ישירות מהאינדקס ב-DB (מונעים שימוש ב-FFprobe)
+        // Media properties indexed in the database (bypasses redundant FFprobe inspection)
         public int Width { get; set; } = 1920;
         public int Height { get; set; } = 1080;
         public double Fps { get; set; } = 30.0;

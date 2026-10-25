@@ -7,6 +7,21 @@ import { frameStore } from '../../utils/frameStore.js';
 import { getAudioSettings } from '../../utils/studioSessionStore.js';
 import './StudioVideoFeed.scss';
 
+/**
+ * StudioVideoFeed manages seamless dual-player (Ping-Pong) video streaming, frame caching,
+ * intelligent gap skipping, preloading, and 60fps playhead synchronization.
+ * 
+ * @param {Object} props
+ * @param {Object} props.station - Focused station object.
+ * @param {number} [props.baseEpochMs=0] - Base Epoch in milliseconds.
+ * @param {number} [props.totalDurationMs=3600000] - Total timeline span in milliseconds.
+ * @param {number} [props.playheadMs=0] - Active playhead offset.
+ * @param {(ms: number) => void} props.setPlayheadMs - Playhead offset updater.
+ * @param {boolean} [props.isPlaying=false] - Whether playback is currently running.
+ * @param {(playing: boolean) => void} props.setIsPlaying - Playback state updater.
+ * @param {number} [props.playbackSpeed=1] - Playback speed multiplier.
+ * @returns {JSX.Element|null}
+ */
 export default function StudioVideoFeed({
     station,
     baseEpochMs = 0,
@@ -25,7 +40,7 @@ export default function StudioVideoFeed({
     showWatermark = true,
     className = ''
 }) {
-    // רפרנסים לשני נגני ה-Ping-Pong
+    // References for ping-pong player elements
     const videoRefA = useRef(null);
     const videoRefB = useRef(null);
 
@@ -42,7 +57,7 @@ export default function StudioVideoFeed({
     const stationId = station?.id;
     const hostname = (station && (station.hostname || station.name)) || '';
 
-    // 💡 תיקון קריטי 1: בדיקת מקטעים לפי station.id וגם לפי hostname
+    // Check segments by both station.id and hostname
     const stationSegments = useMemo(() => {
         if (!station) return [];
         return recordingSegments[station.id] ||
@@ -53,9 +68,9 @@ export default function StudioVideoFeed({
 
     const currentEpoch = baseEpochMs + playheadMs;
 
-    // 💡 תיקון קריטי 2: חלון סבילות של 2 שניות למניעת NO SIGNAL במיקרו-פערים בין צ'אנקים
+    // 2-second tolerance window to prevent NO SIGNAL on micro-gaps between chunks
     const isInRecordingSegment = useMemo(() => {
-        if (stationSegments.length === 0) return true; // Fail-open: אם טרם נטענו סגמנטים, מנסים להזרים ולא נועלים ישר
+        if (stationSegments.length === 0) return true; // Fail-open: try streaming if segments not yet loaded
         return stationSegments.some(seg => {
             const s = (seg.startEpochMs ?? seg.startEpoch ?? 0) - 2000;
             const e = (seg.endEpochMs ?? seg.endEpoch ?? 0) + 2000;
@@ -65,7 +80,7 @@ export default function StudioVideoFeed({
 
     const isNoSignalGap = !isInRecordingSegment && stationSegments.length > 0;
 
-    // ניהול מצב ה-Ping-Pong
+    // Ping-Pong playback state management
     const [activeSlot, setActiveSlot] = useState('A'); // 'A' | 'B'
     const [srcA, setSrcA] = useState('');
     const [srcB, setSrcB] = useState('');
@@ -121,7 +136,7 @@ export default function StudioVideoFeed({
         }
     }, [playbackSpeed]);
 
-    // שליפת פריים במצב Pause או בעת דילוג/Scrubbing
+    // Fetch frame in Pause state or during Scrubbing
     useEffect(() => {
         if (!stationId || !hostname) return;
 
@@ -143,7 +158,7 @@ export default function StudioVideoFeed({
             return;
         }
 
-        // 💡 תגובה סופר-מהירה (35ms במקום 200ms) לשיפור מהירות ה-Scrubbing והזזת הפלייהד
+        // Fast debounce (35ms instead of 200ms) for snappy scrubbing response
         const delayMs = wasPlaying ? 25 : 35;
         const fetchTimer = setTimeout(() => {
             if (!isMounted) return;
@@ -166,7 +181,7 @@ export default function StudioVideoFeed({
         };
     }, [stationId, hostname, baseEpochMs, playheadMs, isPlaying, isVideoRendering]);
 
-    // בניית URL מבוסס Epoch
+    // Build Epoch-based stream URL
     const buildStreamUrl = useCallback((seekMs) => {
         const startEpochVal = Math.round(baseEpochMs);
         const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
@@ -174,7 +189,7 @@ export default function StudioVideoFeed({
         return `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&_t=${Date.now()}`;
     }, [baseEpochMs, totalDurationMs, hostname]);
 
-    // 💡 אתחול הזרמה בעת לחיצה על Play
+    // Initialize streaming on Play
     useEffect(() => {
         if (!stationId || !hostname) return;
 
@@ -205,23 +220,23 @@ export default function StudioVideoFeed({
         }
     }, [isPlaying, stationId, hostname, isInRecordingSegment, buildStreamUrl]);
 
-    // 💡 מעבר מיקום ה-Playhead תוך כדי ניגון (Seek while Playing) והמשך ניגון מהנקודה החדשה
+    // Seek while Playing: continue streaming from new target location
     useEffect(() => {
         if (!stationId || !hostname) return;
 
-        // אם לא מנגנים, או שהשינוי נובע מפעימה פנימית רגילה של smoothTick
+        // If not playing, or change is from internal smoothTick clock
         const diff = Math.abs(playheadMs - lastEmittedMsRef.current);
         if (!isPlaying || diff < 15) {
             lastEmittedMsRef.current = playheadMs;
             return;
         }
 
-        // שינוי חיצוני ב-Playhead בזמן ניגון (לחיצה על ציר הזמן, גרירה, Bookmark, Ruler וכו')
+        // External playhead update during playback (timeline click, drag, bookmark, ruler)
         isSeekingRef.current = true;
         lastEmittedMsRef.current = playheadMs;
         streamStartOffsetMsRef.current = playheadMs;
 
-        // הקפאת הנגנים הישנים מיידית כדי שלא ימשיכו לנגן אודיו או וידאו ישן
+        // Freeze existing video elements immediately to halt outdated audio/video
         if (videoRefA.current) videoRefA.current.pause();
         if (videoRefB.current) videoRefB.current.pause();
 
@@ -256,13 +271,13 @@ export default function StudioVideoFeed({
         };
     }, [playheadMs, isPlaying, stationId, hostname, isInRecordingSegment, buildStreamUrl]);
 
-    // 💡 מנוע Preload חכם: טוען את המקטע הבא לנגן הרקע בזמן שהנגן הראשי מנגן
+    // Preload engine: Loads next upcoming segment in background player while active player runs
     useEffect(() => {
         if (!isPlaying || !isVideoRendering || stationSegments.length === 0) return;
 
         const curEpoch = baseEpochMs + playheadMsRef.current;
 
-        // איתור המקטע הבא בציר הזמן
+        // Locate next timeline segment
         const nextSeg = stationSegments
             .map(seg => ({
                 start: seg.startEpochMs ?? seg.startEpoch ?? 0,
@@ -277,7 +292,7 @@ export default function StudioVideoFeed({
                 const nextUrl = buildStreamUrl(nextStartMs);
                 setPreloadedSegment({ start: nextSeg.start, ms: nextStartMs });
 
-                // טעינה לתוך הסלוט הפנוי ברקע
+                // Load into idle background slot
                 if (activeSlot === 'A') {
                     setSrcB(nextUrl);
                 } else {
@@ -287,7 +302,7 @@ export default function StudioVideoFeed({
         }
     }, [isPlaying, isVideoRendering, stationSegments, baseEpochMs, outPointMs, activeSlot, preloadedSegment, buildStreamUrl]);
 
-    // 💡 מנוע סנכרון חלק ב-60fps
+    // Smooth 60fps synchronization engine
     useEffect(() => {
         if (!isPlaying || !isVideoRendering) return;
 
@@ -318,7 +333,7 @@ export default function StudioVideoFeed({
                     calculatedMs = lastEmittedMs;
                 }
 
-                // בדיקת סיום טווח החיתוך
+                // Check out-point boundary
                 if (calculatedMs >= outPointMs) {
                     if (isLooping) {
                         lastEmittedMs = inPointMs;
@@ -335,7 +350,7 @@ export default function StudioVideoFeed({
                     return;
                 }
 
-                // דילוג על פערי הקלטה (Global Gaps)
+                // Skip recording global gaps
                 const curEpoch = baseEpochMs + calculatedMs;
                 const activeGlobalGap = globalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
                 if (activeGlobalGap) {
@@ -385,11 +400,11 @@ export default function StudioVideoFeed({
         setIsPlaying
     ]);
 
-    // 💡 החלפה חלקה באפס מילי-שניות (Seamless Hand-off) בסיום המקטע
+    // Seamless zero-millisecond hand-off when active segment ends
     const handleActiveVideoEnded = () => {
         if (isSkippingGapRef.current) return;
 
-        // אם המקטע הבא כבר טעון בנגן הרקע - מעבירים אליו את הניגון מיד ללא שום Buffering!
+        // If next segment is preloaded in background player, transition immediately with 0 buffering
         if (preloadedSegment && backgroundVideoRef.current) {
             const nextMs = preloadedSegment.ms;
             streamStartOffsetMsRef.current = nextMs;
@@ -405,7 +420,7 @@ export default function StudioVideoFeed({
             return;
         }
 
-        // במקרה של לולאה מלאה
+        // Full loop repetition
         if (isLooping) {
             setPlayheadMs?.(inPointMs);
             streamStartOffsetMsRef.current = inPointMs;
@@ -425,7 +440,7 @@ export default function StudioVideoFeed({
 
     return (
         <div className={`studio-video-feed-root ${className}`.trim()}>
-            {/* 💡 נגן A */}
+            {/* Player A */}
             {srcA && (
                 <video
                     ref={videoRefA}
@@ -486,7 +501,7 @@ export default function StudioVideoFeed({
                 />
             )}
 
-            {/* 💡 נגן B (מופעל במקביל לצורך Preloading) */}
+            {/* Player B (runs in parallel for preloading) */}
             {srcB && (
                 <video
                     ref={videoRefB}
@@ -547,7 +562,7 @@ export default function StudioVideoFeed({
                 />
             )}
 
-            {/* שכבת תמונה סטטית / No Signal Hero */}
+            {/* Static image / No Signal Hero layer */}
             <div
                 className="feed-static-layer"
                 style={{ zIndex: isVideoRendering ? 0 : 2 }}
@@ -571,7 +586,7 @@ export default function StudioVideoFeed({
                 ) : null}
             </div>
 
-            {/* חיווי טעינה / Buffering */}
+            {/* Buffering Indicator */}
             {showBufferingOverlay && (
                 <div className="feed-buffering-overlay">
                     <div className="buffering-glass-card">

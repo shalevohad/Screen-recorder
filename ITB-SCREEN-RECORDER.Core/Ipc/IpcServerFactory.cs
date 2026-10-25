@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO.Pipes;
 
 #if WINDOWS
@@ -11,15 +11,18 @@ namespace ITB_SCREEN_RECORDER.Core.Ipc
     public static class IpcServerFactory
     {
         /// <summary>
-        /// יוצר צינור תקשורת (Named Pipe) מוגן וחוצה-הרשאות (Cross-Session).
-        /// תחת Windows, הוא פותח את הצינור כך ש-Worker שרץ כמשתמש רגיל יוכל לדבר עם Service שרץ כ-SYSTEM.
+        /// Creates a protected, cross-session NamedPipeServerStream.
+        /// Under Windows, configures ACLs so that interactive user processes (Session 1+) can communicate
+        /// with the background service running under NT AUTHORITY\SYSTEM (Session 0).
         /// </summary>
+        /// <param name="pipeName">The unique named pipe identifier.</param>
+        /// <returns>Configured and initialized NamedPipeServerStream instance.</returns>
         public static NamedPipeServerStream CreateSecureServerPipe(string pipeName)
         {
             if (OperatingSystem.IsWindows())
             {
 #if WINDOWS
-                // הגדרת הרשאות: גישה ציבורית לקריאה/כתיבה לכל המשתמשים במכונה (WorldSid)
+                // Security configuration: Grant read/write access to all local machine users (WorldSid)
                 var pipeSecurity = new PipeSecurity();
                 pipeSecurity.AddAccessRule(new PipeAccessRule(
                     new SecurityIdentifier(WellKnownSidType.WorldSid, null),
@@ -29,7 +32,7 @@ namespace ITB_SCREEN_RECORDER.Core.Ipc
                 return NamedPipeServerStreamAcl.Create(
                     pipeName,
                     PipeDirection.InOut,
-                    1, // מאפשר חיבור של Worker אחד בלבד בו-זמנית
+                    1, // Enforce single active worker client connection at any given time
                     PipeTransmissionMode.Byte,
                     PipeOptions.Asynchronous,
                     0,
@@ -40,7 +43,7 @@ namespace ITB_SCREEN_RECORDER.Core.Ipc
 #endif
             }
 
-            // התנהגות ברירת המחדל תחת Linux/Systemd (ניהול הרשאות נעשה דרך ה-File System Sockets)
+            // Default behavior under Linux/systemd (filesystem permissions govern socket access)
             return new NamedPipeServerStream(
                 pipeName,
                 PipeDirection.InOut,

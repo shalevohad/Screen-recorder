@@ -6,14 +6,14 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    /* שקיפות מלאה לחשיפת הגריד הטקטי של המערכת הראשית */
+    /* Full transparency to reveal the host system tactical grid */
     background: transparent !important;
     background-color: transparent !important;
-    /* ירושת רדיוס מלאה וחיתוך פינות חלק */
+    /* Full border-radius inheritance and clean corner clipping */
     border-radius: inherit;
     overflow: hidden !important;
     isolation: isolate;
-    /* הגנת SCSS: כאשר המגירה תופסת את כל המסך, נעלים הרמטית את כפתור פתיחת המגירה */
+    /* SCSS Guard: When drawer panel takes full width, hide drawer open button */
     &:has(.station-drawer-panel.is-full-width) {
         .btn-toggle-drawer {
             display: none !important;
@@ -168,7 +168,7 @@
         background: transparent !important;
         border-radius: inherit;
         overflow: hidden !important;
-        /* אזור המסכים: תופס 100% מהגובה העודף מעל הטיים-ליין */
+        /* Viewport area: Takes 100% of remaining vertical height above timeline */
         .studio-main-viewport-container {
             flex: 1 1 0;
             min-height: 0;
@@ -178,7 +178,7 @@
             overflow: hidden;
             background: transparent;
         }
-        /* אזור הטיים-ליין: שומר על גובהו הטבעי ומעוגן לתחתית */
+        /* Timeline area: Maintains natural height and anchored to bottom */
         .studio-bottom-timeline {
             position: relative;
             z-index: 20;

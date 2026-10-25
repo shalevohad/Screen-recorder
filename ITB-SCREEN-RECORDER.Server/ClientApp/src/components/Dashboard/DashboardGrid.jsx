@@ -40,7 +40,7 @@ export default function DashboardGrid(props) {
         logic.handleCloseFeature(featId);
     }, [logic]);
 
-    // 💡 שמירה על יציבות ה-Host הפעיל כך שהווידג'ט בסטודיו לא יאותחל כשעמדה אחרת מתנתקת או מתחברת
+    // Maintain stable active host reference so embedded studio widgets are not reset upon fleet disconnects
     const stableDefaultHostRef = useRef(null);
     if (!stableDefaultHostRef.current && stations.length > 0) {
         stableDefaultHostRef.current = stations[0]?.hostname;

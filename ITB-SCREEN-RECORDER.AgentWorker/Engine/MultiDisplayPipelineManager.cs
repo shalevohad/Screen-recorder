@@ -293,8 +293,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             {
                 var handshakeTask = ffmpeg.CompleteAudioHandshakeAsync(sessionCt);
 
-                // 💡 כתיבת פריים ראשוני מיידית כדי לחלץ את FFmpeg מהמתנה לחקירת (Probe) צינור הווידאו pipe:0
-                // לפני שהוא פותח את ערוץ השמע ב-TCP Loopback. מונע Deadlock של Audio handshake timeout.
+                // Write initial video frame immediately to satisfy FFmpeg stream probe on pipe:0
+                // before it attempts connecting to the audio TCP loopback socket, preventing handshake deadlock timeout.
                 _ = Task.Run(() =>
                 {
                     byte[]? initialFrame = null;

@@ -1,4 +1,4 @@
-﻿// 💡 השורה הזו בתחילת הקובץ אומרת ללינוקס: "תתעלם מכל מה שיש פה!"
+// Windows-only WASAPI loopback and microphone dual mixer implementation
 #if WINDOWS
 
 using System;
@@ -13,7 +13,9 @@ using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITBRecorderAgent.Providers.Audio
 {
-    // 💡 ההצהרה הארכיטקטונית המודרנית שמחליפה את ה-#if 
+    /// <summary>
+    /// Dual audio capture provider that captures and hardware-mixes speaker loopback and microphone audio via WASAPI.
+    /// </summary>
     [SupportedOSPlatform("windows")]
     public class WasapiDualMixer : IAudioCaptureProvider
     {
@@ -142,7 +144,7 @@ namespace ITBRecorderAgent.Providers.Audio
                         }
                         catch { }
 
-                        // מנגנון ה-Anti-Starvation: הזרקת באפר אפסים (שקט) במקרה ש-Windows לא מחזירה פריימים
+                        // Anti-starvation mechanism: inject zero buffer (silence) if Windows returns incomplete or empty audio samples
                         if (samplesRead < sampleBuffer.Length)
                         {
                             Array.Clear(sampleBuffer, samplesRead, sampleBuffer.Length - samplesRead);
@@ -206,4 +208,4 @@ namespace ITBRecorderAgent.Providers.Audio
     }
 }
 
-#endif // סגירת הבלוק בסוף הקובץ
+#endif

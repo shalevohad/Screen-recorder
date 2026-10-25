@@ -29,7 +29,7 @@ export default function StationOverridesTab({
     const [overrideFps, setOverrideFps] = useState(20);
     const [overrideBitrateKbps, setOverrideBitrateKbps] = useState(2500);
 
-    // ניהול חיפוש מתקפל, סינון ודפדוף
+    // Collapsible search state, filtering mode, and pagination
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterMode, setFilterMode] = useState('all'); // 'all' | 'custom' | 'default'
@@ -72,7 +72,7 @@ export default function StationOverridesTab({
         setCurrentPage(1);
     };
 
-    // סינון ומיון העמדות
+    // Filter and sort station list
     const filteredStations = useMemo(() => {
         return stations
             .filter(st => {
@@ -147,7 +147,7 @@ export default function StationOverridesTab({
             <legend>Station Stream Overrides</legend>
 
             <div className="overrides-toolbar">
-                {/* שורת חיפוש לרוחב מלא - מופיעה רק בלחיצה על אייקון החיפוש */}
+                {/* Full-width search bar - revealed when search icon is clicked */}
                 {isSearchOpen && (
                     <div className="toolbar-search-fullwidth">
                         <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
@@ -175,7 +175,7 @@ export default function StationOverridesTab({
                     </div>
                 )}
 
-                {/* שורת כפתורי סינון - יורדת מתחת לחיפוש כשהוא פתוח */}
+                {/* Filter action buttons toolbar */}
                 <div className="toolbar-actions-row">
                     {!isSearchOpen && (
                         <button
@@ -228,7 +228,7 @@ export default function StationOverridesTab({
                 </div>
             </div>
 
-            {/* רשימת עמדות */}
+            {/* Stations list */}
             <div className="overrides-list">
                 {paginatedStations.length === 0 ? (
                     <div className="no-stations-notice">No stations match the selected filter.</div>
@@ -338,7 +338,7 @@ export default function StationOverridesTab({
                 )}
             </div>
 
-            {/* דפדוף */}
+            {/* Pagination controls */}
             {totalPages > 1 && (
                 <div className="overrides-pagination">
                     <span className="page-indicator">

@@ -32,11 +32,11 @@ public record ReindexProgressReport(
 
 public interface IStorageScannerService
 {
-    // HOT PATH (לשימוש Extractor ו-Timeline - מהיר, מול SQLite בלבד)
+    // HOT PATH (used by Extractor and Timeline - high performance, queries SQLite catalog directly)
     Task<List<string>> GetAvailableHostsAsync(DateTime startUtc, DateTime endUtc);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetStationChunksAsync(string stationId, DateTime startUtc, DateTime endUtc);
 
-    // COLD PATH (תחזוקה ואינדוקס חסרים מול הדיסק)
+    // COLD PATH (maintenance, storage synchronization, and indexing against physical disk)
     Task<ReindexProgressReport> StartReindexAsync(bool forceFullRecheck = false, CancellationToken ct = default);
     ReindexProgressReport GetCurrentReindexProgress();
 }
@@ -200,7 +200,7 @@ public class StorageScannerService : IStorageScannerService
                 }
             }
 
-            // איסוף מוקדם של כל הקבצים לצורך חישוב אחוז התקדמות מדויק
+            // Pre-collect all matching files to calculate accurate progress percentage
             var allFilesToScan = new List<(string StationName, string FilePath)>();
             foreach (var stationPath in candidateStationDirs)
             {
@@ -319,7 +319,7 @@ public class StorageScannerService : IStorageScannerService
 
         var probe = await _probeService.ProbeFileAsync(filePath, ct);
 
-        // 💡 אם לא ניתן לבצע בדיקת תקינות או שהסרטון באורך 0 - מדובר בקובץ מושחת/קטוע. אין לאנדקס אותו כסרטון באורך 15 דקות!
+        // If validation probe fails or duration is near zero, file is corrupted or truncated. Do not index as an arbitrary default duration!
         if (probe == null || probe.DurationSeconds <= 0.05)
         {
             _logger.LogWarning("[STORAGE INDEXER] Skipping corrupt or zero-duration media file: '{Path}'", filePath);
@@ -358,14 +358,14 @@ public class StorageScannerService : IStorageScannerService
     {
         string nameOnly = Path.GetFileNameWithoutExtension(fileName);
 
-        // 1. תבנית Epoch ישירה במילישניות (13 ספרות, למשל 1791583050601)
+        // 1. Direct millisecond Epoch pattern (13 digits, e.g. 1791583050601)
         var matchDirectMs = Regex.Match(nameOnly, @"^(\d{13})$");
         if (matchDirectMs.Success && long.TryParse(matchDirectMs.Groups[1].Value, out long directMs))
         {
             return directMs;
         }
 
-        // 2. תבנית Epoch (שניות ומיקרו-שניות MediaMTX, למשל 1791582402_381843)
+        // 2. Epoch pattern with seconds and microseconds from MediaMTX (e.g. 1791582402_381843)
         var matchEpoch = Regex.Match(nameOnly, @"(?:^|[_-])(?<sec>\d{10})(?:[_-](?<micro>\d{1,6}))?");
         if (matchEpoch.Success && long.TryParse(matchEpoch.Groups["sec"].Value, out long sec))
         {

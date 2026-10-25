@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Card/CameraCard.jsx
 // ==========================================
 import React from 'react';
@@ -22,7 +22,7 @@ export default function CameraCard({
     onOpenSpotlight,
     onSelectActiveStation,
     recordingSegments = {},
-    // 💡 תיקון: קבלת מהירות הניגון מהאב
+    // Playback rate inherited from parent viewport (e.g. 1x, 2x, 4x)
     playbackSpeed = 1
 }) {
     const isOffline = (station.hostname || station.name || '').includes('Offline');

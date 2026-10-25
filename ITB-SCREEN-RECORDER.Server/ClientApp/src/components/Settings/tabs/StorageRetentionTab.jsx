@@ -105,7 +105,7 @@ export default function StorageRetentionTab({ form, updateField, updateStorageFi
         <fieldset className="settings-fieldset storage-retention-fieldset">
             <legend>Storage & Retention Policy</legend>
 
-            {/* 💡 באנר טלמטריית אחסון בזמן אמת המשקף את הנתיב הפעיל כעת במערכת */}
+            {/* Real-time storage telemetry banner reflecting the currently active operational path */}
             {liveStorage && (
                 <div className="live-storage-telemetry-banner">
                     <div className="banner-header-row">

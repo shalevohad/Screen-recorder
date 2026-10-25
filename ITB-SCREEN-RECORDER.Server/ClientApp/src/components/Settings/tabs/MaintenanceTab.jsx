@@ -81,7 +81,7 @@ export default function MaintenanceTab() {
         <fieldset className="settings-fieldset maintenance-fieldset">
             <legend>System Catalog & Storage Maintenance</legend>
 
-            {/* כרטיסי טלמטריה טקטיים (4-Cell Grid) */}
+            {/* Tactical Telemetry Metric Cards (4-Cell Grid) */}
             <div className="catalog-telemetry-grid">
                 <div className="telemetry-card">
                     <span className="telemetry-lbl">TOTAL RECORDINGS</span>
@@ -103,7 +103,7 @@ export default function MaintenanceTab() {
                 </div>
             </div>
 
-            {/* חיווי משימה פעילה (Active Telemetry Micro-Bar) */}
+            {/* Active Task Telemetry Micro-Bar */}
             {isRunning ? (
                 <div className="running-job-panel">
                     <div className="job-header">
@@ -136,7 +136,7 @@ export default function MaintenanceTab() {
                 </div>
             )}
 
-            {/* בדיקת תקינות ואימות אינדקסים (Integrity & Repair) */}
+            {/* Integrity Verification and Repair (Integrity & Repair) */}
             <div className="maintenance-actions-box">
                 <div className="action-info">
                     <h4>Catalog Integrity & Duration Audit</h4>
@@ -155,7 +155,7 @@ export default function MaintenanceTab() {
                 </div>
             </div>
 
-            {/* כפתורי פעולה טקטיים */}
+            {/* Tactical Storage Action Controls */}
             <div className="maintenance-actions-box">
                 <div className="action-info">
                     <h4>Delta Storage Indexing</h4>

@@ -157,7 +157,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
                 }
                 catch
                 {
-                    // שולחן העבודה עדיין נעול או אינו נגיש
+                    // Desktop is still locked or inaccessible; continue polling
                 }
             }
         }
@@ -246,7 +246,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Video
                 }
                 catch
                 {
-                    // תצוגת X11/Wayland טרם התאוששה
+                    // X11 / Wayland display server not yet recovered; continue waiting
                 }
             }
         }

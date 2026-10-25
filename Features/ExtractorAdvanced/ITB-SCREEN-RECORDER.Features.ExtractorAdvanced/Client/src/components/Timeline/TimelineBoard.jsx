@@ -24,7 +24,7 @@ export default function TimelineBoard({
     stations = [],
     activeStationId,
     onSelectActiveStation,
-    onStationContextMenu, // 💡 פרופ חדש
+    onStationContextMenu, // Context menu event callback: (stationId, mouseEvent) => void
     baseEpochMs = 0,
     timeMode = 'LOCAL',
     totalDurationMs = 3600000,

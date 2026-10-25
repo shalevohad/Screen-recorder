@@ -16,7 +16,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         protected readonly ExtractorOptions Options;
         protected readonly ILogger<FfmpegBinaryResolver> Logger;
 
-        // 💡 בדיקה חד-פעמית ברמת התהליך (Static Process-Wide Cache): לעולם לא נבדק שוב לאחר העלייה הראשונה
+        // One-time process-wide static cache: capabilities are evaluated once upon startup and cached permanently
         private static FfmpegHardwareCapabilities? _cachedCapabilities;
         private static readonly object _probeLock = new();
 
@@ -33,7 +33,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         {
             string binaryName = OperatingSystem.IsWindows() ? $"{baseName}.exe" : baseName;
 
-            // 1. נתיב ייעודי שהוגדר בקונפיגורציה
+            // 1. Explicit path defined in options configuration
             if (baseName.Equals("ffmpeg", StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(Options.FfmpegPath) &&
                 File.Exists(Options.FfmpegPath))
@@ -42,7 +42,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 return Options.FfmpegPath;
             }
 
-            // 2. חיפוש לצד ה-Assembly הפעיל
+            // 2. Discover alongside active executing assembly
             string? assemblyDir = Path.GetDirectoryName(GetType().Assembly.Location);
             if (!string.IsNullOrWhiteSpace(assemblyDir))
             {
@@ -54,7 +54,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // 3. סריקת תיקיות מועמדות
+            // 3. Scan candidate search directories
             foreach (var candidateDir in GetCandidateDirectories())
             {
                 string fullPath = Path.Combine(candidateDir, binaryName);
@@ -65,7 +65,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // 4. נתיבי לינוקס סטנדרטיים
+            // 4. Standard Linux search locations
             if (OperatingSystem.IsLinux())
             {
                 string[] standardPaths = { $"/usr/bin/{binaryName}", $"/usr/local/bin/{binaryName}" };
@@ -113,14 +113,16 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         }
 
         /// <summary>
-        /// דוגם את כרטיסי המסך הזמינים באמצעות ריצת מבחן זעירה (100ms) של פריים סינתטי פעם אחת בלבד
+        /// Probes available GPU hardware encoders via a tiny (100ms) synthetic frame encoding run once per process lifetime.
+        /// Evaluates NVIDIA NVENC -> Intel QuickSync QSV -> CPU libx264 software fallback in strict priority order.
         /// </summary>
+        /// <returns>The verified hardware encoding capabilities descriptor.</returns>
         protected virtual FfmpegHardwareCapabilities ProbeHardwareCapabilities()
         {
             string ffmpegPath = ResolveFfmpeg();
             Logger.LogInformation("[FFmpeg Resolver] Probing hardware encoder capabilities once with binary: {Path}", ffmpegPath);
 
-            // 1. בדיקת NVIDIA NVENC (CUDA)
+            // 1. Probe NVIDIA NVENC (CUDA)
             if (TestSyntheticEncoder(ffmpegPath, "-hwaccel cuda", "h264_nvenc"))
             {
                 Logger.LogInformation("[FFmpeg Resolver] >>> NVIDIA GPU acceleration verified: h264_nvenc engaged.");
@@ -135,7 +137,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 };
             }
 
-            // 2. בדיקת Intel QuickSync (QSV)
+            // 2. Probe Intel QuickSync (QSV)
             if (TestSyntheticEncoder(ffmpegPath, "-hwaccel qsv", "h264_qsv"))
             {
                 Logger.LogInformation("[FFmpeg Resolver] >>> Intel QSV hardware acceleration verified: h264_qsv engaged.");
@@ -150,7 +152,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 };
             }
 
-            // 3. Fallback: מעבד (CPU x264)
+            // 3. Software Fallback: CPU (libx264)
             Logger.LogInformation("[FFmpeg Resolver] >>> No functional GPU encoder verified. Operating in standard CPU mode (libx264).");
             return new FfmpegHardwareCapabilities
             {

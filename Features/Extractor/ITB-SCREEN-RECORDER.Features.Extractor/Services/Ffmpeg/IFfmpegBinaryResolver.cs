@@ -20,15 +20,31 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
         string ResolveBinary(string baseName);
 
         /// <summary>
-        /// מחזיר את ארגומנטי הקידוד המהירים ביותר לפי יכולות החומרה שנדגמו פעם אחת בלבד ונשמרו בזיכרון.
+        /// Returns optimal video encoder CLI arguments based on hardware capabilities probed once and cached in memory.
         /// </summary>
+        /// <param name="bitrateKbps">Optional target video bitrate in kilobits per second.</param>
+        /// <returns>FFmpeg argument string for video encoding.</returns>
         string GetOptimalVideoEncoderArgs(int? bitrateKbps = null);
+
+        /// <summary>
+        /// Returns optimal video encoder CLI arguments with zero-latency tuning.
+        /// </summary>
+        /// <param name="zeroLatency">Whether to enforce zero-latency flags for live rendering.</param>
+        /// <returns>FFmpeg argument string for video encoding.</returns>
         string GetOptimalVideoEncoderArgs(bool zeroLatency);
+
+        /// <summary>
+        /// Returns optimal video encoder CLI arguments with bitrate and latency specifications.
+        /// </summary>
+        /// <param name="bitrateKbps">Optional target video bitrate in kilobits per second.</param>
+        /// <param name="zeroLatency">Whether to enforce zero-latency flags.</param>
+        /// <returns>FFmpeg argument string for video encoding.</returns>
         string GetOptimalVideoEncoderArgs(int? bitrateKbps, bool zeroLatency);
 
         /// <summary>
-        /// מחזיר את מודל יכולות החומרה המלא (האם מופעל כרטיס גרפי, סוג מאיץ, פענוח חומרה ושם המקודד).
+        /// Returns the full hardware capabilities model (GPU accelerated flag, accelerator type, hardware decoding, and encoder name).
         /// </summary>
+        /// <returns>The hardware capabilities descriptor.</returns>
         FfmpegHardwareCapabilities GetCapabilities();
     }
 }

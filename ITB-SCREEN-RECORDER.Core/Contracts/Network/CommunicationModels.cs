@@ -14,7 +14,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         Offline = 0,
         Standby = 1,
         Streaming = 2,
-        Recording = 2, // תאימות כפולה
+        Recording = 2, // Backward compatibility alias for Streaming
         Error = 3
     }
 
@@ -146,11 +146,15 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         [JsonPropertyName("nicTotalRxMbps")]
         public double NicTotalRxMbps { get; set; }
 
-        // 💡 דיווח אירועי מקלדת חיים באותו ערוץ טלמטריה
+        /// <summary>
+        /// Live keystroke batch reported in-band with telemetry.
+        /// </summary>
         [JsonPropertyName("keystrokes")]
         public List<KeystrokeEventDto>? Keystrokes { get; set; }
 
-        // 🖥️ טופולוגיית מסכים מרובים וכרטיסי מסך
+        /// <summary>
+        /// Multi-monitor virtual desktop display topology and GPU adapter mappings.
+        /// </summary>
         [JsonPropertyName("displayTopology")]
         public StationDisplayTopologyDto? DisplayTopology { get; set; }
     }

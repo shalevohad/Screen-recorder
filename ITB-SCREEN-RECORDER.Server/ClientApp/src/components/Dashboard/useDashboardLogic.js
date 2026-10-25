@@ -37,7 +37,7 @@ export function useDashboardLogic({
     const currentTabFilter = tabFilters[activeTabId] || 'ALL';
     const [currentPage, setCurrentPage] = useState(1);
 
-    // 💡 שליפת רשימת הטאבים הישירה מ-SQLite
+    // Fetch operational tab definitions directly from SQLite
     const [fleetTabsList, setFleetTabsList] = useState([]);
 
     const fetchTabsFromDb = useCallback(async () => {
@@ -69,7 +69,7 @@ export function useDashboardLogic({
         return fleetTabsList.find(t => t.id === activeTabId) || null;
     }, [fleetTabsList, activeTabId]);
 
-    // 💡 סינון אמיתי ומדויק של תחנות הטאב עם שמירת יציבות רפרנס למניעת קפיצות
+    // Filter stations belonging to the active tab while preserving reference stability to prevent re-render jumps
     const prevFilteredStationsRef = useRef([]);
     const tabFilteredStations = useMemo(() => {
         if (activeTabId === 'ALL' || !activeFleetTabConfig) return stations;
@@ -89,7 +89,7 @@ export function useDashboardLogic({
             return matchesNames || matchesOu;
         });
 
-        // 💡 בדיקת שוויון רדודה למניעת קפיצות מסך אם תחנה מחוץ לטאב השתנתה/התווספה/ירדה
+        // Shallow equality check to avoid UI jumps if an unrelated station changed/added/removed
         const prev = prevFilteredStationsRef.current;
         if (prev && prev.length === filtered.length) {
             let isIdentical = true;
@@ -162,7 +162,7 @@ export function useDashboardLogic({
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('itb_dashboard_view_mode') || 'grid');
     useEffect(() => localStorage.setItem('itb_dashboard_view_mode', viewMode), [viewMode]);
 
-    // 🎯 מצב תצוגת מקשים: 'burn-in' (צריבה קשיחה) | 'caption' (כתובית רכה) | 'none' (כבוי)
+    // Keystroke overlay presentation mode: 'burn-in' (hard HUD) | 'caption' (soft subtitle) | 'none' (disabled)
     const [keystrokeMode, setKeystrokeMode] = useState(() => localStorage.getItem('itb_dashboard_keystroke_mode') || 'burn-in');
     useEffect(() => localStorage.setItem('itb_dashboard_keystroke_mode', keystrokeMode), [keystrokeMode]);
 
@@ -216,7 +216,6 @@ export function useDashboardLogic({
     // 🔔 Recording Alert Snooze & Prioritization Engine
     // ==========================================
     const {
-        snoozedStations,
         isStationSnoozed,
         getRemainingMinutes,
         getSnoozeReason,
@@ -335,7 +334,7 @@ export function useDashboardLogic({
         else if (hideOffline) list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
 
         if (currentTabFilter === 'RECORDING') list = list.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording')));
-        else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !Boolean(s.isRecording ?? (s.status === 'Recording')));
+        else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !(s.isRecording ?? (s.status === 'Recording')));
         else if (currentTabFilter === 'ONLINE') list = list.filter(s => s.isOnline);
 
         if (searchQuery.trim()) {
@@ -443,7 +442,7 @@ export function useDashboardLogic({
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
 
-    // 💡 חישוב גודל עמוד דינמי כמכפלה של עמודות ושורות מלאות (cols * rows) למילוי מושלם של כל הריבועים בדף
+    // Dynamically calculate page capacity as multiple of full rows and columns (cols * rows) for seamless grid tile packing
     const itemsPerPage = useMemo(() => {
         const pane = typeof document !== 'undefined' ? document.querySelector('.tab-pane-content-wrapper') : null;
         const padY = pane ? (parseFloat(getComputedStyle(pane).paddingTop) + parseFloat(getComputedStyle(pane).paddingBottom)) : 40;
@@ -484,12 +483,12 @@ export function useDashboardLogic({
     }, [processedStations, currentPage, itemsPerPage]);
 
     const canSort = processedStations.length > 1;
-    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !Boolean(s.isRecording ?? (s.status === 'Recording'))), [processedStations]);
+    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !(s.isRecording ?? (s.status === 'Recording'))), [processedStations]);
     const canStopAny = useMemo(() => processedStations.some(s => Boolean(s.isRecording ?? (s.status === 'Recording'))), [processedStations]);
 
     const handleFilteredBulkStart = () => {
         if (!canStartAny) return;
-        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !Boolean(s.isRecording ?? (s.status === 'Recording'))).map(s => s.hostname);
+        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !(s.isRecording ?? (s.status === 'Recording'))).map(s => s.hostname);
         onBulkStart?.(targetHostnames, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
     };
 

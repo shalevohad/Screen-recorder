@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -23,7 +23,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
 
-        // תמיכה כפולה בשם השדה הישן והחדש (Hostnames מול assignedHostnames מה-UI)
+        // Dual support for legacy and current field names (hostnames vs assignedHostnames from UI)
         [JsonPropertyName("hostnames")]
         public List<string> Hostnames
         {
@@ -41,7 +41,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         [JsonPropertyName("assignedOus")]
         public List<string> AssignedOus { get; set; } = new();
 
-        // תמיכה כפולה ב-TargetFps ו-defaultFps
+        // Dual support for targetFps and defaultFps naming conventions
         [JsonPropertyName("targetFps")]
         public int? TargetFps
         {
@@ -56,7 +56,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             set { if (value.HasValue || !_targetFps.HasValue) _targetFps = value; }
         }
 
-        // תמיכה כפולה ב-TargetBitrateKbps ו-defaultBitrate
+        // Dual support for targetBitrateKbps and defaultBitrate naming conventions
         [JsonPropertyName("targetBitrateKbps")]
         public int? TargetBitrateKbps
         {
@@ -115,7 +115,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 int count = db.ExecuteScalar<int>("SELECT COUNT(1) FROM custom_tabs;");
                 if (count == 0)
                 {
-                    // מיגרציה של קובץ ה-JSON הקיים למסד הנתונים
+                    // Migrate existing legacy custom-tabs.json file to SQLite database
                     if (File.Exists(_legacyFilePath))
                     {
                         string json = File.ReadAllText(_legacyFilePath);
@@ -151,7 +151,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                         }
                     }
 
-                    // יצירת טאב ברירת מחדל אם לא קיים קובץ מקור
+                    // Create default 'All Stations' tab if no legacy source file exists
                     var defaultNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     db.Execute(@"
                         INSERT INTO custom_tabs (

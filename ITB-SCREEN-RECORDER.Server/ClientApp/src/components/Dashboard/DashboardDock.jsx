@@ -134,7 +134,7 @@ export default function DashboardDock({
 
             <div className="dock-divider" />
 
-            {/* 🎯 כפתור שליטה תלת-מצבי על תצוגת מקשים: BURN-IN -> CAPTION -> OFF */}
+            {/* Tactical tri-state control for keystroke overlay: BURN-IN -> CAPTION -> OFF */}
             <button
                 className={`dock-icon-btn tactical-btn-keystroke mode-${keystrokeMode} ${isFeatureActive ? 'disabled' : ''}`}
                 onClick={!isFeatureActive ? handleCycleKeystrokeMode : undefined}

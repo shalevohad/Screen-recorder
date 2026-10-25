@@ -23,7 +23,7 @@ import './styles/_securityAccessTab.scss';
 export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     const { isSystemRoot, hasPermission } = useAuth();
 
-    // הגדרת רשימת הטאבים המותרים לפי הרשאות המשתמש (RBAC Filtering)
+    // Define permitted tabs list based on user RBAC permissions
     const permittedTabs = useMemo(() => {
         const list = [];
         if (isSystemRoot || hasPermission('settings.agents')) {
@@ -54,7 +54,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     const [overrides, setOverrides] = useState({});
     const [status, setStatus] = useState({ loading: true, saving: false, error: null, saved: false });
 
-    // וידוא שהטאב הפעיל מורשה למשתמש; אם לא, נעבור לטאב המורשה הראשון
+    // Ensure active tab is permitted for user; if not, switch to first permitted tab
     useEffect(() => {
         if (permittedTabs.length > 0 && !permittedTabs.some(t => t.id === activeTab)) {
             setActiveTab(permittedTabs[0].id);
@@ -175,7 +175,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
         <div className="settings-hub-canvas full-page-hub" dir="ltr">
             <div className="settings-hub-header">
                 <div className="hub-header-left">
-                    {/* כפתור חזרה לשער המערכות (PORTAL) */}
+                    {/* Return to operational systems portal hub button */}
                     <button type="button" className="btn-back-dashboard" onClick={onReturnToPortal} title="Return to Enterprise Portal Hub">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <rect x="3" y="3" width="7" height="7" rx="1.5" />

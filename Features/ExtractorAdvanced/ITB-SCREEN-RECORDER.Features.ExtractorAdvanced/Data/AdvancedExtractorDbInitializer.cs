@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data;
+namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data;
 
 using System;
 using System.Collections.Generic;
@@ -26,14 +26,14 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
 
             using var db = _factory.CreateConnection();
 
-            // הפעלת WAL Mode למניעת נעילות בזמן עריכת ויצוא NLE מקביל
+            // Enable WAL mode and memory temp store to avoid database locks during concurrent NLE editing and exports
             db.Execute(@"
                 PRAGMA journal_mode = WAL;
                 PRAGMA synchronous = NORMAL;
                 PRAGMA temp_store = MEMORY;
             ");
 
-            // 1. יצירת טבלאות במידה ואינן קיימות
+            // 1. Create tables if they do not exist
             db.Execute(@"
                 CREATE TABLE IF NOT EXISTS advance_jobs (
                     JobId TEXT PRIMARY KEY,
@@ -79,7 +79,7 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
                 );
             ");
 
-            // 2. מיגרציה רציפה - וידוא קיום עמודות שנוספו עם הזמן עבור מסדים קיימים
+            // 2. Incremental migration - ensure newly introduced columns exist in existing databases
             // advance_jobs
             db.EnsureColumn("advance_jobs", "NetworkFolderPath", "TEXT NOT NULL DEFAULT ''");
             db.EnsureColumn("advance_jobs", "DownloadCount", "INTEGER NOT NULL DEFAULT 0");
@@ -104,7 +104,7 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
             // editing_drafts
             db.EnsureColumn("editing_drafts", "StateJson", "TEXT NOT NULL DEFAULT '{}'");
 
-            // 3. אינדקסים
+            // 3. Database indexes
             db.Execute(@"
                 CREATE INDEX IF NOT EXISTS idx_advance_jobs_created 
                 ON advance_jobs (CreatedAtUtc DESC);

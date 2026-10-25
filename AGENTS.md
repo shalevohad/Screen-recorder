@@ -2,6 +2,8 @@
 
 This document is the primary reference and context for AI coding agents working on the **ITB-SCREEN-RECORDER** repository. All autonomous code generation, refactoring, and debugging must strictly adhere to the patterns and invariants specified herein.
 
+> 📘 **Developer System Book & Architecture Guide**: Consult [SYSTEM_BOOK.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/SYSTEM_BOOK.md) for the end-to-end operational architecture, media pipeline details, database schemas, and developer playbooks. All agents must keep `SYSTEM_BOOK.md` updated with any future codebase changes.
+
 ---
 
 ## 1. System Mission & Operational Scope
@@ -134,3 +136,4 @@ When modifying existing files:
 2. Ensure asynchronous methods accept and respect `CancellationToken ct`.
 3. Keep track of file locking semantics on recording storage directories.
 4. Keep `RULES.md` and `README.md` updated if new architectural rules are introduced.
+5. **Continuous System Book Sync**: Always update [SYSTEM_BOOK.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/SYSTEM_BOOK.md) whenever new features, endpoints, components, or structural patterns are introduced or modified.
