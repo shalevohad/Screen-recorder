@@ -112,14 +112,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
                     if (sample == null)
                     {
-                        // Check if the host has any recordings overall within storage retention (30 days)
-                        var fallbackChunks = await _storageScanner.GetChunksForStationAsync(host, DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
-                        if (fallbackChunks.Count == 0)
+                        // Check if the host has any recordings overall using fast SQLite indexed lookup
+                        sample = await _storageScanner.GetStationSampleChunkAsync(host);
+                        if (sample == null)
                         {
                             // Station has zero recordings on disk or in database
                             return;
                         }
-                        sample = fallbackChunks.LastOrDefault();
                     }
 
                     int width = sample?.Width ?? 1920;

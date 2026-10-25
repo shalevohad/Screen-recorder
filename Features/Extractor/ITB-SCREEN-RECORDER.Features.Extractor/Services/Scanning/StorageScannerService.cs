@@ -167,6 +167,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 _logger.LogWarning(ex, "[STORAGE SCANNER] Failed querying available hosts from DB.");
             }
 
+            // DB-FIRST: אם נמצאו עמדות במסד הנתונים, מחזירים אותן מיד ב-0 I/O וללא סריקת אחסון רשת
+            if (hostsSet.Count > 0)
+            {
+                return hostsSet.OrderBy(h => h).ToList();
+            }
+
+            // Fallback מתבצע אך ורק אם מסד הנתונים ריק לחלוטין (Cold Start / התקנה ראשונית)
             foreach (var root in ResolveActiveStorageRoots().Where(Directory.Exists))
             {
                 try
@@ -217,21 +224,108 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _lastDiskScanTimes = new(StringComparer.OrdinalIgnoreCase);
 
+        public async Task<RecordingChunkMetadata?> GetStationSampleChunkAsync(string hostname)
+        {
+            if (string.IsNullOrWhiteSpace(hostname)) return null;
+            string cleanHost = hostname.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? hostname.Substring(5) : hostname;
+
+            try
+            {
+                using var conn = OpenCatalogDbConnection();
+                const string sql = @"
+                    SELECT file_path AS FullPath, station_id AS Hostname,
+                           start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
+                           file_size_bytes AS FileSizeBytes,
+                           COALESCE(width, 1920) AS Width,
+                           COALESCE(height, 1080) AS Height,
+                           COALESCE(fps, 30) AS Fps,
+                           COALESCE(has_audio, 1) AS HasAudio,
+                           COALESCE(is_finalized, 1) AS IsFinalized,
+                           COALESCE(display_id, 'mon-0') AS DisplayId,
+                           COALESCE(is_primary, 1) AS IsPrimary
+                    FROM recording_chunks
+                    WHERE (station_id = @cleanHost 
+                           OR station_id = ('live/' || @cleanHost) 
+                           OR station_id = @rawHost
+                           OR station_id LIKE (@cleanHost || '/%')
+                           OR station_id LIKE ('live/' || @cleanHost || '/%')) COLLATE NOCASE
+                    ORDER BY start_epoch_ms DESC
+                    LIMIT 1;";
+
+                var row = await conn.QueryFirstOrDefaultAsync(sql, new { cleanHost, rawHost = hostname });
+                if (row != null)
+                {
+                    return new RecordingChunkMetadata
+                    {
+                        FullPath = (string)row.FullPath,
+                        Hostname = cleanHost,
+                        StartUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)row.StartEpochMs).UtcDateTime,
+                        EndUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)row.EndEpochMs).UtcDateTime,
+                        FileSizeBytes = (long)row.FileSizeBytes,
+                        Width = (int)row.Width,
+                        Height = (int)row.Height,
+                        Fps = (double)row.Fps,
+                        HasAudio = (long)row.HasAudio != 0,
+                        IsFinalized = (long)row.IsFinalized != 0,
+                        DisplayId = row.DisplayId != null ? (string)row.DisplayId : "mon-0",
+                        IsPrimary = row.IsPrimary != null ? ((long)row.IsPrimary != 0) : true
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[STORAGE SCANNER] Failed querying sample chunk for '{Host}' from DB.", cleanHost);
+            }
+
+            return null;
+        }
+
         public async Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc)
         {
             string cleanHost = hostname.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? hostname.Substring(5) : hostname;
             long startMs = new DateTimeOffset(startUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
             long endMs = new DateTimeOffset(endUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-            // 1. שליפה מהירה מה-DB עם תמיכה מלאה ב-COLLATE NOCASE
+            // 1. DB-FIRST: שליפה סופר-מהירה מה-DB ב-0 I/O (מילישניות בודדות)
             var dbChunks = await QueryChunksFromDbAsync(cleanHost, startMs, endMs);
 
-            // 2. סריקה דינמית בדיסק לאיתור קבצים שטרם אונדקסו או סגירת קבצים שהיו active
-            bool isRecentScope = endUtc >= DateTime.UtcNow.AddMinutes(-30);
-            double cooldownSeconds = isRecentScope ? 1.5 : 30.0;
+            bool isHistorical = endUtc < DateTime.UtcNow.AddMinutes(-15);
+
+            // טווח היסטורי שקיים ב-DB: מחזירים מיד! אפס גישה לדיסק ולאחסון הרשת!
+            if (isHistorical && dbChunks.Count > 0)
+            {
+                return dbChunks;
+            }
+
+            // בדיקת Cooldown לגישה לדיסק עבור עמדה זו
+            bool isRecentScope = !isHistorical;
+            double cooldownSeconds = isRecentScope ? 3.0 : 60.0;
             bool hasRecentScan = _lastDiskScanTimes.TryGetValue(cleanHost, out var lastScan) && (DateTime.UtcNow - lastScan).TotalSeconds < cooldownSeconds;
-            bool hasUnfinalized = dbChunks.Any(c => !c.IsFinalized);
-            bool shouldScanDisk = dbChunks.Count == 0 || !hasRecentScan || hasUnfinalized;
+
+            if (hasRecentScan)
+            {
+                return dbChunks;
+            }
+
+            // האם נדרש לסרוק דיסק לאיתור חוסרים או עדכון מקטע פעיל?
+            bool shouldScanDisk = false;
+
+            if (dbChunks.Count == 0)
+            {
+                // DB לא מכיל מקטעים כלל לעמדה בטווח המבוקש - סורקים דיסק לאיתור חוסרים
+                shouldScanDisk = true;
+            }
+            else if (isRecentScope)
+            {
+                bool hasUnfinalized = dbChunks.Any(c => !c.IsFinalized);
+                var latestChunk = dbChunks.MaxBy(c => c.EndUtc);
+                bool tailIsPast = latestChunk != null && (DateTime.UtcNow - latestChunk.EndUtc).TotalSeconds > 10;
+
+                if (hasUnfinalized || tailIsPast)
+                {
+                    shouldScanDisk = true;
+                }
+            }
 
             if (shouldScanDisk)
             {
@@ -453,34 +547,66 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 {
                     string file = candidateFiles[i];
                     var parsed = TryParseChunkFast(file, cleanHost);
-                    if (parsed != null)
-                    {
-                        long fStart = new DateTimeOffset(parsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-                        long fEnd = 0;
-                        bool isLocked = IsFileLocked(file);
-                        bool isFinalized = !isLocked;
+                    if (parsed == null) continue;
 
-                        if (i + 1 < candidateFiles.Count)
+                    long fStart = new DateTimeOffset(parsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+                    // סינון מהיר בזיכרון לפני גישה לדיסק: דילוג מיידי על קבצים מחוץ לטווח המבוקש
+                    if (fStart > (endMs + 300000) || (fStart + 3600000) < startMs)
+                    {
+                        continue;
+                    }
+
+                    long fEnd = 0;
+                    bool isLocked = IsFileLocked(file);
+                    bool isFinalized = !isLocked;
+
+                    if (i + 1 < candidateFiles.Count)
+                    {
+                        var nextParsed = TryParseChunkFast(candidateFiles[i + 1], cleanHost);
+                        if (nextParsed != null)
                         {
-                            var nextParsed = TryParseChunkFast(candidateFiles[i + 1], cleanHost);
-                            if (nextParsed != null)
+                            long nextStart = new DateTimeOffset(nextParsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                            if (nextStart > fStart && (nextStart - fStart) <= (30 * 60 * 1000))
                             {
-                                long nextStart = new DateTimeOffset(nextParsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-                                if (nextStart > fStart && (nextStart - fStart) <= (30 * 60 * 1000))
-                                {
-                                    long accurateMs = GetAccurateChunkDurationMs(file, parsed.StartUtc, nextStart - fStart);
-                                    fEnd = fStart + accurateMs;
-                                }
+                                // משך המקטע מוגדר ע"י תחילת המקטע העוקב ללא צורך ב-FFprobe
+                                fEnd = nextStart;
                             }
                         }
+                    }
 
-                        if (fEnd <= 0)
+                    if (fEnd <= 0)
+                    {
+                        if (isLocked)
                         {
-                            long accurateMs = GetAccurateChunkDurationMs(file, parsed.StartUtc, defaultDurationMs);
-                            fEnd = fStart + accurateMs;
+                            long activeDurMs = (long)(DateTime.UtcNow - parsed.StartUtc).TotalMilliseconds;
+                            fEnd = fStart + (activeDurMs > 500 ? activeDurMs : defaultDurationMs);
                         }
+                        else
+                        {
+                            try
+                            {
+                                var fi = new FileInfo(file);
+                                if (fi.Exists && fi.LastWriteTimeUtc > parsed.StartUtc)
+                                {
+                                    long writeDiffMs = (long)(fi.LastWriteTimeUtc - parsed.StartUtc).TotalMilliseconds;
+                                    fEnd = fStart + (writeDiffMs > 500 ? Math.Min(writeDiffMs, defaultDurationMs) : defaultDurationMs);
+                                }
+                                else
+                                {
+                                    fEnd = fStart + defaultDurationMs;
+                                }
+                            }
+                            catch
+                            {
+                                fEnd = fStart + defaultDurationMs;
+                            }
+                        }
+                    }
 
-                        if (fEnd >= startMs && fStart <= (endMs + 300000))
+                    if (fEnd >= startMs && fStart <= (endMs + 300000))
+                    {
+                        try
                         {
                             var fi = new FileInfo(file);
                             if (fi.Exists && fi.Length >= 1024)
@@ -488,6 +614,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                 missing.Add((cleanHost, file, fStart, fEnd, fi.Length, isFinalized));
                             }
                         }
+                        catch { }
                     }
                 }
             }
@@ -508,6 +635,18 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     long activeDurMs = (long)(DateTime.UtcNow - startUtc).TotalMilliseconds;
                     return activeDurMs > 500 ? activeDurMs : fallbackDurationMs;
                 }
+
+                // בדיקה מהירה ללא תהליכים חיצוניים לפי שעת סגירת הקובץ בדיסק (LastWriteTimeUtc)
+                if (fi.LastWriteTimeUtc > startUtc)
+                {
+                    long diffMs = (long)(fi.LastWriteTimeUtc - startUtc).TotalMilliseconds;
+                    if (diffMs > 500 && diffMs <= (30 * 60 * 1000))
+                    {
+                        return diffMs;
+                    }
+                }
+
+                // Fallback סופי בלבד באמצעות FFprobe (רק אם לא ניתן לחשב לפי קובץ)
 
                 // הקובץ סגור! נדגום משך מדויק באמצעות FFprobe
                 string? ffprobePath = ResolveFfprobePath();
@@ -537,16 +676,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         {
                             try { proc.Kill(); } catch { }
                         }
-                    }
-                }
-
-                // Fallback לפי שעת סגירת הקובץ בדיסק (LastWriteTimeUtc)
-                if (fi.LastWriteTimeUtc > startUtc)
-                {
-                    long diffMs = (long)(fi.LastWriteTimeUtc - startUtc).TotalMilliseconds;
-                    if (diffMs > 500)
-                    {
-                        return diffMs;
                     }
                 }
             }

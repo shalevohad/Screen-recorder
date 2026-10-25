@@ -51,7 +51,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             bool shouldStream = true;
 
             // ניהול מצב הקלטה רצוי (Record vs Monitor-Only)
-            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsRecording || report.AutoStartRecordingOnLaunch);
+            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsRecording || report.RecordingStartedAtUtc.HasValue || report.AutoStartRecordingOnLaunch);
 
             bool isRecordingDesired = _agentDesiredStates[key];
             report.IsRecording = isRecordingDesired;
