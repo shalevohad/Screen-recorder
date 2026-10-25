@@ -3,12 +3,12 @@
 		<OutputType>Package</OutputType>
 		<Platform>x64</Platform>
 		<Platforms>x64</Platforms>
-		<!-- עוגן מדויק לשורש הפתרון: 3 רמות מעלה מ-Installers/Windows/ITB-SCREEN-RECORDER.Server.Installer -->
+		<!-- Solution root path anchor -->
 		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..'))</SolutionRoot>
-		<!-- נרמול גרסה ל-3 מקטעים תקניים -->
+		<!-- Normalize version to 3 segments (Major.Minor.Build) -->
 		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
 		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
-		<RawVersion Condition="'$(RawVersion)' == ''">1.0.40</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.41</RawVersion>
 		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
 		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
 		<OutputName>ITB-ScreenRecorder-Server-Setup-$(Version)</OutputName>
@@ -16,7 +16,7 @@
 		<ServerStaging>$(StagingRoot)\server_root</ServerStaging>
 		<FeaturesStaging>$(StagingRoot)\features_root</FeaturesStaging>
 		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Server\windows</FinalOutputDir>
-		<!-- הזרקת משתנים לשימוש בתוך קובצי ה-WXS -->
+		<!-- Inject variables into WXS files -->
 		<DefineConstants>ServerDir=$(ServerStaging);FeaturesDir=$(FeaturesStaging);Version=$(Version);RepoRoot=$(SolutionRoot)</DefineConstants>
 		<SuppressIces>ICE61</SuppressIces>
 	</PropertyGroup>
