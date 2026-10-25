@@ -53,15 +53,16 @@ export default function CommandCenterHeader({
     const agentMetrics = useMemo(() => {
         const onlineStations = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2);
         const onlineCount = onlineStations.length;
+        const recordingCount = stations.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording'))).length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
         const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
         const aggregateTxMbps = stations.reduce((acc, s) => acc + (s.mediaTxMbps || 0), 0);
         const aggregateC2Kbps = stations.reduce((acc, s) => acc + (s.telemetryTxKbps || 0), 0);
 
-        const recordingPct = onlineCount > 0 ? Math.round((streamingCount / onlineCount) * 100) : 0;
+        const recordingPct = onlineCount > 0 ? Math.round((recordingCount / onlineCount) * 100) : 0;
         const onlinePct = totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
 
-        return { onlineCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps, recordingPct, onlinePct };
+        return { onlineCount, recordingCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps, recordingPct, onlinePct };
     }, [stations, totalCount]);
 
     const activeWorkerCount = stations.filter(s =>
@@ -146,7 +147,7 @@ export default function CommandCenterHeader({
                     <div className="fleet-summary-pill">
                         <div
                             className="summary-pod recording-agents-pod"
-                            title={`Recording Fleet: ${agentMetrics.streamingCount} recording of ${agentMetrics.onlineCount} online (${agentMetrics.recordingPct}%)`}
+                            title={`Recording Fleet: ${agentMetrics.recordingCount} recording of ${agentMetrics.onlineCount} online (${agentMetrics.recordingPct}%)`}
                         >
                             <span className="pod-lbl">RECORDING AGENTS</span>
                             <div className="pod-content-row">
@@ -159,7 +160,7 @@ export default function CommandCenterHeader({
                                         { pct: agentMetrics.onlinePct, color: 'var(--accent-emerald, #10B981)' }
                                     ]}
                                     items={[
-                                        { label: 'REC', value: agentMetrics.streamingCount, color: 'cyan' },
+                                        { label: 'REC', value: agentMetrics.recordingCount, color: 'cyan' },
                                         { label: 'LIVE', value: agentMetrics.onlineCount, color: 'green' }
                                     ]}
                                 />

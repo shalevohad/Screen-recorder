@@ -47,19 +47,24 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             string key = report.Hostname.ToUpperInvariant();
 
-            // תיקון סעיף 4: כיבוד הגדרת AutoStartRecordingOnLaunch ומניעת הקלטה כפויה
-            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsStreaming || report.AutoStartRecordingOnLaunch);
+            // 💡 העמדות משדרות תמיד בלייב כשהן פעילות (24/7 Continuous Live Surveillance)
+            bool shouldStream = true;
 
-            bool desiredStreamState = _agentDesiredStates[key];
+            // ניהול מצב הקלטה רצוי (Record vs Monitor-Only)
+            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsRecording || report.AutoStartRecordingOnLaunch);
 
+            bool isRecordingDesired = _agentDesiredStates[key];
+            report.IsRecording = isRecordingDesired;
+
+            // העמדה מקבלת פקודת שידור תמידית כל עוד היא אינה משדרת
             ServerCommand commandToSend = ServerCommand.Standby;
-            if (desiredStreamState != report.IsStreaming)
+            if (!report.IsStreaming)
             {
-                commandToSend = desiredStreamState ? ServerCommand.StartStream : ServerCommand.StopStream;
+                commandToSend = ServerCommand.StartStream;
             }
 
-            // תיקון סעיף REC Timer: שימור חותמת זמן ההקלטה המקורית ומניעת איפוסה בריענונים
-            if (report.IsStreaming)
+            // ניהול טיימר הקלטה עבור עמדה מקליטה בלבד
+            if (report.IsRecording)
             {
                 if (!report.RecordingStartedAtUtc.HasValue)
                 {
@@ -102,7 +107,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             return new AgentHeartbeatResponse
             {
-                ShouldStream = desiredStreamState,
+                ShouldStream = shouldStream,
                 Command = commandToSend,
                 ServerUtcTime = DateTime.UtcNow,
                 Policy = currentPolicy,
@@ -110,19 +115,20 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             };
         }
 
-        public void SetAgentStreamState(string hostname, bool shouldStream)
+        public void SetAgentStreamState(string hostname, bool shouldRecord)
         {
             if (string.IsNullOrWhiteSpace(hostname)) return;
             string key = hostname.ToUpperInvariant();
-            _agentDesiredStates[key] = shouldStream;
+            _agentDesiredStates[key] = shouldRecord;
 
             if (_latestReports.TryGetValue(key, out var report))
             {
-                if (shouldStream && !report.RecordingStartedAtUtc.HasValue)
+                report.IsRecording = shouldRecord;
+                if (shouldRecord && !report.RecordingStartedAtUtc.HasValue)
                 {
                     report.RecordingStartedAtUtc = DateTime.UtcNow;
                 }
-                else if (!shouldStream)
+                else if (!shouldRecord)
                 {
                     report.RecordingStartedAtUtc = null;
                 }

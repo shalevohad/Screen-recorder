@@ -77,6 +77,11 @@
                     box-shadow: 0 0 8px var(--accent-rose);
                     animation: pulse 1.5s infinite;
                 }
+
+                &.monitor {
+                    background-color: #F59E0B;
+                    box-shadow: 0 0 6px #F59E0B;
+                }
             }
 
             .uptime-badge {
@@ -87,6 +92,21 @@
                 background: var(--c2-cyan-tint);
                 border: 1px solid var(--border-active-cyan, rgba(56, 189, 248, 0.45));
                 padding: 2px 8px;
+                border-radius: var(--radius-full, 9999px);
+            }
+
+            .monitor-only-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                background: rgba(245, 158, 11, 0.12);
+                border: 1px solid rgba(245, 158, 11, 0.45);
+                color: #F59E0B;
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+                padding: 2px 10px;
                 border-radius: var(--radius-full, 9999px);
             }
         }
@@ -201,7 +221,8 @@
                     border-color: var(--accent-cyan);
                 }
 
-                &.start {
+                &.start,
+                &.start-rec {
                     border-color: rgba(16, 185, 129, 0.4);
                     color: var(--accent-emerald-light);
 
@@ -300,6 +321,30 @@
         background-color: #000;
         display: flex;
         overflow: hidden;
+
+        &.is-not-recording video {
+            filter: grayscale(100%) contrast(1.1) brightness(0.85) !important;
+            transition: filter 0.3s ease;
+        }
+
+        .fullscreen-monitor-watermark {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 25;
+            pointer-events: none;
+            padding: 5px 12px;
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid rgba(245, 158, 11, 0.55);
+            color: #F59E0B;
+            font-family: var(--font-mono, 'JetBrains Mono', monospace);
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            border-radius: 4px;
+            backdrop-filter: blur(6px);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+        }
 
         video {
             width: 100%;

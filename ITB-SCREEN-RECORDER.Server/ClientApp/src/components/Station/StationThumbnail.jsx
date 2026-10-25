@@ -49,9 +49,12 @@ export default function StationThumbnail(props) {
         ? '/api/v1/whep'
         : `http://${serverHost}:${webrtcPort}`;
 
-    const isStarting = isPending === 'starting' || (Boolean(isPending) && !isStreaming);
-    const isStopping = isPending === 'stopping' || (Boolean(isPending) && isStreaming);
-    const isLive = isOnline && isStreaming && !isPending;
+    const isRecording = props.isRecording !== undefined
+        ? Boolean(props.isRecording)
+        : (props.status === 'Recording' || (Boolean(isStreaming) && props.status !== 'Monitoring'));
+    const isStarting = isPending === 'starting' || (Boolean(isPending) && !isRecording);
+    const isStopping = isPending === 'stopping' || (Boolean(isPending) && isRecording);
+    const isLive = isOnline && (isStreaming || isRecording) && !isPending;
     const hasCriticalError = isOnline && (droppedFrames > 5);
 
     const audioHasPlayback = Boolean(hasActiveSpeakers);
@@ -67,13 +70,16 @@ export default function StationThumbnail(props) {
     );
 
     useEffect(() => {
-        if (!isLive) return;
+        if (!isLive || !isRecording) {
+            setRecordingSeconds(0);
+            return;
+        }
         const timer = setInterval(() => setRecordingSeconds(p => p + 1), 1000);
         return () => {
             clearInterval(timer);
             setRecordingSeconds(0);
         };
-    }, [isLive]);
+    }, [isLive, isRecording]);
 
     const displays = useMemo(() => {
         const raw = props.displays || props.Displays || props.displayTopology?.displays || props.DisplayTopology?.Displays;
@@ -139,7 +145,7 @@ export default function StationThumbnail(props) {
 
     return (
         <div
-            className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
+            className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${isLive && !isRecording ? 'is-not-recording' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
             onClick={() => onSelectStation?.(props)}
             title="Click card to open Station Inspector"
         >
@@ -165,17 +171,17 @@ export default function StationThumbnail(props) {
 
                     <button
                         type="button"
-                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : (isLive || isStreaming) && !isStopping ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
+                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isRecording && !isStopping ? 'is-rec' : 'is-monitor'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
                         onClick={handleQuickToggleRec}
                         disabled={!isOnline || Boolean(isPending) || !canControl}
-                        title={!canControl ? "Access restricted (requires stations.control)" : undefined}
+                        title={!canControl ? "Access restricted (requires stations.control)" : (isRecording ? "Stop Recording (Remain in Live Monitor)" : "Start Recording")}
                     >
                         <span className="rec-indicator-dot" />
                         <div className="rec-text-wrapper">
                             <span className="rec-state">
-                                {!canControl ? 'LOCKED' : !isOnline ? 'OFFLINE' : isStarting ? 'STARTING...' : isStopping ? 'STOPPING...' : isStreaming ? 'REC' : 'IDLE'}
+                                {!canControl ? 'LOCKED' : !isOnline ? 'OFFLINE' : isStarting ? 'STARTING...' : isStopping ? 'STOPPING...' : isRecording ? 'REC' : 'MONITOR'}
                             </span>
-                            {isLive && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
+                            {isRecording && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
                         </div>
                     </button>
 
@@ -220,7 +226,7 @@ export default function StationThumbnail(props) {
                 title={isLive ? "Click video to open Fullscreen Theater" : "Click screen to open Station Inspector"}
             >
                 {isLive ? (
-                    <div className="webrtc-container" style={{ pointerEvents: 'none' }}>
+                    <div className={`webrtc-container ${!isRecording ? 'is-not-recording' : ''}`} style={{ pointerEvents: 'none' }}>
                         <VirtualTopologyCanvas
                             station={{ ...props, hostname }}
                             activeDisplayId={activeDisplayId}
@@ -231,11 +237,22 @@ export default function StationThumbnail(props) {
                                 registerStationStream(hostname, stream);
                             }}
                         />
+                        {!isRecording && (
+                            <div className="monitor-only-overlay">
+                                <span className="monitor-tag">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                    MONITOR ONLY • NOT RECORDING
+                                </span>
+                            </div>
+                        )}
                     </div>
                 ) : (isStarting || isStopping) ? (
                     <div className="stream-loading-matte">
                         <div className="tactical-stream-spinner" />
-                        <span className="loading-label">{isStarting ? 'INITIALIZING STREAM...' : 'STOPPING STREAM...'}</span>
+                        <span className="loading-label">{isStarting ? 'STARTING RECORDING...' : 'STOPPING RECORDING...'}</span>
                         <span className="loading-sub">{isStarting ? 'CONNECTING MEDIA PIPELINE' : 'FLUSHING RECORDING BUFFER'}</span>
                     </div>
                 ) : (
@@ -295,12 +312,12 @@ export default function StationThumbnail(props) {
                 <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
                     <button
                         type="button"
-                        className={`action-btn ${isStreaming ? 'stop' : 'start'} ${!canControl || Boolean(isPending) ? 'disabled' : ''}`}
+                        className={`action-btn ${isRecording ? 'stop' : 'start'} ${!canControl || Boolean(isPending) ? 'disabled' : ''}`}
                         onClick={handleQuickToggleRec}
                         disabled={!canControl || Boolean(isPending)}
-                        title={!canControl ? "Access restricted (stations.control)" : (isStreaming ? "Stop Stream" : "Start Stream")}
+                        title={!canControl ? "Access restricted (stations.control)" : (isRecording ? "Stop Recording (Remain in Live Monitor)" : "Start Recording")}
                     >
-                        {isPending ? '...' : isStreaming ? 'STOP' : 'START'}
+                        {isPending ? '...' : isRecording ? 'STOP REC' : 'START REC'}
                     </button>
                     <button
                         type="button"

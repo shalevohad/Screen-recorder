@@ -132,10 +132,23 @@ public class RecordingChunkScheduler : BackgroundService
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         var activePaths = await _apiClient.GetActivePathNamesAsync(config.MediaMtx.ApiPort, stoppingToken).ConfigureAwait(false);
 
+        var activeAgents = _telemetryState.GetAllAgents().ToList();
         var finalizedChunksToIndex = new List<ChunkFinalizedEvent>();
 
         foreach (string path in activePaths)
         {
+            string[] parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string hostCandidate = parts.Length > 1 && parts[0].Equals("live", StringComparison.OrdinalIgnoreCase)
+                ? parts[1]
+                : parts[0];
+
+            var matchAgent = activeAgents.FirstOrDefault(a => string.Equals(a.Hostname, hostCandidate, StringComparison.OrdinalIgnoreCase));
+            if (matchAgent != null && !matchAgent.IsRecording)
+            {
+                // Station is streaming live in Monitor-Only mode (not recording). Skip chunk rotation and catalog indexing.
+                continue;
+            }
+
             bool rotated = await _apiClient.RotatePathRecordingAsync(config.MediaMtx.ApiPort, path, stoppingToken).ConfigureAwait(false);
             await _eventLogger.LogChunkCutAsync(config.Storage.ChunkEventLogPath, path, root, rotated, stoppingToken).ConfigureAwait(false);
 

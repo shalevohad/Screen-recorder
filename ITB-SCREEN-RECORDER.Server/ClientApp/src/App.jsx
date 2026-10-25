@@ -237,9 +237,10 @@ function CommandCenterApp() {
                             const pending = prev[hostKey];
                             const match = data.find(s => (s.hostname || s.stationId || '').toLowerCase() === hostKey.toLowerCase());
                             if (match) {
+                                const matchIsRec = match.isRecording !== undefined ? Boolean(match.isRecording) : (match.status === 'Recording');
                                 const isConfirmed =
-                                    (pending === 'starting' && match.isStreaming) ||
-                                    (pending === 'stopping' && !match.isStreaming) ||
+                                    (pending === 'starting' && matchIsRec) ||
+                                    (pending === 'stopping' && !matchIsRec) ||
                                     (match.isOnline === false);
                                 if (isConfirmed) {
                                     if (actionPendingTimeoutsRef.current[hostKey]) {
@@ -461,16 +462,16 @@ function CommandCenterApp() {
             if (!report) return;
             registerServerHeartbeat();
             const host = (report.hostname || report.stationId || '').toLowerCase();
-            const isOnline = report.isOnline !== undefined ? Boolean(report.isOnline) : true;
-            const status = typeof report.status === 'string' ? report.status : (report.isStreaming ? 'Recording' : 'Standby');
+            const isRec = report.isRecording !== undefined ? Boolean(report.isRecording) : (report.status === 'Recording');
+            const status = typeof report.status === 'string' ? report.status : (isRec ? 'Recording' : (report.isStreaming ? 'Monitoring' : 'Standby'));
 
             setActionPending(prev => {
                 const key = Object.keys(prev).find(k => k.toLowerCase() === host);
                 if (!key) return prev;
                 const pending = prev[key];
                 const isConfirmed =
-                    (pending === 'starting' && report.isStreaming) ||
-                    (pending === 'stopping' && !report.isStreaming) ||
+                    (pending === 'starting' && isRec) ||
+                    (pending === 'stopping' && !isRec) ||
                     (!isOnline);
 
                 if (isConfirmed) {
@@ -516,9 +517,10 @@ function CommandCenterApp() {
                         const pending = prev[hostKey];
                         const match = allStations.find(s => (s.hostname || s.stationId || '').toLowerCase() === hostKey.toLowerCase());
                         if (match) {
+                            const matchIsRec = match.isRecording !== undefined ? Boolean(match.isRecording) : (match.status === 'Recording');
                             const isConfirmed =
-                                (pending === 'starting' && match.isStreaming) ||
-                                (pending === 'stopping' && !match.isStreaming) ||
+                                (pending === 'starting' && matchIsRec) ||
+                                (pending === 'stopping' && !matchIsRec) ||
                                 (match.isOnline === false);
                             if (isConfirmed) {
                                 if (actionPendingTimeoutsRef.current[hostKey]) {

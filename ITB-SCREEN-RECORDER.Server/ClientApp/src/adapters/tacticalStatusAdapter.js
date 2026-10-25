@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @typedef {'neutral' | 'info' | 'success' | 'warning' | 'critical'} BadgeVariant
  * 
  * @typedef {Object} BadgeConfig
@@ -28,13 +28,22 @@ export function getStationTacticalBadgeConfig(station, recordingDuration = '') {
         };
     }
 
-    if (station.isStreaming) {
+    if (station.isRecording) {
         const timeText = recordingDuration ? ` ${recordingDuration}` : '';
         return {
-            variant: 'info',
+            variant: 'danger',
             label: `REC${timeText}`,
             pulse: true,
             ariaLabel: `Recording active${timeText}`
+        };
+    }
+
+    if (station.isStreaming) {
+        return {
+            variant: 'warning',
+            label: 'MONITOR ONLY',
+            pulse: false,
+            ariaLabel: 'Station streaming live in monitor-only mode, not recording'
         };
     }
 

@@ -90,14 +90,19 @@ export default function FullscreenModal(props) {
         return () => clearTimeout(timer);
     }, [confirmStop]);
 
-    // טיימר שידור חי נקי לחלוטין ללא קריאות setState סינכרוניות בתוך האפקט
+    const isRecording = props.isRecording !== undefined
+        ? Boolean(props.isRecording)
+        : (props.status === 'Recording' || (Boolean(isStreaming) && props.status !== 'Monitoring'));
+
+    // טיימר הקלטה פעילה - מתעדכן רק כשהעמדה מקליטה בפועל
     useEffect(() => {
-        if (!isStreaming) {
+        if (!isRecording) {
             sessionStartTimeRef.current = null;
+            setElapsedSeconds(0);
             return;
         }
 
-        const rawStart = streamingSinceUtc || props.recordingStartTime || props.startedAt || props.streamingStartedAt;
+        const rawStart = props.recordingStartedAtUtc || props.recordingStartTime || streamingSinceUtc || props.startedAt || props.streamingStartedAt;
         const parsedStart = rawStart ? new Date(rawStart).getTime() : null;
         const hasValidDate = parsedStart && !isNaN(parsedStart) && parsedStart > 0;
 
@@ -114,10 +119,9 @@ export default function FullscreenModal(props) {
         updateClock();
         const interval = setInterval(updateClock, 1000);
         return () => clearInterval(interval);
-    }, [isStreaming, streamingSinceUtc, props.recordingStartTime, props.startedAt, props.streamingStartedAt]);
+    }, [isRecording, props.recordingStartedAtUtc, props.recordingStartTime, streamingSinceUtc, props.startedAt, props.streamingStartedAt]);
 
-    // אם הסטרימינג לא פעיל, הזמן המוצג הוא תמיד 0 באופן מובטח
-    const displayElapsedSeconds = isStreaming ? elapsedSeconds : 0;
+    const displayElapsedSeconds = isRecording ? elapsedSeconds : 0;
 
     const formatElapsedTime = (totalSec) => {
         const days = Math.floor(totalSec / 86400);
@@ -165,11 +169,15 @@ export default function FullscreenModal(props) {
             >
                 <div className="stream-modal-header">
                     <div className="stream-modal-title">
-                        <span className={`live-dot ${isStreaming ? 'streaming' : 'idle'}`}></span>
+                        <span className={`live-dot ${isRecording ? 'streaming' : 'monitor'}`}></span>
                         <h2>LIVE // {hostname}</h2>
-                        {isStreaming && (
-                            <span className="uptime-badge" title="Active stream duration">
+                        {isRecording ? (
+                            <span className="uptime-badge" title="Active recording duration">
                                 {formatElapsedTime(displayElapsedSeconds)}
+                            </span>
+                        ) : (
+                            <span className="monitor-only-pill" title="Station is streaming live in monitor-only mode, not recording to disk">
+                                👁 MONITOR ONLY • NOT RECORDING
                             </span>
                         )}
                     </div>
@@ -232,27 +240,27 @@ export default function FullscreenModal(props) {
                     )}
 
                     <div className="modal-actions-cluster">
-                        {!isStreaming ? (
+                        {!isRecording ? (
                             <button
                                 type="button"
-                                className="act-pill-btn start"
+                                className="act-pill-btn start-rec"
                                 onClick={() => onToggleStream?.(hostname, false)}
-                                title="Start Stream"
+                                title="Start Recording"
                             >
-                                START
+                                START REC
                             </button>
                         ) : !confirmStop ? (
                             <button
                                 type="button"
                                 className="act-pill-btn stop"
                                 onClick={() => setConfirmStop(true)}
-                                title="Stop Stream"
+                                title="Stop Recording (Remain in Live Monitor)"
                             >
-                                STOP
+                                STOP REC
                             </button>
                         ) : (
                             <div className="safe-stop-confirm">
-                                <span>STOP?</span>
+                                <span>STOP REC?</span>
                                 <button
                                     type="button"
                                     className="confirm-btn yes"
@@ -291,7 +299,7 @@ export default function FullscreenModal(props) {
                     </button>
                 </div>
 
-                <div className="stream-modal-body">
+                <div className={`stream-modal-body ${!isRecording ? 'is-not-recording' : ''}`}>
                     {!isVideoPlaying && (
                         <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
                             <CyberLoadingOverlay
@@ -313,6 +321,12 @@ export default function FullscreenModal(props) {
                             registerStationStream?.(hostname, stream);
                         }}
                     />
+
+                    {!isRecording && (
+                        <div className="fullscreen-monitor-watermark">
+                            👁 MONITOR ONLY — NOT RECORDING
+                        </div>
+                    )}
 
                     {isStreaming && (
                         <LiveKeystrokeOverlay

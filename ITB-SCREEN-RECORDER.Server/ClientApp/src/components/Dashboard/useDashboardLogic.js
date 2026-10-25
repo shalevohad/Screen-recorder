@@ -212,8 +212,8 @@ export function useDashboardLogic({
         else if (currentTabFilter === 'OFFLINE') list = list.filter(s => !s.isOnline);
         else if (hideOffline) list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
 
-        if (currentTabFilter === 'RECORDING') list = list.filter(s => s.isStreaming);
-        else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !s.isStreaming);
+        if (currentTabFilter === 'RECORDING') list = list.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording')));
+        else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !Boolean(s.isRecording ?? (s.status === 'Recording')));
         else if (currentTabFilter === 'ONLINE') list = list.filter(s => s.isOnline);
 
         if (searchQuery.trim()) {
@@ -352,18 +352,18 @@ export function useDashboardLogic({
     }, [processedStations, currentPage, itemsPerPage]);
 
     const canSort = processedStations.length > 1;
-    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming), [processedStations]);
-    const canStopAny = useMemo(() => processedStations.some(s => s.isStreaming), [processedStations]);
+    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !Boolean(s.isRecording ?? (s.status === 'Recording'))), [processedStations]);
+    const canStopAny = useMemo(() => processedStations.some(s => Boolean(s.isRecording ?? (s.status === 'Recording'))), [processedStations]);
 
     const handleFilteredBulkStart = () => {
         if (!canStartAny) return;
-        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming).map(s => s.hostname);
+        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !Boolean(s.isRecording ?? (s.status === 'Recording'))).map(s => s.hostname);
         onBulkStart?.(targetHostnames, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
     };
 
     const handleFilteredBulkStop = () => {
         if (!canStopAny) return;
-        const targetHostnames = processedStations.filter(s => s.isStreaming).map(s => s.hostname);
+        const targetHostnames = processedStations.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording'))).map(s => s.hostname);
         onBulkStop?.(targetHostnames);
     };
 

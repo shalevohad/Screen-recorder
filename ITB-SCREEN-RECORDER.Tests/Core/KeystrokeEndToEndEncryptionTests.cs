@@ -339,13 +339,14 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
         Assert.True(nextRespA.ShouldStream);
         Assert.Equal(ServerCommand.StartStream, nextRespA.Command);
 
-        // 2. הפעלת Stop All ממוקד על עמדה B (Stop Requested)
+        // 2. הפעלת Stop Recording ממוקד על עמדה B (Stop Recording Requested -> Monitor Only)
         telemetryState.SetAgentStreamState(stationB, false);
 
-        // ה-Heartbeat הבא של עמדה B מקבל פקודת StopStream ו-ShouldStream = false
+        // העמדה ממשיכה לשדר בלייב תמיד (24/7 Live Monitoring), אך מצב ההקלטה מופסק
         var nextRespB = await telemetryState.ProcessHeartbeatAsync(reportB, "127.0.0.1");
         Assert.NotNull(nextRespB);
-        Assert.False(nextRespB.ShouldStream);
-        Assert.Equal(ServerCommand.StopStream, nextRespB.Command);
+        Assert.True(nextRespB.ShouldStream);
+        Assert.False(reportB.IsRecording);
+        Assert.Null(reportB.RecordingStartedAtUtc);
     }
 }
