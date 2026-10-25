@@ -1,7 +1,15 @@
-// Client/src/components/Dashboard/useDashboardLogic.js
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useAlertSnooze } from '../../hooks/useAlertSnooze';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
+
+export const isStationNotRecording = (s) => {
+    if (!s) return false;
+    const isOnline = Boolean(s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
+    if (!isOnline) return false;
+    const isRec = Boolean(s.isRecording ?? (s.status === 'Recording'));
+    return !isRec;
+};
 
 const getCssPixelValue = (varName, fallback) => {
     if (typeof window === 'undefined') return fallback;
@@ -17,7 +25,8 @@ export function useDashboardLogic({
     onBulkStart,
     onBulkStop,
     onUpdateStationSettings,
-    onQuickExport
+    onQuickExport,
+    onToggleStream
 }) {
     const [sortAsc, setSortAsc] = useState(true);
     const [inspectedHostname, setInspectedHostname] = useState(null);
@@ -203,6 +212,119 @@ export function useDashboardLogic({
     useEffect(() => localStorage.setItem('itb_dashboard_auto_zoom', JSON.stringify(isAutoZoom)), [isAutoZoom]);
     useEffect(() => { if (isSearchOpen && searchInputRef.current) searchInputRef.current.focus(); }, [isSearchOpen]);
 
+    // ==========================================
+    // 🔔 Recording Alert Snooze & Prioritization Engine
+    // ==========================================
+    const {
+        snoozedStations,
+        isStationSnoozed,
+        getRemainingMinutes,
+        getSnoozeReason,
+        snoozeStation,
+        snoozeMultipleStations,
+        cancelSnooze,
+        cancelAllSnoozes
+    } = useAlertSnooze();
+
+    const [isPrioritizeAlertsAtFront, setIsPrioritizeAlertsAtFront] = useState(() => {
+        try {
+            const saved = localStorage.getItem('itb_dashboard_prioritize_alerts');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch {
+            return true;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('itb_dashboard_prioritize_alerts', JSON.stringify(isPrioritizeAlertsAtFront));
+        } catch { /* noop */ }
+    }, [isPrioritizeAlertsAtFront]);
+
+    // All unrecorded stations across current tab selection
+    const unrecordedStations = useMemo(() => {
+        return tabFilteredStations.filter(isStationNotRecording);
+    }, [tabFilteredStations]);
+
+    // Active unrecorded alerts (not snoozed)
+    const activeUnrecordedStations = useMemo(() => {
+        return unrecordedStations.filter(s => !isStationSnoozed(s.hostname));
+    }, [unrecordedStations, isStationSnoozed]);
+
+    // Snoozed unrecorded stations
+    const activeSnoozedStations = useMemo(() => {
+        return unrecordedStations
+            .filter(s => isStationSnoozed(s.hostname))
+            .map(s => ({
+                ...s,
+                remainingMinutes: getRemainingMinutes(s.hostname),
+                snoozeReason: getSnoozeReason(s.hostname)
+            }));
+    }, [unrecordedStations, isStationSnoozed, getRemainingMinutes, getSnoozeReason]);
+
+    // Modal state for snoozing alert(s)
+    const [snoozeModalState, setSnoozeModalState] = useState({
+        isOpen: false,
+        targetHostname: null,
+        isBulk: false,
+        bulkCount: 0
+    });
+
+    const handleOpenSnoozeModal = useCallback((hostname) => {
+        setSnoozeModalState({
+            isOpen: true,
+            targetHostname: hostname,
+            isBulk: false,
+            bulkCount: 1
+        });
+    }, []);
+
+    const handleOpenBulkSnoozeModal = useCallback(() => {
+        setSnoozeModalState({
+            isOpen: true,
+            targetHostname: null,
+            isBulk: true,
+            bulkCount: activeUnrecordedStations.length
+        });
+    }, [activeUnrecordedStations.length]);
+
+    const handleCloseSnoozeModal = useCallback(() => {
+        setSnoozeModalState(prev => ({ ...prev, isOpen: false }));
+    }, []);
+
+    const handleConfirmSnooze = useCallback((minutes, reason) => {
+        if (snoozeModalState.isBulk) {
+            const targets = activeUnrecordedStations.map(s => s.hostname);
+            snoozeMultipleStations(targets, minutes, reason);
+        } else if (snoozeModalState.targetHostname) {
+            snoozeStation(snoozeModalState.targetHostname, minutes, reason);
+        }
+        setSnoozeModalState(prev => ({ ...prev, isOpen: false }));
+    }, [snoozeModalState, activeUnrecordedStations, snoozeMultipleStations, snoozeStation]);
+
+    const handleCancelSnoozeModal = useCallback(() => {
+        if (snoozeModalState.targetHostname) {
+            cancelSnooze(snoozeModalState.targetHostname);
+        }
+        setSnoozeModalState(prev => ({ ...prev, isOpen: false }));
+    }, [snoozeModalState.targetHostname, cancelSnooze]);
+
+    const handleStartRecordingStation = useCallback((hostname) => {
+        onToggleStream?.(hostname, false, {
+            bitrate: activeFleetTabConfig?.defaultBitrate || null,
+            fps: activeFleetTabConfig?.defaultFps || null
+        });
+    }, [onToggleStream, activeFleetTabConfig]);
+
+    const handleStartRecordingAllUnrecorded = useCallback(() => {
+        const targets = activeUnrecordedStations.map(s => s.hostname);
+        if (targets.length === 0) return;
+        onBulkStart?.(targets, {
+            bitrate: activeFleetTabConfig?.defaultBitrate || null,
+            fps: activeFleetTabConfig?.defaultFps || null
+        });
+    }, [activeUnrecordedStations, onBulkStart, activeFleetTabConfig]);
+
     const faultyStationsCount = useMemo(() => tabFilteredStations.filter(isStationFaulty).length, [tabFilteredStations]);
     useEffect(() => { if (isFaultFilterActive && faultyStationsCount === 0) onExitFaultFilter?.(); }, [isFaultFilterActive, faultyStationsCount, onExitFaultFilter]);
 
@@ -222,20 +344,30 @@ export function useDashboardLogic({
         }
 
         list.sort((a, b) => {
+            if (isPrioritizeAlertsAtFront) {
+                const aAlertActive = isStationNotRecording(a) && !isStationSnoozed(a.hostname);
+                const bAlertActive = isStationNotRecording(b) && !isStationSnoozed(b.hostname);
+                if (aAlertActive && !bAlertActive) return -1;
+                if (!aAlertActive && bAlertActive) return 1;
+            }
             const comp = (a.displayName || a.hostname || '').toLowerCase().localeCompare((b.displayName || b.hostname || '').toLowerCase(), undefined, { numeric: true, sensitivity: 'base' });
             return sortAsc ? comp : -comp;
         });
 
-        if (activeFleetTabConfig) {
-            list = list.map(station => ({
+        list = list.map(station => {
+            const isSnoozed = isStationSnoozed(station.hostname);
+            return {
                 ...station,
-                effectiveBitrate: station.customBitrate || activeFleetTabConfig.defaultBitrate || station.bitrate,
-                effectiveFps: station.customFps || activeFleetTabConfig.defaultFps || station.fps
-            }));
-        }
+                isSnoozed,
+                snoozeRemainingMinutes: isSnoozed ? getRemainingMinutes(station.hostname) : 0,
+                snoozeReason: isSnoozed ? getSnoozeReason(station.hostname) : null,
+                effectiveBitrate: station.customBitrate || activeFleetTabConfig?.defaultBitrate || station.bitrate,
+                effectiveFps: station.customFps || activeFleetTabConfig?.defaultFps || station.fps
+            };
+        });
 
         return list;
-    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, activeFleetTabConfig]);
+    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
 
     const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
     if (
@@ -402,6 +534,14 @@ export function useDashboardLogic({
 
         canSort, canStartAny, canStopAny,
         keystrokeMode, setKeystrokeMode, handleCycleKeystrokeMode,
+
+        // Alert & Snooze engine exports
+        isPrioritizeAlertsAtFront, setIsPrioritizeAlertsAtFront,
+        unrecordedStations, activeUnrecordedStations, activeSnoozedStations,
+        snoozeModalState, handleOpenSnoozeModal, handleOpenBulkSnoozeModal,
+        handleCloseSnoozeModal, handleConfirmSnooze, handleCancelSnoozeModal,
+        cancelSnooze, cancelAllSnoozes,
+        handleStartRecordingStation, handleStartRecordingAllUnrecorded,
 
         handleToggleFeature, handleCloseFeature, handleFeatureQuickExport,
         handleZoomOut, handleZoomIn, handleSliderChange,

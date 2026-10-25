@@ -13,6 +13,8 @@ import DashboardDock from './DashboardDock';
 import SearchShelf from './SearchShelf';
 import StationsGridView from './StationsGridView';
 import StationsDenseView from './StationsDenseView';
+import NotRecordingAlertBanner from './NotRecordingAlertBanner';
+import SnoozeAlertModal from './SnoozeAlertModal';
 
 import './DashboardGrid.scss';
 
@@ -159,6 +161,20 @@ export default function DashboardGrid(props) {
                         onToggleHideOffline={onToggleHideOffline}
                     />
 
+                    {!isFeatureMode && (
+                        <NotRecordingAlertBanner
+                            unrecordedStations={logic.activeUnrecordedStations}
+                            snoozedStations={logic.activeSnoozedStations}
+                            onStartRecordingStation={logic.handleStartRecordingStation}
+                            onStartRecordingAll={logic.handleStartRecordingAllUnrecorded}
+                            onOpenSnoozeModal={logic.handleOpenSnoozeModal}
+                            onOpenBulkSnoozeModal={logic.handleOpenBulkSnoozeModal}
+                            onSelectStation={(h) => logic.setInspectedHostname(h)}
+                            isPrioritizeAtFront={logic.isPrioritizeAlertsAtFront}
+                            onTogglePrioritizeAtFront={() => logic.setIsPrioritizeAlertsAtFront(p => !p)}
+                        />
+                    )}
+
                     <FleetTabs
                         activeTabId={logic.activeTabId}
                         onTabChange={logic.setActiveTabId}
@@ -231,6 +247,8 @@ export default function DashboardGrid(props) {
                                         handleFeatureQuickExport={logic.handleFeatureQuickExport}
                                         liveKeystrokes={liveKeystrokes}
                                         keystrokeMode={logic.keystrokeMode}
+                                        onOpenSnoozeModal={logic.handleOpenSnoozeModal}
+                                        onCancelSnooze={logic.cancelSnooze}
                                     />
                                 ) : (
                                     <StationsDenseView
@@ -245,6 +263,8 @@ export default function DashboardGrid(props) {
                                         setFullscreenHostname={logic.setFullscreenHostname}
                                         liveKeystrokes={liveKeystrokes}
                                         keystrokeMode={logic.keystrokeMode}
+                                        onOpenSnoozeModal={logic.handleOpenSnoozeModal}
+                                        onCancelSnooze={logic.cancelSnooze}
                                     />
                                 )}
 
@@ -351,6 +371,18 @@ export default function DashboardGrid(props) {
                     }}
                 />
             )}
+
+            <SnoozeAlertModal
+                isOpen={logic.snoozeModalState.isOpen}
+                onClose={logic.handleCloseSnoozeModal}
+                targetHostname={logic.snoozeModalState.targetHostname}
+                isBulk={logic.snoozeModalState.isBulk}
+                bulkCount={logic.snoozeModalState.bulkCount}
+                isCurrentlySnoozed={logic.snoozeModalState.targetHostname ? (logic.processedStations.find(s => s.hostname === logic.snoozeModalState.targetHostname)?.isSnoozed || false) : false}
+                currentRemainingMinutes={logic.snoozeModalState.targetHostname ? (logic.processedStations.find(s => s.hostname === logic.snoozeModalState.targetHostname)?.snoozeRemainingMinutes || 0) : 0}
+                onConfirmSnooze={logic.handleConfirmSnooze}
+                onCancelSnooze={logic.handleCancelSnoozeModal}
+            />
         </div>
     );
 }

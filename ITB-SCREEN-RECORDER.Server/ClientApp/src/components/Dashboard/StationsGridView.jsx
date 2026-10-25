@@ -17,7 +17,9 @@ export default function StationsGridView({
     onQuickPlayback,
     handleFeatureQuickExport,
     liveKeystrokes = {},
-    keystrokeMode = 'burn-in'
+    keystrokeMode = 'burn-in',
+    onOpenSnoozeModal,
+    onCancelSnooze
 }) {
     return (
         <div
@@ -60,6 +62,8 @@ export default function StationsGridView({
                         onQuickExport={handleFeatureQuickExport}
                         recentKeystrokes={station.recentKeystrokes || liveKeystrokes[station.hostname?.toLowerCase()]}
                         keystrokeMode={keystrokeMode}
+                        onOpenSnoozeModal={onOpenSnoozeModal}
+                        onCancelSnooze={onCancelSnooze}
                     />
                 </div>
             ))}

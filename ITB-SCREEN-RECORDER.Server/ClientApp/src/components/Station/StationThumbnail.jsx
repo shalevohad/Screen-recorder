@@ -143,9 +143,12 @@ export default function StationThumbnail(props) {
         return isAudioLive ? 'AUDIO ON' : 'MUTED';
     };
 
+    const isAlertActive = isLive && !isRecording && !props.isSnoozed;
+    const isAlertSnoozed = isLive && !isRecording && Boolean(props.isSnoozed);
+
     return (
         <div
-            className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${isLive && !isRecording ? 'is-not-recording' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
+            className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${isLive && !isRecording ? 'is-not-recording' : ''} ${isAlertActive ? 'alert-active' : ''} ${isAlertSnoozed ? 'alert-snoozed' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
             onClick={() => onSelectStation?.(props)}
             title="Click card to open Station Inspector"
         >
@@ -168,6 +171,21 @@ export default function StationThumbnail(props) {
                         <span className="audio-icon">{isListeningThisStation ? '🟢' : '🎧'}</span>
                         <span>{isListeningThisStation ? 'LISTENING' : 'LISTEN'}</span>
                     </button>
+
+                    {isLive && !isRecording && (
+                        <button
+                            type="button"
+                            className={`tactical-snooze-btn ${isAlertSnoozed ? 'is-snoozed' : ''}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                props.onOpenSnoozeModal?.(hostname);
+                            }}
+                            title={isAlertSnoozed ? `Postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust or cancel.` : "Postpone recording alert (Snooze)"}
+                        >
+                            <span>⏱</span>
+                            <span>{isAlertSnoozed ? `SNOOZED (${props.snoozeRemainingMinutes || 0}m)` : 'SNOOZE'}</span>
+                        </button>
+                    )}
 
                     <button
                         type="button"
@@ -239,13 +257,26 @@ export default function StationThumbnail(props) {
                         />
                         {!isRecording && (
                             <div className="monitor-only-overlay">
-                                <span className="monitor-tag">
+                                <span className={`monitor-tag ${isAlertActive ? 'alert' : 'snoozed'}`}>
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12">
                                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                         <circle cx="12" cy="12" r="3" />
                                     </svg>
-                                    MONITOR ONLY • NOT RECORDING
+                                    {isAlertActive ? '⚠️ NOT RECORDING • LIVE MONITOR ONLY' : `⏱ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}
                                 </span>
+                                {isAlertActive && (
+                                    <button
+                                        type="button"
+                                        className="monitor-snooze-action"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            props.onOpenSnoozeModal?.(hostname);
+                                        }}
+                                        title="Postpone alert for this workstation"
+                                    >
+                                        ⏱ Postpone Alert
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
