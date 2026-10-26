@@ -974,7 +974,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     MachineName = Environment.MachineName,
                     OsVersion = Environment.OSVersion.ToString(),
-                    AgentVersion = "1.0.4",
+                    AgentVersion = typeof(AgentSupervisorService).Assembly.GetName().Version?.ToString(3) ?? "1.0.41",
                     RequestTimestampUtc = DateTime.UtcNow
                 };
 
