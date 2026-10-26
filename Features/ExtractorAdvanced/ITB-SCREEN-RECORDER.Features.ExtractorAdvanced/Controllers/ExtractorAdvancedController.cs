@@ -59,6 +59,22 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             if (string.IsNullOrWhiteSpace(stationId)) return BadRequest("stationId is required.");
             stationId = stationId.Trim();
 
+            if (stationId.StartsWith("live/", StringComparison.OrdinalIgnoreCase))
+            {
+                stationId = stationId.Substring(5);
+            }
+
+            // Resolve station role alias if stationId was passed as a role alias instead of physical hostname
+            if (_stationRoleProvider != null)
+            {
+                var aliases = await _stationRoleProvider.GetAllStationRoleAliasesAsync();
+                var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(stationId, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(match.Key))
+                {
+                    stationId = match.Key;
+                }
+            }
+
             long lStart = (long)Math.Round(startEpoch);
             long lEnd = (long)Math.Round(endEpoch);
 

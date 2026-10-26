@@ -3,6 +3,13 @@
 // ==========================================
 
 /**
+ * Calibration offset (in milliseconds) to compensate for endpoint video encoding,
+ * RTMP streaming transport, and MediaMTX storage chunk indexing latency.
+ * Aligns keystroke overlays and timeline ruler ticks with the visual video frame.
+ */
+export const KEYSTROKE_CALIBRATION_OFFSET_MS = 2500;
+
+/**
  * Comprehensive dictionary of keyboard Virtual Key Codes (0–255).
  * Covers standard keys, navigation and editing, Numpad, function keys (F1–F24),
  * media, browser controls, and OEM punctuation symbols.

@@ -2,7 +2,7 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Player/KeystrokePlaybackOverlay.jsx
 // ==========================================
 import React, { useMemo } from 'react';
-import { cleanKeyCombination, parseKeyCombination } from '../../utils/virtualKeyMap.js';
+import { cleanKeyCombination, parseKeyCombination, KEYSTROKE_CALIBRATION_OFFSET_MS } from '../../utils/virtualKeyMap.js';
 import './KeystrokePlaybackOverlay.scss';
 
 const DISPLAY_DURATION_MS = 2200;
@@ -37,7 +37,8 @@ export default function KeystrokePlaybackOverlay({
 
         for (let i = keystrokes.length - 1; i >= 0; i--) {
             const k = keystrokes[i];
-            const elapsed = currentEpochMs - k.epochMs;
+            const calibratedEpochMs = k.epochMs + KEYSTROKE_CALIBRATION_OFFSET_MS;
+            const elapsed = currentEpochMs - calibratedEpochMs;
 
             if (elapsed >= 0 && elapsed <= DISPLAY_DURATION_MS) {
                 return {

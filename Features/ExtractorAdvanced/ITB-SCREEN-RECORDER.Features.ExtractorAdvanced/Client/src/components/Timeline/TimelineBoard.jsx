@@ -47,6 +47,7 @@ export default function TimelineBoard({
     onJumpViewportTo,
     keystrokeMode = 'BURN_IN',
     onChangeKeystrokeMode,
+    keystrokes = [],
     showKeystrokes = false,
     showRulerKeystrokes = false,
     onToggleRulerKeystrokes
@@ -206,8 +207,10 @@ export default function TimelineBoard({
                             outPointMs={outPointMs}
                             earliestMediaMs={earliestMediaMs}
                             movieBoundaries={movieBoundaries}
+                            stationHostname={activeStationObj?.hostname || activeStationObj?.id || activeStationObj?.name}
                             activeStationName={activeStationObj?.displayName || activeStationObj?.hostname || activeStationObj?.name}
                             showKeystrokes={Boolean(showRulerKeystrokes ?? showKeystrokes)}
+                            keystrokes={keystrokes}
                         />
                     </div>
                 </div>

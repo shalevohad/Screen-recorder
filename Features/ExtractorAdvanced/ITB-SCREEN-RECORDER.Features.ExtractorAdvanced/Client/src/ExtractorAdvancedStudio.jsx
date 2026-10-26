@@ -215,14 +215,15 @@ export default function ExtractorAdvancedStudio() {
         const targetStation = isSpotlightOpen ? (spotlightStation || activeStation) : activeStation;
         const stationName = targetStation?.hostname || targetStation?.displayName || targetStation?.id;
         const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
+        const shouldFetch = (normalizedMode !== 'NONE' && normalizedMode !== 'OFF') || showRulerKeystrokes;
 
-        if (!stationName || !timelineBaseEpochMs || normalizedMode === 'NONE' || normalizedMode === 'OFF') {
+        if (!stationName || !timelineBaseEpochMs || !shouldFetch) {
             setActiveStationKeystrokes([]);
             return;
         }
 
-        const startEpoch = timelineBaseEpochMs;
-        const endEpoch = timelineBaseEpochMs + totalTimelineDurationMs;
+        const startEpoch = Math.max(0, timelineBaseEpochMs - 5000);
+        const endEpoch = timelineBaseEpochMs + totalTimelineDurationMs + 5000;
         const ac = new AbortController();
 
         fetch(`/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(stationName)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`, { signal: ac.signal })
@@ -233,7 +234,7 @@ export default function ExtractorAdvancedStudio() {
             });
 
         return () => ac.abort();
-    }, [activeStation, spotlightStation, isSpotlightOpen, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode]);
+    }, [activeStation, spotlightStation, isSpotlightOpen, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode, showRulerKeystrokes]);
 
     useEffect(() => {
         if (selectedStationIds.length === 1) {
@@ -642,6 +643,7 @@ export default function ExtractorAdvancedStudio() {
                                     onEstimateLoaded={(est) => est?.removedGlobalGaps && setGlobalGaps(est.removedGlobalGaps)}
                                     keystrokeMode={keystrokeMode}
                                     onChangeKeystrokeMode={setKeystrokeMode}
+                                    keystrokes={activeStationKeystrokes}
                                     showKeystrokes={showRulerKeystrokes}
                                     showRulerKeystrokes={showRulerKeystrokes}
                                     onToggleRulerKeystrokes={() => setShowRulerKeystrokes(prev => !prev)}

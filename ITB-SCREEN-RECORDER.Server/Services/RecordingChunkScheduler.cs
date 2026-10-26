@@ -351,7 +351,12 @@ public class RecordingChunkScheduler : BackgroundService
                 int width = display?.Width ?? (agent.ScreenWidth > 0 ? agent.ScreenWidth : 0);
                 int height = display?.Height ?? (agent.ScreenHeight > 0 ? agent.ScreenHeight : 0);
                 int fps = display?.TargetFps ?? (agent.ActualFps > 0 ? agent.ActualFps : (agent.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0));
-                bool hasAudio = string.Equals(displayId, "mon-0", StringComparison.OrdinalIgnoreCase) && agent.HasAudio;
+                
+                bool isCarrier = display?.HasAudio 
+                    ?? (agent.DisplayTopology?.AudioCarrierDisplayId != null 
+                        ? string.Equals(displayId, agent.DisplayTopology.AudioCarrierDisplayId, StringComparison.OrdinalIgnoreCase) 
+                        : string.Equals(displayId, "mon-0", StringComparison.OrdinalIgnoreCase));
+                bool hasAudio = isCarrier && agent.HasAudio;
 
                 return (width, height, fps, hasAudio);
             }

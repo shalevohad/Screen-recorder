@@ -608,6 +608,7 @@ export default function SoloSpotlightModal({
                         }}
                         keystrokeMode={keystrokeMode}
                         onChangeKeystrokeMode={onChangeKeystrokeMode}
+                        keystrokes={keystrokes}
                         showKeystrokes={showRulerKeystrokes}
                         showRulerKeystrokes={showRulerKeystrokes}
                         onToggleRulerKeystrokes={onToggleRulerKeystrokes}

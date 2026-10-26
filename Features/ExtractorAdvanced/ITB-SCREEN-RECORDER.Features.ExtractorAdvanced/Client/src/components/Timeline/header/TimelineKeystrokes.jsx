@@ -2,56 +2,69 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx
 // ==========================================
 import React, { useState, useEffect, useMemo, memo } from 'react';
-import { cleanKeyName } from '../../../utils/virtualKeyMap.js';
+import { cleanKeyName, KEYSTROKE_CALIBRATION_OFFSET_MS } from '../../../utils/virtualKeyMap.js';
 import './TimelineKeystrokes.scss';
 
 const MIN_PIXEL_DISTANCE = 8; // Pixel distance threshold for clustering close keystroke events
 
 function TimelineKeystrokes({
     activeStationName = '',
+    stationHostname = '',
+    keystrokes: propKeystrokes = null,
     baseEpochMs = 0,
     viewportStartMs = 0,
     viewportDurationMs = 3600000,
     pixelWidth = 1000,
     onSeek
 }) {
-    const [keystrokes, setKeystrokes] = useState([]);
+    const [fetchedKeystrokes, setFetchedKeystrokes] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+
+    const queryStation = stationHostname || activeStationName;
 
     // Viewport-aware data fetching with previous request cancellation on fast drag/zoom
     useEffect(() => {
-        if (!activeStationName || !baseEpochMs || viewportDurationMs <= 0) {
-            setKeystrokes([]);
+        // If external propKeystrokes are supplied, we use them directly without secondary fetch
+        if (propKeystrokes && Array.isArray(propKeystrokes) && propKeystrokes.length > 0) {
+            return;
+        }
+
+        if (!queryStation || !baseEpochMs || viewportDurationMs <= 0) {
+            setFetchedKeystrokes([]);
             return;
         }
 
         const abortController = new AbortController();
-        const startEpoch = baseEpochMs + viewportStartMs;
-        const endEpoch = startEpoch + viewportDurationMs;
+        const startEpoch = Math.max(0, baseEpochMs + viewportStartMs - KEYSTROKE_CALIBRATION_OFFSET_MS);
+        const endEpoch = baseEpochMs + viewportStartMs + viewportDurationMs + KEYSTROKE_CALIBRATION_OFFSET_MS;
 
         setIsLoading(true);
 
-        const url = `/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(activeStationName)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`;
+        const url = `/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(queryStation)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`;
 
         fetch(url, { signal: abortController.signal })
             .then(res => res.ok ? res.json() : [])
             .then(data => {
-                setKeystrokes(Array.isArray(data) ? data : []);
+                setFetchedKeystrokes(Array.isArray(data) ? data : []);
                 setIsLoading(false);
             })
             .catch(err => {
                 if (err.name !== 'AbortError') {
-                    setKeystrokes([]);
+                    setFetchedKeystrokes([]);
                     setIsLoading(false);
                 }
             });
 
         return () => abortController.abort();
-    }, [activeStationName, baseEpochMs, viewportStartMs, viewportDurationMs]);
+    }, [queryStation, baseEpochMs, viewportStartMs, viewportDurationMs, propKeystrokes]);
+
+    const activeKeystrokes = (propKeystrokes && Array.isArray(propKeystrokes) && propKeystrokes.length > 0)
+        ? propKeystrokes
+        : fetchedKeystrokes;
 
     // Pixel distance clustering algorithm (prevents DOM clutter and tick overlap)
     const clusters = useMemo(() => {
-        if (!keystrokes.length || viewportDurationMs <= 0 || pixelWidth <= 0) {
+        if (!activeKeystrokes.length || viewportDurationMs <= 0 || pixelWidth <= 0) {
             return [];
         }
 
@@ -59,24 +72,25 @@ function TimelineKeystrokes({
         const viewEndEpoch = viewStartEpoch + viewportDurationMs;
 
         // Sort ascending by Epoch timestamp
-        const sorted = [...keystrokes].sort((a, b) => a.epochMs - b.epochMs);
+        const sorted = [...activeKeystrokes].sort((a, b) => a.epochMs - b.epochMs);
         const result = [];
         let currentCluster = null;
         let lastPixel = -999;
 
         for (const evt of sorted) {
-            if (evt.epochMs < viewStartEpoch || evt.epochMs > viewEndEpoch) {
+            const calibratedEpochMs = evt.epochMs + KEYSTROKE_CALIBRATION_OFFSET_MS;
+            if (calibratedEpochMs < viewStartEpoch || calibratedEpochMs > viewEndEpoch) {
                 continue;
             }
 
-            const offsetMs = evt.epochMs - baseEpochMs;
+            const offsetMs = calibratedEpochMs - baseEpochMs;
             const currentPixel = ((offsetMs - viewportStartMs) / viewportDurationMs) * pixelWidth;
 
             if (currentCluster && (currentPixel - lastPixel) < MIN_PIXEL_DISTANCE) {
                 // Merge into existing cluster
                 currentCluster.events.push(evt);
                 currentCluster.endOffsetMs = offsetMs;
-                currentCluster.endEpochMs = evt.epochMs;
+                currentCluster.endEpochMs = calibratedEpochMs;
                 lastPixel = currentPixel;
             } else {
                 // Initialize new cluster
@@ -85,8 +99,8 @@ function TimelineKeystrokes({
                     id: `kc_${evt.epochMs}_${result.length}`,
                     startOffsetMs: offsetMs,
                     endOffsetMs: offsetMs,
-                    startEpochMs: evt.epochMs,
-                    endEpochMs: evt.epochMs,
+                    startEpochMs: calibratedEpochMs,
+                    endEpochMs: calibratedEpochMs,
                     pct,
                     events: [evt]
                 };
@@ -96,7 +110,7 @@ function TimelineKeystrokes({
         }
 
         return result;
-    }, [keystrokes, baseEpochMs, viewportStartMs, viewportDurationMs, pixelWidth]);
+    }, [activeKeystrokes, baseEpochMs, viewportStartMs, viewportDurationMs, pixelWidth]);
 
 
 function formatBadgeText(cluster) {

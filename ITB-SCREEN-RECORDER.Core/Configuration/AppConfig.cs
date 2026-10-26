@@ -21,6 +21,12 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         public string VideoBitrate { get; set; } = "5M";
         public string VideoEncoder { get; set; } = "auto";
 
+        /// <summary>
+        /// Anti-flipflop stabilization hold-off duration (in seconds) required for a restored primary display
+        /// to remain continuously present before reclaiming the audio carrier from a surviving secondary display.
+        /// </summary>
+        public int AudioCarrierHysteresisSeconds { get; set; } = 60;
+
         public int DiscoveryPort { get; set; } = 5098;
         public string DiscoveryMulticastAddress { get; set; } = "239.210.1.5";
         public string DiscoveryBroadcastAddress { get; set; } = "255.255.255.255";

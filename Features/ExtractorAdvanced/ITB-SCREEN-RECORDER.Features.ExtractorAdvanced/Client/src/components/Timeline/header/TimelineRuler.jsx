@@ -29,8 +29,10 @@ export default function TimelineRuler({
     outPointMs = null,
     earliestMediaMs = null,
     movieBoundaries = null,
+    stationHostname = '',
     activeStationName = '',
-    showKeystrokes = true
+    showKeystrokes = true,
+    keystrokes = []
 }) {
     const rulerRef = useRef(null);
     const [pixelWidth, setPixelWidth] = useState(1000);
@@ -313,12 +315,14 @@ export default function TimelineRuler({
 
                 {showKeystrokes && (
                     <TimelineKeystrokes
+                        stationHostname={stationHostname}
                         activeStationName={activeStationName}
                         baseEpochMs={baseEpochMs}
                         viewportStartMs={viewportStartMs}
                         viewportDurationMs={viewportDurationMs}
                         pixelWidth={pixelWidth}
                         onSeek={onSeek}
+                        keystrokes={keystrokes}
                     />
                 )}
 

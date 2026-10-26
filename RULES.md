@@ -149,10 +149,13 @@ Workstations equipped with multiple physical displays (whether driven by a singl
   - Display connection or disconnection events (`WM_DISPLAYCHANGE`, DXGI `DXGI_ERROR_ACCESS_LOST`, XRandR notifications) must NOT interrupt or restart existing healthy streams.
   - When a monitor is disconnected, its specific FFmpeg encoder pipeline gracefully flushes and closes its active chunk. The primary stream continues recording without dropping a frame.
   - When a new monitor is connected at runtime, a dedicated capture pipeline spins up dynamically and begins streaming/recording from the next keyframe.
-- **Real-Time Audio Carrier Failover & Restoration (Enforced)**:
-  - Station audio (WASAPI loopback + mic mix) is bound exclusively to the designated Primary Audio Carrier (`mon-0`) to eliminate network duplication and acoustic phasing.
-  - **Failover on Disconnect**: If `mon-0` (or the active audio carrier) disconnects, `MultiDisplayPipelineManager` identifies the loss, promotes the first surviving display (e.g. `mon-1`) to become the new Audio Carrier, and seamlessly re-engages its pipeline with `audioChannels: 2`. The dynamic audio loop and `AudioPacer` immediately route sound to the newly promoted carrier within <800ms, ensuring zero audio dropouts.
-  - **Restoration on Reconnect**: When `mon-0` is reconnected, it reclaims primary audio carrier status with `audioChannels: 2`, while the secondary display is cleanly demoted back to video-only (`audioChannels: 0`), guaranteeing that exactly one audio carrier exists across all workstation streams.
+- **Real-Time Audio Carrier Failover & Anti-Flipflop Governor (Enforced)**:
+  - Station audio (WASAPI loopback + mic mix) is bound exclusively to a single active Audio Carrier display to eliminate network duplication and acoustic phasing.
+  - **Failover on Disconnect**: If `mon-0` (or the active carrier) disconnects, `MultiDisplayPipelineManager` detects the disconnection immediately, promotes the first surviving display (e.g. `mon-1`) to become the new Audio Carrier (`audioChannels: 2`), and updates `CurrentTopology.AudioCarrierDisplayId`. Sound continues seamlessly with <800ms failover handover and zero audio loss.
+  - **Anti-Flipflop 60s Stabilization Buffer on Reconnect**: When `mon-0` reconnects or flaps (loose cable, driver reset), it begins video capture immediately (`audioChannels: 0`), but audio carrier status remains anchored on the surviving display (`mon-1`) until `mon-0` has been continuously, stably present for **a full 60 seconds** (`AudioCarrierHysteresisSeconds`).
+  - **Flap Abort Resilience**: If `mon-0` disconnects before the 60s stabilization buffer completes, the timer is aborted and reset without touching or restarting the surviving carrier's pipeline.
+  - **Graceful Carrier Handover**: Only when `mon-0` proves continuous stability for $\ge 60\text{s}$, the governor smoothly transitions audio carrier status back to `mon-0`, demoting `mon-1` to video-only.
+  - **System-Wide Audio Awareness**: Both `StationDisplayTopologyDto.AudioCarrierDisplayId` and `DisplayMetadataDto.HasAudio` explicitly expose the active carrier location in real-time across SignalR telemetry, WebRTC, and chunk scheduler metadata.
 - **Forensic Slate Gap Filling**:
   - In multicam/multi-monitor exports, asymmetric timelines (e.g. Monitor 2 plugged in 15 minutes after Monitor 1 started) are bridged automatically by `SynchronizedTrackCutter` with a synthetic "No Signal / Disconnected" slate, maintaining 100% timecode synchronization across all tracks.
 

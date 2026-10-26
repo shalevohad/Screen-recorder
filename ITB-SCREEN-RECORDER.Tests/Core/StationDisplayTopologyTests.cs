@@ -25,6 +25,7 @@ public class StationDisplayTopologyTests
         var topology = new StationDisplayTopologyDto
         {
             Hostname = "STATION-TACTICAL-01",
+            AudioCarrierDisplayId = "mon-0",
             TimestampEpochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             VirtualDesktopBounds = new DesktopBoundsDto { X = -1920, Y = 0, Width = 4480, Height = 1440 },
             Displays = new List<DisplayMetadataDto>
@@ -40,6 +41,7 @@ public class StationDisplayTopologyTests
                     RefreshRateHz = 144,
                     TargetFps = 30,
                     IsPrimary = true,
+                    HasAudio = true,
                     X = 0,
                     Y = 0
                 },
@@ -54,6 +56,7 @@ public class StationDisplayTopologyTests
                     RefreshRateHz = 60,
                     TargetFps = 30,
                     IsPrimary = false,
+                    HasAudio = false,
                     X = -1920,
                     Y = 0
                 }
@@ -65,6 +68,7 @@ public class StationDisplayTopologyTests
 
         Assert.NotNull(deserialized);
         Assert.Equal("STATION-TACTICAL-01", deserialized.Hostname);
+        Assert.Equal("mon-0", deserialized.AudioCarrierDisplayId);
         Assert.Equal(2, deserialized.Displays.Count);
         Assert.Equal(-1920, deserialized.VirtualDesktopBounds.X);
         Assert.Equal(4480, deserialized.VirtualDesktopBounds.Width);
@@ -72,6 +76,7 @@ public class StationDisplayTopologyTests
         var primary = deserialized.Displays[0];
         Assert.Equal("mon-0", primary.DisplayId);
         Assert.True(primary.IsPrimary);
+        Assert.True(primary.HasAudio);
         Assert.Equal(2560, primary.Width);
         Assert.Equal(1440, primary.Height);
         Assert.Equal(0, primary.X);
@@ -80,6 +85,7 @@ public class StationDisplayTopologyTests
         var secondary = deserialized.Displays[1];
         Assert.Equal("mon-1", secondary.DisplayId);
         Assert.False(secondary.IsPrimary);
+        Assert.False(secondary.HasAudio);
         Assert.Equal(1920, secondary.Width);
         Assert.Equal(-1920, secondary.X);
         Assert.Equal("Intel UHD Graphics 770", secondary.AdapterName);

@@ -71,17 +71,40 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
 
     public class MultiDisplayPipelineManager : IDisposable
     {
+        private sealed class SyncContext
+        {
+            public string BaseDestination { get; set; } = string.Empty;
+            public TimeSpan ServerUtcOffset { get; set; }
+            public int BaselineFps { get; set; }
+            public string VideoBitrate { get; set; } = "4000k";
+            public IAudioCaptureProvider? AudioCapture { get; set; }
+            public AudioPacer? AudioPacer { get; set; }
+            public Action<int>? TrackMediaBytes { get; set; }
+            public Action? OnBrokenPipe { get; set; }
+            public CancellationToken SessionCt { get; set; }
+        }
+
         private readonly AppConfig _config;
         private readonly ConcurrentDictionary<string, DisplayPipelineInstance> _activePipelines = new();
+        private readonly SemaphoreSlim _syncSemaphore = new(1, 1);
         private readonly object _syncLock = new();
         private StationDisplayTopologyDto? _currentTopology;
+        private DateTime? _preferredPrimaryReconnectedAtUtc;
+        private string? _stabilizingPrimaryPhysicalKey;
+        private CancellationTokenSource? _stabilizationCts;
+        private SyncContext? _lastSyncContext;
 
         public StationDisplayTopologyDto? CurrentTopology => _currentTopology;
         public IReadOnlyCollection<DisplayPipelineInstance> ActivePipelines => _activePipelines.Values.ToList();
+        public TimeSpan AudioCarrierHysteresis { get; set; }
+        public Func<DateTime> UtcNow { get; set; } = () => DateTime.UtcNow;
+        public DateTime? PreferredPrimaryReconnectedAtUtc => _preferredPrimaryReconnectedAtUtc;
 
         public MultiDisplayPipelineManager(AppConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            int seconds = _config.AudioCarrierHysteresisSeconds > 0 ? _config.AudioCarrierHysteresisSeconds : 60;
+            AudioCarrierHysteresis = TimeSpan.FromSeconds(seconds);
         }
 
         public Func<List<DxgiDisplayDescriptor>>? DisplayDiscoverer { get; set; }
@@ -159,150 +182,278 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             Action onBrokenPipe,
             CancellationToken sessionCt)
         {
-            var discovered = DiscoverDisplays();
-            if (discovered == null || discovered.Count == 0)
+            await _syncSemaphore.WaitAsync(sessionCt).ConfigureAwait(false);
+            try
             {
-                Logger.Warn("[MULTI-DISPLAY] No active displays discovered during synchronization.");
-                return;
-            }
-
-            // Ensure exactly one primary target is identified
-            var targetPrimary = discovered.FirstOrDefault(d => d.IsPrimary) ?? discovered[0];
-            var discoveredPhysicalKeys = new HashSet<string>(discovered.Select(d => d.PhysicalKey));
-
-            string? previousCarrierId = AudioCarrierPipeline?.DisplayId;
-
-            // 1. Remove disconnected display pipelines (physical monitors no longer attached)
-            foreach (var kvp in _activePipelines.ToList())
-            {
-                if (!discoveredPhysicalKeys.Contains(kvp.Value.Descriptor.PhysicalKey))
+                var syncContext = new SyncContext
                 {
-                    Logger.Warn($"[MULTI-DISPLAY] Physical display '{kvp.Key}' ({kvp.Value.Descriptor.DeviceName}) disconnected. Flushing and releasing pipeline...");
-                    if (_activePipelines.TryRemove(kvp.Key, out var removedPipeline))
-                    {
-                        removedPipeline.Dispose();
-                    }
-                }
-            }
+                    BaseDestination = baseDestination,
+                    ServerUtcOffset = serverUtcOffset,
+                    BaselineFps = baselineFps,
+                    VideoBitrate = videoBitrate,
+                    AudioCapture = audioCapture,
+                    AudioPacer = audioPacer,
+                    TrackMediaBytes = trackMediaBytes,
+                    OnBrokenPipe = onBrokenPipe,
+                    SessionCt = sessionCt
+                };
+                _lastSyncContext = syncContext;
 
-            // 2. Synchronize surviving and newly attached display pipelines
-            foreach (var desc in discovered)
-            {
-                bool isTargetCarrier = (desc.PhysicalKey == targetPrimary.PhysicalKey);
-                int desiredAudioChannels = isTargetCarrier ? 2 : 0;
-
-                // Look up if a pipeline already exists for this physical display
-                var existingKvp = _activePipelines.FirstOrDefault(kvp => kvp.Value.Descriptor.PhysicalKey == desc.PhysicalKey);
-                var existing = existingKvp.Value;
-
-                if (existing != null)
+                var discovered = DiscoverDisplays();
+                if (discovered == null || discovered.Count == 0)
                 {
-                    bool audioRequirementChanged = (isTargetCarrier != existing.HasAudio);
-                    bool displayIdChanged = !string.Equals(existing.DisplayId, desc.DisplayId, StringComparison.OrdinalIgnoreCase);
-
-                    if (!audioRequirementChanged && !displayIdChanged && (existing.Ffmpeg == null || existing.Ffmpeg.IsRunning))
-                    {
-                        // Existing pipeline already matches the required audio carrier role and logical ID
-                        continue;
-                    }
-
-                    if (audioRequirementChanged)
-                    {
-                        if (isTargetCarrier)
-                        {
-                            Logger.Warn($"[MULTI-DISPLAY:AUDIO-FAILOVER] Primary audio carrier disconnected! Promoting surviving display '{desc.DisplayId}' ({desc.DeviceName}) to Audio Carrier.");
-                        }
-                        else
-                        {
-                            Logger.Info($"[MULTI-DISPLAY:AUDIO-FAILOVER] Primary display restored! Demoting display '{desc.DisplayId}' ({desc.DeviceName}) back to secondary video-only.");
-                        }
-                    }
-
-                    _activePipelines.TryRemove(existingKvp.Key, out _);
-                    existing.Dispose();
+                    Logger.Warn("[MULTI-DISPLAY] No active displays discovered during synchronization.");
+                    return;
                 }
 
-                Logger.Info($"[MULTI-DISPLAY] Engaging pipeline for display '{desc.DisplayId}' ({desc.Width}x{desc.Height} @ {desc.X},{desc.Y}, Primary: {isTargetCarrier}, AudioChannels: {desiredAudioChannels})");
+                var discoveredPhysicalKeys = new HashSet<string>(discovered.Select(d => d.PhysicalKey));
+                string? previousCarrierId = AudioCarrierPipeline?.DisplayId;
+                var currentCarrier = AudioCarrierPipeline;
+                bool isCurrentCarrierStillAttached = currentCarrier != null && discoveredPhysicalKeys.Contains(currentCarrier.PhysicalKey);
 
-                try
+                // 1. Remove disconnected display pipelines (physical monitors no longer attached)
+                foreach (var kvp in _activePipelines.ToList())
                 {
-                    DisplayPipelineInstance? pipeline = null;
-                    if (PipelineFactory != null)
+                    if (!discoveredPhysicalKeys.Contains(kvp.Value.Descriptor.PhysicalKey))
                     {
-                        pipeline = await PipelineFactory(desc with { IsPrimary = isTargetCarrier }, desiredAudioChannels).ConfigureAwait(false);
+                        Logger.Warn($"[MULTI-DISPLAY] Physical display '{kvp.Key}' ({kvp.Value.Descriptor.DeviceName}) disconnected. Flushing and releasing pipeline...");
+                        if (_activePipelines.TryRemove(kvp.Key, out var removedPipeline))
+                        {
+                            removedPipeline.Dispose();
+                        }
+                    }
+                }
+
+                // Identify preferred primary target among currently attached displays
+                var preferredPrimary = discovered.FirstOrDefault(d => d.IsPrimary) ?? discovered[0];
+
+                // Anti-flipflop stabilization check: if the stabilizing primary disconnected before buffer expired, abort timer
+                if (_stabilizingPrimaryPhysicalKey != null && !discoveredPhysicalKeys.Contains(_stabilizingPrimaryPhysicalKey))
+                {
+                    Logger.Warn($"[MULTI-DISPLAY:ANTI-FLIPFLOP] Stabilizing primary display disconnected before buffer expired! Aborting stabilization timer.");
+                    _preferredPrimaryReconnectedAtUtc = null;
+                    _stabilizingPrimaryPhysicalKey = null;
+                    try { _stabilizationCts?.Cancel(); } catch { }
+                }
+
+                string targetCarrierPhysicalKey;
+
+                if (isCurrentCarrierStillAttached && currentCarrier != null)
+                {
+                    if (currentCarrier.PhysicalKey == preferredPrimary.PhysicalKey)
+                    {
+                        // Primary is ALREADY the active carrier (normal steady state)
+                        _preferredPrimaryReconnectedAtUtc = null;
+                        _stabilizingPrimaryPhysicalKey = null;
+                        try { _stabilizationCts?.Cancel(); } catch { }
+                        targetCarrierPhysicalKey = preferredPrimary.PhysicalKey;
                     }
                     else
                     {
-                        pipeline = await StartSinglePipelineAsync(
-                            desc with { IsPrimary = isTargetCarrier },
-                            baseDestination,
-                            serverUtcOffset,
-                            baselineFps,
-                            videoBitrate,
-                            audioCapture,
-                            audioPacer,
-                            trackMediaBytes,
-                            onBrokenPipe,
-                            sessionCt,
-                            desiredAudioChannels).ConfigureAwait(false);
-                    }
+                        // Failover was previously active on surviving display (currentCarrier), and preferred primary is present!
+                        if (_preferredPrimaryReconnectedAtUtc == null)
+                        {
+                            _preferredPrimaryReconnectedAtUtc = UtcNow();
+                            _stabilizingPrimaryPhysicalKey = preferredPrimary.PhysicalKey;
+                            Logger.Info($"[MULTI-DISPLAY:ANTI-FLIPFLOP] Primary display '{preferredPrimary.DisplayId}' ({preferredPrimary.DeviceName}) detected after failover. Initiating {AudioCarrierHysteresis.TotalSeconds:F0}s stabilization buffer before audio handover.");
+                            ArmStabilizationTimer(AudioCarrierHysteresis, syncContext);
+                        }
 
-                    if (pipeline != null)
-                    {
-                        _activePipelines[desc.DisplayId] = pipeline;
+                        var elapsed = UtcNow() - _preferredPrimaryReconnectedAtUtc.Value;
+                        if (elapsed >= AudioCarrierHysteresis)
+                        {
+                            // Stably present for full hysteresis window without interruption
+                            Logger.Info($"[MULTI-DISPLAY:ANTI-FLIPFLOP] Primary display '{preferredPrimary.DisplayId}' remained stable for {elapsed.TotalSeconds:F1}s (>= {AudioCarrierHysteresis.TotalSeconds:F0}s). Gracefully reclaiming audio carrier role.");
+                            _preferredPrimaryReconnectedAtUtc = null;
+                            _stabilizingPrimaryPhysicalKey = null;
+                            try { _stabilizationCts?.Cancel(); } catch { }
+                            targetCarrierPhysicalKey = preferredPrimary.PhysicalKey;
+                        }
+                        else
+                        {
+                            // Retain audio on surviving carrier while primary operates in video-only mode
+                            var remaining = AudioCarrierHysteresis - elapsed;
+                            Logger.Info($"[MULTI-DISPLAY:ANTI-FLIPFLOP] Stabilization buffer in progress ({elapsed.TotalSeconds:F1}s / {AudioCarrierHysteresis.TotalSeconds:F0}s). Retaining audio carrier on surviving display '{currentCarrier.DisplayId}'.");
+                            targetCarrierPhysicalKey = currentCarrier.PhysicalKey;
+                            ArmStabilizationTimer(remaining, syncContext);
+                        }
                     }
                 }
+                else
+                {
+                    // Current carrier disconnected or initial launch: immediate failover to preferred primary
+                    _preferredPrimaryReconnectedAtUtc = null;
+                    _stabilizingPrimaryPhysicalKey = null;
+                    try { _stabilizationCts?.Cancel(); } catch { }
+                    targetCarrierPhysicalKey = preferredPrimary.PhysicalKey;
+                }
+
+                // 2. Synchronize surviving and newly attached display pipelines
+                foreach (var desc in discovered)
+                {
+                    bool isTargetCarrier = (desc.PhysicalKey == targetCarrierPhysicalKey);
+                    int desiredAudioChannels = isTargetCarrier ? 2 : 0;
+
+                    // Look up if a pipeline already exists for this physical display
+                    var existingKvp = _activePipelines.FirstOrDefault(kvp => kvp.Value.Descriptor.PhysicalKey == desc.PhysicalKey);
+                    var existing = existingKvp.Value;
+
+                    if (existing != null)
+                    {
+                        bool audioRequirementChanged = (isTargetCarrier != existing.HasAudio);
+                        bool displayIdChanged = !string.Equals(existing.DisplayId, desc.DisplayId, StringComparison.OrdinalIgnoreCase);
+
+                        if (!audioRequirementChanged && !displayIdChanged && (existing.Ffmpeg == null || existing.Ffmpeg.IsRunning))
+                        {
+                            // Existing pipeline already matches the required audio carrier role and logical ID
+                            continue;
+                        }
+
+                        if (audioRequirementChanged)
+                        {
+                            if (isTargetCarrier)
+                            {
+                                Logger.Warn($"[MULTI-DISPLAY:AUDIO-FAILOVER] Promoting display '{desc.DisplayId}' ({desc.DeviceName}) to Audio Carrier.");
+                            }
+                            else
+                            {
+                                Logger.Info($"[MULTI-DISPLAY:AUDIO-FAILOVER] Demoting display '{desc.DisplayId}' ({desc.DeviceName}) back to secondary video-only.");
+                            }
+                        }
+
+                        _activePipelines.TryRemove(existingKvp.Key, out _);
+                        existing.Dispose();
+                    }
+
+                    Logger.Info($"[MULTI-DISPLAY] Engaging pipeline for display '{desc.DisplayId}' ({desc.Width}x{desc.Height} @ {desc.X},{desc.Y}, Primary: {desc.IsPrimary}, AudioChannels: {desiredAudioChannels})");
+
+                    try
+                    {
+                        DisplayPipelineInstance? pipeline = null;
+                        if (PipelineFactory != null)
+                        {
+                            pipeline = await PipelineFactory(desc, desiredAudioChannels).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            pipeline = await StartSinglePipelineAsync(
+                                desc,
+                                baseDestination,
+                                serverUtcOffset,
+                                baselineFps,
+                                videoBitrate,
+                                audioCapture,
+                                audioPacer,
+                                trackMediaBytes,
+                                onBrokenPipe,
+                                sessionCt,
+                                desiredAudioChannels).ConfigureAwait(false);
+                        }
+
+                        if (pipeline != null)
+                        {
+                            _activePipelines[desc.DisplayId] = pipeline;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"[MULTI-DISPLAY] Failed to engage pipeline for display '{desc.DisplayId}': {ex.Message}");
+                    }
+                }
+
+                // 3. Update cached topology DTO
+                UpdateTopologyDto();
+
+                // 4. Notify if Audio Carrier changed
+                string? newCarrierId = AudioCarrierPipeline?.DisplayId;
+                if (previousCarrierId != newCarrierId)
+                {
+                    Logger.Info($"[MULTI-DISPLAY:AUDIO-FAILOVER] Audio carrier transitioned from '{previousCarrierId ?? "NONE"}' to '{newCarrierId ?? "NONE"}'.");
+                    AudioCarrierChanged?.Invoke(previousCarrierId ?? string.Empty, newCarrierId ?? string.Empty);
+                }
+            }
+            finally
+            {
+                _syncSemaphore.Release();
+            }
+        }
+
+        private void ArmStabilizationTimer(TimeSpan delay, SyncContext context)
+        {
+            try { _stabilizationCts?.Cancel(); } catch { }
+            try { _stabilizationCts?.Dispose(); } catch { }
+
+            if (delay <= TimeSpan.Zero)
+            {
+                return;
+            }
+
+            _stabilizationCts = CancellationTokenSource.CreateLinkedTokenSource(context.SessionCt);
+            var token = _stabilizationCts.Token;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delay, token).ConfigureAwait(false);
+                    Logger.Info($"[MULTI-DISPLAY:ANTI-FLIPFLOP] Audio carrier stabilization buffer elapsed ({AudioCarrierHysteresis.TotalSeconds:F0}s). Evaluating audio handover to primary display...");
+                    await SynchronizePipelinesAsync(
+                        context.BaseDestination,
+                        context.ServerUtcOffset,
+                        context.BaselineFps,
+                        context.VideoBitrate,
+                        context.AudioCapture,
+                        context.AudioPacer,
+                        context.TrackMediaBytes ?? (_ => { }),
+                        context.OnBrokenPipe ?? (() => { }),
+                        context.SessionCt).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { }
                 catch (Exception ex)
                 {
-                    Logger.Error($"[MULTI-DISPLAY] Failed to engage pipeline for display '{desc.DisplayId}': {ex.Message}");
+                    Logger.Warn($"[MULTI-DISPLAY:ANTI-FLIPFLOP] Stabilization handover error: {ex.Message}");
                 }
-            }
-
-            // 3. Update cached topology DTO
-            UpdateTopologyDto();
-
-            // 4. Notify if Audio Carrier changed
-            string? newCarrierId = AudioCarrierPipeline?.DisplayId;
-            if (previousCarrierId != newCarrierId)
-            {
-                Logger.Info($"[MULTI-DISPLAY:AUDIO-FAILOVER] Audio carrier transitioned from '{previousCarrierId ?? "NONE"}' to '{newCarrierId ?? "NONE"}'.");
-                AudioCarrierChanged?.Invoke(previousCarrierId ?? string.Empty, newCarrierId ?? string.Empty);
-            }
+            }, token);
         }
 
         private void UpdateTopologyDto()
         {
-            var active = _activePipelines.Values.Select(p => p.Descriptor).ToList();
-            if (active.Count == 0)
+            var pipelines = _activePipelines.Values.ToList();
+            if (pipelines.Count == 0)
             {
                 _currentTopology = null;
                 return;
             }
 
+            var active = pipelines.Select(p => p.Descriptor).ToList();
             int minX = active.Min(d => d.X);
             int minY = active.Min(d => d.Y);
             int maxX = active.Max(d => d.X + d.Width);
             int maxY = active.Max(d => d.Y + d.Height);
 
-            var displays = active.Select(d => new DisplayMetadataDto
+            string carrierId = AudioCarrierPipeline?.DisplayId ?? "mon-0";
+
+            var displays = pipelines.Select(p => new DisplayMetadataDto
             {
-                DisplayId = d.DisplayId,
-                DisplayName = d.DeviceName,
-                AdapterName = d.AdapterName,
-                AdapterLuid = d.AdapterLuid,
-                IsPrimary = d.IsPrimary,
-                X = d.X,
-                Y = d.Y,
-                Width = d.Width,
-                Height = d.Height,
+                DisplayId = p.Descriptor.DisplayId,
+                DisplayName = p.Descriptor.DeviceName,
+                AdapterName = p.Descriptor.AdapterName,
+                AdapterLuid = p.Descriptor.AdapterLuid,
+                IsPrimary = p.Descriptor.IsPrimary,
+                HasAudio = p.HasAudio,
+                X = p.Descriptor.X,
+                Y = p.Descriptor.Y,
+                Width = p.Descriptor.Width,
+                Height = p.Descriptor.Height,
                 ScaleFactor = 1.0,
                 RefreshRateHz = 60,
-                TargetFps = d.IsPrimary ? 30 : 20
+                TargetFps = p.Descriptor.IsPrimary ? 30 : 20
             }).ToList();
 
             _currentTopology = new StationDisplayTopologyDto
             {
                 Hostname = Environment.MachineName,
+                AudioCarrierDisplayId = carrierId,
                 Displays = displays,
                 VirtualDesktopBounds = new DesktopBoundsDto
                 {
@@ -512,6 +663,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
         {
             lock (_syncLock)
             {
+                try { _stabilizationCts?.Cancel(); } catch { }
+                try { _stabilizationCts?.Dispose(); } catch { }
+                _stabilizationCts = null;
+
                 foreach (var kvp in _activePipelines)
                 {
                     try { kvp.Value.Dispose(); } catch { }
