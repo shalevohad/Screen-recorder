@@ -12,5 +12,8 @@ namespace ITBRecorderAgent.Providers.Video
         int Width,
         int Height,
         bool IsPrimary
-    );
+    )
+    {
+        public string PhysicalKey => $"{AdapterIndex}_{OutputIndex}_{DeviceName}";
+    }
 }

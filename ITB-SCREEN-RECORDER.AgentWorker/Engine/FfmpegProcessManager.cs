@@ -25,6 +25,7 @@ namespace ITBRecorderAgent.Engine
         private readonly object _videoLock = new object();
         private readonly object _audioLock = new object();
         private bool _isDisposed = false;
+        public bool HasAudio { get; private set; }
 
         public bool IsRunning
         {
@@ -113,6 +114,7 @@ namespace ITBRecorderAgent.Engine
                 string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
 
                 int localPort = 0;
+                HasAudio = audioChannels > 0;
                 if (audioChannels > 0)
                 {
                     _tcpListener = new TcpListener(IPAddress.Loopback, 0);
@@ -333,7 +335,7 @@ namespace ITBRecorderAgent.Engine
 
         public void WriteAudioData(byte[] audioData, int offset, int count)
         {
-            if (_isDisposed || !IsRunning || _audioSocket == null) return;
+            if (_isDisposed || !IsRunning || _audioSocket == null || !HasAudio) return;
 
             try
             {
@@ -354,6 +356,7 @@ namespace ITBRecorderAgent.Engine
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            HasAudio = false;
 
             try
             {

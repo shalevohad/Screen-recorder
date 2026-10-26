@@ -21,23 +21,27 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
         public string DisplayId { get; }
         public bool IsPrimary { get; }
         public DxgiDisplayDescriptor Descriptor { get; }
-        public IScreenCaptureProvider ScreenCapture { get; }
-        public FfmpegProcessManager Ffmpeg { get; }
-        public VideoPipeline VideoPipe { get; }
-        public CancellationTokenSource Cts { get; }
+        public IScreenCaptureProvider? ScreenCapture { get; }
+        public FfmpegProcessManager? Ffmpeg { get; }
+        public VideoPipeline? VideoPipe { get; }
+        public CancellationTokenSource? Cts { get; }
         public Task? CaptureTask { get; set; }
         public Task? WriterTask { get; set; }
         public Task? PacerTask { get; set; }
         public byte[]? LatestFrame;
+        private readonly bool? _hasAudioExplicit;
+        public bool HasAudio => _hasAudioExplicit ?? (Ffmpeg?.HasAudio ?? false);
+        public string PhysicalKey => Descriptor.PhysicalKey;
 
         public DisplayPipelineInstance(
             string displayId,
             bool isPrimary,
             DxgiDisplayDescriptor descriptor,
-            IScreenCaptureProvider screenCapture,
-            FfmpegProcessManager ffmpeg,
-            VideoPipeline videoPipe,
-            CancellationTokenSource cts)
+            IScreenCaptureProvider? screenCapture,
+            FfmpegProcessManager? ffmpeg,
+            VideoPipeline? videoPipe,
+            CancellationTokenSource? cts,
+            bool? hasAudio = null)
         {
             DisplayId = displayId;
             IsPrimary = isPrimary;
@@ -46,8 +50,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             Ffmpeg = ffmpeg;
             VideoPipe = videoPipe;
             Cts = cts;
+            _hasAudioExplicit = hasAudio;
             byte[] initial = new byte[Math.Max(1, descriptor.Width * descriptor.Height * 4)];
-            if (screenCapture.TryCaptureFrame(out var captured) && captured != null)
+            if (screenCapture != null && screenCapture.TryCaptureFrame(out var captured) && captured != null)
             {
                 Buffer.BlockCopy(captured, 0, initial, 0, Math.Min(captured.Length, initial.Length));
             }
@@ -56,11 +61,11 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
 
         public void Dispose()
         {
-            try { Cts.Cancel(); } catch { }
-            try { VideoPipe.Complete(); } catch { }
-            try { Ffmpeg.Dispose(); } catch { }
-            try { ScreenCapture.Dispose(); } catch { }
-            try { Cts.Dispose(); } catch { }
+            try { Cts?.Cancel(); } catch { }
+            try { VideoPipe?.Complete(); } catch { }
+            try { Ffmpeg?.Dispose(); } catch { }
+            try { ScreenCapture?.Dispose(); } catch { }
+            try { Cts?.Dispose(); } catch { }
         }
     }
 
@@ -79,8 +84,32 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
+        public Func<List<DxgiDisplayDescriptor>>? DisplayDiscoverer { get; set; }
+        public Func<DxgiDisplayDescriptor, int, Task<DisplayPipelineInstance?>>? PipelineFactory { get; set; }
+        public event Action<string, string>? AudioCarrierChanged;
+
+        public DisplayPipelineInstance? AudioCarrierPipeline
+        {
+            get
+            {
+                var pipelines = _activePipelines.Values.ToList();
+                var withAudio = pipelines.FirstOrDefault(p => p.HasAudio && (p.Ffmpeg == null || p.Ffmpeg.IsRunning));
+                if (withAudio != null) return withAudio;
+
+                var primary = pipelines.FirstOrDefault(p => p.IsPrimary && (p.Ffmpeg == null || p.Ffmpeg.IsRunning));
+                if (primary != null) return primary;
+
+                return pipelines.FirstOrDefault(p => p.Ffmpeg == null || p.Ffmpeg.IsRunning);
+            }
+        }
+
         public List<DxgiDisplayDescriptor> DiscoverDisplays()
         {
+            if (DisplayDiscoverer != null)
+            {
+                return DisplayDiscoverer();
+            }
+
 #if WINDOWS
             if (OperatingSystem.IsWindows())
             {
@@ -131,14 +160,24 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             CancellationToken sessionCt)
         {
             var discovered = DiscoverDisplays();
-            var discoveredIds = new HashSet<string>(discovered.Select(d => d.DisplayId));
+            if (discovered == null || discovered.Count == 0)
+            {
+                Logger.Warn("[MULTI-DISPLAY] No active displays discovered during synchronization.");
+                return;
+            }
 
-            // 1. Remove disconnected display pipelines
+            // Ensure exactly one primary target is identified
+            var targetPrimary = discovered.FirstOrDefault(d => d.IsPrimary) ?? discovered[0];
+            var discoveredPhysicalKeys = new HashSet<string>(discovered.Select(d => d.PhysicalKey));
+
+            string? previousCarrierId = AudioCarrierPipeline?.DisplayId;
+
+            // 1. Remove disconnected display pipelines (physical monitors no longer attached)
             foreach (var kvp in _activePipelines.ToList())
             {
-                if (!discoveredIds.Contains(kvp.Key))
+                if (!discoveredPhysicalKeys.Contains(kvp.Value.Descriptor.PhysicalKey))
                 {
-                    Logger.Warn($"[MULTI-DISPLAY] Display '{kvp.Key}' disconnected. Flushing and releasing pipeline...");
+                    Logger.Warn($"[MULTI-DISPLAY] Physical display '{kvp.Key}' ({kvp.Value.Descriptor.DeviceName}) disconnected. Flushing and releasing pipeline...");
                     if (_activePipelines.TryRemove(kvp.Key, out var removedPipeline))
                     {
                         removedPipeline.Dispose();
@@ -146,29 +185,67 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
                 }
             }
 
-            // 2. Spawn newly connected displays
+            // 2. Synchronize surviving and newly attached display pipelines
             foreach (var desc in discovered)
             {
-                if (_activePipelines.ContainsKey(desc.DisplayId))
+                bool isTargetCarrier = (desc.PhysicalKey == targetPrimary.PhysicalKey);
+                int desiredAudioChannels = isTargetCarrier ? 2 : 0;
+
+                // Look up if a pipeline already exists for this physical display
+                var existingKvp = _activePipelines.FirstOrDefault(kvp => kvp.Value.Descriptor.PhysicalKey == desc.PhysicalKey);
+                var existing = existingKvp.Value;
+
+                if (existing != null)
                 {
-                    continue;
+                    bool audioRequirementChanged = (isTargetCarrier != existing.HasAudio);
+                    bool displayIdChanged = !string.Equals(existing.DisplayId, desc.DisplayId, StringComparison.OrdinalIgnoreCase);
+
+                    if (!audioRequirementChanged && !displayIdChanged && (existing.Ffmpeg == null || existing.Ffmpeg.IsRunning))
+                    {
+                        // Existing pipeline already matches the required audio carrier role and logical ID
+                        continue;
+                    }
+
+                    if (audioRequirementChanged)
+                    {
+                        if (isTargetCarrier)
+                        {
+                            Logger.Warn($"[MULTI-DISPLAY:AUDIO-FAILOVER] Primary audio carrier disconnected! Promoting surviving display '{desc.DisplayId}' ({desc.DeviceName}) to Audio Carrier.");
+                        }
+                        else
+                        {
+                            Logger.Info($"[MULTI-DISPLAY:AUDIO-FAILOVER] Primary display restored! Demoting display '{desc.DisplayId}' ({desc.DeviceName}) back to secondary video-only.");
+                        }
+                    }
+
+                    _activePipelines.TryRemove(existingKvp.Key, out _);
+                    existing.Dispose();
                 }
 
-                Logger.Info($"[MULTI-DISPLAY] Spawning pipeline for display '{desc.DisplayId}' ({desc.Width}x{desc.Height} @ {desc.X},{desc.Y}, Primary: {desc.IsPrimary})");
+                Logger.Info($"[MULTI-DISPLAY] Engaging pipeline for display '{desc.DisplayId}' ({desc.Width}x{desc.Height} @ {desc.X},{desc.Y}, Primary: {isTargetCarrier}, AudioChannels: {desiredAudioChannels})");
 
                 try
                 {
-                    var pipeline = await StartSinglePipelineAsync(
-                        desc,
-                        baseDestination,
-                        serverUtcOffset,
-                        baselineFps,
-                        videoBitrate,
-                        audioCapture,
-                        audioPacer,
-                        trackMediaBytes,
-                        onBrokenPipe,
-                        sessionCt).ConfigureAwait(false);
+                    DisplayPipelineInstance? pipeline = null;
+                    if (PipelineFactory != null)
+                    {
+                        pipeline = await PipelineFactory(desc with { IsPrimary = isTargetCarrier }, desiredAudioChannels).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        pipeline = await StartSinglePipelineAsync(
+                            desc with { IsPrimary = isTargetCarrier },
+                            baseDestination,
+                            serverUtcOffset,
+                            baselineFps,
+                            videoBitrate,
+                            audioCapture,
+                            audioPacer,
+                            trackMediaBytes,
+                            onBrokenPipe,
+                            sessionCt,
+                            desiredAudioChannels).ConfigureAwait(false);
+                    }
 
                     if (pipeline != null)
                     {
@@ -177,12 +254,20 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error($"[MULTI-DISPLAY] Failed to initialize pipeline for display '{desc.DisplayId}': {ex.Message}");
+                    Logger.Error($"[MULTI-DISPLAY] Failed to engage pipeline for display '{desc.DisplayId}': {ex.Message}");
                 }
             }
 
             // 3. Update cached topology DTO
             UpdateTopologyDto();
+
+            // 4. Notify if Audio Carrier changed
+            string? newCarrierId = AudioCarrierPipeline?.DisplayId;
+            if (previousCarrierId != newCarrierId)
+            {
+                Logger.Info($"[MULTI-DISPLAY:AUDIO-FAILOVER] Audio carrier transitioned from '{previousCarrierId ?? "NONE"}' to '{newCarrierId ?? "NONE"}'.");
+                AudioCarrierChanged?.Invoke(previousCarrierId ?? string.Empty, newCarrierId ?? string.Empty);
+            }
         }
 
         private void UpdateTopologyDto()
@@ -240,7 +325,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             AudioPacer? audioPacer,
             Action<int> trackMediaBytes,
             Action onBrokenPipe,
-            CancellationToken sessionCt)
+            CancellationToken sessionCt,
+            int? audioChannelsOverride = null)
         {
             IScreenCaptureProvider screenCapture;
 #if WINDOWS
@@ -272,7 +358,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
             string destination = ResolveDisplayDestination(baseDestination, desc.DisplayId);
             DateTime calibratedUtc = DateTime.UtcNow + serverUtcOffset;
 
-            int audioChannels = desc.IsPrimary ? 2 : 0; // Secondary displays are video-only
+            int audioChannels = audioChannelsOverride ?? (desc.IsPrimary ? 2 : 0);
 
             bool started = await ffmpeg.StartAsync(
                 destination,
@@ -294,7 +380,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
                 return null;
             }
 
-            if (desc.IsPrimary)
+            if (audioChannels > 0)
             {
                 var handshakeTask = ffmpeg.CompleteAudioHandshakeAsync(sessionCt);
 

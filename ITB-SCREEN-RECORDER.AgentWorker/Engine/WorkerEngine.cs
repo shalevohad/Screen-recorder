@@ -421,9 +421,10 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 
             audio.AudioDataAvailable += (s, data) =>
             {
-                if (primary.Ffmpeg.IsRunning && sessionActive)
+                var carrier = _displayManager.AudioCarrierPipeline;
+                if (carrier != null && carrier.Ffmpeg.IsRunning && sessionActive)
                 {
-                    primary.Ffmpeg.WriteAudioData(data);
+                    carrier.Ffmpeg.WriteAudioData(data);
                     _audioPacer.RecordIncomingBytes(data.Length);
                     _netTelemetry.TrackMediaBytes(data.Length);
                 }
@@ -433,7 +434,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             _audioPacer.Start(startTicks);
 
             var audioTask = _audioPacer.RunPacerLoopAsync(
-                primary.Ffmpeg,
+                () => _displayManager.AudioCarrierPipeline?.Ffmpeg,
                 bytes => _netTelemetry.TrackMediaBytes(bytes),
                 () => sessionActive,
                 ct);

@@ -231,7 +231,10 @@ FFmpeg probes on hot files must include:
   - Exposes an air-gapped reverse proxy endpoint `/api/v1/whep/{*streamPath}` routing WebRTC SDP exchanges to MediaMTX.
   - Automatically handles stream path aliases: if a client requests `live/{hostname}/mon-0` and MediaMTX returns 404 (e.g. older single-monitor agent streaming to root), it seamlessly falls back to `live/{hostname}`. Conversely, if `live/{hostname}` returns 404, it queries `live/{hostname}/mon-0`.
   - Air-Gapped WebRTC configuration: Client players connect via `/api/v1/whep` with empty ICE server lists (`iceServers: []`), eliminating external STUN lookups and cross-origin localhost connection failures.
-- **Dynamic Hot-Plug**: Display connect/disconnect events spawn or cleanly terminate individual display pipelines without interrupting active recording on surviving displays.
+- **Dynamic Hot-Plug & Real-Time Audio Carrier Failover**:
+  - Display connect/disconnect events spawn or cleanly terminate individual display pipelines without interrupting active recording on surviving displays.
+  - **Failover on Primary Disconnect**: If the primary monitor carrying audio (`mon-0`) disconnects during streaming, [`MultiDisplayPipelineManager`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Engine/MultiDisplayPipelineManager.cs) detects that the audio carrier is lost, promotes the first surviving display (e.g. `mon-1`) to become the active Primary Audio Carrier, and re-engages its pipeline with `audioChannels: 2`. The dynamic audio writer and [`AudioPacer`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Engine/AudioPacer.cs) immediately route live audio packets to the promoted carrier within <800ms, ensuring zero loss of sound during recording.
+  - **Restoration on Reconnect**: When `mon-0` reconnects, it reclaims primary status and audio carrier engagement, while the surviving display is cleanly demoted back to video-only (`audioChannels: 0`), guaranteeing that exactly one audio carrier stream exists at all times without acoustic echo or socket collisions.
 
 ### 2. Frontend Topology Display, Audio Solo & Overlap Prevention (Rule 12)
 - **Virtual Desktop Canvas**: Real-time monitor positioning according to physical OS virtual desktop bounds $(X, Y, W, H)$.
