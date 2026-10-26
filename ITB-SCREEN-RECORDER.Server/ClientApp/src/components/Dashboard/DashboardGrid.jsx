@@ -111,6 +111,11 @@ export default function DashboardGrid(props) {
                                     {logic.currentTabFilter !== 'ALL' && (
                                         <span className="tactical-filter-pill">
                                             STATUS: <strong>{logic.currentTabFilter}</strong>
+                                            {(logic.currentTabFilter === 'MONITORED' || logic.currentTabFilter === 'IDLE') && logic.currentMonitoredSubFilter !== 'ALL' && (
+                                                <span style={{ marginLeft: 4, opacity: 0.85 }}>
+                                                    ({logic.currentMonitoredSubFilter === 'SNOOZED' ? 'SNOOZED' : 'NOT SNOOZED'})
+                                                </span>
+                                            )}
                                         </span>
                                     )}
                                 </div>
@@ -153,9 +158,10 @@ export default function DashboardGrid(props) {
                         handleClearFilter={logic.handleClearFilter}
                         currentTabFilter={logic.currentTabFilter}
                         setFilterForTab={logic.setFilterForTab}
+                        monitoredSubFilter={logic.currentMonitoredSubFilter}
+                        setMonitoredSubFilter={logic.setMonitoredSubFilterForTab}
+                        monitoredCounts={logic.monitoredCounts}
                         resultCount={logic.processedStations.length}
-                        hideOffline={hideOffline}
-                        onToggleHideOffline={onToggleHideOffline}
                     />
 
                     {!isFeatureMode && (

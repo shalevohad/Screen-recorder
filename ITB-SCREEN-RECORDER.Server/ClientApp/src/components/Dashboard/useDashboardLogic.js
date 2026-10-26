@@ -35,6 +35,8 @@ export function useDashboardLogic({
     const [activeTabId, setActiveTabId] = useState('ALL');
     const [tabFilters, setTabFilters] = useState({});
     const currentTabFilter = tabFilters[activeTabId] || 'ALL';
+    const [monitoredSubFilters, setMonitoredSubFilters] = useState({});
+    const currentMonitoredSubFilter = monitoredSubFilters[activeTabId] || 'ALL'; // 'ALL' | 'NOT_SNOOZED' | 'SNOOZED'
     const [currentPage, setCurrentPage] = useState(1);
 
     // Fetch operational tab definitions directly from SQLite
@@ -188,14 +190,26 @@ export function useDashboardLogic({
     const searchInputRef = useRef(null);
 
     const hasActiveFilter = useMemo(() => {
-        return Boolean(searchQuery.trim() || (currentTabFilter && currentTabFilter !== 'ALL'));
-    }, [searchQuery, currentTabFilter]);
+        return Boolean(
+            searchQuery.trim() ||
+            (currentTabFilter && currentTabFilter !== 'ALL') ||
+            ((currentTabFilter === 'MONITORED' || currentTabFilter === 'IDLE') && currentMonitoredSubFilter !== 'ALL')
+        );
+    }, [searchQuery, currentTabFilter, currentMonitoredSubFilter]);
 
     const handleClearFilter = () => { setSearchQuery(''); searchInputRef.current?.focus(); };
-    const setFilterForTab = (val) => setTabFilters(p => ({ ...p, [activeTabId]: val }));
+    const setFilterForTab = (val) => {
+        setTabFilters(p => ({ ...p, [activeTabId]: val }));
+        setCurrentPage(1);
+    };
+    const setMonitoredSubFilterForTab = (val) => {
+        setMonitoredSubFilters(p => ({ ...p, [activeTabId]: val }));
+        setCurrentPage(1);
+    };
     const handleResetAllFilters = () => {
         setSearchQuery('');
         setFilterForTab('ALL');
+        setMonitoredSubFilterForTab('ALL');
         searchInputRef.current?.focus();
     };
 
@@ -263,6 +277,18 @@ export function useDashboardLogic({
                 snoozeReason: typeof getSnoozeReason === 'function' ? getSnoozeReason(s.hostname) : ''
             }));
     }, [unrecordedStations, isStationSnoozed, getRemainingMinutes, getSnoozeReason]);
+
+    // Counts for monitored filter pills & sub-filter badges
+    const monitoredCounts = useMemo(() => {
+        const monitored = tabFilteredStations.filter(isStationNotRecording);
+        const snoozed = monitored.filter(s => isStationSnoozed(s.hostname)).length;
+        const notSnoozed = monitored.length - snoozed;
+        return {
+            total: monitored.length,
+            snoozed,
+            notSnoozed
+        };
+    }, [tabFilteredStations, isStationSnoozed]);
 
     // Modal state for snoozing alert(s)
     const [snoozeModalState, setSnoozeModalState] = useState({
@@ -332,13 +358,24 @@ export function useDashboardLogic({
 
     const processedStations = useMemo(() => {
         let list = [...tabFilteredStations];
-        if (isFaultFilterActive) list = list.filter(isStationFaulty);
-        else if (currentTabFilter === 'OFFLINE') list = list.filter(s => !s.isOnline);
-        else if (hideOffline) list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
+        if (isFaultFilterActive) {
+            list = list.filter(isStationFaulty);
+        } else if (currentTabFilter === 'OFFLINE') {
+            list = list.filter(s => !s.isOnline);
+        }
 
-        if (currentTabFilter === 'RECORDING') list = list.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording')));
-        else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !(s.isRecording ?? (s.status === 'Recording')));
-        else if (currentTabFilter === 'ONLINE') list = list.filter(s => s.isOnline);
+        if (currentTabFilter === 'RECORDING' || currentTabFilter === 'REC') {
+            list = list.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording')));
+        } else if (currentTabFilter === 'MONITORED' || currentTabFilter === 'IDLE') {
+            list = list.filter(isStationNotRecording);
+            if (currentMonitoredSubFilter === 'SNOOZED') {
+                list = list.filter(s => isStationSnoozed(s.hostname));
+            } else if (currentMonitoredSubFilter === 'NOT_SNOOZED') {
+                list = list.filter(s => !isStationSnoozed(s.hostname));
+            }
+        } else if (currentTabFilter === 'ONLINE') {
+            list = list.filter(s => s.isOnline);
+        }
 
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
@@ -382,17 +419,17 @@ export function useDashboardLogic({
         });
 
         return list;
-    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
+    }, [tabFilteredStations, isFaultFilterActive, currentTabFilter, currentMonitoredSubFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
 
-    const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
+    const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, monitoredSubFilters, activeTabId, viewMode });
     if (
         prevFilters.searchQuery !== searchQuery ||
         prevFilters.tabFilters !== tabFilters ||
+        prevFilters.monitoredSubFilters !== monitoredSubFilters ||
         prevFilters.activeTabId !== activeTabId ||
-        prevFilters.viewMode !== viewMode ||
-        prevFilters.hideOffline !== hideOffline
+        prevFilters.viewMode !== viewMode
     ) {
-        setPrevFilters({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
+        setPrevFilters({ searchQuery, tabFilters, monitoredSubFilters, activeTabId, viewMode });
         setCurrentPage(1);
     }
 
@@ -534,6 +571,7 @@ export function useDashboardLogic({
         fullscreenHostname, setFullscreenHostname,
         activeTabId, setActiveTabId,
         tabFilters, setFilterForTab, currentTabFilter,
+        monitoredSubFilters, setMonitoredSubFilterForTab, currentMonitoredSubFilter, monitoredCounts,
         currentPage, setCurrentPage, itemsPerPage, totalPages,
         viewMode, setViewMode,
         isSearchOpen, setIsSearchOpen,

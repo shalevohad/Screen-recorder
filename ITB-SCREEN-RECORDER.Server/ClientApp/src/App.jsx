@@ -111,7 +111,7 @@ function CommandCenterApp() {
         lastContactTimestampRef.current = Date.now();
     }, []);
 
-    const [hideOffline, setHideOffline] = useState(true);
+    const [hideOffline, setHideOffline] = useState(false);
     const [isFaultFilterActive, setIsFaultFilterActive] = useState(false);
     const [timeOfDay, setTimeOfDay] = useState(resolveTimeOfDay);
     const [liveKeystrokes, setLiveKeystrokes] = useState({});
