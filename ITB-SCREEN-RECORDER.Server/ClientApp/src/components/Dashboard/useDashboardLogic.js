@@ -430,7 +430,7 @@ export function useDashboardLogic({
         const availW = Math.max(300, (pane ? pane.clientWidth : containerSize.width) - padX);
         const availH = Math.max(160, (pane ? pane.clientHeight : containerSize.height) - padY - 8);
 
-        const cardWidths = { 5: 700, 4: 570, 3: 450, 2: 360, 1: 290 };
+        const cardWidths = { 5: 760, 4: 620, 3: 500, 2: 420, 1: 340 };
 
         for (let z = 5; z >= 1; z--) {
             const w = getCssPixelValue(`--zoom-card-w-${z}`, cardWidths[z]);

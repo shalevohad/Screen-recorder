@@ -257,26 +257,21 @@ export default function StationThumbnail(props) {
                         />
                         {!isRecording && (
                             <div className="monitor-only-overlay">
-                                <span className={`monitor-tag ${isAlertActive ? 'alert' : 'snoozed'}`}>
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12">
+                                <button
+                                    type="button"
+                                    className={`monitor-tag ${isAlertActive ? 'alert' : 'snoozed'}`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        props.onOpenSnoozeModal?.(hostname);
+                                    }}
+                                    title={isAlertSnoozed ? `Alert postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust.` : "Station is in Monitor-Only mode. Click to postpone alert."}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="11" height="11">
                                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                         <circle cx="12" cy="12" r="3" />
                                     </svg>
-                                    {isAlertActive ? '⚠️ NOT RECORDING • LIVE MONITOR ONLY' : `⏱ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}
-                                </span>
-                                {isAlertActive && (
-                                    <button
-                                        type="button"
-                                        className="monitor-snooze-action"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            props.onOpenSnoozeModal?.(hostname);
-                                        }}
-                                        title="Postpone alert for this workstation"
-                                    >
-                                        ⏱ Postpone Alert
-                                    </button>
-                                )}
+                                    <span>{isAlertActive ? '⚠️ MONITOR ONLY' : `⏱ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
+                                </button>
                             </div>
                         )}
                     </div>

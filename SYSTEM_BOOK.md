@@ -233,11 +233,18 @@ FFmpeg probes on hot files must include:
   - Air-Gapped WebRTC configuration: Client players connect via `/api/v1/whep` with empty ICE server lists (`iceServers: []`), eliminating external STUN lookups and cross-origin localhost connection failures.
 - **Dynamic Hot-Plug**: Display connect/disconnect events spawn or cleanly terminate individual display pipelines without interrupting active recording on surviving displays.
 
-### 2. Frontend Topology Display & Audio Solo (Rule 12)
+### 2. Frontend Topology Display, Audio Solo & Overlap Prevention (Rule 12)
 - **Virtual Desktop Canvas**: Real-time monitor positioning according to physical OS virtual desktop bounds $(X, Y, W, H)$.
-- **Station Display Bar**: Direct toggle on station cards `[ ⊞ Canvas | 🖥 1 | 🖥 2 ]`.
+- **Station Display Bar**: Direct toggle on station cards `[ ⊞ Canvas | 🖥 1 | 🖥 2 ]` positioned at top-right (`top: 8px; right: 8px; z-index: 25`).
+- **Four-Quadrant Decoupled Overlays**: To guarantee zero visual collisions across dense fleets:
+  - Top-Left: Clickable status tag (`⚠️ MONITOR ONLY` / `⏱ SNOOZED (30m)`).
+  - Top-Right: Multi-monitor display selector bar (`StationDisplayBar`).
+  - Bottom-Left: Custom configuration / policy tag (`.tactical-override-tag`).
+  - Bottom-Right: Audio feed indicator (`.tactical-audio-indicator` — `🔈 MUTED` / `🔊 LIVE`).
+- **Responsive Card Geometry**: Minimum card width set to 340px (scaling to 760px) ensuring headers never wrap or overlap controls.
 - **Fullscreen Minimap Radar**: Clicking off-canvas displays an interactive HUD Minimap for one-click monitor switching.
 - **Exclusive Audio Solo**: Strict intercom radio mode. Only **one** station plays audio across the entire NOC grid at any time; all other video players stay muted to avoid browser audio buffer resource exhaustion.
+- **Stream Health & Black Screen Validation**: Automated suite (`streamHealth.test.js`) continuously verifies luma/entropy across buffers, multi-monitor path non-collision, and WebRTC connection pooling across 100+ stations.
 
 ---
 

@@ -75,37 +75,45 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 12px;
-        background: var(--bg-dark-well);
-        border-bottom: 1px solid var(--border-subtle);
-        gap: 8px;
+        padding: 6px 10px;
+        background: var(--bg-dark-well, #0A0F1D);
+        border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+        gap: 6px;
+        min-width: 0;
+        overflow: hidden;
 
         .station-brand {
             display: flex;
             flex-direction: column;
             align-items: flex-start;
-            gap: 2px;
+            gap: 1px;
+            flex: 1 1 auto;
             min-width: 0;
+            overflow: hidden;
 
             .station-name {
-                color: var(--text-primary);
-                font-size: clamp(13px, 1vw, 15px);
+                color: var(--text-primary, #F8FAFC);
+                font-size: 13px;
                 font-weight: 800;
                 font-family: 'JetBrains Mono', monospace;
                 letter-spacing: 0.5px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                line-height: 1.15;
+                max-width: 100%;
+                line-height: 1.2;
             }
 
             .station-ip {
-                color: var(--text-secondary);
-                font-size: clamp(10px, 0.8vw, 12px);
+                color: var(--text-secondary, #94A3B8);
+                font-size: 10.5px;
                 font-weight: 700;
                 font-family: 'JetBrains Mono', monospace;
                 letter-spacing: 0.3px;
                 line-height: 1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
         }
 
@@ -145,22 +153,25 @@
         .station-header-right {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
+            flex: 0 0 auto;
             flex-shrink: 0;
+            margin-inline-start: auto;
 
             .tactical-audio-listen-btn {
                 display: flex;
                 align-items: center;
-                gap: 4px;
+                gap: 3px;
                 background: rgba(30, 41, 59, 0.8);
                 border: 1px solid rgba(255, 255, 255, 0.12);
                 color: #94A3B8;
-                font-size: 0.68rem;
+                font-size: 0.65rem;
                 font-weight: 700;
-                padding: 3px 7px;
-                border-radius: 6px;
+                padding: 3px 6px;
+                border-radius: 4px;
                 cursor: pointer;
                 transition: all 0.2s ease;
+                white-space: nowrap;
 
                 &:hover {
                     border-color: #06B6D4;
@@ -303,15 +314,15 @@
                 border: 1px solid rgba(245, 158, 11, 0.4);
                 color: #F59E0B;
                 font-family: 'JetBrains Mono', monospace;
-                font-size: 10px;
+                font-size: 9px;
                 font-weight: 800;
-                padding: 4px 7px;
+                padding: 3px 6px;
                 border-radius: 4px;
                 cursor: pointer;
                 transition: all 0.15s ease;
                 display: inline-flex;
                 align-items: center;
-                gap: 3px;
+                gap: 2px;
                 white-space: nowrap;
 
                 &:hover {
@@ -336,19 +347,20 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                width: 28px;
-                height: 28px;
+                width: 26px;
+                height: 26px;
+                min-width: 26px;
                 background: var(--bg-panel);
                 border: 1px solid var(--border-card);
-                border-radius: var(--radius-sm, 6px);
+                border-radius: 4px;
                 color: var(--text-secondary);
                 cursor: pointer;
                 padding: 0;
                 transition: all 0.18s ease;
 
                 svg {
-                    width: 14px;
-                    height: 14px;
+                    width: 13px;
+                    height: 13px;
                 }
 
                 &:hover:not(:disabled) {
@@ -513,8 +525,8 @@
 
         .tactical-audio-indicator {
             position: absolute;
-            top: 6px;
-            right: 6px;
+            bottom: 8px;
+            right: 8px;
             display: flex;
             align-items: center;
             gap: 4px;
@@ -527,7 +539,7 @@
             font-size: 8.5px;
             font-weight: 800;
             letter-spacing: 0.3px;
-            z-index: 6;
+            z-index: 12;
             pointer-events: none;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
 
@@ -548,8 +560,8 @@
 
         .tactical-override-tag {
             position: absolute;
-            top: 6px;
-            left: 6px;
+            bottom: 8px;
+            left: 8px;
             background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(4px);
             -webkit-backdrop-filter: blur(4px);
@@ -561,7 +573,7 @@
             padding: 2px 6px;
             border-radius: var(--radius-xs, 4px);
             letter-spacing: 0.4px;
-            z-index: 5;
+            z-index: 12;
             pointer-events: none;
         }
 
