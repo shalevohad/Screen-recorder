@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import './StationThumbnail.scss';
 import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import StationDisplayBar from './StationDisplayBar';
@@ -139,6 +139,14 @@ export default function StationThumbnail(props) {
     const isAlertActive = isLive && !isRecording && !props.isSnoozed;
     const isAlertSnoozed = isLive && !isRecording && Boolean(props.isSnoozed);
 
+    const handleStreamAvailable = useCallback((stream) => {
+        registerStationStream(hostname, stream);
+    }, [hostname, registerStationStream]);
+
+    const handleSelectDisplay = useCallback((dispId) => {
+        setActiveDisplayId(dispId);
+    }, []);
+
     return (
         <div
             className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${isLive && !isRecording ? 'is-not-recording' : ''} ${isAlertActive ? 'alert-active' : ''} ${isAlertSnoozed ? 'alert-snoozed' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
@@ -239,15 +247,13 @@ export default function StationThumbnail(props) {
                 {isLive ? (
                     <div className={`webrtc-container ${!isRecording ? 'is-not-recording' : ''}`} style={{ pointerEvents: 'none' }}>
                         <VirtualTopologyCanvas
-                            station={{ ...props, hostname }}
+                            station={props}
                             activeDisplayId={activeDisplayId}
-                            onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
+                            onSelectDisplay={handleSelectDisplay}
                             isMuted={!isListeningThisStation}
                             volume={audioVolume}
                             webrtcBaseUrl={props.webrtcBaseUrl || '/api/v1/whep'}
-                            onStreamAvailable={(stream) => {
-                                registerStationStream(hostname, stream);
-                            }}
+                            onStreamAvailable={handleStreamAvailable}
                         />
                         {!isRecording && (
                             <div className="monitor-only-overlay">

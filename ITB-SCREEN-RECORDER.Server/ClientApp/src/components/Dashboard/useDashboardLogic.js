@@ -256,10 +256,12 @@ export function useDashboardLogic({
             .filter(s => isStationSnoozed(s.hostname))
             .map(s => ({
                 ...s,
-                remainingMinutes: getRemainingMinutes(s.hostname),
-                snoozeReason: getSnoozeReason(s.hostname)
+                remainingMinutes: typeof getRemainingMinutes === 'function'
+                    ? getRemainingMinutes(s.hostname)
+                    : (typeof getSnoozeRemainingMinutes === 'function' ? getSnoozeRemainingMinutes(s.hostname) : 0),
+                snoozeReason: typeof getSnoozeReason === 'function' ? getSnoozeReason(s.hostname) : ''
             }));
-    }, [unrecordedStations, isStationSnoozed, getRemainingMinutes, getSnoozeReason]);
+    }, [unrecordedStations, isStationSnoozed, getRemainingMinutes, getSnoozeRemainingMinutes, getSnoozeReason]);
 
     // Modal state for snoozing alert(s)
     const [snoozeModalState, setSnoozeModalState] = useState({
@@ -358,15 +360,21 @@ export function useDashboardLogic({
             return {
                 ...station,
                 isSnoozed,
-                snoozeRemainingMinutes: isSnoozed ? getRemainingMinutes(station.hostname) : 0,
-                snoozeReason: isSnoozed ? getSnoozeReason(station.hostname) : null,
+                snoozeRemainingMinutes: isSnoozed
+                    ? (typeof getRemainingMinutes === 'function'
+                        ? getRemainingMinutes(station.hostname)
+                        : (typeof getSnoozeRemainingMinutes === 'function' ? getSnoozeRemainingMinutes(station.hostname) : 0))
+                    : 0,
+                snoozeReason: isSnoozed
+                    ? (typeof getSnoozeReason === 'function' ? getSnoozeReason(station.hostname) : null)
+                    : null,
                 effectiveBitrate: station.customBitrate || activeFleetTabConfig?.defaultBitrate || station.bitrate,
                 effectiveFps: station.customFps || activeFleetTabConfig?.defaultFps || station.fps
             };
         });
 
         return list;
-    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
+    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
 
     const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
     if (

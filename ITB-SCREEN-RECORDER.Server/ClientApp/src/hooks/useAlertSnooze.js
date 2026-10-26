@@ -68,6 +68,12 @@ export function useAlertSnooze() {
         return Math.max(1, Math.ceil(diffMs / 60000));
     }, [snoozedMap]);
 
+    const getSnoozeReason = useCallback((hostname) => {
+        if (!hostname) return '';
+        const info = snoozedMap[hostname.toLowerCase()];
+        return info?.reason || '';
+    }, [snoozedMap]);
+
     const snoozeStation = useCallback((hostname, minutes = 30, reason = '') => {
         if (!hostname) return;
         const cleanHost = hostname.toLowerCase();
@@ -140,6 +146,8 @@ export function useAlertSnooze() {
         snoozedMap,
         isStationSnoozed,
         getSnoozeRemainingMinutes,
+        getRemainingMinutes: getSnoozeRemainingMinutes,
+        getSnoozeReason,
         snoozeStation,
         snoozeMultipleStations,
         cancelSnooze,
