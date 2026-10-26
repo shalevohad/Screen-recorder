@@ -314,6 +314,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService, ITB_SCREEN_RECORDER.Server.Services.Security.KeyRingService>();
                 builder.Services.AddSingleton<ICatalogRepository, CatalogRepository>();
                 builder.Services.AddSingleton<IKeystrokeRepository>(sp => sp.GetRequiredService<ICatalogRepository>());
+                builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider>(sp => sp.GetRequiredService<ICatalogRepository>());
                 builder.Services.AddSingleton<IKeystrokeSrtGenerator, KeystrokeSrtGenerator>();
                 builder.Services.AddSingleton<IVideoProbeService, VideoProbeService>();
 

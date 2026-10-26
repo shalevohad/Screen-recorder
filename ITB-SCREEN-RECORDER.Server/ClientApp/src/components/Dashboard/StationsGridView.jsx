@@ -13,8 +13,6 @@ export default function StationsGridView({
     onToggleStream,
     setInspectedHostname,
     setFullscreenHostname,
-    onQuickBookmark,
-    onQuickPlayback,
     handleFeatureQuickExport,
     liveKeystrokes = {},
     keystrokeMode = 'burn-in',
@@ -57,8 +55,6 @@ export default function StationsGridView({
                         }}
                         onSelectStation={() => setInspectedHostname(station.hostname)}
                         onOpenFullscreen={station.isStreaming ? () => setFullscreenHostname(station.hostname) : undefined}
-                        onQuickBookmark={onQuickBookmark}
-                        onQuickPlayback={onQuickPlayback}
                         onQuickExport={handleFeatureQuickExport}
                         recentKeystrokes={station.recentKeystrokes || liveKeystrokes[station.hostname?.toLowerCase()]}
                         keystrokeMode={keystrokeMode}

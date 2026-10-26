@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
@@ -29,6 +30,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         private readonly IStorageScannerService _storageScanner;
         private readonly IAdvanceJobManager _jobManager;
         private readonly IKeystrokeRepository _keystrokeRepository;
+        private readonly IStationRoleProvider? _stationRoleProvider;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
         public ExtractorAdvancedController(
@@ -36,13 +38,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             IStorageScannerService storageScanner,
             IAdvanceJobManager jobManager,
             IKeystrokeRepository keystrokeRepository,
-            ILogger<ExtractorAdvancedController> logger)
+            ILogger<ExtractorAdvancedController> logger,
+            IStationRoleProvider? stationRoleProvider = null)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
             _jobManager = jobManager;
             _keystrokeRepository = keystrokeRepository;
             _logger = logger;
+            _stationRoleProvider = stationRoleProvider;
         }
 
         [HttpGet("keystrokes")]
@@ -103,6 +107,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     availableHosts = await _storageScanner.GetAvailableHostsAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
                 }
 
+                var aliases = _stationRoleProvider != null
+                    ? await _stationRoleProvider.GetAllStationRoleAliasesAsync()
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
                 var stationDtos = new ConcurrentBag<object>();
 
                 await Parallel.ForEachAsync(availableHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
@@ -129,11 +137,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     string resLabel = FormatResolution(width, height);
                     string fpsLabel = $"{Math.Round(fps)}fps";
 
+                    aliases.TryGetValue(host, out string? roleAlias);
+                    string effectiveDisplayName = !string.IsNullOrWhiteSpace(roleAlias) ? roleAlias : host;
+
                     stationDtos.Add(new
                     {
                         id = host,
                         hostname = host,
-                        displayName = host,
+                        roleAlias = roleAlias,
+                        displayName = effectiveDisplayName,
                         isOnline = true,
                         recordingsCount = chunks.Count,
                         segments = Array.Empty<object>(),
@@ -150,7 +162,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     });
                 });
 
-                return Ok(stationDtos.OrderBy(s => ((dynamic)s).hostname).ToList());
+                return Ok(stationDtos.OrderBy(s => ((dynamic)s).displayName).ToList());
             }
             catch (Exception ex)
             {

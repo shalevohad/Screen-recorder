@@ -91,6 +91,15 @@
             min-width: 0;
             overflow: hidden;
 
+            .station-title-row {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                max-width: 100%;
+                min-width: 0;
+                overflow: hidden;
+            }
+
             .station-name {
                 color: var(--text-primary, #F8FAFC);
                 font-size: 13px;
@@ -100,8 +109,27 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                max-width: 100%;
                 line-height: 1.2;
+            }
+
+            .station-host-badge {
+                display: inline-flex;
+                align-items: center;
+                padding: 1px 4px;
+                background: rgba(148, 163, 184, 0.12);
+                border: 1px solid rgba(148, 163, 184, 0.28);
+                border-radius: 3px;
+                color: var(--text-secondary, #94A3B8);
+                font-size: 9.5px;
+                font-weight: 700;
+                font-family: 'JetBrains Mono', monospace;
+                letter-spacing: 0.2px;
+                line-height: 1.1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 110px;
+                flex-shrink: 0;
             }
 
             .station-ip {

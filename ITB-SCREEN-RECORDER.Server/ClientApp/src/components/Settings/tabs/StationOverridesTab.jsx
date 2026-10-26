@@ -249,7 +249,12 @@ export default function StationOverridesTab({
                             <div key={st.hostname} className={`station-override-card ${isCustom ? 'is-custom' : ''}`}>
                                 <div className="card-top-row">
                                     <div className="station-title-group">
-                                        <span className="station-name">{st.hostname}</span>
+                                        <span className="station-name">{st.roleAlias || st.displayName || st.hostname}</span>
+                                        {st.hostname && (st.roleAlias || st.displayName) && (st.roleAlias || st.displayName).toLowerCase() !== st.hostname.toLowerCase() && (
+                                            <span className="station-host-badge" title={`Physical Machine: ${st.hostname}`}>
+                                                {st.hostname}
+                                            </span>
+                                        )}
                                         {isCustom && <span className="custom-indicator-dot" title="Custom override active"></span>}
                                     </div>
                                     <span className={`policy-badge ${isCustom ? 'custom' : 'default'}`}>

@@ -22,7 +22,12 @@ export default function StationHubTableRow({ station, isSelected, onToggle, meta
             </div>
 
             <div className="row-col col-name">
-                <span className="station-name-text" title={hostNameStr}>{hostNameStr}</span>
+                <span className="station-name-text" title={station.hostname ? `Physical: ${station.hostname}` : hostNameStr}>
+                    {hostNameStr}
+                    {station.hostname && hostNameStr.toLowerCase() !== station.hostname.toLowerCase() && (
+                        <small style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '6px' }}>({station.hostname})</small>
+                    )}
+                </span>
             </div>
 
             <div className="row-col col-audio">

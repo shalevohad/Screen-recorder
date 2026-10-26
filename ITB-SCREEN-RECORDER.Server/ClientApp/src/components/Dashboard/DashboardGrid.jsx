@@ -23,7 +23,7 @@ export default function DashboardGrid(props) {
 
     const {
         stations = [], actionPending, onToggleStream,
-        onQuickBookmark, onQuickPlayback, systemConfig, onSystemConfigUpdate,
+        systemConfig, onSystemConfigUpdate,
         direction, hideOffline, onToggleHideOffline,
         isFaultFilterActive, onExitFaultFilter, liveKeystrokes = {}
     } = props;
@@ -239,8 +239,6 @@ export default function DashboardGrid(props) {
                                         onToggleStream={onToggleStream}
                                         setInspectedHostname={logic.setInspectedHostname}
                                         setFullscreenHostname={logic.setFullscreenHostname}
-                                        onQuickBookmark={onQuickBookmark}
-                                        onQuickPlayback={onQuickPlayback}
                                         handleFeatureQuickExport={logic.handleFeatureQuickExport}
                                         liveKeystrokes={liveKeystrokes}
                                         keystrokeMode={logic.keystrokeMode}
@@ -340,8 +338,6 @@ export default function DashboardGrid(props) {
                 station={logic.inspectedStation}
                 onClose={() => logic.setInspectedHostname(null)}
                 onToggleStream={onToggleStream}
-                onQuickBookmark={onQuickBookmark}
-                onQuickPlayback={onQuickPlayback}
                 onQuickExport={logic.handleFeatureQuickExport}
                 onToggleFullscreen={() => {
                     logic.setFullscreenHostname(logic.inspectedHostname);
@@ -359,8 +355,6 @@ export default function DashboardGrid(props) {
                     keystrokeMode={logic.keystrokeMode}
                     onClose={() => logic.setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
-                    onQuickBookmark={onQuickBookmark}
-                    onQuickPlayback={onQuickPlayback}
                     onQuickExport={logic.handleFeatureQuickExport}
                     onOpenInspector={() => {
                         logic.setInspectedHostname(logic.fullscreenHostname);

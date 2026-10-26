@@ -392,6 +392,9 @@ function CommandCenterApp() {
 
         if (isMounted) loadInitialData();
 
+        const handleRolesUpdated = () => fetchStations();
+        window.addEventListener('itb-station-roles-updated', handleRolesUpdated);
+
         const heartbeatInterval = setInterval(() => {
             fetchStations();
         }, 4000);
@@ -399,6 +402,7 @@ function CommandCenterApp() {
         return () => {
             isMounted = false;
             clearInterval(heartbeatInterval);
+            window.removeEventListener('itb-station-roles-updated', handleRolesUpdated);
         };
     }, [isAuthenticated, fetchStations, fetchSystemConfig, fetchClusterConfig]);
 

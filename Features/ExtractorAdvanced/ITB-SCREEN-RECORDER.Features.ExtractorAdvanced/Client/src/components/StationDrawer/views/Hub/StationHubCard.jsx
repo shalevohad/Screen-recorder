@@ -53,7 +53,14 @@ export default function StationHubCard({ station, isSelected, onToggle, meta }) 
             </div>
 
             <div className="card-info">
-                <span className="station-card-title">{hostNameStr}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, marginBottom: '8px' }}>
+                    <span className="station-card-title">{hostNameStr}</span>
+                    {station.hostname && hostNameStr.toLowerCase() !== station.hostname.toLowerCase() && (
+                        <span style={{ fontSize: '10px', color: '#94a3b8', background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: '4px', whiteSpace: 'nowrap' }} title={`Physical Machine: ${station.hostname}`}>
+                            {station.hostname}
+                        </span>
+                    )}
+                </div>
 
                 <div className="recording-specs-grid">
                     <div className="spec-item">

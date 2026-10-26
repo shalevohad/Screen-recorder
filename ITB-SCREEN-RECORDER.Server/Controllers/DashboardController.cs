@@ -89,6 +89,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 {
                     agent.Hostname,
                     RoleAlias = roleAlias,
+                    DisplayName = !string.IsNullOrWhiteSpace(roleAlias) ? roleAlias : agent.Hostname,
                     agent.IpAddress,
                     IsOnline = isOnline,
                     IsStreaming = isStreaming,

@@ -372,6 +372,32 @@ public sealed class CatalogRepository : ICatalogRepository
         await db.ExecuteAsync(sql, mappings.Select(m => new { m.Hostname, m.RoleAlias, now }), tx);
         tx.Commit();
     }
+
+    public async Task SwapStationRoleAliasesAsync(string stationA, string stationB)
+    {
+        using var db = _factory.CreateConnection();
+        using var tx = db.BeginTransaction();
+
+        const string fetchSql = @"SELECT station_id AS StationId, role_alias AS RoleAlias FROM station_nodes WHERE station_id IN (@stationA, @stationB)";
+        var rows = (await db.QueryAsync<(string StationId, string? RoleAlias)>(fetchSql, new { stationA, stationB }, tx)).ToList();
+
+        string? aliasA = rows.FirstOrDefault(r => string.Equals(r.StationId, stationA, StringComparison.OrdinalIgnoreCase)).RoleAlias;
+        string? aliasB = rows.FirstOrDefault(r => string.Equals(r.StationId, stationB, StringComparison.OrdinalIgnoreCase)).RoleAlias;
+
+        const string updateSql = @"
+            INSERT INTO station_nodes (station_id, display_name, role_alias, is_active, last_heartbeat_utc)
+            VALUES (@hostname, @hostname, @roleAlias, 1, @now)
+            ON CONFLICT(station_id) DO UPDATE SET
+                role_alias = excluded.role_alias;
+        ";
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        // Swap: stationA receives aliasB, stationB receives aliasA
+        await db.ExecuteAsync(updateSql, new { hostname = stationA, roleAlias = aliasB, now }, tx);
+        await db.ExecuteAsync(updateSql, new { hostname = stationB, roleAlias = aliasA, now }, tx);
+
+        tx.Commit();
+    }
     #endregion
 
     #region Security Policy

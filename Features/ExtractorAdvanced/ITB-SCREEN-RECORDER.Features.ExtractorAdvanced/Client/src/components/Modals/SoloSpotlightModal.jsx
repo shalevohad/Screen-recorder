@@ -500,7 +500,7 @@ export default function SoloSpotlightModal({
                             type="button"
                             disabled={!prevStation}
                             onClick={() => prevStation && onSelectStation(prevStation.id)}
-                            title={prevStation ? `Previous: ${prevStation.hostname || prevStation.name} (↑)` : 'First station'}
+                            title={prevStation ? `Previous: ${prevStation.displayName || prevStation.roleAlias || prevStation.hostname || prevStation.name} (↑)` : 'First station'}
                         >
                             ◀
                         </button>
@@ -511,7 +511,7 @@ export default function SoloSpotlightModal({
                             type="button"
                             disabled={!nextStation}
                             onClick={() => nextStation && onSelectStation(nextStation.id)}
-                            title={nextStation ? `Next: ${nextStation.hostname || nextStation.name} (↓)` : 'Last station'}
+                            title={nextStation ? `Next: ${nextStation.displayName || nextStation.roleAlias || nextStation.hostname || nextStation.name} (↓)` : 'Last station'}
                         >
                             ▶
                         </button>
@@ -521,7 +521,12 @@ export default function SoloSpotlightModal({
                 <div className="station-brand-pill">
                     <span className="feed-res">SURVEILLANCE ARCHIVE</span>
                     <span className="divider" />
-                    <span className="station-title">{station.hostname || station.name}</span>
+                    <span className="station-title">{station.displayName || station.roleAlias || station.hostname || station.name}</span>
+                    {station.hostname && (station.displayName || station.roleAlias) && (station.displayName || station.roleAlias).toLowerCase() !== station.hostname.toLowerCase() && (
+                        <span className="station-physical-badge" style={{ fontSize: '10px', color: '#94a3b8', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }} title={`Physical Machine: ${station.hostname}`}>
+                            {station.hostname}
+                        </span>
+                    )}
                 </div>
             </div>
 

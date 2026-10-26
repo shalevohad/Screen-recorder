@@ -17,10 +17,10 @@ public class SingleInstanceLock : IDisposable
             }
             else
             {
-                // The mutex already exists. Probe with zero-timeout to check if it was abandoned or free.
+                // The mutex already exists. Probe with a short timeout to check if it was abandoned or free.
                 try
                 {
-                    _hasHandle = _mutex.WaitOne(0, false);
+                    _hasHandle = _mutex.WaitOne(TimeSpan.FromMilliseconds(250), false);
                 }
                 catch (AbandonedMutexException)
                 {

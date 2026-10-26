@@ -15,6 +15,11 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
     const [isApplying, setIsApplying] = useState(false);
     const fileInputRef = useRef(null);
 
+    // Cross-Swap orchestration (הצלבת שמות)
+    const [swapModal, setSwapModal] = useState(null);
+    const [isSwapping, setIsSwapping] = useState(false);
+    const [swapError, setSwapError] = useState(null);
+
     const fetchRoles = useCallback(async () => {
         try {
             const res = await fetch('/api/v1/stations/roles');
@@ -36,18 +41,96 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
         setTempAlias(roleAliases[hostname] || '');
     };
 
+    const handleOpenSwapModal = (initialHost = null) => {
+        setSwapError(null);
+        const hostList = stations.map(s => s.hostname).filter(Boolean);
+        if (hostList.length < 2) {
+            alert('At least two workstations are required to perform an alias swap.');
+            return;
+        }
+
+        const hostA = initialHost || hostList[0];
+        const hostB = hostList.find(h => h.toLowerCase() !== hostA.toLowerCase()) || hostList[1];
+        setSwapModal({ stationA: hostA, stationB: hostB });
+    };
+
+    const handleExecuteSwap = async () => {
+        if (!swapModal?.stationA || !swapModal?.stationB) return;
+        if (swapModal.stationA.toLowerCase() === swapModal.stationB.toLowerCase()) {
+            setSwapError('Please choose two different workstations to swap.');
+            return;
+        }
+
+        setIsSwapping(true);
+        setSwapError(null);
+
+        try {
+            const res = await fetch('/api/v1/stations/roles/swap', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stationA: swapModal.stationA,
+                    stationB: swapModal.stationB
+                })
+            });
+
+            if (res.ok) {
+                const hostA = swapModal.stationA;
+                const hostB = swapModal.stationB;
+
+                setRoleAliases(prev => {
+                    const next = { ...prev };
+                    const aliasA = prev[hostA] || null;
+                    const aliasB = prev[hostB] || null;
+
+                    if (aliasB) next[hostA] = aliasB; else delete next[hostA];
+                    if (aliasA) next[hostB] = aliasA; else delete next[hostB];
+                    return next;
+                });
+
+                setSwapModal(null);
+                onRolesUpdated?.();
+                window.dispatchEvent(new CustomEvent('itb-station-roles-updated', {
+                    detail: { swapped: [hostA, hostB] }
+                }));
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                setSwapError(errData.error || 'Failed swapping station aliases.');
+            }
+        } catch (err) {
+            console.error('[StationsRolesTab] Failed swapping roles:', err);
+            setSwapError('Network or server error occurred during swap.');
+        } finally {
+            setIsSwapping(false);
+        }
+    };
+
     const handleSaveInline = async (hostname) => {
+        const cleanAlias = tempAlias.trim();
+        const cleanLower = cleanAlias.toLowerCase();
+
+        if (cleanLower) {
+            const conflictHost = Object.keys(roleAliases).find(h =>
+                h.toLowerCase() !== hostname.toLowerCase() &&
+                (roleAliases[h] || '').trim().toLowerCase() === cleanLower
+            );
+            if (conflictHost) {
+                alert(`The alias "${cleanAlias}" is already assigned to "${conflictHost}". Each station must have a unique role alias.`);
+                return;
+            }
+        }
+
         try {
             const res = await fetch(`/api/v1/stations/roles/${hostname}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roleAlias: tempAlias.trim() || null })
+                body: JSON.stringify({ roleAlias: cleanAlias || null })
             });
             if (res.ok) {
                 setRoleAliases(prev => {
                     const copy = { ...prev };
-                    if (tempAlias.trim()) {
-                        copy[hostname] = tempAlias.trim();
+                    if (cleanAlias) {
+                        copy[hostname] = cleanAlias;
                     } else {
                         delete copy[hostname];
                     }
@@ -55,6 +138,10 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                 });
                 setEditingHost(null);
                 onRolesUpdated?.();
+                window.dispatchEvent(new CustomEvent('itb-station-roles-updated', { detail: { hostname, roleAlias: cleanAlias } }));
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                alert(errData.error || 'Failed updating role alias due to a collision or server error.');
             }
         } catch (err) {
             console.error('[StationsRolesTab] Failed updating role alias:', err);
@@ -91,6 +178,12 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
     const handleApplyDiff = async () => {
         if (!diffPreview || diffPreview.length === 0) return;
 
+        const hasCollisions = diffPreview.some(item => Boolean(item.conflictWith));
+        if (hasCollisions) {
+            alert('Cannot apply mappings because there are role alias collisions. Each station must have a unique role alias.');
+            return;
+        }
+
         setIsApplying(true);
         try {
             const payload = {
@@ -110,6 +203,10 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                 await fetchRoles();
                 setDiffPreview(null);
                 onRolesUpdated?.();
+                window.dispatchEvent(new CustomEvent('itb-station-roles-updated'));
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                alert(errData.error || 'Failed applying batch mapping.');
             }
         } catch (err) {
             console.error('[StationsRolesTab] Failed applying mappings:', err);
@@ -187,6 +284,19 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                         </svg>
                         <span>Export CSV</span>
                     </button>
+
+                    <button
+                        type="button"
+                        className="btn-action secondary"
+                        onClick={() => handleOpenSwapModal()}
+                        title="Swap operational names between two workstations (הצלבת שמות)"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M7 16V4M7 4L3 8M7 4L11 8" />
+                            <path d="M17 8v12M17 20l4-4M17 20l-4-4" />
+                        </svg>
+                        <span>Swap Aliases (הצלבה)</span>
+                    </button>
                 </div>
             </div>
 
@@ -210,6 +320,14 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                 const currentAlias = roleAliases[st.hostname];
                                 const isEditing = editingHost === st.hostname;
 
+                                const cleanTempAlias = (tempAlias || '').trim().toLowerCase();
+                                const inlineConflictHost = isEditing && cleanTempAlias
+                                    ? Object.keys(roleAliases).find(h =>
+                                        h.toLowerCase() !== st.hostname.toLowerCase() &&
+                                        (roleAliases[h] || '').trim().toLowerCase() === cleanTempAlias
+                                    )
+                                    : null;
+
                                 return (
                                     <tr key={st.hostname} className={currentAlias ? 'has-alias' : ''}>
                                         <td className="hostname-cell">
@@ -217,7 +335,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                         </td>
                                         <td className="alias-cell">
                                             {isEditing ? (
-                                                <div className="inline-edit-box">
+                                                <div className={`inline-edit-box ${inlineConflictHost ? 'has-collision' : ''}`}>
                                                     <input
                                                         type="text"
                                                         value={tempAlias}
@@ -225,10 +343,15 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                                         placeholder="e.g. Command Station / Radar 01"
                                                         autoFocus
                                                         onKeyDown={e => {
-                                                            if (e.key === 'Enter') handleSaveInline(st.hostname);
+                                                            if (e.key === 'Enter' && !inlineConflictHost) handleSaveInline(st.hostname);
                                                             if (e.key === 'Escape') setEditingHost(null);
                                                         }}
                                                     />
+                                                    {inlineConflictHost && (
+                                                        <span className="inline-collision-warning" style={{ display: 'block', fontSize: '10.5px', color: '#F87171', marginTop: '3px', fontWeight: 'bold' }}>
+                                                            ⚠️ Already assigned to: {inlineConflictHost}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <span className={`alias-text ${!currentAlias ? 'empty' : ''}`}>
@@ -244,6 +367,8 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                                         type="button"
                                                         className="btn-tbl-sm save"
                                                         onClick={() => handleSaveInline(st.hostname)}
+                                                        disabled={Boolean(inlineConflictHost)}
+                                                        title={inlineConflictHost ? `Cannot save: alias already taken by ${inlineConflictHost}` : 'Save alias'}
                                                     >
                                                         Save
                                                     </button>
@@ -256,13 +381,23 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                                     </button>
                                                 </div>
                                             ) : (
-                                                <button
-                                                    type="button"
-                                                    className="btn-tbl-sm edit"
-                                                    onClick={() => handleStartEdit(st.hostname)}
-                                                >
-                                                    Edit Alias
-                                                </button>
+                                                <div className="btn-group">
+                                                    <button
+                                                        type="button"
+                                                        className="btn-tbl-sm edit"
+                                                        onClick={() => handleStartEdit(st.hostname)}
+                                                    >
+                                                        Edit Alias
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="btn-tbl-sm swap"
+                                                        onClick={() => handleOpenSwapModal(st.hostname)}
+                                                        title={`Swap operational name of ${st.hostname} with another station (הצלבה)`}
+                                                    >
+                                                        ⇄ Swap
+                                                    </button>
+                                                </div>
                                             )}
                                         </td>
                                     </tr>
@@ -299,12 +434,16 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                 </thead>
                                 <tbody>
                                     {diffPreview.map(row => (
-                                        <tr key={row.hostname} className={row.hasChanged ? 'row-changed' : 'row-unchanged'}>
+                                        <tr key={row.hostname} className={row.conflictWith ? 'row-conflict' : row.hasChanged ? 'row-changed' : 'row-unchanged'}>
                                             <td className="host-text">{row.hostname}</td>
                                             <td className="curr-alias">{row.currentRoleAlias || '—'}</td>
                                             <td className="new-alias">{row.newRoleAlias || '— (Clear)'}</td>
                                             <td className="status-cell">
-                                                {row.hasChanged ? (
+                                                {row.conflictWith ? (
+                                                    <span className="tag-conflict" style={{ color: '#F87171', fontWeight: 'bold' }}>
+                                                        ⚠️ COLLISION ({row.conflictWith})
+                                                    </span>
+                                                ) : row.hasChanged ? (
                                                     <span className="tag-changed">UPDATE</span>
                                                 ) : (
                                                     <span className="tag-unchanged">UNCHANGED</span>
@@ -328,10 +467,123 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                             <button
                                 type="button"
                                 className="btn-apply"
-                                disabled={isApplying}
+                                disabled={isApplying || diffPreview.some(r => Boolean(r.conflictWith))}
                                 onClick={handleApplyDiff}
+                                title={diffPreview.some(r => Boolean(r.conflictWith)) ? 'Cannot apply: alias collisions detected across stations' : 'Apply mappings'}
                             >
                                 {isApplying ? 'Applying Mappings…' : 'Apply Mappings to Fleet'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Swap Station Aliases Modal (הצלבת שמות עמדות) */}
+            {swapModal && (
+                <div className="diff-modal-backdrop" onClick={() => setSwapModal(null)}>
+                    <div className="swap-modal-card" onClick={e => e.stopPropagation()}>
+                        <div className="diff-modal-header">
+                            <div className="title-group">
+                                <span className="badge">CROSS-SWAP (הצלבת שמות)</span>
+                                <h3>Swap Operational Names Between Stations</h3>
+                            </div>
+                        </div>
+
+                        <p className="swap-description">
+                            Exchange role names directly between two workstations. The swap is executed atomically without triggering alias collision restrictions.
+                        </p>
+
+                        {swapError && (
+                            <div className="swap-error-banner">
+                                ⚠️ {swapError}
+                            </div>
+                        )}
+
+                        <div className="swap-selectors-grid">
+                            {/* Station A Box */}
+                            <div className="swap-station-box">
+                                <div className="box-header">
+                                    <span className="station-role-label">STATION 1</span>
+                                    <span className="station-curr-badge">{roleAliases[swapModal.stationA] || '— No Alias'}</span>
+                                </div>
+                                <label className="field-label">Select Workstation:</label>
+                                <select
+                                    value={swapModal.stationA}
+                                    onChange={e => setSwapModal(prev => ({ ...prev, stationA: e.target.value }))}
+                                    className="swap-select"
+                                >
+                                    {stations.map(st => (
+                                        <option key={st.hostname} value={st.hostname} disabled={st.hostname === swapModal.stationB}>
+                                            {st.hostname} {roleAliases[st.hostname] ? `(${roleAliases[st.hostname]})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Invert Button */}
+                            <div className="swap-center-arrow">
+                                <button
+                                    type="button"
+                                    className="btn-flip-swap"
+                                    onClick={() => setSwapModal(prev => ({ stationA: prev.stationB, stationB: prev.stationA }))}
+                                    title="Invert Station 1 and Station 2"
+                                >
+                                    ⇄
+                                </button>
+                            </div>
+
+                            {/* Station B Box */}
+                            <div className="swap-station-box">
+                                <div className="box-header">
+                                    <span className="station-role-label">STATION 2</span>
+                                    <span className="station-curr-badge">{roleAliases[swapModal.stationB] || '— No Alias'}</span>
+                                </div>
+                                <label className="field-label">Select Workstation:</label>
+                                <select
+                                    value={swapModal.stationB}
+                                    onChange={e => setSwapModal(prev => ({ ...prev, stationB: e.target.value }))}
+                                    className="swap-select"
+                                >
+                                    {stations.map(st => (
+                                        <option key={st.hostname} value={st.hostname} disabled={st.hostname === swapModal.stationA}>
+                                            {st.hostname} {roleAliases[st.hostname] ? `(${roleAliases[st.hostname]})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Visual Outcome Preview */}
+                        <div className="swap-preview-card">
+                            <span className="preview-heading">OUTCOME PREVIEW:</span>
+                            <div className="preview-row">
+                                <span className="preview-host">{swapModal.stationA}:</span>
+                                <span className="preview-arrow">➔</span>
+                                <span className="preview-result">{roleAliases[swapModal.stationB] || '— (Clear)'}</span>
+                            </div>
+                            <div className="preview-row">
+                                <span className="preview-host">{swapModal.stationB}:</span>
+                                <span className="preview-arrow">➔</span>
+                                <span className="preview-result">{roleAliases[swapModal.stationA] || '— (Clear)'}</span>
+                            </div>
+                        </div>
+
+                        <div className="diff-modal-actions">
+                            <button
+                                type="button"
+                                className="btn-cancel"
+                                disabled={isSwapping}
+                                onClick={() => setSwapModal(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="btn-apply"
+                                disabled={isSwapping || !swapModal.stationA || !swapModal.stationB || swapModal.stationA === swapModal.stationB}
+                                onClick={handleExecuteSwap}
+                            >
+                                {isSwapping ? 'Swapping Aliases…' : 'Confirm Swap (החלף שמות)'}
                             </button>
                         </div>
                     </div>

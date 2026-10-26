@@ -319,7 +319,9 @@ export default function TimelineTrack({
         return resultGaps;
     }, [activeSegments, globalGaps, baseEpochMs, viewportStartMs, viewportDurationMs, inPointMs, outPointMs]);
 
-    const stationDisplayName = station?.displayName || station?.hostname || station?.name || '';
+    const stationDisplayName = station?.displayName || station?.roleAlias || station?.hostname || station?.name || '';
+    const physicalHost = station?.hostname || '';
+    const hasDifferentHost = Boolean(physicalHost && stationDisplayName && physicalHost.toLowerCase() !== stationDisplayName.toLowerCase());
 
     return (
         <div
@@ -333,9 +335,16 @@ export default function TimelineTrack({
             }}
             className={`timeline-track-container ${isActive ? 'active-track' : 'collapsed-track'}`}
         >
-            <div className="track-sidebar" title={`Right-click to deselect ${stationDisplayName}`}>
+            <div className="track-sidebar" title={`Right-click to deselect ${stationDisplayName}${hasDifferentHost ? ` (${physicalHost})` : ''}`}>
                 <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
-                <span className="station-label" title={stationDisplayName}>{stationDisplayName}</span>
+                <div className="station-sidebar-labels">
+                    <span className="station-label" title={stationDisplayName}>{stationDisplayName}</span>
+                    {hasDifferentHost && (
+                        <span className="station-physical-sublabel" title={`Physical Machine: ${physicalHost}`}>
+                            {physicalHost}
+                        </span>
+                    )}
+                </div>
             </div>
 
             <div className="track-canvas">

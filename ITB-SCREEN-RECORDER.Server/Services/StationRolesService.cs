@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services;
+namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
 using System.Collections.Generic;
@@ -12,7 +12,8 @@ public record StationRoleDiffItem(
     string Hostname,
     string? CurrentRoleAlias,
     string? NewRoleAlias,
-    bool HasChanged
+    bool HasChanged,
+    string? ConflictWith = null
 );
 
 public sealed class StationRolesService
@@ -31,13 +32,48 @@ public sealed class StationRolesService
 
     public async Task SetRoleAliasAsync(string hostname, string? roleAlias)
     {
-        await _repository.SetStationRoleAliasAsync(hostname, roleAlias);
+        string cleanHost = hostname.Trim();
+        string? cleanAlias = string.IsNullOrWhiteSpace(roleAlias) ? null : roleAlias.Trim();
+
+        if (cleanAlias != null)
+        {
+            var existing = await _repository.GetAllStationRoleAliasesAsync();
+            var conflict = existing.FirstOrDefault(kvp =>
+                !string.Equals(kvp.Key, cleanHost, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(kvp.Value, cleanAlias, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrEmpty(conflict.Key))
+            {
+                throw new InvalidOperationException($"The role alias '{cleanAlias}' is already assigned to station '{conflict.Key}'. Each station must have a unique role alias.");
+            }
+        }
+
+        await _repository.SetStationRoleAliasAsync(cleanHost, cleanAlias);
+    }
+
+    public async Task SwapRoleAliasesAsync(string stationA, string stationB)
+    {
+        if (string.IsNullOrWhiteSpace(stationA) || string.IsNullOrWhiteSpace(stationB))
+        {
+            throw new ArgumentException("Both station hostnames are required for swapping.");
+        }
+
+        string cleanA = stationA.Trim();
+        string cleanB = stationB.Trim();
+
+        if (string.Equals(cleanA, cleanB, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Cannot swap aliases of the same station.");
+        }
+
+        await _repository.SwapStationRoleAliasesAsync(cleanA, cleanB);
     }
 
     public async Task<IReadOnlyList<StationRoleDiffItem>> PreviewCsvMappingAsync(Stream csvStream)
     {
         var existing = await _repository.GetAllStationRoleAliasesAsync();
         var diffList = new List<StationRoleDiffItem>();
+        var seenAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         using var reader = new StreamReader(csvStream, Encoding.UTF8);
         string? header = await reader.ReadLineAsync(); // Hostname,RoleAlias
@@ -56,7 +92,28 @@ public sealed class StationRolesService
             existing.TryGetValue(hostname, out string? currentRole);
             bool hasChanged = !string.Equals(currentRole, newRole, StringComparison.OrdinalIgnoreCase);
 
-            diffList.Add(new StationRoleDiffItem(hostname, currentRole, newRole, hasChanged));
+            string? conflictWith = null;
+            if (newRole != null)
+            {
+                if (seenAliases.TryGetValue(newRole, out var prevHost))
+                {
+                    conflictWith = prevHost;
+                }
+                else
+                {
+                    var dbConflict = existing.FirstOrDefault(kvp =>
+                        !string.Equals(kvp.Key, hostname, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(kvp.Value, newRole, StringComparison.OrdinalIgnoreCase));
+
+                    if (!string.IsNullOrEmpty(dbConflict.Key))
+                    {
+                        conflictWith = dbConflict.Key;
+                    }
+                    seenAliases[newRole] = hostname;
+                }
+            }
+
+            diffList.Add(new StationRoleDiffItem(hostname, currentRole, newRole, hasChanged, conflictWith));
         }
 
         return diffList;
@@ -64,7 +121,39 @@ public sealed class StationRolesService
 
     public async Task ApplyMappingAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings)
     {
-        await _repository.BulkUpdateStationRoleAliasesAsync(mappings);
+        var existing = await _repository.GetAllStationRoleAliasesAsync();
+        var mapList = mappings.ToList();
+
+        // 1. Check for duplicates within the submitted mappings
+        var aliasToHost = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (host, role) in mapList)
+        {
+            if (string.IsNullOrWhiteSpace(role)) continue;
+            string cleanRole = role.Trim();
+            string cleanHost = host.Trim();
+
+            if (aliasToHost.TryGetValue(cleanRole, out var duplicateHost))
+            {
+                throw new InvalidOperationException($"Duplicate role alias '{cleanRole}' assigned to both '{duplicateHost}' and '{cleanHost}'. Role aliases must be unique.");
+            }
+            aliasToHost[cleanRole] = cleanHost;
+        }
+
+        // 2. Check for conflicts with existing database entries not updated in this batch
+        foreach (var (cleanRole, cleanHost) in aliasToHost)
+        {
+            var conflict = existing.FirstOrDefault(kvp =>
+                !string.Equals(kvp.Key, cleanHost, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(kvp.Value, cleanRole, StringComparison.OrdinalIgnoreCase) &&
+                !mapList.Any(m => string.Equals(m.Hostname, kvp.Key, StringComparison.OrdinalIgnoreCase)));
+
+            if (!string.IsNullOrEmpty(conflict.Key))
+            {
+                throw new InvalidOperationException($"The role alias '{cleanRole}' is already assigned to station '{conflict.Key}'. Each station must have a unique role alias.");
+            }
+        }
+
+        await _repository.BulkUpdateStationRoleAliasesAsync(mapList);
     }
 
     public async Task<byte[]> ExportMappingCsvAsync()

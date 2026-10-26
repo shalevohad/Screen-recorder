@@ -55,7 +55,12 @@ export default function CameraCard({
                 <div className="card-topbar">
                     <div className="station-meta">
                         <span className={`status-pulse ${statusClass}`} />
-                        <span className="station-name">{station.displayName || station.hostname || station.name}</span>
+                        <span className="station-name">{station.displayName || station.roleAlias || station.hostname || station.name}</span>
+                        {station.hostname && (station.displayName || station.roleAlias) && (station.displayName || station.roleAlias).toLowerCase() !== station.hostname.toLowerCase() && (
+                            <span className="station-physical-badge" title={`Physical Machine: ${station.hostname}`}>
+                                {station.hostname}
+                            </span>
+                        )}
                     </div>
 
                     <div className="card-header-actions">

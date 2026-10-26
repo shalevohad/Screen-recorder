@@ -43,8 +43,9 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
 
                     const normalized = rawList.map(item => ({
                         id: String(item.id || item.stationId || item.agentId || item.hostname),
-                        hostname: item.hostname || item.displayName || item.name || 'Station',
-                        displayName: item.displayName || item.hostname || item.name,
+                        hostname: item.hostname || 'Station',
+                        roleAlias: item.roleAlias || null,
+                        displayName: item.displayName || item.roleAlias || item.hostname || 'Station',
                         isOnline: item.isOnline !== undefined ? item.isOnline : true,
                         recordingsCount: item.recordingsCount || 0,
                         segments: item.segments || [],

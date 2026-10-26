@@ -54,7 +54,7 @@ export default function StationsDenseView({
                     const isAlertActive = isNotRecording && !s.isSnoozed;
                     const isAlertSnoozed = isNotRecording && Boolean(s.isSnoozed);
                     const primaryTitle = s.roleAlias || s.displayName || s.hostname;
-                    const secondaryHost = s.roleAlias ? s.hostname : null;
+                    const secondaryHost = s.hostname && primaryTitle.toLowerCase() !== s.hostname.toLowerCase() ? s.hostname : null;
 
                     return (
                         <div

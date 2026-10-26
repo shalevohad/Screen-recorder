@@ -80,7 +80,8 @@ export function useDashboardLogic({
         const filtered = stations.filter(station => {
             const host = (station.hostname || '').toLowerCase();
             const disp = (station.displayName || '').toLowerCase();
-            const matchesNames = assigned.includes(host) || assigned.includes(disp);
+            const alias = (station.roleAlias || '').toLowerCase();
+            const matchesNames = assigned.includes(host) || assigned.includes(disp) || (alias && assigned.includes(alias));
 
             const ou = (station.ou || '').toLowerCase();
             const grp = (station.group || '').toLowerCase();
@@ -341,7 +342,12 @@ export function useDashboardLogic({
 
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
-            list = list.filter(s => (s.hostname && s.hostname.toLowerCase().includes(q)) || (s.displayName && s.displayName.toLowerCase().includes(q)) || (s.ipAddress && s.ipAddress.includes(q)));
+            list = list.filter(s =>
+                (s.hostname && s.hostname.toLowerCase().includes(q)) ||
+                (s.roleAlias && s.roleAlias.toLowerCase().includes(q)) ||
+                (s.displayName && s.displayName.toLowerCase().includes(q)) ||
+                (s.ipAddress && s.ipAddress.includes(q))
+            );
         }
 
         list.sort((a, b) => {
@@ -351,7 +357,9 @@ export function useDashboardLogic({
                 if (aAlertActive && !bAlertActive) return -1;
                 if (!aAlertActive && bAlertActive) return 1;
             }
-            const comp = (a.displayName || a.hostname || '').toLowerCase().localeCompare((b.displayName || b.hostname || '').toLowerCase(), undefined, { numeric: true, sensitivity: 'base' });
+            const aName = a.roleAlias || a.displayName || a.hostname || '';
+            const bName = b.roleAlias || b.displayName || b.hostname || '';
+            const comp = aName.toLowerCase().localeCompare(bName.toLowerCase(), undefined, { numeric: true, sensitivity: 'base' });
             return sortAsc ? comp : -comp;
         });
 

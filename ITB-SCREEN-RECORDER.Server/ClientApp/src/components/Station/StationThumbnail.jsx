@@ -26,8 +26,6 @@ export default function StationThumbnail(props) {
         onToggleStream,
         onSelectStation,
         onOpenFullscreen,
-        onQuickBookmark,
-        onQuickPlayback,
         onQuickExport
     } = props;
 
@@ -38,8 +36,6 @@ export default function StationThumbnail(props) {
     const { activeAudioStationId, audioVolume, isGlobalMuted, toggleAudioSolo, registerStationStream } = useAudioSolo();
     const isListeningThisStation = activeAudioStationId === hostname && !isGlobalMuted;
     const canControl = hasPermission('stations.control');
-    const canBookmark = hasPermission('bookmarks.manage');
-    const canPlayback = hasPermission('playback.view');
     const canExport = hasPermission('playback.export');
 
     const isRecording = props.isRecording !== undefined
@@ -147,6 +143,9 @@ export default function StationThumbnail(props) {
         setActiveDisplayId(dispId);
     }, []);
 
+    const operationalTitle = props.roleAlias || props.displayName || props.RoleAlias || hostname;
+    const hasAlias = Boolean(props.roleAlias || (props.displayName && props.displayName.toLowerCase() !== hostname.toLowerCase()));
+
     return (
         <div
             className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${isLive && !isRecording ? 'is-not-recording' : ''} ${isAlertActive ? 'alert-active' : ''} ${isAlertSnoozed ? 'alert-snoozed' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
@@ -154,8 +153,15 @@ export default function StationThumbnail(props) {
             title="Click card to open Station Inspector"
         >
             <div className="card-minimal-header">
-                <div className="station-brand">
-                    <span className="station-name">{hostname}</span>
+                <div className="station-brand" title={`${operationalTitle}${hasAlias ? ` (${hostname})` : ''} • ${ipAddress}`}>
+                    <div className="station-title-row">
+                        <span className="station-name">{operationalTitle}</span>
+                        {hasAlias && (
+                            <span className="station-host-badge" title={`Physical Machine: ${hostname}`}>
+                                {hostname}
+                            </span>
+                        )}
+                    </div>
                     <span className="station-ip">{ipAddress}</span>
                 </div>
 
@@ -354,26 +360,6 @@ export default function StationThumbnail(props) {
                     >
                         FULL
                     </button>
-                    {canBookmark && (
-                        <button
-                            type="button"
-                            className="action-btn"
-                            onClick={() => onQuickBookmark?.(hostname)}
-                            title="Add Bookmark"
-                        >
-                            BM
-                        </button>
-                    )}
-                    {canPlayback && (
-                        <button
-                            type="button"
-                            className="action-btn"
-                            onClick={() => onQuickPlayback?.(hostname)}
-                            title="Open Playback"
-                        >
-                            PLAY
-                        </button>
-                    )}
                     {canExport && (
                         <button
                             type="button"
