@@ -10,7 +10,7 @@
 		<!-- Normalize version to 3 segments (Major.Minor.Build) -->
 		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
 		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
-		<RawVersion Condition="'$(RawVersion)' == ''">1.0.41</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.42</RawVersion>
 
 		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
 		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
