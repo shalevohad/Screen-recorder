@@ -43,7 +43,9 @@ export default function StationThumbnail(props) {
         : (props.status === 'Recording' || (Boolean(isStreaming) && props.status !== 'Monitoring'));
     const isStarting = isPending === 'starting' || (Boolean(isPending) && !isRecording);
     const isStopping = isPending === 'stopping' || (Boolean(isPending) && isRecording);
-    const isLive = isOnline && (isStreaming || isRecording) && !isPending;
+    // Workstations stream continuous live RTMP/WebRTC regardless of recording state.
+    // Keep isLive true during record toggles so the stream is never unmounted or reloaded.
+    const isLive = Boolean(isOnline && (isStreaming || isRecording));
     const hasCriticalError = isOnline && (droppedFrames > 5);
 
     const audioHasPlayback = Boolean(hasActiveSpeakers);
@@ -261,25 +263,23 @@ export default function StationThumbnail(props) {
                             webrtcBaseUrl={props.webrtcBaseUrl || '/api/v1/whep'}
                             onStreamAvailable={handleStreamAvailable}
                         />
-                        {!isRecording && (
-                            <div className="monitor-only-overlay">
-                                <button
-                                    type="button"
-                                    className={`monitor-tag ${isAlertActive ? 'alert' : 'snoozed'}`}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        props.onOpenSnoozeModal?.(hostname);
-                                    }}
-                                    title={isAlertSnoozed ? `Alert postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust.` : "Station is in Monitor-Only mode. Click to postpone alert."}
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="11" height="11">
-                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                        <circle cx="12" cy="12" r="3" />
-                                    </svg>
-                                    <span>{isAlertActive ? '⚠️ MONITOR ONLY' : `⏱ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
-                                </button>
-                            </div>
-                        )}
+                        <div className={`monitor-only-overlay ${isRecording ? 'hidden' : 'visible'}`}>
+                            <button
+                                type="button"
+                                className={`monitor-tag ${isAlertActive ? 'alert' : 'snoozed'}`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    props.onOpenSnoozeModal?.(hostname);
+                                }}
+                                title={isAlertSnoozed ? `Alert postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust.` : "Station is in Monitor-Only mode. Click to postpone alert."}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="11" height="11">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                                <span>{isAlertActive ? '⚠️ MONITOR ONLY' : `⏱ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
+                            </button>
+                        </div>
                     </div>
                 ) : (isStarting || isStopping) ? (
                     <div className="stream-loading-matte">

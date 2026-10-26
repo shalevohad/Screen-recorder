@@ -314,11 +314,9 @@ export default function FullscreenModal(props) {
                         }}
                     />
 
-                    {!isRecording && (
-                        <div className="fullscreen-monitor-watermark">
-                            👁 MONITOR ONLY — NOT RECORDING
-                        </div>
-                    )}
+                    <div className={`fullscreen-monitor-watermark ${isRecording ? 'hidden' : 'visible'}`}>
+                        👁 MONITOR ONLY — NOT RECORDING
+                    </div>
 
                     {isStreaming && (
                         <LiveKeystrokeOverlay

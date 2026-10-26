@@ -436,11 +436,14 @@
                 image-rendering: crisp-edges;
                 transform: translateZ(0);
                 backface-visibility: hidden;
+                filter: grayscale(0%) contrast(1) brightness(1);
+                transition: filter 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+                will-change: filter;
             }
 
             &.is-not-recording video {
-                filter: grayscale(100%) contrast(1.1) brightness(0.85) !important;
-                transition: filter 0.3s ease;
+                filter: grayscale(100%) contrast(1.08) brightness(0.82) !important;
+                transition: filter 0.85s cubic-bezier(0.16, 1, 0.3, 1);
             }
         }
 
@@ -452,6 +455,16 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+
+            &.hidden {
+                opacity: 0;
+                transform: translateY(-6px);
+                pointer-events: none;
+            }
 
             .monitor-tag {
                 display: inline-flex;

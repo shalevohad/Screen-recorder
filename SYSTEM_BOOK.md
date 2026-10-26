@@ -45,7 +45,7 @@ The system uses a distributed client-server topology separating low-level endpoi
 │                              CENTRAL C2 & RECORDING SERVER                             │
 │                                                                                        │
 │  ┌────────────────────────┐    ┌──────────────────────────┐    ┌────────────────────┐  │
-│  │  Tactical C2 Dashboard │    │  MediaMTX (v1.15.4 Pinned) │───►│ NetApp Storage UNC │  │
+│  │  Tactical C2 Dashboard │    │MediaMTX (v1.15.4 Pinned) │───►│ NetApp Storage UNC │  │
 │  │   (React 18 + Vite)    │    │   RTMP Ingest (:19350)   │    │ (Primary 5m Chunks)│  │
 │  │   Station Grid / HUD   │    │   WebRTC WHEP (:8889)    │    └─────────┬──────────┘  │
 │  └───────────▲────────────┘    │   LL-HLS Stream (:8888)  │              │             │
@@ -63,7 +63,7 @@ The system uses a distributed client-server topology separating low-level endpoi
 │                             MANAGED WORKSTATION (Endpoint)                             │
 │                                                                                        │
 │  ┌────────────────────────────────────────┐    ┌────────────────────────────────────┐  │
-│  │ 🛡️ AgentService (Session 0 Service)    │    │ 🎥 AgentWorker (Session 1+ GUI)    │  │
+│  │ 🛡️ AgentService (Session 0 Service)    │    │ 🎥 AgentWorker (Session 1+ GUI)   │  │
 │  │  • SYSTEM Context                      │    │  • User Context                    │  │
 │  │  • Logon/Logoff Session Watchdog       │    │  • DXGI Desktop Duplication (DDA)  │  │
 │  │  • Spawns Worker via Token Duplication │───►│  • WASAPI Speaker + Mic Dual Mixer │  │
@@ -252,6 +252,7 @@ FFmpeg probes on hot files must include:
 - **Responsive Card Geometry**: Minimum card width set to 340px (scaling to 760px) ensuring headers never wrap or overlap controls.
 - **Fullscreen Minimap Radar**: Clicking off-canvas displays an interactive HUD Minimap for one-click monitor switching.
 - **Exclusive Audio Solo**: Strict intercom radio mode. Only **one** station plays audio across the entire NOC grid at any time; all other video players stay muted to avoid browser audio buffer resource exhaustion.
+- **Seamless Live Stream Preservation & Grayscale-to-Color Transition**: Because workstations stream continuous RTMP/WebRTC regardless of recording status, toggling between Live Monitor (`MONITOR`) and Recording (`REC`) does NOT unmount or reload the stream (zero black screen, zero loading matte). The WebRTC peer connection remains uninterrupted, and the video element executes a smooth CSS filter animation between tactical monochrome (`grayscale(100%)`) and full color (`grayscale(0%)`).
 - **Stream Health & Black Screen Validation**: Automated suite (`streamHealth.test.js`) continuously verifies luma/entropy across buffers, multi-monitor path non-collision, and WebRTC connection pooling across 100+ stations.
 
 ---
