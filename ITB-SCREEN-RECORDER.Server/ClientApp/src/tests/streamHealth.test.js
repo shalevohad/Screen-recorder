@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
  * Validates whether a raw video frame buffer is pitch black (all 0x00 or luma < threshold).
  * Used by stream diagnostics to catch black screen drops early.
  */
-function isBlackFrame(pixelBuffer, width = 64, height = 36, lumaThreshold = 2.0) {
+function isBlackFrame(pixelBuffer, _width = 64, _height = 36, lumaThreshold = 2.0) {
     if (!pixelBuffer || pixelBuffer.length === 0) return true;
 
     let totalLuma = 0;

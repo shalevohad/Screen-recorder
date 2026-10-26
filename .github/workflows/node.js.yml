@@ -5,9 +5,9 @@ name: Node.js Cross-Platform CI
 
 on:
   push:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
 
 jobs:
   build:
@@ -39,6 +39,14 @@ jobs:
       if: matrix.os == 'windows-latest'
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
       run: npm ci
+
+    - name: Run ESLint
+      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
+      run: npm run lint
+
+    - name: Run Unit Tests
+      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
+      run: npm test
 
     - name: Build the source code
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp

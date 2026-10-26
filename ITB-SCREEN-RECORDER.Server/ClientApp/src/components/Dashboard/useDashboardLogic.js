@@ -258,10 +258,10 @@ export function useDashboardLogic({
                 ...s,
                 remainingMinutes: typeof getRemainingMinutes === 'function'
                     ? getRemainingMinutes(s.hostname)
-                    : (typeof getSnoozeRemainingMinutes === 'function' ? getSnoozeRemainingMinutes(s.hostname) : 0),
+                    : 0,
                 snoozeReason: typeof getSnoozeReason === 'function' ? getSnoozeReason(s.hostname) : ''
             }));
-    }, [unrecordedStations, isStationSnoozed, getRemainingMinutes, getSnoozeRemainingMinutes, getSnoozeReason]);
+    }, [unrecordedStations, isStationSnoozed, getRemainingMinutes, getSnoozeReason]);
 
     // Modal state for snoozing alert(s)
     const [snoozeModalState, setSnoozeModalState] = useState({
@@ -363,7 +363,7 @@ export function useDashboardLogic({
                 snoozeRemainingMinutes: isSnoozed
                     ? (typeof getRemainingMinutes === 'function'
                         ? getRemainingMinutes(station.hostname)
-                        : (typeof getSnoozeRemainingMinutes === 'function' ? getSnoozeRemainingMinutes(station.hostname) : 0))
+                        : 0)
                     : 0,
                 snoozeReason: isSnoozed
                     ? (typeof getSnoozeReason === 'function' ? getSnoozeReason(station.hostname) : null)
@@ -374,7 +374,7 @@ export function useDashboardLogic({
         });
 
         return list;
-    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
+    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
 
     const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
     if (

@@ -2,9 +2,9 @@ name: Frontend Linting CI
 
 on:
   push:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
 
 jobs:
   lint-frontend:
