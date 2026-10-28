@@ -116,7 +116,7 @@ export default function StationsDenseView({
                                 )}
                                 {isLive && (
                                     <LiveKeystrokeOverlay
-                                        keystrokes={s.recentKeystrokes || liveKeystrokes[s.hostname?.toLowerCase()]}
+                                        keystrokes={s.recentKeystrokes || s.keystrokes || s.Keystrokes || liveKeystrokes[s.hostname?.toLowerCase()] || liveKeystrokes[s.hostname]}
                                         isLive={isLive}
                                         variant="compact"
                                         mode={keystrokeMode}

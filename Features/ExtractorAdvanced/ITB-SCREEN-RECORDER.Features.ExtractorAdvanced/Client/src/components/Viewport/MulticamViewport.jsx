@@ -65,7 +65,8 @@ export default function MulticamViewport({
     keystrokeMode = 'BURN_IN',
     keystrokes = [],
     directorPlan,
-    onOverrideDisplay
+    onOverrideDisplay,
+    onResetOverride
 }) {
     const resizeObserverRef = useRef(null);
     const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
@@ -249,6 +250,7 @@ export default function MulticamViewport({
                             showWatermark={false}
                             directorPlan={directorPlan || soloStationToRender?.directorPlan}
                             onOverrideDisplay={onOverrideDisplay}
+                            onResetOverride={onResetOverride}
                         />
 
                         <KeystrokePlaybackOverlay

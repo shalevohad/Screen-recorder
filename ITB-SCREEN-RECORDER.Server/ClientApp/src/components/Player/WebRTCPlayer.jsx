@@ -247,7 +247,7 @@ export default function WebRTCPlayer({
             setHasError(true);
 
             // Resilient backoff: fast exponential retry for first 5 attempts, then steady 6s cadence indefinitely
-            const delay = nextAttempt <= 5
+            const delay = nextAttempt <= maxRetries
                 ? Math.min(1200 * Math.pow(1.5, nextAttempt - 1), 6000)
                 : 6000;
 

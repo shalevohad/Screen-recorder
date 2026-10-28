@@ -44,7 +44,7 @@ export default function VirtualTopologyCanvas({
 
     const bounds = useMemo(() => calculateTopologyBounds(displays), [displays]);
 
-    // Single display station: Render pure clean player without any topology overhead or redundant solo badges
+    // Single display station: Pure clean player
     if (displays.length <= 1) {
         const singleDisplay = displays[0];
         const streamPath = stationHost ? `live/${stationHost}/${singleDisplay.DisplayId}` : '';
@@ -66,81 +66,79 @@ export default function VirtualTopologyCanvas({
         );
     }
 
-    // Multi-display: Single display target view when not in 'canvas' mode
-    if (activeDisplayId !== 'canvas') {
-        const soloDisplay = displays.find(d => d.DisplayId === activeDisplayId) || displays[0];
-        const streamPath = stationHost ? `live/${stationHost}/${soloDisplay.DisplayId}` : '';
+    const isSoloMode = activeDisplayId !== 'canvas';
 
-        return (
-            <div className="virtual-topology-solo-viewport">
-                {streamPath && (
-                    <WebRTCPlayer
-                        streamPath={streamPath}
-                        webrtcBaseUrl={webrtcBaseUrl}
-                        isMuted={!soloDisplay.IsPrimary || isMuted}
-                        volume={volume}
-                        showControls={false}
-                        onPlaying={onPlaying}
-                        onStreamAvailable={soloDisplay.IsPrimary ? onStreamAvailable : undefined}
-                    />
-                )}
-                <div className="solo-display-badge">
-                    <span className="solo-indicator">●</span>
-                    <span className="solo-label">
-                        {soloDisplay.DisplayName || soloDisplay.DisplayId.toUpperCase()} ({soloDisplay.Width}x{soloDisplay.Height})
-                    </span>
-                </div>
-            </div>
-        );
-    }
-
-    // Multi-display: Virtual Desktop Canvas layout
+    // Multi-display: KEEP ALL PLAYERS MOUNTED CONTINUOUSLY.
+    // Switching displays only animates CSS coordinates/classes, ensuring ZERO black screen and ZERO renegotiation!
     return (
         <div
-            className={`virtual-topology-canvas-container ${isInteractive ? 'interactive' : ''}`}
+            className={`virtual-topology-canvas-container ${isSoloMode ? 'in-solo-mode' : 'in-canvas-mode'} ${isInteractive ? 'interactive' : ''}`}
             style={{
-                aspectRatio: `${bounds.totalWidth} / ${bounds.totalHeight}`
+                aspectRatio: isSoloMode ? undefined : `${bounds.totalWidth} / ${bounds.totalHeight}`
             }}
         >
-            <div className="virtual-canvas-grid-bg" />
+            {!isSoloMode && <div className="virtual-canvas-grid-bg" />}
 
             {displays.map((d, index) => {
                 const { leftPct, topPct, widthPct, heightPct } = calculateNormalizedDisplayRect(d, bounds);
                 const streamPath = stationHost ? `live/${stationHost}/${d.DisplayId}` : '';
+                const isThisSolo = isSoloMode && d.DisplayId === activeDisplayId;
+                const isHiddenSolo = isSoloMode && d.DisplayId !== activeDisplayId;
+
+                // Audio strictly plays on primary display (or when soloing primary)
+                const isDisplayMuted = isMuted || !d.IsPrimary;
 
                 return (
                     <div
                         key={d.DisplayId}
-                        className={`sub-display-box ${d.IsPrimary ? 'is-primary' : 'is-secondary'}`}
+                        className={`sub-display-box ${d.IsPrimary ? 'is-primary' : 'is-secondary'} ${isThisSolo ? 'is-solo-expanded' : ''} ${isHiddenSolo ? 'is-solo-hidden' : ''}`}
                         style={{
-                            left: `${leftPct}%`,
-                            top: `${topPct}%`,
-                            width: `${widthPct}%`,
-                            height: `${heightPct}%`
+                            left: isThisSolo ? '0%' : `${leftPct}%`,
+                            top: isThisSolo ? '0%' : `${topPct}%`,
+                            width: isThisSolo ? '100%' : `${widthPct}%`,
+                            height: isThisSolo ? '100%' : `${heightPct}%`,
+                            opacity: isHiddenSolo ? 0 : 1,
+                            pointerEvents: isHiddenSolo ? 'none' : 'auto',
+                            zIndex: isThisSolo ? 10 : 2
                         }}
-                        onClick={() => isInteractive && onSelectDisplay && onSelectDisplay(d.DisplayId)}
-                        title={isInteractive ? `Switch to ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})` : undefined}
+                        onClick={() => {
+                            if (!isSoloMode && isInteractive && onSelectDisplay) {
+                                onSelectDisplay(d.DisplayId);
+                            }
+                        }}
+                        title={!isSoloMode && isInteractive ? `Switch to ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})` : undefined}
                     >
                         {streamPath && (
                             <WebRTCPlayer
                                 streamPath={streamPath}
                                 webrtcBaseUrl={webrtcBaseUrl}
-                                isMuted={!d.IsPrimary || isMuted}
+                                isMuted={isDisplayMuted}
                                 volume={volume}
                                 showControls={false}
-                                onPlaying={onPlaying}
+                                onPlaying={d.IsPrimary ? onPlaying : undefined}
                                 onStreamAvailable={d.IsPrimary ? onStreamAvailable : undefined}
                             />
                         )}
 
-                        <div className="sub-display-overlay">
-                            <span className="display-index-pill">
-                                {d.IsPrimary ? '★ ' : ''}🖥 {index + 1}
-                            </span>
-                            <span className="display-res-pill">
-                                {d.Width}x{d.Height}
-                            </span>
-                        </div>
+                        {!isSoloMode && (
+                            <div className="sub-display-overlay">
+                                <span className="display-index-pill">
+                                    {d.IsPrimary ? '★ ' : ''}🖥 {index + 1}
+                                </span>
+                                <span className="display-res-pill">
+                                    {d.Width}x{d.Height}
+                                </span>
+                            </div>
+                        )}
+
+                        {isThisSolo && (
+                            <div className="solo-display-badge">
+                                <span className="solo-indicator">●</span>
+                                <span className="solo-label">
+                                    {d.DisplayName || d.DisplayId.toUpperCase()} ({d.Width}x{d.Height})
+                                </span>
+                            </div>
+                        )}
                     </div>
                 );
             })}

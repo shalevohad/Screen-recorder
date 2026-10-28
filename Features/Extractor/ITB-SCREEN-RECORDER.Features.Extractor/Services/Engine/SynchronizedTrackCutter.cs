@@ -78,7 +78,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
 
             bool hasMultipleDisplays = chunksByDisplay.Count > 1;
-            bool isMultiDisplayLayout = hasMultipleDisplays && (layoutMode == "split" || layoutMode == "pip");
+            bool isMultiDisplayLayout = hasMultipleDisplays && (layoutMode == "split" || layoutMode == "pip" || layoutMode == "canvas");
 
             var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
 
@@ -301,6 +301,16 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         filterGraph = $"{leftIn}scale=960:1080:force_original_aspect_ratio=decrease,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[left]; " +
                                       $"{rightIn}scale=960:1080:force_original_aspect_ratio=decrease,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[right]; " +
                                       $"[left][right]hstack=inputs=2,drawbox=x=959:y=0:w=2:h=1080:color=0x1E293B@0.8:t=fill[vbase];";
+                    }
+                    else if (layoutMode == "canvas")
+                    {
+                        // Virtual Desktop Canvas: 1080p canvas with monitors arranged side-by-side with tactical glowing borders
+                        string leftIn = !plan.IsPipSwapped ? "[0:v]" : "[1:v]";
+                        string rightIn = !plan.IsPipSwapped ? "[1:v]" : "[0:v]";
+                        filterGraph = $"{leftIn}scale=936:526:force_original_aspect_ratio=decrease,pad=936:526:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x06B6D4@0.85:t=2[d0]; " +
+                                      $"{rightIn}scale=936:526:force_original_aspect_ratio=decrease,pad=936:526:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x10B981@0.85:t=2[d1]; " +
+                                      $"color=c=0x070A10:s=1920x1080:d={maxDuration.ToString("0.00", CultureInfo.InvariantCulture)}[bg]; " +
+                                      $"[bg][d0]overlay=16:277[tmp]; [tmp][d1]overlay=968:277[vbase];";
                     }
                     else
                     {

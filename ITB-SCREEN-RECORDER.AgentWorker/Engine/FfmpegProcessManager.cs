@@ -284,7 +284,7 @@ namespace ITBRecorderAgent.Engine
             // 5. Continuous audio re-sampling and timestamp synchronization with embedded UTC/epoch metadata
             if (audioChannels > 0)
             {
-                ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
+                ffmpegArgs.Append($"-c:a libopus -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
             }
             ffmpegArgs.Append($"-metadata creation_time=\"{utcIso}\" ");
             ffmpegArgs.Append($"-metadata itb_start_epoch_ms=\"{startEpochMs}\" ");

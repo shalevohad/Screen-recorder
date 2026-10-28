@@ -54,9 +54,9 @@ export default function StationsGridView({
                             });
                         }}
                         onSelectStation={() => setInspectedHostname(station.hostname)}
-                        onOpenFullscreen={station.isStreaming ? () => setFullscreenHostname(station.hostname) : undefined}
+                        onOpenFullscreen={(station.isStreaming || station.isRecording || station.status === 'Recording' || station.isOnline) ? () => setFullscreenHostname(station.hostname) : undefined}
                         onQuickExport={handleFeatureQuickExport}
-                        recentKeystrokes={station.recentKeystrokes || liveKeystrokes[station.hostname?.toLowerCase()]}
+                        recentKeystrokes={station.recentKeystrokes || station.keystrokes || station.Keystrokes || liveKeystrokes[station.hostname?.toLowerCase()] || liveKeystrokes[station.hostname]}
                         keystrokeMode={keystrokeMode}
                         onOpenSnoozeModal={onOpenSnoozeModal}
                         onCancelSnooze={onCancelSnooze}

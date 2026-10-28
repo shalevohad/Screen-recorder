@@ -4,13 +4,15 @@ import './MasterAudioDock.scss';
 
 export default function MasterAudioDock({ stations = [] }) {
     const {
-        activeAudioStationId,
+        activeAudioStationIds = [],
         audioVolume,
         isGlobalMuted,
         activeAudioStream,
+        activeAudioStreams = [],
         setAudioVolume,
         toggleGlobalMute,
-        stopAudioSolo
+        stopAudioSolo,
+        muteStation
     } = useAudioSolo();
 
     const bar1Ref = useRef(null);
@@ -21,8 +23,10 @@ export default function MasterAudioDock({ stations = [] }) {
 
     const audioCtxRef = useRef(null);
     const analyserRef = useRef(null);
-    const sourceRef = useRef(null);
+    const sourcesRef = useRef([]);
     const animFrameRef = useRef(null);
+
+    const activeStreamToAnalyze = activeAudioStream || (activeAudioStreams && activeAudioStreams[0]) || null;
 
     useEffect(() => {
         const bars = [bar1Ref.current, bar2Ref.current, bar3Ref.current, bar4Ref.current, bar5Ref.current];
@@ -36,12 +40,12 @@ export default function MasterAudioDock({ stations = [] }) {
             });
         };
 
-        if (!activeAudioStream || isGlobalMuted) {
+        if (!activeStreamToAnalyze || isGlobalMuted) {
             resetBars();
             return;
         }
 
-        const audioTracks = activeAudioStream.getAudioTracks();
+        const audioTracks = activeStreamToAnalyze.getAudioTracks();
         if (!audioTracks || audioTracks.length === 0) {
             resetBars();
             return;
@@ -63,11 +67,11 @@ export default function MasterAudioDock({ stations = [] }) {
         try {
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 64; // 32 frequency bins
-            analyser.smoothingTimeConstant = 0.45; // Responsive to voice and speech dynamics
+            analyser.smoothingTimeConstant = 0.45;
             analyserRef.current = analyser;
 
-            const source = ctx.createMediaStreamSource(activeAudioStream);
-            sourceRef.current = source;
+            const source = ctx.createMediaStreamSource(activeStreamToAnalyze);
+            sourcesRef.current = [source];
             source.connect(analyser);
 
             const bufferLength = analyser.frequencyBinCount;
@@ -77,12 +81,6 @@ export default function MasterAudioDock({ stations = [] }) {
                 if (!analyserRef.current) return;
                 analyserRef.current.getByteFrequencyData(dataArray);
 
-                // Sample 5 frequency bands:
-                // Bin 1: Sub/Bass (~100-300Hz)
-                // Bin 3: Human voice fundamental (~300-800Hz)
-                // Bin 6: Speech vowel & formant clarity (~1-2kHz)
-                // Bin 10: Speech presence & sibilance (~2.5-4kHz)
-                // Bin 15: Highs (~5-8kHz)
                 const bands = [
                     dataArray[1] || 0,
                     dataArray[3] || 0,
@@ -95,12 +93,10 @@ export default function MasterAudioDock({ stations = [] }) {
                 bands.forEach((val, idx) => {
                     const el = bars[idx];
                     if (el) {
-                        // Noise threshold: ignore ambient noise below 10
                         const normalized = val < 10 ? 0 : (val - 10) / 245;
                         const h = Math.max(3, Math.round(3 + normalized * (maxHeight - 3)));
                         el.style.height = `${h}px`;
 
-                        // Peak indicator for active speech
                         if (val > 150) {
                             el.style.background = 'linear-gradient(180deg, #F59E0B, #10B981)';
                         } else {
@@ -119,17 +115,17 @@ export default function MasterAudioDock({ stations = [] }) {
                     cancelAnimationFrame(animFrameRef.current);
                     animFrameRef.current = null;
                 }
-                if (sourceRef.current) {
-                    try { sourceRef.current.disconnect(); } catch { }
-                    sourceRef.current = null;
-                }
+                sourcesRef.current.forEach(s => {
+                    try { s.disconnect(); } catch { }
+                });
+                sourcesRef.current = [];
                 analyserRef.current = null;
                 resetBars();
             };
         } catch (err) {
             console.warn('[MasterAudioDock] Web Audio visualizer setup:', err);
         }
-    }, [activeAudioStream, isGlobalMuted]);
+    }, [activeStreamToAnalyze, isGlobalMuted]);
 
     // Cleanup audio context on unmount
     useEffect(() => {
@@ -140,26 +136,48 @@ export default function MasterAudioDock({ stations = [] }) {
         };
     }, []);
 
-    if (!activeAudioStationId) {
+    const listeningCount = activeAudioStationIds.length;
+    if (listeningCount === 0) {
         return null;
     }
-
-    const activeStation = stations.find(s => (s.hostname || s.Hostname) === activeAudioStationId) || {
-        hostname: activeAudioStationId,
-        roleAlias: null
-    };
-
-    const hostName = activeStation.hostname || activeStation.Hostname || activeAudioStationId;
-    const stationLabel = activeStation.roleAlias || activeStation.RoleAlias || hostName;
 
     return (
         <aside className="master-audio-dock" aria-label="Master Audio Intercom Sink" role="region">
             <div className="dock-left-meta">
                 <span className={`intercom-pulse-dot ${isGlobalMuted ? 'muted' : 'live'}`} />
-                <span className="intercom-badge">🎧 LIVE INTERCOM</span>
-                <span className="station-name-pill" title={hostName}>
-                    {stationLabel}
+                <span className="intercom-badge">
+                    {listeningCount > 1 ? `🎧 MULTI-INTERCOM (${listeningCount})` : '🎧 LIVE INTERCOM'}
                 </span>
+
+                <div className="dock-station-chips-list">
+                    {activeAudioStationIds.map(stId => {
+                        const station = stations.find(s => (s.hostname || s.Hostname) === stId) || {
+                            hostname: stId,
+                            roleAlias: null
+                        };
+                        const hostName = station.hostname || station.Hostname || stId;
+                        const stationLabel = station.roleAlias || station.RoleAlias || hostName;
+
+                        return (
+                            <div key={stId} className="station-audio-chip" title={`Station: ${hostName}`}>
+                                <span className="chip-label">{stationLabel}</span>
+                                {listeningCount > 1 && (
+                                    <button
+                                        type="button"
+                                        className="chip-remove-btn"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            muteStation?.(stId);
+                                        }}
+                                        title={`Mute ${stationLabel}`}
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* Tactical Spectral VU Meter (Real-time Web Audio Analyser) */}
@@ -204,7 +222,7 @@ export default function MasterAudioDock({ stations = [] }) {
                 type="button"
                 className="btn-dock-close"
                 onClick={stopAudioSolo}
-                title="Stop Audio Listening (Mute Sink)"
+                title="Stop Audio Listening (Mute All Sinks)"
             >
                 ✕
             </button>

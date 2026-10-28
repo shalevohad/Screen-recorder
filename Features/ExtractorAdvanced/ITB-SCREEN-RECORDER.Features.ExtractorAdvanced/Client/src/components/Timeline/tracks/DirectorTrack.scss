@@ -73,6 +73,25 @@
             }
         }
 
+        .director-revert-btn {
+            background: rgba(245, 158, 11, 0.18);
+            border: 1px solid rgba(245, 158, 11, 0.6);
+            color: #FBBF24;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+
+            &:hover {
+                background: #F59E0B;
+                color: #0F172A;
+            }
+        }
+
         .director-split-btn {
             background: rgba(30, 41, 59, 0.7);
             border: 1px solid rgba(148, 163, 184, 0.25);
@@ -123,6 +142,10 @@
                 filter: brightness(1.3);
                 z-index: 10;
                 transform: translateY(-1px);
+
+                .segment-quick-actions {
+                    display: flex;
+                }
             }
 
             &.is-auto {
@@ -163,6 +186,59 @@
                 background: #ffffff;
                 box-shadow: 0 0 6px #ffffff;
                 margin-left: 2px;
+            }
+
+            .segment-quick-actions {
+                display: none;
+                position: absolute;
+                right: 3px;
+                top: 50%;
+                transform: translateY(-50%);
+                align-items: center;
+                gap: 2px;
+                background: rgba(15, 23, 42, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 3px;
+                padding: 1px 3px;
+                z-index: 15;
+
+                .quick-disp-btn {
+                    background: transparent;
+                    border: none;
+                    color: #CBD5E1;
+                    font-size: 0.62rem;
+                    font-weight: 800;
+                    padding: 1px 3px;
+                    border-radius: 2px;
+                    cursor: pointer;
+
+                    &:hover {
+                        background: #06B6D4;
+                        color: #FFFFFF;
+                    }
+
+                    &.active {
+                        background: rgba(6, 182, 212, 0.4);
+                        color: #22D3EE;
+                        font-weight: 900;
+                    }
+                }
+
+                .quick-action-btn.revert {
+                    background: transparent;
+                    border: none;
+                    color: #FBBF24;
+                    font-size: 0.62rem;
+                    font-weight: 800;
+                    padding: 1px 3px;
+                    border-radius: 2px;
+                    cursor: pointer;
+
+                    &:hover {
+                        background: #F59E0B;
+                        color: #0F172A;
+                    }
+                }
             }
         }
     }

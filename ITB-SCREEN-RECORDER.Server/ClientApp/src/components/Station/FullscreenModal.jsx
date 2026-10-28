@@ -318,10 +318,10 @@ export default function FullscreenModal(props) {
                         👁 MONITOR ONLY — NOT RECORDING
                     </div>
 
-                    {isStreaming && (
+                    {Boolean(isStreaming || isRecording || props.isLive || isVideoPlaying || props.recentKeystrokes?.length || props.keystrokes?.length) && (
                         <LiveKeystrokeOverlay
-                            keystrokes={props.recentKeystrokes || props.keystrokes}
-                            isLive={isStreaming}
+                            keystrokes={props.recentKeystrokes || props.keystrokes || props.Keystrokes}
+                            isLive={true}
                             variant="fullscreen"
                             mode={props.keystrokeMode || 'burn-in'}
                         />

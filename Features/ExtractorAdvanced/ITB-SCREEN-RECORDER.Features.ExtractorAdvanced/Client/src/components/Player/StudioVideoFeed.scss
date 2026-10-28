@@ -225,6 +225,79 @@
                 box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
             }
         }
+
+        .director-punch-strip {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+
+            .punch-strip-label {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.62rem;
+                font-weight: 800;
+                color: #64748B;
+                padding-left: 2px;
+            }
+
+            .btn-punch-camera {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                background: rgba(30, 41, 59, 0.85);
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                color: #CBD5E1;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.65rem;
+                font-weight: 700;
+                padding: 3px 7px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    background: rgba(56, 189, 248, 0.2);
+                    border-color: #38BDF8;
+                    color: #FFFFFF;
+                }
+
+                &.active {
+                    background: rgba(6, 182, 212, 0.3);
+                    border-color: #06B6D4;
+                    color: #22D3EE;
+                    box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+
+                    &.is-override {
+                        background: rgba(245, 158, 11, 0.25);
+                        border-color: #F59E0B;
+                        color: #FBBF24;
+                        box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+                    }
+                }
+
+                .cam-status {
+                    font-size: 0.7rem;
+                }
+            }
+
+            .btn-revert-auto {
+                background: rgba(16, 185, 129, 0.15);
+                border: 1px solid rgba(16, 185, 129, 0.45);
+                color: #10B981;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.62rem;
+                font-weight: 800;
+                padding: 3px 6px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    background: rgba(16, 185, 129, 0.3);
+                    border-color: #10B981;
+                    color: #FFFFFF;
+                }
+            }
+        }
     }
 
     /* Real-Time Screen Orientation Badge */
@@ -235,7 +308,7 @@
         z-index: 25;
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         padding: 4px 10px;
         border-radius: 4px;
         font-family: 'JetBrains Mono', monospace;
@@ -264,6 +337,137 @@
             border-radius: 50%;
             background: currentColor;
             animation: beaconBlink 1.2s infinite ease-in-out;
+        }
+
+        .banner-revert-btn {
+            background: rgba(245, 158, 11, 0.2);
+            border: 1px solid rgba(245, 158, 11, 0.6);
+            color: #FBBF24;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.62rem;
+            font-weight: 800;
+            padding: 1px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 4px;
+            transition: all 0.15s ease;
+
+            &:hover {
+                background: #F59E0B;
+                color: #0F172A;
+            }
+        }
+    }
+
+    /* Virtual Desktop Canvas Container (Physical Topology) */
+    .feed-canvas-container {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        background: #070A10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+
+        .feed-canvas-grid-bg {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 24px 24px;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .canvas-display-pane {
+            position: absolute;
+            border: 1.5px solid rgba(6, 182, 212, 0.45);
+            border-radius: 5px;
+            overflow: hidden;
+            background: #0B1120;
+            cursor: pointer;
+            z-index: 2;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+
+            &:hover {
+                border-color: #06B6D4;
+                box-shadow: 0 0 20px rgba(6, 182, 212, 0.55);
+                z-index: 10;
+            }
+
+            &.is-primary {
+                border-color: rgba(16, 185, 129, 0.6);
+
+                &:hover {
+                    border-color: #10B981;
+                    box-shadow: 0 0 20px rgba(16, 185, 129, 0.55);
+                }
+            }
+
+            .canvas-pane-header {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                z-index: 5;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                pointer-events: none;
+
+                .pane-index-pill {
+                    font-size: 0.68rem;
+                    font-weight: 800;
+                    background: rgba(15, 23, 42, 0.9);
+                    backdrop-filter: blur(4px);
+                    color: #FFFFFF;
+                    padding: 1px 7px;
+                    border-radius: 4px;
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                }
+
+                .pane-title {
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    color: #94A3B8;
+                    background: rgba(0, 0, 0, 0.6);
+                    padding: 1px 6px;
+                    border-radius: 4px;
+                }
+
+                .pane-res {
+                    font-size: 0.6rem;
+                    font-weight: 600;
+                    background: rgba(0, 0, 0, 0.5);
+                    color: #64748B;
+                    padding: 1px 5px;
+                    border-radius: 4px;
+                }
+            }
+
+            .canvas-frame-img {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+                image-rendering: -webkit-optimize-contrast;
+            }
+
+            .canvas-pane-placeholder {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.75rem;
+                font-weight: 700;
+                color: #F59E0B;
+                background: rgba(11, 17, 32, 0.9);
+            }
         }
     }
 

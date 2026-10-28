@@ -44,7 +44,8 @@ export function clampVolume(vol) {
 }
 
 export const INITIAL_AUDIO_SOLO_STATE = {
-    activeAudioStationId: null,
+    activeAudioStationIds: [],
+    activeAudioStationId: null, // Backward compatibility for single-station consumers
     audioVolume: 0.8,
     isGlobalMuted: false
 };
@@ -54,19 +55,42 @@ export function audioSoloReducer(state, action) {
         case 'TOGGLE_SOLO': {
             const stationId = action.stationId;
             if (!stationId) {
-                return { ...state, activeAudioStationId: null };
+                return { ...state, activeAudioStationIds: [], activeAudioStationId: null };
             }
-            if (state.activeAudioStationId === stationId) {
-                return { ...state, activeAudioStationId: null };
-            }
+            const currentIds = state.activeAudioStationIds !== undefined
+                ? state.activeAudioStationIds
+                : (state.activeAudioStationId ? [state.activeAudioStationId] : []);
+            const exists = currentIds.includes(stationId);
+            const nextIds = exists
+                ? currentIds.filter(id => id !== stationId)
+                : [...currentIds, stationId];
+
             return {
                 ...state,
-                activeAudioStationId: stationId,
+                activeAudioStationIds: nextIds,
+                activeAudioStationId: nextIds[nextIds.length - 1] || null,
                 isGlobalMuted: false
             };
         }
+        case 'MUTE_STATION': {
+            const stationId = action.stationId;
+            if (!stationId) return state;
+            const currentIds = state.activeAudioStationIds !== undefined
+                ? state.activeAudioStationIds
+                : (state.activeAudioStationId ? [state.activeAudioStationId] : []);
+            const nextIds = currentIds.filter(id => id !== stationId);
+            return {
+                ...state,
+                activeAudioStationIds: nextIds,
+                activeAudioStationId: nextIds[nextIds.length - 1] || null
+            };
+        }
         case 'STOP_SOLO': {
-            return { ...state, activeAudioStationId: null };
+            return {
+                ...state,
+                activeAudioStationIds: [],
+                activeAudioStationId: null
+            };
         }
         case 'TOGGLE_GLOBAL_MUTE': {
             return { ...state, isGlobalMuted: !state.isGlobalMuted };

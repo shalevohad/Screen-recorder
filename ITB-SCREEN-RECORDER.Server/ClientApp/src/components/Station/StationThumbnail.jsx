@@ -33,8 +33,8 @@ export default function StationThumbnail(props) {
     const [activeDisplayId, setActiveDisplayId] = useState('canvas');
 
     const { hasPermission } = useAuth();
-    const { activeAudioStationId, audioVolume, isGlobalMuted, toggleAudioSolo, registerStationStream } = useAudioSolo();
-    const isListeningThisStation = activeAudioStationId === hostname && !isGlobalMuted;
+    const { activeAudioStationIds, isListeningStation, audioVolume, isGlobalMuted, toggleAudioSolo, registerStationStream } = useAudioSolo();
+    const isListeningThisStation = isListeningStation ? isListeningStation(hostname) : ((activeAudioStationIds || []).includes(hostname) && !isGlobalMuted);
     const canControl = hasPermission('stations.control');
     const canExport = hasPermission('playback.export');
 
@@ -221,9 +221,9 @@ export default function StationThumbnail(props) {
                             e.stopPropagation();
                             toggleAudioSolo(hostname);
                         }}
-                        title={isListeningThisStation ? "Mute audio intercom" : "Listen to audio feed (Exclusive Solo)"}
+                        title={isListeningThisStation ? "Mute audio intercom for this station" : "Listen to audio feed (Multi-sink)"}
                     >
-                        <span className="audio-icon">{isListeningThisStation ? '??' : '??'}</span>
+                        <span className="audio-icon">{isListeningThisStation ? '🔊' : '🎧'}</span>
                         <span>{isListeningThisStation ? 'LISTENING' : 'LISTEN'}</span>
                     </button>
 
@@ -347,10 +347,10 @@ export default function StationThumbnail(props) {
                     />
                 )}
 
-                {Boolean(isStreaming || isLive) && (
+                {Boolean(isStreaming || isLive || props.recentKeystrokes?.length || props.keystrokes?.length || props.Keystrokes?.length) && (
                     <LiveKeystrokeOverlay
-                        keystrokes={props.recentKeystrokes || props.keystrokes}
-                        isLive={Boolean(isStreaming || isLive)}
+                        keystrokes={props.recentKeystrokes || props.keystrokes || props.Keystrokes}
+                        isLive={true}
                         variant="viewport"
                         mode={props.keystrokeMode || 'burn-in'}
                     />

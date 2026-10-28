@@ -22,7 +22,7 @@ describe('Audio Solo Exclusive Sink State Machine', () => {
         assert.equal(state1.isGlobalMuted, false);
     });
 
-    it('enforces exclusive single-station radio intercom: switching to station-2 silences station-1', () => {
+    it('allows multi-station listening: toggling station-02 adds to active listening stations', () => {
         const state1 = {
             activeAudioStationId: 'station-01',
             audioVolume: 0.8,
@@ -35,7 +35,24 @@ describe('Audio Solo Exclusive Sink State Machine', () => {
         });
 
         assert.equal(state2.activeAudioStationId, 'station-02');
-        assert.notEqual(state2.activeAudioStationId, 'station-01');
+        assert.deepEqual(state2.activeAudioStationIds, ['station-01', 'station-02']);
+    });
+
+    it('MUTE_STATION mutes one specific station from multiple active stations', () => {
+        const state1 = {
+            activeAudioStationIds: ['station-01', 'station-02'],
+            activeAudioStationId: 'station-02',
+            audioVolume: 0.8,
+            isGlobalMuted: false
+        };
+
+        const state2 = audioSoloReducer(state1, {
+            type: 'MUTE_STATION',
+            stationId: 'station-01'
+        });
+
+        assert.deepEqual(state2.activeAudioStationIds, ['station-02']);
+        assert.equal(state2.activeAudioStationId, 'station-02');
     });
 
     it('toggling the same active station stops audio listening', () => {

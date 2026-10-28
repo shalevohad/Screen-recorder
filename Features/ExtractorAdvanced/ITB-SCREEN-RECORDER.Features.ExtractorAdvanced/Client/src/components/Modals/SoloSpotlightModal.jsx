@@ -467,6 +467,7 @@ export default function SoloSpotlightModal({
                     showWatermark={true}
                     directorPlan={directorPlan || station?.directorPlan}
                     onOverrideDisplay={onOverrideDisplay}
+                    onResetOverride={onResetDirectorSegmentToAuto}
                     viewMode={viewMode}
                     onViewModeChange={setViewMode}
                     isPipSwapped={isPipSwapped}

@@ -6,6 +6,7 @@ import NoSignalHero from '../Viewport/overlays/NoSignalHero.jsx';
 import PersistentMinimapHud from '../Viewport/overlays/PersistentMinimapHud.jsx';
 import { frameStore } from '../../utils/frameStore.js';
 import { getAudioSettings } from '../../utils/studioSessionStore.js';
+import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout.js';
 import './StudioVideoFeed.scss';
 
 /**
@@ -44,6 +45,7 @@ export default function StudioVideoFeed({
     showWatermark = true,
     directorPlan,
     onOverrideDisplay,
+    onResetOverride,
     viewMode: propViewMode,
     onViewModeChange,
     isPipSwapped: propIsPipSwapped,
@@ -106,7 +108,7 @@ export default function StudioVideoFeed({
     // Active Display calculation based on mode & director plan
     const activeDisplayId = useMemo(() => {
         if (!hasMultipleDisplays) return 'mon-0';
-        if (viewMode === 'split' || viewMode === 'pip') {
+        if (viewMode === 'split' || viewMode === 'pip' || viewMode === 'canvas') {
             const primaryId = (stationDisplays[0]?.displayId ?? 'mon-0').toLowerCase();
             const secondId = (stationDisplays[1]?.displayId ?? 'mon-1').toLowerCase();
             return isPipSwapped ? secondId : primaryId;
@@ -122,9 +124,51 @@ export default function StudioVideoFeed({
     }, [hasMultipleDisplays, stationDisplays, activeDisplayId]);
 
     const isCurrentManualOverride = useMemo(() => {
-        if (viewMode !== 'director' && viewMode !== 'split' && viewMode !== 'pip') return true;
+        if (viewMode !== 'director' && viewMode !== 'split' && viewMode !== 'pip' && viewMode !== 'canvas') return true;
         return Boolean(activeDirectorSegment?.isManualOverride ?? activeDirectorSegment?.IsManualOverride);
     }, [viewMode, activeDirectorSegment]);
+
+    const [canvasFrames, setCanvasFrames] = useState({});
+
+    const topologyBounds = useMemo(() => {
+        return calculateTopologyBounds(stationDisplays);
+    }, [stationDisplays]);
+
+    useEffect(() => {
+        if (!hasMultipleDisplays || viewMode !== 'canvas') {
+            return;
+        }
+
+        let isMounted = true;
+        const abortController = new AbortController();
+        const targetEpochMs = Math.round(baseEpochMs + playheadMs);
+
+        stationDisplays.forEach((d, i) => {
+            const dId = (d.displayId ?? d.DisplayId ?? `mon-${i}`).toLowerCase();
+            const cached = frameStore.get(hostname, targetEpochMs, dId);
+            if (cached) {
+                setCanvasFrames(prev => ({ ...prev, [dId]: cached }));
+            } else {
+                frameStore.fetchFrame(hostname, targetEpochMs, abortController.signal, dId).then(res => {
+                    if (isMounted && res) {
+                        setCanvasFrames(prev => ({ ...prev, [dId]: res }));
+                    }
+                });
+            }
+        });
+
+        const unsubscribe = frameStore.subscribe((h, e, val, disp) => {
+            if (h === hostname && e === targetEpochMs && disp && isMounted) {
+                setCanvasFrames(prev => ({ ...prev, [disp.toLowerCase()]: val }));
+            }
+        });
+
+        return () => {
+            isMounted = false;
+            abortController.abort();
+            unsubscribe();
+        };
+    }, [hasMultipleDisplays, viewMode, stationDisplays, hostname, baseEpochMs, playheadMs]);
 
     const prevDisplayIdRef = useRef(activeDisplayId);
 
@@ -530,6 +574,14 @@ export default function StudioVideoFeed({
                     </button>
                     <button
                         type="button"
+                        className={`btn-mode ${viewMode === 'canvas' ? 'active' : ''}`}
+                        onClick={() => setViewMode('canvas')}
+                        title="Virtual Desktop Canvas: Physical OS monitor arrangement and geometry"
+                    >
+                        ⊞ CANVAS
+                    </button>
+                    <button
+                        type="button"
                         className={`btn-mode ${viewMode === 'split' ? 'active' : ''}`}
                         onClick={() => setViewMode('split')}
                         title="Split Screen: View all station monitors side-by-side"
@@ -559,6 +611,51 @@ export default function StudioVideoFeed({
                             </button>
                         );
                     })}
+
+                    {/* Broadcast-grade Multicam Punch Switcher for Auto-Director */}
+                    {viewMode === 'director' && (
+                        <>
+                            <div className="toolbar-divider" />
+                            <div className="director-punch-strip" title="Live Camera Switcher: Click to punch monitor override at current time">
+                                <span className="punch-strip-label">PUNCH:</span>
+                                {stationDisplays.map((d, i) => {
+                                    const id = (d.displayId ?? `mon-${i}`).toLowerCase();
+                                    const isPunchActive = activeDisplayId === id;
+                                    return (
+                                        <button
+                                            key={`punch-${id}`}
+                                            type="button"
+                                            className={`btn-punch-camera ${isPunchActive ? 'active' : ''} ${isCurrentManualOverride && isPunchActive ? 'is-override' : ''}`}
+                                            onClick={() => {
+                                                onOverrideDisplay?.(stationId, baseEpochMs + playheadMs, id);
+                                            }}
+                                            title={`Punch CAM ${i + 1} (${id.toUpperCase()}) as override at playhead`}
+                                        >
+                                            <span className="cam-num">CAM {i + 1}</span>
+                                            {isPunchActive && (
+                                                <span className="cam-status">
+                                                    {isCurrentManualOverride ? '✋' : '⚡'}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+
+                                {isCurrentManualOverride && onResetOverride && (
+                                    <button
+                                        type="button"
+                                        className="btn-revert-auto"
+                                        onClick={() => {
+                                            onResetOverride?.(stationId, baseEpochMs + playheadMs);
+                                        }}
+                                        title="Revert manual override back to AI Auto-Director"
+                                    >
+                                        ↩ AUTO
+                                    </button>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
 
@@ -567,10 +664,21 @@ export default function StudioVideoFeed({
                 <div className={`feed-display-orientation-banner ${isCurrentManualOverride ? 'is-override' : 'is-auto'}`}>
                     <span className="banner-pulse" />
                     <span className="banner-text">
-                        {viewMode === 'split' ? '🔲 SPLIT SCREEN (ALL MONITORS)' :
+                        {viewMode === 'canvas' ? '⊞ CANVAS (PHYSICAL OS TOPOLOGY)' :
+                         viewMode === 'split' ? '🔲 SPLIT SCREEN (ALL MONITORS)' :
                          viewMode === 'pip' ? `🪟 PiP MODE: ${activeDisplayId.toUpperCase()} (HERO)` :
-                         `${isCurrentManualOverride ? '✋ OVERRIDE' : '⚡ AUTO'}: ${activeDisplayId.toUpperCase()}`}
+                         `${isCurrentManualOverride ? '✋ MANUAL OVERRIDE' : '⚡ AUTO-DIRECTOR'}: ${activeDisplayId.toUpperCase()}`}
                     </span>
+                    {isCurrentManualOverride && viewMode === 'director' && onResetOverride && (
+                        <button
+                            type="button"
+                            className="banner-revert-btn"
+                            onClick={() => onResetOverride?.(stationId, baseEpochMs + playheadMs)}
+                            title="Revert override back to AI Auto-Director"
+                        >
+                            ↩ REVERT TO AUTO
+                        </button>
+                    )}
                 </div>
             )}
 
@@ -703,7 +811,7 @@ export default function StudioVideoFeed({
             )}
 
             {/* Static image / No Signal Hero layer (Standard & Director View) */}
-            {viewMode !== 'split' && (
+            {viewMode !== 'split' && viewMode !== 'canvas' && (
                 <div
                     className="feed-static-layer"
                     style={{ zIndex: isVideoRendering ? 0 : 2 }}
@@ -774,6 +882,60 @@ export default function StudioVideoFeed({
                     ) : (
                         <div className="pip-placeholder">DECODE PENDING...</div>
                     )}
+                </div>
+            )}
+
+            {/* Virtual Desktop Canvas View: Real physical OS monitor arrangement */}
+            {viewMode === 'canvas' && hasMultipleDisplays && (
+                <div
+                    className="feed-canvas-container"
+                    style={{
+                        aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`
+                    }}
+                >
+                    <div className="feed-canvas-grid-bg" />
+                    {stationDisplays.map((d, index) => {
+                        const rect = calculateNormalizedDisplayRect(d, topologyBounds);
+                        const dispId = (d.displayId ?? d.DisplayId ?? `mon-${index}`).toLowerCase();
+                        const frame = canvasFrames[dispId] || (dispId === activeDisplayId ? frameResult : null);
+                        const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary);
+
+                        return (
+                            <div
+                                key={dispId}
+                                className={`canvas-display-pane ${isPrimary ? 'is-primary' : ''}`}
+                                style={{
+                                    left: `${rect.leftPct}%`,
+                                    top: `${rect.topPct}%`,
+                                    width: `${rect.widthPct}%`,
+                                    height: `${rect.heightPct}%`
+                                }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViewMode(dispId);
+                                }}
+                                title={`Click to focus Display ${index + 1} (${d.width || 1920}x${d.height || 1080})`}
+                            >
+                                <div className="canvas-pane-header">
+                                    <span className="pane-index-pill">
+                                        {isPrimary ? '★ ' : ''}🖥 {index + 1}
+                                    </span>
+                                    <span className="pane-title">{d.displayName || d.DisplayName || dispId.toUpperCase()}</span>
+                                    <span className="pane-res">{d.width || 1920}x{d.height || 1080}</span>
+                                </div>
+
+                                {frame && frame !== 'NO_SIGNAL' ? (
+                                    <img
+                                        src={frame}
+                                        className="canvas-frame-img"
+                                        alt={dispId}
+                                    />
+                                ) : (
+                                    <div className="canvas-pane-placeholder">DECODE PENDING...</div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 

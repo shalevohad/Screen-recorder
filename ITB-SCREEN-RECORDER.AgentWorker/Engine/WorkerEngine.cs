@@ -138,6 +138,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             {
                 // Dispatch immediately over IPC Fast Path for sub-millisecond audio/video sync
                 _ipc.SendKeystrokeImmediate(k);
+
+                // Also enqueue into online keystrokes buffer for inclusion in periodic heartbeat snapshot
+                if (_onlineKeystrokes.Count < 200)
+                {
+                    _onlineKeystrokes.Enqueue(k);
+                }
             }
         }
 

@@ -26,6 +26,7 @@
 16. [Multi-Monitor Adaptive Video Export Engine (PiP, Split Screen, Auto-Director & Solo Display)](#16-multi-monitor-adaptive-video-export-engine-pip-split-screen-auto-director--solo-display-2026-10-28)
 17. [Tactical C2 Bulk Recording Iconography & Ergonomic Inversion](#17-tactical-c2-bulk-recording-iconography--ergonomic-inversion-2026-10-28)
 18. [Multi-Monitor Mouse Pointer & Interaction Isolation Engine](#18-multi-monitor-mouse-pointer--interaction-isolation-engine-2026-10-28)
+19. [Zero-Black-Screen Persistent Player, Multi-Station Audio Listening & Studio Forensic Canvas Layout](#19-zero-black-screen-persistent-player-multi-station-audio-listening--studio-forensic-canvas-layout-2026-10-28)
 
 ---
 
@@ -591,6 +592,62 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
     - `ClicksInVerticalDeltaRegions_AreIsolatedAccurately`: Verifies that clicks in vertical asymmetric zones ($Y > 1080$) are strictly discarded from secondary monitor feeds.
 - **Deterministic Test Lifecycle**:
   - `MouseVisualRasterizer.ClearEvents()` provides atomic ring and badge event flushing between test executions to guarantee zero cross-test temporal leakage.
+
+---
+
+## 19. Zero-Black-Screen Persistent Player, Multi-Station Audio Listening & Studio Forensic Canvas Layout (2026-10-28)
+
+### 1. Zero-Black-Screen Persistent WebRTC Topology Architecture
+- **Root Problem**:
+  - When switching display view modes (`[ ⊞ Canvas | 🖥 1 | 🖥 2 ]`) on station cards, previous implementations destroyed `<WebRTCPlayer>` components and unmounted DOM nodes.
+  - This unmounting terminated active `RTCPeerConnection` instances, triggering teardown, new WHEP POST requests, and SDP offer/answer handshakes.
+  - This resulted in an unavoidable **500–1500ms black screen** and operator visual disruption whenever inspecting individual displays.
+- **Architectural Solution (`VirtualTopologyCanvas.jsx` & `VirtualTopologyCanvas.scss`)**:
+  - **Continuous Mounting**: All active `<WebRTCPlayer>` instances remain permanently mounted in the DOM. Switching between `canvas` mode and solo monitor views (`mon-0`, `mon-1`, etc.) never unmounts or interrupts WebRTC stream receivers.
+  - **Hardware-Accelerated CSS Transitions**: Display coordinates and dimensions dynamically shift using GPU-accelerated CSS properties:
+    ```scss
+    transition: left 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+                top 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+                width 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+                height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.25s ease-out;
+    ```
+  - **Solo Expansion & Smooth Dimming**:
+    - `.is-solo-expanded`: Fills 100% of the canvas container (`inset: 0; width: 100%; height: 100%; z-index: 10; opacity: 1; pointer-events: auto;`).
+    - `.is-solo-hidden`: Scales and dims gracefully (`opacity: 0; pointer-events: none; transform: scale(0.96);`).
+  - **Result**: Instant, butter-smooth 0ms transitions with **zero black frames** and **zero SDP renegotiation**.
+
+### 2. Multi-Station Audio Listening & Dynamic Master Intercom Dock
+- **Evolution to Fleet Multi-Sink Intercom**:
+  - Replaced the single-station constraint with multi-station listening capabilities (`activeAudioStationIds: []`).
+  - Operators can now monitor audio from multiple operational workstations simultaneously without dropping previous audio sinks.
+  - Full backward compatibility maintained for legacy single-station state (`activeAudioStationId`).
+- **Tactical Audio Sinks & UI Orchestration**:
+  - `AudioSoloContext.jsx`: Manages `activeAudioStationIds`, multi-stream registry `activeAudioStreams`, and atomic station muting via `muteStation(stationId)`.
+  - `StationThumbnail.jsx`: Visual listen toggle reflects multi-sink listening status (`activeAudioStationIds.includes(hostname)`).
+  - `MasterAudioDock.jsx`:
+    - Renders interactive station chips: `[ 🔊 Station-01 ✕ ]`, `[ 🔊 Station-02 ✕ ]` with hover-to-mute actions.
+    - Master volume slider controlling combined audio gain.
+    - Web Audio API spectral VU analysis for live visual audio levels.
+
+### 3. Forensic Editing Studio: Real-Topology Canvas Layout & Live Director Punch Switcher
+- **Physical Topology Canvas Mode (`StudioVideoFeed.jsx`)**:
+  - In addition to Split Screen and PiP modes, ExtractorAdvanced Studio now provides a **Physical Canvas** view (`layoutMode === 'canvas'`).
+  - Workstation displays are laid out according to actual Windows virtual desktop coordinates ($X, Y, \text{Width}, \text{Height}$) computed via `calculateTopologyBounds` and `calculateNormalizedDisplayRect`.
+  - Displays are rendered in true physical aspect ratio with subtle bezel separation and active screen focus borders.
+- **Broadcast-Grade Director Live Punch Switcher**:
+  - Integrated directly on the video player toolbar, orientation banner, and timeline tracks.
+  - Operators can punch cameras live: `[CAM 1]`, `[CAM 2]`, `[↩ AUTO]` directly from the preview monitor without digging into submenus.
+  - Hover quick-actions on the timeline allow immediate camera punching or reverting to algorithmic Auto-Director cuts.
+- **FFmpeg Multicam Export Synchronization (`SynchronizedTrackCutter.cs`)**:
+  - Engine supports `"canvas"` alongside `"split"` and `"pip"` in filtergraph generation.
+  - Accurately generates canvas overlays respecting multi-monitor coordinate offsets during video export.
+
+### 4. Multi-Display Keystroke Telemetry Visibility
+- **Keystroke Display Decoupling**:
+  - Resolved missing keystroke display in multi-screen grids and fullscreen previews.
+  - Telemetry fallbacks inspect both fast-path keys and periodic heartbeat properties (`keystrokes`, `Keystrokes`, `recentKeystrokes`).
+  - `FullscreenModal.jsx` decouples keystroke rendering from active streaming state, allowing keystroke inspection during both live stream viewing and offline chunk replay.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

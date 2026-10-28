@@ -703,6 +703,7 @@ export default function ExtractorAdvancedStudio() {
                                     keystrokes={activeStationKeystrokes}
                                     directorPlan={enrichedActiveStation?.directorPlan}
                                     onOverrideDisplay={handleChangeDirectorSegmentDisplay}
+                                    onResetOverride={handleResetDirectorSegmentToAuto}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}

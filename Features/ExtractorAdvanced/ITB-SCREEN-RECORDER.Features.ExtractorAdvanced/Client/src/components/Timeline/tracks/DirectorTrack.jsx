@@ -97,9 +97,20 @@ export default function DirectorTrack({
                     title={`Current orientation at playhead: ${activeDisplayId} (${isActiveOverride ? 'Manual Override' : 'Auto-Director'})`}
                 >
                     <span className="badge-pulse" />
-                    {isActiveOverride ? '✋ ' : '⚡ '}
+                    {isActiveOverride ? '✋ OVERRIDE: ' : '⚡ AUTO: '}
                     {activeDisplayId}
                 </span>
+
+                {isActiveOverride && onResetSegmentToAuto && (
+                    <button
+                        type="button"
+                        className="director-revert-btn"
+                        onClick={() => onResetSegmentToAuto(stationId, playheadEpoch)}
+                        title="Revert active override to AI Auto-Director"
+                    >
+                        ↩ Auto
+                    </button>
+                )}
 
                 <button 
                     type="button"
@@ -169,6 +180,41 @@ export default function DirectorTrack({
                             {isAtPlayhead && (
                                 <span className="playhead-indicator-dot" />
                             )}
+
+                            {/* Tactical inline quick-actions on hover */}
+                            <div className="segment-quick-actions" onClick={(ev) => ev.stopPropagation()}>
+                                {displayList.map(disp => {
+                                    const isCurrent = disp.id === targetDisplay.toLowerCase();
+                                    const shortNum = disp.id.replace('mon-', '');
+                                    return (
+                                        <button
+                                            key={disp.id}
+                                            type="button"
+                                            className={`quick-disp-btn ${isCurrent ? 'active' : ''}`}
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
+                                                onChangeSegmentDisplay?.(stationId, s, disp.id);
+                                            }}
+                                            title={`Switch segment to ${disp.label}`}
+                                        >
+                                            {shortNum}
+                                        </button>
+                                    );
+                                })}
+                                {isOverride && onResetSegmentToAuto && (
+                                    <button
+                                        type="button"
+                                        className="quick-action-btn revert"
+                                        onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            onResetSegmentToAuto(stationId, s);
+                                        }}
+                                        title="Reset segment to AI Auto-Director"
+                                    >
+                                        ↩
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     );
                 })}

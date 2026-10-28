@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
 // ==========================================
 import { useMemo, useCallback, useRef } from 'react';
@@ -355,9 +355,9 @@ export default function DashboardGrid(props) {
                 <FullscreenModal
                     {...logic.fullscreenStation}
                     hostname={logic.fullscreenStation.hostname}
-                    isStreaming={logic.fullscreenStation.isStreaming}
+                    isStreaming={Boolean(logic.fullscreenStation.isStreaming || logic.fullscreenStation.isRecording || logic.fullscreenStation.status === 'Recording' || logic.fullscreenStation.isOnline)}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                    recentKeystrokes={liveKeystrokes[logic.fullscreenStation?.hostname?.toLowerCase()]}
+                    recentKeystrokes={liveKeystrokes[logic.fullscreenStation?.hostname?.toLowerCase()] || liveKeystrokes[logic.fullscreenStation?.hostname] || logic.fullscreenStation?.recentKeystrokes || logic.fullscreenStation?.keystrokes || logic.fullscreenStation?.Keystrokes}
                     keystrokeMode={logic.keystrokeMode}
                     onClose={() => logic.setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
