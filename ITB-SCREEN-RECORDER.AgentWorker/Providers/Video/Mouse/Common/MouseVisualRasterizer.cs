@@ -100,6 +100,14 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             }
         }
 
+        public static void ClearEvents()
+        {
+            lock (_syncLock)
+            {
+                _activeEvents.Clear();
+            }
+        }
+
         public static float GetCurrentCursorScale()
         {
             long now = Stopwatch.GetTimestamp();
