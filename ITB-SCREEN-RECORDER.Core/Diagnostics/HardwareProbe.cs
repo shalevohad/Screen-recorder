@@ -146,16 +146,30 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         {
             try
             {
-                using Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
-                socket.Connect("8.8.8.8", 65530);
-                if (socket.LocalEndPoint is IPEndPoint endPoint)
+                // Enumerate operational non-loopback network interfaces (LAN/Ethernet/Wi-Fi)
+                // Air-gapped safe: avoids external socket connection attempts to 8.8.8.8
+                var interfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni => ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                                 ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
+                                 ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Tunnel)
+                    .OrderByDescending(ni => ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Ethernet)
+                    .ThenByDescending(ni => ni.Speed);
+
+                foreach (var ni in interfaces)
                 {
-                    return endPoint.Address.ToString();
+                    var props = ni.GetIPProperties();
+                    var unicast = props.UnicastAddresses
+                        .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork &&
+                                            !IPAddress.IsLoopback(u.Address));
+                    if (unicast != null)
+                    {
+                        return unicast.Address.ToString();
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[HardwareProbe] Failed to retrieve local IP address: {ex.Message}");
+                Logger.Warn($"[HardwareProbe] Failed to retrieve local IP address from network interfaces: {ex.Message}");
             }
 
             return "127.0.0.1";

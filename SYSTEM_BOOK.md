@@ -20,6 +20,7 @@
 10. [ClientApp Frontend Architecture & Design System](#10-clientapp-frontend-architecture--design-system)
 11. [Air-Gapped & Offline Environment Invariants](#11-air-gapped--offline-environment-invariants)
 12. [Developer Playbook: Build, Debug & Test Workflows](#12-developer-playbook-build-debug--test-workflows)
+13. [Enterprise Forensic Log Diagnostic & RCA Tool (itb-diagnostics)](#13-enterprise-forensic-log-diagnostic--rca-tool-itb-diagnostics)
 
 ---
 
@@ -137,6 +138,9 @@ Session 0 (Isolated Service Context)            Session 1+ (Interactive User Con
    - Implemented in [`IpcServerFactory.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Core/Ipc/IpcServerFactory.cs).
    - Pipe name: `\\.\pipe\ITB_ScreenRecorder_Ipc_{SessionId}`.
    - Named pipe security ACLs are explicitly configured with `PipeSecurity` so that the worker (running under non-elevated user credentials) can exchange heartbeats, telemetry, and control commands with the service.
+3. **Serialized Channel-Based Single-Writer Pattern**:
+   - In [`AgentSupervisorService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentService/AgentSupervisorService.cs), duplex NamedPipe writes are decoupled from callers via a bounded `Channel<string> _workerCommandChannel`.
+   - A dedicated single-writer background task drains this channel sequentially, strictly guaranteeing that concurrent `WriteLineAsync` calls (such as simultaneous telemetry acknowledgments and C2 `Start`/`SetRecording` commands) never collide on the underlying stream. This eliminates `InvalidOperationException: The stream is currently in use by a previous operation on the stream`.
 
 ---
 
@@ -360,6 +364,7 @@ The station inspector drawer ([`StationInspectorDrawer.jsx`](file:///c:/Devloper
 2. **Scripts & Styles**: Zero remote `<script>` or `<link>` tags (no `unpkg`, `cdnjs`, `jsdelivr`).
 3. **NPM & NuGet**: Packages are pre-cached and committed or sourced from internal mirror feeds.
 4. **Network Subnets**: All communications target private operational ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `128.x.x.x`, `.local`, `.internal`).
+5. **Zero External Socket Probes**: Hardware diagnostics and network adapters are enumerated exclusively via local OS APIs (`NetworkInterface.GetAllNetworkInterfaces()`). Outbound socket connections to public IPs (such as `8.8.8.8`) are strictly prohibited and eliminated.
 
 ---
 
@@ -396,4 +401,31 @@ npm run build     # Compiles production bundle to wwwroot
 4. **Open Dashboard**: Navigate to `http://localhost:5000` in Google Chrome or Microsoft Edge.
 
 ---
+
+## 13. Enterprise Forensic Log Diagnostic & RCA Tool (itb-diagnostics)
+
+To enable rapid field triaging without manual log parsing, the platform provides a dedicated standalone forensic diagnostic CLI tool located in [`Tools/ITB-SCREEN-RECORDER.Diagnostics`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Tools/ITB-SCREEN-RECORDER.Diagnostics).
+
+### Key Capabilities:
+- **Zero-Dependency Single-File Executable**: Available at `Publish/Diagnostics/SingleFile/itb-diagnostics.exe` for immediate execution on air-gapped workstations or USB recovery media.
+- **Automated Rule Engine & Pattern Correlation**:
+  - `INCIDENT-001`: Correlates fleet-wide post-reboot crash loops where IPC contention prevents worker command receipt and triggers watchdog 30-second restart cascades.
+  - `IPC-001` / `IPC-002`: Flags NamedPipe stream concurrency collisions and broken pipe / disposed TextWriter warnings.
+  - `WDOG-001`: Detects worker `LaunchTimeout` / heartbeat watchdog process kills.
+  - `AIRGAP-001`: Flags outbound public IP socket probes violating Rule 14.
+  - `NET-001`: Identifies autonomous server discovery timeouts and blocked UDP 5098 broadcast ports.
+  - `CLOCK-001`: Detects domain time drift exceeding 500ms.
+  - `STREAM-001`: Pinpoints WebRTC WHEP 404 responses caused by inactive RTMP publication.
+- **Usage**:
+  ```powershell
+  # Analyze specific file or folder:
+  .\itb-diagnostics.exe "C:\ProgramData\ITB-SCREEN-RECORDER\Logs"
+  
+  # Interactive mode (drag-and-drop or auto-scan default directories):
+  .\itb-diagnostics.exe
+  ```
+- **Exportable Reports**: Automatically saves full forensic summary text files (`ITB_Diagnostic_Report_<timestamp>.txt`) alongside the terminal output.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+

@@ -19,7 +19,7 @@ const getCssPixelValue = (varName, fallback) => {
 
 export function useDashboardLogic({
     stations = [],
-    hideOffline = true,
+    _hideOffline = true,
     isFaultFilterActive = false,
     onExitFaultFilter,
     onBulkStart,

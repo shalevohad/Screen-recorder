@@ -55,7 +55,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private DateTime _lastWorkerLaunchTime = DateTime.MinValue;
-        private StreamWriter? _workerCommandWriter;
+        private Channel<string>? _workerCommandChannel;
+        private volatile bool _isWorkerIpcConnected;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
         private IpcTelemetryDto? _lastTelemetry = null;
         private string? _activeKeystrokeKeyId;
@@ -339,6 +340,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
             while (!ct.IsCancellationRequested)
             {
+                CancellationTokenSource? connCts = null;
+                Task? channelWriterTask = null;
                 try
                 {
                     using var pipeServer = IpcServerFactory.CreateSecureServerPipe("ITB_Agent_IPC");
@@ -350,12 +353,40 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     using var reader = new StreamReader(pipeServer);
                     using var writer = new StreamWriter(pipeServer) { AutoFlush = true };
 
-                    _workerCommandWriter = writer;
-
-                    if (_serverUtcOffset != TimeSpan.Zero)
+                    var commandChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(500)
                     {
-                        await writer.WriteLineAsync($"SyncClock|{_serverUtcOffset.Ticks}");
-                    }
+                        FullMode = BoundedChannelFullMode.DropOldest,
+                        SingleReader = true,
+                        SingleWriter = false
+                    });
+
+                    _workerCommandChannel = commandChannel;
+                    _isWorkerIpcConnected = true;
+
+                    connCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+                    // Dedicated single-writer background task strictly serializing all writes to pipeServer
+                    channelWriterTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            while (!connCts.Token.IsCancellationRequested && pipeServer.IsConnected)
+                            {
+                                if (await commandChannel.Reader.WaitToReadAsync(connCts.Token).ConfigureAwait(false))
+                                {
+                                    while (commandChannel.Reader.TryRead(out var cmd))
+                                    {
+                                        await writer.WriteLineAsync(cmd).ConfigureAwait(false);
+                                    }
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException) { }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug("[IPC] Command writer terminated: {Msg}", ex.Message);
+                        }
+                    }, connCts.Token);
 
                     bool isIpcAuthenticated = false;
                     while (pipeServer.IsConnected && !ct.IsCancellationRequested)
@@ -372,15 +403,21 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     {
                                         isIpcAuthenticated = true;
                                         _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
+
+                                        if (_serverUtcOffset != TimeSpan.Zero)
+                                        {
+                                            await SendCommandToWorkerAsync($"SyncClock|{_serverUtcOffset.Ticks}");
+                                        }
+
                                         if (!string.IsNullOrEmpty(_activeKeystrokeKeyId) && !string.IsNullOrEmpty(_activeKeystrokeKeyMaterial))
                                         {
-                                            await writer.WriteLineAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
+                                            await SendCommandToWorkerAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
                                         }
 
                                         if (_lastServerShouldStream == true || (_lastServerShouldStream == null && _config.AutoStartRecordingOnLaunch))
                                         {
                                             string dest = GetEffectiveRtmpDestination();
-                                            await writer.WriteLineAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                            await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
                                             _lastStartCommandDispatchUtc = DateTime.UtcNow;
                                         }
                                         continue;
@@ -446,7 +483,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                             _lastStartCommandDispatchUtc = DateTime.UtcNow;
                                             _logger.LogInformation("[IPC] Worker is in standby while recording is desired. Dispatching Start command.");
                                             string dest = GetEffectiveRtmpDestination();
-                                            await writer.WriteLineAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                            await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
                                         }
                                     }
                                     _lastTelemetry = status.Telemetry;
@@ -488,7 +525,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 finally
                 {
-                    _workerCommandWriter = null;
+                    connCts?.Cancel();
+                    if (channelWriterTask != null)
+                    {
+                        try { await channelWriterTask.ConfigureAwait(false); } catch { }
+                    }
+                    connCts?.Dispose();
+                    _workerCommandChannel = null;
+                    _isWorkerIpcConnected = false;
                     _lastWorkerHeartbeat = DateTime.MinValue;
                     _isWorkerStreaming = false;
                 }
@@ -501,7 +545,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             string targetEndpoint = _serverBaseUrl;
             try
             {
-                bool isWorkerAlive = _workerCommandWriter != null && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 10;
+                bool isWorkerAlive = _isWorkerIpcConnected && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 10;
                 bool isStreaming = isWorkerAlive && _isWorkerStreaming;
 
                 var fallbackHwStats = HardwareProbe.GetTelemetrySnapshot();
@@ -1006,19 +1050,21 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
-        private async Task SendCommandToWorkerAsync(string command)
+        private Task SendCommandToWorkerAsync(string command)
         {
-            if (_workerCommandWriter != null)
+            var channel = _workerCommandChannel;
+            if (channel != null && _isWorkerIpcConnected)
             {
                 try
                 {
-                    await _workerCommandWriter.WriteLineAsync(command);
+                    channel.Writer.TryWrite(command);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning("Failed to dispatch command to worker: {Msg}", ex.Message);
+                    _logger.LogWarning("Failed to enqueue command to worker: {Msg}", ex.Message);
                 }
             }
+            return Task.CompletedTask;
         }
 
         private void EnsureWorkerRunning()

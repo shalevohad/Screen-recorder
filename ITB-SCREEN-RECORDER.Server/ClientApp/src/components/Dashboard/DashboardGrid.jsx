@@ -24,7 +24,7 @@ export default function DashboardGrid(props) {
     const {
         stations = [], actionPending, onToggleStream,
         systemConfig, onSystemConfigUpdate,
-        direction, hideOffline, onToggleHideOffline,
+        direction,
         isFaultFilterActive, onExitFaultFilter, liveKeystrokes = {}
     } = props;
 
