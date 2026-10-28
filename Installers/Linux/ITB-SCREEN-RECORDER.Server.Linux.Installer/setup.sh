@@ -553,6 +553,11 @@ echo "--> Applying binary execution permissions..."
 chmod +x "$INSTALL_ROOT/ITB-SCREEN-RECORDER.Server"
 
 # הרשאות ריצה עבור כלי Linux
+if [ -d "$INSTALL_ROOT/Tools" ]; then
+    chmod +x "$INSTALL_ROOT/Tools/itb-diagnostics" 2>/dev/null || true
+    chmod +x "$INSTALL_ROOT/Tools/Linux/itb-diagnostics" 2>/dev/null || true
+fi
+
 if [ -d "$INSTALL_ROOT/Tools/Linux" ]; then
     chmod +x "$INSTALL_ROOT/Tools/Linux/ffprobe" 2>/dev/null || true
     chmod +x "$INSTALL_ROOT/Tools/Linux/mediamtx" 2>/dev/null || true

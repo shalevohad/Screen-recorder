@@ -31,8 +31,9 @@
 		<MakeDir Directories="$(StagingDir)/features" />
 		<MakeDir Directories="$(FinalOutputDir)" />
 
-		<Message Importance="high" Text="=== [2/5] Publishing Central Server (linux-x64) ===" />
+		<Message Importance="high" Text="=== [2/5] Publishing Central Server &amp; Diagnostics Tool (linux-x64) ===" />
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)/ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)/server&quot;" />
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)/Tools/ITB-SCREEN-RECORDER.Diagnostics/ITB-SCREEN-RECORDER.Diagnostics.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -p:PublishSingleFile=true -o &quot;$(StagingDir)/server/Tools&quot;" />
 		<RemoveDir Directories="$(StagingDir)/server/Features" ContinueOnError="true" />
 
 		<Message Importance="high" Text="=== [3/5] Publishing All Discovered Modular Features (linux-x64) ===" />

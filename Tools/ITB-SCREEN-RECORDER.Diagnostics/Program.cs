@@ -12,8 +12,16 @@ namespace ITB_SCREEN_RECORDER.Diagnostics
     {
         static int Main(string[] args)
         {
-            Console.Title = "ITB-SCREEN-RECORDER — Log Diagnostic & RCA Engine";
-            bool isInteractive = args.Length == 0;
+            try
+            {
+                if (OperatingSystem.IsWindows() || !Console.IsOutputRedirected)
+                {
+                    Console.Title = "ITB-SCREEN-RECORDER — Log Diagnostic & RCA Engine";
+                }
+            }
+            catch { }
+
+            bool isInteractive = args.Length == 0 && !Console.IsInputRedirected;
 
             var targetFiles = new List<string>();
 
@@ -44,7 +52,7 @@ namespace ITB_SCREEN_RECORDER.Diagnostics
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine(@"
 ════════════════════════════════════════════════════════════════════════════════
-   ITB-SCREEN-RECORDER — Automated Field Diagnostic & RCA CLI
+   ITB-SCREEN-RECORDER — Automated Field Diagnostic & RCA CLI (Cross-Platform)
 ════════════════════════════════════════════════════════════════════════════════");
                 Console.ResetColor();
                 Console.WriteLine("Drag and drop a log file / folder here, or enter the path.");
@@ -55,14 +63,35 @@ namespace ITB_SCREEN_RECORDER.Diagnostics
 
                 if (string.IsNullOrWhiteSpace(input))
                 {
-                    // Scan standard locations
-                    var candidateDirs = new[]
+                    // Scan standard locations based on OS
+                    var candidateDirs = new List<string>
                     {
-                        @"C:\ProgramData\ITB-SCREEN-RECORDER\Logs",
-                        @"C:\Program Files\ITB-ScreenRecorder\logs",
                         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs"),
+                        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs"),
                         AppDomain.CurrentDomain.BaseDirectory
                     };
+
+                    if (OperatingSystem.IsWindows())
+                    {
+                        candidateDirs.AddRange(new[]
+                        {
+                            @"C:\ProgramData\ITB-SCREEN-RECORDER\Logs",
+                            @"C:\ProgramData\ITB-SCREEN-RECORDER\Server\Logs",
+                            @"C:\Program Files\ITB-ScreenRecorder\logs",
+                            @"C:\Program Files\ITB-ScreenRecorder-Server\logs"
+                        });
+                    }
+                    else
+                    {
+                        candidateDirs.AddRange(new[]
+                        {
+                            "/var/log/itb-screenrecorder",
+                            "/var/log/itb-server",
+                            "/opt/itb-screenrecorder/logs",
+                            "/opt/itb-screenrecorder-server/logs",
+                            "/var/log"
+                        });
+                    }
 
                     foreach (var dir in candidateDirs)
                     {

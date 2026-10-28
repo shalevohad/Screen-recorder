@@ -407,7 +407,14 @@ npm run build     # Compiles production bundle to wwwroot
 To enable rapid field triaging without manual log parsing, the platform provides a dedicated standalone forensic diagnostic CLI tool located in [`Tools/ITB-SCREEN-RECORDER.Diagnostics`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Tools/ITB-SCREEN-RECORDER.Diagnostics).
 
 ### Key Capabilities:
-- **Zero-Dependency Single-File Executable**: Available at `Publish/Diagnostics/SingleFile/itb-diagnostics.exe` for immediate execution on air-gapped workstations or USB recovery media.
+- **True Cross-Platform (Windows & Linux)**:
+  - Windows: Single-file executable `itb-diagnostics.exe` (`Publish/Diagnostics/win-x64/`).
+  - Linux: Native single-file ELF binary `itb-diagnostics` (`Publish/Diagnostics/linux-x64/`).
+  - Automatically identifies local OS and scans default installation paths (`C:\ProgramData\ITB-SCREEN-RECORDER\Logs` on Windows, `/var/log/itb-server` and `/opt/itb-screenrecorder-server/logs` on Linux).
+- **Bundled Directly With Server Installations**:
+  - **Windows Server MSI**: Packed directly into `C:\Program Files\ITB-ScreenRecorder-Server\Tools\itb-diagnostics.exe` via WiX v4 installer (`ITB-SCREEN-RECORDER.Server.Installer`).
+  - **Linux Server Package**: Deployed into `/opt/itb-screenrecorder-server/Tools/itb-diagnostics` via the native `.run` payload installer, with execution permissions (`chmod +x`) automatically applied.
+  - **Server Build Pipeline**: Whenever `ITB-SCREEN-RECORDER.Server` is built or published, the single-file diagnostic binary is automatically bundled into its `Tools/` directory.
 - **Automated Rule Engine & Pattern Correlation**:
   - `INCIDENT-001`: Correlates fleet-wide post-reboot crash loops where IPC contention prevents worker command receipt and triggers watchdog 30-second restart cascades.
   - `IPC-001` / `IPC-002`: Flags NamedPipe stream concurrency collisions and broken pipe / disposed TextWriter warnings.
@@ -416,10 +423,14 @@ To enable rapid field triaging without manual log parsing, the platform provides
   - `NET-001`: Identifies autonomous server discovery timeouts and blocked UDP 5098 broadcast ports.
   - `CLOCK-001`: Detects domain time drift exceeding 500ms.
   - `STREAM-001`: Pinpoints WebRTC WHEP 404 responses caused by inactive RTMP publication.
+  - `LNX-001` / `LNX-002`: Detects Linux systemd service exits and X11/PipeWire display server acquisition errors.
 - **Usage**:
   ```powershell
-  # Analyze specific file or folder:
-  .\itb-diagnostics.exe "C:\ProgramData\ITB-SCREEN-RECORDER\Logs"
+  # Windows:
+  .\Tools\itb-diagnostics.exe "C:\ProgramData\ITB-SCREEN-RECORDER\Logs"
+  
+  # Linux:
+  /opt/itb-screenrecorder-server/Tools/itb-diagnostics /var/log/itb-server
   
   # Interactive mode (drag-and-drop or auto-scan default directories):
   .\itb-diagnostics.exe

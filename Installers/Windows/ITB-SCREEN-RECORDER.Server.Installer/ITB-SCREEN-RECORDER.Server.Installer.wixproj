@@ -43,8 +43,8 @@
 		<MakeDir Directories="$(ServerStaging)" />
 		<MakeDir Directories="$(FeaturesStaging)" />
 		<MakeDir Directories="$(IntermediateOutputPath)" />
-		<Message Importance="high" Text="=== [2/3] Publishing Central Server &amp; Auto-Discovering All Features ===" />
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)\ITB-SCREEN-RECORDER.Server\ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(ServerStaging)&quot;" />
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)\Tools\ITB-SCREEN-RECORDER.Diagnostics\ITB-SCREEN-RECORDER.Diagnostics.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -p:PublishSingleFile=true -o &quot;$(ServerStaging)\Tools&quot;" />
 		<!-- סניטציה: מחיקת קבצי פיתוח שהסתננו לפלט השרת -->
 		<RemoveDir Directories="$(ServerStaging)\Features" ContinueOnError="true" />
 		<Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\PublishFeatures.ps1&quot; -FeaturesRoot &quot;$(SolutionRoot)\Features&quot; -StagingDir &quot;$(FeaturesStaging)&quot; -Configuration &quot;$(Configuration)&quot;" />

@@ -194,6 +194,33 @@ namespace ITB_SCREEN_RECORDER.Diagnostics.Engine
                             "Verify network connectivity and SMB authentication to the central storage server.",
                             line, lineTime);
                     }
+
+                    // 11. Linux Systemd Service Failure
+                    if (line.Contains("Failed with result 'exit-code'", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("itb-server.service: Main process exited", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("itb-agent.service: Main process exited", StringComparison.OrdinalIgnoreCase))
+                    {
+                        RecordFinding(findingsDict, "LNX-001", FindingSeverity.Critical,
+                            "Linux Systemd Service Abnormal Exit",
+                            "Systemd recorded abnormal process termination for ITB Screen Recorder service daemon.",
+                            "The daemon crashed or exited with a non-zero exit code. Review the previous 20 lines in journalctl for unhandled exceptions or missing shared objects (.so).",
+                            "Run: 'journalctl -u itb-server -n 100 --no-pager' or 'journalctl -u itb-agent -n 100 --no-pager' to view stack traces.",
+                            line, lineTime);
+                    }
+
+                    // 12. Linux Display Server / Wayland / PipeWire / X11 Errors
+                    if (line.Contains("Cannot open display", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("No protocol specified", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("PipeWire node not found", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("X11 connection failed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        RecordFinding(findingsDict, "LNX-002", FindingSeverity.Warning,
+                            "Linux Display Server Connection Error",
+                            "AgentWorker failed to acquire display surface from X11 or PipeWire.",
+                            "The session user context or DISPLAY/XDG_RUNTIME_DIR environment variables were missing, or the session was locked.",
+                            "Ensure the worker runs within the user's graphical session with access to XAUTHORITY or PipeWire socket.",
+                            line, lineTime);
+                    }
                 }
             }
 
