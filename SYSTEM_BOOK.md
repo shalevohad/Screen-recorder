@@ -24,6 +24,7 @@
 14. [Enterprise UI/UX Modernization, Fleet Intercom & Advanced Resilience Updates](#14-enterprise-uiux-modernization-fleet-intercom--advanced-resilience-updates-2026-10-28)
 15. [Multi-Screen Studio Editing, Director Track Overrides, Server Folder Browser, 1-Hour Stream Drop Immunity & AD SSO](#15-multi-screen-studio-editing-director-track-overrides-server-folder-browser-1-hour-stream-drop-immunity--ad-sso-2026-10-28)
 16. [Multi-Monitor Adaptive Video Export Engine (PiP, Split Screen, Auto-Director & Solo Display)](#16-multi-monitor-adaptive-video-export-engine-pip-split-screen-auto-director--solo-display-2026-10-28)
+17. [Tactical C2 Bulk Recording Iconography & Ergonomic Inversion](#17-tactical-c2-bulk-recording-iconography--ergonomic-inversion-2026-10-28)
 
 ---
 
@@ -542,6 +543,23 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
 - `SoloSpotlightModal.jsx` and `ExtractorAdvancedStudio.jsx` synchronize their active view mode and swap states directly into the export payloads, providing live visual feedback on the `[EXPORT CUT (MODE)]` action button.
 
 ---
+
+## 17. Tactical C2 Bulk Recording Iconography & Ergonomic Inversion (2026-10-28)
+
+### 1. Tactical Bulk Recording Controls & Operational Semantics
+- **Ergonomic Inversion to Standard C2 Operations**:
+  - **Bulk Start Recording (`tactical-btn-start`)**:
+    - **Visual Styling**: Rendered in tactical red (`color: var(--accent-rose, #EF4444); background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.45);`). On hover, illuminates into solid red (`#EF4444`) with a glowing halo (`0 0 12px rgba(239, 68, 68, 0.6)`).
+    - **Iconography**: Outer rounded stroke square enclosing a centered solid circle (`<rect x="3.5" y="3.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="2.2" />` + `<circle cx="12" cy="12" r="4.5" fill="currentColor" />`), reflecting standard tactical broadcast recording indicators.
+  - **Bulk Stop Recording (`tactical-btn-stop`)**:
+    - **Visual Styling**: Rendered in operational standby emerald green (`color: var(--accent-emerald-light, #34D399); background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.45);`). On hover, illuminates into solid emerald (`#10B981`) with dark text and green glow (`var(--glow-green)`).
+    - **Iconography**: Solid square (`<rect x="5.5" y="5.5" width="13" height="13" rx="2" fill="currentColor" />`), indicating standby/stop state.
+- **Component File Mapping**:
+  - `ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Dashboard/DashboardDock.jsx`
+  - `ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Dashboard/DashboardDock.scss`
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+
 
 

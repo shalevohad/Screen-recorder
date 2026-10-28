@@ -104,10 +104,9 @@ export default function DashboardDock({
                         : "All stations currently recording"
                 }
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                    <polygon points="6 3 20 12 6 21 6 3" />
-                    <line x1="20" y1="4" x2="20" y2="20" strokeWidth="3" />
-                    <circle cx="11" cy="12" r="2.2" fill="currentColor" />
+                <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="3.5" y="3.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="2.2" />
+                    <circle cx="12" cy="12" r="4.5" fill="currentColor" />
                 </svg>
             </button>
 
@@ -125,10 +124,8 @@ export default function DashboardDock({
                         : "No stations currently recording"
                 }
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                    <rect x="4" y="4" width="16" height="16" rx="2" />
-                    <line x1="9" y1="9" x2="15" y2="15" strokeWidth="3" />
-                    <line x1="15" y1="9" x2="9" y2="15" strokeWidth="3" />
+                <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="5.5" y="5.5" width="13" height="13" rx="2" fill="currentColor" />
                 </svg>
             </button>
 
