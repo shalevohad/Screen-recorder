@@ -583,6 +583,15 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
   - `WindowsMouseOverlay` dynamically queries `iconInfo.hbmColor` BITMAP dimensions via Win32 `GetObject` to avoid unnecessary 128x128 over-sampling.
   - For cursors lacking 32-bit alpha channels, the 1-bit transparency mask is decoded from `iconInfo.hbmMask`, preserving dark and black cursor borders.
 
+### 3. Automated Verification & Isolation Regression Suite
+- **Pixel-Perfect Buffer Testing**:
+  - `ITB-SCREEN-RECORDER.Tests/AgentWorker/MultiMonitorMouseIsolationTests.cs`:
+    - `PrimaryScreenClick_RendersOnlyOnPrimaryMonitorBuffer`: Verifies that a click at `(500, 300)` renders on `mon-0` (3440x1440) while `mon-1` (1920x1080 @ 3440,0) remains 100% untouched (`0x00000000` pristine).
+    - `SecondaryScreenClick_RendersOnlyOnSecondaryMonitorBuffer`: Verifies that a click at `(4000, 500)` renders solely on `mon-1` (local `560, 500`), while `mon-0` contains zero rendered pixels.
+    - `ClicksInVerticalDeltaRegions_AreIsolatedAccurately`: Verifies that clicks in vertical asymmetric zones ($Y > 1080$) are strictly discarded from secondary monitor feeds.
+- **Deterministic Test Lifecycle**:
+  - `MouseVisualRasterizer.ClearEvents()` provides atomic ring and badge event flushing between test executions to guarantee zero cross-test temporal leakage.
+
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
