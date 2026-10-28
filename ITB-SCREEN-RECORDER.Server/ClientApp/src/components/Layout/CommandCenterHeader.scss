@@ -260,10 +260,19 @@
             .fleet-nodes-indicator {
                 display: flex;
                 align-items: center;
-                gap: 9px;
-                padding: 0 4px;
+                gap: 10px;
+                padding: 4px 10px;
+                background-color: var(--surface-controls, rgba(30, 41, 59, 0.40));
+                border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.12));
+                border-radius: var(--radius-controls, 8px);
                 font-family: var(--font-mono, 'JetBrains Mono', monospace);
                 user-select: none;
+                transition: all 0.2s ease;
+
+                &:hover {
+                    border-color: rgba(148, 163, 184, 0.25);
+                    background-color: var(--surface-controls-hover, rgba(30, 41, 59, 0.65));
+                }
 
                 .indicator-icon {
                     position: relative;
@@ -281,8 +290,8 @@
                         position: absolute;
                         top: -2px;
                         right: -2px;
-                        width: 6px;
-                        height: 6px;
+                        width: 7px;
+                        height: 7px;
                         border-radius: 50%;
                         background-color: var(--slate-line, rgba(148, 163, 184, 0.15));
 
@@ -291,8 +300,14 @@
                             box-shadow: 0 0 8px var(--accent-emerald);
                         }
 
+                        &.partial {
+                            background-color: var(--accent-amber, #F59E0B);
+                            box-shadow: 0 0 8px var(--accent-amber);
+                        }
+
                         &.offline {
-                            background-color: var(--text-muted, #64748B);
+                            background-color: var(--accent-rose, #F43F5E);
+                            box-shadow: 0 0 6px var(--accent-rose);
                         }
                     }
                 }
@@ -301,31 +316,71 @@
                     display: flex;
                     flex-direction: column;
                     line-height: 1;
-                    gap: 2px;
+                    gap: 3px;
 
                     .data-title {
-                        font-size: 9px;
+                        font-size: 8.5px;
                         font-weight: 800;
                         color: var(--text-muted, #64748B);
-                        letter-spacing: 0.8px;
+                        letter-spacing: 0.9px;
                     }
 
                     .data-values {
                         display: flex;
-                        align-items: baseline;
-                        gap: 5px;
+                        align-items: center;
+                        gap: 6px;
 
-                        .count-active {
-                            font-size: 17px;
-                            font-weight: 900;
-                            color: var(--accent-emerald-light, #34D399);
-                            letter-spacing: -0.5px;
-                            text-shadow: 0 0 8px var(--accent-emerald-glow, rgba(16, 185, 129, 0.25));
+                        .stat-segment {
+                            display: inline-flex;
+                            align-items: baseline;
+                            gap: 3px;
+
+                            .count-active {
+                                font-size: 16px;
+                                font-weight: 900;
+                                color: var(--accent-emerald-light, #34D399);
+                                letter-spacing: -0.5px;
+                                text-shadow: 0 0 8px var(--accent-emerald-glow, rgba(16, 185, 129, 0.25));
+                            }
+
+                            .count-offline {
+                                font-size: 15px;
+                                font-weight: 800;
+                                color: var(--accent-rose, #F43F5E);
+                                letter-spacing: -0.5px;
+                            }
+
+                            .stat-unit {
+                                font-size: 8.5px;
+                                font-weight: 700;
+                                letter-spacing: 0.4px;
+                            }
+
+                            &.online-segment .stat-unit {
+                                color: var(--accent-emerald, #10B981);
+                            }
+
+                            &.offline-segment .stat-unit {
+                                color: var(--accent-rose, #F43F5E);
+                                opacity: 0.85;
+                            }
                         }
 
-                        .count-filtered {
-                            font-size: 10px;
-                            color: var(--text-muted, #64748B);
+                        .stat-divider {
+                            font-size: 11px;
+                            color: rgba(148, 163, 184, 0.35);
+                            font-weight: 600;
+                        }
+
+                        .all-online-badge {
+                            font-size: 8.5px;
+                            font-weight: 800;
+                            padding: 1.5px 5px;
+                            border-radius: 4px;
+                            background: rgba(16, 185, 129, 0.12);
+                            border: 1px solid rgba(16, 185, 129, 0.25);
+                            color: var(--accent-emerald-light, #34D399);
+                            letter-spacing: 0.5px;
                         }
                     }
                 }

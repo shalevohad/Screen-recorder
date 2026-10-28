@@ -10,7 +10,7 @@ import './CommandCenterHeader.scss';
 
 export default function CommandCenterHeader({
     stations = [],
-    hideOffline = true,
+    _hideOffline = true,
     serverTelemetry,
     onOpenAppSwitcher,
     isFaultFilterActive = false,
@@ -50,9 +50,14 @@ export default function CommandCenterHeader({
             || 'en-US';
     }, [activeConfig]);
 
+    const onlineStations = useMemo(() => {
+        return stations.filter(s => Boolean(s.isOnline || s.status === 1 || s.status === 2 || s.status === 'Recording' || s.status === 'Monitoring'));
+    }, [stations]);
+
+    const onlineCount = onlineStations.length;
+    const offlineCount = Math.max(0, totalCount - onlineCount);
+
     const agentMetrics = useMemo(() => {
-        const onlineStations = stations.filter(s => s.isOnline || s.status === 1 || s.status === 2);
-        const onlineCount = onlineStations.length;
         const recordingCount = stations.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording'))).length;
         const streamingCount = stations.filter(s => s.isStreaming).length;
         const criticalAlerts = onlineStations.filter(s => (s.droppedFrames || 0) > 5).length;
@@ -63,15 +68,7 @@ export default function CommandCenterHeader({
         const onlinePct = totalCount > 0 ? Math.round((onlineCount / totalCount) * 100) : 0;
 
         return { onlineCount, recordingCount, streamingCount, criticalAlerts, aggregateTxMbps, aggregateC2Kbps, recordingPct, onlinePct };
-    }, [stations, totalCount]);
-
-    const activeWorkerCount = stations.filter(s =>
-        (s.isOnline || s.status === 1 || s.status === 2) && s.isProcessRunning
-    ).length;
-
-    const offlineCount = stations.filter(s =>
-        !s.isOnline && s.status !== 1 && s.status !== 2 && !s.isProcessRunning
-    ).length;
+    }, [stations, onlineStations, onlineCount, totalCount]);
 
     return (
         <header className={`command-center-top-bar ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
@@ -115,26 +112,39 @@ export default function CommandCenterHeader({
                         </svg>
                     </button>
 
-                    <div className="fleet-nodes-indicator" title="Connected Fleet Agents">
+                    <div
+                        className="fleet-nodes-indicator"
+                        title={`Fleet Status: ${onlineCount} Connected / Online, ${offlineCount} Disconnected / Offline (Total: ${totalCount} Workstations)`}
+                    >
                         <div className="indicator-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                                 <rect x="2" y="3" width="20" height="14" rx="2" />
                                 <line x1="8" y1="21" x2="16" y2="21" />
                                 <line x1="12" y1="17" x2="12" y2="21" />
                             </svg>
-                            <span className={`status-beacon ${activeWorkerCount > 0 ? 'online' : 'offline'}`} />
+                            <span className={`status-beacon ${onlineCount > 0 ? (offlineCount > 0 ? 'partial' : 'online') : 'offline'}`} />
                         </div>
 
                         <div className="indicator-data">
-                            <div className="data-title">CONNECTED AGENTS</div>
+                            <div className="data-title">FLEET STATIONS</div>
                             <div className="data-values">
-                                <span className="count-active">
-                                    {hideOffline ? activeWorkerCount : totalCount}
+                                <span className="stat-segment online-segment" title={`${onlineCount} connected online workstations`}>
+                                    <span className="count-active">{onlineCount}</span>
+                                    <span className="stat-unit">ONLINE</span>
                                 </span>
-                                {hideOffline && offlineCount > 0 && (
-                                    <span className="count-filtered" title={`${offlineCount} offline stations hidden`}>
-                                        [{offlineCount} HIDDEN]
-                                    </span>
+
+                                {offlineCount > 0 && (
+                                    <>
+                                        <span className="stat-divider">/</span>
+                                        <span className="stat-segment offline-segment" title={`${offlineCount} disconnected offline workstations`}>
+                                            <span className="count-offline">{offlineCount}</span>
+                                            <span className="stat-unit">OFFLINE</span>
+                                        </span>
+                                    </>
+                                )}
+
+                                {offlineCount === 0 && totalCount > 0 && (
+                                    <span className="all-online-badge">100% LIVE</span>
                                 )}
                             </div>
                         </div>
