@@ -2,6 +2,7 @@
 // File: Client/src/components/Settings/SettingsView.jsx
 // ==========================================
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import SystemOverviewTab from './tabs/SystemOverviewTab';
 import AgentOperationsTab from './tabs/AgentOperationsTab';
 import StorageRetentionTab from './tabs/StorageRetentionTab';
 import StationOverridesTab from './tabs/StationOverridesTab';
@@ -48,7 +49,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
         return list;
     }, [isSystemRoot, hasPermission]);
 
-    const [activeTab, setActiveTab] = useState(() => permittedTabs[0]?.id || 'agent');
+    const [activeTab, setActiveTab] = useState(() => 'overview');
     const [form, setForm] = useState(null);
     const [stations, setStations] = useState([]);
     const [overrides, setOverrides] = useState({});
@@ -187,7 +188,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                     </button>
                     <div className="hub-title-stack">
                         <h2>SYSTEM SETTINGS & FLEET ADMINISTRATION</h2>
-                        <span className="hub-subtitle">Centralized C2 Configuration • RBAC Security • Fleet Tuning</span>
+                        <span className="hub-subtitle">Centralized C2 Configuration � RBAC Security � Fleet Tuning</span>
                     </div>
                 </div>
 
@@ -264,19 +265,27 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
 
             <div className="settings-hub-workspace">
                 {status.loading ? (
-                    <div className="settings-loader-box">Loading configuration parameters…</div>
+                    <div className="settings-loader-box">Loading configuration parameters�</div>
                 ) : permittedTabs.length === 0 ? (
                     <div className="settings-loader-box" style={{ color: '#F87171' }}>
                         Access Restricted: Your active account does not have permission to view any settings tabs.
                     </div>
                 ) : (
                     <div className="workspace-inner-content">
+                        {activeTab === 'overview' && (
+                            <SystemOverviewTab
+                                stations={stations}
+                                form={form}
+                                onSelectTab={(tabId) => setActiveTab(tabId)}
+                                onReturnToPortal={onReturnToPortal}
+                            />
+                        )}
                         {activeTab === 'agent' && form && (
                             <form id="globalSettingsForm" onSubmit={handleSaveGlobalConfig}>
                                 <AgentOperationsTab form={form} updateField={updateField} />
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>
-                                        {status.saving ? 'Saving Changes…' : 'Save Agent Operations'}
+                                        {status.saving ? 'Saving Changes�' : 'Save Agent Operations'}
                                     </button>
                                 </div>
                             </form>
@@ -291,7 +300,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                                 />
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>
-                                        {status.saving ? 'Saving Changes…' : 'Save Storage Configuration'}
+                                        {status.saving ? 'Saving Changes�' : 'Save Storage Configuration'}
                                     </button>
                                 </div>
                             </form>
@@ -326,7 +335,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                                 />
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>
-                                        {status.saving ? 'Saving Changes…' : 'Save System & Engine Configuration'}
+                                        {status.saving ? 'Saving Changes�' : 'Save System & Engine Configuration'}
                                     </button>
                                 </div>
                             </form>

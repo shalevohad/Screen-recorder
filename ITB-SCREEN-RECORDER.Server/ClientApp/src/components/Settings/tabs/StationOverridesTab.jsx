@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 
-const ITEMS_PER_PAGE = 4;
+// Dynamic itemsPerPage replaces static itemsPerPage
 
 const FPS_TICKS = [
     { val: 10, label: '10' },
@@ -33,7 +33,21 @@ export default function StationOverridesTab({
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterMode, setFilterMode] = useState('all'); // 'all' | 'custom' | 'default'
-    const [currentPage, setCurrentPage] = useState(1);
+        const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(8);
+    const listRef = useRef(null);
+
+    useEffect(() => {
+        const updateCapacity = () => {
+            const h = listRef.current?.clientHeight || (window.innerHeight - 380);
+            const rowHeight = 72;
+            const usableH = Math.max(200, h - 50);
+            setItemsPerPage(Math.max(4, Math.floor(usableH / rowHeight)));
+        };
+        updateCapacity();
+        window.addEventListener('resize', updateCapacity);
+        return () => window.removeEventListener('resize', updateCapacity);
+    }, []);
 
     const customOverridesCount = Object.keys(overrides).length;
 
@@ -93,9 +107,9 @@ export default function StationOverridesTab({
             });
     }, [stations, overrides, searchQuery, filterMode]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredStations.length / ITEMS_PER_PAGE));
+    const totalPages = Math.max(1, Math.ceil(filteredStations.length / itemsPerPage));
     const activePage = Math.min(currentPage, totalPages);
-    const paginatedStations = filteredStations.slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE);
+    const paginatedStations = filteredStations.slice((activePage - 1) * itemsPerPage, activePage * itemsPerPage);
 
     const renderSliderWithTicks = (value, min, max, step, onChange, ticks) => (
         <div className="range-with-input">
@@ -170,7 +184,7 @@ export default function StationOverridesTab({
                             onClick={handleCloseSearch}
                             title="Close search"
                         >
-                            ✕
+                            ?
                         </button>
                     </div>
                 )}
@@ -356,7 +370,7 @@ export default function StationOverridesTab({
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             className="btn-page"
                         >
-                            ◀ Prev
+                            ? Prev
                         </button>
                         <button
                             type="button"
@@ -364,7 +378,7 @@ export default function StationOverridesTab({
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             className="btn-page"
                         >
-                            Next ▶
+                            Next ?
                         </button>
                     </div>
                 </div>

@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: ClientApp/src/components/Dashboard/DashboardGrid.jsx
 // ==========================================
 import { useMemo, useCallback, useRef } from 'react';

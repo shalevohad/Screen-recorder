@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Client/src/hooks/useAlertSnooze.js
 // ==========================================
 import { useState, useEffect, useCallback } from 'react';
@@ -63,6 +63,9 @@ export function useAlertSnooze() {
         if (!hostname) return 0;
         const info = snoozedMap[hostname.toLowerCase()];
         if (!info || !info.until) return 0;
+        if (info.isForever || info.minutes === -1 || info.until > 2000000000000) {
+            return Infinity;
+        }
         const diffMs = info.until - Date.now();
         if (diffMs <= 0) return 0;
         return Math.max(1, Math.ceil(diffMs / 60000));
@@ -77,8 +80,9 @@ export function useAlertSnooze() {
     const snoozeStation = useCallback((hostname, minutes = 30, reason = '') => {
         if (!hostname) return;
         const cleanHost = hostname.toLowerCase();
-        const parsedMins = Math.max(1, Number(minutes) || 30);
-        const until = Date.now() + (parsedMins * 60 * 1000);
+        const isForever = minutes === -1 || minutes === 'forever' || minutes === Infinity;
+        const parsedMins = isForever ? -1 : Math.max(1, Number(minutes) || 30);
+        const until = isForever ? 253402300799000 : Date.now() + (parsedMins * 60 * 1000);
 
         setSnoozedMap(prev => {
             const next = {
@@ -86,6 +90,7 @@ export function useAlertSnooze() {
                 [cleanHost]: {
                     until,
                     minutes: parsedMins,
+                    isForever,
                     reason: reason.trim() || 'Operator Postponed',
                     snoozedAt: Date.now()
                 }
@@ -99,8 +104,9 @@ export function useAlertSnooze() {
 
     const snoozeMultipleStations = useCallback((hostnames, minutes = 30, reason = '') => {
         if (!Array.isArray(hostnames) || hostnames.length === 0) return;
-        const parsedMins = Math.max(1, Number(minutes) || 30);
-        const until = Date.now() + (parsedMins * 60 * 1000);
+        const isForever = minutes === -1 || minutes === 'forever' || minutes === Infinity;
+        const parsedMins = isForever ? -1 : Math.max(1, Number(minutes) || 30);
+        const until = isForever ? 253402300799000 : Date.now() + (parsedMins * 60 * 1000);
 
         setSnoozedMap(prev => {
             const next = { ...prev };
@@ -109,6 +115,7 @@ export function useAlertSnooze() {
                     next[h.toLowerCase()] = {
                         until,
                         minutes: parsedMins,
+                        isForever,
                         reason: reason.trim() || 'Fleet Bulk Postpone',
                         snoozedAt: Date.now()
                     };

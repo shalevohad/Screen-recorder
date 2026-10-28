@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Client/src/components/UI/TabConfigModal.jsx
 // ==========================================
 import { useState, useEffect, useMemo } from 'react';

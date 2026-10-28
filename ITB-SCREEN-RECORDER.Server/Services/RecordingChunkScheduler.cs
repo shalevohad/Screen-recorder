@@ -107,7 +107,8 @@ public class RecordingChunkScheduler : BackgroundService
         string recordPath = $"{cleanRoot}/%path/%s_%f";
         string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
-        string retentionHours = $"{config.Storage.RetentionDays * 24}h";
+        // Disable unmanaged MediaMTX purging; retention is governed by StorageRetentionWorker with BookmarkShield
+        string retentionHours = "0s";
 
         bool applied = await _apiClient.PatchPathDefaultsAsync(
             config.MediaMtx.ApiPort,

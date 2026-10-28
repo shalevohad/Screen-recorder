@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import './StationThumbnail.scss';
 import VirtualTopologyCanvas from './VirtualTopologyCanvas';
 import StationDisplayBar from './StationDisplayBar';
@@ -50,7 +50,53 @@ export default function StationThumbnail(props) {
 
     const audioHasPlayback = Boolean(hasActiveSpeakers);
     const audioHasMic = Boolean(hasActiveMicrophone);
-    const isAudioLive = Boolean(isAudioStreaming || hasAudio || audioHasPlayback || audioHasMic);
+    const hasExpectedAudio = Boolean(hasActiveSpeakers || hasActiveMicrophone || hasAudio);
+    const isDirectAudioFlowing = Boolean(isAudioStreaming);
+
+    const [audioStatus, setAudioStatus] = useState(() => {
+        if (!isOnline) return 'muted';
+        if (isDirectAudioFlowing) return 'active';
+        if (hasExpectedAudio) return 'fault';
+        return 'muted';
+    });
+
+    const audioDebounceRef = useRef(null);
+
+    useEffect(() => {
+        if (!isOnline) {
+            setAudioStatus('muted');
+            return;
+        }
+
+        if (isDirectAudioFlowing) {
+            if (audioDebounceRef.current) {
+                clearTimeout(audioDebounceRef.current);
+                audioDebounceRef.current = null;
+            }
+            setAudioStatus('active');
+        } else if (hasExpectedAudio) {
+            if (!audioDebounceRef.current) {
+                audioDebounceRef.current = setTimeout(() => {
+                    setAudioStatus('fault');
+                    audioDebounceRef.current = null;
+                }, 3500);
+            }
+        } else {
+            if (audioDebounceRef.current) {
+                clearTimeout(audioDebounceRef.current);
+                audioDebounceRef.current = null;
+            }
+            setAudioStatus('muted');
+        }
+
+        return () => {
+            if (audioDebounceRef.current) {
+                clearTimeout(audioDebounceRef.current);
+            }
+        };
+    }, [isOnline, isDirectAudioFlowing, hasExpectedAudio]);
+
+    const isAudioLive = audioStatus === 'active';
 
     const hasCustomPolicy = Boolean(
         isCustomOverride ||
@@ -155,7 +201,7 @@ export default function StationThumbnail(props) {
             title="Click card to open Station Inspector"
         >
             <div className="card-minimal-header">
-                <div className="station-brand" title={`${operationalTitle}${hasAlias ? ` (${hostname})` : ''} • ${ipAddress}`}>
+                <div className="station-brand" title={`${operationalTitle}${hasAlias ? ` (${hostname})` : ''} � ${ipAddress}`}>
                     <div className="station-title-row">
                         <span className="station-name">{operationalTitle}</span>
                         {hasAlias && (
@@ -177,7 +223,7 @@ export default function StationThumbnail(props) {
                         }}
                         title={isListeningThisStation ? "Mute audio intercom" : "Listen to audio feed (Exclusive Solo)"}
                     >
-                        <span className="audio-icon">{isListeningThisStation ? '🟢' : '🎧'}</span>
+                        <span className="audio-icon">{isListeningThisStation ? '??' : '??'}</span>
                         <span>{isListeningThisStation ? 'LISTENING' : 'LISTEN'}</span>
                     </button>
 
@@ -191,7 +237,7 @@ export default function StationThumbnail(props) {
                             }}
                             title={isAlertSnoozed ? `Postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust or cancel.` : "Postpone recording alert (Snooze)"}
                         >
-                            <span>⏱</span>
+                            <span>?</span>
                             <span>{isAlertSnoozed ? `SNOOZED (${props.snoozeRemainingMinutes || 0}m)` : 'SNOOZE'}</span>
                         </button>
                     )}
@@ -277,7 +323,7 @@ export default function StationThumbnail(props) {
                                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                     <circle cx="12" cy="12" r="3" />
                                 </svg>
-                                <span>{isAlertActive ? '⚠️ MONITOR ONLY' : `⏱ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
+                                <span>{isAlertActive ? '?? MONITOR ONLY' : `? SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
                             </button>
                         </div>
                     </div>
@@ -337,7 +383,7 @@ export default function StationThumbnail(props) {
                         className="tactical-override-tag"
                         title={`Custom Policy: ${targetFps ? `${targetFps} FPS` : ''} ${videoBitrate ? `| ${videoBitrate}` : ''}`}
                     >
-                        <span>MOD // {targetFps ? `${targetFps}F` : ''}{targetFps && videoBitrate ? ' • ' : ''}{videoBitrate || ''}</span>
+                        <span>MOD // {targetFps ? `${targetFps}F` : ''}{targetFps && videoBitrate ? ' � ' : ''}{videoBitrate || ''}</span>
                     </div>
                 )}
 

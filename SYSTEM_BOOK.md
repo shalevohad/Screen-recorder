@@ -1,4 +1,4 @@
-# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
+﻿# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
 > **Last Updated**: 2026-10-28  
@@ -440,6 +440,50 @@ To enable rapid field triaging without manual log parsing, the platform provides
   .\itb-diagnostics.exe
   ```
 - **Exportable Reports**: Automatically saves full forensic summary text files (`ITB_Diagnostic_Report_<timestamp>.txt`) alongside the terminal output.
+
+---
+---
+
+## 14. Enterprise UI/UX Modernization, Fleet Intercom & Advanced Resilience Updates (2026-10-28)
+
+To address real-world deployment feedback across 70–100+ dense workstations, the following enterprise architecture enhancements and invariants were integrated:
+
+### 1. Multi-Device WASAPI Intercom & Dual Audio Mixer (WasapiDualMixer.cs)
+- **Universal Render Enumeration**: Rather than binding only to the OS default multimedia endpoint, WasapiDualMixer now enumerates all active audio render endpoints (DataFlow.Render, DeviceState.Active). Any audio played through speakers, headsets, or monitor HDMI/DP audio channels is dynamically captured and mixed into the master AAC stream.
+- **Microsecond Audio Pacing**: Replaced jittery Task.Delay with high-precision Stopwatch timing producing exact 50 frames/sec (20ms) at 48000 Hz, strictly preventing RTMP timestamp drift.
+- **Pacer Watchdog Grace Threshold**: Relaxed synthetic silence watchdog to 500ms to allow smooth audio pipeline startup without packet contention.
+
+### 2. Multi-Monitor Topology & Screen Collision Elimination
+- **Collision-Free HUD**: Repositioned .monitor-only-overlay to center-top (left: 50%; transform: translateX(-50%)), completely freeing the top-left for .solo-display-badge and multi-monitor resolution pills (.sub-display-overlay).
+- **Stable Header Metrics**: Removed wide text snooze buttons from card-minimal-header. Workstation hostname, physical alias, and IP address now retain dedicated fixed horizontal layout space without truncation or wrapping.
+- **Symmetrical 100% Equal Card Heights**: Card header (44px), viewport (16:9), and footer (24px) are locked to identical pixel heights across the entire fleet grid. The footer reserves inline slots for dropped frames warnings and 3px health scores.
+
+### 3. Debounced Audio State & 3-Tier Fault Detection
+- **Hysteresis Smoothing**: Integrated a 3.5-second debounce buffer on audio presence telemetry to eliminate rapid green/grey flickering caused by network polling bursts.
+- **3-Tier Health States**:
+  - ctive (Emerald): Real-time audio stream flowing smoothly.
+  - ault (Amber): Workstation audio hardware (speakers/mic) present and configured, but audio stream packets are stalled or absent.
+  - muted (Slate): Workstation has no audio devices or is operating in silent mode.
+
+### 4. Storage Quota Clamping & Physical NetApp Enforcement
+- Max storage quota in settings is dynamically clamped to the total physical capacity of the active NetApp pool (liveStorage.totalSizeBytes), preventing operators from setting quotas beyond actual disk boundaries.
+
+### 5. System Overview & Health Launchpad (SystemOverviewTab.jsx)
+- Introduced as the primary first tab in the Settings view:
+  - Real-time fleet health score, online, recording, monitor-only, and frame-drop counters.
+  - Active storage pool capacity visualization and MediaMTX stream engine status.
+  - 1-click tactical navigation cards directly launching the C2 Monitoring Grid, Forensic Studio, Storage settings, and Station overrides.
+
+### 6. Indefinite Alert Postponement (∞ Forever)
+- SnoozeAlertModal and useAlertSnooze now support an indefinite ∞ Forever option (until: 253402300799000), persisting snooze state across sessions and displaying ⏱ SNOOZED (FOREVER).
+
+### 7. Active Directory Real OU Integration & Zero-Coverage Filtering
+- **Real AD Tree Query**: TabConfigModal removes hardcoded placeholder strings and only enables OU-based grouping when LDAP/AD is verified active, fetching live organizational units directly from /api/v1/settings/security/ad/tree.
+- **Forensic Studio Pruning**: Stations with 0% recording coverage within the selected debriefing time range are automatically filtered out from StationDrawer and studio hubs.
+
+### 8. Viewport-Adaptive Fleet Pagination
+- Dense list view and settings configuration tables (Station Overrides & Roles) calculate rows dynamically based on available viewport height, eliminating vertical scrolling and docking pagination controls cleanly at the bottom.
+- Consolidated the postponed stations banner into an interactive count summary with dedicated [ 🔍 View Postponed Stations ] and [ ✕ Return to All Stations ] filter toggles.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

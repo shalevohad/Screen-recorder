@@ -7,6 +7,9 @@ import './NotRecordingAlertBanner.scss';
 export default function NotRecordingAlertBanner({
     unrecordedStations = [],
     snoozedStations = [],
+    isSnoozedFilterActive = false,
+    onViewSnoozed,
+    onClearSnoozedFilter,
     onStartRecordingStation,
     onStartRecordingAll,
     onOpenSnoozeModal,
@@ -29,17 +32,31 @@ export default function NotRecordingAlertBanner({
         return (
             <div className="snoozed-fleet-status-bar">
                 <div className="snoozed-left">
-                    <span className="snooze-icon">⏱</span>
+                    <span className="snooze-icon">?</span>
                     <span className="snooze-text">
-                        <strong>{snoozedCount} Workstation(s)</strong> have recording alerts temporarily postponed.
+                        <strong>{snoozedCount} Workstation(s)</strong> have recording alerts postponed.
                     </span>
                 </div>
-                <div className="snoozed-chips">
-                    {snoozedStations.map(s => (
-                        <span key={s.hostname} className="snoozed-chip" onClick={() => onOpenSnoozeModal?.(s.hostname)}>
-                            🖥 {s.displayName || s.hostname} ({s.remainingMinutes}m)
-                        </span>
-                    ))}
+                <div className="snoozed-actions">
+                    {isSnoozedFilterActive ? (
+                        <button
+                            type="button"
+                            className="btn-return-all"
+                            onClick={onClearSnoozedFilter}
+                            title="Return to standard view showing all workstations"
+                        >
+                            <span>? Return to All Stations</span>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            className="btn-view-snoozed"
+                            onClick={onViewSnoozed}
+                            title="Filter dashboard grid to view only postponed workstations"
+                        >
+                            <span>?? View Postponed Stations ({snoozedCount})</span>
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -51,7 +68,7 @@ export default function NotRecordingAlertBanner({
                 <div className="alert-banner-headline">
                     <div className="alert-pulse-badge">
                         <span className="alert-sonar-wave" />
-                        <span className="alert-icon">⚠️</span>
+                        <span className="alert-icon">??</span>
                     </div>
                     <div className="alert-headline-text">
                         <div className="alert-title-row">
@@ -59,9 +76,15 @@ export default function NotRecordingAlertBanner({
                                 OPERATIONAL ALERT: {activeCount} WORKSTATION(S) NOT RECORDING
                             </span>
                             {snoozedCount > 0 && (
-                                <span className="snoozed-count-pill">
-                                    ⏱ {snoozedCount} Postponed
-                                </span>
+                                <button
+                                    type="button"
+                                    className={`snoozed-count-pill ${isSnoozedFilterActive ? "active" : ""}`}
+                                    onClick={isSnoozedFilterActive ? onClearSnoozedFilter : onViewSnoozed}
+                                    style={{ cursor: 'pointer', border: '1px solid rgba(245, 158, 11, 0.5)' }}
+                                    title={isSnoozedFilterActive ? "Currently viewing postponed stations. Click to return to all." : "Click to view only postponed stations."}
+                                >
+                                    ? {snoozedCount} Postponed {isSnoozedFilterActive ? '(Viewing � Return)' : '(View)'}
+                                </button>
                             )}
                         </div>
                         <span className="alert-sub-description">
@@ -77,7 +100,7 @@ export default function NotRecordingAlertBanner({
                         onClick={onTogglePrioritizeAtFront}
                         title={isPrioritizeAtFront ? "Warning stations are pinned to front of grid" : "Click to pin warning stations to front"}
                     >
-                        <span>{isPrioritizeAtFront ? '📌 PINNED TO TOP' : '📌 PIN TO TOP'}</span>
+                        <span>{isPrioritizeAtFront ? '?? PINNED TO TOP' : '?? PIN TO TOP'}</span>
                     </button>
 
                     <button
@@ -86,7 +109,7 @@ export default function NotRecordingAlertBanner({
                         onClick={onOpenBulkSnoozeModal}
                         title="Postpone alerts for all unrecorded stations (e.g. for maintenance)"
                     >
-                        <span>⏱ Postpone All</span>
+                        <span>? Postpone All</span>
                     </button>
 
                     <button
@@ -95,7 +118,7 @@ export default function NotRecordingAlertBanner({
                         onClick={onStartRecordingAll}
                         title="Resume recording immediately on all unrecorded workstations"
                     >
-                        <span>▶ Start Recording All ({activeCount})</span>
+                        <span>? Start Recording All ({activeCount})</span>
                     </button>
 
                     <button
@@ -104,7 +127,7 @@ export default function NotRecordingAlertBanner({
                         onClick={() => setIsCollapsed(p => !p)}
                         title={isCollapsed ? "Expand Stations List" : "Collapse Stations List"}
                     >
-                        {isCollapsed ? '▼' : '▲'}
+                        {isCollapsed ? '?' : '?'}
                     </button>
                 </div>
             </div>
@@ -137,7 +160,7 @@ export default function NotRecordingAlertBanner({
                                             }}
                                             title="Start Recording this station immediately"
                                         >
-                                            ▶ REC
+                                            ? REC
                                         </button>
                                         <button
                                             type="button"
@@ -148,7 +171,7 @@ export default function NotRecordingAlertBanner({
                                             }}
                                             title="Postpone alert for this station"
                                         >
-                                            ⏱
+                                            ?
                                         </button>
                                     </div>
                                 </div>

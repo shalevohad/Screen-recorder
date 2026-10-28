@@ -509,6 +509,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 RecordingStartedAtUtc = _isRecording ? _sessionStartTimeUtc : null,
                 IsOfflineMode = _isOffline,
                 HasAudio = flowing,
+                HasActiveSpeakers = _audioCapture?.HasActiveLoopback ?? false,
+                HasActiveMicrophone = _audioCapture?.HasActiveMicrophone ?? false,
+                IsAudioStreaming = _isStreaming && flowing,
                 Keystrokes = keysToSend.Count > 0 ? keysToSend : null,
                 DisplayTopology = _displayManager.CurrentTopology,
                 Telemetry = _isStreaming ? new

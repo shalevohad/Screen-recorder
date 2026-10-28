@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Client/src/components/Dashboard/SnoozeAlertModal.jsx
 // ==========================================
 import React, { useState } from 'react';
@@ -9,7 +9,8 @@ const PRESET_DURATIONS = [
     { label: '30m', minutes: 30 },
     { label: '1 Hour', minutes: 60 },
     { label: '2 Hours', minutes: 120 },
-    { label: '4 Hours', minutes: 240 }
+    { label: '4 Hours', minutes: 240 },
+    { label: '∞ Forever', minutes: -1, isForever: true }
 ];
 
 export default function SnoozeAlertModal({
@@ -80,7 +81,7 @@ export default function SnoozeAlertModal({
                             <span className="box-icon">ℹ️</span>
                             <div className="box-content">
                                 <strong>Currently Postponed</strong>
-                                <span>Alert is snoozed with approximately {currentRemainingMinutes} minute(s) remaining.</span>
+                                <span>{currentRemainingMinutes === Infinity ? "Alert is postponed indefinitely (Forever)." : `Alert is snoozed with approximately ${currentRemainingMinutes} minute(s) remaining.`}</span>
                             </div>
                         </div>
                     )}
@@ -157,7 +158,7 @@ export default function SnoozeAlertModal({
                             Cancel
                         </button>
                         <button type="button" className="btn-confirm-snooze" onClick={handleConfirm}>
-                            Postpone Alert ({isCustom ? (parseInt(customMinutes, 10) || selectedMinutes) : selectedMinutes}m)
+                            Postpone Alert ({isCustom ? (parseInt(customMinutes, 10) || selectedMinutes) + 'm' : selectedMinutes === -1 ? 'Forever' : selectedMinutes + 'm'})
                         </button>
                     </div>
                 </div>

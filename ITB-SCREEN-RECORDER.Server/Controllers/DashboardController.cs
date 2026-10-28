@@ -97,7 +97,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     RecordingStartedAtUtc = agent.IsRecording ? agent.RecordingStartedAtUtc : null,
                     Status = isOnline ? (agent.IsRecording ? "Recording" : (isStreaming ? "Monitoring" : "Standby")) : "Offline",
 
-                    HasAudio = agent.HasActiveMicrophone || agent.HasActiveSpeakers,
+                    HasAudio = agent.HasAudio,
+                    HasActiveMicrophone = agent.HasActiveMicrophone,
+                    HasActiveSpeakers = agent.HasActiveSpeakers,
+                    IsAudioStreaming = agent.IsAudioStreaming,
                     LastSeenUtc = agent.Timestamp,
 
                     ActualFps = agent.ActualFps,
