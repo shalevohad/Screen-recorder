@@ -1,4 +1,4 @@
-﻿# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
+# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
 > **Last Updated**: 2026-10-28  
@@ -21,6 +21,8 @@
 11. [Air-Gapped & Offline Environment Invariants](#11-air-gapped--offline-environment-invariants)
 12. [Developer Playbook: Build, Debug & Test Workflows](#12-developer-playbook-build-debug--test-workflows)
 13. [Enterprise Forensic Log Diagnostic & RCA Tool (itb-diagnostics)](#13-enterprise-forensic-log-diagnostic--rca-tool-itb-diagnostics)
+14. [Enterprise UI/UX Modernization, Fleet Intercom & Advanced Resilience Updates](#14-enterprise-uiux-modernization-fleet-intercom--advanced-resilience-updates-2026-10-28)
+15. [Multi-Screen Studio Editing, Director Track Overrides, Server Folder Browser, 1-Hour Stream Drop Immunity & AD SSO](#15-multi-screen-studio-editing-director-track-overrides-server-folder-browser-1-hour-stream-drop-immunity--ad-sso-2026-10-28)
 
 ---
 
@@ -231,6 +233,7 @@ FFmpeg probes on hot files must include:
 
 ### 1. Multi-Monitor Stream Mapping & WHEP Proxy Routing (Rule 11)
 - Each display is captured on its native GPU adapter via DXGI DDA (Windows) or XRandR/PipeWire (Linux). Zero cross-GPU PCIe bus transfers.
+- **Deterministic Display Index Sorting ([`DxgiDisplayEnumerator.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiDisplayEnumerator.cs))**: Enumerated displays are sorted so that the physical Windows primary display (virtual coordinates `X=0, Y=0`) is deterministically indexed as `mon-0`, ensuring it is always the initial audio carrier, while secondary displays are sequentially assigned `mon-1`, `mon-2`, etc.
 - Stream paths:
   - Primary Display + Audio: `live/{hostname}/mon-0`
   - Secondary Displays (Video only): `live/{hostname}/mon-1`, `live/{hostname}/mon-2`, etc.
@@ -486,5 +489,38 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
 - Consolidated the postponed stations banner into an interactive count summary with dedicated [ 🔍 View Postponed Stations ] and [ ✕ Return to All Stations ] filter toggles.
 
 ---
+
+## 15. Multi-Screen Studio Editing, Director Track Overrides, Server Folder Browser, 1-Hour Stream Drop Immunity & AD SSO (2026-10-28)
+
+### 1. Multi-Screen Studio Editing & Auto-Director Track (ExtractorAdvanced)
+- **Per-Display Forensic Extraction**: `AdvancedExtractorService.cs` accepts `displayId` parameter (`mon-0`, `mon-1`, etc.) for sub-millisecond accurate frame extraction (`ExtractFrameAsync`) with quantized multi-monitor cache keys (`frame_{hostname}_{cleanDisplay}_{quantEpoch}`).
+- **Auto-Director Track with Live Orientation**: `DirectorTrack.jsx` renders directly beneath the video health bar, visualizing active display intervals. The track dynamically displays an orientation badge (`⚡ MON-0 (AUTO)` vs `✋ MON-1 (OVERRIDE)`), clearly indicating which monitor is active at the playhead position.
+- **Interactive Cut & Override**: Operators can split segments at the playhead (via `✂️ Split` button or hotkey `S`), assign monitor overrides, or reset segments back to automatic activity-based routing.
+- **Multi-Monitor Studio View Modes**: `StudioVideoFeed.jsx` introduces a tactical view switcher:
+  - **🎬 DIRECTOR**: Plays the director cut following automatic or overridden display sequences.
+  - **🔲 SPLIT**: Displays dual side-by-side synchronized monitors for simultaneous multi-screen analysis.
+  - **🪟 PiP**: Renders secondary monitors inside a floating picture-in-picture viewport with 1-click screen swap.
+  - **🖥️ Monitor Pins**: Locks playback exclusively to a specific monitor (`mon-0`, `mon-1`).
+
+### 2. Server Directory Browse & Safe Path Navigator
+- **Secure FileSystem Exploration**: `/api/v1/settings/browse-directories` enumerates logical system drives (`C:\`, `D:\`, etc.) and allows navigating server-side directories safely without manual typing.
+- **Directory Creation**: `/api/v1/settings/create-directory` enables creating new storage folders directly from the dashboard.
+- **Tactical Browse Modal**: `FolderBrowseModal.jsx` provides a portal-rendered file explorer for NetApp UNC paths, local fallback storage, and chunk event logs.
+
+### 3. Root Cause Resolution for 1-Hour Continuous Stream Drops
+- **Windows Power Manager Display Sleep Defeated**: Windows default power scheme triggers display sleep after 60 minutes of inactivity (`VIDEO_TIMEOUT`), causing DXGI DDA `DXGI_ERROR_ACCESS_LOST` and GDI black frames. `WorkerEngine.cs` now invokes Win32 `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)` during active capture sessions, refreshing every 60 seconds to guarantee displays remain awake indefinitely.
+- **Resilient WebRTC Reconnection**: `WebRTCPlayer.jsx` replaces the rigid 5-retry cutoff with an infinite smart reconnection scheduler (fast retry followed by steady 6s cadence) and a 3.5-second frame stall watchdog that triggers silent renegotiation if playback freezes.
+
+### 4. Modal Viewport Trapping Elimination via React Portals
+- **Ancestor Transform Isolation**: Fixed CSS `transform: translateY(...)` inside `fullPageFadeIn` animation in `SettingsView.scss`, which previously caused child `position: fixed` elements to treat the scrolled canvas as their containing block.
+- **Root DOM Portaling**: All settings modals (`FolderBrowseModal`, `AdTreeBrowserModal`, `SecurityAccessTab` role and user modals, and `StationsRolesTab` modals) are rendered directly into `document.body` via `ReactDOM.createPortal`, guaranteeing permanent center-screen viewport alignment regardless of scroll depth.
+
+### 5. Windows Integrated Authentication & Silent Active Directory SSO
+- **Zero-Prompt SSO Handshake**: `/api/v1/auth/windows-sso` detects Windows domain identity (`User.Identity?.Name` via Negotiate / Kerberos / NTLM or `X-Remote-User` reverse-proxy headers).
+- **Service Account Group Resolution**: `LdapAuthenticationProvider.AuthenticateSsoUserAsync` authenticates the domain user against Active Directory, queries their `memberOf` LDAP group hierarchy, maps their operational roles, and generates a signed JWT token.
+- **Silent Dashboard Ingress**: `AuthContext.jsx` issues a silent SSO probe upon application load (`credentials: 'include'`). If the domain user is recognized, they are logged in automatically without prompting for credentials.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+
 

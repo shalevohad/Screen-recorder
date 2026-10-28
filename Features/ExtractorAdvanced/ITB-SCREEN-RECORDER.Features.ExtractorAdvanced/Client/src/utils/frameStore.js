@@ -46,31 +46,32 @@ function processQueue() {
 /**
  * Executes a frame retrieval HTTP task.
  * 
- * @param {{ key: string, hostname: string, epochMs: number, signal: AbortSignal, resolve: (val: any) => void }} task
+ * @param {{ key: string, hostname: string, epochMs: number, displayId: string, signal: AbortSignal, resolve: (val: any) => void }} task
  */
 async function executeTask(task) {
-    const { key, hostname, epochMs, signal, resolve } = task;
+    const { key, hostname, epochMs, displayId, signal, resolve } = task;
     try {
         if (signal?.aborted) {
             resolve(null);
             return;
         }
 
-        const res = await fetch(`/api/v1/extractor-advanced/frame?hostname=${encodeURIComponent(hostname)}&epochMs=${epochMs}`, { signal });
+        const dispQuery = displayId ? `&displayId=${encodeURIComponent(displayId)}` : '';
+        const res = await fetch(`/api/v1/extractor-advanced/frame?hostname=${encodeURIComponent(hostname)}&epochMs=${epochMs}${dispQuery}`, { signal });
         if (res.status === 200) {
             const blob = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
-            frameStore.set(hostname, epochMs, blobUrl);
+            frameStore.set(hostname, epochMs, blobUrl, displayId);
             resolve(blobUrl);
         } else if (res.status === 204) {
-            frameStore.set(hostname, epochMs, 'NO_SIGNAL');
+            frameStore.set(hostname, epochMs, 'NO_SIGNAL', displayId);
             resolve('NO_SIGNAL');
         } else {
             resolve(null);
         }
     } catch (err) {
         if (err.name !== 'AbortError') {
-            frameStore.set(hostname, epochMs, 'NO_SIGNAL');
+            frameStore.set(hostname, epochMs, 'NO_SIGNAL', displayId);
             resolve('NO_SIGNAL');
         } else {
             resolve(null);
@@ -84,15 +85,17 @@ async function executeTask(task) {
 
 export const frameStore = {
     /**
-     * Gets a cached frame URL by station and timestamp.
+     * Gets a cached frame URL by station, timestamp, and optional displayId.
      * 
      * @param {string} hostname
      * @param {number} rawEpochMs
+     * @param {string} [displayId='mon-0']
      * @returns {string|null} Blob URL, 'NO_SIGNAL', or null if not cached.
      */
-    get(hostname, rawEpochMs) {
+    get(hostname, rawEpochMs, displayId = 'mon-0') {
         const epochMs = quantize(rawEpochMs);
-        const key = `${hostname}_${epochMs}`;
+        const disp = displayId || 'mon-0';
+        const key = `${hostname}_${disp}_${epochMs}`;
         if (!frameCache.has(key)) return null;
 
         // Refresh position in LRU cache
@@ -108,10 +111,12 @@ export const frameStore = {
      * @param {string} hostname
      * @param {number} rawEpochMs
      * @param {string} value
+     * @param {string} [displayId='mon-0']
      */
-    set(hostname, rawEpochMs, value) {
+    set(hostname, rawEpochMs, value, displayId = 'mon-0') {
         const epochMs = quantize(rawEpochMs);
-        const key = `${hostname}_${epochMs}`;
+        const disp = displayId || 'mon-0';
+        const key = `${hostname}_${disp}_${epochMs}`;
 
         // LRU eviction if cache exceeds capacity
         if (frameCache.size >= MAX_CACHE_SIZE) {
@@ -124,7 +129,7 @@ export const frameStore = {
         }
 
         frameCache.set(key, value);
-        listeners.forEach(listener => listener(hostname, epochMs, value));
+        listeners.forEach(listener => listener(hostname, epochMs, value, disp));
     },
 
     /**
@@ -145,7 +150,7 @@ export const frameStore = {
     /**
      * Subscribes to frame store updates.
      * 
-     * @param {(hostname: string, epochMs: number, value: string) => void} listener
+     * @param {(hostname: string, epochMs: number, value: string, displayId?: string) => void} listener
      * @returns {() => void} Unsubscribe callback.
      */
     subscribe(listener) {
@@ -154,20 +159,22 @@ export const frameStore = {
     },
 
     /**
-     * Fetches a frame for the specified station and timestamp with deduplication and queueing.
+     * Fetches a frame for the specified station, timestamp, and display with deduplication and queueing.
      * 
      * @param {string} hostname
      * @param {number} rawEpochMs
      * @param {AbortSignal} [signal=null]
+     * @param {string} [displayId='mon-0']
      * @returns {Promise<string|null>}
      */
-    fetchFrame(hostname, rawEpochMs, signal = null) {
+    fetchFrame(hostname, rawEpochMs, signal = null, displayId = 'mon-0') {
         const epochMs = quantize(rawEpochMs);
-        const key = `${hostname}_${epochMs}`;
+        const disp = displayId || 'mon-0';
+        const key = `${hostname}_${disp}_${epochMs}`;
 
         // 1. Immediate retrieval from RAM cache (0ms)
         if (frameCache.has(key)) {
-            return Promise.resolve(this.get(hostname, epochMs));
+            return Promise.resolve(this.get(hostname, epochMs, disp));
         }
 
         // 2. Return existing in-flight promise if available
@@ -181,9 +188,9 @@ export const frameStore = {
                 return;
             }
 
-            // Optimization: Cancel outdated queued requests for this station
+            // Optimization: Cancel outdated queued requests for this station and display
             requestQueue = requestQueue.filter(t => {
-                if (t.hostname === hostname && t.key !== key) {
+                if (t.hostname === hostname && t.displayId === disp && t.key !== key) {
                     pendingPromises.delete(t.key);
                     t.resolve(null);
                     return false;
@@ -191,7 +198,7 @@ export const frameStore = {
                 return true;
             });
 
-            const task = { key, hostname, epochMs, signal, resolve };
+            const task = { key, hostname, epochMs, displayId: disp, signal, resolve };
 
             if (signal) {
                 signal.addEventListener('abort', () => {

@@ -303,10 +303,112 @@ export default function ExtractorAdvancedStudio() {
         }
     }, [selectedStationIds]);
 
+    // Multi-Monitor Auto-Director State & Manual Overrides
+    const [stationDirectorPlans, setStationDirectorPlans] = useState({});
+
+    const getStationPlan = useCallback((stId) => {
+        if (!stId) return null;
+        if (stationDirectorPlans[stId]) return stationDirectorPlans[stId];
+        const target = allStations.find(s => s.id === stId);
+        if (target?.directorPlan) return target.directorPlan;
+        return {
+            stationId: stId,
+            segments: [
+                {
+                    startEpochMs: timelineBaseEpochMs,
+                    endEpochMs: timelineBaseEpochMs + totalTimelineDurationMs,
+                    targetDisplayId: 'mon-0',
+                    isManualOverride: false
+                }
+            ]
+        };
+    }, [stationDirectorPlans, allStations, timelineBaseEpochMs, totalTimelineDurationMs]);
+
+    const handleSplitDirectorSegment = useCallback((stId, splitEpochMs) => {
+        if (!stId) return;
+        setStationDirectorPlans(prev => {
+            const plan = prev[stId] || getStationPlan(stId);
+            const segments = [...(plan.segments || [])];
+            const segIdx = segments.findIndex(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                return splitEpochMs > s + 500 && splitEpochMs < e - 500;
+            });
+            if (segIdx === -1) return prev;
+
+            const targetSeg = segments[segIdx];
+            const s = targetSeg.startEpochMs ?? targetSeg.StartEpochMs ?? 0;
+            const e = targetSeg.endEpochMs ?? targetSeg.EndEpochMs ?? 0;
+            const disp = targetSeg.targetDisplayId ?? targetSeg.TargetDisplayId ?? 'mon-0';
+            const isOverride = Boolean(targetSeg.isManualOverride ?? targetSeg.IsManualOverride);
+
+            const seg1 = { ...targetSeg, startEpochMs: s, endEpochMs: splitEpochMs, targetDisplayId: disp, isManualOverride: isOverride };
+            const seg2 = { ...targetSeg, startEpochMs: splitEpochMs, endEpochMs: e, targetDisplayId: disp, isManualOverride: isOverride };
+
+            segments.splice(segIdx, 1, seg1, seg2);
+            return { ...prev, [stId]: { ...plan, segments } };
+        });
+    }, [getStationPlan]);
+
+    const handleChangeDirectorSegmentDisplay = useCallback((stId, segmentEpochMs, newDisplayId) => {
+        if (!stId) return;
+        setStationDirectorPlans(prev => {
+            const plan = prev[stId] || getStationPlan(stId);
+            const segments = (plan.segments || []).map(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                if (segmentEpochMs >= s && segmentEpochMs <= e) {
+                    return { ...seg, targetDisplayId: newDisplayId, isManualOverride: true };
+                }
+                return seg;
+            });
+            return { ...prev, [stId]: { ...plan, segments } };
+        });
+    }, [getStationPlan]);
+
+    const handleResetDirectorSegmentToAuto = useCallback((stId, segmentEpochMs) => {
+        if (!stId) return;
+        setStationDirectorPlans(prev => {
+            const plan = prev[stId] || getStationPlan(stId);
+            const segments = (plan.segments || []).map(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                if (segmentEpochMs >= s && segmentEpochMs <= e) {
+                    return { ...seg, targetDisplayId: 'mon-0', isManualOverride: false };
+                }
+                return seg;
+            });
+            return { ...prev, [stId]: { ...plan, segments } };
+        });
+    }, [getStationPlan]);
+
+    const enrichedTimelineStations = useMemo(() => {
+        return timelineStations.map(st => ({
+            ...st,
+            directorPlan: stationDirectorPlans[st.id] || st.directorPlan || getStationPlan(st.id)
+        }));
+    }, [timelineStations, stationDirectorPlans, getStationPlan]);
+
+    const enrichedActiveStation = useMemo(() => {
+        if (!activeStation) return null;
+        return {
+            ...activeStation,
+            directorPlan: stationDirectorPlans[activeStation.id] || activeStation.directorPlan || getStationPlan(activeStation.id)
+        };
+    }, [activeStation, stationDirectorPlans, getStationPlan]);
+
+    const enrichedSpotlightStation = useMemo(() => {
+        if (!spotlightStation) return null;
+        return {
+            ...spotlightStation,
+            directorPlan: stationDirectorPlans[spotlightStation.id] || spotlightStation.directorPlan || getStationPlan(spotlightStation.id)
+        };
+    }, [spotlightStation, stationDirectorPlans, getStationPlan]);
+
     useStudioHotkeys({
         activeStationId,
         spotlightStationId,
-        timelineStations,
+        timelineStations: enrichedTimelineStations,
         selectedStationIdsCount: selectedStationIds.length,
         onSelectActiveStation: handleSelectActiveStation,
         setPlaybackSpeed,
@@ -320,6 +422,10 @@ export default function ExtractorAdvancedStudio() {
         zoomLevel,
         togglePlaySmart,
         onToggleHelpModal: () => setIsHelpModalOpen(prev => !prev),
+        onSplitDirectorAtPlayhead: () => {
+            const targetId = activeStationId || (selectedStationIds.length === 1 ? selectedStationIds[0] : null);
+            if (targetId) handleSplitDirectorSegment(targetId, timelineBaseEpochMs + playheadMs);
+        },
         isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen
     });
 
@@ -570,8 +676,8 @@ export default function ExtractorAdvancedStudio() {
                         <div className="studio-left-content">
                             <div className="studio-main-viewport-container">
                                 <MulticamViewport
-                                    activeStation={activeStation}
-                                    timelineStations={timelineStations}
+                                    activeStation={enrichedActiveStation}
+                                    timelineStations={enrichedTimelineStations}
                                     onSelectActiveStation={handleSelectActiveStation}
                                     onOpenSpotlight={handleOpenSpotlightFullscreen}
                                     onStationContextMenu={handleStationContextMenu}
@@ -592,6 +698,8 @@ export default function ExtractorAdvancedStudio() {
                                     playbackSpeed={playbackSpeed}
                                     keystrokeMode={keystrokeMode}
                                     keystrokes={activeStationKeystrokes}
+                                    directorPlan={enrichedActiveStation?.directorPlan}
+                                    onOverrideDisplay={handleChangeDirectorSegmentDisplay}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}
@@ -617,7 +725,7 @@ export default function ExtractorAdvancedStudio() {
 
                             <div className="studio-bottom-timeline" ref={timelineContainerRef}>
                                 <TimelineBoard
-                                    stations={timelineStations}
+                                    stations={enrichedTimelineStations}
                                     activeStationId={activeStationId}
                                     onSelectActiveStation={(id) => handleSelectActiveStation(selectedStationIds.length <= 1 ? id : (id === activeStationId ? null : id))}
                                     onStationContextMenu={handleStationContextMenu}
@@ -647,6 +755,9 @@ export default function ExtractorAdvancedStudio() {
                                     showKeystrokes={showRulerKeystrokes}
                                     showRulerKeystrokes={showRulerKeystrokes}
                                     onToggleRulerKeystrokes={() => setShowRulerKeystrokes(prev => !prev)}
+                                    onSplitDirectorSegment={handleSplitDirectorSegment}
+                                    onChangeDirectorSegmentDisplay={handleChangeDirectorSegmentDisplay}
+                                    onResetDirectorSegmentToAuto={handleResetDirectorSegmentToAuto}
                                 />
                             </div>
                         </div>
@@ -722,8 +833,8 @@ export default function ExtractorAdvancedStudio() {
 
             <SoloSpotlightModal
                 isOpen={isSpotlightOpen}
-                station={spotlightStation}
-                allStations={timelineStations}
+                station={enrichedSpotlightStation}
+                allStations={enrichedTimelineStations}
                 onSelectStation={(newId) => {
                     if (newId !== spotlightStationId) setPlaybackSpeed(1);
                     setActiveStationId(newId);
@@ -761,6 +872,11 @@ export default function ExtractorAdvancedStudio() {
                 keystrokes={activeStationKeystrokes}
                 showRulerKeystrokes={showRulerKeystrokes}
                 onToggleRulerKeystrokes={() => setShowRulerKeystrokes(prev => !prev)}
+                directorPlan={enrichedSpotlightStation?.directorPlan}
+                onOverrideDisplay={handleChangeDirectorSegmentDisplay}
+                onSplitDirectorSegment={handleSplitDirectorSegment}
+                onChangeDirectorSegmentDisplay={handleChangeDirectorSegmentDisplay}
+                onResetDirectorSegmentToAuto={handleResetDirectorSegmentToAuto}
             />
 
             <StationContextMenu

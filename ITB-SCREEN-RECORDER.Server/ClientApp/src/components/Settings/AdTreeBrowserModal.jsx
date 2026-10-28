@@ -2,6 +2,7 @@
 // File: src/components/Settings/AdTreeBrowserModal.jsx
 // ==========================================
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function AdTreeBrowserModal({
     isOpen,
@@ -200,7 +201,7 @@ export default function AdTreeBrowserModal({
 
     const selectedCount = Object.keys(selectedMap).length;
 
-    return (
+    return createPortal(
         <div className="security-modal-overlay ad-browser-overlay" onClick={onClose}>
             <div className="ad-browser-modal-card" onClick={e => e.stopPropagation()}>
                 {/* Header */}
@@ -583,6 +584,7 @@ export default function AdTreeBrowserModal({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

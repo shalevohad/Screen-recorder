@@ -70,7 +70,12 @@ export default function SoloSpotlightModal({
     onChangeKeystrokeMode,
     keystrokes = [],
     showRulerKeystrokes = false,
-    onToggleRulerKeystrokes
+    onToggleRulerKeystrokes,
+    directorPlan,
+    onOverrideDisplay,
+    onSplitDirectorSegment,
+    onChangeDirectorSegmentDisplay,
+    onResetDirectorSegmentToAuto
 }) {
     const [localIsPlaying, setLocalIsPlaying] = useState(false);
     const isPlaying = propIsPlaying !== undefined ? propIsPlaying : localIsPlaying;
@@ -454,6 +459,8 @@ export default function SoloSpotlightModal({
                     recordingSegments={recordingSegments}
                     globalGaps={activeGaps}
                     showWatermark={true}
+                    directorPlan={directorPlan || station?.directorPlan}
+                    onOverrideDisplay={onOverrideDisplay}
                 />
 
                 {/* HUD Keystroke playback overlay above fullscreen player */}
@@ -612,6 +619,9 @@ export default function SoloSpotlightModal({
                         showKeystrokes={showRulerKeystrokes}
                         showRulerKeystrokes={showRulerKeystrokes}
                         onToggleRulerKeystrokes={onToggleRulerKeystrokes}
+                        onSplitDirectorSegment={onSplitDirectorSegment}
+                        onChangeDirectorSegmentDisplay={onChangeDirectorSegmentDisplay}
+                        onResetDirectorSegmentToAuto={onResetDirectorSegmentToAuto}
                     />
                 </div>
             </div>

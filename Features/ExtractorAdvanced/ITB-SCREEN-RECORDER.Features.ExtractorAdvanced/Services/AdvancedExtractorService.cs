@@ -99,10 +99,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             CancellationToken ct = default) =>
             _trackCutter.CutSynchronizedTrackAsync(stationId, plan, stationChunks, tempOutputDir, isMultiStation, progress, ct);
 
-        public async Task<Stream> ExtractFrameAsync(string hostname, long epochMs, CancellationToken ct = default)
+        public async Task<Stream> ExtractFrameAsync(string hostname, long epochMs, string? displayId = null, CancellationToken ct = default)
         {
             long quantEpoch = (epochMs / 250) * 250;
-            string cacheKey = $"frame_{hostname}_{quantEpoch}";
+            string cleanDisplay = string.IsNullOrWhiteSpace(displayId) ? "mon-0" : displayId.Trim().ToLowerInvariant();
+            string cacheKey = $"frame_{hostname}_{cleanDisplay}_{quantEpoch}";
 
             if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out byte[]? cached) && cached != null)
             {
@@ -112,6 +113,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             DateTime targetUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime;
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-5), targetUtc.AddMinutes(5));
+
+            if (!string.IsNullOrWhiteSpace(displayId))
+            {
+                var displayChunks = chunks.Where(c => string.Equals(c.DisplayId, displayId, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (displayChunks.Count > 0)
+                {
+                    chunks = displayChunks;
+                }
+            }
 
             // Extract relevant chunks: chunks directly enclosing target timestamp receive top priority, followed by boundary chunks within ±2s
             var candidates = chunks

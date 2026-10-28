@@ -96,7 +96,7 @@ export default function CameraCardFeed({
         let isMounted = true;
         const abortController = new AbortController();
 
-        const cached = frameStore.get(stationName, roundedEpochMs);
+        const cached = frameStore.get(stationName, roundedEpochMs, activeDisplayId);
         if (cached) {
             setFrameSrc(cached);
             setHasError(false);
@@ -111,7 +111,7 @@ export default function CameraCardFeed({
         const timer = setTimeout(() => {
             if (!isMounted) return;
 
-            frameStore.fetchFrame(stationName, roundedEpochMs, abortController.signal).then(res => {
+            frameStore.fetchFrame(stationName, roundedEpochMs, abortController.signal, activeDisplayId).then(res => {
                 if (isMounted) {
                     setIsLoadingFrame(false);
                     if (res && res !== 'NO_SIGNAL') {
@@ -124,8 +124,8 @@ export default function CameraCardFeed({
             });
         }, delayMs);
 
-        const unsubscribe = frameStore.subscribe((h, e, val) => {
-            if (h === stationName && e === roundedEpochMs && isMounted) {
+        const unsubscribe = frameStore.subscribe((h, e, val, disp) => {
+            if (h === stationName && e === roundedEpochMs && (!disp || disp === activeDisplayId) && isMounted) {
                 setIsLoadingFrame(false);
                 if (val && val !== 'NO_SIGNAL') {
                     setFrameSrc(val);
@@ -142,7 +142,7 @@ export default function CameraCardFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady]);
+    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady, activeDisplayId]);
 
     useEffect(() => {
         if (!stationName || !isSolo) return;
@@ -155,7 +155,7 @@ export default function CameraCardFeed({
                 streamStartOffsetMsRef.current = initialSeekMs;
                 lastEmittedMsRef.current = initialSeekMs;
                 isSeekingRef.current = false;
-                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&_t=${Date.now()}`;
+                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&displayId=${encodeURIComponent(activeDisplayId)}&_t=${Date.now()}`;
 
                 setIsVideoReady(false);
                 setStreamSrc(url);
@@ -209,7 +209,7 @@ export default function CameraCardFeed({
             }
 
             const targetMs = currentRelativeMsRef.current;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + targetMs}&_t=${Date.now()}`;
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + targetMs}&displayId=${encodeURIComponent(activeDisplayId)}&_t=${Date.now()}`;
             setStreamSrc(newUrl);
         }, 75);
 

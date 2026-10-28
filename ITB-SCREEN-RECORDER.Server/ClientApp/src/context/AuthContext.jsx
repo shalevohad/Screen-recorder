@@ -120,6 +120,28 @@ export function AuthProvider({ children }) {
                 setPermissions(savedPerms ? JSON.parse(savedPerms) : []);
                 setIsSystemRoot(Boolean(parsedUser.isRoot));
                 setIsAuthenticated(true);
+            } else {
+                // Attempt silent Windows Integrated Authentication / Active Directory SSO
+                try {
+                    const ssoRes = await fetch('/api/v1/auth/windows-sso', { credentials: 'include' });
+                    if (ssoRes.ok) {
+                        const ssoData = await ssoRes.json();
+                        sessionStorage.setItem(STORAGE_KEYS.TOKEN, ssoData.token);
+                        sessionStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(ssoData));
+                        sessionStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(ssoData.roles || []));
+                        sessionStorage.setItem(STORAGE_KEYS.PERMS, JSON.stringify(ssoData.permissions || []));
+
+                        setUser(ssoData);
+                        setRoles(ssoData.roles || []);
+                        setPermissions(ssoData.permissions || []);
+                        setIsSystemRoot(Boolean(ssoData.isRoot));
+                        setIsAuthenticated(true);
+                        setIsInitialized(true);
+                        return;
+                    }
+                } catch (ssoErr) {
+                    console.debug('[AuthContext] Silent Windows SSO not applicable:', ssoErr);
+                }
             }
 
             setIsInitialized(true);

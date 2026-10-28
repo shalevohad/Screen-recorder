@@ -216,34 +216,54 @@ export default function WebRTCPlayer({
             }
         };
 
+        let lastPlayheadTime = -1;
+        let stallCount = 0;
+        const stallCheckInterval = setInterval(() => {
+            if (!isSubscribed || !videoRef.current) return;
+            const cur = videoRef.current.currentTime;
+            if (cur > 0 && !videoRef.current.paused && peerRef.current?.connectionState === 'connected') {
+                if (cur === lastPlayheadTime) {
+                    stallCount++;
+                    if (stallCount >= 2) { // 2 intervals = 6-8 seconds without time progress
+                        console.warn("[WebRTC] Playback stall detected (frozen frame). Initiating silent renegotiation...");
+                        stallCount = 0;
+                        handleSmartRetry();
+                    }
+                } else {
+                    lastPlayheadTime = cur;
+                    stallCount = 0;
+                }
+            }
+        }, 3500);
+
         const handleSmartRetry = () => {
             if (!isSubscribed) return;
 
             cleanupPeerConnection();
 
-            if (retryCountRef.current < maxRetries) {
-                const nextAttempt = retryCountRef.current + 1;
-                retryCountRef.current = nextAttempt;
-                setRetryCount(nextAttempt);
+            const nextAttempt = retryCountRef.current + 1;
+            retryCountRef.current = nextAttempt;
+            setRetryCount(nextAttempt);
+            setHasError(true);
 
-                const delay = Math.min(1500 * Math.pow(2, nextAttempt - 1), 10000);
-                console.warn(`[WebRTC] Connection lost. Retrying in ${delay}ms (Attempt ${nextAttempt}/${maxRetries})...`);
-                setHasError(true);
+            // Resilient backoff: fast exponential retry for first 5 attempts, then steady 6s cadence indefinitely
+            const delay = nextAttempt <= 5
+                ? Math.min(1200 * Math.pow(1.5, nextAttempt - 1), 6000)
+                : 6000;
 
-                if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-                retryTimeoutRef.current = setTimeout(() => {
-                    if (isSubscribed) connectToWHEP();
-                }, delay);
-            } else {
-                console.error("[WebRTC] Max retry attempts reached. Stream offline.");
-                setHasError(true);
-            }
+            console.warn(`[WebRTC] Connection lost for '${streamPath}'. Reconnecting in ${Math.round(delay)}ms (Attempt ${nextAttempt})...`);
+
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = setTimeout(() => {
+                if (isSubscribed) connectToWHEP();
+            }, delay);
         };
 
         connectToWHEP();
 
         return () => {
             isSubscribed = false;
+            clearInterval(stallCheckInterval);
             cleanupPeerConnection();
             if (currentVideo) currentVideo.srcObject = null;
         };
@@ -302,11 +322,12 @@ export default function WebRTCPlayer({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {hasError && retryCount >= maxRetries && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', zIndex: 10, background: 'rgba(0,0,0,0.6)' }}>
-                    <span style={{ backgroundColor: 'rgba(0,0,0,0.8)', padding: '6px 12px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                        STREAM OFFLINE
-                    </span>
+            {hasError && retryCount >= 1 && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#f59e0b', zIndex: 10, background: 'rgba(0,0,0,0.65)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(15,23,42,0.9)', border: '1px solid rgba(245,158,11,0.3)', padding: '6px 14px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                        <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b' }}></span>
+                        <span>{retryCount < 5 ? `RECONNECTING... (${retryCount})` : `RECONNECTING STREAM (ATTEMPT ${retryCount})...`}</span>
+                    </div>
                 </div>
             )}
 

@@ -50,7 +50,10 @@ export default function TimelineBoard({
     keystrokes = [],
     showKeystrokes = false,
     showRulerKeystrokes = false,
-    onToggleRulerKeystrokes
+    onToggleRulerKeystrokes,
+    onSplitDirectorSegment,
+    onChangeDirectorSegmentDisplay,
+    onResetDirectorSegmentToAuto
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [trackBankIndex, setTrackBankIndex] = useState(0);
@@ -287,6 +290,9 @@ export default function TimelineBoard({
                                         baseEpochMs={baseEpochMs}
                                         playheadMs={playheadMs}
                                         availableDisplays={station.displays || station.topology?.displays || []}
+                                        onSplitSegment={onSplitDirectorSegment}
+                                        onChangeSegmentDisplay={onChangeDirectorSegmentDisplay}
+                                        onResetSegmentToAuto={onResetDirectorSegmentToAuto}
                                     />
                                 )}
                             </React.Fragment>

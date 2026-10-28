@@ -2,8 +2,14 @@
 // File: Client/src/components/Settings/tabs/SecurityAccessTab.jsx
 // ==========================================
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import AdGroupChipsInput from '../AdGroupChipsInput';
 import AdTreeBrowserModal from '../AdTreeBrowserModal';
+
+function PortalModal({ children }) {
+    if (typeof document === 'undefined') return children;
+    return createPortal(children, document.body);
+}
 
 export default function SecurityAccessTab() {
     const [policy, setPolicy] = useState(null);
@@ -1326,137 +1332,143 @@ export default function SecurityAccessTab() {
 
             {/* Modal: Create Local User */}
             {isCreateUserOpen && (
-                <div className="security-modal-overlay" onClick={() => setIsCreateUserOpen(false)}>
-                    <div className="security-modal-card" onClick={e => e.stopPropagation()}>
-                        <h3>Create Local User</h3>
-                        <span className="modal-subtitle">Default assigned role is Viewer. Add roles as needed.</span>
-                        <form onSubmit={handleCreateUser}>
-                            <div className="settings-field">
-                                <span>Username</span>
-                                <input
-                                    type="text"
-                                    value={newUsername}
-                                    onChange={e => setNewUsername(e.target.value)}
-                                    required
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="settings-field">
-                                <span>Display Name</span>
-                                <input
-                                    type="text"
-                                    value={newDisplayName}
-                                    onChange={e => setNewDisplayName(e.target.value)}
-                                />
-                            </div>
-                            <div className="settings-field">
-                                <span>Password</span>
-                                <input
-                                    type="password"
-                                    value={newPassword}
-                                    onChange={e => setNewPassword(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div className="settings-field">
-                                <span>Assigned Roles (Default: Viewer)</span>
-                                <div className="roles-checkboxes-grid">
-                                    {roles.map(r => (
-                                        <label key={r.id} className="role-check-item">
-                                            <input
-                                                type="checkbox"
-                                                checked={newUserRoles.includes(r.id)}
-                                                onChange={e => {
-                                                    if (e.target.checked) setNewUserRoles(prev => [...prev, r.id]);
-                                                    else setNewUserRoles(prev => prev.filter(x => x !== r.id));
-                                                }}
-                                            />
-                                            <span style={{ color: r.color }}>{r.name}</span>
-                                        </label>
-                                    ))}
+                <PortalModal>
+                    <div className="security-modal-overlay" onClick={() => setIsCreateUserOpen(false)}>
+                        <div className="security-modal-card" onClick={e => e.stopPropagation()}>
+                            <h3>Create Local User</h3>
+                            <span className="modal-subtitle">Default assigned role is Viewer. Add roles as needed.</span>
+                            <form onSubmit={handleCreateUser}>
+                                <div className="settings-field">
+                                    <span>Username</span>
+                                    <input
+                                        type="text"
+                                        value={newUsername}
+                                        onChange={e => setNewUsername(e.target.value)}
+                                        required
+                                        autoFocus
+                                    />
                                 </div>
-                            </div>
+                                <div className="settings-field">
+                                    <span>Display Name</span>
+                                    <input
+                                        type="text"
+                                        value={newDisplayName}
+                                        onChange={e => setNewDisplayName(e.target.value)}
+                                    />
+                                </div>
+                                <div className="settings-field">
+                                    <span>Password</span>
+                                    <input
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={e => setNewPassword(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                                <div className="settings-field">
+                                    <span>Assigned Roles (Default: Viewer)</span>
+                                    <div className="roles-checkboxes-grid">
+                                        {roles.map(r => (
+                                            <label key={r.id} className="role-check-item">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={newUserRoles.includes(r.id)}
+                                                    onChange={e => {
+                                                        if (e.target.checked) setNewUserRoles(prev => [...prev, r.id]);
+                                                        else setNewUserRoles(prev => prev.filter(x => x !== r.id));
+                                                    }}
+                                                />
+                                                <span style={{ color: r.color }}>{r.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
 
-                            <div className="modal-actions-row">
-                                <button type="button" className="btn-cancel" onClick={() => setIsCreateUserOpen(false)}>Cancel</button>
-                                <button type="submit" className="btn-save">Create User</button>
-                            </div>
-                        </form>
+                                <div className="modal-actions-row">
+                                    <button type="button" className="btn-cancel" onClick={() => setIsCreateUserOpen(false)}>Cancel</button>
+                                    <button type="submit" className="btn-save">Create User</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                </PortalModal>
             )}
 
             {/* Modal: Change Password */}
             {passwordChangeUser && (
-                <div className="security-modal-overlay" onClick={() => setPasswordChangeUser(null)}>
-                    <div className="security-modal-card" onClick={e => e.stopPropagation()}>
-                        <h3>Change Password: {passwordChangeUser.username}</h3>
-                        <form onSubmit={handleChangePassword}>
-                            <div className="settings-field">
-                                <span>New Password</span>
-                                <input
-                                    type="password"
-                                    value={newPasswordValue}
-                                    onChange={e => setNewPasswordValue(e.target.value)}
-                                    required
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="modal-actions-row">
-                                <button type="button" className="btn-cancel" onClick={() => setPasswordChangeUser(null)}>Cancel</button>
-                                <button type="submit" className="btn-save">Update Password</button>
-                            </div>
-                        </form>
+                <PortalModal>
+                    <div className="security-modal-overlay" onClick={() => setPasswordChangeUser(null)}>
+                        <div className="security-modal-card" onClick={e => e.stopPropagation()}>
+                            <h3>Change Password: {passwordChangeUser.username}</h3>
+                            <form onSubmit={handleChangePassword}>
+                                <div className="settings-field">
+                                    <span>New Password</span>
+                                    <input
+                                        type="password"
+                                        value={newPasswordValue}
+                                        onChange={e => setNewPasswordValue(e.target.value)}
+                                        required
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="modal-actions-row">
+                                    <button type="button" className="btn-cancel" onClick={() => setPasswordChangeUser(null)}>Cancel</button>
+                                    <button type="submit" className="btn-save">Update Password</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                </PortalModal>
             )}
 
             {/* Modal: Add AD Group Mapping */}
             {isAddMappingOpen && (
-                <div className="security-modal-overlay" onClick={() => setIsAddMappingOpen(false)}>
-                    <div className="security-modal-card" onClick={e => e.stopPropagation()} style={{ width: '560px' }}>
-                        <h3>Add Active Directory Group Mappings</h3>
-                        <span className="modal-subtitle">Assign one or more domain security groups to an operational role.</span>
-                        <form onSubmit={handleAddMapping} style={{ marginTop: '12px' }}>
-                            <div className="settings-field">
-                                <span>Active Directory Security Groups (Chips / Multi-Select)</span>
-                                <AdGroupChipsInput
-                                    chips={standaloneMappedGroups}
-                                    onAddGroups={(names) => {
-                                        setStandaloneMappedGroups(prev => {
-                                            const existingLower = prev.map(n => n.toLowerCase());
-                                            const toAdd = names.filter(n => !existingLower.includes(n.toLowerCase()));
-                                            return [...prev, ...toAdd];
-                                        });
-                                    }}
-                                    onRemoveGroup={(groupName) => {
-                                        setStandaloneMappedGroups(prev => prev.filter(g => g.toLowerCase() !== groupName.toLowerCase()));
-                                    }}
-                                    onOpenBrowser={() => setIsTreeBrowserOpenForStandalone(true)}
-                                    placeholder="Type AD group name or click Browse AD Tree…"
-                                />
-                            </div>
-                            <div className="settings-field" style={{ marginTop: '14px' }}>
-                                <span>Map to Operational Role</span>
-                                <select
-                                    value={newMappingRoleId}
-                                    onChange={e => setNewMappingRoleId(e.target.value)}
-                                    className="tactical-select"
-                                >
-                                    {roles.map(r => (
-                                        <option key={r.id} value={r.id}>{r.name} ({r.id})</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="modal-actions-row">
-                                <button type="button" className="btn-cancel" onClick={() => setIsAddMappingOpen(false)}>Cancel</button>
-                                <button type="submit" className="btn-save" disabled={standaloneMappedGroups.length === 0}>
-                                    Save {standaloneMappedGroups.length > 1 ? `(${standaloneMappedGroups.length}) Mappings` : 'Mapping'}
-                                </button>
-                            </div>
-                        </form>
+                <PortalModal>
+                    <div className="security-modal-overlay" onClick={() => setIsAddMappingOpen(false)}>
+                        <div className="security-modal-card" onClick={e => e.stopPropagation()} style={{ width: '560px' }}>
+                            <h3>Add Active Directory Group Mappings</h3>
+                            <span className="modal-subtitle">Assign one or more domain security groups to an operational role.</span>
+                            <form onSubmit={handleAddMapping} style={{ marginTop: '12px' }}>
+                                <div className="settings-field">
+                                    <span>Active Directory Security Groups (Chips / Multi-Select)</span>
+                                    <AdGroupChipsInput
+                                        chips={standaloneMappedGroups}
+                                        onAddGroups={(names) => {
+                                            setStandaloneMappedGroups(prev => {
+                                                const existingLower = prev.map(n => n.toLowerCase());
+                                                const toAdd = names.filter(n => !existingLower.includes(n.toLowerCase()));
+                                                return [...prev, ...toAdd];
+                                            });
+                                        }}
+                                        onRemoveGroup={(groupName) => {
+                                            setStandaloneMappedGroups(prev => prev.filter(g => g.toLowerCase() !== groupName.toLowerCase()));
+                                        }}
+                                        onOpenBrowser={() => setIsTreeBrowserOpenForStandalone(true)}
+                                        placeholder="Type AD group name or click Browse AD Tree…"
+                                    />
+                                </div>
+                                <div className="settings-field" style={{ marginTop: '14px' }}>
+                                    <span>Map to Operational Role</span>
+                                    <select
+                                        value={newMappingRoleId}
+                                        onChange={e => setNewMappingRoleId(e.target.value)}
+                                        className="tactical-select"
+                                    >
+                                        {roles.map(r => (
+                                            <option key={r.id} value={r.id}>{r.name} ({r.id})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="modal-actions-row">
+                                    <button type="button" className="btn-cancel" onClick={() => setIsAddMappingOpen(false)}>Cancel</button>
+                                    <button type="submit" className="btn-save" disabled={standaloneMappedGroups.length === 0}>
+                                        Save {standaloneMappedGroups.length > 1 ? `(${standaloneMappedGroups.length}) Mappings` : 'Mapping'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
+                </PortalModal>
             )}
 
             {/* Standalone Tree Browser Modal */}
@@ -1478,7 +1490,8 @@ export default function SecurityAccessTab() {
 
             {/* Modal: Assign Roles for a Permission (From Catalog) */}
             {permRoleModalData && (
-                <div className="security-modal-overlay" onClick={() => setPermRoleModalData(null)}>
+                <PortalModal>
+                    <div className="security-modal-overlay" onClick={() => setPermRoleModalData(null)}>
                     <div className="security-modal-card" onClick={e => e.stopPropagation()}>
                         <h3>Assign Roles: {permRoleModalData.name}</h3>
                         <span className="modal-subtitle">Permission Key: <code style={{ color: '#38BDF8' }}>{permRoleModalData.key}</code></span>
@@ -1523,11 +1536,13 @@ export default function SecurityAccessTab() {
                         </div>
                     </div>
                 </div>
+            </PortalModal>
             )}
 
             {/* Modal: Complete Role Editor (Permissions, Local Users & AD Groups) */}
             {roleModalData && (
-                <div className="security-modal-overlay" onClick={() => setRoleModalData(null)}>
+                <PortalModal>
+                    <div className="security-modal-overlay" onClick={() => setRoleModalData(null)}>
                     <div className="security-modal-card large-modal" onClick={e => e.stopPropagation()}>
                         <h3>{roleModalData.isNew ? 'Create Operational Role' : `Edit Role: ${roleModalData.name}`}</h3>
                         <span className="modal-subtitle">Configure role properties, permissions, assigned local users, and AD group mappings.</span>
@@ -1785,11 +1800,13 @@ export default function SecurityAccessTab() {
                         </form>
                     </div>
                 </div>
+            </PortalModal>
             )}
 
             {/* Modal: User Roles & Overrides Editor */}
             {userEditData && (
-                <div className="security-modal-overlay" onClick={() => setUserEditData(null)}>
+                <PortalModal>
+                    <div className="security-modal-overlay" onClick={() => setUserEditData(null)}>
                     <div className="security-modal-card large-modal" onClick={e => e.stopPropagation()}>
                         <h3>Edit User Roles & Overrides: {userEditData.username}</h3>
                         <span className="modal-subtitle">Assign bundle roles or grant/revoke specific permissions directly.</span>
@@ -1938,11 +1955,13 @@ export default function SecurityAccessTab() {
                         </form>
                     </div>
                 </div>
+            </PortalModal>
             )}
 
             {/* Deep Diagnostics Modal */}
             {showDiagnosticsModal && (
-                <div className="modal-backdrop" onClick={() => setShowDiagnosticsModal(false)}>
+                <PortalModal>
+                    <div className="modal-backdrop" onClick={() => setShowDiagnosticsModal(false)}>
                     <div className="modal-box diagnostics-modal" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
                             <div className="title-area">
@@ -2041,6 +2060,7 @@ export default function SecurityAccessTab() {
                         </div>
                     </div>
                 </div>
+            </PortalModal>
             )}
         </fieldset>
     );

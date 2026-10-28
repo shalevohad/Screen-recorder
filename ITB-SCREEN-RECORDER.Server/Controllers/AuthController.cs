@@ -18,11 +18,13 @@ public class AuthController : ControllerBase
 {
     private readonly ISecurityService _securityService;
     private readonly ICatalogRepository _repository;
+    private readonly LdapAuthenticationProvider _ldapAuth;
 
-    public AuthController(ISecurityService securityService, ICatalogRepository repository)
+    public AuthController(ISecurityService securityService, ICatalogRepository repository, LdapAuthenticationProvider ldapAuth)
     {
         _securityService = securityService;
         _repository = repository;
+        _ldapAuth = ldapAuth;
     }
 
     [HttpGet("status")]
@@ -126,6 +128,88 @@ public class AuthController : ControllerBase
             isRoot = false,
             roles = guestRoles,
             permissions = guestPermissions
+        });
+    }
+
+    /// <summary>
+    /// Performs silent Single Sign-On (SSO) for domain users logged in via Windows / Active Directory.
+    /// Resolves client Windows identity from Negotiate/NTLM or reverse proxy, searches directory groups,
+    /// and issues an authenticated session token without requiring credentials input.
+    /// </summary>
+    [HttpGet("windows-sso")]
+    [AllowAnonymous]
+    public async Task<IActionResult> WindowsSso()
+    {
+        var policy = await _repository.GetSecurityPolicyAsync();
+
+        // 1. Check if authenticated via Windows Authentication (Negotiate / Kerberos / NTLM)
+        string? domainUsername = User.Identity?.Name;
+
+        // 2. Check X-Remote-User or X-Forwarded-User header (common in corporate intranet reverse proxies)
+        if (string.IsNullOrWhiteSpace(domainUsername))
+        {
+            domainUsername = Request.Headers["X-Remote-User"].FirstOrDefault()
+                          ?? Request.Headers["X-Forwarded-User"].FirstOrDefault();
+        }
+
+        // 3. Check WindowsIdentity on Windows (for local seat / NOC terminal sessions)
+        if (string.IsNullOrWhiteSpace(domainUsername) && OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var winIdentity = System.Security.Principal.WindowsIdentity.GetCurrent();
+                if (winIdentity != null && !winIdentity.IsAnonymous && !string.IsNullOrWhiteSpace(winIdentity.Name) && !winIdentity.Name.StartsWith("NT AUTHORITY", StringComparison.OrdinalIgnoreCase))
+                {
+                    domainUsername = winIdentity.Name;
+                }
+            }
+            catch { }
+        }
+
+        if (string.IsNullOrWhiteSpace(domainUsername))
+        {
+            return Unauthorized(new { message = "No Windows / Active Directory identity detected for SSO." });
+        }
+
+        string cleanUsername = domainUsername.Contains('\\')
+            ? domainUsername.Split('\\', 2)[1]
+            : (domainUsername.Contains('@') ? domainUsername.Split('@', 2)[0] : domainUsername);
+
+        var result = await _ldapAuth.AuthenticateSsoUserAsync(cleanUsername);
+        if (!result.Success)
+        {
+            return Unauthorized(new { message = result.ErrorMessage ?? "AD SSO authentication failed." });
+        }
+
+        if (policy.CurrentMode == AuthMode.StrictLdap && !result.AssignedRoleIds.Any())
+        {
+            return Unauthorized(new { message = "Access denied: No operational roles mapped to your Active Directory security groups." });
+        }
+
+        var permissions = await _securityService.CalculateAllUserPermissionsAsync(
+            result.UserId!,
+            result.AssignedRoleIds,
+            result.IsSystemImmutable
+        );
+
+        string token = _securityService.GenerateJwtToken(
+            result.UserId!,
+            result.Username!,
+            result.AssignedRoleIds,
+            permissions,
+            result.IsSystemImmutable
+        );
+
+        return Ok(new
+        {
+            token,
+            userId = result.UserId,
+            username = result.Username,
+            displayName = result.DisplayName ?? result.Username,
+            isRoot = result.IsSystemImmutable,
+            roles = result.AssignedRoleIds,
+            permissions,
+            adGroups = result.AdGroups
         });
     }
 }

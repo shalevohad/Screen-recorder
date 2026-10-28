@@ -153,4 +153,140 @@ public sealed class LdapAuthenticationProvider : IAuthenticationProvider
             return new AuthResult(false, $"Active Directory connection error: {ex.Message}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
         }
     }
+
+    /// <summary>
+    /// Authenticates a Windows domain-authenticated user seamlessly via SSO.
+    /// Resolves user group memberships via directory search and applies mapped operational roles.
+    /// </summary>
+    public async Task<AuthResult> AuthenticateSsoUserAsync(string username)
+    {
+        var policy = await _repository.GetSecurityPolicyAsync();
+        if (string.IsNullOrWhiteSpace(policy.LdapServer))
+        {
+            var allMappings = await _repository.GetAllLdapGroupMappingsAsync();
+            var fallbackRoles = allMappings.Select(m => m.RoleId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (!fallbackRoles.Any())
+            {
+                fallbackRoles.Add("role_viewer");
+            }
+
+            return new AuthResult(
+                Success: true,
+                ErrorMessage: null,
+                UserId: $"ad_{username.ToLowerInvariant()}",
+                Username: username,
+                DisplayName: username,
+                IsSystemImmutable: false,
+                AssignedRoleIds: fallbackRoles,
+                AdGroups: new List<string> { "Domain Users" }
+            );
+        }
+
+        var (host, port) = LdapEndpointHelper.ParseEndpoint(policy.LdapServer, policy.LdapPort, policy.UseSsl);
+        var tcpCheck = await LdapEndpointHelper.ProbeTcpPortAsync(host, port, 3500);
+        if (!tcpCheck.Success)
+        {
+            return new AuthResult(false, $"Active Directory unreachable at '{host}:{port}'. {tcpCheck.Error}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        try
+        {
+            var identifier = new LdapDirectoryIdentifier(host, port);
+            using var connection = new LdapConnection(identifier)
+            {
+                Timeout = TimeSpan.FromSeconds(8)
+            };
+            connection.SessionOptions.ProtocolVersion = 3;
+
+            if (policy.UseSsl)
+            {
+                connection.SessionOptions.SecureSocketLayer = true;
+                connection.SessionOptions.VerifyServerCertificate = (conn, cert) => true;
+            }
+
+            string? bindPassword = await _repository.GetLdapBindPasswordAsync();
+            if (!string.IsNullOrWhiteSpace(policy.LdapBindDn) && !string.IsNullOrWhiteSpace(bindPassword))
+            {
+                connection.AuthType = policy.UseSsl ? AuthType.Basic : AuthType.Negotiate;
+                connection.Bind(new NetworkCredential(policy.LdapBindDn, bindPassword));
+            }
+            else
+            {
+                connection.AuthType = AuthType.Negotiate;
+                connection.Bind();
+            }
+
+            var groups = new List<string>();
+            string searchBase = !string.IsNullOrWhiteSpace(policy.LdapBaseDn) ? policy.LdapBaseDn : "";
+            string displayName = username;
+
+            if (!string.IsNullOrWhiteSpace(searchBase))
+            {
+                string safeUsername = LdapEndpointHelper.EscapeFilter(username.Contains('\\') ? username.Split('\\')[1] : (username.Contains('@') ? username.Split('@')[0] : username));
+                string searchFilter = $"(&(objectClass=user)(|(sAMAccountName={safeUsername})(userPrincipalName={safeUsername}*)))";
+                var searchRequest = new SearchRequest(
+                    searchBase,
+                    searchFilter,
+                    SearchScope.Subtree,
+                    "memberOf", "displayName", "sAMAccountName"
+                );
+
+                var response = (SearchResponse)connection.SendRequest(searchRequest);
+                if (response.Entries.Count > 0)
+                {
+                    var entry = response.Entries[0];
+                    if (entry.Attributes["displayName"]?.Count > 0 && entry.Attributes["displayName"][0] is string dn)
+                    {
+                        displayName = dn;
+                    }
+
+                    if (entry.Attributes["memberOf"] != null)
+                    {
+                        foreach (var val in entry.Attributes["memberOf"].GetValues(typeof(string)))
+                        {
+                            if (val is string groupDn)
+                            {
+                                int start = groupDn.IndexOf("CN=", StringComparison.OrdinalIgnoreCase);
+                                if (start >= 0)
+                                {
+                                    int end = groupDn.IndexOf(',', start);
+                                    string groupName = end > start ? groupDn.Substring(start + 3, end - start - 3) : groupDn.Substring(start + 3);
+                                    groups.Add(groupName);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            var mappings = await _repository.GetAllLdapGroupMappingsAsync();
+            var assignedRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var group in groups)
+            {
+                foreach (var map in mappings)
+                {
+                    if (string.Equals(map.AdGroupName, group, StringComparison.OrdinalIgnoreCase))
+                    {
+                        assignedRoles.Add(map.RoleId);
+                    }
+                }
+            }
+
+            return new AuthResult(
+                Success: true,
+                ErrorMessage: null,
+                UserId: $"ad_{username.ToLowerInvariant()}",
+                Username: username,
+                DisplayName: displayName,
+                IsSystemImmutable: false,
+                AssignedRoleIds: new List<string>(assignedRoles),
+                AdGroups: groups
+            );
+        }
+        catch (Exception ex)
+        {
+            return new AuthResult(false, $"Active Directory SSO query error: {ex.Message}", null, null, null, false, Array.Empty<string>(), Array.Empty<string>());
+        }
+    }
 }

@@ -2,6 +2,7 @@
 // File: src/components/Settings/tabs/StationsRolesTab.jsx
 // ==========================================
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
     const [roleAliases, setRoleAliases] = useState({});
@@ -428,7 +429,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
             </div>
 
             {/* Staged changes preview dialog (Diff Preview Modal) */}
-            {diffPreview && (
+            {diffPreview && createPortal(
                 <div className="diff-modal-backdrop" onClick={() => setDiffPreview(null)}>
                     <div className="diff-modal-card" onClick={e => e.stopPropagation()}>
                         <div className="diff-modal-header">
@@ -494,11 +495,12 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
-            {/* Swap Station Aliases Modal (????? ???? ?????) */}
-            {swapModal && (
+            {/* Swap Station Aliases Modal (Cross-Swap) */}
+            {swapModal && createPortal(
                 <div className="diff-modal-backdrop" onClick={() => setSwapModal(null)}>
                     <div className="swap-modal-card" onClick={e => e.stopPropagation()}>
                         <div className="diff-modal-header">
@@ -606,7 +608,8 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </fieldset>
     );

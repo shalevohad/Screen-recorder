@@ -77,9 +77,21 @@ namespace ITBRecorderAgent.Providers.Video
                     }
                 }
 
-                if (descriptors.Count > 0 && !descriptors.Any(d => d.IsPrimary))
+                if (descriptors.Count > 0)
                 {
-                    descriptors[0] = descriptors[0] with { IsPrimary = true };
+                    if (!descriptors.Any(d => d.IsPrimary))
+                    {
+                        descriptors[0] = descriptors[0] with { IsPrimary = true };
+                    }
+
+                    // Ensure primary display is always mon-0 (Rule 11: mon-0 carries primary + audio),
+                    // followed deterministically by secondary displays
+                    descriptors = descriptors
+                        .OrderByDescending(d => d.IsPrimary)
+                        .ThenBy(d => d.AdapterIndex)
+                        .ThenBy(d => d.OutputIndex)
+                        .Select((d, idx) => d with { DisplayId = $"mon-{idx}" })
+                        .ToList();
                 }
             }
             catch (Exception ex)

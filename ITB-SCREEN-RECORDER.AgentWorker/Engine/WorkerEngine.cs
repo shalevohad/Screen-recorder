@@ -31,6 +31,19 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
         {
             [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")] public static extern uint TimeBeginPeriod(uint ms);
             [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")] public static extern uint TimeEndPeriod(uint ms);
+
+            [Flags]
+            public enum EXECUTION_STATE : uint
+            {
+                ES_SYSTEM_REQUIRED = 0x00000001,
+                ES_DISPLAY_REQUIRED = 0x00000002,
+                ES_USER_PRESENT = 0x00000004,
+                ES_AWAYMODE_REQUIRED = 0x00000040,
+                ES_CONTINUOUS = 0x80000000
+            }
+
+            [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+            public static extern EXECUTION_STATE SetThreadExecutionState(EXECUTION_STATE esFlags);
         }
 
         private readonly SemaphoreSlim _permission = new SemaphoreSlim(0, 1);
@@ -351,6 +364,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
             }
             finally
             {
+                PreventSystemSleep(false);
                 _keyboardCapture.Dispose();
                 _displayManager.Dispose();
                 if (OperatingSystem.IsWindows())
@@ -440,17 +454,50 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 ct);
 
             Logger.Info($"[WORKER:LIFECYCLE] Media pipelines active ({_displayManager.ActivePipelines.Count} displays). Streaming fully engaged.");
+            PreventSystemSleep(true);
 
+            long lastKeepAliveTicks = Stopwatch.GetTimestamp();
             while (sessionActive && _isStreaming && !_requiresRestart && !ct.IsCancellationRequested)
             {
                 await Task.Delay(250, ct).ConfigureAwait(false);
+                if (OperatingSystem.IsWindows() && Stopwatch.GetElapsedTime(lastKeepAliveTicks).TotalSeconds >= 60)
+                {
+                    lastKeepAliveTicks = Stopwatch.GetTimestamp();
+                    PreventSystemSleep(true);
+                }
             }
 
             Logger.Info("[WORKER:LIFECYCLE] Stopping session components and flushing buffers...");
             sessionActive = false;
+            PreventSystemSleep(false);
             audio.Stop();
             _displayManager.Dispose();
             Logger.Info("[WORKER:LIFECYCLE] Session resources successfully released.");
+        }
+
+        private void PreventSystemSleep(bool prevent)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    if (prevent)
+                    {
+                        var state = WindowsNative.SetThreadExecutionState(
+                            WindowsNative.EXECUTION_STATE.ES_CONTINUOUS |
+                            WindowsNative.EXECUTION_STATE.ES_SYSTEM_REQUIRED |
+                            WindowsNative.EXECUTION_STATE.ES_DISPLAY_REQUIRED);
+                    }
+                    else
+                    {
+                        WindowsNative.SetThreadExecutionState(WindowsNative.EXECUTION_STATE.ES_CONTINUOUS);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[WORKER:POWER] Failed to update thread execution state: {ex.Message}");
+                }
+            }
         }
 
         private string ResolveDestination()

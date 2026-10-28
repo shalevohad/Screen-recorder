@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
@@ -96,6 +97,73 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
         }
 
+        [HttpGet("director-plan")]
+        public async Task<IActionResult> GetDirectorPlan(
+            [FromQuery] string stationId,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(stationId)) return BadRequest("stationId is required.");
+            stationId = stationId.Trim();
+
+            long lStart = (long)Math.Round(startEpoch);
+            long lEnd = (long)Math.Round(endEpoch);
+            const long SecondsThreshold = 100_000_000_000L;
+            if (lStart > 0 && lStart < SecondsThreshold) lStart *= 1000;
+            if (lEnd > 0 && lEnd < SecondsThreshold) lEnd *= 1000;
+
+            if (lEnd <= lStart) return BadRequest("Invalid epoch window.");
+
+            try
+            {
+                var keystrokes = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, lStart, lEnd);
+                var activityEvents = keystrokes.Select(k => new ActivityEventDto
+                {
+                    TimestampEpochMs = k.EpochMs,
+                    Type = ActivityEventType.Keystroke,
+                    KeyName = k.KeyCombination
+                }).ToList();
+
+                DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime;
+                DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
+                var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
+                var distinctDisplays = chunks
+                    .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
+                    .OrderBy(g => g.Key)
+                    .Select((g, idx) => new DisplayMetadataDto
+                    {
+                        DisplayId = g.Key,
+                        IsPrimary = g.Key == "mon-0",
+                        X = idx * 1920,
+                        Y = 0,
+                        Width = 1920,
+                        Height = 1080
+                    })
+                    .ToList();
+
+                if (distinctDisplays.Count == 0)
+                {
+                    distinctDisplays.Add(new DisplayMetadataDto { DisplayId = "mon-0", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 });
+                }
+
+                var topology = new StationDisplayTopologyDto
+                {
+                    Hostname = stationId,
+                    Displays = distinctDisplays
+                };
+
+                var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
+                var plan = analyzer.AnalyzeFocus(stationId, lStart, lEnd, topology, activityEvents);
+                return Ok(plan);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:DirectorPlan] Error analyzing director plan for station {StationId}", stationId);
+                return StatusCode(500, "Error analyzing director plan.");
+            }
+        }
+
         [HttpGet("stations")]
         public async Task<IActionResult> GetStations(
             [FromQuery] double? startEpoch,
@@ -156,6 +224,68 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     aliases.TryGetValue(host, out string? roleAlias);
                     string effectiveDisplayName = !string.IsNullOrWhiteSpace(roleAlias) ? roleAlias : host;
 
+                    var distinctDisplays = chunks
+                        .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
+                        .OrderBy(g => g.Key)
+                        .Select((g, idx) =>
+                        {
+                            var dSample = g.LastOrDefault();
+                            int dWidth = dSample?.Width ?? width;
+                            int dHeight = dSample?.Height ?? height;
+                            double dFps = dSample?.Fps ?? fps;
+                            bool dHasAudio = dSample?.HasAudio ?? false;
+                            bool isPrimary = g.Key == "mon-0" || (dSample?.IsPrimary ?? false);
+                            return new
+                            {
+                                displayId = g.Key,
+                                displayIndex = idx,
+                                displayNumber = idx + 1,
+                                displayName = $"Display {idx + 1} ({g.Key})",
+                                isPrimary = isPrimary,
+                                hasAudio = dHasAudio,
+                                x = idx * dWidth,
+                                y = 0,
+                                width = dWidth,
+                                height = dHeight,
+                                fps = dFps,
+                                bounds = new { x = idx * dWidth, y = 0, width = dWidth, height = dHeight }
+                            };
+                        })
+                        .ToList();
+
+                    if (distinctDisplays.Count == 0)
+                    {
+                        distinctDisplays.Add(new
+                        {
+                            displayId = "mon-0",
+                            displayIndex = 0,
+                            displayNumber = 1,
+                            displayName = "Display 1 (mon-0)",
+                            isPrimary = true,
+                            hasAudio = hasAudio,
+                            x = 0,
+                            y = 0,
+                            width = width,
+                            height = height,
+                            fps = fps,
+                            bounds = new { x = 0, y = 0, width = width, height = height }
+                        });
+                    }
+
+                    var displayTopology = new
+                    {
+                        hostname = host,
+                        audioCarrierDisplayId = distinctDisplays.FirstOrDefault(d => d.hasAudio)?.displayId ?? "mon-0",
+                        displays = distinctDisplays,
+                        virtualDesktopBounds = new
+                        {
+                            x = 0,
+                            y = 0,
+                            width = distinctDisplays.Sum(d => d.width),
+                            height = distinctDisplays.Max(d => d.height)
+                        }
+                    };
+
                     stationDtos.Add(new
                     {
                         id = host,
@@ -165,6 +295,25 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         isOnline = true,
                         recordingsCount = chunks.Count,
                         segments = Array.Empty<object>(),
+                        displays = distinctDisplays,
+                        displayTopology = displayTopology,
+                        directorPlan = distinctDisplays.Count > 1 ? new
+                        {
+                            stationId = host,
+                            timelineStartEpochMs = lStart ?? 0,
+                            timelineEndEpochMs = lEnd ?? (lStart.HasValue ? lStart.Value + 3600000 : 3600000),
+                            segments = new[]
+                            {
+                                new
+                                {
+                                    startEpochMs = lStart ?? 0,
+                                    endEpochMs = lEnd ?? (lStart.HasValue ? lStart.Value + 3600000 : 3600000),
+                                    targetDisplayId = "mon-0",
+                                    isManualOverride = false,
+                                    triggerReason = "Default"
+                                }
+                            }
+                        } : null,
                         hasAudio = hasAudio,
                         audioCodec = "AAC",
                         audioChannels = 2,
@@ -311,6 +460,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         public async Task<IActionResult> GetStationFrame(
             [FromQuery] string hostname,
             [FromQuery] double epochMs,
+            [FromQuery] string? displayId = null,
             CancellationToken ct = default)
         {
             long lEpoch = (long)Math.Round(epochMs);
@@ -318,7 +468,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             try
             {
-                var imageStream = await _advancedExtractorService.ExtractFrameAsync(hostname, lEpoch, ct);
+                var imageStream = await _advancedExtractorService.ExtractFrameAsync(hostname, lEpoch, displayId, ct);
                 if (imageStream == null || imageStream == Stream.Null || imageStream.Length == 0)
                 {
                     return NoContent();
@@ -355,6 +505,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] double endEpoch,
             [FromQuery] double? seekEpoch = null,
             [FromQuery] double speed = 1.0,
+            [FromQuery] string? displayId = null,
             CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
@@ -377,6 +528,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             // Retrieve relevant chunks from the requested seek point using fast DB indexing
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc.AddSeconds(-2), rangeEndUtc);
+
+            if (!string.IsNullOrWhiteSpace(displayId))
+            {
+                var matching = chunks.Where(c => string.Equals(c.DisplayId, displayId, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (matching.Count > 0)
+                {
+                    chunks = matching;
+                }
+            }
 
             if (chunks == null || chunks.Count == 0)
             {

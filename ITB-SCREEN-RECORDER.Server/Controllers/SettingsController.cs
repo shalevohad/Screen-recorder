@@ -3,6 +3,7 @@
 // ==========================================
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -466,6 +467,126 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(new { success = true });
         }
 
+        #endregion
+
+        #region Directory Browser
+
+        public record CreateFolderRequest(string ParentPath, string FolderName);
+
+        [HttpGet("browse-directories")]
+        public IActionResult BrowseDirectories([FromQuery] string? path = null)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    var drives = DriveInfo.GetDrives()
+                        .Where(d => d.IsReady || OperatingSystem.IsWindows())
+                        .Select(d => new
+                        {
+                            name = d.Name,
+                            fullPath = d.RootDirectory.FullName,
+                            driveType = d.DriveType.ToString(),
+                            isReady = d.IsReady,
+                            availableFreeSpaceBytes = d.IsReady ? d.AvailableFreeSpace : 0,
+                            totalSizeBytes = d.IsReady ? d.TotalSize : 0
+                        })
+                        .ToList();
+
+                    return Ok(new
+                    {
+                        currentPath = "",
+                        parentPath = (string?)null,
+                        isRoot = true,
+                        drives,
+                        directories = new List<object>()
+                    });
+                }
+
+                string cleanPath = path.Trim();
+
+                if (!Directory.Exists(cleanPath))
+                {
+                    return Ok(new
+                    {
+                        currentPath = cleanPath,
+                        parentPath = (string?)null,
+                        exists = false,
+                        isRoot = false,
+                        drives = DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => new { name = d.Name, fullPath = d.RootDirectory.FullName }),
+                        directories = new List<object>()
+                    });
+                }
+
+                var dirInfo = new DirectoryInfo(cleanPath);
+                string? parent = dirInfo.Parent?.FullName;
+
+                var subDirs = new List<object>();
+                try
+                {
+                    foreach (var sub in dirInfo.EnumerateDirectories())
+                    {
+                        try
+                        {
+                            if ((sub.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0 && sub.Name.StartsWith("$"))
+                                continue;
+
+                            subDirs.Add(new
+                            {
+                                name = sub.Name,
+                                fullPath = sub.FullName,
+                                lastModifiedUtc = sub.LastWriteTimeUtc
+                            });
+                        }
+                        catch
+                        {
+                            // Inaccessible individual folder - skip
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Access restricted
+                }
+
+                return Ok(new
+                {
+                    currentPath = dirInfo.FullName,
+                    parentPath = parent,
+                    exists = true,
+                    isRoot = dirInfo.Parent == null,
+                    drives = new List<object>(),
+                    directories = subDirs.OrderBy(d => ((dynamic)d).name).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[BrowseDirectories] Failed browsing path {Path}", path);
+                return StatusCode(500, $"Failed browsing directory: {ex.Message}");
+            }
+        }
+
+        [HttpPost("create-directory")]
+        public IActionResult CreateDirectory([FromBody] CreateFolderRequest req)
+        {
+            if (req == null || string.IsNullOrWhiteSpace(req.ParentPath) || string.IsNullOrWhiteSpace(req.FolderName))
+                return BadRequest("ParentPath and FolderName are required.");
+
+            try
+            {
+                string target = Path.Combine(req.ParentPath.Trim(), req.FolderName.Trim());
+                if (!Directory.Exists(target))
+                {
+                    Directory.CreateDirectory(target);
+                }
+                return Ok(new { success = true, fullPath = target });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[CreateDirectory] Failed creating directory {FolderName} under {ParentPath}", req.FolderName, req.ParentPath);
+                return StatusCode(500, $"Failed creating directory: {ex.Message}");
+            }
+        }
         #endregion
     }
 }

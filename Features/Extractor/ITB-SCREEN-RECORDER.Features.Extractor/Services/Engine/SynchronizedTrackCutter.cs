@@ -336,6 +336,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             try
             {
                 process.Start();
+                ExtractorGarbageCollectorService.TrackProcess(process.Id);
 
                 var readProgressTask = Task.Run(async () =>
                 {
@@ -389,6 +390,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
             finally
             {
+                try { ExtractorGarbageCollectorService.UntrackProcess(process.Id); } catch { }
                 _concurrencyThrottle.Release();
                 if (File.Exists(tempManifestPath)) try { File.Delete(tempManifestPath); } catch { }
                 if (subtitleTempPath != null && File.Exists(subtitleTempPath)) try { File.Delete(subtitleTempPath); } catch { }

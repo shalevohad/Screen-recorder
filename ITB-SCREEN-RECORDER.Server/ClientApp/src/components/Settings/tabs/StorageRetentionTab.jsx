@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import FolderBrowseModal from '../FolderBrowseModal.jsx';
 
 export default function StorageRetentionTab({ form, updateField, updateStorageField }) {
     const [liveStorage, setLiveStorage] = useState(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [browseTarget, setBrowseTarget] = useState(null);
 
     const fetchLiveStorage = useCallback(async () => {
         setIsRefreshing(true);
@@ -194,35 +196,68 @@ export default function StorageRetentionTab({ form, updateField, updateStorageFi
                 </div>
             </div>
 
-            <label className="settings-field">
+            <div className="settings-field">
                 <span>NetApp UNC Path</span>
-                <input
-                    type="text"
-                    value={form.storage.netAppUncPath}
-                    onChange={e => updateStorageField('netAppUncPath', e.target.value)}
-                    required
-                />
-            </label>
+                <div className="path-with-browse-row">
+                    <input
+                        type="text"
+                        value={form.storage.netAppUncPath}
+                        onChange={e => updateStorageField('netAppUncPath', e.target.value)}
+                        placeholder="\\Server\Share\Recordings"
+                        required
+                    />
+                    <button
+                        type="button"
+                        className="btn-browse-path"
+                        onClick={() => setBrowseTarget({ fieldKey: 'netAppUncPath', label: 'NetApp UNC Path', currentVal: form.storage.netAppUncPath })}
+                        title="Browse server directories"
+                    >
+                        📁 BROWSE
+                    </button>
+                </div>
+            </div>
 
-            <label className="settings-field">
+            <div className="settings-field">
                 <span>Local Fallback Path</span>
-                <input
-                    type="text"
-                    value={form.storage.localFallbackPath}
-                    onChange={e => updateStorageField('localFallbackPath', e.target.value)}
-                    required
-                />
-            </label>
+                <div className="path-with-browse-row">
+                    <input
+                        type="text"
+                        value={form.storage.localFallbackPath}
+                        onChange={e => updateStorageField('localFallbackPath', e.target.value)}
+                        placeholder="C:\ProgramData\ITB-SCREEN-RECORDER\Recordings"
+                        required
+                    />
+                    <button
+                        type="button"
+                        className="btn-browse-path"
+                        onClick={() => setBrowseTarget({ fieldKey: 'localFallbackPath', label: 'Local Fallback Path', currentVal: form.storage.localFallbackPath })}
+                        title="Browse server directories"
+                    >
+                        📁 BROWSE
+                    </button>
+                </div>
+            </div>
 
-            <label className="settings-field">
+            <div className="settings-field">
                 <span>Chunk Event Log Path</span>
-                <input
-                    type="text"
-                    value={form.storage.chunkEventLogPath}
-                    onChange={e => updateStorageField('chunkEventLogPath', e.target.value)}
-                    required
-                />
-            </label>
+                <div className="path-with-browse-row">
+                    <input
+                        type="text"
+                        value={form.storage.chunkEventLogPath}
+                        onChange={e => updateStorageField('chunkEventLogPath', e.target.value)}
+                        placeholder="C:\ProgramData\ITB-SCREEN-RECORDER\Logs\chunks.jsonl"
+                        required
+                    />
+                    <button
+                        type="button"
+                        className="btn-browse-path"
+                        onClick={() => setBrowseTarget({ fieldKey: 'chunkEventLogPath', label: 'Chunk Event Log Path', currentVal: form.storage.chunkEventLogPath })}
+                        title="Browse server directories"
+                    >
+                        📁 BROWSE
+                    </button>
+                </div>
+            </div>
 
             <label className="settings-field">
                 <span>Recording Segment Container Format</span>
@@ -236,6 +271,18 @@ export default function StorageRetentionTab({ form, updateField, updateStorageFi
                     <option value="mkv">MKV (Matroska Container)</option>
                 </select>
             </label>
+
+            {browseTarget && (
+                <FolderBrowseModal
+                    isOpen={Boolean(browseTarget)}
+                    initialPath={browseTarget.currentVal}
+                    title={`Browse Directory — ${browseTarget.label}`}
+                    onSelect={(selectedPath) => {
+                        updateStorageField(browseTarget.fieldKey, selectedPath);
+                    }}
+                    onClose={() => setBrowseTarget(null)}
+                />
+            )}
         </fieldset>
     );
 }

@@ -505,21 +505,36 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                             }
                         }
 
-                        // Fallback attempt to install to CurrentUser Root store
+                        // Fallback attempt to install to CurrentUser Root store with timeout to prevent modal CryptUI prompt from hanging headless startup
                         try
                         {
-                            using var userStore = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
-                            userStore.Open(OpenFlags.ReadWrite);
-                            var existing = userStore.Certificates.Find(X509FindType.FindByThumbprint, caCert.Thumbprint, false);
-                            if (existing.Count == 0)
+                            var addCaTask = Task.Run(() =>
                             {
-                                userStore.Add(caCert);
-                                Logger.AlwaysInfo($"[PKI] Registered ITB Root CA in Windows CurrentUser store ({caCert.Thumbprint}).");
+                                try
+                                {
+                                    using var userStore = new X509Store(StoreName.Root, StoreLocation.CurrentUser);
+                                    userStore.Open(OpenFlags.ReadWrite);
+                                    var existing = userStore.Certificates.Find(X509FindType.FindByThumbprint, caCert.Thumbprint, false);
+                                    if (existing.Count == 0)
+                                    {
+                                        userStore.Add(caCert);
+                                        Logger.AlwaysInfo($"[PKI] Registered ITB Root CA in Windows CurrentUser store ({caCert.Thumbprint}).");
+                                    }
+                                }
+                                catch (Exception userEx)
+                                {
+                                    Logger.Info($"[PKI] CurrentUser CA registration prompt bypassed: {userEx.Message}");
+                                }
+                            });
+
+                            if (!addCaTask.Wait(TimeSpan.FromSeconds(2)))
+                            {
+                                Logger.Info("[PKI] CurrentUser CA registration dialog timed out or pending user action. Proceeding with in-memory CustomTrustStore.");
                             }
                         }
-                        catch (Exception userEx)
+                        catch (Exception ex)
                         {
-                            Logger.Info($"[PKI] CurrentUser CA registration prompt bypassed: {userEx.Message}");
+                            Logger.Info($"[PKI] CurrentUser CA registration attempt bypassed: {ex.Message}");
                         }
 
                         Logger.Info("[PKI] Running under standard user; utilizing in-memory CustomTrustStore.");
