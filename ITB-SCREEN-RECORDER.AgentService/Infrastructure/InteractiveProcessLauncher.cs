@@ -62,6 +62,9 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
 
         // Flag instructing Windows to read environment block formatted as Unicode
         private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+        private const uint CREATE_NO_WINDOW = 0x08000000;
+        private const uint STARTF_USESHOWWINDOW = 0x00000001;
+        private const short SW_HIDE = 0;
 
         public static uint GetActiveConsoleSessionId() => WTSGetActiveConsoleSessionId();
 
@@ -130,13 +133,17 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 var startupInfo = new STARTUPINFO();
                 startupInfo.cb = Marshal.SizeOf(startupInfo);
 
-                // 2. Associate with active interactive desktop station to enable DXGI screen capture
+                // 2. Associate with active interactive desktop station to enable DXGI screen capture, but keep window hidden
                 startupInfo.lpDesktop = @"winsta0\default";
+                startupInfo.dwFlags = STARTF_USESHOWWINDOW;
+                startupInfo.wShowWindow = SW_HIDE;
 
                 string workDir = Path.GetDirectoryName(appPath) ?? AppContext.BaseDirectory;
                 string cmdLine = $"\"{appPath}\" {arguments}";
 
-                // 3. Spawn process under user token with constructed environment block
+                // 3. Spawn process under user token with constructed environment block and suppressed window (no console window popup)
+                uint creationFlags = CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+
                 bool result = CreateProcessAsUserW(
                     userToken,
                     null,
@@ -144,7 +151,7 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                     IntPtr.Zero,
                     IntPtr.Zero,
                     false,
-                    CREATE_UNICODE_ENVIRONMENT,
+                    creationFlags,
                     envBlock,
                     workDir,
                     ref startupInfo,
