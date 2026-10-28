@@ -141,6 +141,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         private Bitmap? _cursorBmp;
         // 128x128 buffer supporting all High-DPI cursor resolutions
         private static readonly int[] _cursorPixels = new int[128 * 128];
+        private readonly object _renderLock = new();
 
         public void Initialize()
         {
@@ -243,18 +244,23 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         /// <param name="frameBuffer">Raw BGRA frame buffer to draw onto.</param>
         /// <param name="width">Width of the video frame in pixels.</param>
         /// <param name="height">Height of the video frame in pixels.</param>
-        public void DrawMouseToFrame(byte[] frameBuffer, int width, int height)
+        /// <param name="screenOffsetX">Horizontal pixel offset of the captured monitor in virtual desktop space.</param>
+        /// <param name="screenOffsetY">Vertical pixel offset of the captured monitor in virtual desktop space.</param>
+        public void DrawMouseToFrame(byte[] frameBuffer, int width, int height, int screenOffsetX = 0, int screenOffsetY = 0)
         {
             Initialize();
 
-            // 1. Render expanding ripple rings and scroll arrows
-            MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height);
+            lock (_renderLock)
+            {
+                // 1. Render expanding ripple rings and scroll arrows (isolated to this monitor)
+                MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height, screenOffsetX, screenOffsetY);
 
-            // 2. Render cursor graphic (including I-Beam and monochrome cursors with zero loss)
-            bool isCursorBright = DrawSystemCursorWithPulse(frameBuffer, width, height);
+                // 2. Render cursor graphic (including I-Beam and monochrome cursors with zero loss)
+                bool isCursorBright = DrawSystemCursorWithPulse(frameBuffer, width, height, screenOffsetX, screenOffsetY);
 
-            // 3. Render adaptive L / R / M click badges
-            MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
+                // 3. Render adaptive L / R / M click badges (isolated to this monitor)
+                MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, screenOffsetX, screenOffsetY, isCursorBright);
+            }
         }
 
         private static int _debugLogCounter = 0;
@@ -266,8 +272,10 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         /// <param name="frameBuffer">Raw BGRA frame buffer to draw onto.</param>
         /// <param name="width">Width of the frame.</param>
         /// <param name="height">Height of the frame.</param>
+        /// <param name="screenOffsetX">Horizontal pixel offset of the captured monitor.</param>
+        /// <param name="screenOffsetY">Vertical pixel offset of the captured monitor.</param>
         /// <returns>True if the cursor body is predominantly bright (used for badge contrast); otherwise, false.</returns>
-        private bool DrawSystemCursorWithPulse(byte[] frameBuffer, int width, int height)
+        private bool DrawSystemCursorWithPulse(byte[] frameBuffer, int width, int height, int screenOffsetX, int screenOffsetY)
         {
             var pci = new CURSORINFO { cbSize = Marshal.SizeOf(typeof(CURSORINFO)) };
             bool gotCursor = GetCursorInfo(out pci);
@@ -290,6 +298,16 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                     cursorPosX = pt.x;
                     cursorPosY = pt.y;
                 }
+            }
+
+            // Convert global virtual desktop coordinates to monitor-local coordinates
+            int localCursorX = cursorPosX - screenOffsetX;
+            int localCursorY = cursorPosY - screenOffsetY;
+
+            // Fast boundary check: If the cursor is nowhere near this display's surface, skip immediately
+            if (localCursorX < -128 || localCursorX >= width + 128 || localCursorY < -128 || localCursorY >= height + 128)
+            {
+                return true;
             }
 
             if (hCursor == IntPtr.Zero)
@@ -367,15 +385,17 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                 // --- Handling Case 2: Color cursors (32bpp Alpha or 24bpp full color) ---
                 else
                 {
-                    cursorW = 128;
-                    cursorH = 128;
+                    GetObject(iconInfo.hbmColor, Marshal.SizeOf<BITMAP>(), out BITMAP bmColor);
+                    cursorW = Math.Clamp(bmColor.bmWidth, 16, 128);
+                    cursorH = Math.Clamp(bmColor.bmHeight, 16, 128);
+
                     _cursorBmp ??= new Bitmap(128, 128, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
 
                     using (var g = Graphics.FromImage(_cursorBmp))
                     {
                         g.Clear(Color.Transparent);
                         IntPtr hdc = g.GetHdc();
-                        DrawIconEx(hdc, 0, 0, hCursor, 0, 0, 0, IntPtr.Zero, DI_NORMAL);
+                        DrawIconEx(hdc, 0, 0, hCursor, cursorW, cursorH, 0, IntPtr.Zero, DI_NORMAL);
                         g.ReleaseHdc(hdc);
                     }
 
@@ -396,15 +416,45 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                         }
                     }
 
-                    // Copy to 128x128 buffer
-                    for (int y = 0; y < 128; y++)
+                    byte[]? maskBytes = null;
+                    int maskStride = 0;
+                    if (!hasAlpha && iconInfo.hbmMask != IntPtr.Zero)
                     {
-                        for (int x = 0; x < 128; x++)
+                        GetObject(iconInfo.hbmMask, Marshal.SizeOf<BITMAP>(), out BITMAP bmMask);
+                        maskStride = bmMask.bmWidthBytes;
+                        maskBytes = new byte[bmMask.bmHeight * maskStride];
+                        GetBitmapBits(iconInfo.hbmMask, maskBytes.Length, maskBytes);
+                    }
+
+                    // Copy to 128x128 buffer
+                    for (int y = 0; y < cursorH; y++)
+                    {
+                        int maskRow = y * maskStride;
+                        for (int x = 0; x < cursorW; x++)
                         {
                             int px = tempBits[y * 128 + x];
-                            if (!hasAlpha && (px & 0x00FFFFFF) != 0)
+                            if (!hasAlpha)
                             {
-                                px |= unchecked((int)0xFF000000); // Correct Alpha channel for 24bpp cursors
+                                bool isTransparent = false;
+                                if (maskBytes != null)
+                                {
+                                    int byteIdx = x / 8;
+                                    byte bit = (byte)(0x80 >> (x % 8));
+                                    isTransparent = byteIdx < maskStride && (maskBytes[maskRow + byteIdx] & bit) != 0;
+                                }
+                                else
+                                {
+                                    isTransparent = (px & 0x00FFFFFF) == 0;
+                                }
+
+                                if (!isTransparent)
+                                {
+                                    px |= unchecked((int)0xFF000000);
+                                }
+                                else
+                                {
+                                    px = 0;
+                                }
                             }
                             _cursorPixels[y * 128 + x] = px;
                         }
@@ -441,12 +491,12 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                 float scale = MouseVisualRasterizer.GetCurrentCursorScale();
                 int drawW = (int)(cursorW * scale);
                 int drawH = (int)(cursorH * scale);
-                int startX = cursorPosX - (int)(hotspotX * scale);
-                int startY = cursorPosY - (int)(hotspotY * scale);
+                int startX = localCursorX - (int)(hotspotX * scale);
+                int startY = localCursorY - (int)(hotspotY * scale);
 
                 if (++_debugLogCounter % 60 == 1)
                 {
-                    Logger.Info($"[MOUSE:PULSE] got={gotCursor}, pos=({cursorPosX},{cursorPosY}), flags={pci.flags}, hCur={hCursor}, hotspot=({iconInfo.xHotspot},{iconInfo.yHotspot}), size=({cursorW}x{cursorH}), scale={scale:F2}, isBright={isBright}");
+                    Logger.Info($"[MOUSE:PULSE] got={gotCursor}, pos=({cursorPosX},{cursorPosY}), local=({localCursorX},{localCursorY}), offset=({screenOffsetX},{screenOffsetY}), flags={pci.flags}, hCur={hCursor}, hotspot=({iconInfo.xHotspot},{iconInfo.yHotspot}), size=({cursorW}x{cursorH}), scale={scale:F2}, isBright={isBright}");
                 }
 
                 for (int dy = 0; dy < drawH; dy++)

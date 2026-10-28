@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using ITB_SCREEN_RECORDER.Core.Common;
 
 #if LINUX
@@ -49,13 +49,13 @@ namespace ITBRecorderAgent.Providers.Video.Mouse
             }
         }
 
-        public static void DrawMouseToFrame(byte[] frameBuffer, int width, int height)
+        public static void DrawMouseToFrame(byte[] frameBuffer, int width, int height, int screenOffsetX = 0, int screenOffsetY = 0)
         {
             if (_provider == null) return;
 
             try
             {
-                _provider.DrawMouseToFrame(frameBuffer, width, height);
+                _provider.DrawMouseToFrame(frameBuffer, width, height, screenOffsetX, screenOffsetY);
             }
             catch (DllNotFoundException ex)
             {

@@ -25,6 +25,7 @@
 15. [Multi-Screen Studio Editing, Director Track Overrides, Server Folder Browser, 1-Hour Stream Drop Immunity & AD SSO](#15-multi-screen-studio-editing-director-track-overrides-server-folder-browser-1-hour-stream-drop-immunity--ad-sso-2026-10-28)
 16. [Multi-Monitor Adaptive Video Export Engine (PiP, Split Screen, Auto-Director & Solo Display)](#16-multi-monitor-adaptive-video-export-engine-pip-split-screen-auto-director--solo-display-2026-10-28)
 17. [Tactical C2 Bulk Recording Iconography & Ergonomic Inversion](#17-tactical-c2-bulk-recording-iconography--ergonomic-inversion-2026-10-28)
+18. [Multi-Monitor Mouse Pointer & Interaction Isolation Engine](#18-multi-monitor-mouse-pointer--interaction-isolation-engine-2026-10-28)
 
 ---
 
@@ -559,7 +560,32 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
   - `ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Dashboard/DashboardDock.scss`
 
 ---
+
+## 18. Multi-Monitor Mouse Pointer & Interaction Isolation Engine (2026-10-28)
+
+### 1. Root Causes Resolved in Multi-Monitor Capture
+- **GDI Concurrency Contention Defeated**: Parallel video pipelines (e.g. `mon-0` and `mon-1`) running on concurrent pacer threads previously collided on shared static cursor pixel buffers and `LockBits` operations on `_cursorBmp` (`Bitmap region is already locked`), causing mouse overlay rendering to abort. Synchronized with internal re-entrant thread locks (`_renderLock`).
+- **Global Virtual Desktop Coordinate Mismatch**: Win32 `GetCursorInfo`, `GetCursorPos`, and `MSLLHOOKSTRUCT` coordinates span the entire multi-monitor virtual desktop (e.g. `X: 0..5360`). Display pipelines previously operated on origin `(0, 0)`. Secondary monitors whose global $X$ exceeded their local resolution (e.g. $X=4521$ on a 1920-wide monitor) dropped all cursor rasterization pixels as out-of-bounds, rendering the pointer completely invisible.
+- **Cross-Monitor Ghost Interaction Ripples**: Mouse clicks executed on the primary monitor (`mon-0`) were inadvertently rasterized at matching local coordinates on secondary monitors (`mon-1`) or clamped to monitor borders, creating phantom click ripples.
+
+### 2. Multi-Display Viewport Translation & Strict Isolation Pipeline
+- **Coordinate Offset Propagation**:
+  - `MultiDisplayPipelineManager` passes monitor geometry (`desc.X`, `desc.Y`) into `VideoPipeline`.
+  - `VideoPipeline` provides `screenOffsetX` and `screenOffsetY` directly to `MouseCursorOverlay.DrawMouseToFrame`.
+  - `IMouseOverlayProvider`, `WindowsMouseOverlay`, and `LinuxMouseOverlay` translate pointers:
+    $$\text{localX} = \text{cursorPosX} - \text{screenOffsetX}, \quad \text{localY} = \text{cursorPosY} - \text{screenOffsetY}$$
+  - A fast boundary check immediately skips cursor rasterization if the pointer does not intersect the target display's active surface:
+    $$\text{localX} \in [-128, \text{width} + 128], \quad \text{localY} \in [-128, \text{height} + 128]$$
+- **Interaction Ring & Badge Isolation**:
+  - `MouseVisualRasterizer.RenderRingsAndScroll`: Translates shockwave ripple and scroll arrow events by display offsets; events occurring outside the display viewport (with a 64px ripple boundary) are discarded from that display's stream.
+  - `MouseVisualRasterizer.RenderClickBadges`: Strictly verifies monitor containment without cross-monitor clamping, ensuring click indicators illuminate only on the physical display where the user action occurred.
+- **Color Cursor Fidelity & Transparency Recovery**:
+  - `WindowsMouseOverlay` dynamically queries `iconInfo.hbmColor` BITMAP dimensions via Win32 `GetObject` to avoid unnecessary 128x128 over-sampling.
+  - For cursors lacking 32-bit alpha channels, the 1-bit transparency mask is decoded from `iconInfo.hbmMask`, preserving dark and black cursor borders.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+
 
 
 

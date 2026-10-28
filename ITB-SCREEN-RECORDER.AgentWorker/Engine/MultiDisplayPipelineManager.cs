@@ -504,7 +504,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Engine
 
             var ffmpeg = new FfmpegProcessManager(_config);
             int targetFps = desc.IsPrimary ? baselineFps : Math.Min(20, baselineFps);
-            var videoPipe = new VideoPipeline(screenCapture.Width, screenCapture.Height, targetFps);
+            var videoPipe = new VideoPipeline(screenCapture.Width, screenCapture.Height, targetFps, desc.X, desc.Y);
 
             string destination = ResolveDisplayDestination(baseDestination, desc.DisplayId);
             DateTime calibratedUtc = DateTime.UtcNow + serverUtcOffset;

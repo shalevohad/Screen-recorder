@@ -134,7 +134,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
             return GetCurrentCursorScale() > 1.40f;
         }
 
-        public static void RenderRingsAndScroll(byte[] buffer, int width, int height)
+        public static void RenderRingsAndScroll(byte[] buffer, int width, int height, int screenOffsetX = 0, int screenOffsetY = 0)
         {
             var eventsToDraw = GetActiveEventsSnapshot();
             if (eventsToDraw == null || eventsToDraw.Length == 0) return;
@@ -143,6 +143,16 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
 
             foreach (var ev in eventsToDraw)
             {
+                // Translate global desktop coordinates into monitor-local coordinates
+                int localX = ev.X - screenOffsetX;
+                int localY = ev.Y - screenOffsetY;
+
+                // Skip events completely if they didn't occur on this monitor (with a 64px ripple margin)
+                if (localX < -64 || localX >= width + 64 || localY < -64 || localY >= height + 64)
+                {
+                    continue;
+                }
+
                 double elapsed = Stopwatch.GetElapsedTime(ev.StartTick, now).TotalMilliseconds;
                 double maxDuration = (ev.Type == MouseInteractionType.ScrollUp || ev.Type == MouseInteractionType.ScrollDown)
                     ? SCROLL_DURATION_MS
@@ -156,31 +166,31 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
                 {
                     case MouseInteractionType.LeftClick:
                         // Cyan shockwave ring
-                        DrawExpandingRing(buffer, width, height, ev.X, ev.Y, progress, alpha, r: 0, g: 229, b: 255);
+                        DrawExpandingRing(buffer, width, height, localX, localY, progress, alpha, r: 0, g: 229, b: 255);
                         break;
 
                     case MouseInteractionType.RightClick:
                         // Coral Red shockwave ring
-                        DrawExpandingRing(buffer, width, height, ev.X, ev.Y, progress, alpha, r: 255, g: 59, b: 48);
+                        DrawExpandingRing(buffer, width, height, localX, localY, progress, alpha, r: 255, g: 59, b: 48);
                         break;
 
                     case MouseInteractionType.MiddleClick:
                         // Vibrant Violet shockwave ring for wheel click (#A855F7)
-                        DrawExpandingRing(buffer, width, height, ev.X, ev.Y, progress, alpha, r: 168, g: 85, b: 247);
+                        DrawExpandingRing(buffer, width, height, localX, localY, progress, alpha, r: 168, g: 85, b: 247);
                         break;
 
                     case MouseInteractionType.ScrollUp:
-                        DrawSymmetricScrollArrow(buffer, width, height, ev.X, ev.Y, isUp: true, progress, alpha);
+                        DrawSymmetricScrollArrow(buffer, width, height, localX, localY, isUp: true, progress, alpha);
                         break;
 
                     case MouseInteractionType.ScrollDown:
-                        DrawSymmetricScrollArrow(buffer, width, height, ev.X, ev.Y, isUp: false, progress, alpha);
+                        DrawSymmetricScrollArrow(buffer, width, height, localX, localY, isUp: false, progress, alpha);
                         break;
                 }
             }
         }
 
-        public static void RenderClickBadges(byte[] buffer, int width, int height, bool isCursorBright = true)
+        public static void RenderClickBadges(byte[] buffer, int width, int height, int screenOffsetX = 0, int screenOffsetY = 0, bool isCursorBright = true)
         {
             var eventsToDraw = GetActiveEventsSnapshot();
             if (eventsToDraw == null || eventsToDraw.Length == 0) return;
@@ -198,14 +208,24 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Common
                     continue;
                 }
 
+                // Translate global desktop coordinates into monitor-local coordinates
+                int localX = ev.X - screenOffsetX;
+                int localY = ev.Y - screenOffsetY;
+
+                // Strictly do NOT clamp across monitors - if the click occurred on another monitor, skip it!
+                if (localX < 0 || localX >= width || localY < 0 || localY >= height)
+                {
+                    continue;
+                }
+
                 double elapsed = Stopwatch.GetElapsedTime(ev.StartTick, now).TotalMilliseconds;
                 float progress = Math.Clamp((float)(elapsed / CLICK_DURATION_MS), 0.0f, 1.0f);
                 int alpha = (int)(255 * (1.0f - (progress * 0.7f)));
                 if (alpha <= 6) continue;
 
-                // Position anchored directly to the body of the scaled cursor
-                int badgeCenterX = Math.Clamp(ev.X + offset, BADGE_RADIUS + 2, width - BADGE_RADIUS - 2);
-                int badgeCenterY = Math.Clamp(ev.Y + offset, BADGE_RADIUS + 2, height - BADGE_RADIUS - 2);
+                // Position anchored directly to the body of the scaled cursor inside this monitor
+                int badgeCenterX = Math.Clamp(localX + offset, BADGE_RADIUS + 2, width - BADGE_RADIUS - 2);
+                int badgeCenterY = Math.Clamp(localY + offset, BADGE_RADIUS + 2, height - BADGE_RADIUS - 2);
 
                 DrawAdaptiveBadge(buffer, width, height, badgeCenterX, badgeCenterY, ev.Type, alpha, isCursorBright);
             }
