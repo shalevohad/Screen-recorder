@@ -1,8 +1,8 @@
 # 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
-> **Last Updated**: 2026-10-26  
-> **Current Version**: v1.0.43  
+> **Last Updated**: 2026-10-28  
+> **Current Version**: v1.0.44  
 > **Governing Rules**: Consult [RULES.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/RULES.md) for behavioral invariants and strict system constraints.
 
 ---
