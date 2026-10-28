@@ -574,7 +574,10 @@ export default function ExtractorAdvancedStudio() {
                     stationIds: targetStationIds,
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
-                    keystrokeMode: resolvedMode
+                    keystrokeMode: resolvedMode,
+                    layoutMode: 'director',
+                    isPipSwapped: false,
+                    directorSegments: enrichedActiveStation?.directorPlan?.segments || []
                 })
             });
 

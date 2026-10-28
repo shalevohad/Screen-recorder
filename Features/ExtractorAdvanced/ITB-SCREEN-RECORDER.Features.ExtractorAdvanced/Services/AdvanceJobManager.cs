@@ -179,7 +179,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 EstimatedSecondsRemaining = Math.Max(10, (int)(durationMinutes * request.StationIds.Count * 2)),
                 CreatedAtUtc = DateTime.UtcNow,
                 // Assign keystroke presentation mode selected by user in the UI directly to the job descriptor
-                KeystrokeMode = request.KeystrokeMode
+                KeystrokeMode = request.KeystrokeMode,
+                LayoutMode = request.LayoutMode ?? "director",
+                TargetDisplayId = request.TargetDisplayId,
+                IsPipSwapped = request.IsPipSwapped,
+                DirectorSegments = request.DirectorSegments
             };
 
             _jobs[job.JobId] = job;
@@ -243,8 +247,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 var plan = _advancedExtractorService.BuildSynchronizationPlan(job.StationIds, startUtc, endUtc, allStationChunks);
 
-                // Transfer selected keystroke mode from job descriptor to the SynchronizationPlan passed to TrackCutter
+                // Transfer selected keystroke mode and layout configuration from job descriptor to the SynchronizationPlan passed to TrackCutter
                 plan.KeystrokeMode = job.KeystrokeMode;
+                plan.LayoutMode = job.LayoutMode ?? "director";
+                plan.TargetDisplayId = job.TargetDisplayId;
+                plan.IsPipSwapped = job.IsPipSwapped;
+                plan.DirectorSegments = job.DirectorSegments;
 
                 double originalDurationSec = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
                 double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);

@@ -164,7 +164,9 @@ public sealed class LdapAuthenticationProvider : IAuthenticationProvider
         if (string.IsNullOrWhiteSpace(policy.LdapServer))
         {
             var allMappings = await _repository.GetAllLdapGroupMappingsAsync();
-            var fallbackRoles = allMappings.Select(m => m.RoleId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var fallbackRoles = allMappings != null
+                ? allMappings.Select(m => m.RoleId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string>();
             if (!fallbackRoles.Any())
             {
                 fallbackRoles.Add("role_viewer");

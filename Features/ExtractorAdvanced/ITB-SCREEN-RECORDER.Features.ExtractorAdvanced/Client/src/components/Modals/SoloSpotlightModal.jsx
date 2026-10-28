@@ -101,6 +101,8 @@ export default function SoloSpotlightModal({
     const [exportToast, _setExportToast] = useState(null);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [activeGaps, setActiveGaps] = useState(globalGaps);
+    const [viewMode, setViewMode] = useState('director');
+    const [isPipSwapped, setIsPipSwapped] = useState(false);
 
     const bottomIslandRef = useRef(null);
 
@@ -268,7 +270,11 @@ export default function SoloSpotlightModal({
             hostname: station.hostname || station.name || station.id,
             inEpochMs: baseEpochMs + Math.round(inPointMs),
             outEpochMs: baseEpochMs + Math.round(outPointMs),
-            keystrokeMode: resolvedMode
+            keystrokeMode: resolvedMode,
+            layoutMode: viewMode,
+            targetDisplayId: (viewMode === 'mon-0' || viewMode === 'mon-1' || viewMode.startsWith('mon-')) ? viewMode : null,
+            isPipSwapped: isPipSwapped,
+            directorSegments: directorPlan?.segments || station?.directorPlan?.segments || []
         };
 
         try {
@@ -294,7 +300,7 @@ export default function SoloSpotlightModal({
         } finally {
             window.dispatchEvent(new CustomEvent('open-export-monitor'));
         }
-    }, [station, inPointMs, outPointMs, baseEpochMs, onExport]);
+    }, [station, inPointMs, outPointMs, baseEpochMs, onExport, keystrokeMode, viewMode, isPipSwapped, directorPlan]);
 
     useEffect(() => {
         if (!isOpen || !station) return;
@@ -461,6 +467,10 @@ export default function SoloSpotlightModal({
                     showWatermark={true}
                     directorPlan={directorPlan || station?.directorPlan}
                     onOverrideDisplay={onOverrideDisplay}
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    isPipSwapped={isPipSwapped}
+                    onPipSwapChange={setIsPipSwapped}
                 />
 
                 {/* HUD Keystroke playback overlay above fullscreen player */}
@@ -549,14 +559,14 @@ export default function SoloSpotlightModal({
                             type="button"
                             className="btn-export-cut-hero"
                             onClick={handleTriggerExport}
-                            title="Export Selected Cut Window (Ctrl+E)"
+                            title={`Export Selected Cut Window as ${viewMode.toUpperCase()} (Ctrl+E)`}
                         >
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            <span>EXPORT CUT</span>
+                            <span>EXPORT CUT ({viewMode.toUpperCase()})</span>
                         </button>
                     </div>
 

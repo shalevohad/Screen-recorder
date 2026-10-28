@@ -155,6 +155,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
 
                 plan.KeystrokeMode = request.KeystrokeMode;
+                plan.LayoutMode = request.LayoutMode;
+                plan.TargetDisplayId = request.TargetDisplayId;
+                plan.IsPipSwapped = request.IsPipSwapped;
+                plan.DirectorSegments = request.DirectorSegments;
 
                 double originalDurationSec = Math.Max(1.0, (request.EndTimeUtc - request.StartTimeUtc).TotalSeconds);
                 double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);

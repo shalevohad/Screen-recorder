@@ -152,20 +152,6 @@ public class AuthController : ControllerBase
                           ?? Request.Headers["X-Forwarded-User"].FirstOrDefault();
         }
 
-        // 3. Check WindowsIdentity on Windows (for local seat / NOC terminal sessions)
-        if (string.IsNullOrWhiteSpace(domainUsername) && OperatingSystem.IsWindows())
-        {
-            try
-            {
-                var winIdentity = System.Security.Principal.WindowsIdentity.GetCurrent();
-                if (winIdentity != null && !winIdentity.IsAnonymous && !string.IsNullOrWhiteSpace(winIdentity.Name) && !winIdentity.Name.StartsWith("NT AUTHORITY", StringComparison.OrdinalIgnoreCase))
-                {
-                    domainUsername = winIdentity.Name;
-                }
-            }
-            catch { }
-        }
-
         if (string.IsNullOrWhiteSpace(domainUsername))
         {
             return Unauthorized(new { message = "No Windows / Active Directory identity detected for SSO." });

@@ -21,6 +21,26 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         /// Keystroke presentation mode for forensic export (e.g., BurnIn, Caption SRT, or None).
         /// </summary>
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+
+        /// <summary>
+        /// Multi-display layout mode: "director", "split", "pip", or specific display ID.
+        /// </summary>
+        public string LayoutMode { get; set; } = "director";
+
+        /// <summary>
+        /// Specific target display if solo export is selected (e.g. "mon-0", "mon-1").
+        /// </summary>
+        public string? TargetDisplayId { get; set; }
+
+        /// <summary>
+        /// Whether Picture-in-Picture main and inset displays are swapped.
+        /// </summary>
+        public bool IsPipSwapped { get; set; } = false;
+
+        /// <summary>
+        /// Director segments defining display switching schedule across timeline.
+        /// </summary>
+        public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
     }
 
     public class ExtractionPreviewResponseDto

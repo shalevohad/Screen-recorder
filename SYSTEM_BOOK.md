@@ -23,6 +23,7 @@
 13. [Enterprise Forensic Log Diagnostic & RCA Tool (itb-diagnostics)](#13-enterprise-forensic-log-diagnostic--rca-tool-itb-diagnostics)
 14. [Enterprise UI/UX Modernization, Fleet Intercom & Advanced Resilience Updates](#14-enterprise-uiux-modernization-fleet-intercom--advanced-resilience-updates-2026-10-28)
 15. [Multi-Screen Studio Editing, Director Track Overrides, Server Folder Browser, 1-Hour Stream Drop Immunity & AD SSO](#15-multi-screen-studio-editing-director-track-overrides-server-folder-browser-1-hour-stream-drop-immunity--ad-sso-2026-10-28)
+16. [Multi-Monitor Adaptive Video Export Engine (PiP, Split Screen, Auto-Director & Solo Display)](#16-multi-monitor-adaptive-video-export-engine-pip-split-screen-auto-director--solo-display-2026-10-28)
 
 ---
 
@@ -519,6 +520,26 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
 - **Zero-Prompt SSO Handshake**: `/api/v1/auth/windows-sso` detects Windows domain identity (`User.Identity?.Name` via Negotiate / Kerberos / NTLM or `X-Remote-User` reverse-proxy headers).
 - **Service Account Group Resolution**: `LdapAuthenticationProvider.AuthenticateSsoUserAsync` authenticates the domain user against Active Directory, queries their `memberOf` LDAP group hierarchy, maps their operational roles, and generates a signed JWT token.
 - **Silent Dashboard Ingress**: `AuthContext.jsx` issues a silent SSO probe upon application load (`credentials: 'include'`). If the domain user is recognized, they are logged in automatically without prompting for credentials.
+
+---
+
+## 16. Multi-Monitor Adaptive Video Export Engine (PiP, Split Screen, Auto-Director & Solo Display) (2026-10-28)
+
+### 1. Unified Studio-to-Export WYSIWYG Parity (Rule 13)
+- **Problem Solved**: Multi-monitor stations previously defaulted to only exporting `mon-0` (the primary display), discarding the operator's active view choice in the Extractor Studio.
+- **Adaptive Render Pipeline**: The export engine in `SynchronizedTrackCutter.cs` now strictly adapts the rendered output video to match the layout chosen in the editing studio:
+  - **🪟 Picture-in-Picture (PiP)**: Multi-input FFmpeg pipeline (`[0:v]` and `[1:v]`). The Hero display is scaled to 1920x1080 (preserving aspect ratio with letterboxing), while the secondary display is scaled to 576x324 (30% scale), framed with a 2px tactical cyan border (`#06B6D4`), and positioned in the bottom-right corner (`W-w-24:H-h-24`). Respects 1-click primary/secondary display swap (`isPipSwapped`).
+  - **🔲 Split Screen (Side-by-Side)**: Scales both monitors to 960x1080 each (preserving native aspect ratios with centering pads) and joins them via `hstack=inputs=2` with a 2px dark-slate tactical divider (`#1E293B`), outputting a pristine 1920x1080 dual-screen MP4.
+  - **🎬 Auto-Director Cut**: Slices between displays according to the Auto-Director schedule or operator manual overrides, applying smooth zero-time-drift 0.3s dip-to-black fade transitions.
+  - **🖥️ Solo Display Pin**: Explicitly renders a single monitor (`mon-0` or `mon-1`), automatically bridging primary audio from `mon-0` even when exporting a silent secondary display.
+
+### 2. Dual-Track Clock Synchronization & Gap Compensation
+- When generating multi-display exports, both displays are processed against the master `plan.ActiveSegments`.
+- If an individual monitor experienced a temporary capture interruption or delayed initialization, `AppendDummyGapAsync` automatically inserts a mathematical "No Signal" slate into that specific monitor's manifest. This guarantees that both display streams remain 100% time-synchronized down to the millisecond without drift.
+
+### 3. End-to-End Contract Propagation
+- `ExtractionRequestDto`, `SynchronizationPlan`, `AdvanceCutRequestDto`, and `AdvanceJobInfo` now propagate `LayoutMode`, `TargetDisplayId`, `IsPipSwapped`, and `DirectorSegments`.
+- `SoloSpotlightModal.jsx` and `ExtractorAdvancedStudio.jsx` synchronize their active view mode and swap states directly into the export payloads, providing live visual feedback on the `[EXPORT CUT (MODE)]` action button.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

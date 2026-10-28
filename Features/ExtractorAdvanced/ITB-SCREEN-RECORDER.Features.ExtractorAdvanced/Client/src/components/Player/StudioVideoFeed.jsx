@@ -44,6 +44,10 @@ export default function StudioVideoFeed({
     showWatermark = true,
     directorPlan,
     onOverrideDisplay,
+    viewMode: propViewMode,
+    onViewModeChange,
+    isPipSwapped: propIsPipSwapped,
+    onPipSwapChange,
     className = ''
 }) {
     // References for ping-pong player elements
@@ -71,8 +75,21 @@ export default function StudioVideoFeed({
     const hasMultipleDisplays = stationDisplays.length > 1;
 
     // View Mode state: 'director' | 'split' | 'pip' | 'mon-0' | 'mon-1' ...
-    const [viewMode, setViewMode] = useState('director');
-    const [isPipSwapped, setIsPipSwapped] = useState(false);
+    const [localViewMode, setLocalViewMode] = useState('director');
+    const viewMode = propViewMode !== undefined ? propViewMode : localViewMode;
+    const setViewMode = useCallback((val) => {
+        const next = typeof val === 'function' ? val(viewMode) : val;
+        setLocalViewMode(next);
+        if (onViewModeChange) onViewModeChange(next);
+    }, [viewMode, onViewModeChange]);
+
+    const [localIsPipSwapped, setLocalIsPipSwapped] = useState(false);
+    const isPipSwapped = propIsPipSwapped !== undefined ? propIsPipSwapped : localIsPipSwapped;
+    const setIsPipSwapped = useCallback((val) => {
+        const next = typeof val === 'function' ? val(isPipSwapped) : val;
+        setLocalIsPipSwapped(next);
+        if (onPipSwapChange) onPipSwapChange(next);
+    }, [isPipSwapped, onPipSwapChange]);
 
     // Current segment from Auto-Director plan
     const activeDirectorSegment = useMemo(() => {

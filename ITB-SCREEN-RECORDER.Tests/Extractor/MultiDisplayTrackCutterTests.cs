@@ -188,4 +188,37 @@ public class MultiDisplayTrackCutterTests : IDisposable
         Assert.Contains(mixedChunks, c => c.DisplayId == "mon-0" && c.IsPrimary);
         Assert.Contains(mixedChunks, c => c.DisplayId == "mon-1" && !c.IsPrimary);
     }
+
+    [Fact]
+    public void SynchronizationPlan_MultiDisplayLayoutFields_DefaultAndAssignment()
+    {
+        var plan = new SynchronizationPlan
+        {
+            LayoutMode = "pip",
+            TargetDisplayId = "mon-1",
+            IsPipSwapped = true,
+            DirectorSegments = new List<DirectorCutSegmentDto>
+            {
+                new() { StartEpochMs = 1000, EndEpochMs = 5000, TargetDisplayId = "mon-1" }
+            }
+        };
+
+        Assert.Equal("pip", plan.LayoutMode);
+        Assert.Equal("mon-1", plan.TargetDisplayId);
+        Assert.True(plan.IsPipSwapped);
+        Assert.Single(plan.DirectorSegments);
+    }
+
+    [Fact]
+    public void SynchronizationPlan_SplitLayoutMode_DefaultsArePreserved()
+    {
+        var plan = new SynchronizationPlan
+        {
+            LayoutMode = "split"
+        };
+
+        Assert.Equal("split", plan.LayoutMode);
+        Assert.False(plan.IsPipSwapped);
+        Assert.Null(plan.TargetDisplayId);
+    }
 }
