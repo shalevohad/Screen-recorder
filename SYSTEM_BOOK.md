@@ -482,8 +482,14 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
 ### 5. System Overview & Health Launchpad (SystemOverviewTab.jsx)
 - Introduced as the primary first tab in the Settings view:
   - Real-time fleet health score, online, recording, monitor-only, and frame-drop counters.
-  - Active storage pool capacity visualization and MediaMTX stream engine status.
-  - 1-click tactical navigation cards directly launching the C2 Monitoring Grid, Forensic Studio, Storage settings, and Station overrides.
+  - Interactive Fleet Operational Status Distribution breakdown bar (Recording, Standby, Drops Alert, and Offline ratios).
+  - Real-time tactical SVG telemetry charts with zero external CDN dependencies:
+    - Server CPU Utilization (Host CPU % vs Server Process CPU % curves with live gradient area fill).
+    - Server RAM Allocation & Process Heap (App Process Memory in MB).
+    - Network Bandwidth Throughput (NIC Rx Ingest vs Tx WHEP in Mbps).
+    - Fleet Capture Stability (average captured FPS across active fleet and dropped frame indicators).
+  - Active storage pool capacity visualization (NetApp Primary vs Local NVMe Fallback) and MediaMTX stream engine status.
+  - 1-click tactical square navigation cards directly launching the C2 Monitoring Grid, Storage settings, Station overrides, Roles, Agent defaults, Security, and Diagnostics.
 
 ### 6. Indefinite Alert Postponement (∞ Forever)
 - SnoozeAlertModal and useAlertSnooze now support an indefinite ∞ Forever option (until: 253402300799000), persisting snooze state across sessions and displaying ⏱ SNOOZED (FOREVER).

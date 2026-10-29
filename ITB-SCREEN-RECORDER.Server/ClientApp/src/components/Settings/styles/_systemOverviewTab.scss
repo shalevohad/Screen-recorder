@@ -75,6 +75,7 @@
                     display: flex;
                     align-items: center;
                     gap: 12px;
+                    flex-wrap: wrap;
 
                     .hero-main-title {
                         margin: 0;
@@ -95,13 +96,24 @@
                         border-radius: 4px;
                         letter-spacing: 0.5px;
                     }
+
+                    .uptime-pill {
+                        background: rgba(255, 255, 255, 0.06);
+                        border: 1px solid rgba(255, 255, 255, 0.12);
+                        color: #CBD5E1;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.68rem;
+                        font-weight: 600;
+                        padding: 3px 8px;
+                        border-radius: 4px;
+                    }
                 }
 
                 .hero-subtext {
                     margin: 0;
                     font-size: 0.85rem;
                     color: #94A3B8;
-                    max-width: 600px;
+                    max-width: 650px;
                 }
             }
         }
@@ -241,6 +253,242 @@
 
             &.drops .metric-value {
                 color: #F43F5E;
+            }
+        }
+    }
+
+    /* Fleet Distribution Visual Breakdown Bar */
+    .fleet-distribution-card {
+        background: #0F172A;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+
+        .distribution-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            .distribution-title {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.75rem;
+                font-weight: 800;
+                color: #CBD5E1;
+                letter-spacing: 0.5px;
+            }
+
+            .distribution-summary {
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.72rem;
+                color: #94A3B8;
+            }
+        }
+
+        .distribution-progress-bar {
+            width: 100%;
+            height: 12px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.06);
+            display: flex;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+
+            .segment {
+                height: 100%;
+                transition: width 0.3s ease;
+
+                &.segment-recording {
+                    background: linear-gradient(90deg, #10B981, #059669);
+                }
+
+                &.segment-monitor {
+                    background: linear-gradient(90deg, #F59E0B, #D97706);
+                }
+
+                &.segment-drops {
+                    background: linear-gradient(90deg, #F43F5E, #E11D48);
+                }
+
+                &.segment-offline {
+                    background: #475569;
+                }
+            }
+        }
+
+        .distribution-legend {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+
+            .legend-item {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.72rem;
+                font-family: 'JetBrains Mono', monospace;
+
+                .legend-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+
+                    &.dot-recording {
+                        background: #10B981;
+                        box-shadow: 0 0 6px #10B981;
+                    }
+
+                    &.dot-monitor {
+                        background: #F59E0B;
+                        box-shadow: 0 0 6px #F59E0B;
+                    }
+
+                    &.dot-drops {
+                        background: #F43F5E;
+                        box-shadow: 0 0 6px #F43F5E;
+                    }
+
+                    &.dot-offline {
+                        background: #64748B;
+                    }
+                }
+
+                .legend-label {
+                    color: #94A3B8;
+                }
+
+                .legend-value {
+                    color: #FFFFFF;
+                    font-weight: 700;
+                }
+            }
+        }
+    }
+
+    /* Tactical Telemetry SVG Charts Grid */
+    .overview-charts-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+
+        .tactical-chart-card {
+            background: #0F172A;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            position: relative;
+            transition: border-color 0.15s ease;
+
+            &:hover {
+                border-color: rgba(6, 182, 212, 0.4);
+            }
+
+            .chart-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+
+                .chart-title-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+
+                    .chart-title {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.75rem;
+                        font-weight: 800;
+                        color: #FFFFFF;
+                        letter-spacing: 0.5px;
+                    }
+
+                    .chart-badge {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.6rem;
+                        font-weight: 700;
+                        padding: 2px 6px;
+                        border-radius: 3px;
+                        background: rgba(6, 182, 212, 0.12);
+                        border: 1px solid rgba(6, 182, 212, 0.3);
+                        color: #06B6D4;
+                    }
+                }
+
+                .chart-readouts {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+
+                    .readout-item {
+                        display: flex;
+                        align-items: center;
+                        gap: 5px;
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.72rem;
+
+                        .readout-dot {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 50%;
+                        }
+
+                        .readout-label {
+                            color: #94A3B8;
+                            font-weight: 600;
+                        }
+
+                        .readout-val {
+                            font-weight: 800;
+
+                            .readout-unit {
+                                font-size: 0.65rem;
+                                opacity: 0.8;
+                                margin-left: 2px;
+                            }
+                        }
+                    }
+                }
+            }
+
+            .chart-svg-wrap {
+                position: relative;
+                width: 100%;
+                height: 140px;
+                cursor: crosshair;
+
+                .telemetry-sparkline {
+                    width: 100%;
+                    height: 100%;
+                    display: block;
+                    overflow: visible;
+
+                    .pulse-point {
+                        animation: pulseGlow 1.8s ease-in-out infinite;
+                    }
+                }
+
+                .chart-x-axis {
+                    position: absolute;
+                    bottom: 2px;
+                    left: 10px;
+                    right: 12px;
+                    display: flex;
+                    justify-content: space-between;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.6rem;
+                    color: #64748B;
+                    pointer-events: none;
+
+                    .live-pill {
+                        color: #10B981;
+                        font-weight: 800;
+                    }
+                }
             }
         }
     }
@@ -450,6 +698,8 @@
             gap: 10px;
             cursor: pointer;
             position: relative;
+            min-height: 140px;
+            justify-content: space-between;
             transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 
             &:hover {
@@ -504,3 +754,13 @@
     to { transform: rotate(360deg); }
 }
 
+@keyframes pulseGlow {
+    0%, 100% {
+        r: 4;
+        opacity: 0.9;
+    }
+    50% {
+        r: 6;
+        opacity: 1;
+    }
+}

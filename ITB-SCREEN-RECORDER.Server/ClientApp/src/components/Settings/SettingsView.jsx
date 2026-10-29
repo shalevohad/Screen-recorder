@@ -27,6 +27,8 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     // Define permitted tabs list based on user RBAC permissions
     const permittedTabs = useMemo(() => {
         const list = [];
+        // Primary Overview & Health tab is always available to all authorized users
+        list.push({ id: 'overview', label: 'Health & Status', icon: 'overview' });
         if (isSystemRoot || hasPermission('settings.agents')) {
             list.push({ id: 'agent', label: 'Agent Operations', icon: 'agent' });
         }
@@ -207,6 +209,11 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                             className={`dock-tab-pill ${activeTab === tab.id ? 'active' : ''}`}
                             onClick={() => setActiveTab(tab.id)}
                         >
+                            {tab.id === 'overview' && (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="tab-glyph">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                                </svg>
+                            )}
                             {tab.id === 'agent' && (
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="tab-glyph">
                                     <rect x="2" y="3" width="20" height="14" rx="2" />
