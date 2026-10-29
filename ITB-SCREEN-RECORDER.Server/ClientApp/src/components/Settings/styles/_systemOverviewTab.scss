@@ -460,16 +460,14 @@
                 width: 100%;
                 height: 140px;
                 cursor: crosshair;
+                overflow: hidden;
+                border-radius: 4px;
 
                 .telemetry-sparkline {
                     width: 100%;
                     height: 100%;
                     display: block;
-                    overflow: visible;
-
-                    .pulse-point {
-                        animation: pulseGlow 1.8s ease-in-out infinite;
-                    }
+                    overflow: hidden;
                 }
 
                 .chart-x-axis {
@@ -488,6 +486,249 @@
                         color: #10B981;
                         font-weight: 800;
                     }
+                }
+            }
+        }
+    }
+
+    /* Hardware Encoder Invariant Process Flow Graph (Rule 8) */
+    .encoder-pipeline-card {
+        background: #0F172A;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        transition: border-color 0.15s ease;
+
+        &:hover {
+            border-color: rgba(6, 182, 212, 0.3);
+        }
+
+        .pipeline-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+
+            .pipeline-title-group {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+
+                .pipeline-title {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.8rem;
+                    font-weight: 800;
+                    color: #FFFFFF;
+                    letter-spacing: 0.5px;
+                }
+
+                .pipeline-rule-tag {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.65rem;
+                    font-weight: 700;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    background: rgba(6, 182, 212, 0.12);
+                    border: 1px solid rgba(6, 182, 212, 0.3);
+                    color: #06B6D4;
+                }
+            }
+
+            .active-encoder-pill {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: rgba(16, 185, 129, 0.12);
+                border: 1px solid rgba(16, 185, 129, 0.35);
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.72rem;
+                color: #10B981;
+
+                .pill-pulse {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 50%;
+                    background: #10B981;
+                    box-shadow: 0 0 8px #10B981;
+                }
+
+                strong {
+                    color: #FFFFFF;
+                }
+            }
+        }
+
+        .encoder-process-flow {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+            align-items: center;
+            gap: 12px;
+
+            @media (max-width: 992px) {
+                grid-template-columns: 1fr;
+                gap: 8px;
+
+                .process-connector {
+                    transform: rotate(90deg);
+                }
+            }
+
+            .process-node {
+                background: rgba(11, 17, 32, 0.75);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                padding: 14px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                min-height: 105px;
+                justify-content: space-between;
+                transition: all 0.2s ease;
+
+                .node-top-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+
+                    .node-tier {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.65rem;
+                        font-weight: 700;
+                        color: #64748B;
+                        text-transform: uppercase;
+                    }
+
+                    .node-badge {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.62rem;
+                        font-weight: 800;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                    }
+                }
+
+                .node-name {
+                    font-size: 0.88rem;
+                    font-weight: 800;
+                    color: #FFFFFF;
+                    line-height: 1.2;
+                }
+
+                .node-codec {
+                    font-size: 0.72rem;
+                    color: #94A3B8;
+                }
+
+                .node-status-desc {
+                    font-size: 0.68rem;
+                    margin-top: 2px;
+                    line-height: 1.25;
+                }
+
+                /* Selected Node (Green ✓) */
+                &.node-selected {
+                    background: rgba(16, 185, 129, 0.08);
+                    border: 1.5px solid #10B981;
+                    box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+
+                    .node-tier {
+                        color: #10B981;
+                    }
+
+                    .node-name {
+                        color: #FFFFFF;
+                    }
+
+                    .node-codec {
+                        color: #6EE7B7;
+                    }
+
+                    .badge-selected {
+                        background: rgba(16, 185, 129, 0.2);
+                        color: #10B981;
+                        border: 1px solid rgba(16, 185, 129, 0.5);
+                    }
+
+                    .node-status-desc {
+                        color: #10B981;
+                        font-weight: 600;
+                    }
+                }
+
+                /* Failed Node (Red ✗) */
+                &.node-failed {
+                    background: rgba(244, 63, 94, 0.05);
+                    border: 1px solid rgba(244, 63, 94, 0.35);
+
+                    .node-name {
+                        color: #E2E8F0;
+                    }
+
+                    .badge-failed {
+                        background: rgba(244, 63, 94, 0.15);
+                        color: #F43F5E;
+                        border: 1px solid rgba(244, 63, 94, 0.4);
+                    }
+
+                    .node-status-desc {
+                        color: #F87171;
+                        font-size: 0.65rem;
+                    }
+                }
+
+                /* Untested Node (Gray —) */
+                &.node-untested {
+                    background: rgba(15, 23, 42, 0.4);
+                    border: 1px dashed rgba(255, 255, 255, 0.08);
+                    opacity: 0.6;
+
+                    .node-name {
+                        color: #64748B;
+                    }
+
+                    .node-codec {
+                        color: #475569;
+                    }
+
+                    .badge-untested {
+                        background: rgba(255, 255, 255, 0.05);
+                        color: #64748B;
+                        border: 1px solid rgba(255, 255, 255, 0.1);
+                    }
+
+                    .node-status-desc {
+                        color: #475569;
+                    }
+                }
+            }
+
+            .process-connector {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0 2px;
+
+                .connector-arrow {
+                    font-size: 1.15rem;
+                    font-weight: 800;
+                }
+
+                &.connector-failed .connector-arrow {
+                    color: #F43F5E;
+                }
+
+                &.connector-selected .connector-arrow {
+                    color: #10B981;
+                }
+
+                &.connector-untested .connector-arrow {
+                    color: #475569;
                 }
             }
         }
@@ -752,15 +993,4 @@
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
-}
-
-@keyframes pulseGlow {
-    0%, 100% {
-        r: 4;
-        opacity: 0.9;
-    }
-    50% {
-        r: 6;
-        opacity: 1;
-    }
 }

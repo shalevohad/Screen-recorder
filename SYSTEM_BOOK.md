@@ -488,6 +488,7 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
     - Server RAM Allocation & Process Heap (App Process Memory in MB).
     - Network Bandwidth Throughput (NIC Rx Ingest vs Tx WHEP in Mbps).
     - Fleet Capture Stability (average captured FPS across active fleet and dropped frame indicators).
+  - Hardware Encoder Invariant Process Flow Graph (Rule 8): visual sequential waterfall diagram showing evaluation stages (NVIDIA NVENC -> AMD AMF -> Intel QuickSync -> CPU libx264) with status indicators: selected (✓), failed (✗), and untested/skipped (—).
   - Active storage pool capacity visualization (NetApp Primary vs Local NVMe Fallback) and MediaMTX stream engine status.
   - 1-click tactical square navigation cards directly launching the C2 Monitoring Grid, Storage settings, Station overrides, Roles, Agent defaults, Security, and Diagnostics.
 

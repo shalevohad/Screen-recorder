@@ -99,7 +99,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         /// </summary>
         /// <returns>200 OK with server resource and network card metrics.</returns>
         [HttpGet("server")]
-        public IActionResult GetServerMetrics()
+        public async Task<IActionResult> GetServerMetrics()
         {
             using var currentProcess = Process.GetCurrentProcess();
             var uptime = DateTime.Now - currentProcess.StartTime;
@@ -109,6 +109,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
             var hardwareSnapshot = HardwareProbe.GetTelemetrySnapshot();
             var netSnapshot = _serverNetworkTelemetry.GetMetricsSnapshot();
+            var encoderReport = await HardwareProbe.GetEncoderProbeReportAsync().ConfigureAwait(false);
 
             var serverMetrics = new
             {
@@ -129,6 +130,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 uptimeSeconds = Math.Round(uptime.TotalSeconds, 0),
                 connectedAgents = activeAgentsCount,
 
+                // Hardware Encoder Invariant Probe (Rule 8)
+                encoderProbe = encoderReport,
+
                 // Full list of physical and virtual network adapters
                 nics = netSnapshot.Nics.Select(n => new
                 {
@@ -141,6 +145,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             };
 
             return Ok(serverMetrics);
+        }
+
+        [HttpGet("encoder-probe")]
+        public async Task<IActionResult> GetEncoderProbe()
+        {
+            var report = await HardwareProbe.GetEncoderProbeReportAsync().ConfigureAwait(false);
+            return Ok(report);
         }
 
         /// <summary>

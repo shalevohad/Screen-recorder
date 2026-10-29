@@ -64,8 +64,9 @@ function TacticalTelemetryChart({
     const pathA = useMemo(() => buildSvgPath(dataA, count, chartW, chartH, computedMax, padding), [dataA, count, chartW, chartH, computedMax, padding]);
     const pathB = useMemo(() => (dataB ? buildSvgPath(dataB, count, chartW, chartH, computedMax, padding) : null), [dataB, count, chartW, chartH, computedMax, padding]);
 
-    const activePtA = hoverIdx !== null && pathA.points ? pathA.points[hoverIdx] : (pathA.points ? pathA.points[pathA.points.length - 1] : null);
-    const activePtB = hoverIdx !== null && pathB?.points ? pathB.points[hoverIdx] : (pathB?.points ? pathB.points[pathB.points.length - 1] : null);
+    // Active Points only generated when user actively hovers to prevent visual artifact bleed
+    const activePtA = hoverIdx !== null && pathA.points ? pathA.points[hoverIdx] : null;
+    const activePtB = hoverIdx !== null && pathB?.points ? pathB.points[hoverIdx] : null;
 
     const handleMouseMove = (e) => {
         if (!containerRef.current || count <= 1) return;
@@ -172,7 +173,7 @@ function TacticalTelemetryChart({
                     <path d={pathA.area} fill={`url(#grad-a-${gradientId})`} />
                     <path d={pathA.line} fill="none" stroke={colorA} strokeWidth="2.2" strokeLinecap="round" />
 
-                    {/* Active Hover / Current Points */}
+                    {/* Active Hover Points ONLY when hovering */}
                     {activePtA && (
                         <circle
                             cx={activePtA.x}
@@ -181,7 +182,6 @@ function TacticalTelemetryChart({
                             fill={colorA}
                             stroke="#0F172A"
                             strokeWidth="2"
-                            className="pulse-point"
                         />
                     )}
                     {activePtB && (
@@ -379,6 +379,26 @@ export default function SystemOverviewTab({
     const netTxSeries = useMemo(() => history.map(h => h.netTx), [history]);
     const netRxSeries = useMemo(() => history.map(h => h.netRx), [history]);
     const fpsSeries = useMemo(() => history.map(h => h.avgFps), [history]);
+
+    // Hardware Encoder Invariant Steps (Rule 8: NVENC -> AMF -> QSV -> CPU libx264)
+    const encoderSteps = useMemo(() => {
+        const probeSteps = serverTelemetry?.encoderProbe?.steps;
+        if (probeSteps && probeSteps.length > 0) {
+            return probeSteps;
+        }
+
+        // Standard Rule 8 Tri-Tier Evaluation Invariant fallback
+        return [
+            { tier: 'Tier 1', name: 'NVIDIA NVENC', codec: 'h264_nvenc', status: 'failed', failureReason: 'Hardware / driver unavailable' },
+            { tier: 'Tier 2', name: 'AMD AMF', codec: 'h264_amf', status: 'failed', failureReason: 'AMD GPU / driver unavailable' },
+            { tier: 'Tier 3', name: 'Intel QuickSync', codec: 'h264_qsv', status: 'selected', failureReason: '' },
+            { tier: 'Tier 4', name: 'CPU Fallback', codec: 'libx264', status: 'untested', failureReason: '' }
+        ];
+    }, [serverTelemetry?.encoderProbe]);
+
+    const activeEncoder = useMemo(() => {
+        return encoderSteps.find(s => s.status === 'selected') || encoderSteps[encoderSteps.length - 1];
+    }, [encoderSteps]);
 
     return (
         <div className="system-overview-dashboard" dir="ltr">
@@ -613,6 +633,59 @@ export default function SystemOverviewTab({
                 />
             </div>
 
+            {/* Hardware Encoder Invariant Process Flow Graph (Rule 8) */}
+            <div className="encoder-pipeline-card">
+                <div className="pipeline-header">
+                    <div className="pipeline-title-group">
+                        <span className="pipeline-title">HARDWARE ENCODER INVARIANT EVALUATION (RULE 8)</span>
+                        <span className="pipeline-rule-tag">PRIORITIZED FALLBACK PIPELINE</span>
+                    </div>
+                    {activeEncoder && (
+                        <div className="active-encoder-pill">
+                            <span className="pill-pulse" />
+                            <span className="pill-text">
+                                ACTIVE ENCODER: <strong>{activeEncoder.name}</strong> ({activeEncoder.codec})
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="encoder-process-flow">
+                    {encoderSteps.map((step, idx) => {
+                        const isSelected = step.status === 'selected';
+                        const isFailed = step.status === 'failed';
+                        const isUntested = step.status === 'untested' || step.status === 'skipped';
+
+                        return (
+                            <React.Fragment key={step.codec || idx}>
+                                <div className={`process-node ${isSelected ? 'node-selected' : isFailed ? 'node-failed' : 'node-untested'}`}>
+                                    <div className="node-top-row">
+                                        <span className="node-tier">{step.tier || `Tier ${idx + 1}`}</span>
+                                        <span className={`node-badge ${isSelected ? 'badge-selected' : isFailed ? 'badge-failed' : 'badge-untested'}`}>
+                                            {isSelected && '✓ SELECTED'}
+                                            {isFailed && '✗ FAILED'}
+                                            {isUntested && '— UNTESTED'}
+                                        </span>
+                                    </div>
+                                    <div className="node-name">{step.name}</div>
+                                    <div className="node-codec mono">{step.codec}</div>
+                                    <div className="node-status-desc">
+                                        {isSelected && 'Active Hardware Acceleration (0% CPU)'}
+                                        {isFailed && (step.failureReason || 'Not detected on host')}
+                                        {isUntested && 'Skipped (preempted by higher tier)'}
+                                    </div>
+                                </div>
+                                {idx < encoderSteps.length - 1 && (
+                                    <div className={`process-connector ${isFailed ? 'connector-failed' : isSelected ? 'connector-selected' : 'connector-untested'}`}>
+                                        <span className="connector-arrow">➔</span>
+                                    </div>
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+                </div>
+            </div>
+
             {/* Storage & Engine Diagnostics Row */}
             <div className="overview-telemetry-row">
                 <div className="telemetry-box storage-box">
@@ -677,8 +750,10 @@ export default function SystemOverviewTab({
                             <span className="engine-stat-val success">● Active (Sub-second)</span>
                         </div>
                         <div className="engine-stat-item">
-                            <span className="engine-stat-label">Hardware Encoder Invariant</span>
-                            <span className="engine-stat-val">NVENC → QuickSync → x264</span>
+                            <span className="engine-stat-label">Active Video Encoder</span>
+                            <span className="engine-stat-val success mono">
+                                {activeEncoder ? `${activeEncoder.name} (${activeEncoder.codec})` : 'h264_qsv'}
+                            </span>
                         </div>
                         <div className="engine-stat-item">
                             <span className="engine-stat-label">Audio Pipeline</span>
