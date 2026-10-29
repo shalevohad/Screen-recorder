@@ -54,10 +54,7 @@ export default function DirectorTrack({
                 label: (d.displayName ?? d.DisplayName ?? d.displayId ?? 'mon-0').toUpperCase()
             }));
         }
-        return [
-            { id: 'mon-0', label: 'DISPLAY 1 (MON-0)' },
-            { id: 'mon-1', label: 'DISPLAY 2 (MON-1)' }
-        ];
+        return [];
     }, [availableDisplays]);
 
     // Close menu on outside click
@@ -79,7 +76,7 @@ export default function DirectorTrack({
         }
     };
 
-    if (!segments || segments.length === 0) {
+    if (!availableDisplays || availableDisplays.length < 2 || !segments || segments.length === 0) {
         return null;
     }
 

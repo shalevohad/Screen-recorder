@@ -277,7 +277,7 @@ export default function TimelineBoard({
                                     globalGaps={estimateData?.removedGlobalGaps || []}
                                     disableFilmstrip={stations.length > 1 && station.id !== activeStationId}
                                 />
-                                {(station.displays?.length > 1 || station.topology?.displays?.length > 1 || station.directorPlan?.segments?.length > 0) && (
+                                {((station.displays?.length > 1) || (station.topology?.displays?.length > 1)) && (
                                     <DirectorTrack
                                         stationId={station.id}
                                         directorPlan={station.directorPlan || {

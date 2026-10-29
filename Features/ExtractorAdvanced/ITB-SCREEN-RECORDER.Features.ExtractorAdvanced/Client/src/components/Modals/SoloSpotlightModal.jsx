@@ -101,7 +101,8 @@ export default function SoloSpotlightModal({
     const [exportToast, _setExportToast] = useState(null);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [activeGaps, setActiveGaps] = useState(globalGaps);
-    const [viewMode, setViewMode] = useState('director');
+    const hasMultipleDisplays = Boolean((station?.displays?.length > 1) || (station?.topology?.displays?.length > 1));
+    const [viewMode, setViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
     const [isPipSwapped, setIsPipSwapped] = useState(false);
 
     const bottomIslandRef = useRef(null);
@@ -120,6 +121,10 @@ export default function SoloSpotlightModal({
         if (station && station.id && prevStationIdRef.current !== station.id) {
             prevStationIdRef.current = station.id;
             setPlaybackSpeed(1);
+            const hasMulti = Boolean((station.displays?.length > 1) || (station.topology?.displays?.length > 1));
+            if (!hasMulti) {
+                setViewMode('mon-0');
+            }
         }
     }, [station, setPlaybackSpeed]);
 
@@ -271,10 +276,10 @@ export default function SoloSpotlightModal({
             inEpochMs: baseEpochMs + Math.round(inPointMs),
             outEpochMs: baseEpochMs + Math.round(outPointMs),
             keystrokeMode: resolvedMode,
-            layoutMode: viewMode,
-            targetDisplayId: (viewMode === 'mon-0' || viewMode === 'mon-1' || viewMode.startsWith('mon-')) ? viewMode : null,
+            layoutMode: hasMultipleDisplays ? viewMode : 'mon-0',
+            targetDisplayId: (!hasMultipleDisplays || viewMode === 'mon-0' || viewMode === 'mon-1' || viewMode.startsWith('mon-')) ? (hasMultipleDisplays ? viewMode : 'mon-0') : null,
             isPipSwapped: isPipSwapped,
-            directorSegments: directorPlan?.segments || station?.directorPlan?.segments || []
+            directorSegments: hasMultipleDisplays ? (directorPlan?.segments || station?.directorPlan?.segments || []) : []
         };
 
         try {

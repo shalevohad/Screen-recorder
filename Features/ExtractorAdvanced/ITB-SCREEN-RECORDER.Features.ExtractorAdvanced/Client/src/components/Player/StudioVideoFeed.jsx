@@ -122,8 +122,9 @@ export default function StudioVideoFeed({
     const hasMultipleDisplays = stationDisplays.length > 1;
 
     // View Mode state: 'director' | 'split' | 'pip' | 'mon-0' | 'mon-1' ...
-    const [localViewMode, setLocalViewMode] = useState('director');
-    const viewMode = propViewMode !== undefined ? propViewMode : localViewMode;
+    const [localViewMode, setLocalViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
+    const rawViewMode = propViewMode !== undefined ? propViewMode : localViewMode;
+    const viewMode = hasMultipleDisplays ? rawViewMode : 'mon-0';
     const setViewMode = useCallback((val) => {
         const next = typeof val === 'function' ? val(viewMode) : val;
         setLocalViewMode(next);

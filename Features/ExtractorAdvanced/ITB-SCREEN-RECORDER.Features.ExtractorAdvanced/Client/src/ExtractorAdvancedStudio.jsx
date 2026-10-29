@@ -424,7 +424,13 @@ export default function ExtractorAdvancedStudio() {
         onToggleHelpModal: () => setIsHelpModalOpen(prev => !prev),
         onSplitDirectorAtPlayhead: () => {
             const targetId = activeStationId || (selectedStationIds.length === 1 ? selectedStationIds[0] : null);
-            if (targetId) handleSplitDirectorSegment(targetId, timelineBaseEpochMs + playheadMs);
+            if (targetId) {
+                const targetStation = allStations.find(s => s.id === targetId);
+                const hasMulti = Boolean((targetStation?.displays?.length > 1) || (targetStation?.topology?.displays?.length > 1));
+                if (hasMulti) {
+                    handleSplitDirectorSegment(targetId, timelineBaseEpochMs + playheadMs);
+                }
+            }
         },
         isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen
     });
@@ -575,9 +581,9 @@ export default function ExtractorAdvancedStudio() {
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
                     keystrokeMode: resolvedMode,
-                    layoutMode: 'director',
+                    layoutMode: ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1)) ? 'director' : 'mon-0',
                     isPipSwapped: false,
-                    directorSegments: enrichedActiveStation?.directorPlan?.segments || []
+                    directorSegments: ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1)) ? (enrichedActiveStation?.directorPlan?.segments || []) : []
                 })
             });
 
