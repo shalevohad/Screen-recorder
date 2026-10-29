@@ -7,7 +7,7 @@
     <AssemblyName>itb-diagnostics</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.0.44</Version>
+    <Version>1.0.45</Version>
     <Description>Enterprise Forensic Log Diagnostic &amp; RCA Tool for ITB-SCREEN-RECORDER</Description>
   </PropertyGroup>
 

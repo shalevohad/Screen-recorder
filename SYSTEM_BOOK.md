@@ -2,7 +2,7 @@
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
 > **Last Updated**: 2026-10-28  
-> **Current Version**: v1.0.44  
+> **Current Version**: v1.0.45  
 > **Governing Rules**: Consult [RULES.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/RULES.md) for behavioral invariants and strict system constraints.
 
 ---
@@ -172,6 +172,9 @@ The media ingestion engine in `ITB-SCREEN-RECORDER.AgentWorker` is optimized for
   1. **Speaker Output**: System audio loopback (`eRender` endpoint in loopback mode).
   2. **Microphone Input**: Operator headset/microphone (`eCapture` endpoint).
 - Real-time software mixer blends both channels into a unified stereo PCM audio stream, synchronized with video timecodes.
+
+> [!IMPORTANT]
+> **Audio Codec Invariant for RTMP Ingest**: When muxing live feeds into -f flv for MediaMTX RTMP/RTMPS ingest, audio **must** be encoded using -c:a aac (MPEG-4 Audio). Formats such as libopus are unsupported by the FLV container specification; attempting to use libopus with -f flv causes native FFmpeg initialization failure (exit code -22: Invalid argument).
 
 ### 3. Tri-Tier Hardware Encoder Selection
 Implemented in [`HardwareProbe.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Core/Diagnostics/HardwareProbe.cs):
