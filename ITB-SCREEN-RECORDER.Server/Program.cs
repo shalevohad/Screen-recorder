@@ -214,7 +214,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 {
                     options.Limits.MaxRequestBodySize = BufferLimits.MaxRequestSizeBytes;
 
-                    // הגדרת ברירת המחדל הגלובלית עבור כל ערוץ HTTPS ב-Kestrel (כולל Endpoints מ-appsettings.json ו-launchSettings)
+                    // Global default configuration for all HTTPS endpoints in Kestrel (including appsettings.json and launchSettings)
                     options.ConfigureHttpsDefaults(httpsOptions =>
                     {
                         var bundle = CertificateAuthorityManager.GetActiveBundle() ?? CertificateAuthorityManager.EnsureCertificates();
@@ -314,11 +314,12 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Server.Services.Security.IKeyRingService, ITB_SCREEN_RECORDER.Server.Services.Security.KeyRingService>();
                 builder.Services.AddSingleton<ICatalogRepository, CatalogRepository>();
                 builder.Services.AddSingleton<IKeystrokeRepository>(sp => sp.GetRequiredService<ICatalogRepository>());
+                builder.Services.AddSingleton<ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider>(sp => sp.GetRequiredService<ICatalogRepository>());
                 builder.Services.AddSingleton<IKeystrokeSrtGenerator, KeystrokeSrtGenerator>();
                 builder.Services.AddSingleton<IVideoProbeService, VideoProbeService>();
 
                 // ==========================================
-                // 💡 שירותי אבטחה, אימות והרשאות
+                // Security, Authentication, and Authorization Services
                 // ==========================================
                 builder.Services.AddAuthentication();
                 builder.Services.AddSingleton<LocalAuthenticationProvider>();

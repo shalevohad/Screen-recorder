@@ -43,7 +43,7 @@ export default function GlobalJobIndicator() {
                     consecutiveErrors++;
                     nextDelay = Math.min(30000, 1500 * Math.pow(2, Math.min(consecutiveErrors, 5)));
                 }
-            } catch (err) {
+            } catch {
                 consecutiveErrors++;
                 // Smart exponential backoff on SSL or network failures
                 nextDelay = Math.min(30000, 1500 * Math.pow(2, Math.min(consecutiveErrors, 5)));

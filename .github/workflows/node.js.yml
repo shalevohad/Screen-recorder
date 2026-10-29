@@ -5,9 +5,9 @@ name: Node.js Cross-Platform CI
 
 on:
   push:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
 
 jobs:
   build:
@@ -26,8 +26,7 @@ jobs:
       with:
         node-version: '20.x'
         cache: 'npm'
-        # Dynamic search for lockfiles across repository
-        cache-dependency-path: '**/package-lock.json'
+        cache-dependency-path: './ITB-SCREEN-RECORDER.Server/ClientApp/package-lock.json'
         
     - name: Install dependencies (Linux)
       if: matrix.os == 'ubuntu-latest'
@@ -39,6 +38,14 @@ jobs:
       if: matrix.os == 'windows-latest'
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
       run: npm ci
+
+    - name: Run ESLint
+      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
+      run: npm run lint
+
+    - name: Run Unit Tests
+      working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp
+      run: npm test
 
     - name: Build the source code
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp

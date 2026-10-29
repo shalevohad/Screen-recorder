@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import StationTuningFlyout from './StationTuningFlyout';
 import { Badge } from '../UI/Badge';
 import { useAuth } from '../../context/AuthContext';
+import { useAudioSolo } from '../../context/AudioSoloContext';
+import { useAlertSnooze } from '../../hooks/useAlertSnooze';
 import './StationInspectorDrawer.scss';
 
 const resolveTargetFps = (st) => {
@@ -24,8 +26,6 @@ export default function StationInspectorDrawer({
     station,
     onClose,
     onToggleStream,
-    onQuickBookmark,
-    onQuickPlayback,
     onQuickExport,
     onToggleFullscreen,
     ...tuningProps
@@ -33,12 +33,26 @@ export default function StationInspectorDrawer({
     const [activeTab, setActiveTab] = useState('telemetry');
     const [confirmStop, setConfirmStop] = useState(false);
 
-    const { hasPermission } = useAuth();
-    const canControl = hasPermission('stations.control');
-    const canBookmark = hasPermission('bookmarks.manage');
-    const canPlayback = hasPermission('playback.view');
-    const canExport = hasPermission('playback.export');
-    const canTune = hasPermission('settings.agents');
+    const { isSystemRoot, hasPermission } = useAuth();
+    const canControl = isSystemRoot || hasPermission('stations.control');
+    const canExport = isSystemRoot || hasPermission('playback.export') || hasPermission('extractor.view');
+    const canTune = isSystemRoot || hasPermission('settings.agents');
+
+    const stationId = station?.hostname || station?.stationName || '';
+
+    // Real audio solo sink status & control
+    const { activeAudioStationId, isGlobalMuted, toggleAudioSolo } = useAudioSolo();
+    const isAudioListening = Boolean(
+        activeAudioStationId &&
+        stationId &&
+        activeAudioStationId.toLowerCase() === stationId.toLowerCase() &&
+        !isGlobalMuted
+    );
+
+    // Real alert snooze status & control
+    const { isStationSnoozed, getSnoozeRemainingMinutes, snoozeStation, cancelSnooze } = useAlertSnooze();
+    const isSnoozed = isStationSnoozed(stationId);
+    const remainingSnoozeMins = getSnoozeRemainingMinutes(stationId);
 
     const [prevStationId, setPrevStationId] = useState(station?.hostname);
     const [overrideTargetFps, setOverrideTargetFps] = useState(null);
@@ -59,7 +73,6 @@ export default function StationInspectorDrawer({
     if (!station) return null;
 
     const isLive = station.isStreaming;
-    const stationId = station.hostname || station.stationName || '';
 
     const mediaTx = Number(station.mediaTxMbps ?? 0);
     const linkSpeedMbps = Number(station.linkSpeedMbps ?? station.nicSpeedMbps ?? 1000);
@@ -86,13 +99,21 @@ export default function StationInspectorDrawer({
         setConfirmStop(false);
     };
 
+    const operationalTitle = station.roleAlias || station.displayName || station.RoleAlias || stationId;
+    const hasAlias = Boolean(station.roleAlias || (station.displayName && station.hostname && station.displayName.toLowerCase() !== station.hostname.toLowerCase()));
+
     return (
         <div className="inspector-drawer-backdrop" onClick={onClose}>
             <div className="inspector-drawer-panel" onClick={(e) => e.stopPropagation()} dir="ltr">
                 <div className="drawer-header">
                     <div className="drawer-title-group">
                         <div className="station-identity-line">
-                            <h2 className="drawer-title">{stationId}</h2>
+                            <h2 className="drawer-title">{operationalTitle}</h2>
+                            {hasAlias && (
+                                <span className="physical-host-pill" title={`Physical Machine Hostname: ${station.hostname}`}>
+                                    HOST: {station.hostname}
+                                </span>
+                            )}
                             <Badge
                                 variant={!station.isOnline ? 'critical' : isLive ? 'info' : 'success'}
                                 pulse={isLive}
@@ -100,7 +121,10 @@ export default function StationInspectorDrawer({
                                 {!station.isOnline ? 'OFFLINE' : isLive ? 'STREAMING' : 'ONLINE'}
                             </Badge>
                         </div>
-                        <span className="drawer-ip">{station.ipAddress || '127.0.0.1'}</span>
+                        <span className="drawer-ip">
+                            {station.ipAddress || '127.0.0.1'}
+                            {hasAlias && ` • Physical: ${station.hostname}`}
+                        </span>
                     </div>
 
                     <div className="drawer-top-actions">
@@ -363,61 +387,132 @@ export default function StationInspectorDrawer({
                             </div>
 
                             <div className="operations-quick-actions-card">
-                                <span className="card-section-title">TACTICAL ACTIONS</span>
-                                <div className="quick-actions-grid">
-                                    <button
-                                        type="button"
-                                        className={`quick-act-btn ${!isLive ? 'disabled' : ''}`}
-                                        onClick={isLive ? () => onToggleFullscreen?.() : undefined}
-                                        disabled={!isLive}
-                                        title={isLive ? "Open Fullscreen View" : "Fullscreen unavailable while idle or offline"}
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                                        </svg>
-                                        <span>FULLSCREEN VIEW</span>
-                                    </button>
+                                <span className="card-section-title">VERIFIED OPERATIONAL ACTIONS</span>
+                                <div className="operational-actions-list">
+                                    {/* Action 1: Fullscreen Theater View */}
+                                    <div className="op-action-row">
+                                        <div className="op-action-info">
+                                            <div className="op-title-line">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="op-icon">
+                                                    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                                                </svg>
+                                                <span className="op-name">THEATER FULLSCREEN</span>
+                                            </div>
+                                            <span className="op-desc">
+                                                {isLive ? 'Launch real-time cinema monitor with PIP minimap' : 'Station must be live to open theater'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="btn-op-action"
+                                            onClick={isLive ? () => onToggleFullscreen?.() : undefined}
+                                            disabled={!isLive}
+                                            title={isLive ? "Open Theater Fullscreen" : "Station must be live"}
+                                        >
+                                            OPEN THEATER
+                                        </button>
+                                    </div>
 
-                                    <button
-                                        type="button"
-                                        className={`quick-act-btn ${!canBookmark ? 'disabled' : ''}`}
-                                        onClick={canBookmark ? () => onQuickBookmark?.(stationId) : undefined}
-                                        disabled={!canBookmark}
-                                        title={!canBookmark ? "Access restricted (requires bookmarks.manage)" : "Insert Tactical Bookmark"}
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                                        </svg>
-                                        <span>BOOKMARK</span>
-                                    </button>
+                                    {/* Action 2: Clip Extractor Slicer */}
+                                    <div className="op-action-row">
+                                        <div className="op-action-info">
+                                            <div className="op-title-line">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="op-icon">
+                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                    <polyline points="7 10 12 15 17 10" />
+                                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                                </svg>
+                                                <span className="op-name">EXTRACT RECORDING CLIP</span>
+                                            </div>
+                                            <span className="op-desc">
+                                                Open synchronized clip cutter focused on this workstation
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="btn-op-action"
+                                            onClick={canExport ? () => onQuickExport?.(stationId) : undefined}
+                                            disabled={!canExport}
+                                            title={!canExport ? "Permission required" : "Open Slicer Extractor"}
+                                        >
+                                            OPEN EXTRACTOR
+                                        </button>
+                                    </div>
 
-                                    <button
-                                        type="button"
-                                        className={`quick-act-btn ${!canPlayback ? 'disabled' : ''}`}
-                                        onClick={canPlayback ? () => onQuickPlayback?.(stationId) : undefined}
-                                        disabled={!canPlayback}
-                                        title={!canPlayback ? "Access restricted (requires playback.view)" : "Open Playback Window"}
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <polygon points="5 3 19 12 5 21 5 3" />
-                                        </svg>
-                                        <span>PLAYBACK</span>
-                                    </button>
+                                    {/* Action 3: Live Audio Intercom (Solo Sink) */}
+                                    <div className="op-action-row">
+                                        <div className="op-action-info">
+                                            <div className="op-title-line">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="op-icon">
+                                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                                                </svg>
+                                                <span className="op-name">RADIO AUDIO SINK (SOLO)</span>
+                                            </div>
+                                            <span className="op-desc">
+                                                {isAudioListening
+                                                    ? 'Currently streaming live audio to operator headset'
+                                                    : 'Muted. Click to route audio to operator exclusively'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className={`btn-op-action ${isAudioListening ? 'active-audio' : ''}`}
+                                            onClick={() => toggleAudioSolo(stationId)}
+                                            disabled={!isLive && !station.isOnline}
+                                            title="Toggle exclusive audio intercom listening"
+                                        >
+                                            {isAudioListening ? 'MUTE AUDIO' : 'LISTEN LIVE'}
+                                        </button>
+                                    </div>
 
-                                    <button
-                                        type="button"
-                                        className={`quick-act-btn ${!canExport ? 'disabled' : ''}`}
-                                        onClick={canExport ? () => onQuickExport?.(stationId) : undefined}
-                                        disabled={!canExport}
-                                        title={!canExport ? "Access restricted (requires playback.export)" : "Export Video Segment"}
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                            <polyline points="7 10 12 15 17 10" />
-                                            <line x1="12" y1="15" x2="12" y2="3" />
-                                        </svg>
-                                        <span>EXPORT CLIP</span>
-                                    </button>
+                                    {/* Action 4: Snooze / Postpone Recording Alerts */}
+                                    <div className="op-action-row">
+                                        <div className="op-action-info">
+                                            <div className="op-title-line">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="op-icon">
+                                                    <circle cx="12" cy="12" r="10" />
+                                                    <polyline points="12 6 12 12 16 14" />
+                                                </svg>
+                                                <span className="op-name">RECORDING ALERT SNOOZE</span>
+                                            </div>
+                                            <span className="op-desc">
+                                                {isSnoozed
+                                                    ? `Alerts suppressed for this station (${remainingSnoozeMins}m remaining)`
+                                                    : 'Suppress offline/unrecorded alerts temporarily'}
+                                            </span>
+                                        </div>
+                                        {isSnoozed ? (
+                                            <button
+                                                type="button"
+                                                className="btn-op-action alert-cancel"
+                                                onClick={() => cancelSnooze(stationId)}
+                                                title="Resume instant recording alerts"
+                                            >
+                                                RESUME ALERTS
+                                            </button>
+                                        ) : (
+                                            <div className="snooze-buttons-cluster">
+                                                <button
+                                                    type="button"
+                                                    className="btn-op-action-sm"
+                                                    onClick={() => snoozeStation(stationId, 30, 'Inspector Postpone')}
+                                                    title="Snooze recording alert for 30 minutes"
+                                                >
+                                                    30m
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn-op-action-sm"
+                                                    onClick={() => snoozeStation(stationId, 60, 'Inspector Postpone')}
+                                                    title="Snooze recording alert for 1 hour"
+                                                >
+                                                    1h
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>

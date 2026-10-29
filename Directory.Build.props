@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <SolutionRoot Condition="'$(SolutionRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</SolutionRoot>
+    <Version Condition="'$(Version)' == ''">1.0.46</Version>
     <Company>ITB</Company>
     <Authors>ITB</Authors>
     <Product>ITB Screen Recorder</Product>

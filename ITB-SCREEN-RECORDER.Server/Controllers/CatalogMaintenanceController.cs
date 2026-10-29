@@ -17,8 +17,10 @@ public class CatalogMaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// הפעלת סריקת דיסק ואינדוקס חוסרים ברקע (Manual Trigger)
+    /// Manually triggers background disk scanning and indexing of missing recording chunks.
     /// </summary>
+    /// <param name="forceFullRecheck">If true, re-verifies already indexed chunks against physical storage.</param>
+    /// <returns>202 Accepted with the current background maintenance job state.</returns>
     [HttpPost("reindex")]
     [AuthorizePermission(PermissionKeys.SettingsMaintenance)]
     public async Task<IActionResult> TriggerReindex([FromQuery] bool forceFullRecheck = false)
@@ -28,8 +30,9 @@ public class CatalogMaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// בדיקת תקינות מלאה, תיקון אינדקסים, עדכון משכים אמיתיים וסילוק רשומות רפאים (Manual Trigger)
+    /// Manually triggers full database integrity check, index repair, actual video duration synchronization, and orphaned record cleanup.
     /// </summary>
+    /// <returns>202 Accepted with the initiated repair job state.</returns>
     [HttpPost("repair")]
     [AuthorizePermission(PermissionKeys.SettingsMaintenance)]
     public async Task<IActionResult> TriggerRepair()
@@ -39,8 +42,9 @@ public class CatalogMaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// קבלת סטטוס תהליך האינדוקס הנוכחי (Polling עבור הווידג'ט הצף GlobalJobIndicator ולשונית Maintenance)
+    /// Retrieves the current progress and status of background indexing or repair jobs for UI polling (e.g., GlobalJobIndicator).
     /// </summary>
+    /// <returns>200 OK with the active background job state.</returns>
     [HttpGet("reindex/status")]
     [AuthorizePermission(PermissionKeys.StationsView)]
     public IActionResult GetReindexStatus()
@@ -50,8 +54,9 @@ public class CatalogMaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// שליפת סטטיסטיקות אודות מסד הנתונים system_catalog.db והמשימה הפעילה עבור מסך ה-Settings
+    /// Retrieves database health metrics, chunk counts, physical database file size, and active job status for the Settings Maintenance tab.
     /// </summary>
+    /// <returns>200 OK with database catalog statistics.</returns>
     [HttpGet("stats")]
     [AuthorizePermission(PermissionKeys.SettingsView)]
     public async Task<IActionResult> GetStats()

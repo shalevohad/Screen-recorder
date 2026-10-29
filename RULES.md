@@ -25,7 +25,7 @@ Example (`ChunkIntervalMinutes = 5`): if a station starts streaming at `15:12`, 
 - Boundaries are computed against **UTC**, not local time. This only matters if the intended "wall clock" is a local timezone whose UTC offset isn't a multiple of `ChunkIntervalMinutes` — not the case for the currently configured value (5).
 - The boundary math resets at UTC midnight based on `Hour`/`Minute` alone. If `ChunkIntervalMinutes` does not evenly divide 1440 (e.g. 7, 11, 13 — the config allows any value 1–60), the last chunk before midnight is shortened, producing one irregular chunk per day. The currently configured value (5) divides 1440 evenly, so this does not currently manifest. If `ChunkIntervalMinutes` is ever changed to a non-divisor of 1440, this edge case will appear.
 
-**MediaMTX is pinned to v1.15.4 — do not upgrade without re-verifying.** Starting in MediaMTX v1.15.5, the recorder compares each sample's real arrival wall-clock time against its nominal encoder timestamp and force-resets the current recording segment if they drift apart (source: [`internal/recorder/format_fmp4_track.go`](https://github.com/bluenviron/mediamtx/pull/5239), constant `ntpDriftTolerance`, not exposed via any config option — see [upstream issue #5550](https://github.com/bluenviron/mediamtx/issues/5550)). Under our live CPU-encoded screen-capture pipeline, that drift check tripped every ~15-20 seconds regardless of `ChunkIntervalMinutes`, cutting a fresh segment far more often than configured and defeating this rule entirely. Since Server and MediaMTX always run co-located on the same machine, the clock-jump scenario the check guards against can't occur here, so the fix is a version pin rather than a pipeline change: [`MediaMTX/mediamtx.exe`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.exe) is v1.15.4 (last release before the check was introduced), and [`MediaMTX/mediamtx.yml`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.yml) was regenerated to match that version's schema (the v1.19.3 yml has fields, e.g. `authHTTPFingerprint`, that v1.15.4 rejects at startup). Upgrading the bundled binary again will silently reintroduce this bug — confirm the drift check hasn't landed a config knob upstream, or re-run the verification in this rule's history, before bumping the version.
+**MediaMTX is pinned to v1.15.4 — do not upgrade without re-verifying.** Starting in MediaMTX v1.15.5, the recorder compares each sample's real arrival wall-clock time against its nominal encoder timestamp and force-resets the current recording segment if they drift apart (source: MediaMTX constant `ntpDriftTolerance` in fMP4 recorder, not exposed via any config option — upstream issue #5550 / PR #5239). Under our live CPU-encoded screen-capture pipeline, that drift check tripped every ~15-20 seconds regardless of `ChunkIntervalMinutes`, cutting a fresh segment far more often than configured and defeating this rule entirely. Since Server and MediaMTX always run co-located on the same machine, the clock-jump scenario the check guards against can't occur here, so the fix is a version pin rather than a pipeline change: [`MediaMTX/mediamtx.exe`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.exe) is v1.15.4 (last release before the check was introduced), and [`MediaMTX/mediamtx.yml`](ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.yml) was regenerated to match that version's schema (the v1.19.3 yml has fields, e.g. `authHTTPFingerprint`, that v1.15.4 rejects at startup). Upgrading the bundled binary again will silently reintroduce this bug — confirm the drift check hasn't landed a config knob upstream, or re-run the verification in this rule's history, before bumping the version.
 - [`FfmpegProcessManager.BuildFfmpegArguments`](ITB-SCREEN-RECORDER.AgentWorker/Engine/FfmpegProcessManager.cs) also passes `-use_wallclock_as_timestamps 1` on both raw inputs (video pipe + audio TCP) so ffmpeg timestamps frames by real arrival time rather than a nominal frame-count clock. This reduces long-run timestamp drift from capture jitter, but did **not** by itself fix the MediaMTX reset behavior above (`-fps_mode cfr` downstream renormalizes output timestamps to a nominal clock regardless) — the version pin is the actual fix; this flag is a complementary accuracy improvement, not a substitute.
 
 ---
@@ -134,4 +134,86 @@ Forensic investigation and time-scrubbing must allow operators to inspect record
     `new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);`
     preventing file access collisions with MediaMTX while it is actively writing or rotating chunks.
   - FFmpeg probe commands on hot files inject `-analyzeduration 1M -probesize 1M -threads 2` to prevent stream-read blocking.
+
+---
+
+## 11. Multi-Monitor Per-Adapter Capture & Dynamic Hot-Plug — Enforced
+
+Workstations equipped with multiple physical displays (whether driven by a single GPU, multiple distinct GPUs such as NVIDIA dGPU + Intel iGPU, or USB DisplayLink adapters) must capture each display as a discrete, independent stream.
+
+- **Implementation**: `DxgiMultiScreenCapture` (Windows), `LinuxX11ScreenCapture` (Linux XRandR / Wayland PipeWire), and `StationDisplayTopologyDto`.
+- **Per-Adapter Isolation**:
+  - Monitors are enumerated via DXGI (`EnumAdapters1` → `EnumOutputs`). Each display attaches directly to a Direct3D 11 device allocated on the specific hardware adapter driving that display. Zero cross-GPU PCIe texture transfers.
+  - Primary displays stream by default to `live/{hostname}/mon-0` (or `live/{hostname}` for single-monitor compatibility). Secondary displays stream to `live/{hostname}/mon-1`, `mon-2`, etc.
+- **Dynamic Hot-Plug & Unplug Resilience**:
+  - Display connection or disconnection events (`WM_DISPLAYCHANGE`, DXGI `DXGI_ERROR_ACCESS_LOST`, XRandR notifications) must NOT interrupt or restart existing healthy streams.
+  - When a monitor is disconnected, its specific FFmpeg encoder pipeline gracefully flushes and closes its active chunk. The primary stream continues recording without dropping a frame.
+  - When a new monitor is connected at runtime, a dedicated capture pipeline spins up dynamically and begins streaming/recording from the next keyframe.
+- **Real-Time Audio Carrier Failover & Anti-Flipflop Governor (Enforced)**:
+  - Station audio (WASAPI loopback + mic mix) is bound exclusively to a single active Audio Carrier display to eliminate network duplication and acoustic phasing.
+  - **Failover on Disconnect**: If `mon-0` (or the active carrier) disconnects, `MultiDisplayPipelineManager` detects the disconnection immediately, promotes the first surviving display (e.g. `mon-1`) to become the new Audio Carrier (`audioChannels: 2`), and updates `CurrentTopology.AudioCarrierDisplayId`. Sound continues seamlessly with <800ms failover handover and zero audio loss.
+  - **Anti-Flipflop 60s Stabilization Buffer on Reconnect**: When `mon-0` reconnects or flaps (loose cable, driver reset), it begins video capture immediately (`audioChannels: 0`), but audio carrier status remains anchored on the surviving display (`mon-1`) until `mon-0` has been continuously, stably present for **a full 60 seconds** (`AudioCarrierHysteresisSeconds`).
+  - **Flap Abort Resilience**: If `mon-0` disconnects before the 60s stabilization buffer completes, the timer is aborted and reset without touching or restarting the surviving carrier's pipeline.
+  - **Graceful Carrier Handover**: Only when `mon-0` proves continuous stability for $\ge 60\text{s}$, the governor smoothly transitions audio carrier status back to `mon-0`, demoting `mon-1` to video-only.
+  - **System-Wide Audio Awareness**: Both `StationDisplayTopologyDto.AudioCarrierDisplayId` and `DisplayMetadataDto.HasAudio` explicitly expose the active carrier location in real-time across SignalR telemetry, WebRTC, and chunk scheduler metadata.
+- **Forensic Slate Gap Filling**:
+  - In multicam/multi-monitor exports, asymmetric timelines (e.g. Monitor 2 plugged in 15 minutes after Monitor 1 started) are bridged automatically by `SynchronizedTrackCutter` with a synthetic "No Signal / Disconnected" slate, maintaining 100% timecode synchronization across all tracks.
+
+---
+
+## 12. High-Density NOC Stream Governance, Canvas Default & Audio Solo Sink — Enforced
+
+In large-scale operations (70–100+ workstations, 150–250+ video feeds), the web dashboard must maintain zero browser crashes and strict resource bounds.
+
+- **Default Virtual Topology Canvas**:
+  - In the primary Dashboard grid, station thumbnails display the **Virtual Desktop Canvas** by default, rendering displays proportionally according to their real-world OS coordinate geometry (`X, Y, Width, Height`).
+  - Every card features a local switcher (`[ ⊞ Canvas | 🖥 1 | 🖥 2 ]`), allowing operators to collapse any station to a single monitor feed, instantly shedding decoder overhead.
+- **Viewport-Based Virtualization (Intersection Observer)**:
+  - WebRTC WHEP connections are established exclusively for station cards currently inside the browser's visible viewport (typically 8–16 cards). Cards scrolled off-screen pause or disconnect their media sessions, bounding active client-side decoders.
+- **Exclusive Audio Solo Sink (Radio Intercom Model)**:
+  - All station cards in the Dashboard grid are muted by default (`audio: false` / zero audio DSP processing).
+  - Clicking the 🎧 icon on any card grants **Exclusive Audio Solo**: that station immediately unmutes and streams live audio into the operator's headphones/speakers, while any previously active station is instantly muted.
+  - Exactly ONE station produces audio at any time in the grid view.
+- **Fullscreen Minimap Radar Navigator**:
+  - When viewing a station in Fullscreen Solo or Spotlight mode, an interactive Picture-in-Picture Minimap of the full Canvas layout is displayed in the viewport corner.
+  - The currently viewed monitor is highlighted with a radiant glow and active radar tag.
+  - All monitor boxes in the minimap are interactive: clicking a box immediately switches the full-screen view to that display, and clicking the canvas frame returns to full Canvas mode.
+
+---
+
+## 13. Multi-Monitor Export & DVR Dynamic Focus (Persistent HUD & Millisecond Dip-to-Black) — Enforced
+
+To deliver pristine readability for high-density multi-monitor workstations without occluding primary workspace surfaces during forensic playback and file export:
+
+- **Full-Resolution Hero Surface**:
+  - The currently focused or operator-selected monitor renders at 100% natural resolution and full viewport area, avoiding destructive downscaling or illegible multi-screen grid letterboxing.
+- **Persistent Tactical Minimap HUD Overlay**:
+  - A compact, semi-transparent (60–70% opacity) dark-glass topology wireframe sits persistently in the viewport corner.
+  - Displays the workstation's real physical monitor layout, clearly illuminating the active display with a radiant glow indicator (`● ACTIVE: Mon X`) while non-active monitors remain subtle wireframe boxes with their respective display index tags.
+  - **HUD Persistence Invariant**: The Minimap HUD is rendered on an independent overlay plane. During video transitions, the Minimap NEVER blinks out, fades, or dips to black; it remains 100% visible and crisp, dynamically updating its highlight indicator at the precise inflection point of the transition.
+- **Millisecond-Locked Dip-to-Black Video Transition**:
+  - Transitions between monitors (whether triggered automatically by recorded mouse/keystroke activity or manually by operator timeline cuts) execute as a **Dip to Black** transition (fade-to-black -> keyframe cut -> fade-in).
+  - **Zero-Time-Drift Invariant**: The transition duration is strictly accounted for in master timecode calculations. Not a single millisecond is added, dropped, or desynchronized relative to concurrent stations or continuous multi-track audio.
+  - **1-Second Pre-Roll Lead-In Invariant (Cognitive Context)**: When an activity transition is triggered by a user action (e.g., mouse click or typing focus shift on Monitor B at timestamp $T$), the Dip-to-Black transition initiates **1.0 second prior** ($T - 1000\text{ms}$). This guarantees the viewer's eyes land comfortably on the new screen, observe the cursor trajectory, and absorb the spatial context before the interaction actually occurs, preventing disorienting jump-cuts.
+- **Dual-Plane DVR & Extractor Foundation**:
+  - Raw video streams (`mon-0`, `mon-1`, `mon-2`) remain completely un-baked and clean in storage.
+  - Telemetry and topology timecodes are indexed from time 0, allowing both client-side interactive DVR scrubbing and server-side FFmpeg MP4 export to reconstruct the identical synchronized experience deterministically.
+
+---
+
+## 14. Air-Gapped & Isolated Environment Invariant (Zero External Internet Dependencies) — Enforced
+
+ITB-SCREEN-RECORDER is engineered strictly for air-gapped, high-security operational environments completely isolated from WAN/Internet access:
+
+- **Zero External Internet Links & CDNs**:
+  - Code, styles, UI views, and scripts must NEVER contain external internet links, CDN references (such as cdnjs, unpkg, jsdelivr), or remote font imports (such as Google Fonts).
+  - All fonts, stylesheets, scripts, icons, and assets must be bundled 100% locally within the application distribution packages (`/css/`, `/assets/`, embedded resources).
+- **Zero Remote Telemetry & Cloud Endpoints**:
+  - Agent and server communications strictly target local/internal LAN, operational intranet IPs (such as `128.x.x.x`, `10.x.x.x`, `172.x.x.x`, `192.168.x.x`, `127.0.0.1`), internal LAN DNS hostnames (such as `itb-server`, `screen-recording`, `*.local`, `*.internal`, or intranet domain names), and local multicast (`239.210.1.5:5098`).
+  - No external public analytics, crash reporters, license validators, or remote cloud update probes are permitted.
+- **Offline Self-Sufficiency**:
+  - All services, media players (WebRTC WHEP, HLS), installers, and toolchains must install, run, decode, and operate with zero outbound internet network packets.
+
+
+
 

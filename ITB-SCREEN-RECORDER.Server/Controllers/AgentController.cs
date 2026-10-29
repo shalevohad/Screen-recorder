@@ -177,6 +177,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     OfflineFilesTotalSizeMb = report.OfflineFilesTotalSizeMb,
                     NicTotalTxMbps = report.NicTotalTxMbps,
                     NicTotalRxMbps = report.NicTotalRxMbps,
+                    DisplayTopology = report.DisplayTopology,
                     Keystrokes = decryptedKeystrokes
                 };
 
@@ -367,7 +368,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     return BadRequest("Uploaded file is too small or corrupt.");
                 }
 
-                // 💡 בדיקת משך זמן אמיתי של הסרטון באמצעות FFprobe כדי למנוע זיוף זמינות ו-Gaps שגויים
+                // Probe actual video duration using FFprobe to prevent false availability claims and corrupt timeline gaps
                 var probe = await _probeService.ProbeFileAsync(destinationPath);
                 if (probe == null || probe.DurationSeconds <= 0.05)
                 {
@@ -530,7 +531,20 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public IActionResult EnforceStreamingPolicy(string hostname, [FromQuery] bool enable)
         {
             _telemetryState.SetAgentStreamState(hostname, enable);
-            return Ok(new { Hostname = hostname, StreamingRequested = enable });
+            var allAgents = _telemetryState.GetAllAgents().ToList();
+            var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                match.IsRecording = enable;
+                bool isOnline = (DateTime.UtcNow - match.Timestamp).TotalSeconds <= 30 && match.Status != AgentStatus.Offline;
+                if (isOnline)
+                {
+                    match.IsStreaming = true;
+                    match.Status = AgentStatus.Streaming;
+                }
+                _ = _broadcastService.BroadcastAgentUpdateAsync(match);
+            }
+            return Ok(new { Hostname = hostname, RecordingRequested = enable, StreamingActive = match?.IsStreaming ?? true });
         }
 
         [HttpGet("config/{hostname}")]
@@ -574,15 +588,19 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 }
             }
 
-            // עדכון מיידי של צופי הדשבורד על שינוי המצב
+            // Immediately notify dashboard viewers regarding recording state change
             foreach (var host in targetedHostnames)
             {
                 var match = allAgents.FirstOrDefault(a => string.Equals(a.Hostname, host, StringComparison.OrdinalIgnoreCase));
                 if (match != null)
                 {
-                    match.IsStreaming = targetEnable;
                     match.IsRecording = targetEnable;
-                    match.Status = targetEnable ? AgentStatus.Streaming : AgentStatus.Standby;
+                    bool isOnline = (DateTime.UtcNow - match.Timestamp).TotalSeconds <= 30 && match.Status != AgentStatus.Offline;
+                    if (isOnline)
+                    {
+                        match.IsStreaming = true;
+                        match.Status = AgentStatus.Streaming;
+                    }
                     _ = _broadcastService.BroadcastAgentUpdateAsync(match);
                 }
             }

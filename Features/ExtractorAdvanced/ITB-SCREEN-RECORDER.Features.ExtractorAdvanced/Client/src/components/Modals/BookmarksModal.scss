@@ -436,7 +436,7 @@
                             color: #64748b;
                         }
                     }
-                    /* 💡 1. שורה ראשית: הטווח הכללי שנבחר למשימה */
+                    /* 1. Primary row: General Mission Scope */
                     .bm-primary-scope-row {
                         display: flex;
                         align-items: center;
@@ -489,7 +489,7 @@
                             }
                         }
                     }
-                    /* 💡 2. Header משני ייעודי עבור זמני ה-CUT ותחנות ה-CUT */
+                    /* 2. Secondary header for cut window and targeted cut stations */
                     .bm-cut-secondary-header {
                         display: grid;
                         grid-template-columns: auto 1fr;

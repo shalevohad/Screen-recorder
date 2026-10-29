@@ -58,7 +58,7 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         return arr;
     }, [timeWindow]);
 
-    // 💡 חישוב דינמי של ציר ה-Y לפי ה-Peak (הערך המקסימלי) בתוך חלון הזמן הנוכחי
+    // Dynamic calculation of Y-axis maximum according to peak value within current time window
     const scaleMax = useMemo(() => {
         if (amplitudeMax) return amplitudeMax;
         if (!timeStampedData || timeStampedData.length === 0) return type === 'hardware' ? 100 : 10;
@@ -81,7 +81,7 @@ export default function LiveTelemetryChart({ chartData, activeLayers, onToggleLa
         });
 
         if (currentMax <= 0) return type === 'hardware' ? 100 : 10;
-        return Math.ceil(currentMax * 1.15); // מרווח של 15% מעל הפีק הגבוה ביותר בחלון
+        return Math.ceil(currentMax * 1.15); // 15% headroom above highest peak in current window
     }, [timeStampedData, timeWindow, activeLayers, type, amplitudeMax]);
 
     const { paths, labels } = useMemo(() => {

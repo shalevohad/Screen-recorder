@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Client/src/ExtractorTile.jsx
 // ==========================================
 import React, { useState, useEffect } from 'react';
@@ -22,7 +22,11 @@ const inputStringToEpoch = (str, isUtc) => {
     return isUtc ? Date.parse(str + ':00.000Z') : new Date(str).getTime();
 };
 
-// 💡 מודאל בחירת אופן ייצוא המקשים (מוטמע מקומית למניעת שגיאות Bundler)
+/**
+ * Modal dialog for selecting keystroke export mode (BurnIn, Caption SRT, or None).
+ * Embedded locally to avoid cross-bundle resolution errors.
+ * @param {{ isOpen: boolean, onClose: Function, onConfirm: Function, title?: string, summaryText?: string }} props
+ */
 function ExportOptionsModal({
     isOpen,
     onClose,

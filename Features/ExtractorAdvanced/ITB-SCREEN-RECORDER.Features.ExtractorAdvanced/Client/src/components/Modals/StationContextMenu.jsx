@@ -52,7 +52,7 @@ export default function StationContextMenu({
                     {stationName}
                 </span>
                 <span className="station-sub">
-                    {station.ipAddress || (station.isOnline ? 'ONLINE' : 'ACTIVE CHANNEL')}
+                    {station.hostname && stationName.toLowerCase() !== station.hostname.toLowerCase() ? `HOST: ${station.hostname}` : (station.ipAddress || (station.isOnline ? 'ONLINE' : 'ACTIVE CHANNEL'))}
                 </span>
             </div>
 

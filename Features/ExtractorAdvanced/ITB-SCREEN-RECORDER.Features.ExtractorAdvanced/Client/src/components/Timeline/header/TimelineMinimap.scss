@@ -12,7 +12,7 @@
     overflow: hidden;
     user-select: none;
     box-sizing: border-box;
-    /* מקטע החיתוך */
+    /* Cut highlight segment */
     .minimap-cut-highlight {
         position: absolute;
         top: 0;
@@ -43,7 +43,7 @@
             align-items: center;
         }
     }
-    /* מסגרת ה-Viewport המוזזת */
+    /* Zoomed viewport boundary frame */
     .minimap-viewport-box {
         position: absolute;
         top: 0;
@@ -71,7 +71,7 @@
             }
         }
     }
-    /* תגיות הזמן הטקטיות */
+    /* Tactical timestamp badge labels */
     .minimap-time-tag {
         font-family: 'JetBrains Mono', monospace;
         font-size: 8px;

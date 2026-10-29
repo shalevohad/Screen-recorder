@@ -4,6 +4,7 @@
 namespace ITB_SCREEN_RECORDER.Server.Services;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -57,6 +58,9 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
     private readonly object _stateLock = new();
     private DateTime _lastBroadcastTime = DateTime.MinValue;
 
+    private CancellationTokenSource? _activeJobCts;
+    private volatile bool _isSilentJobRunning = false;
+
     private MaintenanceJobState _state = new(
         JobId: string.Empty,
         JobType: "Idle",
@@ -72,17 +76,19 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         CompletedAtUtc: null
     );
 
+    // Critical exclusion: filter out system folders, NetApp snapshot directories, and recycle bins to prevent access violations
     private static readonly HashSet<string> ReservedDirNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "logs", "export", "exports", "recordingsbuffer", "buffer", "temp", ".git"
+        "logs", "export", "exports", "recordingsbuffer", "buffer", "temp", ".git",
+        ".snapshot", "~snapshot", ".zfs", "$RECYCLE.BIN", "System Volume Information", "lost+found", "@Recycle"
     };
 
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp4", ".fmp4", ".flv", ".mkv", ".ts"
+        ".mp4", ".fmp4", ".flv", ".mkv", ".ts", ".mov"
     };
 
-    // 💡 תמיכה כפולה: תבנית תאריך קלאסית + תבנית Epoch של MediaMTX (%s_%f)
+    // Dual support: classic ISO datetime pattern + MediaMTX Epoch pattern (%s_%f)
     private static readonly Regex UniversalChunkRegex = new(
         @"(?:^(?<host>[a-zA-Z0-9_\-\.]+?)[_-])?(?<year>20\d{2})[-_]?(?<month>\d{2})[-_]?(?<day>\d{2})[-_T](?<hour>\d{2})[-_:]?(?<minute>\d{2})[-_:]?(?<sec>\d{2})(?:[_\-\.]\d+)?(?<utc>Z)?\.(mp4|fmp4|flv|mkv|ts)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -137,12 +143,31 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         };
     }
 
+    /// <summary>
+    /// Manually initiates background reindexing of recording files across active storage roots into the catalog.
+    /// Preempts any active silent background job if present.
+    /// </summary>
+    /// <param name="forceFullRecheck">If true, re-verifies indexed records against physical media files.</param>
+    /// <returns>Current MaintenanceJobState model.</returns>
     public async Task<MaintenanceJobState> TriggerReindexAsync(bool forceFullRecheck = false)
     {
-        if (!await _jobLock.WaitAsync(0))
+        // If a scheduled silent background job is running, preempt it in favor of explicit user request
+        if (_isSilentJobRunning && _activeJobCts != null && !_activeJobCts.IsCancellationRequested)
         {
+            _logger.LogInformation("[MAINTENANCE] Preempting scheduled silent background job for manual reindex request.");
+            try { _activeJobCts.Cancel(); } catch { }
+        }
+
+        // Wait briefly for job lock release instead of rejecting immediately with zero-millisecond timeout
+        if (!await _jobLock.WaitAsync(TimeSpan.FromSeconds(3)))
+        {
+            _logger.LogWarning("[MAINTENANCE] Reindex already actively running. Returning current status.");
             return GetCurrentJobState();
         }
+
+        var cts = new CancellationTokenSource();
+        _activeJobCts = cts;
+        _isSilentJobRunning = false;
 
         string jobId = Guid.NewGuid().ToString("N")[..8];
         UpdateState(s => new MaintenanceJobState(
@@ -155,7 +180,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             SkippedCount: 0,
             ErrorsCount: 0,
             CurrentTarget: "Initializing scan...",
-            StatusMessage: "Locating storage roots...",
+            StatusMessage: "Locating and checking storage roots...",
             StartedAtUtc: DateTime.UtcNow,
             CompletedAtUtc: null
         ), forceBroadcast: true);
@@ -164,7 +189,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         {
             try
             {
-                await RunReindexCoreAsync(forceFullRecheck, isSilentScheduled: false);
+                await RunReindexCoreAsync(forceFullRecheck, isSilentScheduled: false, cts.Token);
             }
             finally
             {
@@ -177,10 +202,19 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
     public async Task<MaintenanceJobState> TriggerRepairCatalogAsync()
     {
-        if (!await _jobLock.WaitAsync(0))
+        if (_isSilentJobRunning && _activeJobCts != null && !_activeJobCts.IsCancellationRequested)
+        {
+            try { _activeJobCts.Cancel(); } catch { }
+        }
+
+        if (!await _jobLock.WaitAsync(TimeSpan.FromSeconds(3)))
         {
             return GetCurrentJobState();
         }
+
+        var cts = new CancellationTokenSource();
+        _activeJobCts = cts;
+        _isSilentJobRunning = false;
 
         string jobId = Guid.NewGuid().ToString("N")[..8];
         UpdateState(s => new MaintenanceJobState(
@@ -202,7 +236,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         {
             try
             {
-                await RunCatalogIntegrityAuditAsync(isSilentScheduled: false);
+                await RunCatalogIntegrityAuditAsync(isSilentScheduled: false, cts.Token);
             }
             finally
             {
@@ -219,7 +253,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(20), stoppingToken);
         }
         catch (OperationCanceledException)
         {
@@ -235,16 +269,23 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             {
                 if (await _jobLock.WaitAsync(0, stoppingToken))
                 {
+                    var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    _activeJobCts = cts;
+                    _isSilentJobRunning = true;
+
                     try
                     {
-                        _logger.LogInformation("[MAINTENANCE] Running scheduled catalog delta scan on storage...");
-                        await RunReindexCoreAsync(forceFullRecheck: false, isSilentScheduled: true);
+                        _logger.LogDebug("[MAINTENANCE] Running scheduled catalog delta scan on storage...");
+                        await RunReindexCoreAsync(forceFullRecheck: false, isSilentScheduled: true, cts.Token);
 
-                        _logger.LogInformation("[MAINTENANCE] Running scheduled catalog integrity and duration audit...");
-                        await RunCatalogIntegrityAuditAsync(isSilentScheduled: true);
+                        if (!cts.IsCancellationRequested)
+                        {
+                            await RunCatalogIntegrityAuditAsync(isSilentScheduled: true, cts.Token);
+                        }
                     }
                     finally
                     {
+                        _isSilentJobRunning = false;
                         _jobLock.Release();
                     }
                 }
@@ -271,17 +312,39 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         _logger.LogInformation("[MAINTENANCE] Storage Maintenance Engine stopped.");
     }
 
-    private async Task RunReindexCoreAsync(bool forceFullRecheck, bool isSilentScheduled)
+    private async Task RunReindexCoreAsync(bool forceFullRecheck, bool isSilentScheduled, CancellationToken ct = default)
     {
         var config = _configMonitor.CurrentValue;
-        string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger);
 
-        if (!Directory.Exists(root))
+        // Support multiple Storage Roots (concurrently indexing NetApp UNC and LocalFallback directories)
+        var roots = new List<string>();
+        if (!string.IsNullOrWhiteSpace(config.Storage?.NetAppUncPath))
+        {
+            bool reachable = await StoragePathResolver.IsNetAppReachableAsync(config.Storage.NetAppUncPath);
+            if (reachable)
+            {
+                roots.Add(config.Storage.NetAppUncPath);
+            }
+            else
+            {
+                _logger.LogWarning("[MAINTENANCE] NetApp UNC path '{Path}' unreachable during reindex.", config.Storage.NetAppUncPath);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.Storage?.LocalFallbackPath) && Directory.Exists(config.Storage.LocalFallbackPath))
+        {
+            if (!roots.Contains(config.Storage.LocalFallbackPath, StringComparer.OrdinalIgnoreCase))
+            {
+                roots.Add(config.Storage.LocalFallbackPath);
+            }
+        }
+
+        if (roots.Count == 0)
         {
             UpdateState(s => s with
             {
                 IsRunning = false,
-                StatusMessage = "Storage root unavailable.",
+                StatusMessage = "Storage roots unavailable (check NetApp share connectivity and local fallback path).",
                 CompletedAtUtc = DateTime.UtcNow
             }, forceBroadcast: true);
             return;
@@ -296,40 +359,160 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 existingValidPaths = new HashSet<string>(indexed, StringComparer.OrdinalIgnoreCase);
             }
 
-            var candidateStationDirs = new List<string>();
-            foreach (var dir in Directory.GetDirectories(root))
+            var enumDirOptions = new EnumerationOptions
             {
-                string dirName = Path.GetFileName(dir);
-                if (string.Equals(dirName, "live", StringComparison.OrdinalIgnoreCase))
+                RecurseSubdirectories = false,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System
+            };
+
+            var enumFileOptions = new EnumerationOptions
+            {
+                RecurseSubdirectories = false,
+                IgnoreInaccessible = true,
+                AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.System,
+                MatchCasing = MatchCasing.CaseInsensitive
+            };
+
+            // 1. Safely locate station and display monitor directories without failing on NetApp snapshots or permission errors
+            var candidateStationFolders = new List<(string StationName, string FolderPath, string DisplayId, bool IsPrimary)>();
+
+            foreach (var root in roots)
+            {
+                if (ct.IsCancellationRequested) break;
+                if (!Directory.Exists(root)) continue;
+
+                var candidateDirs = new List<string>();
+                try
                 {
-                    candidateStationDirs.AddRange(Directory.GetDirectories(dir));
+                    foreach (var dir in Directory.EnumerateDirectories(root, "*", enumDirOptions))
+                    {
+                        string dirName = Path.GetFileName(dir);
+                        if (dirName.StartsWith(".") || dirName.StartsWith("~") || ReservedDirNames.Contains(dirName))
+                        {
+                            continue;
+                        }
+
+                        if (string.Equals(dirName, "live", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(dirName, "recordings", StringComparison.OrdinalIgnoreCase))
+                        {
+                            try
+                            {
+                                foreach (var sub in Directory.EnumerateDirectories(dir, "*", enumDirOptions))
+                                {
+                                    string subName = Path.GetFileName(sub);
+                                    if (subName.StartsWith(".") || subName.StartsWith("~") || ReservedDirNames.Contains(subName)) continue;
+                                    if (string.Equals(subName, "live", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        foreach (var sub2 in Directory.EnumerateDirectories(sub, "*", enumDirOptions))
+                                        {
+                                            string sub2Name = Path.GetFileName(sub2);
+                                            if (!sub2Name.StartsWith(".") && !ReservedDirNames.Contains(sub2Name))
+                                                candidateDirs.Add(sub2);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        candidateDirs.Add(sub);
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                        else
+                        {
+                            candidateDirs.Add(dir);
+                        }
+                    }
                 }
-                else if (!ReservedDirNames.Contains(dirName))
+                catch (Exception ex)
                 {
-                    candidateStationDirs.Add(dir);
+                    _logger.LogWarning(ex, "[MAINTENANCE] Error enumerating station directories in root '{Root}'.", root);
+                }
+
+                foreach (var stationPath in candidateDirs)
+                {
+                    string rawName = Path.GetFileName(stationPath);
+                    string stationName = rawName.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? rawName.Substring(5) : rawName;
+
+                    // Multi-monitor topology discovery: scan for subdirectories like mon-0, mon-1, display-0
+                    try
+                    {
+                        foreach (var sub in Directory.EnumerateDirectories(stationPath, "*", enumDirOptions))
+                        {
+                            string subName = Path.GetFileName(sub);
+                            if (subName.StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                                subName.StartsWith("display-", StringComparison.OrdinalIgnoreCase))
+                            {
+                                string dId = subName.ToLowerInvariant();
+                                bool isPrim = dId == "mon-0" || dId == "display-0";
+                                candidateStationFolders.Add((stationName, sub, dId, isPrim));
+                            }
+                        }
+                    }
+                    catch { }
+
+                    // Retain main station root folder for standard recordings, single display setups, or legacy root chunks
+                    candidateStationFolders.Add((stationName, stationPath, "mon-0", true));
                 }
             }
 
-            var allFilesToScan = new List<(string StationName, string FilePath)>();
-            foreach (var stationPath in candidateStationDirs)
+            if (!isSilentScheduled)
             {
-                string stationName = Path.GetFileName(stationPath);
-                var dirFiles = Directory.GetFiles(stationPath, "*.*", SearchOption.AllDirectories)
-                    .Where(f => VideoExtensions.Contains(Path.GetExtension(f)))
-                    .OrderBy(f => f);
-
-                foreach (var f in dirFiles)
+                UpdateState(s => s with
                 {
-                    allFilesToScan.Add((stationName, f));
+                    StatusMessage = $"Scanning {candidateStationFolders.Count} station folder targets across {roots.Count} storage root(s)..."
+                }, forceBroadcast: true);
+            }
+
+            // 2. Enumerate video recordings
+            var allFilesToScan = new List<(string StationName, string FilePath, string DisplayId, bool IsPrimary)>();
+            foreach (var (stationName, folderPath, displayId, isPrimary) in candidateStationFolders)
+            {
+                if (ct.IsCancellationRequested) break;
+                try
+                {
+                    if (!Directory.Exists(folderPath)) continue;
+                    foreach (var file in Directory.EnumerateFiles(folderPath, "*.*", enumFileOptions))
+                    {
+                        if (VideoExtensions.Contains(Path.GetExtension(file)))
+                        {
+                            allFilesToScan.Add((stationName, file, displayId, isPrimary));
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            allFilesToScan.Sort((a, b) => string.Compare(a.FilePath, b.FilePath, StringComparison.OrdinalIgnoreCase));
+
+            // 3. Resolution and FPS dimension cache per station/display to avoid infinite sequential SMB ffprobe probes
+            var dimensionCache = new ConcurrentDictionary<string, (int Width, int Height, int Fps, bool HasAudio)>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using var db = _factory.CreateConnection();
+                var cached = await db.QueryAsync<(string StationId, string DisplayId, int Width, int Height, int Fps, int HasAudio)>(@"
+                    SELECT station_id AS StationId, display_id AS DisplayId, width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio
+                    FROM recording_chunks
+                    WHERE width > 0 AND height > 0
+                    GROUP BY station_id, display_id;");
+
+                foreach (var c in cached)
+                {
+                    dimensionCache[$"{c.StationId}:{c.DisplayId}"] = (c.Width, c.Height, c.Fps, c.HasAudio != 0);
                 }
             }
+            catch { }
 
             int total = allFilesToScan.Count;
             int scanned = 0, added = 0, skipped = 0, errors = 0;
             var batch = new List<ChunkInsertItem>();
+            int fallbackMin = Math.Max(1, config.Storage?.ChunkIntervalMinutes ?? 15);
+            long defaultDurationMs = fallbackMin * 60 * 1000L;
 
             for (int i = 0; i < allFilesToScan.Count; i++)
             {
+                if (ct.IsCancellationRequested) break;
                 var item = allFilesToScan[i];
                 scanned++;
 
@@ -350,43 +533,67 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
                             if (fileSize > 0)
                             {
-                                var probe = await _probeService.ProbeFileAsync(item.FilePath, CancellationToken.None);
-
-                                int width = 0;
-                                int height = 0;
-                                int fps = 0;
-                                bool hasAudio = false;
                                 long durationMs = 0;
 
-                                if (probe != null && probe.DurationSeconds > 0)
+                                // Smart duration estimation: check start of next file on identical station and monitor
+                                if (i + 1 < allFilesToScan.Count &&
+                                    string.Equals(allFilesToScan[i + 1].StationName, item.StationName, StringComparison.OrdinalIgnoreCase) &&
+                                    string.Equals(allFilesToScan[i + 1].DisplayId, item.DisplayId, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    durationMs = (long)Math.Round(probe.DurationSeconds * 1000.0);
-                                    width = probe.Width;
-                                    height = probe.Height;
-                                    fps = probe.Fps;
-                                    hasAudio = probe.HasAudio;
+                                    var nextStart = TryParseFileTimestamp(Path.GetFileName(allFilesToScan[i + 1].FilePath), config.DisplayTimezone);
+                                    if (nextStart.HasValue && nextStart.Value > startMs && (nextStart.Value - startMs) <= (30 * 60 * 1000L))
+                                    {
+                                        durationMs = nextStart.Value - startMs;
+                                    }
                                 }
 
-                                // 💡 חישוב משך חכם: אם ה-Probe לא מחזיר משך, בודקים את נקודת ההתחלה של הקובץ הבא באותה עמדה
-                                if (durationMs <= 0)
+                                if (durationMs <= 0 && fileInfo.LastWriteTimeUtc > DateTimeOffset.FromUnixTimeMilliseconds(startMs).UtcDateTime)
                                 {
-                                    if (i + 1 < allFilesToScan.Count && string.Equals(allFilesToScan[i + 1].StationName, item.StationName, StringComparison.OrdinalIgnoreCase))
+                                    long diffMs = (long)(fileInfo.LastWriteTimeUtc - DateTimeOffset.FromUnixTimeMilliseconds(startMs).UtcDateTime).TotalMilliseconds;
+                                    if (diffMs > 500 && diffMs <= (30 * 60 * 1000L))
                                     {
-                                        var nextStart = TryParseFileTimestamp(Path.GetFileName(allFilesToScan[i + 1].FilePath), config.DisplayTimezone);
-                                        if (nextStart.HasValue && nextStart.Value > startMs && (nextStart.Value - startMs) <= (30 * 60 * 1000L))
-                                        {
-                                            durationMs = nextStart.Value - startMs;
-                                        }
+                                        durationMs = diffMs;
                                     }
                                 }
 
                                 if (durationMs <= 0)
                                 {
-                                    int fallbackMin = Math.Max(1, config.Storage?.ChunkIntervalMinutes ?? 15);
-                                    durationMs = fallbackMin * 60 * 1000L;
+                                    durationMs = defaultDurationMs;
                                 }
 
                                 long endMs = startMs + durationMs;
+
+                                // Extract video dimensions: use fast cached values or single probe per station
+                                string dimKey = $"{item.StationName}:{item.DisplayId}";
+                                int width = 1920;
+                                int height = 1080;
+                                int fps = config.DefaultTargetFps > 0 ? config.DefaultTargetFps : 30;
+                                bool hasAudio = item.IsPrimary;
+
+                                if (dimensionCache.TryGetValue(dimKey, out var dims) && dims.Width > 0 && dims.Height > 0)
+                                {
+                                    width = dims.Width;
+                                    height = dims.Height;
+                                    fps = dims.Fps > 0 ? dims.Fps : fps;
+                                    hasAudio = dims.HasAudio;
+                                }
+                                else
+                                {
+                                    var probe = await _probeService.ProbeFileAsync(item.FilePath, ct);
+                                    if (probe != null && probe.Width > 0 && probe.Height > 0)
+                                    {
+                                        width = probe.Width;
+                                        height = probe.Height;
+                                        fps = probe.Fps > 0 ? probe.Fps : fps;
+                                        hasAudio = probe.HasAudio;
+                                        if (probe.DurationSeconds > 0.1 && (durationMs == defaultDurationMs))
+                                        {
+                                            durationMs = (long)Math.Round(probe.DurationSeconds * 1000.0);
+                                            endMs = startMs + durationMs;
+                                        }
+                                    }
+                                    dimensionCache[dimKey] = (width, height, fps, hasAudio);
+                                }
 
                                 batch.Add(new ChunkInsertItem(
                                     StationId: item.StationName,
@@ -395,10 +602,12 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                                     EndEpochMs: endMs,
                                     DurationMs: durationMs,
                                     FileSizeBytes: fileSize,
-                                    Width: width > 0 ? width : 1920,
-                                    Height: height > 0 ? height : 1080,
-                                    Fps: fps > 0 ? fps : 30,
-                                    HasAudio: hasAudio ? 1 : 0
+                                    Width: width,
+                                    Height: height,
+                                    Fps: fps,
+                                    HasAudio: hasAudio ? 1 : 0,
+                                    DisplayId: item.DisplayId,
+                                    IsPrimary: item.IsPrimary
                                 ));
 
                                 added++;
@@ -416,60 +625,83 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "[MAINTENANCE] Failed probing file '{Path}'.", item.FilePath);
+                        _logger.LogWarning(ex, "[MAINTENANCE] Error processing file '{Path}'.", item.FilePath);
                         errors++;
                     }
                 }
 
-                if (batch.Count >= 25)
+                if (batch.Count >= 50)
                 {
                     await FlushBatchAsync(batch);
                     batch.Clear();
                 }
 
-                int pct = total > 0 ? (int)Math.Min(99, (scanned * 100.0) / total) : 100;
-
-                UpdateState(s => s with
+                if (!isSilentScheduled && (scanned % 20 == 0 || scanned == total))
                 {
-                    ProgressPercent = pct,
-                    TotalFilesScanned = scanned,
-                    NewlyIndexedCount = added,
-                    SkippedCount = skipped,
-                    ErrorsCount = errors,
-                    CurrentTarget = item.StationName,
-                    StatusMessage = $"Scanned {scanned}/{total} files ({added} indexed)"
-                }, forceBroadcast: (scanned == total));
+                    int pct = total > 0 ? (int)Math.Min(99, (scanned * 100.0) / total) : 100;
+                    UpdateState(s => s with
+                    {
+                        ProgressPercent = pct,
+                        TotalFilesScanned = scanned,
+                        NewlyIndexedCount = added,
+                        SkippedCount = skipped,
+                        ErrorsCount = errors,
+                        CurrentTarget = item.StationName,
+                        StatusMessage = $"Indexing: {scanned}/{total} ({added} added, {skipped} existing)"
+                    }, forceBroadcast: (scanned == total));
+                }
             }
 
             if (batch.Count > 0)
             {
                 await FlushBatchAsync(batch);
+                batch.Clear();
             }
 
-            UpdateState(s => s with
+            if (!isSilentScheduled)
             {
-                IsRunning = false,
-                ProgressPercent = 100,
-                TotalFilesScanned = scanned,
-                NewlyIndexedCount = added,
-                SkippedCount = skipped,
-                ErrorsCount = errors,
-                CurrentTarget = string.Empty,
-                StatusMessage = $"Completed. Indexed {added} new file(s) with media probe.",
-                CompletedAtUtc = DateTime.UtcNow
-            }, forceBroadcast: true);
+                UpdateState(s => s with
+                {
+                    IsRunning = false,
+                    ProgressPercent = 100,
+                    TotalFilesScanned = scanned,
+                    NewlyIndexedCount = added,
+                    SkippedCount = skipped,
+                    ErrorsCount = errors,
+                    CurrentTarget = string.Empty,
+                    StatusMessage = $"Scan completed. Indexed {added} new recording(s), skipped {skipped} existing.",
+                    CompletedAtUtc = DateTime.UtcNow
+                }, forceBroadcast: true);
+            }
 
-            _logger.LogInformation("[MAINTENANCE] Reindex finished. Scanned: {Scanned}, Added: {Added}, Skipped: {Skipped}", scanned, added, skipped);
+            _logger.LogInformation("[MAINTENANCE] Reindex finished. Total: {Found}, Indexed: {Indexed}, Skipped: {Skipped}",
+                total, added, skipped);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("[MAINTENANCE] Storage reindex cancelled.");
+            if (!isSilentScheduled)
+            {
+                UpdateState(s => s with
+                {
+                    IsRunning = false,
+                    StatusMessage = "Scan cancelled.",
+                    CompletedAtUtc = DateTime.UtcNow
+                }, forceBroadcast: true);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[MAINTENANCE] Critical failure during catalog scan.");
-            UpdateState(s => s with
+            if (!isSilentScheduled)
             {
-                IsRunning = false,
-                StatusMessage = $"Failed: {ex.Message}",
-                CompletedAtUtc = DateTime.UtcNow
-            }, forceBroadcast: true);
+                UpdateState(s => s with
+                {
+                    IsRunning = false,
+                    StatusMessage = $"Failed: {ex.Message}",
+                    CompletedAtUtc = DateTime.UtcNow
+                }, forceBroadcast: true);
+            }
         }
     }
 
@@ -482,14 +714,15 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
         using var tx = db.BeginTransaction();
 
-        // 💡 עדכון מלא ומדויק של start, end ו-duration גם ב-ON CONFLICT
         const string sql = @"
             INSERT INTO recording_chunks (
                 station_id, file_path, start_epoch_ms, end_epoch_ms, 
-                duration_ms, file_size_bytes, width, height, fps, has_audio, is_finalized, indexed_at_utc
+                duration_ms, file_size_bytes, width, height, fps, has_audio, is_finalized, indexed_at_utc,
+                display_id, is_primary
             ) VALUES (
                 @StationId, @FilePath, @StartEpochMs, @EndEpochMs, 
-                @DurationMs, @FileSizeBytes, @Width, @Height, @Fps, @HasAudio, 1, @Now
+                @DurationMs, @FileSizeBytes, @Width, @Height, @Fps, @HasAudio, 1, @Now,
+                @DisplayId, @IsPrimary
             ) ON CONFLICT(file_path) DO UPDATE SET
                 start_epoch_ms = excluded.start_epoch_ms,
                 end_epoch_ms = excluded.end_epoch_ms,
@@ -499,6 +732,8 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 height = CASE WHEN excluded.height > 0 THEN excluded.height ELSE recording_chunks.height END,
                 fps = CASE WHEN excluded.fps > 0 THEN excluded.fps ELSE recording_chunks.fps END,
                 has_audio = excluded.has_audio,
+                display_id = excluded.display_id,
+                is_primary = excluded.is_primary,
                 is_finalized = 1;";
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -516,23 +751,44 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                 b.Height,
                 b.Fps,
                 b.HasAudio,
+                b.DisplayId,
+                IsPrimary = b.IsPrimary ? 1 : 0,
                 Now = now
             }, tx);
         }
         tx.Commit();
     }
 
-    private async Task RunCatalogIntegrityAuditAsync(bool isSilentScheduled)
+    /// <summary>
+    /// Executes a catalog integrity audit to verify chunk files on disk, prune missing entries, and repair inaccurate metadata.
+    /// </summary>
+    /// <param name="isSilentScheduled">Whether this audit was triggered by a silent background timer (limits scope to recent or unfinalized chunks).</param>
+    /// <param name="ct">Cancellation token for aborting the audit.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task RunCatalogIntegrityAuditAsync(bool isSilentScheduled, CancellationToken ct = default)
     {
         try
         {
             using var db = _factory.CreateConnection();
-            var allChunks = (await db.QueryAsync<(long Id, string StationId, string FilePath, long StartEpochMs, long EndEpochMs, long DurationMs, long FileSizeBytes)>(@"
-                SELECT id AS Id, station_id AS StationId, file_path AS FilePath,
-                       start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
-                       duration_ms AS DurationMs, file_size_bytes AS FileSizeBytes
-                FROM recording_chunks
-                ORDER BY start_epoch_ms DESC;")).ToList();
+
+            // Periodic silent scan optimization: inspect only recent chunks (last 4 hours) or unfinalized chunks
+            // to avoid overwhelming remote SMB/NFS network shares with millions of File.Exists queries.
+            string query = isSilentScheduled
+                ? @"SELECT id AS Id, station_id AS StationId, file_path AS FilePath,
+                           start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
+                           duration_ms AS DurationMs, file_size_bytes AS FileSizeBytes
+                    FROM recording_chunks
+                    WHERE end_epoch_ms >= @recentThresholdMs OR is_finalized = 0
+                    ORDER BY start_epoch_ms DESC LIMIT 300;"
+                : @"SELECT id AS Id, station_id AS StationId, file_path AS FilePath,
+                           start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
+                           duration_ms AS DurationMs, file_size_bytes AS FileSizeBytes
+                    FROM recording_chunks
+                    ORDER BY start_epoch_ms DESC;";
+
+            long recentThresholdMs = DateTimeOffset.UtcNow.AddHours(-4).ToUnixTimeMilliseconds();
+            var allChunks = (await db.QueryAsync<(long Id, string StationId, string FilePath, long StartEpochMs, long EndEpochMs, long DurationMs, long FileSizeBytes)>(
+                query, new { recentThresholdMs })).ToList();
 
             int total = allChunks.Count;
             int scanned = 0;
@@ -545,6 +801,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
 
             for (int i = 0; i < total; i++)
             {
+                if (ct.IsCancellationRequested) break;
                 var chunk = allChunks[i];
                 scanned++;
 
@@ -558,30 +815,19 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     var fi = new FileInfo(chunk.FilePath);
                     bool needsProbe = false;
 
-                    // 1. קובץ שהוגדר באורך 15 דקות בדיוק (ערך ברירת מחדל שעלול להיות שגוי בעת הפסקה מוקדמת)
-                    if (chunk.DurationMs == 900000)
+                    // Probe the file only when duration or epoch boundaries are missing or inconsistent (>2 sec drift)
+                    if (chunk.DurationMs <= 0 || chunk.StartEpochMs <= 0)
                     {
                         needsProbe = true;
                     }
-                    // 2. קובץ קטן יחסית שאינו תואם למשך המוצהר (קובץ של פחות מ-70MB לא יכול להימשך 15 דקות)
-                    else if (fi.Length < 70_000_000 && chunk.DurationMs > 300_000)
-                    {
-                        needsProbe = true;
-                    }
-                    // 3. אי-התאמה בין start, end ל-duration הרשום
-                    else if (Math.Abs((chunk.EndEpochMs - chunk.StartEpochMs) - chunk.DurationMs) > 1000)
-                    {
-                        needsProbe = true;
-                    }
-                    // 4. שינוי משמעותי בגודל הקובץ מאז שנרשם
-                    else if (Math.Abs(fi.Length - chunk.FileSizeBytes) > 1_000_000)
+                    else if (Math.Abs((chunk.EndEpochMs - chunk.StartEpochMs) - chunk.DurationMs) > 2000)
                     {
                         needsProbe = true;
                     }
 
                     if (needsProbe)
                     {
-                        var probe = await _probeService.ProbeFileAsync(chunk.FilePath, CancellationToken.None);
+                        var probe = await _probeService.ProbeFileAsync(chunk.FilePath, ct);
                         if (probe != null && probe.DurationSeconds > 0.05)
                         {
                             long actualDurMs = (long)Math.Round(probe.DurationSeconds * 1000.0);
@@ -618,7 +864,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     }
                 }
 
-                if (!isSilentScheduled && (scanned % 15 == 0 || scanned == total))
+                if (!isSilentScheduled && (scanned % 20 == 0 || scanned == total))
                 {
                     int pct = total > 0 ? (int)Math.Min(99, (scanned * 100.0) / total) : 100;
                     UpdateState(s => s with
@@ -653,7 +899,8 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                             width = @W,
                             height = @H,
                             fps = @Fps,
-                            has_audio = @Audio
+                            has_audio = @Audio,
+                            is_finalized = 1
                         WHERE id = @Id;";
 
                     await db.ExecuteAsync(updateSql, toUpdateChunks, tx);
@@ -678,6 +925,10 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
                     CompletedAtUtc = DateTime.UtcNow
                 }, forceBroadcast: true);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("[MAINTENANCE] Catalog audit cancelled.");
         }
         catch (Exception ex)
         {
@@ -718,9 +969,15 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         }
     }
 
+    /// <summary>
+    /// Attempts to parse a recording chunk filename to extract its start timestamp in Unix epoch milliseconds.
+    /// </summary>
+    /// <param name="fileName">The recording chunk filename to parse.</param>
+    /// <param name="configuredTzId">Optional timezone identifier for interpreting local wall-clock timestamps.</param>
+    /// <returns>The start timestamp in Unix epoch milliseconds, or null if the filename does not match known patterns.</returns>
     private static long? TryParseFileTimestamp(string fileName, string? configuredTzId)
     {
-        // 1. עדיפות עליונה: תבנית Epoch של MediaMTX (%s_%f או %s)
+        // 1. Highest priority: MediaMTX Unix Epoch pattern (%s_%f or %s)
         var matchEpoch = EpochChunkRegex.Match(fileName);
         if (matchEpoch.Success)
         {
@@ -731,7 +988,7 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
             }
         }
 
-        // 2. תבנית תאריך קלאסית (YYYY-MM-DD...)
+        // 2. Standard wall-clock timestamp pattern (YYYY-MM-DD...)
         var match = UniversalChunkRegex.Match(fileName);
         if (match.Success)
         {
@@ -777,6 +1034,8 @@ public class CatalogMaintenanceService : BackgroundService, ICatalogMaintenanceS
         int Width,
         int Height,
         int Fps,
-        int HasAudio
+        int HasAudio,
+        string DisplayId = "mon-0",
+        bool IsPrimary = true
     );
 }

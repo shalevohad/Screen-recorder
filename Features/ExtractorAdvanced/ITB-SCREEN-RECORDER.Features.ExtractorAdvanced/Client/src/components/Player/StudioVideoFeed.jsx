@@ -3,10 +3,30 @@
 // ==========================================
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import NoSignalHero from '../Viewport/overlays/NoSignalHero.jsx';
+import PersistentMinimapHud from '../Viewport/overlays/PersistentMinimapHud.jsx';
 import { frameStore } from '../../utils/frameStore.js';
 import { getAudioSettings } from '../../utils/studioSessionStore.js';
+import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout.js';
 import './StudioVideoFeed.scss';
 
+/**
+ * StudioVideoFeed manages seamless dual-player (Ping-Pong) video streaming, frame caching,
+ * intelligent gap skipping, preloading, multi-screen Auto-Director, Split Screen, PiP,
+ * and 60fps playhead synchronization.
+ * 
+ * @param {Object} props
+ * @param {Object} props.station - Focused station object.
+ * @param {number} [props.baseEpochMs=0] - Base Epoch in milliseconds.
+ * @param {number} [props.totalDurationMs=3600000] - Total timeline span in milliseconds.
+ * @param {number} [props.playheadMs=0] - Active playhead offset.
+ * @param {(ms: number) => void} props.setPlayheadMs - Playhead offset updater.
+ * @param {boolean} [props.isPlaying=false] - Whether playback is currently running.
+ * @param {(playing: boolean) => void} props.setIsPlaying - Playback state updater.
+ * @param {number} [props.playbackSpeed=1] - Playback speed multiplier.
+ * @param {Object} [props.directorPlan] - Auto-Director cut plan for the station.
+ * @param {(stationId: string, epochMs: number, displayId: string) => void} [props.onOverrideDisplay] - Manual override callback.
+ * @returns {JSX.Element|null}
+ */
 export default function StudioVideoFeed({
     station,
     baseEpochMs = 0,
@@ -23,14 +43,25 @@ export default function StudioVideoFeed({
     recordingSegments = {},
     globalGaps = [],
     showWatermark = true,
+    directorPlan,
+    onOverrideDisplay,
+    onResetOverride,
+    viewMode: propViewMode,
+    onViewModeChange,
+    isPipSwapped: propIsPipSwapped,
+    onPipSwapChange,
     className = ''
 }) {
-    // רפרנסים לשני נגני ה-Ping-Pong
+    // References for ping-pong player elements
     const videoRefA = useRef(null);
     const videoRefB = useRef(null);
+    const videoRefSecondary = useRef(null);
 
     const playheadMsRef = useRef(playheadMs);
     const streamStartOffsetMsRef = useRef(playheadMs);
+    const lastEmittedMsRef = useRef(playheadMs);
+    const isSeekingRef = useRef(false);
+    const seekDebounceTimerRef = useRef(null);
     const prevIsPlayingRef = useRef(isPlaying);
     const isSkippingGapRef = useRef(false);
 
@@ -39,7 +70,155 @@ export default function StudioVideoFeed({
     const stationId = station?.id;
     const hostname = (station && (station.hostname || station.name)) || '';
 
-    // 💡 תיקון קריטי 1: בדיקת מקטעים לפי station.id וגם לפי hostname
+    // Multi-display detection & physical virtual desktop bounds normalization
+    const stationDisplays = useMemo(() => {
+        const raw = station?.displays ||
+            station?.Displays ||
+            station?.displayTopology?.displays ||
+            station?.displayTopology?.Displays ||
+            station?.DisplayTopology?.Displays ||
+            station?.topology?.displays ||
+            [];
+
+        if (!Array.isArray(raw) || raw.length === 0) return [];
+
+        // Detect if all displays share identical (0, 0) coordinates (stacked)
+        const allZeroCoords = raw.length > 1 && raw.every(d => (d.X ?? d.x ?? 0) === 0 && (d.Y ?? d.y ?? 0) === 0);
+
+        let cumulativeX = 0;
+        return raw.map((d, idx) => {
+            const dWidth = d.Width || d.width || 1920;
+            const dHeight = d.Height || d.height || 1080;
+            const posX = allZeroCoords ? cumulativeX : (d.X ?? d.x ?? (idx * dWidth));
+            const posY = allZeroCoords ? 0 : (d.Y ?? d.y ?? 0);
+
+            if (allZeroCoords) {
+                cumulativeX += dWidth;
+            }
+
+            const dispId = (d.displayId ?? d.DisplayId ?? `mon-${idx}`).toLowerCase();
+            const dispName = d.displayName || d.DisplayName || `Display ${idx + 1}`;
+            const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary ?? (idx === 0));
+
+            return {
+                ...d,
+                displayId: dispId,
+                DisplayId: dispId,
+                displayName: dispName,
+                DisplayName: dispName,
+                isPrimary,
+                IsPrimary: isPrimary,
+                x: posX,
+                y: posY,
+                X: posX,
+                Y: posY,
+                width: dWidth,
+                height: dHeight,
+                Width: dWidth,
+                Height: dHeight
+            };
+        });
+    }, [station]);
+    const hasMultipleDisplays = stationDisplays.length > 1;
+
+    // View Mode state: 'director' | 'split' | 'pip' | 'mon-0' | 'mon-1' ...
+    const [localViewMode, setLocalViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
+    const rawViewMode = propViewMode !== undefined ? propViewMode : localViewMode;
+    const viewMode = hasMultipleDisplays ? rawViewMode : 'mon-0';
+    const setViewMode = useCallback((val) => {
+        const next = typeof val === 'function' ? val(viewMode) : val;
+        setLocalViewMode(next);
+        if (onViewModeChange) onViewModeChange(next);
+    }, [viewMode, onViewModeChange]);
+
+    const [localIsPipSwapped, setLocalIsPipSwapped] = useState(false);
+    const isPipSwapped = propIsPipSwapped !== undefined ? propIsPipSwapped : localIsPipSwapped;
+    const setIsPipSwapped = useCallback((val) => {
+        const next = typeof val === 'function' ? val(isPipSwapped) : val;
+        setLocalIsPipSwapped(next);
+        if (onPipSwapChange) onPipSwapChange(next);
+    }, [isPipSwapped, onPipSwapChange]);
+
+    // Current segment from Auto-Director plan
+    const activeDirectorSegment = useMemo(() => {
+        const plan = directorPlan || station?.directorPlan;
+        if (!plan || !plan.segments || plan.segments.length === 0) return null;
+        const curr = baseEpochMs + playheadMs;
+        return plan.segments.find(s => {
+            const start = s.startEpochMs ?? s.StartEpochMs ?? 0;
+            const end = s.endEpochMs ?? s.EndEpochMs ?? 0;
+            return curr >= start && curr <= end;
+        }) || plan.segments[0];
+    }, [directorPlan, station?.directorPlan, baseEpochMs, playheadMs]);
+
+    // Active Display calculation based on mode & director plan
+    const activeDisplayId = useMemo(() => {
+        if (!hasMultipleDisplays) return 'mon-0';
+        if (viewMode === 'split' || viewMode === 'pip' || viewMode === 'canvas') {
+            const primaryId = (stationDisplays[0]?.displayId ?? 'mon-0').toLowerCase();
+            const secondId = (stationDisplays[1]?.displayId ?? 'mon-1').toLowerCase();
+            return isPipSwapped ? secondId : primaryId;
+        }
+        if (viewMode !== 'director') return viewMode.toLowerCase();
+        return (activeDirectorSegment?.targetDisplayId ?? activeDirectorSegment?.TargetDisplayId ?? 'mon-0').toLowerCase();
+    }, [hasMultipleDisplays, viewMode, activeDirectorSegment, stationDisplays, isPipSwapped]);
+
+    const secondaryDisplayId = useMemo(() => {
+        if (!hasMultipleDisplays) return null;
+        const other = stationDisplays.find(d => (d.displayId ?? d.DisplayId ?? '').toLowerCase() !== activeDisplayId);
+        return other ? (other.displayId ?? other.DisplayId).toLowerCase() : (stationDisplays[1]?.displayId || 'mon-1').toLowerCase();
+    }, [hasMultipleDisplays, stationDisplays, activeDisplayId]);
+
+    const isCurrentManualOverride = useMemo(() => {
+        if (viewMode !== 'director' && viewMode !== 'split' && viewMode !== 'pip' && viewMode !== 'canvas') return true;
+        return Boolean(activeDirectorSegment?.isManualOverride ?? activeDirectorSegment?.IsManualOverride);
+    }, [viewMode, activeDirectorSegment]);
+
+    const [canvasFrames, setCanvasFrames] = useState({});
+
+    const topologyBounds = useMemo(() => {
+        return calculateTopologyBounds(stationDisplays);
+    }, [stationDisplays]);
+
+    useEffect(() => {
+        if (!hasMultipleDisplays || viewMode !== 'canvas') {
+            return;
+        }
+
+        let isMounted = true;
+        const abortController = new AbortController();
+        const targetEpochMs = Math.round(baseEpochMs + playheadMs);
+
+        stationDisplays.forEach((d, i) => {
+            const dId = (d.displayId ?? d.DisplayId ?? `mon-${i}`).toLowerCase();
+            const cached = frameStore.get(hostname, targetEpochMs, dId);
+            if (cached) {
+                setCanvasFrames(prev => ({ ...prev, [dId]: cached }));
+            } else {
+                frameStore.fetchFrame(hostname, targetEpochMs, abortController.signal, dId).then(res => {
+                    if (isMounted && res) {
+                        setCanvasFrames(prev => ({ ...prev, [dId]: res }));
+                    }
+                });
+            }
+        });
+
+        const unsubscribe = frameStore.subscribe((h, e, val, disp) => {
+            if (h === hostname && e === targetEpochMs && disp && isMounted) {
+                setCanvasFrames(prev => ({ ...prev, [disp.toLowerCase()]: val }));
+            }
+        });
+
+        return () => {
+            isMounted = false;
+            abortController.abort();
+            unsubscribe();
+        };
+    }, [hasMultipleDisplays, viewMode, stationDisplays, hostname, baseEpochMs, playheadMs]);
+
+    const prevDisplayIdRef = useRef(activeDisplayId);
+
+    // Check segments by both station.id and hostname
     const stationSegments = useMemo(() => {
         if (!station) return [];
         return recordingSegments[station.id] ||
@@ -50,9 +229,9 @@ export default function StudioVideoFeed({
 
     const currentEpoch = baseEpochMs + playheadMs;
 
-    // 💡 תיקון קריטי 2: חלון סבילות של 2 שניות למניעת NO SIGNAL במיקרו-פערים בין צ'אנקים
+    // 2-second tolerance window to prevent NO SIGNAL on micro-gaps between chunks
     const isInRecordingSegment = useMemo(() => {
-        if (stationSegments.length === 0) return true; // Fail-open: אם טרם נטענו סגמנטים, מנסים להזרים ולא נועלים ישר
+        if (stationSegments.length === 0) return true; // Fail-open: try streaming if segments not yet loaded
         return stationSegments.some(seg => {
             const s = (seg.startEpochMs ?? seg.startEpoch ?? 0) - 2000;
             const e = (seg.endEpochMs ?? seg.endEpoch ?? 0) + 2000;
@@ -62,20 +241,25 @@ export default function StudioVideoFeed({
 
     const isNoSignalGap = !isInRecordingSegment && stationSegments.length > 0;
 
-    // ניהול מצב ה-Ping-Pong
+    // Ping-Pong playback state management
     const [activeSlot, setActiveSlot] = useState('A'); // 'A' | 'B'
     const [srcA, setSrcA] = useState('');
     const [srcB, setSrcB] = useState('');
+    const [secondarySrc, setSecondarySrc] = useState('');
     const [preloadedSegment, setPreloadedSegment] = useState(null);
 
     const [isVideoRendering, setIsVideoRendering] = useState(false);
     const [isBufferingStall, setIsBufferingStall] = useState(false);
 
+    // Primary frame state
     const [frameResult, setFrameResult] = useState(() => {
         if (!hostname) return null;
         const targetEpochMs = Math.round(baseEpochMs + playheadMs);
-        return frameStore.get(hostname, targetEpochMs) || null;
+        return frameStore.get(hostname, targetEpochMs, activeDisplayId) || null;
     });
+
+    // Secondary frame state for Split/PiP
+    const [secondaryFrameResult, setSecondaryFrameResult] = useState(null);
 
     const activeVideoRef = activeSlot === 'A' ? videoRefA : videoRefB;
     const backgroundVideoRef = activeSlot === 'A' ? videoRefB : videoRefA;
@@ -93,6 +277,11 @@ export default function StudioVideoFeed({
             videoRefB.current.muted = activeSlot !== 'B' || audio.isMuted;
             videoRefB.current.defaultPlaybackRate = playbackSpeed;
             videoRefB.current.playbackRate = playbackSpeed;
+        }
+        if (videoRefSecondary.current) {
+            videoRefSecondary.current.muted = true; // Secondary display audio muted to prevent echo
+            videoRefSecondary.current.defaultPlaybackRate = playbackSpeed;
+            videoRefSecondary.current.playbackRate = playbackSpeed;
         }
     }, [activeSlot, playbackSpeed]);
 
@@ -116,41 +305,45 @@ export default function StudioVideoFeed({
             videoRefB.current.defaultPlaybackRate = playbackSpeed;
             videoRefB.current.playbackRate = playbackSpeed;
         }
+        if (videoRefSecondary.current) {
+            videoRefSecondary.current.defaultPlaybackRate = playbackSpeed;
+            videoRefSecondary.current.playbackRate = playbackSpeed;
+        }
     }, [playbackSpeed]);
 
-    // שליפת פריים במצב Pause
+    // Fetch frame in Pause state or during Scrubbing (Primary Display)
     useEffect(() => {
         if (!stationId || !hostname) return;
 
-        if (isPlaying) {
+        if (isPlaying && isVideoRendering) {
             prevIsPlayingRef.current = true;
             return;
         }
 
         const wasPlaying = prevIsPlayingRef.current;
-        prevIsPlayingRef.current = false;
+        prevIsPlayingRef.current = isPlaying;
 
         let isMounted = true;
         const abortController = new AbortController();
         const targetEpochMs = Math.round(baseEpochMs + playheadMs);
 
-        const cached = frameStore.get(hostname, targetEpochMs);
+        const cached = frameStore.get(hostname, targetEpochMs, activeDisplayId);
         if (cached) {
             setFrameResult(cached);
             return;
         }
 
-        // 💡 תגובה סופר-מהירה (35ms במקום 200ms) לשיפור מהירות ה-Scrubbing והזזת הפלייהד
+        // Fast debounce (35ms instead of 200ms) for snappy scrubbing response
         const delayMs = wasPlaying ? 25 : 35;
         const fetchTimer = setTimeout(() => {
             if (!isMounted) return;
-            frameStore.fetchFrame(hostname, targetEpochMs, abortController.signal).then(res => {
+            frameStore.fetchFrame(hostname, targetEpochMs, abortController.signal, activeDisplayId).then(res => {
                 if (isMounted && res) setFrameResult(res);
             });
         }, delayMs);
 
-        const unsubscribe = frameStore.subscribe((h, e, val) => {
-            if (h === hostname && e === targetEpochMs && isMounted) {
+        const unsubscribe = frameStore.subscribe((h, e, val, disp) => {
+            if (h === hostname && e === targetEpochMs && (!disp || disp === activeDisplayId) && isMounted) {
                 setFrameResult(val);
             }
         });
@@ -161,25 +354,65 @@ export default function StudioVideoFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [stationId, hostname, baseEpochMs, playheadMs, isPlaying]);
+    }, [stationId, hostname, baseEpochMs, playheadMs, isPlaying, isVideoRendering, activeDisplayId]);
 
-    // בניית URL מבוסס Epoch
-    const buildStreamUrl = useCallback((seekMs) => {
+    // Fetch frame for Secondary Display (Split & PiP)
+    useEffect(() => {
+        if (!hasMultipleDisplays || (viewMode !== 'split' && viewMode !== 'pip') || !secondaryDisplayId) {
+            setSecondaryFrameResult(null);
+            return;
+        }
+
+        let isMounted = true;
+        const abortController = new AbortController();
+        const targetEpochMs = Math.round(baseEpochMs + playheadMs);
+
+        const cached = frameStore.get(hostname, targetEpochMs, secondaryDisplayId);
+        if (cached) {
+            setSecondaryFrameResult(cached);
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            if (!isMounted) return;
+            frameStore.fetchFrame(hostname, targetEpochMs, abortController.signal, secondaryDisplayId).then(res => {
+                if (isMounted && res) setSecondaryFrameResult(res);
+            });
+        }, 40);
+
+        const unsubscribe = frameStore.subscribe((h, e, val, disp) => {
+            if (h === hostname && e === targetEpochMs && (!disp || disp === secondaryDisplayId) && isMounted) {
+                setSecondaryFrameResult(val);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+            abortController.abort();
+            unsubscribe();
+        };
+    }, [hasMultipleDisplays, viewMode, secondaryDisplayId, stationId, hostname, baseEpochMs, playheadMs]);
+
+    // Build Epoch-based stream URL
+    const buildStreamUrl = useCallback((seekMs, dispId = activeDisplayId) => {
         const startEpochVal = Math.round(baseEpochMs);
         const endEpochVal = Math.round(baseEpochMs + totalDurationMs);
         const seekEpochVal = Math.min(endEpochVal, Math.max(startEpochVal, Math.round(baseEpochMs + seekMs)));
-        return `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&_t=${Date.now()}`;
-    }, [baseEpochMs, totalDurationMs, hostname]);
+        return `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpochVal}&endEpoch=${endEpochVal}&seekEpoch=${seekEpochVal}&displayId=${encodeURIComponent(dispId)}&_t=${Date.now()}`;
+    }, [baseEpochMs, totalDurationMs, hostname, activeDisplayId]);
 
-    // 💡 אתחול הזרמה בעת לחיצה על Play
+    // Initialize streaming on Play or Display switch
     useEffect(() => {
         if (!stationId || !hostname) return;
 
         if (isPlaying && isInRecordingSegment) {
             const currentHead = playheadMsRef.current;
             streamStartOffsetMsRef.current = currentHead;
+            lastEmittedMsRef.current = currentHead;
+            isSeekingRef.current = false;
 
-            const url = buildStreamUrl(currentHead);
+            const url = buildStreamUrl(currentHead, activeDisplayId);
 
             setIsVideoRendering(false);
             setIsBufferingStall(true);
@@ -187,24 +420,104 @@ export default function StudioVideoFeed({
             setSrcA(url);
             setSrcB('');
             setPreloadedSegment(null);
+
+            if ((viewMode === 'split' || viewMode === 'pip') && secondaryDisplayId) {
+                setSecondarySrc(buildStreamUrl(currentHead, secondaryDisplayId));
+            } else {
+                setSecondarySrc('');
+            }
         } else if (!isPlaying) {
+            if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+            isSeekingRef.current = false;
             setSrcA('');
             setSrcB('');
+            setSecondarySrc('');
             setPreloadedSegment(null);
             setIsVideoRendering(false);
             setIsBufferingStall(false);
             if (videoRefA.current) videoRefA.current.pause();
             if (videoRefB.current) videoRefB.current.pause();
+            if (videoRefSecondary.current) videoRefSecondary.current.pause();
         }
-    }, [isPlaying, stationId, hostname, isInRecordingSegment, buildStreamUrl]);
+    }, [isPlaying, stationId, hostname, isInRecordingSegment, buildStreamUrl, activeDisplayId, viewMode, secondaryDisplayId]);
 
-    // 💡 מנוע Preload חכם: טוען את המקטע הבא לנגן הרקע בזמן שהנגן הראשי מנגן
+    // React to dynamic director display switch while playing
+    useEffect(() => {
+        if (prevDisplayIdRef.current !== activeDisplayId) {
+            prevDisplayIdRef.current = activeDisplayId;
+            if (isPlaying && isInRecordingSegment) {
+                const currentHead = playheadMsRef.current;
+                streamStartOffsetMsRef.current = currentHead;
+                const newUrl = buildStreamUrl(currentHead, activeDisplayId);
+                setIsVideoRendering(false);
+                setIsBufferingStall(true);
+                setActiveSlot('A');
+                setSrcA(newUrl);
+                setSrcB('');
+            }
+        }
+    }, [activeDisplayId, isPlaying, isInRecordingSegment, buildStreamUrl]);
+
+    // Seek while Playing: continue streaming from new target location
+    useEffect(() => {
+        if (!stationId || !hostname) return;
+
+        const diff = Math.abs(playheadMs - lastEmittedMsRef.current);
+        if (!isPlaying || diff < 15) {
+            lastEmittedMsRef.current = playheadMs;
+            return;
+        }
+
+        isSeekingRef.current = true;
+        lastEmittedMsRef.current = playheadMs;
+        streamStartOffsetMsRef.current = playheadMs;
+
+        if (videoRefA.current) videoRefA.current.pause();
+        if (videoRefB.current) videoRefB.current.pause();
+        if (videoRefSecondary.current) videoRefSecondary.current.pause();
+
+        setIsVideoRendering(false);
+        setIsBufferingStall(true);
+
+        if (seekDebounceTimerRef.current) {
+            clearTimeout(seekDebounceTimerRef.current);
+        }
+
+        seekDebounceTimerRef.current = setTimeout(() => {
+            if (!isInRecordingSegment) {
+                setSrcA('');
+                setSrcB('');
+                setSecondarySrc('');
+                setIsBufferingStall(false);
+                isSeekingRef.current = false;
+                return;
+            }
+
+            const targetMs = playheadMsRef.current;
+            const newUrl = buildStreamUrl(targetMs, activeDisplayId);
+            setActiveSlot('A');
+            setSrcA(newUrl);
+            setSrcB('');
+            setPreloadedSegment(null);
+
+            if ((viewMode === 'split' || viewMode === 'pip') && secondaryDisplayId) {
+                setSecondarySrc(buildStreamUrl(targetMs, secondaryDisplayId));
+            }
+        }, 75);
+
+        return () => {
+            if (seekDebounceTimerRef.current) {
+                clearTimeout(seekDebounceTimerRef.current);
+            }
+        };
+    }, [playheadMs, isPlaying, stationId, hostname, isInRecordingSegment, buildStreamUrl, activeDisplayId, viewMode, secondaryDisplayId]);
+
+    // Preload engine for next segment
     useEffect(() => {
         if (!isPlaying || !isVideoRendering || stationSegments.length === 0) return;
 
         const curEpoch = baseEpochMs + playheadMsRef.current;
 
-        // איתור המקטע הבא בציר הזמן
         const nextSeg = stationSegments
             .map(seg => ({
                 start: seg.startEpochMs ?? seg.startEpoch ?? 0,
@@ -216,10 +529,9 @@ export default function StudioVideoFeed({
         if (nextSeg && (!preloadedSegment || preloadedSegment.start !== nextSeg.start)) {
             const nextStartMs = nextSeg.start - baseEpochMs;
             if (nextStartMs < outPointMs) {
-                const nextUrl = buildStreamUrl(nextStartMs);
+                const nextUrl = buildStreamUrl(nextStartMs, activeDisplayId);
                 setPreloadedSegment({ start: nextSeg.start, ms: nextStartMs });
 
-                // טעינה לתוך הסלוט הפנוי ברקע
                 if (activeSlot === 'A') {
                     setSrcB(nextUrl);
                 } else {
@@ -227,142 +539,196 @@ export default function StudioVideoFeed({
                 }
             }
         }
-    }, [isPlaying, isVideoRendering, stationSegments, baseEpochMs, outPointMs, activeSlot, preloadedSegment, buildStreamUrl]);
+    }, [isPlaying, isVideoRendering, playheadMs, baseEpochMs, outPointMs, stationSegments, preloadedSegment, activeSlot, buildStreamUrl, activeDisplayId]);
 
-    // 💡 מנוע סנכרון חלק ב-60fps
-    useEffect(() => {
-        if (!isPlaying || !isVideoRendering) return;
+    // Seamless Ping-Pong transition when active player ends
+    const handleActiveVideoEnded = useCallback(() => {
+        if (preloadedSegment) {
+            const newSlot = activeSlot === 'A' ? 'B' : 'A';
+            const targetRef = newSlot === 'A' ? videoRefA : videoRefB;
 
-        let rafId = null;
-        let syncVideoSec = activeVideoRef.current ? activeVideoRef.current.currentTime : 0;
-        let syncWallTime = performance.now();
-        let lastEmittedMs = streamStartOffsetMsRef.current + Math.round(syncVideoSec * 1000);
-
-        const smoothTick = () => {
-            const video = activeVideoRef.current;
-            if (video && !video.paused && !video.ended && !isBufferingStall && !isSkippingGapRef.current) {
-                const now = performance.now();
-                const currentVideoSec = video.currentTime;
-
-                if (Math.abs(currentVideoSec - syncVideoSec) > 0.0005) {
-                    syncVideoSec = currentVideoSec;
-                    syncWallTime = now;
-                }
-
-                const elapsedSec = Math.max(0, (now - syncWallTime) / 1000);
-                const rate = video.playbackRate || playbackSpeed || 1;
-                const estimatedVideoSec = syncVideoSec + (elapsedSec * rate);
-
-                let calculatedMs = streamStartOffsetMsRef.current + Math.round(estimatedVideoSec * 1000);
-
-                const delta = calculatedMs - lastEmittedMs;
-                if (delta < 0 && delta > -300) {
-                    calculatedMs = lastEmittedMs;
-                }
-
-                // בדיקת סיום טווח החיתוך
-                if (calculatedMs >= outPointMs) {
-                    if (isLooping) {
-                        lastEmittedMs = inPointMs;
-                        streamStartOffsetMsRef.current = inPointMs;
-                        if (video) video.currentTime = 0;
-                        syncVideoSec = 0;
-                        syncWallTime = performance.now();
-                        setPlayheadMs?.(inPointMs);
-                    } else {
-                        setIsPlaying?.(false);
-                        setPlayheadMs?.(outPointMs);
-                    }
-                    return;
-                }
-
-                // דילוג על פערי הקלטה (Global Gaps)
-                const curEpoch = baseEpochMs + calculatedMs;
-                const activeGlobalGap = globalGaps?.find(g => curEpoch >= g.startEpochMs && curEpoch < g.endEpochMs);
-                if (activeGlobalGap) {
-                    isSkippingGapRef.current = true;
-                    const gapEndMs = activeGlobalGap.endEpochMs - baseEpochMs;
-                    setPlayheadMs?.(gapEndMs);
-                    streamStartOffsetMsRef.current = gapEndMs;
-                    lastEmittedMs = gapEndMs;
-
-                    const url = buildStreamUrl(gapEndMs);
-                    if (activeSlot === 'A') setSrcA(url);
-                    else setSrcB(url);
-
-                    setTimeout(() => { isSkippingGapRef.current = false; }, 300);
-                    return;
-                }
-
-                if (calculatedMs !== lastEmittedMs) {
-                    lastEmittedMs = calculatedMs;
-                    setPlayheadMs?.(calculatedMs);
-                }
-            }
-
-            rafId = requestAnimationFrame(smoothTick);
-        };
-
-        rafId = requestAnimationFrame(smoothTick);
-        return () => {
-            if (rafId) cancelAnimationFrame(rafId);
-        };
-    }, [
-        isPlaying,
-        isVideoRendering,
-        isBufferingStall,
-        playbackSpeed,
-        outPointMs,
-        inPointMs,
-        isLooping,
-        baseEpochMs,
-        activeSlot,
-        activeVideoRef,
-        globalGaps,
-        buildStreamUrl,
-        setPlayheadMs,
-        setIsPlaying
-    ]);
-
-    // 💡 החלפה חלקה באפס מילי-שניות (Seamless Hand-off) בסיום המקטע
-    const handleActiveVideoEnded = () => {
-        if (isSkippingGapRef.current) return;
-
-        // אם המקטע הבא כבר טעון בנגן הרקע - מעבירים אליו את הניגון מיד ללא שום Buffering!
-        if (preloadedSegment && backgroundVideoRef.current) {
-            const nextMs = preloadedSegment.ms;
-            streamStartOffsetMsRef.current = nextMs;
-            setPlayheadMs?.(nextMs);
-
-            const nextSlot = activeSlot === 'A' ? 'B' : 'A';
-            setActiveSlot(nextSlot);
-            applyAudioSettings();
-
-            backgroundVideoRef.current.play().catch(e => console.warn('[Video] Preload play:', e));
+            setActiveSlot(newSlot);
+            streamStartOffsetMsRef.current = preloadedSegment.ms;
+            lastEmittedMsRef.current = preloadedSegment.ms;
             setPreloadedSegment(null);
+
+            if (targetRef.current) {
+                targetRef.current.play().then(() => {
+                    applyAudioSettings();
+                }).catch(() => { });
+            }
+        } else {
+            // Reached boundary or loop point
+            if (isLooping) {
+                setPlayheadMs(inPointMs);
+            } else {
+                setIsPlaying(false);
+            }
+        }
+    }, [preloadedSegment, activeSlot, applyAudioSettings, isLooping, inPointMs, setPlayheadMs, setIsPlaying]);
+
+    // Synchronize playhead during active playback
+    const handleTimeUpdate = useCallback(() => {
+        const vid = activeVideoRef.current;
+        if (!vid || isSeekingRef.current || !isPlaying || isSkippingGapRef.current) return;
+
+        const videoElapsedMs = vid.currentTime * 1000;
+        const newPlayheadMs = Math.round(streamStartOffsetMsRef.current + videoElapsedMs);
+
+        // Gap skip logic
+        if (globalGaps && globalGaps.length > 0) {
+            const curAbs = baseEpochMs + newPlayheadMs;
+            const matchingGap = globalGaps.find(g => curAbs >= g.startEpochMs && curAbs < g.endEpochMs);
+            if (matchingGap) {
+                isSkippingGapRef.current = true;
+                const resumeMs = Math.round(matchingGap.endEpochMs - baseEpochMs) + 10;
+                setPlayheadMs(resumeMs);
+                setTimeout(() => { isSkippingGapRef.current = false; }, 150);
+                return;
+            }
+        }
+
+        // Loop / In-Out boundary enforcement
+        if (newPlayheadMs >= outPointMs) {
+            if (isLooping) {
+                setPlayheadMs(inPointMs);
+            } else {
+                setIsPlaying(false);
+                setPlayheadMs(outPointMs);
+            }
             return;
         }
 
-        // במקרה של לולאה מלאה
-        if (isLooping) {
-            setPlayheadMs?.(inPointMs);
-            streamStartOffsetMsRef.current = inPointMs;
-            const url = buildStreamUrl(inPointMs);
-            if (activeSlot === 'A') setSrcA(url);
-            else setSrcB(url);
-        } else {
-            setIsPlaying?.(false);
-            setPlayheadMs?.(outPointMs);
-        }
-    };
+        lastEmittedMsRef.current = newPlayheadMs;
+        setPlayheadMs(newPlayheadMs);
+    }, [activeVideoRef, isPlaying, baseEpochMs, globalGaps, outPointMs, isLooping, inPointMs, setPlayheadMs, setIsPlaying]);
 
-    if (!station) return null;
-
-    const showBufferingOverlay = isPlaying && isInRecordingSegment && (!isVideoRendering || isBufferingStall);
+    const showBufferingOverlay = isBufferingStall && isPlaying && !isNoSignalGap;
 
     return (
-        <div className={`studio-video-feed-root ${className}`.trim()}>
-            {/* 💡 נגן A */}
+        <div className={`studio-video-feed-root ${viewMode} ${className}`}>
+            {/* Tactical View Mode Switcher Toolbar (Visible when station has > 1 display) */}
+            {hasMultipleDisplays && (
+                <div className="feed-viewmode-toolbar" onClick={(e) => e.stopPropagation()}>
+                    <button
+                        type="button"
+                        className={`btn-mode ${viewMode === 'director' ? 'active' : ''}`}
+                        onClick={() => setViewMode('director')}
+                        title="Auto-Director Cut (Switches based on mouse/keystroke activity or manual overrides)"
+                    >
+                        🎬 DIRECTOR
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn-mode ${viewMode === 'canvas' ? 'active' : ''}`}
+                        onClick={() => setViewMode('canvas')}
+                        title="Virtual Desktop Canvas: Physical OS monitor arrangement and geometry"
+                    >
+                        ⊞ CANVAS
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn-mode ${viewMode === 'split' ? 'active' : ''}`}
+                        onClick={() => setViewMode('split')}
+                        title="Split Screen: View all station monitors side-by-side"
+                    >
+                        🔲 SPLIT
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn-mode ${viewMode === 'pip' ? 'active' : ''}`}
+                        onClick={() => setViewMode('pip')}
+                        title="Picture-in-Picture: Hero primary display with floating secondary window"
+                    >
+                        🪟 PiP
+                    </button>
+                    <div className="toolbar-divider" />
+                    {stationDisplays.map((d, i) => {
+                        const id = (d.displayId ?? `mon-${i}`).toLowerCase();
+                        return (
+                            <button
+                                key={id}
+                                type="button"
+                                className={`btn-mode ${viewMode === id ? 'active' : ''}`}
+                                onClick={() => setViewMode(id)}
+                                title={`Pin directly to Display ${i + 1} (${id})`}
+                            >
+                                🖥️ {i + 1}
+                            </button>
+                        );
+                    })}
+
+                    {/* Broadcast-grade Multicam Punch Switcher for Auto-Director */}
+                    {viewMode === 'director' && (
+                        <>
+                            <div className="toolbar-divider" />
+                            <div className="director-punch-strip" title="Live Camera Switcher: Click to punch monitor override at current time">
+                                <span className="punch-strip-label">PUNCH:</span>
+                                {stationDisplays.map((d, i) => {
+                                    const id = (d.displayId ?? `mon-${i}`).toLowerCase();
+                                    const isPunchActive = activeDisplayId === id;
+                                    return (
+                                        <button
+                                            key={`punch-${id}`}
+                                            type="button"
+                                            className={`btn-punch-camera ${isPunchActive ? 'active' : ''} ${isCurrentManualOverride && isPunchActive ? 'is-override' : ''}`}
+                                            onClick={() => {
+                                                onOverrideDisplay?.(stationId, baseEpochMs + playheadMs, id);
+                                            }}
+                                            title={`Punch CAM ${i + 1} (${id.toUpperCase()}) as override at playhead`}
+                                        >
+                                            <span className="cam-num">CAM {i + 1}</span>
+                                            {isPunchActive && (
+                                                <span className="cam-status">
+                                                    {isCurrentManualOverride ? '✋' : '⚡'}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+
+                                {isCurrentManualOverride && onResetOverride && (
+                                    <button
+                                        type="button"
+                                        className="btn-revert-auto"
+                                        onClick={() => {
+                                            onResetOverride?.(stationId, baseEpochMs + playheadMs);
+                                        }}
+                                        title="Revert manual override back to AI Auto-Director"
+                                    >
+                                        ↩ AUTO
+                                    </button>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* Tactical Screen Orientation Indicator */}
+            {hasMultipleDisplays && (
+                <div className={`feed-display-orientation-banner ${isCurrentManualOverride ? 'is-override' : 'is-auto'}`}>
+                    <span className="banner-pulse" />
+                    <span className="banner-text">
+                        {viewMode === 'canvas' ? '⊞ CANVAS (PHYSICAL OS TOPOLOGY)' :
+                         viewMode === 'split' ? '🔲 SPLIT SCREEN (ALL MONITORS)' :
+                         viewMode === 'pip' ? `🪟 PiP MODE: ${activeDisplayId.toUpperCase()} (HERO)` :
+                         `${isCurrentManualOverride ? '✋ MANUAL OVERRIDE' : '⚡ AUTO-DIRECTOR'}: ${activeDisplayId.toUpperCase()}`}
+                    </span>
+                    {isCurrentManualOverride && viewMode === 'director' && onResetOverride && (
+                        <button
+                            type="button"
+                            className="banner-revert-btn"
+                            onClick={() => onResetOverride?.(stationId, baseEpochMs + playheadMs)}
+                            title="Revert override back to AI Auto-Director"
+                        >
+                            ↩ REVERT TO AUTO
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* Main Video Element: Player A */}
             {srcA && (
                 <video
                     ref={videoRefA}
@@ -387,6 +753,7 @@ export default function StudioVideoFeed({
                     }}
                     onPlaying={() => {
                         if (activeSlot === 'A') {
+                            isSeekingRef.current = false;
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
                             if (videoRefA.current) {
@@ -399,17 +766,22 @@ export default function StudioVideoFeed({
                         if (activeSlot === 'A') setIsBufferingStall(true);
                     }}
                     onTimeUpdate={() => {
-                        if (activeSlot === 'A' && !isVideoRendering && videoRefA.current?.currentTime > 0) {
-                            setIsVideoRendering(true);
-                            setIsBufferingStall(false);
-                            if (videoRefA.current) {
-                                videoRefA.current.defaultPlaybackRate = playbackSpeed;
-                                videoRefA.current.playbackRate = playbackSpeed;
+                        if (activeSlot === 'A') {
+                            if (!isVideoRendering && videoRefA.current?.currentTime > 0) {
+                                isSeekingRef.current = false;
+                                setIsVideoRendering(true);
+                                setIsBufferingStall(false);
+                                if (videoRefA.current) {
+                                    videoRefA.current.defaultPlaybackRate = playbackSpeed;
+                                    videoRefA.current.playbackRate = playbackSpeed;
+                                }
                             }
+                            handleTimeUpdate();
                         }
                     }}
                     onError={() => {
                         if (activeSlot === 'A') {
+                            isSeekingRef.current = false;
                             setIsBufferingStall(false);
                             setIsVideoRendering(false);
                         }
@@ -420,7 +792,7 @@ export default function StudioVideoFeed({
                 />
             )}
 
-            {/* 💡 נגן B (מופעל במקביל לצורך Preloading) */}
+            {/* Main Video Element: Player B (runs in parallel for preloading) */}
             {srcB && (
                 <video
                     ref={videoRefB}
@@ -445,6 +817,7 @@ export default function StudioVideoFeed({
                     }}
                     onPlaying={() => {
                         if (activeSlot === 'B') {
+                            isSeekingRef.current = false;
                             setIsVideoRendering(true);
                             setIsBufferingStall(false);
                             if (videoRefB.current) {
@@ -457,17 +830,22 @@ export default function StudioVideoFeed({
                         if (activeSlot === 'B') setIsBufferingStall(true);
                     }}
                     onTimeUpdate={() => {
-                        if (activeSlot === 'B' && !isVideoRendering && videoRefB.current?.currentTime > 0) {
-                            setIsVideoRendering(true);
-                            setIsBufferingStall(false);
-                            if (videoRefB.current) {
-                                videoRefB.current.defaultPlaybackRate = playbackSpeed;
-                                videoRefB.current.playbackRate = playbackSpeed;
+                        if (activeSlot === 'B') {
+                            if (!isVideoRendering && videoRefB.current?.currentTime > 0) {
+                                isSeekingRef.current = false;
+                                setIsVideoRendering(true);
+                                setIsBufferingStall(false);
+                                if (videoRefB.current) {
+                                    videoRefB.current.defaultPlaybackRate = playbackSpeed;
+                                    videoRefB.current.playbackRate = playbackSpeed;
+                                }
                             }
+                            handleTimeUpdate();
                         }
                     }}
                     onError={() => {
                         if (activeSlot === 'B') {
+                            isSeekingRef.current = false;
                             setIsBufferingStall(false);
                             setIsVideoRendering(false);
                         }
@@ -478,31 +856,138 @@ export default function StudioVideoFeed({
                 />
             )}
 
-            {/* שכבת תמונה סטטית / No Signal Hero */}
-            <div
-                className="feed-static-layer"
-                style={{ zIndex: isVideoRendering ? 0 : 2 }}
-            >
-                {isNoSignalGap ? (
-                    <NoSignalHero isPlaying={isPlaying} />
-                ) : frameResult && frameResult !== 'NO_SIGNAL' ? (
-                    <img
-                        src={frameResult}
-                        className="feed-static-image"
-                        alt="Playback Frame"
-                        style={{
-                            imageRendering: '-webkit-optimize-contrast',
-                            transform: 'translateZ(0)'
-                        }}
-                    />
-                ) : !isPlaying ? (
-                    <div className="feed-decode-pending">
-                        <span>DECODE PENDING...</span>
-                    </div>
-                ) : null}
-            </div>
+            {/* Static image / No Signal Hero layer (Standard & Director View) */}
+            {viewMode !== 'split' && viewMode !== 'canvas' && (
+                <div
+                    className="feed-static-layer"
+                    style={{ zIndex: isVideoRendering ? 0 : 2 }}
+                >
+                    {isNoSignalGap ? (
+                        <NoSignalHero isPlaying={isPlaying} />
+                    ) : frameResult && frameResult !== 'NO_SIGNAL' ? (
+                        <img
+                            src={frameResult}
+                            className="feed-static-image"
+                            alt="Playback Frame"
+                            style={{
+                                imageRendering: '-webkit-optimize-contrast',
+                                transform: 'translateZ(0)'
+                            }}
+                        />
+                    ) : !isPlaying ? (
+                        <div className="feed-decode-pending">
+                            <span>DECODE PENDING...</span>
+                        </div>
+                    ) : null}
+                </div>
+            )}
 
-            {/* חיווי טעינה / Buffering */}
+            {/* Split Screen View: Renders dual monitors side-by-side */}
+            {viewMode === 'split' && hasMultipleDisplays && (
+                <div className="feed-split-container">
+                    <div className="split-pane pane-primary">
+                        <div className="split-pane-header">
+                            <span>DISPLAY 1 ({activeDisplayId.toUpperCase()})</span>
+                        </div>
+                        {frameResult && frameResult !== 'NO_SIGNAL' ? (
+                            <img src={frameResult} className="split-frame-img" alt="Display 1" />
+                        ) : (
+                            <div className="split-pane-placeholder">DECODE PENDING...</div>
+                        )}
+                    </div>
+                    <div className="split-pane-divider" />
+                    <div className="split-pane pane-secondary">
+                        <div className="split-pane-header">
+                            <span>DISPLAY 2 ({(secondaryDisplayId || 'MON-1').toUpperCase()})</span>
+                        </div>
+                        {secondaryFrameResult && secondaryFrameResult !== 'NO_SIGNAL' ? (
+                            <img src={secondaryFrameResult} className="split-frame-img" alt="Display 2" />
+                        ) : (
+                            <div className="split-pane-placeholder">DECODE PENDING...</div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Picture-in-Picture (PiP) Inset Floating Frame */}
+            {viewMode === 'pip' && hasMultipleDisplays && (
+                <div 
+                    className="feed-pip-overlay"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setIsPipSwapped(prev => !prev);
+                    }}
+                    title="Click to swap primary and secondary screens"
+                >
+                    <div className="pip-header">
+                        <span>PiP: {(secondaryDisplayId || 'MON-1').toUpperCase()}</span>
+                        <span className="pip-swap-hint">⇄ SWAP</span>
+                    </div>
+                    {secondaryFrameResult && secondaryFrameResult !== 'NO_SIGNAL' ? (
+                        <img src={secondaryFrameResult} className="pip-frame-img" alt="PiP Stream" />
+                    ) : (
+                        <div className="pip-placeholder">DECODE PENDING...</div>
+                    )}
+                </div>
+            )}
+
+            {/* Virtual Desktop Canvas View: Real physical OS monitor arrangement */}
+            {viewMode === 'canvas' && hasMultipleDisplays && (
+                <div className="feed-canvas-container">
+                    <div className="feed-canvas-grid-bg" />
+                    <div
+                        className="feed-canvas-board"
+                        style={{
+                            aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`
+                        }}
+                    >
+                        {stationDisplays.map((d, index) => {
+                            const rect = calculateNormalizedDisplayRect(d, topologyBounds);
+                            const dispId = (d.displayId ?? d.DisplayId ?? `mon-${index}`).toLowerCase();
+                            const frame = canvasFrames[dispId] || (dispId === activeDisplayId ? frameResult : null);
+                            const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary);
+
+                            return (
+                                <div
+                                    key={dispId}
+                                    className={`canvas-display-pane ${isPrimary ? 'is-primary' : ''}`}
+                                    style={{
+                                        left: `${rect.leftPct}%`,
+                                        top: `${rect.topPct}%`,
+                                        width: `${rect.widthPct}%`,
+                                        height: `${rect.heightPct}%`
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setViewMode(dispId);
+                                    }}
+                                    title={`Click to focus Display ${index + 1} (${d.width || 1920}x${d.height || 1080})`}
+                                >
+                                    <div className="canvas-pane-header">
+                                        <span className="pane-index-pill">
+                                            {isPrimary ? '★ ' : ''}🖥 {index + 1}
+                                        </span>
+                                        <span className="pane-title">{d.displayName || d.DisplayName || dispId.toUpperCase()}</span>
+                                        <span className="pane-res">{d.width || 1920}x{d.height || 1080}</span>
+                                    </div>
+
+                                    {frame && frame !== 'NO_SIGNAL' ? (
+                                        <img
+                                            src={frame}
+                                            className="canvas-frame-img"
+                                            alt={dispId}
+                                        />
+                                    ) : (
+                                        <div className="canvas-pane-placeholder">DECODE PENDING...</div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Buffering Indicator */}
             {showBufferingOverlay && (
                 <div className="feed-buffering-overlay">
                     <div className="buffering-glass-card">
@@ -517,11 +1002,26 @@ export default function StudioVideoFeed({
                                 <span>INITIALIZING STREAM PIPELINE</span>
                             </div>
                             <span className="meta-sub">
-                                BUFFERING // {hostname}
+                                BUFFERING // {hostname} • {activeDisplayId.toUpperCase()}
                             </span>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Persistent Topology Minimap HUD (Clickable to switch displays, hidden in Canvas mode) */}
+            {hasMultipleDisplays && viewMode !== 'canvas' && (
+                <PersistentMinimapHud
+                    displays={stationDisplays}
+                    activeDisplayId={activeDisplayId}
+                    mode={isCurrentManualOverride ? 'MANUAL' : 'AUTO'}
+                    onSelectDisplay={(dispId) => {
+                        if (onOverrideDisplay) {
+                            onOverrideDisplay(stationId, baseEpochMs + playheadMs, dispId);
+                        }
+                        setViewMode(dispId);
+                    }}
+                />
             )}
 
             {showWatermark && (

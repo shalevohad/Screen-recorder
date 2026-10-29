@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Client/src/components/UI/ServerTelemetryWidget.jsx
 // ==========================================
 import { useState, useEffect } from 'react';
@@ -81,7 +81,7 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
     const netPct = calcTacticalBarPct(totalNetMbps * 1000, linkSpeedKbps);
     const c2Pct = calcTacticalBarPct(c2Kbps, 5000);
 
-    // נתוני אחסון
+    // Storage pool telemetry metrics
     const storageData = serverTelemetry?.storage;
     const isAccessible = Boolean(storageData?.isAccessible);
     const isFallback = Boolean(storageData?.isFallbackActive);
@@ -211,7 +211,7 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 </div>
             </div>
 
-            {/* 💡 STORAGE POOL POD - קבוע ומשתמש ב-RadialGauge המודרני */}
+            {/* STORAGE POOL POD - Integrated with modern RadialGauge */}
             <div
                 className={`telemetry-pod storage-pod-radial ${isAccessible
                         ? (isFallback ? 'is-fallback-active' : getStatusClass(storageUsedPct))
@@ -276,7 +276,7 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                 </div>
             </div>
 
-            {/* 💡 NET POD - שימוש ישיר ב-RadialGauge המודרני */}
+            {/* NET POD - Network utilization using modern RadialGauge cluster */}
             <div className={`telemetry-pod net-pod-radial ${getStatusClass(netUtilPct)}`}>
                 <div className="pod-header">
                     <span className="pod-title">NET LOAD</span>
@@ -286,7 +286,7 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                     <span className="pod-val">{netUtilPct.toFixed(1)}%</span>
 
                     <div className="net-radials-cluster">
-                        {/* שעון 1: TX / RX */}
+                        {/* Gauge 1: TX / RX */}
                         <RadialGauge
                             size={32}
                             strokeWidth={2.4}
@@ -301,7 +301,7 @@ export default function ServerTelemetryWidget({ serverTelemetry, fleetC2Kbps = 0
                             ]}
                         />
 
-                        {/* שעון 2: NET / C2 */}
+                        {/* Gauge 2: NET / C2 */}
                         <RadialGauge
                             size={32}
                             strokeWidth={2.4}

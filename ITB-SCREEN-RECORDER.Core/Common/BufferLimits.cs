@@ -1,17 +1,29 @@
 namespace ITB_SCREEN_RECORDER.Core.Common
 {
+    /// <summary>
+    /// Central definition of maximum buffer file and HTTP request payload limits across the solution.
+    /// </summary>
     public static class BufferLimits
     {
-        // 💡 שינוי כאן בלבד ישפיע על כלל המערכת
+        /// <summary>
+        /// Maximum allowed video buffer file size in megabytes.
+        /// Modifying this value centrally controls limits across the entire platform.
+        /// </summary>
         public const long MaxBufferFileSizeMb = 4096;
 
-        // תוספת תקורה עבור כותרות HTTP, Multipart boundaries ושדות טופס
+        /// <summary>
+        /// Additional overhead allocation in megabytes for HTTP headers, multipart boundaries, and form fields.
+        /// </summary>
         public const long RequestOverheadMb = 50;
 
-        // גודל נטו מקסימלי לקובץ הווידאו עצמו בבתים (4,294,967,296 Bytes = 4GB)
+        /// <summary>
+        /// Net maximum allowed size in bytes for the raw video file payload (4 GB = 4,294,967,296 bytes).
+        /// </summary>
         public const long MaxFileSizeBytes = MaxBufferFileSizeMb * 1024L * 1024L;
 
-        // תקרת בקשת ה-HTTP הכוללת בבתים עבור Kestrel וה-Controller (4,347,330,560 Bytes)
+        /// <summary>
+        /// Total HTTP request body threshold in bytes configured for Kestrel server and controller boundaries (4,347,330,560 bytes).
+        /// </summary>
         public const long MaxRequestSizeBytes = (MaxBufferFileSizeMb + RequestOverheadMb) * 1024L * 1024L;
     }
 }

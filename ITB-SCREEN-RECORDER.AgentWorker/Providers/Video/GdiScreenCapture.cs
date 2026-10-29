@@ -11,7 +11,17 @@ namespace ITBRecorderAgent.Providers.Video
     {
         public int Width { get; private set; }
         public int Height { get; private set; }
+        public int X { get; private set; }
+        public int Y { get; private set; }
         public bool IsInitialized { get; private set; }
+
+        public GdiScreenCapture(int x = 0, int y = 0, int width = 0, int height = 0)
+        {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
+        }
 
         private const int SM_CXSCREEN = 0;
         private const int SM_CYSCREEN = 1;
@@ -82,8 +92,13 @@ namespace ITBRecorderAgent.Providers.Video
             {
                 DesktopSecurityManager.TryAttachToInputDesktop();
 
-                Width = GetSystemMetrics(SM_CXSCREEN);
-                Height = GetSystemMetrics(SM_CYSCREEN);
+                if (Width <= 0 || Height <= 0)
+                {
+                    Width = GetSystemMetrics(SM_CXSCREEN);
+                    Height = GetSystemMetrics(SM_CYSCREEN);
+                    X = 0;
+                    Y = 0;
+                }
 
                 if (Width <= 0 || Height <= 0)
                 {
@@ -105,9 +120,9 @@ namespace ITBRecorderAgent.Providers.Video
                 var bmi = new BITMAPINFO();
                 bmi.bmiHeader.biSize = Marshal.SizeOf<BITMAPINFOHEADER>();
                 bmi.bmiHeader.biWidth = Width;
-                bmi.bmiHeader.biHeight = -Height; // Top-down DIB: שורת פיקסלים ראשונה היא עליונה
+                bmi.bmiHeader.biHeight = -Height; // Top-down DIB: first pixel row is top of the screen
                 bmi.bmiHeader.biPlanes = 1;
-                bmi.bmiHeader.biBitCount = 32;     // BGRA32 תואם DXGI
+                bmi.bmiHeader.biBitCount = 32;     // BGRA32 matching DXGI format
                 bmi.bmiHeader.biCompression = 0;   // BI_RGB
 
                 _hBitmap = CreateDIBSection(_memDc, ref bmi, DIB_RGB_COLORS, out _ppvBits, IntPtr.Zero, 0);
@@ -120,7 +135,7 @@ namespace ITBRecorderAgent.Providers.Video
                 _frameBuffer = new byte[Width * Height * 4];
 
                 IsInitialized = true;
-                Logger.Info($"[VIDEO] Resilient GDI Screen Capture initialized successfully: {Width}x{Height}");
+                Logger.Info($"[VIDEO] Resilient GDI Screen Capture initialized successfully: {Width}x{Height} at ({X},{Y})");
             }
             catch (Exception ex)
             {
@@ -130,6 +145,11 @@ namespace ITBRecorderAgent.Providers.Video
             }
         }
 
+        /// <summary>
+        /// Captures the current desktop frame via Win32 BitBlt from the desktop device context into a DIB section.
+        /// </summary>
+        /// <param name="frameData">Outputs reference to the preallocated raw BGRA byte buffer, or null on failure.</param>
+        /// <returns>True if the frame was captured successfully; otherwise, false.</returns>
         public bool TryCaptureFrame(out byte[]? frameData)
         {
             frameData = null;
@@ -140,12 +160,12 @@ namespace ITBRecorderAgent.Providers.Video
 
             try
             {
-                bool bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, 0, 0, SRCCOPY | CAPTUREBLT);
+                bool bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, X, Y, SRCCOPY | CAPTUREBLT);
                 if (!bltSuccess)
                 {
-                    // במקרה של מעבר שולחן עבודה או שגיאה, מנסים לשייך מחדש את הסשן
+                    // If desktop switched (e.g. UAC / Lock Screen) or error occurred, re-attach thread to input desktop and retry
                     DesktopSecurityManager.TryAttachToInputDesktop();
-                    bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, 0, 0, SRCCOPY | CAPTUREBLT);
+                    bltSuccess = BitBlt(_memDc, 0, 0, Width, Height, _desktopDc, X, Y, SRCCOPY | CAPTUREBLT);
                     if (!bltSuccess) return false;
                 }
 

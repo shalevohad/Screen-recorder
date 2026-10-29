@@ -36,7 +36,7 @@ export default function TelemetryModal({ chartData, onClose }) {
                 </div>
 
                 <div className="telemetry-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', justifyContent: 'flex-start' }}>
-                    {/* גרף 1: חומרה (Host CPU vs App CPU & RAM) */}
+                    {/* Chart 1: Hardware Metrics (Host CPU vs App CPU & RAM) */}
                     <LiveTelemetryChart
                         chartData={chartData}
                         activeLayers={activeLayers}
@@ -44,7 +44,7 @@ export default function TelemetryModal({ chartData, onClose }) {
                         type="hardware"
                     />
 
-                    {/* גרף 2: רשת (Total Network vs App Streaming Tx) */}
+                    {/* Chart 2: Network Metrics (Total Network vs App Streaming Tx) */}
                     <LiveTelemetryChart
                         chartData={chartData}
                         activeLayers={activeLayers}

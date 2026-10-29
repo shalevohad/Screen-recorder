@@ -24,10 +24,14 @@ namespace ITBRecorderAgent.Engine
         public int InternalCaptureFps { get; private set; }
 
         private readonly int _baselineFps;
+        private readonly int _screenOffsetX;
+        private readonly int _screenOffsetY;
 
-        public VideoPipeline(int width, int height, int baselineFps)
+        public VideoPipeline(int width, int height, int baselineFps, int screenOffsetX = 0, int screenOffsetY = 0)
         {
             _baselineFps = baselineFps > 0 ? baselineFps : 15;
+            _screenOffsetX = screenOffsetX;
+            _screenOffsetY = screenOffsetY;
             InternalCaptureFps = baselineFps;
             _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(3)
             {
@@ -39,7 +43,7 @@ namespace ITBRecorderAgent.Engine
             int frameSize = width * height * 4;
             _pool = new byte[3][] { new byte[frameSize], new byte[frameSize], new byte[frameSize] };
 
-            Logger.Info($"[WORKER:VIDEO-PIPE] Initialized pipeline. FrameSize: {frameSize / 1024 / 1024.0:F2}MB, Resolution: {width}x{height}, BaselineFps: {baselineFps}");
+            Logger.Info($"[WORKER:VIDEO-PIPE] Initialized pipeline. FrameSize: {frameSize / 1024 / 1024.0:F2}MB, Resolution: {width}x{height}, BaselineFps: {baselineFps}, Offset: ({screenOffsetX},{screenOffsetY})");
         }
 
         public Task StartWriterAsync(FfmpegProcessManager ffmpeg, Action onPipeBroken, Action<long> onBytesSent, CancellationToken ct)
@@ -131,8 +135,8 @@ namespace ITBRecorderAgent.Engine
 
                         Buffer.BlockCopy(raw, 0, buffer, 0, raw.Length);
 
-                        // 1. הזרקת סמן העכבר, חיווי קליקים (L/R) וגלגול
-                        MouseCursorOverlay.DrawMouseToFrame(buffer, width, height);
+                        // 1. Overlay mouse cursor, click rings (Left/Right), and scroll animations
+                        MouseCursorOverlay.DrawMouseToFrame(buffer, width, height, _screenOffsetX, _screenOffsetY);
 
                         if (_channel.Writer.TryWrite(buffer))
                         {

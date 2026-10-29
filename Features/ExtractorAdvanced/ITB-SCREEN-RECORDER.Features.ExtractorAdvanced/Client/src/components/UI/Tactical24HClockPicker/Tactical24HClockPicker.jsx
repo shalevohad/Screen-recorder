@@ -6,7 +6,7 @@ import './Tactical24HClockPicker.scss';
 
 const pad = (n) => String(n).padStart(2, '0');
 
-// 12 המגזרים בשעון אמיתי (30 מעלות לכל שעה: 12 למעלה, 6 למטה)
+// 12 sectors on standard analog clock (30 degrees per hour: 12 top, 6 bottom)
 const CLOCK_HOURS_AM = [
     { label: '00', val: 0, angle: 0 },
     { label: '01', val: 1, angle: 30 },
@@ -37,6 +37,17 @@ const CLOCK_HOURS_PM = [
     { label: '23', val: 23, angle: 330 }
 ];
 
+/**
+ * Tactical 24-hour analog/digital clock picker component with interactive drag hands.
+ * @param {Object} props
+ * @param {string} [props.value='00:00:00'] - Formatted 24-hour time string "HH:MM:SS" or "HH:MM".
+ * @param {Function} [props.onChange] - Callback fired on change: (formattedString, { h, m, s }) => void.
+ * @param {string} [props.label='TIME (24H)'] - Visual label on shelf.
+ * @param {'cyan'|'amber'} [props.accent='cyan'] - Tactical color theme.
+ * @param {boolean} [props.showSeconds=true] - Whether seconds hand and inputs are active.
+ * @param {string} [props.className=''] - Additional CSS classes.
+ * @returns {JSX.Element}
+ */
 export default function Tactical24HClockPicker({
     value = '00:00:00',
     onChange,
@@ -85,7 +96,10 @@ export default function Tactical24HClockPicker({
         }
     };
 
-    // מעבר בין AM (בוקר) ל-PM (ערב)
+    /**
+     * Toggles between AM (00:00-11:59) and PM (12:00-23:59) period.
+     * @param {'AM'|'PM'} targetPeriod
+     */
     const handlePeriodToggle = (targetPeriod) => {
         let newH = h;
         if (targetPeriod === 'AM' && h >= 12) {
@@ -104,7 +118,12 @@ export default function Tactical24HClockPicker({
         }
     };
 
-    // חישוב זווית מדויק מחוגת השעון
+    /**
+     * Calculates time value from pointer event angle relative to clock center.
+     * @param {PointerEvent|MouseEvent} e
+     * @param {'hours'|'minutes'|'seconds'} handType
+     * @returns {number|null} Time integer value or null if element ref missing.
+     */
     const calculateValueFromPointer = useCallback((e, handType) => {
         if (!svgRef.current) return null;
         const rect = svgRef.current.getBoundingClientRect();
@@ -117,14 +136,14 @@ export default function Tactical24HClockPicker({
         if (angleDeg < 0) angleDeg += 360;
 
         if (handType === 'hours') {
-            const step = Math.round(angleDeg / 30) % 12; // 12 עמדות בשעון
+            const step = Math.round(angleDeg / 30) % 12; // 12 hour positions on clock dial
             if (isPm) {
                 return step === 0 ? 12 : step + 12; // 12, 13..23
             }
             return step === 0 ? 0 : step; // 00, 01..11
         }
 
-        // דקות ושניות: 60 שנתות = 6 מעלות ליחידה
+        // Minutes and seconds: 60 perimeter ticks = 6 degrees per unit
         return Math.round(angleDeg / 6) % 60;
     }, [isPm]);
 
@@ -179,14 +198,14 @@ export default function Tactical24HClockPicker({
         };
     }, [activeDragHand, calculateValueFromPointer, updateTimeValue]);
 
-    // זווית מחוג השעות: 30 מעלות לשעה על פני 12 שעות
+    // Hour hand angle: 30 degrees per hour across 12 hours
     const hourHandAngle = useMemo(() => (h % 12) * 30, [h]);
     const minuteHandAngle = useMemo(() => (m % 60) * 6, [m]);
     const secondHandAngle = useMemo(() => (s % 60) * 6, [s]);
 
     const currentDialHours = isPm ? CLOCK_HOURS_PM : CLOCK_HOURS_AM;
 
-    // 60 שנתות היקפיות (תואמות בול לדקות, לשניות ול-12 עמדות השעון)
+    // 60 perimeter ticks (matching minutes, seconds, and 12-hour positions)
     const tickMarks = useMemo(() => {
         const ticks = [];
         for (let i = 0; i < 60; i++) {
@@ -210,12 +229,12 @@ export default function Tactical24HClockPicker({
     return (
         <div className={`tactical-24h-clock-picker ${accent} ${className} ${activeDragHand ? 'is-dragging' : ''}`}>
 
-            {/* מדף עליון: כותרת + בורר AM/PM + שדה 24H */}
+            {/* Top shelf: Title + AM/PM period selector + 24H digital input */}
             <div className="clock-header-shelf">
                 <span className="shelf-label">{label}</span>
 
                 <div className="shelf-controls-group">
-                    {/* בורר AM / PM טקטי */}
+                    {/* Tactical AM / PM selector */}
                     <div className="am-pm-toggle-pill">
                         <button
                             type="button"
@@ -251,7 +270,7 @@ export default function Tactical24HClockPicker({
                 </div>
             </div>
 
-            {/* לוח השעון האנלוגי */}
+            {/* Analog clock dial face */}
             <div className="clock-dial-container">
                 <svg
                     ref={svgRef}
@@ -261,7 +280,7 @@ export default function Tactical24HClockPicker({
                     <circle cx="110" cy="110" r="105" className="dial-background" />
                     <circle cx="110" cy="110" r="88" className="dial-track-ring" />
 
-                    {/* שנתות השעון */}
+                    {/* Clock ticks */}
                     <g className="dial-ticks-layer">
                         {tickMarks.map(t => (
                             <line
@@ -275,7 +294,7 @@ export default function Tactical24HClockPicker({
                         ))}
                     </g>
 
-                    {/* 12 ספרות השעות בחוגה (12 למעלה, 6 למטה - מציגות 24H לפי AM/PM) */}
+                    {/* 12 hour numerals on dial face (12 at top, 6 at bottom - 24H display according to AM/PM) */}
                     {currentDialHours.map(item => {
                         const angleRad = (item.angle - 90) * (Math.PI / 180);
                         const r = 76;
@@ -297,7 +316,7 @@ export default function Tactical24HClockPicker({
                         );
                     })}
 
-                    {/* 1. מחוג שעות (קצר, עבה, מותאם לשעון אמיתי) */}
+                    {/* 1. Hour hand (short, thick) */}
                     <g
                         className={`interactive-hand-group hand-group-hour ${activeDragHand === 'hours' ? 'dragging' : ''}`}
                         transform={`rotate(${hourHandAngle} 110 110)`}
@@ -313,7 +332,7 @@ export default function Tactical24HClockPicker({
                         />
                     </g>
 
-                    {/* 2. מחוג דקות (30 דקות יושב בדיוק למטה מול 6 / 18) */}
+                    {/* 2. Minute hand (30m aligned with 6 o'clock) */}
                     <g
                         className={`interactive-hand-group hand-group-minute ${activeDragHand === 'minutes' ? 'dragging' : ''}`}
                         transform={`rotate(${minuteHandAngle} 110 110)`}
@@ -329,7 +348,7 @@ export default function Tactical24HClockPicker({
                         />
                     </g>
 
-                    {/* 3. מחוג שניות (30 שניות יושב בדיוק למטה מול 6 / 18) */}
+                    {/* 3. Second hand (30s aligned with 6 o'clock) */}
                     {showSeconds && (
                         <g
                             className={`interactive-hand-group hand-group-second ${activeDragHand === 'seconds' ? 'dragging' : ''}`}
@@ -347,7 +366,7 @@ export default function Tactical24HClockPicker({
                         </g>
                     )}
 
-                    {/* ציר מרכז טקטי */}
+                    {/* Tactical center pivot pin */}
                     <circle cx="110" cy="110" r="5.5" className="dial-center-pin" />
                     <circle cx="110" cy="110" r="2.2" className="dial-center-dot" />
                 </svg>

@@ -188,6 +188,19 @@ public class CatalogRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task StationRoles_SwapStationRoleAliasesAsync_ExchangesAliasesCleanly()
+    {
+        await _repository.SetStationRoleAliasAsync("station-alpha", "Role Alpha");
+        await _repository.SetStationRoleAliasAsync("station-beta", "Role Beta");
+
+        await _repository.SwapStationRoleAliasesAsync("station-alpha", "station-beta");
+
+        var roles = await _repository.GetAllStationRoleAliasesAsync();
+        Assert.Equal("Role Beta", roles["station-alpha"]);
+        Assert.Equal("Role Alpha", roles["station-beta"]);
+    }
+
+    [Fact]
     public async Task SystemConfigurations_SetAndGet_PersistsValue()
     {
         await _repository.SetConfigurationAsync("ThemePreference", "{\"mode\":\"tactical_dark\"}");

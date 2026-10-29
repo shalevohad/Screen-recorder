@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineTrack.scss
 // ==========================================
 
@@ -111,12 +111,31 @@
             flex-shrink: 0;
         }
 
-        .station-label {
+        .station-sidebar-labels {
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            font-size: 11.5px;
-            font-family: var(--font-ui, sans-serif);
+            min-width: 0;
+
+            .station-label {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 11.5px;
+                font-weight: 700;
+                font-family: var(--font-ui, sans-serif);
+                line-height: 1.2;
+            }
+
+            .station-physical-sublabel {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-size: 9.5px;
+                font-family: 'JetBrains Mono', monospace;
+                color: var(--text-muted, #64748B);
+                line-height: 1;
+            }
         }
     }
 
@@ -142,7 +161,7 @@
                 align-items: center;
                 justify-content: center;
                 overflow: hidden;
-                /* עמעום פערי האות הרגילים כדי שלא יבלעו את המקטעים הירוקים */
+                /* Dim station-specific signal drop gaps so green recorded blocks remain prominent */
                 &.gap-station-signal {
                     background-color: rgba(225, 29, 72, 0.07);
                     border-left: 1px solid rgba(244, 63, 94, 0.35);
@@ -184,7 +203,7 @@
                         }
                     }
                 }
-                /* פער גלובלי שמדלג בחיתוך (צהוב זוהר עם מספריים) */
+                /* Global synchronized gap that is skipped during extraction (amber dashed with scissors) */
                 &.gap-global-skipped {
                     background-color: rgba(245, 158, 11, 0.15);
                     border-left: 1px dashed rgba(245, 158, 11, 0.8);
@@ -269,7 +288,7 @@
                 }
             }
         }
-        /* שכבת ההקלטה הירוקה: אכיפת רוחב מינימלי וזוהר כפול */
+        /* Green recorded data segment: enforce minimum visible width and glow */
         .data-presence-layer {
             position: absolute;
             bottom: 0;
@@ -282,7 +301,7 @@
                 position: absolute;
                 top: 0;
                 bottom: 0;
-                min-width: 4px !important; // מונע בליעת מקטעים קצרים
+                min-width: 4px !important; // Enforce minimum width to prevent disappearance of short segments
                 background-color: #10B981;
                 box-shadow: 0 0 10px #10B981, 0 0 18px rgba(52, 211, 153, 0.85);
                 border: 1px solid #6EE7B7;

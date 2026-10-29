@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/index.js
 // ==========================================
 import React from 'react';
@@ -10,7 +10,9 @@ import './ExtractorAdvanced.scss';
 const STYLE_ID = 'itb-extractor-advanced-theme';
 const GLOBAL_MONITOR_CONTAINER_ID = 'itb-global-export-job-monitor-root';
 
-// הזרקה אוטונומית של ה-CSS ל-Head של הדפדפן
+/**
+ * Injects module stylesheet into the document head if not already present.
+ */
 function injectStyles() {
     if (typeof document === 'undefined') return;
 
@@ -24,13 +26,12 @@ function injectStyles() {
     }
 }
 
-// הרצה בעת הייבוא הראשוני
+// Execute on initial module load
 injectStyles();
 
 /**
- * 💡 הזרקה גלובלית חד-פעמית של מנהל המשימות ל-DOM הראשי של המערכת.
- * מוצמד ישירות ל-document.body כך שה-Chip והמגירה ימשיכו לצוף ולפעול
- * גם כאשר המערכת מפרקת את טאב ה-Advanced במעבר למסכים אחרים.
+ * Ensures global single-instance mounting of the ExportJobMonitor in document.body.
+ * Keeps export status HUD floating even across tab navigation.
  */
 (function ensureGlobalJobMonitorHost() {
     if (typeof document === 'undefined') return;
@@ -51,7 +52,11 @@ injectStyles();
 })();
 
 /**
- * נקודת הכניסה המחייבת של ה-Widget Loader של המערכת
+ * Mounts the ExtractorAdvancedStudio widget into the specified container element.
+ * 
+ * @param {HTMLElement} container - DOM host element.
+ * @param {Object} [props={}] - Studio configuration props.
+ * @returns {() => void} Unmount cleanup callback.
  */
 export function mount(container, props = {}) {
     injectStyles();

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
@@ -14,11 +14,13 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         private DateTime _lastCpuSampleTime;
         private TimeSpan _lastTotalProcessorTime;
 
-        // שימוש ב-StrongBox למניעת Boxing/Unboxing ופעולות אטומיות מהירות
+        // Atomic counter references avoiding boxing/unboxing overhead
         private long _mediaBytesIngress;
         private long _telemetryBytesIngress;
 
-        // אירוע שמוקפץ בכל שנייה עם הנתונים המעובדים (ללא תלות ב-I/O)
+        /// <summary>
+        /// Event fired once per second delivering real-time telemetry metrics decoupled from disk I/O.
+        /// </summary>
         public event Action<MetricsSnapshot>? OnMetricsSampled;
 
         public SystemMetricsProfiler()
@@ -28,7 +30,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             _lastCpuSampleTime = DateTime.UtcNow;
             _lastTotalProcessorTime = _currentProcess.TotalProcessorTime;
 
-            // טיימר מדויק הפועל ב-Thread נפרד
+            // Monotonic high-resolution sampling timer running on thread-pool
             _sampleTimer = new Timer(CollectMetrics, null, 1000, 1000);
         }
 
@@ -41,15 +43,15 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             double elapsedSeconds = (now - _lastCpuSampleTime).TotalSeconds;
             if (elapsedSeconds <= 0) return;
 
-            // קריאה ואיפוס אטומי של המונים
+            // Atomic read and reset of ingress byte accumulators
             long mediaBytes = Interlocked.Exchange(ref _mediaBytesIngress, 0);
             long telemBytes = Interlocked.Exchange(ref _telemetryBytesIngress, 0);
 
-            // חישוב קצבים ב-Mbps ו-Kbps
+            // Compute bandwidth rates in Mbps and Kbps
             double mediaMbps = (mediaBytes * 8.0) / (elapsedSeconds * 1_000_000.0);
             double telemKbps = (telemBytes * 8.0) / (elapsedSeconds * 1_000.0);
 
-            // חישוב CPU פסיבי
+            // Passive process CPU utilization calculation
             TimeSpan currentTotalCpu = _currentProcess.TotalProcessorTime;
             double cpuUsedMs = (currentTotalCpu - _lastTotalProcessorTime).TotalMilliseconds;
             double totalPassedMs = elapsedSeconds * 1000.0 * _processorCount;

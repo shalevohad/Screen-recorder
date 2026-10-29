@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ITB_SCREEN_RECORDER.Diagnostics</RootNamespace>
+    <AssemblyName>itb-diagnostics</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.46</Version>
+    <Description>Enterprise Forensic Log Diagnostic &amp; RCA Tool for ITB-SCREEN-RECORDER</Description>
+  </PropertyGroup>
+
+</Project>

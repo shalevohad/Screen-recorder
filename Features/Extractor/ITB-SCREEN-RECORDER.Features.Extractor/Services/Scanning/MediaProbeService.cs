@@ -122,6 +122,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
         }
 
+        /// <summary>
+        /// Probes media container and stream attributes directly using an external ffprobe process.
+        /// </summary>
+        /// <param name="filePath">Target video chunk file path.</param>
+        /// <param name="stationId">Target station identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Extracted station metadata (width, height, fps, sample rate, channels, audio existence).</returns>
         public async Task<ProbedStationMetadata> ProbeMediaFileDirectlyAsync(string filePath, string stationId, CancellationToken ct = default)
         {
             var meta = new ProbedStationMetadata();
@@ -132,7 +139,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 FileName = ffprobePath,
                 Arguments = $"-v error -show_streams -show_format -of json \"{filePath.Replace('\\', '/')}\"",
                 RedirectStandardOutput = true,
-                RedirectStandardError = false, // 💡 חובה false כדי למנוע deadlock ב-OS pipe buffer כש-ffprobe רושם אזהרות
+                RedirectStandardError = false, // Critical: must be false to prevent OS pipe buffer deadlocks when ffprobe writes warnings
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -146,7 +153,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
 
-                // 💡 קריאה חסכונית בזיכרון (Stream-based) ללא StringBuilder עם הגבלת זמן למניעת תקיעות
+                // Memory-efficient stream parsing (stream-based JSON parsing without intermediate StringBuilder)
                 using var doc = await JsonDocument.ParseAsync(proc.StandardOutput.BaseStream, default, timeoutCts.Token);
                 await proc.WaitForExitAsync(timeoutCts.Token);
 

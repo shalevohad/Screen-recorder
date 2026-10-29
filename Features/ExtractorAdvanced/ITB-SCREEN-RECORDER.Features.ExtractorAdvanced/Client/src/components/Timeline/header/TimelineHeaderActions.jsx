@@ -22,7 +22,7 @@ export default function TimelineHeaderActions({
 }) {
     const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
 
-    // מחזור מעבר בין 3 המצבים בלחיצה
+    // Cycles between 3 keystroke display modes on button click (OFF -> BURN_IN -> CAPTION)
     const handleCycleKeystrokeMode = () => {
         if (!onChangeKeystrokeMode) return;
         if (normalizedMode === 'NONE' || normalizedMode === 'OFF') onChangeKeystrokeMode('BURN_IN');
@@ -40,7 +40,7 @@ export default function TimelineHeaderActions({
 
     return (
         <div className="timeline-viewport-actions-group">
-            {/* 💡 כפתור טקטי תלת-מצבי לשליטה על ה-Keystroke Preview & Export Mode */}
+            {/* Tactical tri-state toggle for Keystroke Preview & Export Mode */}
             {onChangeKeystrokeMode && (
                 <button
                     type="button"
@@ -56,7 +56,7 @@ export default function TimelineHeaderActions({
                 </button>
             )}
 
-            {/* 💡 כפתור טקטי להצגה/הסתרה של שנתות ה-Keystrokes בסרגל (כבוי כברירת מחדל) */}
+            {/* Tactical toggle to show/hide Keystroke event ticks on Timeline Ruler */}
             {onToggleRulerKeystrokes && (
                 <button
                     type="button"

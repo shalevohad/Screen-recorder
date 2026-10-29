@@ -28,10 +28,17 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             _logger = logger;
         }
 
-        // 💡 קבלת נתוני הדגימה ישירות מבחוץ ללא צורך ב-IMediaProbeService (שובר את התלות המעגלית)
+        /// <summary>
+        /// Generates or retrieves a cached dummy video using sample file properties, defaulting to 1080p30 with audio.
+        /// Breaks circular dependency with IMediaProbeService.
+        /// </summary>
+        /// <param name="sampleFilePath">Optional sample file path for parameter resolution.</param>
+        /// <param name="durationSeconds">Duration of dummy video to generate in seconds (clamped to 5s).</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Path to the generated dummy MP4 file.</returns>
         public async Task<string> GetOrGenerateDummyVideoAsync(string sampleFilePath, double durationSeconds = 5, CancellationToken ct = default)
         {
-            // כברירת מחדל מייצר לפי 1080p30 אלא אם כן ייקרא בהעמסה המפורטת
+            // Default to 1080p30 unless explicit resolution is requested
             return await GetOrCreateDummyVideoAsync(durationSeconds, 1920, 1080, 30.0, true, ct);
         }
 
@@ -51,9 +58,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             string tempDir = Path.GetTempPath();
             string outPath = Path.Combine(tempDir, $"dummy_{cacheKey}_{Guid.NewGuid():N}.mp4");
 
-            // 💡 הגבלת משך ה-Dummy המיוצר ל-5 שניות בלבד!
-            // ה-Concat Demuxer משכפל מקטע זה בריצת לולאה פשוטה ב-manifest,
-            // מה שמאפשר קידוד מיידי (50ms) במקום להמתין 15-20 דקות ל-3600 שניות מיותרות שתוקעות את הסנכרון ב-0%.
+            // Rule: Cap the generated master dummy video asset duration to 5 seconds max.
+            // The FFmpeg concat demuxer can loop or repeat this 5-second template in the manifest to fill any gap,
+            // enabling near-instant (50ms) encoding rather than generating massive hour-long dummy files that stall exports.
             double safeDuration = Math.Clamp(durationSeconds, 1.0, 5.0);
 
             await GenerateProceduralDummyAsync(outPath, w.ToString(), h.ToString(), fpsStr, safeDuration, hasAudio, ct);

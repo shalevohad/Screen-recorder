@@ -1,11 +1,14 @@
-﻿using ITB_SCREEN_RECORDER.Core.Plugins;
+using ITB_SCREEN_RECORDER.Core.Plugins;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor
 {
+    /// <summary>
+    /// Feature plugin module descriptor for the Extractor UI widget and dashboard integration.
+    /// </summary>
     public class ExtractorModule : FeatureModuleBase
     {
-        // המאפיינים Id, Title, ו-SupersedesIds נשאבים כעת אוטומטית 
-        // מקובץ ה-feature.json המוטמע ב-DLL דרך מחלקת הבסיס.
+        // Note: The Id, Title, and SupersedesIds properties are loaded automatically
+        // from the embedded feature.json manifest via the FeatureModuleBase class.
 
         public override string IconName => "Film";
         public override string ScriptUrl => "/extractor/extractor.widget.js";
@@ -16,6 +19,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
         public override int MinWidth => 3;
         public override int MinHeight => 4;
 
-        // הערה: IsEnabled כבר מוגדר כ-true ב-FeatureModuleBase, לכן אין חובה לדרוס אותו כאן.
+        // Note: IsEnabled defaults to true in FeatureModuleBase.
     }
 }

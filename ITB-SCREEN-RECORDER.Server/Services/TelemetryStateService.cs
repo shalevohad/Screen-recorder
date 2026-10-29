@@ -25,17 +25,20 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         private readonly StationOverridesService _overridesService;
         private readonly CustomTabsService _tabsService;
         private readonly OfflineSyncManager _syncManager;
+        private readonly MediaMtxApiClient? _mediaMtxApi;
 
         public TelemetryStateService(
             IOptionsMonitor<SystemConfig> configMonitor,
             StationOverridesService overridesService,
             CustomTabsService tabsService,
-            OfflineSyncManager syncManager)
+            OfflineSyncManager syncManager,
+            MediaMtxApiClient? mediaMtxApi = null)
         {
             _configMonitor = configMonitor;
             _overridesService = overridesService;
             _tabsService = tabsService;
             _syncManager = syncManager;
+            _mediaMtxApi = mediaMtxApi;
         }
 
         public async Task<AgentHeartbeatResponse> ProcessHeartbeatAsync(AgentTelemetryReport report, string requestHost = null)
@@ -47,19 +50,24 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             string key = report.Hostname.ToUpperInvariant();
 
-            // תיקון סעיף 4: כיבוד הגדרת AutoStartRecordingOnLaunch ומניעת הקלטה כפויה
-            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsStreaming || report.AutoStartRecordingOnLaunch);
+            // Workstations always stream live video when online (24/7 Continuous Live Surveillance)
+            bool shouldStream = true;
 
-            bool desiredStreamState = _agentDesiredStates[key];
+            // Desired recording state governance (Record vs Monitor-Only)
+            _agentDesiredStates.CustomGetOrAdd(key, () => report.IsRecording || report.RecordingStartedAtUtc.HasValue || report.AutoStartRecordingOnLaunch);
 
+            bool isRecordingDesired = _agentDesiredStates[key];
+            report.IsRecording = isRecordingDesired;
+
+            // Station receives continuous streaming command while not currently streaming
             ServerCommand commandToSend = ServerCommand.Standby;
-            if (desiredStreamState != report.IsStreaming)
+            if (!report.IsStreaming)
             {
-                commandToSend = desiredStreamState ? ServerCommand.StartStream : ServerCommand.StopStream;
+                commandToSend = ServerCommand.StartStream;
             }
 
-            // תיקון סעיף REC Timer: שימור חותמת זמן ההקלטה המקורית ומניעת איפוסה בריענונים
-            if (report.IsStreaming)
+            // Manage recording duration timer for actively recording stations only
+            if (report.IsRecording)
             {
                 if (!report.RecordingStartedAtUtc.HasValue)
                 {
@@ -78,8 +86,13 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 report.RecordingStartedAtUtc = null;
             }
 
-            // עדכון חותמת הזמן על פי שעון השרת הנוכחי למניעת בעיות Clock Skew בין עמדות הקצה לשרת
+            // Stamp server UTC time to prevent endpoint clock skew issues between agents and server
             report.Timestamp = DateTime.UtcNow;
+
+            if (report.DisplayTopology == null && _latestReports.TryGetValue(key, out var prevReport) && prevReport.DisplayTopology != null)
+            {
+                report.DisplayTopology = prevReport.DisplayTopology;
+            }
 
             _latestReports[key] = report;
 
@@ -89,15 +102,16 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     ? _configMonitor.CurrentValue.Discovery.VirtualIp
                     : "127.0.0.1");
 
-            // מדרג מדיניות (Overrides -> Tab Settings -> Global Defaults)
+            // Policy hierarchy resolution (Overrides -> Tab Settings -> Global Defaults)
             var currentPolicy = await GetAgentPolicyAsync(report.Hostname, hostToUse);
 
-            // ניהול תור העלאת באפרים מאופליין
+            // Manage offline buffer draining and upload queue
             var bufferAction = _syncManager.GetSyncCommand(report.Hostname, report.OfflineFilesTotalSizeMb);
 
             return new AgentHeartbeatResponse
             {
-                ShouldStream = desiredStreamState,
+                ShouldStream = shouldStream,
+                ShouldRecord = isRecordingDesired,
                 Command = commandToSend,
                 ServerUtcTime = DateTime.UtcNow,
                 Policy = currentPolicy,
@@ -105,22 +119,42 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             };
         }
 
-        public void SetAgentStreamState(string hostname, bool shouldStream)
+        public void SetAgentStreamState(string hostname, bool shouldRecord)
         {
             if (string.IsNullOrWhiteSpace(hostname)) return;
             string key = hostname.ToUpperInvariant();
-            _agentDesiredStates[key] = shouldStream;
+            _agentDesiredStates[key] = shouldRecord;
 
             if (_latestReports.TryGetValue(key, out var report))
             {
-                if (shouldStream && !report.RecordingStartedAtUtc.HasValue)
+                report.IsRecording = shouldRecord;
+                if (shouldRecord && !report.RecordingStartedAtUtc.HasValue)
                 {
                     report.RecordingStartedAtUtc = DateTime.UtcNow;
                 }
-                else if (!shouldStream)
+                else if (!shouldRecord)
                 {
                     report.RecordingStartedAtUtc = null;
                 }
+            }
+
+            if (_mediaMtxApi != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        int apiPort = _configMonitor.CurrentValue.MediaMtx.ApiPort;
+                        string cleanHost = Uri.EscapeDataString(hostname.Replace(" ", "_"));
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, cleanHost, shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-0", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-1", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-2", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                        await _mediaMtxApi.SetPathRecordingStateAsync(apiPort, $"live/{cleanHost}/mon-3", shouldRecord, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch { }
+                });
             }
         }
 
@@ -134,11 +168,11 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             var config = _configMonitor.CurrentValue;
             int rtmpPort = config.MediaMtx?.RtmpPort > 0 ? config.MediaMtx.RtmpPort : 19350;
 
-            // 1. ברירות מחדל גלובליות דינמיות מתוך SystemConfig (מתעדכן בלייב)
+            // 1. Dynamic global defaults from live SystemConfig
             int fps = config.DefaultTargetFps >= 10 && config.DefaultTargetFps <= 60 ? config.DefaultTargetFps : 20;
             string bitrate = !string.IsNullOrWhiteSpace(config.DefaultVideoBitrate) ? config.DefaultVideoBitrate : "3000k";
 
-            // 2. בדיקת מדיניות לפי Tab (אם העמדה משויכת ל-Tab ייעודי)
+            // 2. Tab-assigned policy (if station belongs to a specific non-default tab)
             if (_tabsService != null)
             {
                 var allTabs = await _tabsService.GetAllTabsAsync();
@@ -156,7 +190,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 }
             }
 
-            // 3. דריסה פרטנית לתחנה (העדיפות הגבוהה ביותר)
+            // 3. Station-level specific override (highest priority)
             if (_overridesService != null)
             {
                 var overrides = await _overridesService.GetAllAsync();

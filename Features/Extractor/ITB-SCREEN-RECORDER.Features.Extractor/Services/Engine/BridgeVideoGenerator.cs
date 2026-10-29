@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/BridgeVideoGenerator.cs
 // ==========================================
 using System;
@@ -12,6 +12,10 @@ using Microsoft.Extensions.Logging;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
+    /// <summary>
+    /// Generates bridge videos (e.g. synthetic "No Signal" test pattern frames with silent audio)
+    /// to fill recording gaps and maintain timeline synchronization across multi-station exports.
+    /// </summary>
     public class BridgeVideoGenerator : IBridgeVideoGenerator
     {
         private readonly IFfmpegBinaryResolver _binaryResolver;
@@ -28,6 +32,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// Generates a synthetic MP4 video bridge matching the target station's resolution, frame rate, and audio properties.
+        /// </summary>
+        /// <param name="durationSeconds">Duration of the gap in seconds.</param>
+        /// <param name="probe">Target station metadata (resolution, fps, audio channels and sample rate).</param>
+        /// <param name="tempDir">Temporary directory to write the generated bridge MP4 file.</param>
+        /// <param name="forceIncludeAudio">Whether to generate a silent audio track matching the station's audio stream.</param>
+        /// <param name="ct">Cancellation token for aborting generation.</param>
+        /// <returns>The file path to the generated bridge video file.</returns>
         public async Task<string> GenerateMatchedBridgeVideoAsync(
             double durationSeconds,
             ProbedStationMetadata probe,
@@ -46,7 +59,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             try
             {
-                // 1. שימוש בשקופית הגרפית במקום במסך שחור
+                // 1. Utilize graphic "No Signal" slate instead of blank black screen
                 byte[] noSignalBytes = await _patternService.GetOrCreateNoSignalFrameAsync(ffmpegPath, ct);
 
                 string videoInputArgs;
@@ -66,7 +79,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     videoFilter = "-pix_fmt yuv420p";
                 }
 
-                // 2. הפקת וידאו עם שקט אודיו מסונכרן
+                // 2. Synthesize video with synchronized silent audio if required
                 string args;
                 if (forceIncludeAudio)
                 {

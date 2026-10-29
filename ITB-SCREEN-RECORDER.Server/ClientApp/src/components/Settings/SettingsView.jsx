@@ -2,6 +2,7 @@
 // File: Client/src/components/Settings/SettingsView.jsx
 // ==========================================
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import SystemOverviewTab from './tabs/SystemOverviewTab';
 import AgentOperationsTab from './tabs/AgentOperationsTab';
 import StorageRetentionTab from './tabs/StorageRetentionTab';
 import StationOverridesTab from './tabs/StationOverridesTab';
@@ -23,9 +24,11 @@ import './styles/_securityAccessTab.scss';
 export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     const { isSystemRoot, hasPermission } = useAuth();
 
-    // הגדרת רשימת הטאבים המותרים לפי הרשאות המשתמש (RBAC Filtering)
+    // Define permitted tabs list based on user RBAC permissions
     const permittedTabs = useMemo(() => {
         const list = [];
+        // Primary Overview & Health tab is always available to all authorized users
+        list.push({ id: 'overview', label: 'Health & Status', icon: 'overview' });
         if (isSystemRoot || hasPermission('settings.agents')) {
             list.push({ id: 'agent', label: 'Agent Operations', icon: 'agent' });
         }
@@ -48,13 +51,13 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
         return list;
     }, [isSystemRoot, hasPermission]);
 
-    const [activeTab, setActiveTab] = useState(() => permittedTabs[0]?.id || 'agent');
+    const [activeTab, setActiveTab] = useState(() => 'overview');
     const [form, setForm] = useState(null);
     const [stations, setStations] = useState([]);
     const [overrides, setOverrides] = useState({});
     const [status, setStatus] = useState({ loading: true, saving: false, error: null, saved: false });
 
-    // וידוא שהטאב הפעיל מורשה למשתמש; אם לא, נעבור לטאב המורשה הראשון
+    // Ensure active tab is permitted for user; if not, switch to first permitted tab
     useEffect(() => {
         if (permittedTabs.length > 0 && !permittedTabs.some(t => t.id === activeTab)) {
             setActiveTab(permittedTabs[0].id);
@@ -175,7 +178,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
         <div className="settings-hub-canvas full-page-hub" dir="ltr">
             <div className="settings-hub-header">
                 <div className="hub-header-left">
-                    {/* כפתור חזרה לשער המערכות (PORTAL) */}
+                    {/* Return to operational systems portal hub button */}
                     <button type="button" className="btn-back-dashboard" onClick={onReturnToPortal} title="Return to Enterprise Portal Hub">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -187,7 +190,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                     </button>
                     <div className="hub-title-stack">
                         <h2>SYSTEM SETTINGS & FLEET ADMINISTRATION</h2>
-                        <span className="hub-subtitle">Centralized C2 Configuration • RBAC Security • Fleet Tuning</span>
+                        <span className="hub-subtitle">Centralized C2 Configuration � RBAC Security � Fleet Tuning</span>
                     </div>
                 </div>
 
@@ -206,6 +209,11 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                             className={`dock-tab-pill ${activeTab === tab.id ? 'active' : ''}`}
                             onClick={() => setActiveTab(tab.id)}
                         >
+                            {tab.id === 'overview' && (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="tab-glyph">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                                </svg>
+                            )}
                             {tab.id === 'agent' && (
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="tab-glyph">
                                     <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -264,19 +272,27 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
 
             <div className="settings-hub-workspace">
                 {status.loading ? (
-                    <div className="settings-loader-box">Loading configuration parameters…</div>
+                    <div className="settings-loader-box">Loading configuration parameters�</div>
                 ) : permittedTabs.length === 0 ? (
                     <div className="settings-loader-box" style={{ color: '#F87171' }}>
                         Access Restricted: Your active account does not have permission to view any settings tabs.
                     </div>
                 ) : (
                     <div className="workspace-inner-content">
+                        {activeTab === 'overview' && (
+                            <SystemOverviewTab
+                                stations={stations}
+                                form={form}
+                                onSelectTab={(tabId) => setActiveTab(tabId)}
+                                onReturnToPortal={onReturnToPortal}
+                            />
+                        )}
                         {activeTab === 'agent' && form && (
                             <form id="globalSettingsForm" onSubmit={handleSaveGlobalConfig}>
                                 <AgentOperationsTab form={form} updateField={updateField} />
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>
-                                        {status.saving ? 'Saving Changes…' : 'Save Agent Operations'}
+                                        {status.saving ? 'Saving Changes�' : 'Save Agent Operations'}
                                     </button>
                                 </div>
                             </form>
@@ -291,7 +307,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                                 />
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>
-                                        {status.saving ? 'Saving Changes…' : 'Save Storage Configuration'}
+                                        {status.saving ? 'Saving Changes�' : 'Save Storage Configuration'}
                                     </button>
                                 </div>
                             </form>
@@ -326,7 +342,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                                 />
                                 <div className="hub-footer-actions">
                                     <button type="submit" className="btn-save-global" disabled={status.saving}>
-                                        {status.saving ? 'Saving Changes…' : 'Save System & Engine Configuration'}
+                                        {status.saving ? 'Saving Changes�' : 'Save System & Engine Configuration'}
                                     </button>
                                 </div>
                             </form>

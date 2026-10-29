@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/eslint.config.js
 // ==========================================
 import js from '@eslint/js';
@@ -47,18 +47,18 @@ export default [
             },
         },
         rules: {
-            // חוקי ליבה תקניים של React Hooks
+            // Standard core React Hooks rules
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'warn',
 
-            // ביטול כללי React Compiler שאינם תואמים את תבניות ה-Store וה-Effects בפרויקט
+            // Disable React Compiler rules that are incompatible with custom stores and effects
             'react-hooks/set-state-in-effect': 'off',
             'react-hooks/refs': 'off',
             'react-hooks/purity': 'off',
             'react-hooks/preserve-manual-memoization': 'off',
             'react-hooks/immutability': 'off',
 
-            // התעלמות מייבוא React בלתי משומש (React 17+ JSX Transform) ופרמטרים עם _
+            // Ignore unused React import (React 17+ JSX Transform) and variables prefixed with underscore (_)
             'no-unused-vars': [
                 'warn',
                 {

@@ -9,10 +9,13 @@ export default function SearchShelf({
     handleClearFilter,
     currentTabFilter,
     setFilterForTab,
-    resultCount,
-    hideOffline,
-    onToggleHideOffline
+    monitoredSubFilter = 'ALL',
+    setMonitoredSubFilter,
+    monitoredCounts,
+    resultCount
 }) {
+    const isMonitoredActive = currentTabFilter === 'MONITORED' || currentTabFilter === 'IDLE';
+
     return (
         <div className={`fleet-search-shelf ${isSearchOpen ? 'is-open' : ''}`}>
             <div className="search-shelf-inner">
@@ -38,20 +41,48 @@ export default function SearchShelf({
                     <button className={currentTabFilter === 'ALL' ? 'active' : ''} onClick={() => setFilterForTab('ALL')}>ALL</button>
                     <button className={currentTabFilter === 'ONLINE' ? 'active' : ''} onClick={() => setFilterForTab('ONLINE')}>ONLINE</button>
                     <button className={currentTabFilter === 'RECORDING' ? 'active' : ''} onClick={() => setFilterForTab('RECORDING')}>REC</button>
-                    <button className={currentTabFilter === 'IDLE' ? 'active' : ''} onClick={() => setFilterForTab('IDLE')}>IDLE</button>
+                    <button
+                        className={isMonitoredActive ? 'active' : ''}
+                        onClick={() => setFilterForTab('MONITORED')}
+                        title="Workstations online but not currently recording"
+                    >
+                        MONITORED
+                        {monitoredCounts?.total > 0 && <span className="filter-pill-count">{monitoredCounts.total}</span>}
+                    </button>
                     <button className={currentTabFilter === 'OFFLINE' ? 'active' : ''} onClick={() => setFilterForTab('OFFLINE')}>OFFLINE</button>
                 </div>
 
-                {onToggleHideOffline && (
-                    <button
-                        type="button"
-                        className={`filter-chip-offline-toggle ${!hideOffline ? 'show-offline' : ''}`}
-                        onClick={onToggleHideOffline}
-                        title={hideOffline ? "Offline stations are currently hidden. Click to show all stations including offline." : "Offline stations are visible. Click to hide offline stations."}
-                    >
-                        <span className="dot-indicator" />
-                        <span>{hideOffline ? "SHOW OFFLINE" : "HIDE OFFLINE"}</span>
-                    </button>
+                {isMonitoredActive && (
+                    <div className="monitored-sub-filters">
+                        <span className="sub-filter-divider">/</span>
+                        <button
+                            type="button"
+                            className={`sub-filter-btn ${monitoredSubFilter === 'ALL' ? 'active' : ''}`}
+                            onClick={() => setMonitoredSubFilter?.('ALL')}
+                            title="Show all monitored workstations"
+                        >
+                            ALL
+                            {monitoredCounts?.total > 0 && <span className="sub-badge">{monitoredCounts.total}</span>}
+                        </button>
+                        <button
+                            type="button"
+                            className={`sub-filter-btn alert-btn ${monitoredSubFilter === 'NOT_SNOOZED' ? 'active' : ''}`}
+                            onClick={() => setMonitoredSubFilter?.('NOT_SNOOZED')}
+                            title="Show monitored workstations with active unrecorded alerts (not snoozed)"
+                        >
+                            ⚠️ NOT SNOOZED
+                            {monitoredCounts?.notSnoozed > 0 && <span className="sub-badge alert">{monitoredCounts.notSnoozed}</span>}
+                        </button>
+                        <button
+                            type="button"
+                            className={`sub-filter-btn snooze-btn ${monitoredSubFilter === 'SNOOZED' ? 'active' : ''}`}
+                            onClick={() => setMonitoredSubFilter?.('SNOOZED')}
+                            title="Show monitored workstations with postponed alerts (snoozed)"
+                        >
+                            ⏱ SNOOZED
+                            {monitoredCounts?.snoozed > 0 && <span className="sub-badge snooze">{monitoredCounts.snoozed}</span>}
+                        </button>
+                    </div>
                 )}
 
                 <div className="search-actions-group">

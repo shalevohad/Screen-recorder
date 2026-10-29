@@ -167,7 +167,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                 }
                 catch (DllNotFoundException)
                 {
-                    // libXtst חסר - מודיעים וממשיכים ל-Polling דרך libX11 בלבד
+                    // libXtst is missing: log informative message and fall back to polling via libX11
                     Logger.Info("[OVERLAY:MOUSE] libXtst.so.6 not found. Falling back to XQueryPointer polling for mouse click detection.");
                     recordStarted = false;
                 }
@@ -210,7 +210,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
             }
         }
 
-        public void DrawMouseToFrame(byte[] frameBuffer, int width, int height)
+        public void DrawMouseToFrame(byte[] frameBuffer, int width, int height, int screenOffsetX = 0, int screenOffsetY = 0)
         {
             if (!_isFeatureEnabled) return;
 
@@ -219,9 +219,9 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                 Initialize();
                 if (!_isFeatureEnabled) return;
 
-                MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height);
-                bool isCursorBright = DrawX11CursorSafe(frameBuffer, width, height);
-                MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, isCursorBright);
+                MouseVisualRasterizer.RenderRingsAndScroll(frameBuffer, width, height, screenOffsetX, screenOffsetY);
+                bool isCursorBright = DrawX11CursorSafe(frameBuffer, width, height, screenOffsetX, screenOffsetY);
+                MouseVisualRasterizer.RenderClickBadges(frameBuffer, width, height, screenOffsetX, screenOffsetY, isCursorBright);
             }
             catch (DllNotFoundException ex)
             {
@@ -233,7 +233,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
             }
         }
 
-        private bool DrawX11CursorSafe(byte[] frameBuffer, int width, int height)
+        private bool DrawX11CursorSafe(byte[] frameBuffer, int width, int height, int screenOffsetX, int screenOffsetY)
         {
             if (_renderDisplay == IntPtr.Zero || !_isFeatureEnabled) return true;
 
@@ -316,8 +316,17 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Linux
                     float scale = MouseVisualRasterizer.GetCurrentCursorScale();
                     int drawW = (int)(curW * scale);
                     int drawH = (int)(curH * scale);
-                    int startX = cur.x - (int)(cur.xhot * scale);
-                    int startY = cur.y - (int)(cur.yhot * scale);
+
+                    int localX = cur.x - screenOffsetX;
+                    int localY = cur.y - screenOffsetY;
+
+                    if (localX < -128 || localX >= width + 128 || localY < -128 || localY >= height + 128)
+                    {
+                        return true;
+                    }
+
+                    int startX = localX - (int)(cur.xhot * scale);
+                    int startY = localY - (int)(cur.yhot * scale);
 
                     if (isIBeam)
                     {

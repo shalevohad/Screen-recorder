@@ -8,3 +8,5 @@ This repository is governed by the core guidelines documented in [AGENTS.md](fil
 3. **Hardware Acceleration**: Always prioritize hardware encoders (NVENC -> Intel QuickSync QSV) over CPU software fallback.
 4. **Non-Locking Streams**: Open video and log files with `FileShare.ReadWrite | FileShare.Delete` to prevent locking actively recording streams.
 5. **UI & Styling**: Use the tactical NOC design system defined in [ui_ux_design_specification.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/Agents/ui_ux_design_specification.md).
+6. **Air-Gapped & Isolated Environment**: NEVER use external internet URLs, Google Fonts, remote CDNs, or external APIs in code, styles, or templates. The entire platform must operate 100% self-contained and offline.
+7. **Continuous System Book Sync**: Always keep [SYSTEM_BOOK.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/SYSTEM_BOOK.md) updated whenever code or architecture evolves, as governed by [.agents/rules/continuous-system-book-sync.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/.agents/rules/continuous-system-book-sync.md).

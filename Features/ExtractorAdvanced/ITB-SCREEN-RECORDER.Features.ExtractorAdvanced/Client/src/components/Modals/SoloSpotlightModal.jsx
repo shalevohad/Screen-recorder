@@ -23,6 +23,17 @@ const formatCutDurationSMPTE = (durationMs, fps = 30) => {
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(frames)}`;
 };
 
+/**
+ * SoloSpotlightModal provides a high-density theater viewport for a single station with full timeline transport and keystroke overlay.
+ * 
+ * @param {Object} props
+ * @param {boolean} props.isOpen - Whether spotlight modal is visible.
+ * @param {Object} props.station - Focused station object.
+ * @param {Array} [props.allStations=[]] - Full list of available stations.
+ * @param {(station: Object) => void} props.onSelectStation - Callback to switch focused station.
+ * @param {() => void} props.onClose - Exit spotlight handler.
+ * @returns {JSX.Element|null}
+ */
 export default function SoloSpotlightModal({
     isOpen,
     station,
@@ -59,7 +70,12 @@ export default function SoloSpotlightModal({
     onChangeKeystrokeMode,
     keystrokes = [],
     showRulerKeystrokes = false,
-    onToggleRulerKeystrokes
+    onToggleRulerKeystrokes,
+    directorPlan,
+    onOverrideDisplay,
+    onSplitDirectorSegment,
+    onChangeDirectorSegmentDisplay,
+    onResetDirectorSegmentToAuto
 }) {
     const [localIsPlaying, setLocalIsPlaying] = useState(false);
     const isPlaying = propIsPlaying !== undefined ? propIsPlaying : localIsPlaying;
@@ -85,6 +101,9 @@ export default function SoloSpotlightModal({
     const [exportToast, _setExportToast] = useState(null);
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [activeGaps, setActiveGaps] = useState(globalGaps);
+    const hasMultipleDisplays = Boolean((station?.displays?.length > 1) || (station?.topology?.displays?.length > 1));
+    const [viewMode, setViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
+    const [isPipSwapped, setIsPipSwapped] = useState(false);
 
     const bottomIslandRef = useRef(null);
 
@@ -102,6 +121,10 @@ export default function SoloSpotlightModal({
         if (station && station.id && prevStationIdRef.current !== station.id) {
             prevStationIdRef.current = station.id;
             setPlaybackSpeed(1);
+            const hasMulti = Boolean((station.displays?.length > 1) || (station.topology?.displays?.length > 1));
+            if (!hasMulti) {
+                setViewMode('mon-0');
+            }
         }
     }, [station, setPlaybackSpeed]);
 
@@ -240,7 +263,7 @@ export default function SoloSpotlightModal({
         if (!station || Math.abs(outPointMs - inPointMs) < 1000) return;
 
         const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        let resolvedMode = 'BurnIn';
+        let resolvedMode;
         if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
         else if (normMode === 'CAPTION') resolvedMode = 'Caption';
         else resolvedMode = 'BurnIn';
@@ -252,7 +275,11 @@ export default function SoloSpotlightModal({
             hostname: station.hostname || station.name || station.id,
             inEpochMs: baseEpochMs + Math.round(inPointMs),
             outEpochMs: baseEpochMs + Math.round(outPointMs),
-            keystrokeMode: resolvedMode
+            keystrokeMode: resolvedMode,
+            layoutMode: hasMultipleDisplays ? viewMode : 'mon-0',
+            targetDisplayId: (!hasMultipleDisplays || viewMode === 'mon-0' || viewMode === 'mon-1' || viewMode.startsWith('mon-')) ? (hasMultipleDisplays ? viewMode : 'mon-0') : null,
+            isPipSwapped: isPipSwapped,
+            directorSegments: hasMultipleDisplays ? (directorPlan?.segments || station?.directorPlan?.segments || []) : []
         };
 
         try {
@@ -278,7 +305,7 @@ export default function SoloSpotlightModal({
         } finally {
             window.dispatchEvent(new CustomEvent('open-export-monitor'));
         }
-    }, [station, inPointMs, outPointMs, baseEpochMs, onExport]);
+    }, [station, inPointMs, outPointMs, baseEpochMs, onExport, keystrokeMode, viewMode, isPipSwapped, directorPlan]);
 
     useEffect(() => {
         if (!isOpen || !station) return;
@@ -443,9 +470,16 @@ export default function SoloSpotlightModal({
                     recordingSegments={recordingSegments}
                     globalGaps={activeGaps}
                     showWatermark={true}
+                    directorPlan={directorPlan || station?.directorPlan}
+                    onOverrideDisplay={onOverrideDisplay}
+                    onResetOverride={onResetDirectorSegmentToAuto}
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    isPipSwapped={isPipSwapped}
+                    onPipSwapChange={setIsPipSwapped}
                 />
 
-                {/* 💡 שכבת ה-HUD מעל נגן המסך המלא */}
+                {/* HUD Keystroke playback overlay above fullscreen player */}
                 <KeystrokePlaybackOverlay
                     currentEpochMs={currentCalculatedEpoch}
                     keystrokes={keystrokes}
@@ -478,7 +512,11 @@ export default function SoloSpotlightModal({
                         onClick={() => setIsHelpOpen(true)}
                         title="Keyboard Shortcuts Cheat Sheet (?)"
                     >
-                        <span className="help-icon-symbol">?</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13" className="help-icon-symbol">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
                         <span>SHORTCUTS</span>
                     </button>
                 </div>
@@ -489,7 +527,7 @@ export default function SoloSpotlightModal({
                             type="button"
                             disabled={!prevStation}
                             onClick={() => prevStation && onSelectStation(prevStation.id)}
-                            title={prevStation ? `Previous: ${prevStation.hostname || prevStation.name} (↑)` : 'First station'}
+                            title={prevStation ? `Previous: ${prevStation.displayName || prevStation.roleAlias || prevStation.hostname || prevStation.name} (↑)` : 'First station'}
                         >
                             ◀
                         </button>
@@ -500,7 +538,7 @@ export default function SoloSpotlightModal({
                             type="button"
                             disabled={!nextStation}
                             onClick={() => nextStation && onSelectStation(nextStation.id)}
-                            title={nextStation ? `Next: ${nextStation.hostname || nextStation.name} (↓)` : 'Last station'}
+                            title={nextStation ? `Next: ${nextStation.displayName || nextStation.roleAlias || nextStation.hostname || nextStation.name} (↓)` : 'Last station'}
                         >
                             ▶
                         </button>
@@ -510,7 +548,12 @@ export default function SoloSpotlightModal({
                 <div className="station-brand-pill">
                     <span className="feed-res">SURVEILLANCE ARCHIVE</span>
                     <span className="divider" />
-                    <span className="station-title">{station.hostname || station.name}</span>
+                    <span className="station-title">{station.displayName || station.roleAlias || station.hostname || station.name}</span>
+                    {station.hostname && (station.displayName || station.roleAlias) && (station.displayName || station.roleAlias).toLowerCase() !== station.hostname.toLowerCase() && (
+                        <span className="station-physical-badge" style={{ fontSize: '10px', color: '#94a3b8', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }} title={`Physical Machine: ${station.hostname}`}>
+                            {station.hostname}
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -526,14 +569,14 @@ export default function SoloSpotlightModal({
                             type="button"
                             className="btn-export-cut-hero"
                             onClick={handleTriggerExport}
-                            title="Export Selected Cut Window (Ctrl+E)"
+                            title={`Export Selected Cut Window as ${viewMode.toUpperCase()} (Ctrl+E)`}
                         >
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            <span>EXPORT CUT</span>
+                            <span>EXPORT CUT ({viewMode.toUpperCase()})</span>
                         </button>
                     </div>
 
@@ -592,9 +635,13 @@ export default function SoloSpotlightModal({
                         }}
                         keystrokeMode={keystrokeMode}
                         onChangeKeystrokeMode={onChangeKeystrokeMode}
+                        keystrokes={keystrokes}
                         showKeystrokes={showRulerKeystrokes}
                         showRulerKeystrokes={showRulerKeystrokes}
                         onToggleRulerKeystrokes={onToggleRulerKeystrokes}
+                        onSplitDirectorSegment={onSplitDirectorSegment}
+                        onChangeDirectorSegmentDisplay={onChangeDirectorSegmentDisplay}
+                        onResetDirectorSegmentToAuto={onResetDirectorSegmentToAuto}
                     />
                 </div>
             </div>

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,10 +39,10 @@ namespace ITBRecorderAgent.Engine
         public bool IsAudioFlowing()
         {
             long lastTicks = Interlocked.Read(ref _lastRealAudioTicks);
-            return lastTicks > 0 && Stopwatch.GetElapsedTime(lastTicks).TotalMilliseconds < 1500;
+            return lastTicks > 0 && Stopwatch.GetElapsedTime(lastTicks).TotalMilliseconds < 2000;
         }
 
-        public Task RunPacerLoopAsync(FfmpegProcessManager ffmpeg, Action<long> onBytesPushed, Func<bool> isSessionActive, CancellationToken ct)
+        public Task RunPacerLoopAsync(Func<FfmpegProcessManager?> getActiveFfmpeg, Action<long> onBytesPushed, Func<bool> isSessionActive, CancellationToken ct)
         {
             return Task.Run(() =>
             {
@@ -58,13 +58,15 @@ namespace ITBRecorderAgent.Engine
                         long currentBytes = Interlocked.Read(ref _totalAudioBytes);
                         long gapMs = (long)Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastRealAudioTicks)).TotalMilliseconds;
 
-                        if (gapMs >= 150 && expectedBytes > currentBytes)
+                        // Fail-safe watchdog: Only inject synthetic silence if hardware audio stopped completely for > 500ms
+                        if (gapMs >= 500 && expectedBytes > currentBytes)
                         {
                             long missingBytes = expectedBytes - currentBytes;
                             int bytesToSend = (int)Math.Min(missingBytes, _silenceBuffer.Length);
                             bytesToSend -= (bytesToSend % 8);
 
-                            if (bytesToSend > 0 && ffmpeg.IsRunning)
+                            var ffmpeg = getActiveFfmpeg();
+                            if (bytesToSend > 0 && ffmpeg != null && ffmpeg.IsRunning && ffmpeg.HasAudio)
                             {
                                 ffmpeg.WriteAudioData(_silenceBuffer, 0, bytesToSend);
                                 Interlocked.Add(ref _totalAudioBytes, bytesToSend);
@@ -79,5 +81,8 @@ namespace ITBRecorderAgent.Engine
                 Logger.Info("[WORKER:AUDIO-PACER] Audio watchdog/pacer loop stopped.");
             }, ct);
         }
+
+        public Task RunPacerLoopAsync(FfmpegProcessManager ffmpeg, Action<long> onBytesPushed, Func<bool> isSessionActive, CancellationToken ct)
+            => RunPacerLoopAsync(() => ffmpeg, onBytesPushed, isSessionActive, ct);
     }
 }

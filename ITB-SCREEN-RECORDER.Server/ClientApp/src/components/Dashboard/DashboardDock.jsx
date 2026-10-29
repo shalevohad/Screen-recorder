@@ -24,21 +24,21 @@ export default function DashboardDock({
     handleToggleFeature,
     isFeatureActive
 }) {
-    const { isSystemRoot, hasPermission } = useAuth();
-    const canControlStations = isSystemRoot || hasPermission('stations.control');
+    const auth = useAuth();
+    const canControlStations = Boolean(!auth || auth.isOpenMode || auth.isSystemRoot || auth.hasPermission?.('stations.control'));
 
     const permittedFeatures = useMemo(() => {
         return availableFeatures.filter(f => {
             const id = (f.id || '').toLowerCase();
             if (id.includes('extractor')) {
-                return isSystemRoot || hasPermission('extractor.view');
+                return !auth || auth.isSystemRoot || auth.hasPermission?.('extractor.view');
             }
             if (id.includes('studio')) {
-                return isSystemRoot || hasPermission('studio.view');
+                return !auth || auth.isSystemRoot || auth.hasPermission?.('studio.view');
             }
             return true;
         });
-    }, [availableFeatures, isSystemRoot, hasPermission]);
+    }, [availableFeatures, auth]);
 
     const onFeatureClick = (feat, isOpen) => {
         if (isOpen) {
@@ -91,50 +91,47 @@ export default function DashboardDock({
             <div className="dock-divider" />
 
             <button
-                className={`dock-icon-btn tactical-btn-start ${canStartAny && canControlStations && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
-                onClick={canStartAny && canControlStations && !isFeatureActive ? handleFilteredBulkStart : undefined}
-                disabled={!canStartAny || !canControlStations || isFeatureActive}
+                className={`dock-icon-btn tactical-btn-start ${canStartAny ? 'is-actionable' : ''} ${!canControlStations || isFeatureActive ? 'disabled' : ''}`}
+                onClick={canControlStations && !isFeatureActive ? handleFilteredBulkStart : undefined}
+                disabled={!canControlStations || isFeatureActive}
                 title={
                     !canControlStations
                         ? "Start action requires 'stations.control' permission"
                         : isFeatureActive
                         ? "Bulk actions unavailable in Feature Mode"
                         : canStartAny
-                        ? "Start streaming on filtered agents"
-                        : "No idle filtered agents"
+                        ? "Start recording on all unrecorded stations"
+                        : "Start recording on all stations"
                 }
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                    <polygon points="6 3 20 12 6 21 6 3" />
-                    <line x1="20" y1="4" x2="20" y2="20" strokeWidth="3" />
-                    <circle cx="11" cy="12" r="2.2" fill="currentColor" />
+                <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="3.5" y="3.5" width="17" height="17" rx="3" stroke="currentColor" strokeWidth="2.2" />
+                    <circle cx="12" cy="12" r="4.5" fill="currentColor" />
                 </svg>
             </button>
 
             <button
-                className={`dock-icon-btn tactical-btn-stop ${canStopAny && canControlStations && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
-                onClick={canStopAny && canControlStations && !isFeatureActive ? handleFilteredBulkStop : undefined}
-                disabled={!canStopAny || !canControlStations || isFeatureActive}
+                className={`dock-icon-btn tactical-btn-stop ${canStopAny ? 'is-actionable' : ''} ${!canControlStations || isFeatureActive ? 'disabled' : ''}`}
+                onClick={canControlStations && !isFeatureActive ? handleFilteredBulkStop : undefined}
+                disabled={!canControlStations || isFeatureActive}
                 title={
                     !canControlStations
                         ? "Stop action requires 'stations.control' permission"
                         : isFeatureActive
                         ? "Bulk actions unavailable in Feature Mode"
                         : canStopAny
-                        ? "Stop active filtered streams"
-                        : "No active streams"
+                        ? "Stop recording on stations (Remain in Live Monitor)"
+                        : "Stop recording on all stations"
                 }
             >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                    <rect x="4" y="4" width="16" height="16" rx="2" />
-                    <line x1="9" y1="9" x2="15" y2="15" strokeWidth="3" />
-                    <line x1="15" y1="9" x2="9" y2="15" strokeWidth="3" />
+                <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="5.5" y="5.5" width="13" height="13" rx="2" fill="currentColor" />
                 </svg>
             </button>
 
             <div className="dock-divider" />
 
-            {/* 🎯 כפתור שליטה תלת-מצבי על תצוגת מקשים: BURN-IN -> CAPTION -> OFF */}
+            {/* Tactical tri-state control for keystroke overlay: BURN-IN -> CAPTION -> OFF */}
             <button
                 className={`dock-icon-btn tactical-btn-keystroke mode-${keystrokeMode} ${isFeatureActive ? 'disabled' : ''}`}
                 onClick={!isFeatureActive ? handleCycleKeystrokeMode : undefined}

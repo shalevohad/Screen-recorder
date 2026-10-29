@@ -86,7 +86,7 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
                     bool isDownOrRepeat = ev.Value == KEY_STATE_DOWN || ev.Value == KEY_STATE_REPEAT;
                     bool isUp = ev.Value == KEY_STATE_UP;
 
-                    // מעקב מתמיד אחרי מצב מקשי ה-Modifiers (שמאל וימין) ב-Linux
+                    // Continuously track modifier key states (left and right) on Linux
                     switch (ev.Code)
                     {
                         case 29 or 97: // KEY_LEFTCTRL, KEY_RIGHTCTRL
@@ -123,16 +123,22 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
             }
             catch
             {
-                // המשך שקט במקרה של חוסר הרשאות לקריאת /dev/input
+                // Silently swallow errors when lacking permissions to read /dev/input (non-root execution)
             }
         }
 
+        /// <summary>
+        /// Translates a Linux evdev key code into a formatted key combination string or redacts it for privacy.
+        /// </summary>
+        /// <param name="code">The raw Linux input event key code.</param>
+        /// <returns>Formatted key string (e.g., "Ctrl+C"), "*" for redacted alphanumeric keys, or null if ignored.</returns>
         private string? FormatLinuxKeyStroke(ushort code)
         {
             bool isControlModifier = _isCtrl || _isAlt || _isWin;
 
-            // 💡 אבטחת פרטיות (Option א' - זהה לחלוטין ל-Windows):
-            // כאשר המשתמש מקליד טקסט חופשי או סיסמה (ללא Ctrl/Alt/Win), המקש נרשם כ-* בלבד.
+            // Privacy protection (identical to Windows implementation):
+            // When user types freeform text or passwords without control modifiers (Ctrl/Alt/Win),
+            // the key is masked to '*' to prevent harvesting sensitive credentials or text.
             if (!isControlModifier)
             {
                 bool isPrintable = code switch

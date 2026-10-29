@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Extractor/studioSessionStore.js
 // ==========================================
 
@@ -41,7 +41,11 @@ export const clearStudioSessionCache = () => {
     }
 };
 
-// 💡 ניהול שמע גלובלי שמסונכרן ומאוחסן ב-localStorage
+/**
+ * Retrieves global audio settings synchronized across sessions via localStorage.
+ * 
+ * @returns {{ volume: number, isMuted: boolean }} Audio configuration object.
+ */
 export const getAudioSettings = () => {
     try {
         const raw = localStorage.getItem(AUDIO_STORAGE_KEY);
@@ -49,7 +53,7 @@ export const getAudioSettings = () => {
             const parsed = JSON.parse(raw);
             return {
                 volume: typeof parsed.volume === 'number' ? parsed.volume : 0.8,
-                isMuted: typeof parsed.isMuted === 'boolean' ? parsed.isMuted : true // ברירת מחדל: Muted
+                isMuted: typeof parsed.isMuted === 'boolean' ? parsed.isMuted : true // Default: Muted
             };
         }
     } catch (e) {

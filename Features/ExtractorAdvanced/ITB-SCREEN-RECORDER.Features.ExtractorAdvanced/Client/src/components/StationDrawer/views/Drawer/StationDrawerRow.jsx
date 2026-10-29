@@ -25,7 +25,12 @@ export default function StationDrawerRow({ station, isSelected, onToggle, meta }
                 </div>
 
                 <div className={`status-dot ${trafficLevel}`} title={isLoading ? 'Scanning...' : meta.trafficStatus?.label} />
-                <span className="hostname" title={hostNameStr}>{hostNameStr}</span>
+                <span className="hostname" title={station.hostname ? `Physical: ${station.hostname}` : hostNameStr}>
+                    {hostNameStr}
+                    {station.hostname && hostNameStr.toLowerCase() !== station.hostname.toLowerCase() && (
+                        <small className="physical-host-sub"> ({station.hostname})</small>
+                    )}
+                </span>
             </div>
 
             <div className="mini-row-tags">

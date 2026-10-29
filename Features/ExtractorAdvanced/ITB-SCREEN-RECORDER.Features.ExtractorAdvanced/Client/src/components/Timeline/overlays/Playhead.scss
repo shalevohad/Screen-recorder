@@ -166,7 +166,7 @@
             }
         }
     }
-    /* 💡 מחט Playhead חלקה עם האצת חומרה מלאה */
+    /* Smooth Playhead needle with full GPU hardware acceleration */
     .playhead-needle {
         position: absolute;
         top: 0;
@@ -179,12 +179,12 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        /* האצת חומרה ובידוד חישובים מה-DOM הראשי */
+        /* Hardware acceleration and layout isolation from main DOM */
         will-change: left;
         transform: translateZ(0);
         backface-visibility: hidden;
         contain: layout style;
-        transition: none !important; // שולל כל מעבר CSS שעלול ליצור Rubber-banding בריצות 60fps
+        transition: none !important; // Disallow CSS transitions that cause rubber-banding during 60fps playback
 
         .needle-core-line {
             width: 2px;
@@ -215,7 +215,7 @@
             user-select: none;
             z-index: 50;
             pointer-events: none;
-            /* החלקה רכה במקום קפיצה חדה כשנצמדים לקצוות המסך */
+            /* Smooth easing instead of sharp jump when snapping near screen boundaries */
             transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease;
 
             &.edge-left {

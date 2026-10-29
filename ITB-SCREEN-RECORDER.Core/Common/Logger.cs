@@ -21,7 +21,12 @@ namespace ITB_SCREEN_RECORDER.Core.Common
         private static bool _enableFileLogging = true;
         private static int _retentionDays = 30;
 
-        // הוספנו את הפרמטר componentName עם ברירת מחדל ריקה
+        /// <summary>
+        /// Initializes the logging subsystem with the specified configuration and optional component name.
+        /// Configures output directories, rolling daily filenames, and launches background log retention cleanup.
+        /// </summary>
+        /// <param name="config">Application configuration holding logging settings and paths.</param>
+        /// <param name="componentName">Optional component identifier appended to log filename (e.g., Worker, Service).</param>
         public static void Initialize(AppConfig config, string componentName = "")
         {
             lock (_lock)
@@ -61,7 +66,7 @@ namespace ITB_SCREEN_RECORDER.Core.Common
                     _fileExtension = Path.GetExtension(targetPath);
                     if (string.IsNullOrEmpty(_fileExtension)) _fileExtension = ".txt";
 
-                    // 💡 התיקון הקריטי: איפוס הסטייט כדי לכפות עדכון של נתיב הקובץ בפועל!
+                    // Reset date state to force an immediate evaluation of the target file path
                     _currentDateString = string.Empty;
 
                     UpdateLogFilePath();
@@ -86,16 +91,19 @@ namespace ITB_SCREEN_RECORDER.Core.Common
             }
         }
 
+        /// <summary>
+        /// Evaluates current UTC date against current log file target, rotating to a new daily log file if the date changed.
+        /// </summary>
         private static void UpdateLogFilePath()
         {
-            // פונקציה זו בודקת אם התאריך התחלף, ומייצרת נתיב לקובץ יומי חדש (Daily Rolling)
+            // Checks if date changed and generates a daily rolling log file path
             string today = DateTime.UtcNow.ToString("yyyy-MM-dd");
             if (_currentDateString != today)
             {
                 _currentDateString = today;
                 string defaultPath = Path.Combine(_logDirectory, $"{_baseFileName}_{today}{_fileExtension}");
 
-                // בדיקה מקדימה: אם הקובץ קיים אך הרשאת הכתיבה אליו חסומה (למשל נוצר ע"י תהליך SYSTEM)
+                // Proactive check: if file exists but write permissions are blocked (e.g. created by SYSTEM process)
                 try
                 {
                     if (File.Exists(defaultPath))
@@ -116,13 +124,16 @@ namespace ITB_SCREEN_RECORDER.Core.Common
             }
         }
 
+        /// <summary>
+        /// Deletes historical log files exceeding the configured retention period.
+        /// </summary>
         private static void CleanupOldLogs()
         {
             try
             {
                 if (!Directory.Exists(_logDirectory)) return;
 
-                // איתור כל הקבצים בתיקייה שמתחילים בשם הלוג הרלוונטי
+                // Locate all files matching base log filename pattern in target directory
                 var files = Directory.GetFiles(_logDirectory, $"{_baseFileName}_*{_fileExtension}");
                 DateTime cutoffDate = DateTime.UtcNow.AddDays(-_retentionDays);
 
@@ -131,7 +142,7 @@ namespace ITB_SCREEN_RECORDER.Core.Common
                     try
                     {
                         FileInfo fi = new FileInfo(file);
-                        // בדיקת תאריך שינוי הקובץ מול ה-Retention
+                        // Check last modified time against retention threshold
                         if (fi.LastWriteTimeUtc < cutoffDate)
                         {
                             fi.Delete();
@@ -140,7 +151,7 @@ namespace ITB_SCREEN_RECORDER.Core.Common
                     }
                     catch
                     {
-                        // התעלמות מקבצים שעשויים להיות נעולים על ידי תהליך אחר
+                        // Ignore files locked by another process
                     }
                 }
             }
@@ -150,31 +161,56 @@ namespace ITB_SCREEN_RECORDER.Core.Common
             }
         }
 
+        /// <summary>
+        /// Emits an informational message.
+        /// </summary>
+        /// <param name="message">Log message content.</param>
         public static void Info(string message)
         {
             Log("INFO", message);
         }
 
+        /// <summary>
+        /// Emits a warning message.
+        /// </summary>
+        /// <param name="message">Warning message content.</param>
         public static void Warn(string message)
         {
             Log("WARN", message);
         }
 
+        /// <summary>
+        /// Emits an error message.
+        /// </summary>
+        /// <param name="message">Error message content.</param>
         public static void Error(string message)
         {
             Log("ERROR", message);
         }
 
+        /// <summary>
+        /// Emits an informational message unconditionally.
+        /// </summary>
+        /// <param name="message">Log message content.</param>
         public static void AlwaysInfo(string message)
         {
             Log("INFO", message);
         }
 
+        /// <summary>
+        /// Emits a debug diagnostics message.
+        /// </summary>
+        /// <param name="message">Debug message content.</param>
         public static void Debug(string message)
         {
             Log("DEBUG", message);
         }
 
+        /// <summary>
+        /// Formats and appends a log entry to console and the active daily rolling log file.
+        /// </summary>
+        /// <param name="level">Severity level label (INFO, WARN, ERROR, DEBUG).</param>
+        /// <param name="message">Message text to record.</param>
         private static void Log(string level, string message)
         {
             string formattedMessage = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] [{level}] {message}";
@@ -186,7 +222,7 @@ namespace ITB_SCREEN_RECORDER.Core.Common
             {
                 try
                 {
-                    // הבטחה שתמיד כותבים לקובץ של היום הנכון, גם אם הריצה נמשכת ימים ברצף!
+                    // Ensure writing to the correct calendar day file even during continuous multi-day runs
                     UpdateLogFilePath();
 
                     using var fs = new FileStream(_currentLogFilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);

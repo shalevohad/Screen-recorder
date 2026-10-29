@@ -71,7 +71,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        /* כפתור משימות אריזה ו-Streaming ברקע */
+        /* Button for background packaging and streaming export jobs */
         .active-jobs-pill-btn {
             display: inline-flex;
             align-items: center;
@@ -101,7 +101,7 @@
                 animation: pulseDot 1.4s infinite ease-in-out;
             }
         }
-        /* כפתור משימות מוכנות להורדה (בולט למחשבים אחרים ברשת) */
+        /* Button for ready archives available for download across the network */
         .ready-jobs-pill-btn {
             display: inline-flex;
             align-items: center;

@@ -3,13 +3,21 @@ import './VideoPlayer.scss';
 
 export default function WebRTCPlayer({
     streamPath,
-    webrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '/api/v1/whep' : 'http://127.0.0.1:8889',
+    webrtcBaseUrl = '/api/v1/whep',
     showControls = false,
-    onPlaying
+    onPlaying,
+    onStreamAvailable,
+    isMuted: propIsMuted = true,
+    volume: propVolume = 1
 }) {
     const containerRef = useRef(null);
     const videoRef = useRef(null);
     const peerRef = useRef(null);
+
+    const onPlayingRef = useRef(onPlaying);
+    const onStreamAvailableRef = useRef(onStreamAvailable);
+    useEffect(() => { onPlayingRef.current = onPlaying; }, [onPlaying]);
+    useEffect(() => { onStreamAvailableRef.current = onStreamAvailable; }, [onStreamAvailable]);
 
     const [retryCount, setRetryCount] = useState(0);
     const retryCountRef = useRef(0);
@@ -21,9 +29,23 @@ export default function WebRTCPlayer({
 
     const [isHovered, setIsHovered] = useState(false);
     const [isPlaying, setIsPlaying] = useState(true);
-    const [isMuted, setIsMuted] = useState(true);
-    const [volume, setVolume] = useState(1);
+    const [isMuted, setIsMuted] = useState(propIsMuted);
+    const [volume, setVolume] = useState(propVolume);
     const [isFullscreen, setIsFullscreen] = useState(false);
+
+    useEffect(() => {
+        if (typeof propIsMuted === 'boolean') {
+            setIsMuted(propIsMuted);
+            if (videoRef.current) videoRef.current.muted = propIsMuted;
+        }
+    }, [propIsMuted]);
+
+    useEffect(() => {
+        if (typeof propVolume === 'number') {
+            setVolume(propVolume);
+            if (videoRef.current) videoRef.current.volume = propVolume;
+        }
+    }, [propVolume]);
 
     useEffect(() => {
         const currentContainer = containerRef.current;
@@ -45,12 +67,32 @@ export default function WebRTCPlayer({
     useEffect(() => {
         const currentVideo = videoRef.current;
 
-        if (!isVisible) {
-            if (peerRef.current) {
-                peerRef.current.close();
-                peerRef.current = null;
+        const cleanupPeerConnection = () => {
+            if (retryTimeoutRef.current) {
+                clearTimeout(retryTimeoutRef.current);
+                retryTimeoutRef.current = null;
             }
-            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+            if (peerRef.current) {
+                const pc = peerRef.current;
+                peerRef.current = null;
+                try {
+                    pc.ontrack = null;
+                    pc.onconnectionstatechange = null;
+                    pc.onicecandidate = null;
+                    if (pc.getTransceivers) {
+                        pc.getTransceivers().forEach(t => {
+                            try { t.stop(); } catch { }
+                        });
+                    }
+                    if (pc.signalingState !== 'closed') {
+                        pc.close();
+                    }
+                } catch { }
+            }
+        };
+
+        if (!isVisible) {
+            cleanupPeerConnection();
             if (currentVideo) currentVideo.srcObject = null;
             return;
         }
@@ -59,20 +101,36 @@ export default function WebRTCPlayer({
 
         const connectToWHEP = async () => {
             if (!isSubscribed) return;
+            if (!streamPath || streamPath.includes('undefined')) return;
 
-            if (peerRef.current && peerRef.current.signalingState !== 'closed') {
-                peerRef.current.close();
+            // Thoroughly close and de-allocate any previous peer connection
+            cleanupPeerConnection();
+
+            // Air-gapped intranet configuration: zero external STUN lookups
+            let pc;
+            try {
+                pc = new RTCPeerConnection({
+                    iceServers: []
+                });
+                peerRef.current = pc;
+            } catch (err) {
+                console.error("[WebRTC] Failed to construct RTCPeerConnection (resource limit reached):", err);
+                setHasError(true);
+                return; // Do NOT cascade into endless retry loop if browser peer limit is saturated
             }
 
-            const pc = new RTCPeerConnection({
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-            });
-            peerRef.current = pc;
-
-            pc.addTransceiver('video', { direction: 'recvonly' });
-            pc.addTransceiver('audio', { direction: 'recvonly' });
+            try {
+                pc.addTransceiver('video', { direction: 'recvonly' });
+                pc.addTransceiver('audio', { direction: 'recvonly' });
+            } catch (err) {
+                console.error("[WebRTC] Failed to add transceivers:", err);
+                cleanupPeerConnection();
+                setHasError(true);
+                return;
+            }
 
             pc.ontrack = (event) => {
+                if (!isSubscribed) return;
                 if (event.receiver) {
                     try {
                         if ('playoutDelayHint' in event.receiver) {
@@ -88,6 +146,12 @@ export default function WebRTCPlayer({
                     currentVideo.play().catch(err => {
                         if (err.name !== 'AbortError') console.warn("[WebRTC] Play error:", err);
                     });
+                    if (onStreamAvailableRef.current) {
+                        try { onStreamAvailableRef.current(event.streams[0]); } catch { }
+                    }
+                    if (onPlayingRef.current) {
+                        try { onPlayingRef.current(); } catch { }
+                    }
                 }
             };
 
@@ -122,9 +186,12 @@ export default function WebRTCPlayer({
                     sdp: mungedSdp
                 });
 
-                const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-                const effectiveBase = (isHttps && webrtcBaseUrl.startsWith('http:')) ? '/api/v1/whep' : webrtcBaseUrl;
-                const whepUrl = `${effectiveBase}/${streamPath}/whep`;
+                const effectiveBase = webrtcBaseUrl.startsWith('http:')
+                    ? (typeof window !== 'undefined' && window.location.protocol === 'https:' ? '/api/v1/whep' : webrtcBaseUrl)
+                    : (webrtcBaseUrl || '/api/v1/whep');
+                const cleanStreamPath = (streamPath || '').replace(/\/whep\/?$/i, '').replace(/^\/+/, '');
+                const cleanBase = effectiveBase.replace(/\/+$/, '');
+                const whepUrl = `${cleanBase}/${cleanStreamPath}/whep`;
                 const response = await fetch(whepUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/sdp' },
@@ -144,41 +211,60 @@ export default function WebRTCPlayer({
                 }
             } catch (err) {
                 console.error(`[WebRTC] Connection attempt failed:`, err);
+                cleanupPeerConnection();
                 handleSmartRetry();
             }
         };
 
+        let lastPlayheadTime = -1;
+        let stallCount = 0;
+        const stallCheckInterval = setInterval(() => {
+            if (!isSubscribed || !videoRef.current) return;
+            const cur = videoRef.current.currentTime;
+            if (cur > 0 && !videoRef.current.paused && peerRef.current?.connectionState === 'connected') {
+                if (cur === lastPlayheadTime) {
+                    stallCount++;
+                    if (stallCount >= 2) { // 2 intervals = 6-8 seconds without time progress
+                        console.warn("[WebRTC] Playback stall detected (frozen frame). Initiating silent renegotiation...");
+                        stallCount = 0;
+                        handleSmartRetry();
+                    }
+                } else {
+                    lastPlayheadTime = cur;
+                    stallCount = 0;
+                }
+            }
+        }, 3500);
+
         const handleSmartRetry = () => {
             if (!isSubscribed) return;
 
-            if (retryCountRef.current < maxRetries) {
-                const nextAttempt = retryCountRef.current + 1;
-                retryCountRef.current = nextAttempt;
-                setRetryCount(nextAttempt);
+            cleanupPeerConnection();
 
-                const delay = Math.min(1000 * Math.pow(2, nextAttempt - 1), 10000);
-                console.warn(`[WebRTC] Connection lost. Retrying in ${delay}ms (Attempt ${nextAttempt}/${maxRetries})...`);
-                setHasError(true);
+            const nextAttempt = retryCountRef.current + 1;
+            retryCountRef.current = nextAttempt;
+            setRetryCount(nextAttempt);
+            setHasError(true);
 
-                if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-                retryTimeoutRef.current = setTimeout(() => {
-                    if (isSubscribed) connectToWHEP();
-                }, delay);
-            } else {
-                console.error("[WebRTC] Max retry attempts reached. Stream offline.");
-                setHasError(true);
-            }
+            // Resilient backoff: fast exponential retry for first 5 attempts, then steady 6s cadence indefinitely
+            const delay = nextAttempt <= maxRetries
+                ? Math.min(1200 * Math.pow(1.5, nextAttempt - 1), 6000)
+                : 6000;
+
+            console.warn(`[WebRTC] Connection lost for '${streamPath}'. Reconnecting in ${Math.round(delay)}ms (Attempt ${nextAttempt})...`);
+
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = setTimeout(() => {
+                if (isSubscribed) connectToWHEP();
+            }, delay);
         };
 
         connectToWHEP();
 
         return () => {
             isSubscribed = false;
-            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-            if (peerRef.current) {
-                peerRef.current.close();
-                peerRef.current = null;
-            }
+            clearInterval(stallCheckInterval);
+            cleanupPeerConnection();
             if (currentVideo) currentVideo.srcObject = null;
         };
     }, [isVisible, streamPath, webrtcBaseUrl]);
@@ -236,11 +322,12 @@ export default function WebRTCPlayer({
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {hasError && retryCount >= maxRetries && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444', zIndex: 10, background: 'rgba(0,0,0,0.6)' }}>
-                    <span style={{ backgroundColor: 'rgba(0,0,0,0.8)', padding: '6px 12px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                        STREAM OFFLINE
-                    </span>
+            {hasError && retryCount >= 1 && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#f59e0b', zIndex: 10, background: 'rgba(0,0,0,0.65)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(15,23,42,0.9)', border: '1px solid rgba(245,158,11,0.3)', padding: '6px 14px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                        <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b' }}></span>
+                        <span>{retryCount < 5 ? `RECONNECTING... (${retryCount})` : `RECONNECTING STREAM (ATTEMPT ${retryCount})...`}</span>
+                    </div>
                 </div>
             )}
 

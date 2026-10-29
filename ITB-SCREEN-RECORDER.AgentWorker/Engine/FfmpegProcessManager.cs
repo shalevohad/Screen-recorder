@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: AgentWorker/Engine/FfmpegProcessManager.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Common;
@@ -25,6 +25,7 @@ namespace ITBRecorderAgent.Engine
         private readonly object _videoLock = new object();
         private readonly object _audioLock = new object();
         private bool _isDisposed = false;
+        public bool HasAudio { get; private set; }
 
         public bool IsRunning
         {
@@ -60,7 +61,9 @@ namespace ITBRecorderAgent.Engine
         {
             try
             {
-                if (destinationUrl.Contains(":\\") || destinationUrl.StartsWith("/"))
+                if (!destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase) &&
+                    !destinationUrl.StartsWith("rtmps://", StringComparison.OrdinalIgnoreCase) &&
+                    (destinationUrl.Contains(":\\") || destinationUrl.StartsWith("/")))
                 {
                     string? dir = Path.GetDirectoryName(destinationUrl);
                     if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -110,9 +113,14 @@ namespace ITBRecorderAgent.Engine
 
                 string activeEncoder = await HardwareProbe.ResolveEncoderAsync(ffmpegPath, _config.VideoEncoder);
 
-                _tcpListener = new TcpListener(IPAddress.Loopback, 0);
-                _tcpListener.Start();
-                int localPort = ((IPEndPoint)_tcpListener.LocalEndpoint).Port;
+                int localPort = 0;
+                HasAudio = audioChannels > 0;
+                if (audioChannels > 0)
+                {
+                    _tcpListener = new TcpListener(IPAddress.Loopback, 0);
+                    _tcpListener.Start();
+                    localPort = ((IPEndPoint)_tcpListener.LocalEndpoint).Port;
+                }
 
                 string arguments = BuildFfmpegArguments(
                     destinationUrl,
@@ -181,7 +189,7 @@ namespace ITBRecorderAgent.Engine
 
         public async Task<bool> CompleteAudioHandshakeAsync(CancellationToken cancellationToken)
         {
-            if (_tcpListener == null) return false;
+            if (_tcpListener == null) return true; // Video-only secondary stream
             try
             {
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -231,7 +239,7 @@ namespace ITBRecorderAgent.Engine
             int gopSize = effectiveFps;
             int keyintMin = effectiveFps;
 
-            // 💡 הבטחת UTC וחישוב Epoch מוחלט במילי-שניות
+            // Ensure UTC normalization and compute absolute start epoch in milliseconds
             DateTime calibratedUtc = calibratedStartTime.Kind == DateTimeKind.Utc
                 ? calibratedStartTime
                 : calibratedStartTime.ToUniversalTime();
@@ -239,15 +247,21 @@ namespace ITBRecorderAgent.Engine
             long startEpochMs = new DateTimeOffset(calibratedUtc).ToUnixTimeMilliseconds();
             string utcIso = calibratedUtc.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ");
 
-            // 1. קלט וידאו דרך צינור הקלט (Stdin)
+            // 1. Raw video input stream piped via standard input (Stdin)
             ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -framerate {effectiveFps} -f rawvideo -pix_fmt bgra -s {videoWidth}x{videoHeight} -i pipe:0 ");
 
-            // 2. קלט שמע דרך Loopback TCP
-            ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+            // 2. Audio input stream via loopback TCP socket if configured
+            if (audioChannels > 0)
+            {
+                ffmpegArgs.Append($"-thread_queue_size 1024 -analyzeduration 0 -probesize 32 -f {audioFormat} -ar {audioSampleRate} -ac {audioChannels} -i tcp://127.0.0.1:{tcpPort} ");
+                ffmpegArgs.Append("-map 0:v -map 1:a ");
+            }
+            else
+            {
+                ffmpegArgs.Append("-map 0:v -an ");
+            }
 
-            ffmpegArgs.Append("-map 0:v -map 1:a ");
-
-            // 3. קידוד וידאו - התנעה מהירה בביטרייט, איכות חדה וחיסכון מסיבי בנפח בעת תמונה סטטית (True Constrained VBR)
+            // 3. Video encoding - hardware rate control, sharp visuals, and massive static screen bandwidth reduction (True Constrained VBR)
             string pixFmt = "yuv420p";
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
@@ -264,17 +278,20 @@ namespace ITBRecorderAgent.Engine
                 ffmpegArgs.Append($"-c:v libx264 -preset ultrafast -tune zerolatency -crf 21 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -sc_threshold 0 ");
             }
 
-            // 4. כפיית Keyframe כל שנייה
+            // 4. Force 1-second IDR Keyframe intervals for sub-second seek and wall-clock segmentation
             ffmpegArgs.Append($"-g {gopSize} -keyint_min {keyintMin} -force_key_frames \"expr:gte(t,n_forced*1)\" -fps_mode cfr -r {effectiveFps} -pix_fmt {pixFmt} ");
 
-            // 5. סנכרון רציף של אודיו והטבעת METADATA (UTC ו-Epoch)
-            ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
+            // 5. Continuous audio re-sampling and timestamp synchronization with embedded UTC/epoch metadata
+            if (audioChannels > 0)
+            {
+                ffmpegArgs.Append($"-c:a aac -b:a 128k -ar {audioSampleRate} -af \"aresample=async=1000\" -max_muxing_queue_size 2048 ");
+            }
             ffmpegArgs.Append($"-metadata creation_time=\"{utcIso}\" ");
             ffmpegArgs.Append($"-metadata itb_start_epoch_ms=\"{startEpochMs}\" ");
             ffmpegArgs.Append($"-metadata comment=\"ITB_EPOCH:{startEpochMs}\" ");
             ffmpegArgs.Append($"-metadata hostname=\"{Environment.MachineName}\" ");
 
-            // 6. פלט (תמיכה מלאה ב-RTMPS מוצפן TLS ו-RTMP)
+            // 6. Multiplexed output stream (supporting TLS-encrypted RTMPS, plain RTMP, and fragmented MP4)
             bool isRtmps = destinationUrl.StartsWith("rtmps://", StringComparison.OrdinalIgnoreCase);
             bool isRtmp = isRtmps || destinationUrl.StartsWith("rtmp://", StringComparison.OrdinalIgnoreCase);
             if (isRtmp)
@@ -318,7 +335,7 @@ namespace ITBRecorderAgent.Engine
 
         public void WriteAudioData(byte[] audioData, int offset, int count)
         {
-            if (_isDisposed || !IsRunning || _audioSocket == null) return;
+            if (_isDisposed || !IsRunning || _audioSocket == null || !HasAudio) return;
 
             try
             {
@@ -339,6 +356,7 @@ namespace ITBRecorderAgent.Engine
         {
             if (_isDisposed) return;
             _isDisposed = true;
+            HasAudio = false;
 
             try
             {

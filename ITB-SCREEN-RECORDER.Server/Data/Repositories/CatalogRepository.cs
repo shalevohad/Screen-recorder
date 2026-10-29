@@ -1,4 +1,4 @@
-namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
+﻿namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
 
 using System;
 using System.Collections.Generic;
@@ -30,9 +30,9 @@ public sealed class CatalogRepository : ICatalogRepository
         const string sql = @"
             INSERT INTO recording_chunks 
             (station_id, file_path, start_epoch_ms, end_epoch_ms, duration_ms, file_size_bytes, 
-             width, height, fps, has_audio, is_finalized, indexed_at_utc)
+             width, height, fps, has_audio, is_finalized, indexed_at_utc, display_id, is_primary)
             VALUES (@StationId, @FilePath, @StartEpochMs, @EndEpochMs, (@EndEpochMs - @StartEpochMs), 
-                    @FileSizeBytes, @Width, @Height, @Fps, @HasAudio, @IsFinalized, @IndexedAtUtc)
+                    @FileSizeBytes, @Width, @Height, @Fps, @HasAudio, @IsFinalized, @IndexedAtUtc, @DisplayId, @IsPrimary)
             ON CONFLICT(file_path) DO UPDATE SET
                 end_epoch_ms = excluded.end_epoch_ms,
                 duration_ms = (excluded.end_epoch_ms - recording_chunks.start_epoch_ms),
@@ -42,7 +42,9 @@ public sealed class CatalogRepository : ICatalogRepository
                 fps = CASE WHEN excluded.fps > 0 THEN excluded.fps ELSE recording_chunks.fps END,
                 has_audio = excluded.has_audio,
                 is_finalized = excluded.is_finalized,
-                indexed_at_utc = excluded.indexed_at_utc;
+                indexed_at_utc = excluded.indexed_at_utc,
+                display_id = COALESCE(excluded.display_id, recording_chunks.display_id),
+                is_primary = excluded.is_primary;
         ";
 
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -58,24 +60,28 @@ public sealed class CatalogRepository : ICatalogRepository
             Fps = c.Fps > 0 ? c.Fps : 30,
             HasAudio = c.HasAudio ? 1 : 0,
             IsFinalized = c.IsFinalized ? 1 : 0,
-            IndexedAtUtc = now
+            IndexedAtUtc = now,
+            DisplayId = string.IsNullOrWhiteSpace(c.DisplayId) ? "mon-0" : c.DisplayId,
+            IsPrimary = (string.IsNullOrWhiteSpace(c.DisplayId) || string.Equals(c.DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase)) ? 1 : 0
         });
 
         await db.ExecuteAsync(sql, records, tx);
         tx.Commit();
     }
 
-    public async Task UpsertActiveChunkAsync(string stationId, string filePath, long startEpochMs, int fps, int width, int height, bool hasAudio)
+    public async Task UpsertActiveChunkAsync(string stationId, string filePath, long startEpochMs, int fps, int width, int height, bool hasAudio, string displayId = "mon-0")
     {
         using var db = _factory.CreateConnection();
         const string sql = @"
             INSERT INTO recording_chunks 
             (station_id, file_path, start_epoch_ms, end_epoch_ms, duration_ms, file_size_bytes, 
-             width, height, fps, has_audio, is_finalized, indexed_at_utc)
+             width, height, fps, has_audio, is_finalized, indexed_at_utc, display_id, is_primary)
             VALUES (@stationId, @filePath, @startEpochMs, @startEpochMs, 0, 0, 
-                    @width, @height, @fps, @hasAudio, 0, @indexedAtUtc)
+                    @width, @height, @fps, @hasAudio, 0, @indexedAtUtc, @displayId, @isPrimary)
             ON CONFLICT(file_path) DO NOTHING;
         ";
+
+        bool isPrimary = string.IsNullOrWhiteSpace(displayId) || string.Equals(displayId, "mon-0", StringComparison.OrdinalIgnoreCase);
 
         await db.ExecuteAsync(sql, new
         {
@@ -86,7 +92,9 @@ public sealed class CatalogRepository : ICatalogRepository
             height = height > 0 ? height : 1080,
             fps = fps > 0 ? fps : 30,
             hasAudio = hasAudio ? 1 : 0,
-            indexedAtUtc = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            indexedAtUtc = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            displayId = string.IsNullOrWhiteSpace(displayId) ? "mon-0" : displayId,
+            isPrimary = isPrimary ? 1 : 0
         });
     }
 
@@ -121,7 +129,8 @@ public sealed class CatalogRepository : ICatalogRepository
             SELECT station_id AS StationId, file_path AS FilePath, 
                    start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, 
                    file_size_bytes AS FileSizeBytes, is_finalized AS IsFinalized,
-                   width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio
+                   width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio,
+                   COALESCE(display_id, 'mon-0') AS DisplayId
             FROM recording_chunks INDEXED BY idx_chunks_station_window_covering
             WHERE station_id = @stationId
               AND end_epoch_ms >= @fromEpochMs
@@ -140,7 +149,8 @@ public sealed class CatalogRepository : ICatalogRepository
             SELECT station_id AS StationId, file_path AS FilePath, 
                    start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs, 
                    file_size_bytes AS FileSizeBytes, is_finalized AS IsFinalized,
-                   width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio
+                   width AS Width, height AS Height, fps AS Fps, has_audio AS HasAudio,
+                   COALESCE(display_id, 'mon-0') AS DisplayId
             FROM recording_chunks
             WHERE end_epoch_ms < @cutoffUtc
               AND is_finalized = 1
@@ -336,6 +346,20 @@ public sealed class CatalogRepository : ICatalogRepository
         return rows.ToDictionary(r => r.StationId, r => r.RoleAlias, StringComparer.OrdinalIgnoreCase);
     }
 
+    public async Task<HashSet<string>> GetAllKnownStationHostnamesAsync()
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = @"
+            SELECT DISTINCT station_id FROM station_nodes WHERE station_id IS NOT NULL AND station_id != ''
+            UNION
+            SELECT DISTINCT station_id FROM recording_chunks WHERE station_id IS NOT NULL AND station_id != ''
+            UNION
+            SELECT DISTINCT hostname FROM station_overrides WHERE hostname IS NOT NULL AND hostname != '';
+        ";
+        var rows = await db.QueryAsync<string>(sql);
+        return new HashSet<string>(rows.Where(s => !string.IsNullOrWhiteSpace(s)), StringComparer.OrdinalIgnoreCase);
+    }
+
     public async Task SetStationRoleAliasAsync(string hostname, string? roleAlias)
     {
         using var db = _factory.CreateConnection();
@@ -360,6 +384,32 @@ public sealed class CatalogRepository : ICatalogRepository
         ";
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await db.ExecuteAsync(sql, mappings.Select(m => new { m.Hostname, m.RoleAlias, now }), tx);
+        tx.Commit();
+    }
+
+    public async Task SwapStationRoleAliasesAsync(string stationA, string stationB)
+    {
+        using var db = _factory.CreateConnection();
+        using var tx = db.BeginTransaction();
+
+        const string fetchSql = @"SELECT station_id AS StationId, role_alias AS RoleAlias FROM station_nodes WHERE station_id IN (@stationA, @stationB)";
+        var rows = (await db.QueryAsync<(string StationId, string? RoleAlias)>(fetchSql, new { stationA, stationB }, tx)).ToList();
+
+        string? aliasA = rows.FirstOrDefault(r => string.Equals(r.StationId, stationA, StringComparison.OrdinalIgnoreCase)).RoleAlias;
+        string? aliasB = rows.FirstOrDefault(r => string.Equals(r.StationId, stationB, StringComparison.OrdinalIgnoreCase)).RoleAlias;
+
+        const string updateSql = @"
+            INSERT INTO station_nodes (station_id, display_name, role_alias, is_active, last_heartbeat_utc)
+            VALUES (@hostname, @hostname, @roleAlias, 1, @now)
+            ON CONFLICT(station_id) DO UPDATE SET
+                role_alias = excluded.role_alias;
+        ";
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        // Swap: stationA receives aliasB, stationB receives aliasA
+        await db.ExecuteAsync(updateSql, new { hostname = stationA, roleAlias = aliasB, now }, tx);
+        await db.ExecuteAsync(updateSql, new { hostname = stationB, roleAlias = aliasA, now }, tx);
+
         tx.Commit();
     }
     #endregion

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/TopScopeBar/TopScopeBar.jsx
 // ==========================================
 import React, { useMemo, useState, useEffect } from 'react';
@@ -6,6 +6,17 @@ import { createPortal } from 'react-dom';
 import { formatLocalClockWithDst } from '../../utils/dstEngine.js';
 import './TopScopeBar.scss';
 
+/**
+ * TopScopeBar renders the studio header displaying mission recording scope, time mode toggle,
+ * incident bookmarks trigger, shortcut help trigger, and drawer toggle buttons.
+ * 
+ * @param {Object} props
+ * @param {Object} props.timeRange - Time range scope object.
+ * @param {number} props.baseEpochMs - Base Epoch in milliseconds.
+ * @param {'LOCAL'|'UTC'} props.timeMode - Active display time mode.
+ * @param {(mode: 'LOCAL'|'UTC') => void} props.setTimeMode - Time mode setter.
+ * @returns {JSX.Element}
+ */
 export default function TopScopeBar({
     timeRange,
     baseEpochMs,
@@ -34,7 +45,7 @@ export default function TopScopeBar({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isConfirmResetOpen]);
 
-    // 💡 חישוב טווח זמנים נקי וללא קריאה לפונקציות לא-טהורות (Pure Rendering)
+    // Calculate clean time scope range with pure rendering
     const formattedScopeRange = useMemo(() => {
         const startEpoch = baseEpochMs || (timeRange?.start ? new Date(timeRange.start).getTime() : 0);
         const durationMs = timeRange?.durationMs || 0;
@@ -216,7 +227,11 @@ export default function TopScopeBar({
                     className="btn-help-shortcuts"
                     title="Keyboard Shortcuts & Controls Cheat Sheet (Press ?)"
                 >
-                    <span className="help-icon-symbol">?</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13" className="help-icon-symbol">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
                     <span>SHORTCUTS</span>
                 </button>
 

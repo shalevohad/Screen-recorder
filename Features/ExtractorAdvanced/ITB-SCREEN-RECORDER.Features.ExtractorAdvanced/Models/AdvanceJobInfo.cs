@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Models/AdvanceJobInfo.cs
 // ==========================================
 using System;
@@ -24,6 +24,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public double SpeedMBps { get; set; }
 
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+
+        public string LayoutMode { get; set; } = "director";
+        public string? TargetDisplayId { get; set; }
+        public bool IsPipSwapped { get; set; } = false;
+        public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
     }
 
     public class AdvanceCutRequestDto
@@ -39,6 +44,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("keystrokeMode")]
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+
+        [JsonPropertyName("layoutMode")]
+        public string LayoutMode { get; set; } = "director";
+
+        [JsonPropertyName("targetDisplayId")]
+        public string? TargetDisplayId { get; set; }
+
+        [JsonPropertyName("isPipSwapped")]
+        public bool IsPipSwapped { get; set; } = false;
+
+        [JsonPropertyName("directorSegments")]
+        public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
     }
 
     public class SessionManifest

@@ -333,11 +333,12 @@ public class MediaMtxSupervisorWorker : BackgroundService
             return;
         }
 
-        // 💡 שימוש ישיר ב-Epoch (%s) ומיקרו-שניות (%f) בפורמט שם הקובץ[cite: 10]
+        // Direct use of Epoch seconds (%s) and microseconds (%f) in recording filename format
         string recordPath = $"{cleanRoot}/%path/%s_%f";
 
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
-        string retentionHours = $"{config.Storage.RetentionDays * 24}h";
+        // Disable unmanaged MediaMTX purging; retention is governed by StorageRetentionWorker with BookmarkShield
+        string retentionHours = "0s";
 
         string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat)
             ? "fmp4"

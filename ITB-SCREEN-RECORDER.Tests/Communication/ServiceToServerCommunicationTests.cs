@@ -355,4 +355,66 @@ public class ServiceToServerCommunicationTests
     }
 
     #endregion
+
+    #region Sleep & Standby Long-Term Recovery Tests
+
+    [Fact]
+    public async Task ProcessHeartbeatAsync_StationAwakensFromSleepWithIsStreamingFalse_RestoresStreamingCommand()
+    {
+        var configMock = new Mock<IOptionsMonitor<SystemConfig>>();
+        configMock.Setup(m => m.CurrentValue).Returns(new SystemConfig());
+
+        var syncManager = new OfflineSyncManager();
+        var telemetryState = new TelemetryStateService(configMock.Object, null!, null!, syncManager);
+
+        string hostname = "STATION-SLEEP-RECOVERY";
+
+        // 1. Initial state: station connects and begins streaming
+        var initialReport = new AgentTelemetryReport
+        {
+            Hostname = hostname,
+            IsStreaming = true,
+            AutoStartRecordingOnLaunch = true
+        };
+        var initialResp = await telemetryState.ProcessHeartbeatAsync(initialReport, "127.0.0.1");
+        Assert.True(initialResp.ShouldStream);
+
+        // 2. Workstation enters sleep / lock screen for hours and wakes up with IsStreaming: false
+        var wakeReport = new AgentTelemetryReport
+        {
+            Hostname = hostname,
+            IsStreaming = false,
+            AutoStartRecordingOnLaunch = true
+        };
+
+        var wakeResp = await telemetryState.ProcessHeartbeatAsync(wakeReport, "127.0.0.1");
+
+        // The server MUST command the station to restart streaming!
+        Assert.NotNull(wakeResp);
+        Assert.True(wakeResp.ShouldStream);
+        Assert.Equal(ServerCommand.StartStream, wakeResp.Command);
+    }
+
+    [Fact]
+    public void SingleInstanceLock_HandlesAbandonedMutex_ClaimsOwnershipCleanly()
+    {
+        string uniqueMutexName = $"ITB_Test_Mutex_{Guid.NewGuid():N}";
+
+        Mutex? initialMutex = null;
+        // Simulate a terminated process abandoning a mutex
+        var t = new Thread(() =>
+        {
+            initialMutex = new Mutex(true, uniqueMutexName);
+            // Terminate thread without releasing mutex, leaving it abandoned in OS
+        });
+        t.Start();
+        t.Join();
+
+        // The next instance should cleanly claim ownership without throwing AbandonedMutexException
+        using var singleLock = new SingleInstanceLock(uniqueMutexName);
+        Assert.True(singleLock.Acquire());
+        initialMutex?.Dispose();
+    }
+
+    #endregion
 }

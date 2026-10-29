@@ -13,11 +13,11 @@ export default function StationsGridView({
     onToggleStream,
     setInspectedHostname,
     setFullscreenHostname,
-    onQuickBookmark,
-    onQuickPlayback,
     handleFeatureQuickExport,
     liveKeystrokes = {},
-    keystrokeMode = 'burn-in'
+    keystrokeMode = 'burn-in',
+    onOpenSnoozeModal,
+    onCancelSnooze
 }) {
     return (
         <div
@@ -54,12 +54,12 @@ export default function StationsGridView({
                             });
                         }}
                         onSelectStation={() => setInspectedHostname(station.hostname)}
-                        onOpenFullscreen={station.isStreaming ? () => setFullscreenHostname(station.hostname) : undefined}
-                        onQuickBookmark={onQuickBookmark}
-                        onQuickPlayback={onQuickPlayback}
+                        onOpenFullscreen={(station.isStreaming || station.isRecording || station.status === 'Recording' || station.isOnline) ? () => setFullscreenHostname(station.hostname) : undefined}
                         onQuickExport={handleFeatureQuickExport}
-                        recentKeystrokes={station.recentKeystrokes || liveKeystrokes[station.hostname?.toLowerCase()]}
+                        recentKeystrokes={station.recentKeystrokes || station.keystrokes || station.Keystrokes || liveKeystrokes[station.hostname?.toLowerCase()] || liveKeystrokes[station.hostname]}
                         keystrokeMode={keystrokeMode}
+                        onOpenSnoozeModal={onOpenSnoozeModal}
+                        onCancelSnooze={onCancelSnooze}
                     />
                 </div>
             ))}

@@ -14,6 +14,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
@@ -29,6 +31,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         private readonly IStorageScannerService _storageScanner;
         private readonly IAdvanceJobManager _jobManager;
         private readonly IKeystrokeRepository _keystrokeRepository;
+        private readonly IStationRoleProvider? _stationRoleProvider;
         private readonly ILogger<ExtractorAdvancedController> _logger;
 
         public ExtractorAdvancedController(
@@ -36,13 +39,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             IStorageScannerService storageScanner,
             IAdvanceJobManager jobManager,
             IKeystrokeRepository keystrokeRepository,
-            ILogger<ExtractorAdvancedController> logger)
+            ILogger<ExtractorAdvancedController> logger,
+            IStationRoleProvider? stationRoleProvider = null)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
             _jobManager = jobManager;
             _keystrokeRepository = keystrokeRepository;
             _logger = logger;
+            _stationRoleProvider = stationRoleProvider;
         }
 
         [HttpGet("keystrokes")]
@@ -54,6 +59,22 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         {
             if (string.IsNullOrWhiteSpace(stationId)) return BadRequest("stationId is required.");
             stationId = stationId.Trim();
+
+            if (stationId.StartsWith("live/", StringComparison.OrdinalIgnoreCase))
+            {
+                stationId = stationId.Substring(5);
+            }
+
+            // Resolve station role alias if stationId was passed as a role alias instead of physical hostname
+            if (_stationRoleProvider != null)
+            {
+                var aliases = await _stationRoleProvider.GetAllStationRoleAliasesAsync();
+                var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(stationId, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(match.Key))
+                {
+                    stationId = match.Key;
+                }
+            }
 
             long lStart = (long)Math.Round(startEpoch);
             long lEnd = (long)Math.Round(endEpoch);
@@ -73,6 +94,73 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             {
                 _logger.LogError(ex, "[API:Keystrokes] Error retrieving keystrokes.");
                 return StatusCode(500, "Error retrieving keystrokes.");
+            }
+        }
+
+        [HttpGet("director-plan")]
+        public async Task<IActionResult> GetDirectorPlan(
+            [FromQuery] string stationId,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(stationId)) return BadRequest("stationId is required.");
+            stationId = stationId.Trim();
+
+            long lStart = (long)Math.Round(startEpoch);
+            long lEnd = (long)Math.Round(endEpoch);
+            const long SecondsThreshold = 100_000_000_000L;
+            if (lStart > 0 && lStart < SecondsThreshold) lStart *= 1000;
+            if (lEnd > 0 && lEnd < SecondsThreshold) lEnd *= 1000;
+
+            if (lEnd <= lStart) return BadRequest("Invalid epoch window.");
+
+            try
+            {
+                var keystrokes = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, lStart, lEnd);
+                var activityEvents = keystrokes.Select(k => new ActivityEventDto
+                {
+                    TimestampEpochMs = k.EpochMs,
+                    Type = ActivityEventType.Keystroke,
+                    KeyName = k.KeyCombination
+                }).ToList();
+
+                DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime;
+                DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
+                var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
+                var distinctDisplays = chunks
+                    .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
+                    .OrderBy(g => g.Key)
+                    .Select((g, idx) => new DisplayMetadataDto
+                    {
+                        DisplayId = g.Key,
+                        IsPrimary = g.Key == "mon-0",
+                        X = idx * 1920,
+                        Y = 0,
+                        Width = 1920,
+                        Height = 1080
+                    })
+                    .ToList();
+
+                if (distinctDisplays.Count == 0)
+                {
+                    distinctDisplays.Add(new DisplayMetadataDto { DisplayId = "mon-0", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 });
+                }
+
+                var topology = new StationDisplayTopologyDto
+                {
+                    Hostname = stationId,
+                    Displays = distinctDisplays
+                };
+
+                var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
+                var plan = analyzer.AnalyzeFocus(stationId, lStart, lEnd, topology, activityEvents);
+                return Ok(plan);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:DirectorPlan] Error analyzing director plan for station {StationId}", stationId);
+                return StatusCode(500, "Error analyzing director plan.");
             }
         }
 
@@ -97,16 +185,33 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
+                if (availableHosts.Count == 0)
+                {
+                    // Fallback to wider retention window (30 days) so stations with archives are never omitted
+                    availableHosts = await _storageScanner.GetAvailableHostsAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
+                }
+
+                var aliases = _stationRoleProvider != null
+                    ? await _stationRoleProvider.GetAllStationRoleAliasesAsync()
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
                 var stationDtos = new ConcurrentBag<object>();
 
                 await Parallel.ForEachAsync(availableHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
-                    if (lStart.HasValue && lEnd.HasValue && chunks.Count == 0)
-                    {
-                        return;
-                    }
                     var sample = chunks.LastOrDefault();
+
+                    if (sample == null)
+                    {
+                        // Check if the host has any recordings overall using fast SQLite indexed lookup
+                        sample = await _storageScanner.GetStationSampleChunkAsync(host);
+                        if (sample == null)
+                        {
+                            // Station has zero recordings on disk or in database
+                            return;
+                        }
+                    }
 
                     int width = sample?.Width ?? 1920;
                     int height = sample?.Height ?? 1080;
@@ -116,14 +221,99 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     string resLabel = FormatResolution(width, height);
                     string fpsLabel = $"{Math.Round(fps)}fps";
 
+                    aliases.TryGetValue(host, out string? roleAlias);
+                    string effectiveDisplayName = !string.IsNullOrWhiteSpace(roleAlias) ? roleAlias : host;
+
+                    var distinctDisplays = chunks
+                        .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
+                        .OrderBy(g => g.Key)
+                        .Select((g, idx) =>
+                        {
+                            var dSample = g.LastOrDefault();
+                            int dWidth = dSample?.Width ?? width;
+                            int dHeight = dSample?.Height ?? height;
+                            double dFps = dSample?.Fps ?? fps;
+                            bool dHasAudio = dSample?.HasAudio ?? false;
+                            bool isPrimary = g.Key == "mon-0" || (dSample?.IsPrimary ?? false);
+                            return new
+                            {
+                                displayId = g.Key,
+                                displayIndex = idx,
+                                displayNumber = idx + 1,
+                                displayName = $"Display {idx + 1} ({g.Key})",
+                                isPrimary = isPrimary,
+                                hasAudio = dHasAudio,
+                                x = idx * dWidth,
+                                y = 0,
+                                width = dWidth,
+                                height = dHeight,
+                                fps = dFps,
+                                bounds = new { x = idx * dWidth, y = 0, width = dWidth, height = dHeight }
+                            };
+                        })
+                        .ToList();
+
+                    if (distinctDisplays.Count == 0)
+                    {
+                        distinctDisplays.Add(new
+                        {
+                            displayId = "mon-0",
+                            displayIndex = 0,
+                            displayNumber = 1,
+                            displayName = "Display 1 (mon-0)",
+                            isPrimary = true,
+                            hasAudio = hasAudio,
+                            x = 0,
+                            y = 0,
+                            width = width,
+                            height = height,
+                            fps = fps,
+                            bounds = new { x = 0, y = 0, width = width, height = height }
+                        });
+                    }
+
+                    var displayTopology = new
+                    {
+                        hostname = host,
+                        audioCarrierDisplayId = distinctDisplays.FirstOrDefault(d => d.hasAudio)?.displayId ?? "mon-0",
+                        displays = distinctDisplays,
+                        virtualDesktopBounds = new
+                        {
+                            x = 0,
+                            y = 0,
+                            width = distinctDisplays.Sum(d => d.width),
+                            height = distinctDisplays.Max(d => d.height)
+                        }
+                    };
+
                     stationDtos.Add(new
                     {
                         id = host,
                         hostname = host,
-                        displayName = host,
+                        roleAlias = roleAlias,
+                        displayName = effectiveDisplayName,
                         isOnline = true,
                         recordingsCount = chunks.Count,
                         segments = Array.Empty<object>(),
+                        displays = distinctDisplays,
+                        displayTopology = displayTopology,
+                        directorPlan = distinctDisplays.Count > 1 ? new
+                        {
+                            stationId = host,
+                            timelineStartEpochMs = lStart ?? 0,
+                            timelineEndEpochMs = lEnd ?? (lStart.HasValue ? lStart.Value + 3600000 : 3600000),
+                            segments = new[]
+                            {
+                                new
+                                {
+                                    startEpochMs = lStart ?? 0,
+                                    endEpochMs = lEnd ?? (lStart.HasValue ? lStart.Value + 3600000 : 3600000),
+                                    targetDisplayId = "mon-0",
+                                    isManualOverride = false,
+                                    triggerReason = "Default"
+                                }
+                            }
+                        } : null,
                         hasAudio = hasAudio,
                         audioCodec = "AAC",
                         audioChannels = 2,
@@ -137,7 +327,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     });
                 });
 
-                return Ok(stationDtos.OrderBy(s => ((dynamic)s).hostname).ToList());
+                return Ok(stationDtos.OrderBy(s => ((dynamic)s).displayName).ToList());
             }
             catch (Exception ex)
             {
@@ -270,6 +460,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         public async Task<IActionResult> GetStationFrame(
             [FromQuery] string hostname,
             [FromQuery] double epochMs,
+            [FromQuery] string? displayId = null,
             CancellationToken ct = default)
         {
             long lEpoch = (long)Math.Round(epochMs);
@@ -277,7 +468,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             try
             {
-                var imageStream = await _advancedExtractorService.ExtractFrameAsync(hostname, lEpoch, ct);
+                var imageStream = await _advancedExtractorService.ExtractFrameAsync(hostname, lEpoch, displayId, ct);
                 if (imageStream == null || imageStream == Stream.Null || imageStream.Length == 0)
                 {
                     return NoContent();
@@ -297,8 +488,16 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
         }
 
-        // 💡 הזרמת וידאו מיידית באפס השהיה (Single-Chunk Direct Stream)
-        // מבטל לחלוטין את לולאות ה-Concat Demuxer, לא צורך מעבד, ומזרים תוך 10ms
+        /// <summary>
+        /// Instant zero-latency video streaming endpoint (Single-Chunk Direct Stream).
+        /// Eliminates Concat Demuxer processing loops, consumes near-zero CPU at 1x speed, and starts streaming within 10ms.
+        /// </summary>
+        /// <param name="hostname">Station hostname.</param>
+        /// <param name="startEpoch">Timeline start Unix epoch in milliseconds.</param>
+        /// <param name="endEpoch">Timeline end Unix epoch in milliseconds.</param>
+        /// <param name="seekEpoch">Optional seek position in Unix epoch milliseconds.</param>
+        /// <param name="speed">Playback speed factor (e.g. 1.0, 2.0, 4.0).</param>
+        /// <param name="ct">Cancellation token.</param>
         [HttpGet("stream")]
         public async Task StreamContinuousStationVideo(
             [FromQuery] string hostname,
@@ -306,6 +505,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] double endEpoch,
             [FromQuery] double? seekEpoch = null,
             [FromQuery] double speed = 1.0,
+            [FromQuery] string? displayId = null,
             CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
@@ -326,8 +526,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             DateTime rangeStartUtc = DateTimeOffset.FromUnixTimeMilliseconds(effectiveStartEpoch).UtcDateTime;
             DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
-            // שליפת המקטעים הרלוונטיים החל מנקודת הזמן המבוקשת (משתמש במטמון DB המהיר)
+            // Retrieve relevant chunks from the requested seek point using fast DB indexing
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc.AddSeconds(-2), rangeEndUtc);
+
+            if (!string.IsNullOrWhiteSpace(displayId))
+            {
+                var matching = chunks.Where(c => string.Equals(c.DisplayId, displayId, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (matching.Count > 0)
+                {
+                    chunks = matching;
+                }
+            }
 
             if (chunks == null || chunks.Count == 0)
             {
@@ -335,7 +544,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return;
             }
 
-            // 💡 איתור המקטע הספציפי שבו נמצא ה-Seek הנוכחי
+            // Locate the exact chunk containing the current seek position
             var targetChunk = chunks.FirstOrDefault(c => rangeStartUtc >= c.StartUtc && rangeStartUtc <= c.EndUtc)
                               ?? chunks.FirstOrDefault(c => c.StartUtc >= rangeStartUtc)
                               ?? chunks.LastOrDefault();
@@ -359,7 +568,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             string codecArgs;
             if (Math.Abs(safeSpeed - 1.0) < 0.05)
             {
-                // מהירות 1x: העתקת זרם ישירה ב-0% CPU וב-10ms
+                // 1x Playback speed: direct stream copy with 0% CPU overhead and instant start
                 codecArgs = "-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
             else
@@ -373,7 +582,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 codecArgs = $"-vf \"{vfFilter}\" -an {optimalEncoder} -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
             }
 
-            // הזנה מינימלית ל-Probe ו-Seek מהיר לאפס השהייה בפתיחת הזרמה
+            // Minimal probe buffers and fast seeking for zero-latency playback startup
             string arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
                                $"-ss {seekOffsetSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
                                $"-i \"{normalizedPath}\" -t {chunkDurationSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
@@ -415,7 +624,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
             catch (OperationCanceledException)
             {
-                // לקוח עצר את הניגון או דילג קדימה
+                // Client stopped playback or scrubbed to another timestamp
             }
             catch (Exception ex)
             {

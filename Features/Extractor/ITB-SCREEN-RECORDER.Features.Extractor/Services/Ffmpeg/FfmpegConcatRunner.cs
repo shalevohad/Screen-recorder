@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/FfmpegConcatRunner.cs
 // ==========================================
 using System;
@@ -80,6 +80,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             try
             {
                 process.Start();
+                ExtractorGarbageCollectorService.TrackProcess(process.Id);
 
                 using var registration = ct.Register(() =>
                 {
@@ -107,6 +108,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             }
             finally
             {
+                try
+                {
+                    ExtractorGarbageCollectorService.UntrackProcess(process.Id);
+                }
+                catch { }
+
                 if (File.Exists(tempManifestPath))
                 {
                     try { File.Delete(tempManifestPath); } catch { }

@@ -1,4 +1,4 @@
-﻿// Client/src/components/Station/StationMetricsPanel.jsx
+// Client/src/components/Station/StationMetricsPanel.jsx
 import './StationMetricsPanel.scss';
 
 export default function StationMetricsPanel({
@@ -68,7 +68,7 @@ export default function StationMetricsPanel({
             </div>
 
             <div className="metric-bars-container">
-                {/* מדדי עומס מעבד */}
+                {/* CPU Utilization Metrics */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">CPU</span>
@@ -87,7 +87,7 @@ export default function StationMetricsPanel({
                     </div>
                 </div>
 
-                {/* מדדי זיכרון */}
+                {/* Memory / RAM Metrics */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">RAM</span>
@@ -106,7 +106,7 @@ export default function StationMetricsPanel({
                     </div>
                 </div>
 
-                {/* מדדי מעבד גרפי */}
+                {/* GPU Core and NVENC Metrics */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">GPU</span>
@@ -125,7 +125,7 @@ export default function StationMetricsPanel({
                     </div>
                 </div>
 
-                {/* מדדי תעבורת רשת */}
+                {/* Network Bandwidth Metrics */}
                 <div className="dual-metric-group">
                     <div className="telemetry-label">
                         <span className="cat-name">NET <strong className="link-badge">({linkDisplay})</strong></span>

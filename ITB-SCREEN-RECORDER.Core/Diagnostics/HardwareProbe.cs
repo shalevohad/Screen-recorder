@@ -5,11 +5,28 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Net;
 using System.Net.Sockets;
+using System.IO;
+using System.Threading;
 using ITB_SCREEN_RECORDER.Core.Common;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 
 namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 {
+    public class EncoderProbeStep
+    {
+        public string Tier { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Codec { get; set; } = string.Empty;
+        public string Status { get; set; } = "untested"; // "selected", "failed", "untested"
+        public string FailureReason { get; set; } = string.Empty;
+    }
+
+    public class EncoderProbeReport
+    {
+        public string SelectedEncoder { get; set; } = "libx264";
+        public List<EncoderProbeStep> Steps { get; set; } = new();
+    }
+
     public class HardwareMetricsSnapshot
     {
         public double HostCpuUsagePct { get; set; }
@@ -24,6 +41,8 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
     public static class HardwareProbe
     {
         private static string? _resolvedEncoder;
+        private static EncoderProbeReport? _cachedProbeReport;
+        private static readonly SemaphoreSlim _probeLock = new(1, 1);
         private static HardwareTelemetry? _telemetryEngine;
 
 #if WINDOWS
@@ -39,6 +58,115 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
         private static readonly object _gpuLock = new object();
 
+        public static async Task<EncoderProbeReport> GetEncoderProbeReportAsync(string? ffmpegPath = null)
+        {
+            if (_cachedProbeReport != null)
+                return _cachedProbeReport;
+
+            await _probeLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (_cachedProbeReport != null)
+                    return _cachedProbeReport;
+
+                if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(ffmpegPath))
+                {
+                    if (AppConfig.TryGetResolvedFFmpegPath(out var autoResolved, ffmpegPath))
+                    {
+                        ffmpegPath = autoResolved;
+                    }
+                }
+
+                var report = new EncoderProbeReport();
+                var nvencStep = new EncoderProbeStep { Tier = "Tier 1", Name = "NVIDIA NVENC", Codec = "h264_nvenc" };
+                var amfStep = new EncoderProbeStep { Tier = "Tier 2", Name = "AMD AMF", Codec = "h264_amf" };
+                var qsvStep = new EncoderProbeStep { Tier = "Tier 3", Name = "Intel QuickSync", Codec = "h264_qsv" };
+                var cpuStep = new EncoderProbeStep { Tier = "Tier 4", Name = "CPU Fallback", Codec = "libx264" };
+
+                report.Steps.Add(nvencStep);
+                report.Steps.Add(amfStep);
+                report.Steps.Add(qsvStep);
+                report.Steps.Add(cpuStep);
+
+                if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(ffmpegPath))
+                {
+                    nvencStep.Status = "failed";
+                    nvencStep.FailureReason = "FFmpeg binary missing";
+                    amfStep.Status = "failed";
+                    amfStep.FailureReason = "FFmpeg binary missing";
+                    qsvStep.Status = "failed";
+                    qsvStep.FailureReason = "FFmpeg binary missing";
+                    cpuStep.Status = "selected";
+                    report.SelectedEncoder = "libx264";
+                    _cachedProbeReport = report;
+                    _resolvedEncoder = "libx264";
+                    return report;
+                }
+
+                Logger.Info($"[PROBE] Probing hardware acceleration pipeline using FFmpeg: '{ffmpegPath}'");
+
+                // 1. Test NVIDIA NVENC
+                Logger.Info("[PROBE] Testing NVIDIA NVENC hardware acceleration...");
+                if (await TestEncoderSupportAsync(ffmpegPath, "h264_nvenc").ConfigureAwait(false))
+                {
+                    nvencStep.Status = "selected";
+                    amfStep.Status = "untested";
+                    qsvStep.Status = "untested";
+                    cpuStep.Status = "untested";
+                    report.SelectedEncoder = "h264_nvenc";
+                    _cachedProbeReport = report;
+                    _resolvedEncoder = "h264_nvenc";
+                    Logger.Info($"[PROBE] Video Encoder selected: {report.SelectedEncoder}");
+                    return report;
+                }
+                nvencStep.Status = "failed";
+                nvencStep.FailureReason = "Hardware / driver unavailable";
+
+                // 2. Test AMD AMF
+                Logger.Info("[PROBE] NVENC unavailable. Testing AMD AMF (Radeon) hardware acceleration...");
+                if (await TestEncoderSupportAsync(ffmpegPath, "h264_amf").ConfigureAwait(false))
+                {
+                    amfStep.Status = "selected";
+                    qsvStep.Status = "untested";
+                    cpuStep.Status = "untested";
+                    report.SelectedEncoder = "h264_amf";
+                    _cachedProbeReport = report;
+                    _resolvedEncoder = "h264_amf";
+                    Logger.Info($"[PROBE] Video Encoder selected: {report.SelectedEncoder}");
+                    return report;
+                }
+                amfStep.Status = "failed";
+                amfStep.FailureReason = "AMD GPU / driver unavailable";
+
+                // 3. Test Intel QuickSync (QSV)
+                Logger.Info("[PROBE] AMD AMF unavailable. Testing Intel Quick Sync (QSV) hardware acceleration...");
+                if (await TestEncoderSupportAsync(ffmpegPath, "h264_qsv").ConfigureAwait(false))
+                {
+                    qsvStep.Status = "selected";
+                    cpuStep.Status = "untested";
+                    report.SelectedEncoder = "h264_qsv";
+                    _cachedProbeReport = report;
+                    _resolvedEncoder = "h264_qsv";
+                    Logger.Info($"[PROBE] Video Encoder selected: {report.SelectedEncoder}");
+                    return report;
+                }
+                qsvStep.Status = "failed";
+                qsvStep.FailureReason = "Intel QSV hardware unavailable";
+
+                // 4. Fallback to CPU Software (libx264)
+                cpuStep.Status = "selected";
+                report.SelectedEncoder = "libx264";
+                _cachedProbeReport = report;
+                _resolvedEncoder = "libx264";
+                Logger.Info($"[PROBE] No hardware encoder available. Video Encoder selected (CPU Fallback): {report.SelectedEncoder}");
+                return report;
+            }
+            finally
+            {
+                _probeLock.Release();
+            }
+        }
+
         public static async Task<string> ResolveEncoderAsync(string ffmpegPath, string configuredEncoder)
         {
             if (!string.IsNullOrWhiteSpace(configuredEncoder) && !configuredEncoder.Equals("auto", StringComparison.OrdinalIgnoreCase))
@@ -49,49 +177,8 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             if (_resolvedEncoder != null)
                 return _resolvedEncoder;
 
-            if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(ffmpegPath))
-            {
-                if (AppConfig.TryGetResolvedFFmpegPath(out var autoResolved, ffmpegPath))
-                {
-                    ffmpegPath = autoResolved;
-                }
-                else if (string.IsNullOrWhiteSpace(ffmpegPath))
-                {
-                    _resolvedEncoder = "libx264";
-                    Logger.Info("[PROBE] No FFmpeg executable provided or discovered. Defaulting to CPU encoder: libx264");
-                    return _resolvedEncoder;
-                }
-            }
-
-            Logger.Info($"[PROBE] Probing hardware acceleration using FFmpeg: '{ffmpegPath}'");
-
-            Logger.Info("[PROBE] Testing NVIDIA NVENC hardware acceleration...");
-            if (await TestEncoderSupportAsync(ffmpegPath, "h264_nvenc").ConfigureAwait(false))
-            {
-                _resolvedEncoder = "h264_nvenc";
-                Logger.Info($"[PROBE] Video Encoder selected: {_resolvedEncoder}");
-                return _resolvedEncoder;
-            }
-
-            Logger.Info("[PROBE] NVENC unavailable. Testing AMD AMF (Radeon) hardware acceleration...");
-            if (await TestEncoderSupportAsync(ffmpegPath, "h264_amf").ConfigureAwait(false))
-            {
-                _resolvedEncoder = "h264_amf";
-                Logger.Info($"[PROBE] Video Encoder selected: {_resolvedEncoder}");
-                return _resolvedEncoder;
-            }
-
-            Logger.Info("[PROBE] AMD AMF unavailable. Testing Intel Quick Sync (QSV) hardware acceleration...");
-            if (await TestEncoderSupportAsync(ffmpegPath, "h264_qsv").ConfigureAwait(false))
-            {
-                _resolvedEncoder = "h264_qsv";
-                Logger.Info($"[PROBE] Video Encoder selected: {_resolvedEncoder}");
-                return _resolvedEncoder;
-            }
-
-            _resolvedEncoder = "libx264";
-            Logger.Info($"[PROBE] No hardware encoder available. Video Encoder selected (CPU Fallback): {_resolvedEncoder}");
-            return _resolvedEncoder;
+            var report = await GetEncoderProbeReportAsync(ffmpegPath).ConfigureAwait(false);
+            return report.SelectedEncoder;
         }
 
         private static async Task<bool> TestEncoderSupportAsync(string ffmpegPath, string encoderName)
@@ -146,16 +233,30 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         {
             try
             {
-                using Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
-                socket.Connect("8.8.8.8", 65530);
-                if (socket.LocalEndPoint is IPEndPoint endPoint)
+                // Enumerate operational non-loopback network interfaces (LAN/Ethernet/Wi-Fi)
+                // Air-gapped safe: avoids external socket connection attempts to 8.8.8.8
+                var interfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni => ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                                 ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
+                                 ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Tunnel)
+                    .OrderByDescending(ni => ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Ethernet)
+                    .ThenByDescending(ni => ni.Speed);
+
+                foreach (var ni in interfaces)
                 {
-                    return endPoint.Address.ToString();
+                    var props = ni.GetIPProperties();
+                    var unicast = props.UnicastAddresses
+                        .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork &&
+                                            !IPAddress.IsLoopback(u.Address));
+                    if (unicast != null)
+                    {
+                        return unicast.Address.ToString();
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Logger.Warn($"[HardwareProbe] Failed to retrieve local IP address: {ex.Message}");
+                Logger.Warn($"[HardwareProbe] Failed to retrieve local IP address from network interfaces: {ex.Message}");
             }
 
             return "127.0.0.1";
@@ -170,7 +271,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
             var sysState = _telemetryEngine.GetSystemUsage();
 
-            // נתב את דגימת ה-GPU בהתאם למערכת ההפעלה
+            // Route GPU telemetry collection based on operating system
             UpdateGpuMetrics(out double host3d, out double appNvenc);
 
             return new HardwareMetricsSnapshot
@@ -290,7 +391,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         {
             lock (_gpuLock)
             {
-                // שימוש במטמון של 2 שניות ב-Linux למניעת זלילת מעבד עקב יצירת תהליכים (Process.Start)
+                // Cache for 2 seconds on Linux to prevent CPU spikes from frequent Process.Start invocations
                 if ((DateTime.UtcNow - _lastLinuxGpuRefresh).TotalSeconds < 2)
                 {
                     host3d = _cachedLinux3d;
@@ -300,7 +401,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 try
                 {
-                    // נסיון שליפה ראשון: כרטיסי NVIDIA (דרך nvidia-smi)
+                    // Primary probe: NVIDIA GPU adapter telemetry via nvidia-smi
                     var psi = new ProcessStartInfo
                     {
                         FileName = "nvidia-smi",
@@ -336,14 +437,14 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 try
                 {
-                    // נסיון שליפה שני (Fallback): כרטיסי AMD Radeon ו-Intel (דרך SysFs)
+                    // Secondary probe fallback: AMD Radeon and Intel GPUs via Linux SysFs
                     if (System.IO.File.Exists("/sys/class/drm/card0/device/gpu_busy_percent"))
                     {
                         string busy = System.IO.File.ReadAllText("/sys/class/drm/card0/device/gpu_busy_percent");
                         if (double.TryParse(busy.Trim(), out double amdBusy))
                         {
                             _cachedLinux3d = Math.Round(amdBusy, 1);
-                            _cachedLinuxNvenc = 0; // קבצי ה-SysFs לא חושפים עומס מקודד בנפרד בקלות
+                            _cachedLinuxNvenc = 0; // SysFs does not expose discrete hardware encode load
 
                             host3d = _cachedLinux3d;
                             appNvenc = _cachedLinuxNvenc;
@@ -354,7 +455,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 }
                 catch { }
 
-                // כישלון כללי - החזרת תוצאה ריקה כדי לא להקריס את השרת
+                // General fallback: return cached or zero value to preserve stability
                 _lastLinuxGpuRefresh = DateTime.UtcNow;
                 host3d = _cachedLinux3d;
                 appNvenc = _cachedLinuxNvenc;

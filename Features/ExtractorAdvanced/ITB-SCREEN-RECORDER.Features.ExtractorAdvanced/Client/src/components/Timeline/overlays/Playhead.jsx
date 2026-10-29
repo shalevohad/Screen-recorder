@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/overlays/Playhead.jsx
 // ==========================================
 import React, { useMemo } from 'react';
@@ -56,7 +56,7 @@ function Playhead({
     const isInAtEdge = inPercent <= 0.2 && inPercent >= -0.2;
     const isOutAtEdge = outPercent >= 99.8 && outPercent <= 100.2;
 
-    // 💡 זיהוי הגעה לקצוות (למניעת חיתוך התגית מחוץ למסך)
+    // Detect boundary proximity to prevent label clipping outside the viewport
     const isPlayheadNearLeft = rawPlayheadPercent >= -0.2 && rawPlayheadPercent < 3.5;
     const isPlayheadNearRight = rawPlayheadPercent > 96.5 && rawPlayheadPercent <= 100.2;
 
@@ -75,7 +75,7 @@ function Playhead({
                 />
             )}
 
-            {/* סמן IN */}
+            {/* IN point marker */}
             <div
                 className={`marker in-marker ${flipIn ? 'flipped' : ''} ${isInAtEdge ? 'at-edge' : ''}`}
                 style={{ left: toPercent(inPointMs) }}
@@ -86,7 +86,7 @@ function Playhead({
                 <div className="marker-core-line" />
             </div>
 
-            {/* סמן OUT */}
+            {/* OUT point marker */}
             <div
                 className={`marker out-marker ${flipOut ? 'flipped' : ''} ${isOutAtEdge ? 'at-edge' : ''}`}
                 style={{ left: toPercent(outPointMs) }}
@@ -97,7 +97,7 @@ function Playhead({
                 <div className="marker-core-line" />
             </div>
 
-            {/* 💡 מחט Playhead מואצת חומרה (GPU-driven) */}
+            {/* GPU-driven hardware-accelerated Playhead needle */}
             {isPlayheadInViewport && (
                 <div
                     className="playhead-needle"
@@ -116,5 +116,5 @@ function Playhead({
     );
 }
 
-// 💡 עטיפה ב-memo כדי למנוע רינדורי סרק כשהלוח מסביב מתעדכן
+// Memoize to prevent redundant renders when surrounding timeline board updates
 export default React.memo(Playhead);

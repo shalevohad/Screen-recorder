@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Client/src/components/UI/ServerTelemetryWidget.scss
 // ==========================================
 
@@ -105,7 +105,7 @@
                 transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             }
         }
-        /* 💡 פוד ה-Storage Pool במצב רגיל ובמצב Fallback פעיל */
+        /* Storage Pool Pod in nominal mode and active fallback mode */
         &.storage-pod-radial {
             width: 215px;
             min-width: 215px;
@@ -169,7 +169,7 @@
                     }
                 }
             }
-            /* 💡 חיווי מודגש כשעובדים על FALLBACK */
+            /* Highlighted amber state when operating on fallback storage */
             &.is-fallback-active {
                 border-color: rgba(245, 158, 11, 0.6) !important;
                 background: linear-gradient(180deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
@@ -208,7 +208,7 @@
                     text-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
                 }
             }
-            /* מצב שקט כאשר שני הנתיבים אינם נגישים */
+            /* Dimmed state when neither primary nor fallback storage is reachable */
             &.is-disconnected {
                 border-color: rgba(148, 163, 184, 0.12) !important;
                 background: rgba(15, 23, 42, 0.45) !important;
@@ -237,7 +237,7 @@
                 }
             }
         }
-        /* פוד הרשת */
+        /* Network Load Pod with twin dual-ring radial gauges */
         &.net-pod-radial {
             width: 275px;
             min-width: 275px;

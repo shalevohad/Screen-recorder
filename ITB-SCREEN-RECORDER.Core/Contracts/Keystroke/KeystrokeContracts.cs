@@ -11,9 +11,9 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
     [JsonConverter(typeof(FlexibleKeystrokeExportModeConverter))]
     public enum KeystrokeExportMode
     {
-        None = 0,     // חיתוך נקי ללא כתוביות או צריבה
-        Caption = 1,  // רצועת כתוביות רכה (mov_text)
-        BurnIn = 2    // צריבה קשיחה על גבי הפיקסלים (subtitles filter)
+        None = 0,     // Clean cut without subtitles or burn-in
+        Caption = 1,  // Soft subtitle track (mov_text)
+        BurnIn = 2    // Hard burn-in onto video frames (subtitles filter)
     }
 
     public class FlexibleKeystrokeExportModeConverter : JsonConverter<KeystrokeExportMode>
@@ -66,37 +66,68 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
     }
 
     /// <summary>
-    /// ממשק גישה לנתוני המקלדת - נגיש הן לשרת והן לכלל הפלאגינים
+    /// Keystroke telemetry repository interface accessible to central server and extensible feature plugins.
     /// </summary>
     public interface IKeystrokeRepository
     {
+        /// <summary>
+        /// Bulk inserts captured keystroke events for a given station.
+        /// </summary>
+        /// <param name="stationId">Target station identifier.</param>
+        /// <param name="events">Collection of keystroke events to store.</param>
         Task BulkInsertKeystrokesAsync(string stationId, IEnumerable<KeystrokeEventDto> events);
+
+        /// <summary>
+        /// Retrieves recorded keystrokes for a station within the specified epoch millisecond time window.
+        /// </summary>
+        /// <param name="stationId">Target station identifier.</param>
+        /// <param name="fromEpochMs">Start epoch timestamp in milliseconds.</param>
+        /// <param name="toEpochMs">End epoch timestamp in milliseconds.</param>
+        /// <returns>Read-only list of keystroke event DTOs.</returns>
         Task<IReadOnlyList<KeystrokeEventDto>> GetKeystrokesForWindowAsync(string stationId, long fromEpochMs, long toEpochMs);
     }
 
     /// <summary>
-    /// ממשק מחולל כתוביות ה-SRT - נגיש ל-SynchronizedTrackCutter ללא תלות ב-Server
+    /// Subtitle generator interface decoupled from server infrastructure, consumed by export and synchronized track cutting engines.
     /// </summary>
     public interface IKeystrokeSrtGenerator
     {
         /// <summary>
-        /// מייצר קובץ SRT סטנדרטי עבור רצועת כתוביות רכה (Caption Track)
+        /// Generates a standard SubRip (SRT) subtitle file for a continuous soft caption track.
         /// </summary>
+        /// <param name="stationId">Station identifier.</param>
+        /// <param name="inEpochMs">In-point timestamp in epoch milliseconds.</param>
+        /// <param name="outEpochMs">Out-point timestamp in epoch milliseconds.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Path to generated SRT file, or null if no keystrokes found.</returns>
         Task<string?> CreateSrtFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default);
 
         /// <summary>
-        /// מייצר קובץ ASS מתקדם עם תגיות Keycaps טקטיות עבור צריבה קשיחה בווידאו (Burn-In)
+        /// Generates an Advanced SubStation Alpha (ASS) file with tactical keycap styling for hard burn-in.
         /// </summary>
+        /// <param name="stationId">Station identifier.</param>
+        /// <param name="inEpochMs">In-point timestamp in epoch milliseconds.</param>
+        /// <param name="outEpochMs">Out-point timestamp in epoch milliseconds.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Path to generated ASS file, or null if no keystrokes found.</returns>
         Task<string?> CreateAssKeycapsFileAsync(string stationId, long inEpochMs, long outEpochMs, CancellationToken ct = default);
 
         /// <summary>
-        /// מייצר קובץ SRT המותאם למקטעים פעילים ומפצה על פערים שהוסרו (Global Gaps)
+        /// Generates a time-compensated SRT subtitle file matching active timeline segments and accounting for removed global gaps.
         /// </summary>
+        /// <param name="stationId">Station identifier.</param>
+        /// <param name="activeSegments">Active timeline segments list of (StartEpochMs, EndEpochMs).</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Path to time-aligned SRT file, or null if empty.</returns>
         Task<string?> CreateSrtFileForSegmentsAsync(string stationId, IReadOnlyList<(long StartEpochMs, long EndEpochMs)> activeSegments, CancellationToken ct = default);
 
         /// <summary>
-        /// מייצר קובץ ASS המותאם למקטעים פעילים ומפצה על פערים שהוסרו (Global Gaps)
+        /// Generates a time-compensated ASS keycap subtitle file matching active timeline segments and accounting for removed global gaps.
         /// </summary>
+        /// <param name="stationId">Station identifier.</param>
+        /// <param name="activeSegments">Active timeline segments list of (StartEpochMs, EndEpochMs).</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Path to time-aligned ASS file, or null if empty.</returns>
         Task<string?> CreateAssKeycapsFileForSegmentsAsync(string stationId, IReadOnlyList<(long StartEpochMs, long EndEpochMs)> activeSegments, CancellationToken ct = default);
     }
 }

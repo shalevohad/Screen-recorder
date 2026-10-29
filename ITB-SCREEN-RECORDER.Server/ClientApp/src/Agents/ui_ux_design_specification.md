@@ -142,3 +142,32 @@ Key transformations:
 4. [ ] **Active Sonar Empty State:** Replace the static black box with the animated radar sonar container and clear diagnostic status text.
 5. [ ] **Folder Tab Continuity:** Ensure the active tab seamlessly merges into the workspace without a separating bottom border.
 6. [ ] **Conditional Zoom Bar:** Ensure the bottom zoom pill dims or stays discreetly dormant when zero agents are displayed on screen.
+
+---
+
+## 6. Multi-Monitor Tactical UI, Minimap Radar & Exclusive Audio Dock
+
+### 6.1 Virtual Topology Canvas (Station Card Default)
+* **Default Card Viewport**: Each station thumbnail in the Grid defaults to `VirtualTopologyCanvas`.
+* **Proportional Layout**: Sub-displays are positioned using percentage-based bounding coordinates matching the OS virtual desktop (`x, y, width, height`).
+* **Card Switcher Pill**: A segmented glass pill at the top of each thumbnail:
+  `[ ⊞ Canvas ] | [ 🖥 1 ] | [ 🖥 2 ]`
+  Clicking a specific monitor drops secondary streams from the card, halving decoder load.
+* **Hover Focus**: Hovering over any monitor inside the canvas illuminates a subtle cyan highlight border and display tooltip.
+
+### 6.2 Fullscreen Minimap Radar Navigator (Picture-in-Picture Mini-Canvas)
+* **Contextual Trigger**: Appears when navigating away from the full `Canvas` mode into `Solo` (Monitor 1/2) or `Spotlight` mode.
+* **Location & Structure**: Anchored at the bottom-right of the Fullscreen theater viewport (`fixed bottom-8 right-8 z-40`).
+* **Active Display Highlight**:
+  * Currently viewed monitor: Brightly illuminated border (`var(--border-active-cyan)`), gentle emerald/cyan pulse, and `● LIVE` badge.
+  * Inactive monitors: Semi-transparent dark slate well (`var(--surface-card)`), subtle outline, label `[2]`.
+* **Interactivity**: Clicking any display rectangle in the minimap immediately swaps the full theater view to that monitor. Clicking the minimap frame background returns to full multi-display Canvas mode.
+
+### 6.3 Exclusive Audio Solo (Master Audio Dock)
+* **Single Active Audio Sink**: Exactly one station can play audio in the Grid at any moment.
+* **Quick Listen Trigger**: Every card has a tactical `[ 🎧 Listen ]` button. When clicked, it activates `[ 🟢 LISTENING ]` and mutes any previously listening card.
+* **Floating Master Audio Dock**: Anchored at `fixed bottom-6 left-1/2 -translate-x-1/2 z-50`:
+  * Capsule glassmorphism container: `var(--surface-glass)` with backdrop blur ($20\text{px}$).
+  * Active station callout with room/role badge: `🎧 LISTENING: WS-OPERATOR-02`.
+  * Animated Spectral VU-Meter: 5-bar animated audio visualizer.
+  * Master volume slider: Horizontal range (`0% - 100%`) with quick Mute toggle (`M`).

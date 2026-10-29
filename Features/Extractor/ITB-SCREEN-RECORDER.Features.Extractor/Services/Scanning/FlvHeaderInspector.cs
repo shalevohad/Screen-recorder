@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/FlvHeaderInspector.cs
 // ==========================================
 using System;
@@ -36,7 +36,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
                 var span = new ReadOnlySpan<byte>(buffer, 0, bytesRead);
 
-                // 1. אם הקובץ הוא FLV טהור
+                // 1. Check if the file is pure FLV container format
                 if (buffer[0] == 0x46 && buffer[1] == 0x4C && buffer[2] == 0x56)
                 {
                     DateTime? startUtc = ReadCreationTime(span);
@@ -48,10 +48,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     }
                 }
 
-                // 2. בדיקת MP4 / fMP4 / כל קובץ וידאו המכיל In-Band Metadata של ITB
+                // 2. Check MP4 / fMP4 / container files containing ITB in-band metadata
                 string headerText = Encoding.ASCII.GetString(buffer, 0, bytesRead);
 
-                // בדיקת ITB_EPOCH:1759583561000
+                // Check ITB_EPOCH:1759583561000 tag
                 var matchEpoch = Regex.Match(headerText, @"ITB_EPOCH:(\d{10,13})");
                 if (matchEpoch.Success && long.TryParse(matchEpoch.Groups[1].Value, out long epoch))
                 {
@@ -60,7 +60,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     return new VideoMetadataResult(startUtc, TimeSpan.FromMinutes(15));
                 }
 
-                // בדיקת itb_start_epoch_ms
+                // Check itb_start_epoch_ms metadata
                 var matchStartEpoch = Regex.Match(headerText, @"itb_start_epoch_ms[^\d]*(\d{10,13})");
                 if (matchStartEpoch.Success && long.TryParse(matchStartEpoch.Groups[1].Value, out long startEpoch))
                 {
@@ -69,7 +69,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     return new VideoMetadataResult(startUtc, TimeSpan.FromMinutes(15));
                 }
 
-                // בדיקת creation_time בפורמט ISO
+                // Check creation_time in ISO-8601 format
                 var matchIso = Regex.Match(headerText, @"creation_time[^\d]*(\d{4}-\d{2}-\d{2}[T_ ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)");
                 if (matchIso.Success && DateTime.TryParse(matchIso.Groups[1].Value, CultureInfo.InvariantCulture,
                     DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedUtc))

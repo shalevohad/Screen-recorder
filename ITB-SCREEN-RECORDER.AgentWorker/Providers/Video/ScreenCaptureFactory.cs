@@ -20,5 +20,22 @@ namespace ITBRecorderAgent.Providers.Video
 
             throw new PlatformNotSupportedException("Unsupported Operating System for screen capture.");
         }
+
+        public static IScreenCaptureProvider CreateForDisplay(int x, int y, int width, int height, string displayId)
+        {
+            #if WINDOWS
+            if (OperatingSystem.IsWindows())
+            {
+                return new ResilientScreenCapture(0, 0, displayId, x, y, width, height);
+            }
+            #endif
+
+            if (OperatingSystem.IsLinux())
+            {
+                return new LinuxX11ScreenCapture(x, y, width, height, displayId);
+            }
+
+            throw new PlatformNotSupportedException("Unsupported Operating System for screen capture.");
+        }
     }
 }

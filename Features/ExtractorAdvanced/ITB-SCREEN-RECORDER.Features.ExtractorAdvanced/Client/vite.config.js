@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/vite.config.js
 // ==========================================
 import { defineConfig } from 'vite';
@@ -8,21 +8,26 @@ import { dirname, resolve } from 'node:path';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 
-// 💡 נתיב אבסולוטי ישיר לקובץ המקור היחיד בשרת
+// Direct absolute path to the single source dstEngine file in the Server project
 const sharedDstEnginePath = resolve(currentDir, '../../../../ITB-SCREEN-RECORDER.Server/ClientApp/src/utils/dstEngine.js');
 const localTimeFormatPath = resolve(currentDir, 'src/utils/timeFormat.js');
 
-// 💡 תוסף ייעודי שמיירט את כל קריאות ה-Import עוד לפני בדיקת מערכת הקבצים
+/**
+ * Custom Vite plugin that intercepts import specifiers before filesystem resolution.
+ * Resolves shared dstEngine and local timeFormat paths.
+ * 
+ * @returns {import('vite').Plugin}
+ */
 function sharedModuleResolverPlugin() {
     return {
         name: 'shared-dst-resolver-plugin',
         enforce: 'pre',
         resolveId(source) {
-            // תופס כל ייבוא שמסתיים ב-dstEngine (בין אם './utils/dstEngine', './dstEngine.js', וכו')
+            // Intercept any import ending with dstEngine (e.g. './utils/dstEngine', './dstEngine.js')
             if (/dstEngine(\.js)?$/.test(source)) {
                 return sharedDstEnginePath;
             }
-            // מתקן כל נתיב יחסי ארוך או שבור של timeFormat
+            // Correct relative or deep paths to timeFormat
             if (/timeFormat(\.js)?$/.test(source)) {
                 return localTimeFormatPath;
             }
@@ -52,7 +57,7 @@ export default defineConfig({
     },
     server: {
         fs: {
-            // מאפשר ל-Vite לטעון קבצים מחוץ לתיקיית הפרויקט
+            // Allow Vite to serve files from parent directories outside the Client folder
             allow: [resolve(currentDir, '../../../../')]
         }
     },

@@ -71,7 +71,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                     nicUtilizationPct = net.AppLineUtilizationPct,
                     uptimeSeconds = Math.Round((DateTime.UtcNow - _serverStartTime).TotalSeconds, 0),
 
-                    // 💡 נתוני האחסון (Storage Pool & IOPS) המשודרים ישירות ל-ServerTelemetryWidget ב-Header
+                    // Storage pool and IOPS telemetry broadcast directly to ServerTelemetryWidget in the header
                     storage = storage
                 };
 

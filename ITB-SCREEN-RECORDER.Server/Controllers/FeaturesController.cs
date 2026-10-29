@@ -14,7 +14,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
     public class FeaturesController : ControllerBase
     {
         private readonly IEnumerable<IFeatureModule> _features;
-        // הוספנו דגל סטטי שיוודא שהלוג יודפס רק פעם אחת לאורך חיי הריצה של השרת
+        // Static flag ensuring plugin override log message is emitted once per server lifecycle
         private static bool _hasLoggedOverride = false;
 
         public FeaturesController(IEnumerable<IFeatureModule> features)
@@ -22,10 +22,14 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _features = features;
         }
 
+        /// <summary>
+        /// Retrieves all currently active and enabled feature modules, resolving plugin override chains (e.g. ExtractorAdvanced superseding Extractor).
+        /// </summary>
+        /// <returns>200 OK with list of active feature UI descriptor objects.</returns>
         [HttpGet("active")]
         public IActionResult GetActiveFeatures()
         {
-            // שימוש ב-StringComparer.OrdinalIgnoreCase כדי שהזיהוי יעבוד זהה בלינוקס ובווינדוס
+            // Case-insensitive comparison ensures consistent cross-platform behavior between Windows and Linux
             var supersededIds = _features
                 .SelectMany(f => f.SupersedesIds)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -49,7 +53,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             if (supersededIds.Any() && !_hasLoggedOverride)
             {
                 Logger.AlwaysInfo($"[API] Plugin Override Chain resolved. Suppressed legacy features: {string.Join(", ", supersededIds)}");
-                _hasLoggedOverride = true; // נועלים את ההדפסה לפעמים הבאות
+                _hasLoggedOverride = true; // Lock logging to prevent repetitive logs on periodic polling
             }
 
             return Ok(activeFeatures);

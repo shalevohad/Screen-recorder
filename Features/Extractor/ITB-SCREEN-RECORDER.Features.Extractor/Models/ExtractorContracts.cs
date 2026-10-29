@@ -7,6 +7,9 @@ using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 {
+    /// <summary>
+    /// Parameters requesting video extraction across workstations and time range.
+    /// </summary>
     public class ExtractionRequestDto
     {
         public DateTime StartTimeUtc { get; set; }
@@ -14,8 +17,30 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public List<string> Hostnames { get; set; } = new();
         public bool ExportRawChunks { get; set; } = false;
 
-        // 💡 אופן הצגת המקשים בייצוא ה-TAR
+        /// <summary>
+        /// Keystroke presentation mode for forensic export (e.g., BurnIn, Caption SRT, or None).
+        /// </summary>
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+
+        /// <summary>
+        /// Multi-display layout mode: "director", "split", "pip", or specific display ID.
+        /// </summary>
+        public string LayoutMode { get; set; } = "director";
+
+        /// <summary>
+        /// Specific target display if solo export is selected (e.g. "mon-0", "mon-1").
+        /// </summary>
+        public string? TargetDisplayId { get; set; }
+
+        /// <summary>
+        /// Whether Picture-in-Picture main and inset displays are swapped.
+        /// </summary>
+        public bool IsPipSwapped { get; set; } = false;
+
+        /// <summary>
+        /// Director segments defining display switching schedule across timeline.
+        /// </summary>
+        public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
     }
 
     public class ExtractionPreviewResponseDto
@@ -43,6 +68,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public TimeSpan GapDuration => ActualNextStartUtc - ExpectedUtc;
     }
 
+    /// <summary>
+    /// Metadata describing an individual recorded video segment on disk.
+    /// </summary>
     public class RecordingChunkMetadata
     {
         public string FullPath { get; set; } = string.Empty;
@@ -52,12 +80,14 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public TimeSpan Duration => EndUtc - StartUtc;
         public long FileSizeBytes { get; set; }
 
-        // נתוני מדיה הנשלפים ישירות מהאינדקס ב-DB (מונעים שימוש ב-FFprobe)
+        // Media properties indexed in the database (bypasses redundant FFprobe inspection)
         public int Width { get; set; } = 1920;
         public int Height { get; set; } = 1080;
         public double Fps { get; set; } = 30.0;
         public bool HasAudio { get; set; } = true;
         public bool IsFinalized { get; set; } = true;
+        public string DisplayId { get; set; } = "mon-0";
+        public bool IsPrimary { get; set; } = true;
     }
 
     public class SessionManifest

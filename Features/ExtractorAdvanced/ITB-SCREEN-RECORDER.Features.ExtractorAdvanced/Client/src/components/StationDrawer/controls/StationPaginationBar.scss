@@ -13,7 +13,7 @@
     flex-shrink: 0;
     user-select: none;
     transition: all 0.2s ease;
-    // מצב שבו יש עמוד יחיד בלבד ואין צורך בדפדוף
+    // Single page mode without pagination necessity
     &.is-single-page-mode {
         padding: 3px 10px;
         background: rgba(10, 15, 29, 0.45);
@@ -94,7 +94,7 @@
                 font-weight: 700;
             }
         }
-        // כיווץ נוסף כשיש עמוד יחיד בלבד
+        // Compact styling for single-page mode
         &.controls-disabled-compact {
             opacity: 0.45;
 
@@ -157,7 +157,7 @@
                     color: #22d3ee;
                     font-weight: 800;
                 }
-                // מצב מושבת ומכווץ עבור גדלים שלא ישנו דבר
+                // Disabled compact styling for sizes that would not alter display
                 &.redundant-disabled {
                     opacity: 0.22;
                     font-size: 7.5px;
