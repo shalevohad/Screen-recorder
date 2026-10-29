@@ -11,12 +11,9 @@ export default function PersistentMinimapHud({
     isTransitioning = false,
     mode = 'AUTO' // 'AUTO' or 'MANUAL'
 }) {
-    if (!displays || displays.length <= 1) {
-        return null;
-    }
-
     // Calculate real physical topology bounds
     const bounds = useMemo(() => {
+        if (!displays || displays.length <= 1) return null;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         displays.forEach(d => {
             const x = d.x ?? d.X ?? 0;
@@ -33,6 +30,10 @@ export default function PersistentMinimapHud({
         const totalH = Math.max(1, maxY - minY);
         return { minX, minY, totalW, totalH };
     }, [displays]);
+
+    if (!displays || displays.length <= 1 || !bounds) {
+        return null;
+    }
 
     const activeDisplay = displays.find(d => (d.displayId ?? d.DisplayId) === activeDisplayId) || displays[0];
     const activeLabel = activeDisplay ? (activeDisplay.displayId ?? activeDisplay.DisplayId ?? 'mon-0').toUpperCase() : 'MON-0';

@@ -560,7 +560,7 @@ export default function ExtractorAdvancedStudio() {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return alert('No active stations selected in timeline.');
 
-        let resolvedMode = 'BurnIn';
+        let resolvedMode;
         const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
         if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
         else if (normMode === 'CAPTION') resolvedMode = 'Caption';

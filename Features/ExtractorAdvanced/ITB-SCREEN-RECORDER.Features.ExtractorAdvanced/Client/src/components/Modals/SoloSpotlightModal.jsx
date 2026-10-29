@@ -258,7 +258,7 @@ export default function SoloSpotlightModal({
         if (!station || Math.abs(outPointMs - inPointMs) < 1000) return;
 
         const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        let resolvedMode = 'BurnIn';
+        let resolvedMode;
         if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
         else if (normMode === 'CAPTION') resolvedMode = 'Caption';
         else resolvedMode = 'BurnIn';

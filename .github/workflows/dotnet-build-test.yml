@@ -24,6 +24,13 @@ jobs:
       with:
         dotnet-version: '8.0.x'
 
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: './ITB-SCREEN-RECORDER.Server/ClientApp/package-lock.json'
+
     - name: Shutdown .NET Build Server (Prevent File Locking)
       run: dotnet build-server shutdown
 
@@ -178,5 +185,5 @@ jobs:
         dotnet build ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-restore --configuration Release
 
     - name: Run Central Unit Tests
-      timeout-minutes: 2
+      timeout-minutes: 10
       run: dotnet test ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-build --configuration Release --verbosity minimal

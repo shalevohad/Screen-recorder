@@ -23,17 +23,10 @@ export default function KeystrokePlaybackOverlay({
     keystrokeMode = 'BURN_IN' // Options: 'NONE' | 'CAPTION' | 'BURN_IN' | 'OFF'
 }) {
     const normalizedMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-
-    // If mode is NONE or OFF - render nothing
-    if (normalizedMode === 'NONE' || normalizedMode === 'OFF') {
-        return null;
-    }
-
     const isVisibleMode = normalizedMode === 'BURN_IN' || normalizedMode === 'CAPTION';
-    if (!isVisibleMode) return null;
 
     const activeEvent = useMemo(() => {
-        if (!keystrokes.length || !currentEpochMs) return null;
+        if (!isVisibleMode || !keystrokes.length || !currentEpochMs) return null;
 
         for (let i = keystrokes.length - 1; i >= 0; i--) {
             const k = keystrokes[i];
@@ -48,9 +41,9 @@ export default function KeystrokePlaybackOverlay({
             }
         }
         return null;
-    }, [currentEpochMs, keystrokes]);
+    }, [isVisibleMode, currentEpochMs, keystrokes]);
 
-    if (!activeEvent) return null;
+    if (!isVisibleMode || !activeEvent) return null;
 
     // Calculate fade-out opacity over the last 400 milliseconds
     let opacity = 1;
