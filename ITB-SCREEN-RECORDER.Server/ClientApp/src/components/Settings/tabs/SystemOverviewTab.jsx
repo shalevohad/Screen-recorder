@@ -36,10 +36,18 @@ function TacticalTelemetryChart({
     currentValA,
     currentValB,
     gradientId,
-    height = 140
+    height = 140,
+    decimals = 1
 }) {
     const [hoverIdx, setHoverIdx] = useState(null);
     const containerRef = useRef(null);
+
+    const formatVal = useCallback((val) => {
+        if (val === undefined || val === null || isNaN(val)) return '0';
+        const num = Number(val);
+        if (decimals === 0) return String(Math.round(num));
+        return num.toFixed(decimals);
+    }, [decimals]);
 
     const dataA = useMemo(() => (seriesA && seriesA.length > 0 ? seriesA : [0]), [seriesA]);
     const dataB = useMemo(() => (seriesB && seriesB.length > 0 ? seriesB : null), [seriesB]);
@@ -95,7 +103,7 @@ function TacticalTelemetryChart({
                         <span className="readout-dot" style={{ backgroundColor: colorA }} />
                         <span className="readout-label">{labelA}:</span>
                         <span className="readout-val">
-                            {hoverIdx !== null ? (dataA[hoverIdx] ?? 0) : (currentValA ?? dataA[dataA.length - 1] ?? 0)}
+                            {formatVal(hoverIdx !== null ? (dataA[hoverIdx] ?? 0) : (currentValA ?? dataA[dataA.length - 1] ?? 0))}
                             <span className="readout-unit">{unit}</span>
                         </span>
                     </div>
@@ -104,7 +112,7 @@ function TacticalTelemetryChart({
                             <span className="readout-dot" style={{ backgroundColor: colorB }} />
                             <span className="readout-label">{labelB}:</span>
                             <span className="readout-val">
-                                {hoverIdx !== null ? (dataB[hoverIdx] ?? 0) : (currentValB ?? dataB[dataB.length - 1] ?? 0)}
+                                {formatVal(hoverIdx !== null ? (dataB[hoverIdx] ?? 0) : (currentValB ?? dataB[dataB.length - 1] ?? 0))}
                                 <span className="readout-unit">{unit}</span>
                             </span>
                         </div>
@@ -235,12 +243,12 @@ export default function SystemOverviewTab({
         const initial = [];
         for (let i = 0; i < 20; i++) {
             initial.push({
-                hostCpu: 12 + Math.sin(i * 0.4) * 5,
-                appCpu: 4 + Math.cos(i * 0.5) * 2,
+                hostCpu: Math.round((12 + Math.sin(i * 0.4) * 5) * 10) / 10,
+                appCpu: Math.round((4 + Math.cos(i * 0.5) * 2) * 10) / 10,
                 ramMb: 420 + i * 3,
                 ramPct: 24,
-                netTx: 8.5 + Math.sin(i * 0.3) * 2,
-                netRx: 18.2 + Math.cos(i * 0.4) * 3,
+                netTx: Math.round((8.5 + Math.sin(i * 0.3) * 2) * 10) / 10,
+                netRx: Math.round((18.2 + Math.cos(i * 0.4) * 3) * 10) / 10,
                 avgFps: 30,
                 dropSpikes: 0
             });
@@ -286,13 +294,13 @@ export default function SystemOverviewTab({
                 const netRx = tData?.serverNetworkRxMbps ?? (prev[prev.length - 1]?.netRx ?? 24);
 
                 const nextPoint = {
-                    hostCpu: Math.max(0, Math.min(100, hostCpu)),
-                    appCpu: Math.max(0, Math.min(100, appCpu)),
+                    hostCpu: Math.round(Math.max(0, Math.min(100, hostCpu)) * 10) / 10,
+                    appCpu: Math.round(Math.max(0, Math.min(100, appCpu)) * 10) / 10,
                     ramMb: Math.round(ramMb),
-                    ramPct: Math.max(0, Math.min(100, ramPct)),
-                    netTx: Math.max(0, netTx),
-                    netRx: Math.max(0, netRx),
-                    avgFps: Math.max(0, avgFps),
+                    ramPct: Math.round(Math.max(0, Math.min(100, ramPct))),
+                    netTx: Math.round(Math.max(0, netTx) * 10) / 10,
+                    netRx: Math.round(Math.max(0, netRx) * 10) / 10,
+                    avgFps: Math.round(Math.max(0, avgFps)),
                     dropSpikes: totalDrops
                 };
 
@@ -590,6 +598,7 @@ export default function SystemOverviewTab({
                     unit="%"
                     maxValue={100}
                     gradientId="cpu"
+                    decimals={1}
                 />
 
                 {/* Chart 2: Server RAM & Process Heap */}
@@ -603,6 +612,7 @@ export default function SystemOverviewTab({
                     maxValue={1024}
                     currentValA={serverTelemetry?.processRamMb ? Math.round(serverTelemetry.processRamMb) : undefined}
                     gradientId="ram"
+                    decimals={0}
                 />
 
                 {/* Chart 3: Network Throughput */}
@@ -618,6 +628,7 @@ export default function SystemOverviewTab({
                     unit=" Mbps"
                     maxValue={50}
                     gradientId="net"
+                    decimals={1}
                 />
 
                 {/* Chart 4: Fleet Capture Stability (FPS) */}
@@ -630,6 +641,7 @@ export default function SystemOverviewTab({
                     unit=" FPS"
                     maxValue={60}
                     gradientId="fps"
+                    decimals={0}
                 />
             </div>
 
