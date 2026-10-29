@@ -650,6 +650,39 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
   - `FullscreenModal.jsx` decouples keystroke rendering from active streaming state, allowing keystroke inspection during both live stream viewing and offline chunk replay.
 
 ---
+
+## 20. Cross-Platform CI/CD Architecture & Pipeline Hardening (2026-10-29)
+
+### 1. Cross-Platform Test Runner & Shell Determinism
+- **Root Problem**:
+  - `package.json` previously defined `"test": "node --test src/tests/*.test.js"`.
+  - On Linux/macOS runners, bash expands file wildcards before invoking Node.
+  - On Windows GitHub Actions runners (`windows-latest`), `cmd.exe` does not expand wildcards, passing literal `src/tests/*.test.js` to `node.exe`. Node failed to locate the wildcard path, throwing `ENOENT / MODULE_NOT_FOUND`.
+- **Architectural Solution**:
+  - Standardized the test script to `"test": "node --test"` without arguments.
+  - Node's native test runner automatically traverses and discovers `*.test.js` and `test/**/*.js` suites cross-platform while properly ignoring `node_modules`.
+
+### 2. Lockfile Synchronization & npm ci Invariant
+- **Root Problem**:
+  - `package-lock.json` in `ClientApp` was versioned at `0.0.0` while `package.json` had evolved to `1.0.44`.
+  - In CI workflows, `npm ci` strictly enforces lockfile parity with `package.json`. Version mismatches trigger fatal errors during fresh repository installations.
+- **Resolution**:
+  - Synchronized `package-lock.json` via `npm i --package-lock-only`, aligning package versions and dependency trees across both Linux and Windows runners.
+  - Workflow cache keys explicitly target `./ITB-SCREEN-RECORDER.Server/ClientApp/package-lock.json` rather than multi-matching wildcards.
+
+### 3. Server Project CompileFrontend Target & Node.js CI Integration
+- **Frontend Build Target Invariant**:
+  - `ITB-SCREEN-RECORDER.Server.csproj` declares `<Target Name="CompileFrontend" BeforeTargets="Build">`, triggering `npm run lint`, `npm test`, and `npm run build` during server compilation.
+  - `.NET Core Cross-Platform CI` (`dotnet-build-test.yml`) was enhanced with `actions/setup-node@v4` (Node 20.x) immediately following `actions/setup-dotnet@v4` to guarantee consistent Node.js runtimes across both `ubuntu-latest` and `windows-latest`.
+  - Unit test execution timeout was extended to `timeout-minutes: 10` to accommodate complete multicam synchronization, SQLite failover, and installer packaging suites.
+
+### 4. React 19 / ESLint 10 Hook & Assignment Strictness
+- **Rules of Hooks Invariant**:
+  - In `KeystrokePlaybackOverlay.jsx` and `PersistentMinimapHud.jsx`, `useMemo` declarations were hoisted above conditional early-exit returns, ensuring invariant hook invocation counts across renders.
+- **Dead Assignment Invariant**:
+  - In `ExtractorAdvancedStudio.jsx` and `SoloSpotlightModal.jsx`, eliminated dead initializations (`let resolvedMode;`) flagged by `no-useless-assignment`.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 
