@@ -122,7 +122,10 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
     };
 
     const handleSaveInline = async (hostname) => {
-        const cleanAlias = tempAlias.trim();
+        let cleanAlias = tempAlias.trim();
+        if (cleanAlias.toLowerCase() === 'default' || cleanAlias.toLowerCase() === 'defualt') {
+            cleanAlias = '';
+        }
         const cleanLower = cleanAlias.toLowerCase();
 
         if (cleanLower) {
@@ -231,8 +234,25 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
         }
     };
 
-    const handleExportCsv = () => {
-        window.open('/api/v1/stations/roles/export-mapping', '_blank');
+    const handleExportCsv = async () => {
+        try {
+            const res = await fetch('/api/v1/stations/roles/export-mapping');
+            if (res.ok) {
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `station_roles_${new Date().toISOString().slice(0, 10)}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } else {
+                window.open('/api/v1/stations/roles/export-mapping', '_blank');
+            }
+        } catch {
+            window.open('/api/v1/stations/roles/export-mapping', '_blank');
+        }
     };
 
     const filteredStations = useMemo(() => {
@@ -340,7 +360,8 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                 const currentAlias = roleAliases[st.hostname];
                                 const isEditing = editingHost === st.hostname;
 
-                                const cleanTempAlias = (tempAlias || '').trim().toLowerCase();
+                                const cleanTemp = (tempAlias || '').trim().toLowerCase();
+                                const cleanTempAlias = (cleanTemp === 'default' || cleanTemp === 'defualt') ? '' : cleanTemp;
                                 const inlineConflictHost = isEditing && cleanTempAlias
                                     ? Object.keys(roleAliases).find(h =>
                                         h.toLowerCase() !== st.hostname.toLowerCase() &&
@@ -375,7 +396,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                                 </div>
                                             ) : (
                                                 <span className={`alias-text ${!currentAlias ? 'empty' : ''}`}>
-                                                    {currentAlias || '— None (Default Hostname) —'}
+                                                    {currentAlias || 'Default'}
                                                 </span>
                                             )}
                                         </td>

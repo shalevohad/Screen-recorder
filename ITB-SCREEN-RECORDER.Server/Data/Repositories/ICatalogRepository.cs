@@ -1,4 +1,4 @@
-namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
+﻿namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -55,6 +55,7 @@ public interface ICatalogRepository : IKeystrokeRepository, IStationRoleProvider
     Task<bool> DeleteOverrideAsync(string hostname);
 
     // Station Roles (Inherits GetAllStationRoleAliasesAsync from IStationRoleProvider)
+    Task<HashSet<string>> GetAllKnownStationHostnamesAsync();
     Task SetStationRoleAliasAsync(string hostname, string? roleAlias);
     Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings);
     Task SwapStationRoleAliasesAsync(string stationA, string stationB);

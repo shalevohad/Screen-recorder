@@ -1,4 +1,4 @@
-namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
+﻿namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
 
 using System;
 using System.Collections.Generic;
@@ -344,6 +344,20 @@ public sealed class CatalogRepository : ICatalogRepository
         const string sql = "SELECT station_id, role_alias FROM station_nodes WHERE role_alias IS NOT NULL AND role_alias != '';";
         var rows = await db.QueryAsync<(string StationId, string RoleAlias)>(sql);
         return rows.ToDictionary(r => r.StationId, r => r.RoleAlias, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task<HashSet<string>> GetAllKnownStationHostnamesAsync()
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = @"
+            SELECT DISTINCT station_id FROM station_nodes WHERE station_id IS NOT NULL AND station_id != ''
+            UNION
+            SELECT DISTINCT station_id FROM recording_chunks WHERE station_id IS NOT NULL AND station_id != ''
+            UNION
+            SELECT DISTINCT hostname FROM station_overrides WHERE hostname IS NOT NULL AND hostname != '';
+        ";
+        var rows = await db.QueryAsync<string>(sql);
+        return new HashSet<string>(rows.Where(s => !string.IsNullOrWhiteSpace(s)), StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task SetStationRoleAliasAsync(string hostname, string? roleAlias)

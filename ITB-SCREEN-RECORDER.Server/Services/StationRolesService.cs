@@ -19,10 +19,12 @@ public record StationRoleDiffItem(
 public sealed class StationRolesService
 {
     private readonly ICatalogRepository _repository;
+    private readonly ITelemetryStateService? _telemetryState;
 
-    public StationRolesService(ICatalogRepository repository)
+    public StationRolesService(ICatalogRepository repository, ITelemetryStateService? telemetryState = null)
     {
         _repository = repository;
+        _telemetryState = telemetryState;
     }
 
     public async Task<Dictionary<string, string>> GetAllRolesAsync()
@@ -34,6 +36,12 @@ public sealed class StationRolesService
     {
         string cleanHost = hostname.Trim();
         string? cleanAlias = string.IsNullOrWhiteSpace(roleAlias) ? null : roleAlias.Trim();
+
+        if (string.Equals(cleanAlias, "Default", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(cleanAlias, "defualt", StringComparison.OrdinalIgnoreCase))
+        {
+            cleanAlias = null;
+        }
 
         if (cleanAlias != null)
         {
@@ -87,7 +95,12 @@ public sealed class StationRolesService
 
             string hostname = parts[0].Trim();
             string? newRole = parts.Length > 1 ? parts[1].Trim() : null;
-            if (string.IsNullOrEmpty(newRole)) newRole = null;
+            if (string.IsNullOrWhiteSpace(newRole) ||
+                string.Equals(newRole, "Default", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(newRole, "defualt", StringComparison.OrdinalIgnoreCase))
+            {
+                newRole = null;
+            }
 
             existing.TryGetValue(hostname, out string? currentRole);
             bool hasChanged = !string.Equals(currentRole, newRole, StringComparison.OrdinalIgnoreCase);
@@ -122,21 +135,30 @@ public sealed class StationRolesService
     public async Task ApplyMappingAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings)
     {
         var existing = await _repository.GetAllStationRoleAliasesAsync();
-        var mapList = mappings.ToList();
+        var mapList = mappings.Select(m =>
+        {
+            string cleanHost = m.Hostname.Trim();
+            string? cleanRole = m.RoleAlias?.Trim();
+            if (string.IsNullOrWhiteSpace(cleanRole) ||
+                string.Equals(cleanRole, "Default", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(cleanRole, "defualt", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanRole = null;
+            }
+            return (Hostname: cleanHost, RoleAlias: cleanRole);
+        }).ToList();
 
         // 1. Check for duplicates within the submitted mappings
         var aliasToHost = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (host, role) in mapList)
         {
             if (string.IsNullOrWhiteSpace(role)) continue;
-            string cleanRole = role.Trim();
-            string cleanHost = host.Trim();
 
-            if (aliasToHost.TryGetValue(cleanRole, out var duplicateHost))
+            if (aliasToHost.TryGetValue(role, out var duplicateHost))
             {
-                throw new InvalidOperationException($"Duplicate role alias '{cleanRole}' assigned to both '{duplicateHost}' and '{cleanHost}'. Role aliases must be unique.");
+                throw new InvalidOperationException($"Duplicate role alias '{role}' assigned to both '{duplicateHost}' and '{host}'. Role aliases must be unique.");
             }
-            aliasToHost[cleanRole] = cleanHost;
+            aliasToHost[role] = host;
         }
 
         // 2. Check for conflicts with existing database entries not updated in this batch
@@ -158,13 +180,38 @@ public sealed class StationRolesService
 
     public async Task<byte[]> ExportMappingCsvAsync()
     {
-        var mappings = await _repository.GetAllStationRoleAliasesAsync();
+        var roleMappings = await _repository.GetAllStationRoleAliasesAsync();
+        var knownHostnames = await _repository.GetAllKnownStationHostnamesAsync();
+
+        if (_telemetryState != null)
+        {
+            foreach (var agent in _telemetryState.GetAllAgents())
+            {
+                if (!string.IsNullOrWhiteSpace(agent.Hostname))
+                {
+                    knownHostnames.Add(agent.Hostname.Trim());
+                }
+            }
+        }
+
+        foreach (var host in roleMappings.Keys)
+        {
+            if (!string.IsNullOrWhiteSpace(host))
+            {
+                knownHostnames.Add(host.Trim());
+            }
+        }
+
         var sb = new StringBuilder();
         sb.AppendLine("Hostname,RoleAlias");
 
-        foreach (var (host, role) in mappings.OrderBy(m => m.Key))
+        foreach (var host in knownHostnames.OrderBy(h => h, StringComparer.OrdinalIgnoreCase))
         {
-            sb.AppendLine($"{host},{role ?? ""}");
+            string alias = roleMappings.TryGetValue(host, out var a) && !string.IsNullOrWhiteSpace(a)
+                ? a.Trim()
+                : "Default";
+
+            sb.AppendLine($"{host},{alias}");
         }
 
         return Encoding.UTF8.GetBytes(sb.ToString());
