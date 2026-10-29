@@ -237,7 +237,10 @@ export default function StationThumbnail(props) {
                             }}
                             title={isAlertSnoozed ? `Postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust or cancel.` : "Postpone recording alert (Snooze)"}
                         >
-                            <span>?</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
                             <span>{isAlertSnoozed ? `SNOOZED (${props.snoozeRemainingMinutes || 0}m)` : 'SNOOZE'}</span>
                         </button>
                     )}
@@ -323,7 +326,7 @@ export default function StationThumbnail(props) {
                                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                     <circle cx="12" cy="12" r="3" />
                                 </svg>
-                                <span>{isAlertActive ? '?? MONITOR ONLY' : `? SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
+                                <span>{isAlertActive ? '⚠️ MONITOR ONLY' : `⏰ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
                             </button>
                         </div>
                     </div>
@@ -383,7 +386,7 @@ export default function StationThumbnail(props) {
                         className="tactical-override-tag"
                         title={`Custom Policy: ${targetFps ? `${targetFps} FPS` : ''} ${videoBitrate ? `| ${videoBitrate}` : ''}`}
                     >
-                        <span>MOD // {targetFps ? `${targetFps}F` : ''}{targetFps && videoBitrate ? ' � ' : ''}{videoBitrate || ''}</span>
+                        <span>MOD // {targetFps ? `${targetFps}F` : ''}{targetFps && videoBitrate ? ' • ' : ''}{videoBitrate || ''}</span>
                     </div>
                 )}
 

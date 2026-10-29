@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: src/components/Settings/tabs/StationsRolesTab.jsx
 // ==========================================
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -266,7 +266,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                         onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                     />
                     {searchQuery && (
-                        <button type="button" className="clear-search-btn" onClick={() => { setSearchQuery(''); setCurrentPage(1); }}>?</button>
+                        <button type="button" className="clear-search-btn" onClick={() => { setSearchQuery(''); setCurrentPage(1); }}>✕</button>
                     )}
                 </div>
 
@@ -309,13 +309,13 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                         type="button"
                         className="btn-action secondary"
                         onClick={() => handleOpenSwapModal()}
-                        title="Swap operational names between two workstations (????? ????)"
+                        title="Swap operational names between two workstations (החלפת שמות)"
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M7 16V4M7 4L3 8M7 4L11 8" />
                             <path d="M17 8v12M17 20l4-4M17 20l-4-4" />
                         </svg>
-                        <span>Swap Aliases (?????)</span>
+                        <span>Swap Aliases (החלפה)</span>
                     </button>
                 </div>
             </div>
@@ -375,7 +375,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                                 </div>
                                             ) : (
                                                 <span className={`alias-text ${!currentAlias ? 'empty' : ''}`}>
-                                                    {currentAlias || '� None (Default Hostname) �'}
+                                                    {currentAlias || '— None (Default Hostname) —'}
                                                 </span>
                                             )}
                                         </td>
@@ -456,8 +456,8 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                     {diffPreview.map(row => (
                                         <tr key={row.hostname} className={row.conflictWith ? 'row-conflict' : row.hasChanged ? 'row-changed' : 'row-unchanged'}>
                                             <td className="host-text">{row.hostname}</td>
-                                            <td className="curr-alias">{row.currentRoleAlias || '�'}</td>
-                                            <td className="new-alias">{row.newRoleAlias || '� (Clear)'}</td>
+                                            <td className="curr-alias">{row.currentRoleAlias || '—'}</td>
+                                            <td className="new-alias">{row.newRoleAlias || '— (Clear)'}</td>
                                             <td className="status-cell">
                                                 {row.conflictWith ? (
                                                     <span className="tag-conflict" style={{ color: '#F87171', fontWeight: 'bold' }}>
@@ -491,7 +491,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                 onClick={handleApplyDiff}
                                 title={diffPreview.some(r => Boolean(r.conflictWith)) ? 'Cannot apply: alias collisions detected across stations' : 'Apply mappings'}
                             >
-                                {isApplying ? 'Applying Mappings�' : 'Apply Mappings to Fleet'}
+                                {isApplying ? 'Applying Mappings—' : 'Apply Mappings to Fleet'}
                             </button>
                         </div>
                     </div>
@@ -505,7 +505,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                     <div className="swap-modal-card" onClick={e => e.stopPropagation()}>
                         <div className="diff-modal-header">
                             <div className="title-group">
-                                <span className="badge">CROSS-SWAP (????? ????)</span>
+                                <span className="badge">CROSS-SWAP (החלפת שמות)</span>
                                 <h3>Swap Operational Names Between Stations</h3>
                             </div>
                         </div>
@@ -516,7 +516,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
 
                         {swapError && (
                             <div className="swap-error-banner">
-                                ?? {swapError}
+                                ⚠️ {swapError}
                             </div>
                         )}
 
@@ -525,7 +525,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                             <div className="swap-station-box">
                                 <div className="box-header">
                                     <span className="station-role-label">STATION 1</span>
-                                    <span className="station-curr-badge">{roleAliases[swapModal.stationA] || '� No Alias'}</span>
+                                    <span className="station-curr-badge">{roleAliases[swapModal.stationA] || '— No Alias'}</span>
                                 </div>
                                 <label className="field-label">Select Workstation:</label>
                                 <select
@@ -557,7 +557,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                             <div className="swap-station-box">
                                 <div className="box-header">
                                     <span className="station-role-label">STATION 2</span>
-                                    <span className="station-curr-badge">{roleAliases[swapModal.stationB] || '� No Alias'}</span>
+                                    <span className="station-curr-badge">{roleAliases[swapModal.stationB] || '— No Alias'}</span>
                                 </div>
                                 <label className="field-label">Select Workstation:</label>
                                 <select
@@ -579,13 +579,13 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                             <span className="preview-heading">OUTCOME PREVIEW:</span>
                             <div className="preview-row">
                                 <span className="preview-host">{swapModal.stationA}:</span>
-                                <span className="preview-arrow">?</span>
-                                <span className="preview-result">{roleAliases[swapModal.stationB] || '� (Clear)'}</span>
+                                <span className="preview-arrow">→</span>
+                                <span className="preview-result">{roleAliases[swapModal.stationB] || '— (Clear)'}</span>
                             </div>
                             <div className="preview-row">
                                 <span className="preview-host">{swapModal.stationB}:</span>
-                                <span className="preview-arrow">?</span>
-                                <span className="preview-result">{roleAliases[swapModal.stationA] || '� (Clear)'}</span>
+                                <span className="preview-arrow">→</span>
+                                <span className="preview-result">{roleAliases[swapModal.stationA] || '— (Clear)'}</span>
                             </div>
                         </div>
 
@@ -604,7 +604,7 @@ export default function StationsRolesTab({ stations = [], onRolesUpdated }) {
                                 disabled={isSwapping || !swapModal.stationA || !swapModal.stationB || swapModal.stationA === swapModal.stationB}
                                 onClick={handleExecuteSwap}
                             >
-                                {isSwapping ? 'Swapping Aliases�' : 'Confirm Swap (???? ????)'}
+                                {isSwapping ? 'Swapping Aliases—' : 'Confirm Swap (???? ????)'}
                             </button>
                         </div>
                     </div>

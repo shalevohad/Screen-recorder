@@ -24,21 +24,21 @@ export default function DashboardDock({
     handleToggleFeature,
     isFeatureActive
 }) {
-    const { isSystemRoot, hasPermission } = useAuth();
-    const canControlStations = isSystemRoot || hasPermission('stations.control');
+    const auth = useAuth();
+    const canControlStations = Boolean(!auth || auth.isOpenMode || auth.isSystemRoot || auth.hasPermission?.('stations.control'));
 
     const permittedFeatures = useMemo(() => {
         return availableFeatures.filter(f => {
             const id = (f.id || '').toLowerCase();
             if (id.includes('extractor')) {
-                return isSystemRoot || hasPermission('extractor.view');
+                return !auth || auth.isSystemRoot || auth.hasPermission?.('extractor.view');
             }
             if (id.includes('studio')) {
-                return isSystemRoot || hasPermission('studio.view');
+                return !auth || auth.isSystemRoot || auth.hasPermission?.('studio.view');
             }
             return true;
         });
-    }, [availableFeatures, isSystemRoot, hasPermission]);
+    }, [availableFeatures, auth]);
 
     const onFeatureClick = (feat, isOpen) => {
         if (isOpen) {
@@ -91,9 +91,9 @@ export default function DashboardDock({
             <div className="dock-divider" />
 
             <button
-                className={`dock-icon-btn tactical-btn-start ${canStartAny && canControlStations && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
-                onClick={canStartAny && canControlStations && !isFeatureActive ? handleFilteredBulkStart : undefined}
-                disabled={!canStartAny || !canControlStations || isFeatureActive}
+                className={`dock-icon-btn tactical-btn-start ${canStartAny ? 'is-actionable' : ''} ${!canControlStations || isFeatureActive ? 'disabled' : ''}`}
+                onClick={canControlStations && !isFeatureActive ? handleFilteredBulkStart : undefined}
+                disabled={!canControlStations || isFeatureActive}
                 title={
                     !canControlStations
                         ? "Start action requires 'stations.control' permission"
@@ -101,7 +101,7 @@ export default function DashboardDock({
                         ? "Bulk actions unavailable in Feature Mode"
                         : canStartAny
                         ? "Start recording on all unrecorded stations"
-                        : "All stations currently recording"
+                        : "Start recording on all stations"
                 }
             >
                 <svg viewBox="0 0 24 24" fill="none">
@@ -111,9 +111,9 @@ export default function DashboardDock({
             </button>
 
             <button
-                className={`dock-icon-btn tactical-btn-stop ${canStopAny && canControlStations && !isFeatureActive ? 'is-actionable' : 'disabled'}`}
-                onClick={canStopAny && canControlStations && !isFeatureActive ? handleFilteredBulkStop : undefined}
-                disabled={!canStopAny || !canControlStations || isFeatureActive}
+                className={`dock-icon-btn tactical-btn-stop ${canStopAny ? 'is-actionable' : ''} ${!canControlStations || isFeatureActive ? 'disabled' : ''}`}
+                onClick={canControlStations && !isFeatureActive ? handleFilteredBulkStop : undefined}
+                disabled={!canControlStations || isFeatureActive}
                 title={
                     !canControlStations
                         ? "Stop action requires 'stations.control' permission"
@@ -121,7 +121,7 @@ export default function DashboardDock({
                         ? "Bulk actions unavailable in Feature Mode"
                         : canStopAny
                         ? "Stop recording on stations (Remain in Live Monitor)"
-                        : "No stations currently recording"
+                        : "Stop recording on all stations"
                 }
             >
                 <svg viewBox="0 0 24 24" fill="none">

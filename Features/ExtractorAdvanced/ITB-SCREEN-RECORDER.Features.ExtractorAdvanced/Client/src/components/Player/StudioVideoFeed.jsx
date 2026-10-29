@@ -70,9 +70,54 @@ export default function StudioVideoFeed({
     const stationId = station?.id;
     const hostname = (station && (station.hostname || station.name)) || '';
 
-    // Multi-display detection
+    // Multi-display detection & physical virtual desktop bounds normalization
     const stationDisplays = useMemo(() => {
-        return station?.displays || station?.topology?.displays || [];
+        const raw = station?.displays ||
+            station?.Displays ||
+            station?.displayTopology?.displays ||
+            station?.displayTopology?.Displays ||
+            station?.DisplayTopology?.Displays ||
+            station?.topology?.displays ||
+            [];
+
+        if (!Array.isArray(raw) || raw.length === 0) return [];
+
+        // Detect if all displays share identical (0, 0) coordinates (stacked)
+        const allZeroCoords = raw.length > 1 && raw.every(d => (d.X ?? d.x ?? 0) === 0 && (d.Y ?? d.y ?? 0) === 0);
+
+        let cumulativeX = 0;
+        return raw.map((d, idx) => {
+            const dWidth = d.Width || d.width || 1920;
+            const dHeight = d.Height || d.height || 1080;
+            const posX = allZeroCoords ? cumulativeX : (d.X ?? d.x ?? (idx * dWidth));
+            const posY = allZeroCoords ? 0 : (d.Y ?? d.y ?? 0);
+
+            if (allZeroCoords) {
+                cumulativeX += dWidth;
+            }
+
+            const dispId = (d.displayId ?? d.DisplayId ?? `mon-${idx}`).toLowerCase();
+            const dispName = d.displayName || d.DisplayName || `Display ${idx + 1}`;
+            const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary ?? (idx === 0));
+
+            return {
+                ...d,
+                displayId: dispId,
+                DisplayId: dispId,
+                displayName: dispName,
+                DisplayName: dispName,
+                isPrimary,
+                IsPrimary: isPrimary,
+                x: posX,
+                y: posY,
+                X: posX,
+                Y: posY,
+                width: dWidth,
+                height: dHeight,
+                Width: dWidth,
+                Height: dHeight
+            };
+        });
     }, [station]);
     const hasMultipleDisplays = stationDisplays.length > 1;
 
@@ -887,55 +932,57 @@ export default function StudioVideoFeed({
 
             {/* Virtual Desktop Canvas View: Real physical OS monitor arrangement */}
             {viewMode === 'canvas' && hasMultipleDisplays && (
-                <div
-                    className="feed-canvas-container"
-                    style={{
-                        aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`
-                    }}
-                >
+                <div className="feed-canvas-container">
                     <div className="feed-canvas-grid-bg" />
-                    {stationDisplays.map((d, index) => {
-                        const rect = calculateNormalizedDisplayRect(d, topologyBounds);
-                        const dispId = (d.displayId ?? d.DisplayId ?? `mon-${index}`).toLowerCase();
-                        const frame = canvasFrames[dispId] || (dispId === activeDisplayId ? frameResult : null);
-                        const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary);
+                    <div
+                        className="feed-canvas-board"
+                        style={{
+                            aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`
+                        }}
+                    >
+                        {stationDisplays.map((d, index) => {
+                            const rect = calculateNormalizedDisplayRect(d, topologyBounds);
+                            const dispId = (d.displayId ?? d.DisplayId ?? `mon-${index}`).toLowerCase();
+                            const frame = canvasFrames[dispId] || (dispId === activeDisplayId ? frameResult : null);
+                            const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary);
 
-                        return (
-                            <div
-                                key={dispId}
-                                className={`canvas-display-pane ${isPrimary ? 'is-primary' : ''}`}
-                                style={{
-                                    left: `${rect.leftPct}%`,
-                                    top: `${rect.topPct}%`,
-                                    width: `${rect.widthPct}%`,
-                                    height: `${rect.heightPct}%`
-                                }}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setViewMode(dispId);
-                                }}
-                                title={`Click to focus Display ${index + 1} (${d.width || 1920}x${d.height || 1080})`}
-                            >
-                                <div className="canvas-pane-header">
-                                    <span className="pane-index-pill">
-                                        {isPrimary ? '★ ' : ''}🖥 {index + 1}
-                                    </span>
-                                    <span className="pane-title">{d.displayName || d.DisplayName || dispId.toUpperCase()}</span>
-                                    <span className="pane-res">{d.width || 1920}x{d.height || 1080}</span>
+                            return (
+                                <div
+                                    key={dispId}
+                                    className={`canvas-display-pane ${isPrimary ? 'is-primary' : ''}`}
+                                    style={{
+                                        left: `${rect.leftPct}%`,
+                                        top: `${rect.topPct}%`,
+                                        width: `${rect.widthPct}%`,
+                                        height: `${rect.heightPct}%`
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setViewMode(dispId);
+                                    }}
+                                    title={`Click to focus Display ${index + 1} (${d.width || 1920}x${d.height || 1080})`}
+                                >
+                                    <div className="canvas-pane-header">
+                                        <span className="pane-index-pill">
+                                            {isPrimary ? '★ ' : ''}🖥 {index + 1}
+                                        </span>
+                                        <span className="pane-title">{d.displayName || d.DisplayName || dispId.toUpperCase()}</span>
+                                        <span className="pane-res">{d.width || 1920}x{d.height || 1080}</span>
+                                    </div>
+
+                                    {frame && frame !== 'NO_SIGNAL' ? (
+                                        <img
+                                            src={frame}
+                                            className="canvas-frame-img"
+                                            alt={dispId}
+                                        />
+                                    ) : (
+                                        <div className="canvas-pane-placeholder">DECODE PENDING...</div>
+                                    )}
                                 </div>
-
-                                {frame && frame !== 'NO_SIGNAL' ? (
-                                    <img
-                                        src={frame}
-                                        className="canvas-frame-img"
-                                        alt={dispId}
-                                    />
-                                ) : (
-                                    <div className="canvas-pane-placeholder">DECODE PENDING...</div>
-                                )}
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 
@@ -961,8 +1008,8 @@ export default function StudioVideoFeed({
                 </div>
             )}
 
-            {/* Persistent Topology Minimap HUD (Clickable to switch displays) */}
-            {hasMultipleDisplays && (
+            {/* Persistent Topology Minimap HUD (Clickable to switch displays, hidden in Canvas mode) */}
+            {hasMultipleDisplays && viewMode !== 'canvas' && (
                 <PersistentMinimapHud
                     displays={stationDisplays}
                     activeDisplayId={activeDisplayId}

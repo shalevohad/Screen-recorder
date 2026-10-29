@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAlertSnooze } from '../../hooks/useAlertSnooze';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
@@ -535,20 +535,76 @@ export function useDashboardLogic({
         return processedStations.slice(start, start + itemsPerPage);
     }, [processedStations, currentPage, itemsPerPage]);
 
+    const isStationOnlineHelper = useCallback((s) => {
+        return Boolean(s && (s.isOnline || s.IsOnline || s.status === 1 || s.status === 2 || s.status === 'Standby' || s.status === 'Streaming' || s.isProcessRunning));
+    }, []);
+
+    const isStationRecordingHelper = useCallback((s) => {
+        return Boolean(s && (s.isRecording ?? s.IsRecording ?? (s.status === 2 || s.status === 'Recording' || s.status === 'Streaming')));
+    }, []);
+
     const canSort = processedStations.length > 1;
-    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !(s.isRecording ?? (s.status === 'Recording'))), [processedStations]);
-    const canStopAny = useMemo(() => processedStations.some(s => Boolean(s.isRecording ?? (s.status === 'Recording'))), [processedStations]);
+
+    const canStartAny = useMemo(() => {
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        return pool.some(s => isStationOnlineHelper(s) && !isStationRecordingHelper(s));
+    }, [processedStations, tabFilteredStations, stations, isStationOnlineHelper, isStationRecordingHelper]);
+
+    const canStopAny = useMemo(() => {
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        return pool.some(s => isStationRecordingHelper(s));
+    }, [processedStations, tabFilteredStations, stations, isStationRecordingHelper]);
 
     const handleFilteredBulkStart = () => {
-        if (!canStartAny) return;
-        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !(s.isRecording ?? (s.status === 'Recording'))).map(s => s.hostname);
-        onBulkStart?.(targetHostnames, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        let targets = pool
+            .filter(s => isStationOnlineHelper(s) && !isStationRecordingHelper(s))
+            .map(s => s.hostname || s.name || s.id)
+            .filter(Boolean);
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations
+                .filter(s => isStationOnlineHelper(s) && !isStationRecordingHelper(s))
+                .map(s => s.hostname || s.name || s.id)
+                .filter(Boolean);
+        }
+
+        if (targets.length === 0 && pool.length > 0) {
+            targets = pool.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0) return;
+        onBulkStart?.(targets, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
     };
 
     const handleFilteredBulkStop = () => {
-        if (!canStopAny) return;
-        const targetHostnames = processedStations.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording'))).map(s => s.hostname);
-        onBulkStop?.(targetHostnames);
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        let targets = pool
+            .filter(s => isStationRecordingHelper(s))
+            .map(s => s.hostname || s.name || s.id)
+            .filter(Boolean);
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations
+                .filter(s => isStationRecordingHelper(s))
+                .map(s => s.hostname || s.name || s.id)
+                .filter(Boolean);
+        }
+
+        if (targets.length === 0 && pool.length > 0) {
+            targets = pool.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0) return;
+        onBulkStop?.(targets);
     };
 
     const handlePolicyApplication = ({ tabData, overrideCustomSettings }) => {

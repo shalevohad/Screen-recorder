@@ -1,22 +1,22 @@
 // ==========================================
-// File: Client/src/components/Dashboard/NotRecordingAlertBanner.jsx
+// File: ClientApp/src/components/Dashboard/NotRecordingAlertBanner.jsx
 // ==========================================
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './NotRecordingAlertBanner.scss';
 
 export default function NotRecordingAlertBanner({
     unrecordedStations = [],
     snoozedStations = [],
-    isSnoozedFilterActive = false,
-    onViewSnoozed,
-    onClearSnoozedFilter,
+    onSelectStation,
     onStartRecordingStation,
     onStartRecordingAll,
-    onOpenSnoozeModal,
     onOpenBulkSnoozeModal,
-    onSelectStation,
-    isPrioritizeAtFront = true,
-    onTogglePrioritizeAtFront
+    onOpenSnoozeModal,
+    isPrioritizeAtFront,
+    onTogglePrioritizeAtFront,
+    onViewSnoozed,
+    isSnoozedFilterActive,
+    onClearSnoozedFilter
 }) {
     const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -32,7 +32,10 @@ export default function NotRecordingAlertBanner({
         return (
             <div className="snoozed-fleet-status-bar">
                 <div className="snoozed-left">
-                    <span className="snooze-icon">?</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="14" height="14" className="snooze-icon">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
                     <span className="snooze-text">
                         <strong>{snoozedCount} Workstation(s)</strong> have recording alerts postponed.
                     </span>
@@ -45,7 +48,7 @@ export default function NotRecordingAlertBanner({
                             onClick={onClearSnoozedFilter}
                             title="Return to standard view showing all workstations"
                         >
-                            <span>? Return to All Stations</span>
+                            <span>↺ Return to All Stations</span>
                         </button>
                     ) : (
                         <button
@@ -54,7 +57,7 @@ export default function NotRecordingAlertBanner({
                             onClick={onViewSnoozed}
                             title="Filter dashboard grid to view only postponed workstations"
                         >
-                            <span>?? View Postponed Stations ({snoozedCount})</span>
+                            <span>⏰ View Postponed Stations ({snoozedCount})</span>
                         </button>
                     )}
                 </div>
@@ -68,7 +71,11 @@ export default function NotRecordingAlertBanner({
                 <div className="alert-banner-headline">
                     <div className="alert-pulse-badge">
                         <span className="alert-sonar-wave" />
-                        <span className="alert-icon">??</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="15" height="15" className="alert-icon">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
                     </div>
                     <div className="alert-headline-text">
                         <div className="alert-title-row">
@@ -83,7 +90,7 @@ export default function NotRecordingAlertBanner({
                                     style={{ cursor: 'pointer', border: '1px solid rgba(245, 158, 11, 0.5)' }}
                                     title={isSnoozedFilterActive ? "Currently viewing postponed stations. Click to return to all." : "Click to view only postponed stations."}
                                 >
-                                    ? {snoozedCount} Postponed {isSnoozedFilterActive ? '(Viewing � Return)' : '(View)'}
+                                    ⏰ {snoozedCount} Postponed {isSnoozedFilterActive ? '(Viewing ↺ Return)' : '(View)'}
                                 </button>
                             )}
                         </div>
@@ -100,7 +107,7 @@ export default function NotRecordingAlertBanner({
                         onClick={onTogglePrioritizeAtFront}
                         title={isPrioritizeAtFront ? "Warning stations are pinned to front of grid" : "Click to pin warning stations to front"}
                     >
-                        <span>{isPrioritizeAtFront ? '?? PINNED TO TOP' : '?? PIN TO TOP'}</span>
+                        <span>{isPrioritizeAtFront ? '📌 PINNED TO TOP' : '📌 PIN TO TOP'}</span>
                     </button>
 
                     <button
@@ -109,7 +116,7 @@ export default function NotRecordingAlertBanner({
                         onClick={onOpenBulkSnoozeModal}
                         title="Postpone alerts for all unrecorded stations (e.g. for maintenance)"
                     >
-                        <span>? Postpone All</span>
+                        <span>⏰ Postpone All</span>
                     </button>
 
                     <button
@@ -118,7 +125,7 @@ export default function NotRecordingAlertBanner({
                         onClick={onStartRecordingAll}
                         title="Resume recording immediately on all unrecorded workstations"
                     >
-                        <span>? Start Recording All ({activeCount})</span>
+                        <span>⏺ Start Recording All ({activeCount})</span>
                     </button>
 
                     <button
@@ -127,7 +134,7 @@ export default function NotRecordingAlertBanner({
                         onClick={() => setIsCollapsed(p => !p)}
                         title={isCollapsed ? "Expand Stations List" : "Collapse Stations List"}
                     >
-                        {isCollapsed ? '?' : '?'}
+                        {isCollapsed ? '▼' : '▲'}
                     </button>
                 </div>
             </div>
@@ -160,7 +167,7 @@ export default function NotRecordingAlertBanner({
                                             }}
                                             title="Start Recording this station immediately"
                                         >
-                                            ? REC
+                                            ⏺ REC
                                         </button>
                                         <button
                                             type="button"
@@ -171,7 +178,10 @@ export default function NotRecordingAlertBanner({
                                             }}
                                             title="Postpone alert for this station"
                                         >
-                                            ?
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12">
+                                                <circle cx="12" cy="12" r="10" />
+                                                <polyline points="12 6 12 12 16 14" />
+                                            </svg>
                                         </button>
                                     </div>
                                 </div>

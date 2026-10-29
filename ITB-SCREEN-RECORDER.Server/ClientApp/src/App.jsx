@@ -650,6 +650,12 @@ function CommandCenterApp() {
                     hostnames: targetHostnames
                 })
             });
+
+            setStations(prev => prev.map(s => {
+                const isTarget = targetHostnames.some(h => (h || '').toLowerCase() === (s.hostname || s.name || '').toLowerCase());
+                return isTarget ? { ...s, isRecording: true, status: 2 } : s;
+            }));
+
             if (res.ok) {
                 await fetchStations();
             }
@@ -689,6 +695,12 @@ function CommandCenterApp() {
                     hostnames: targetHostnames
                 })
             });
+
+            setStations(prev => prev.map(s => {
+                const isTarget = targetHostnames.some(h => (h || '').toLowerCase() === (s.hostname || s.name || '').toLowerCase());
+                return isTarget ? { ...s, isRecording: false, status: 1 } : s;
+            }));
+
             if (res.ok) {
                 await fetchStations();
             }

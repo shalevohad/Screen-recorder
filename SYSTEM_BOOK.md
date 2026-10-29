@@ -683,7 +683,41 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
   - In `ExtractorAdvancedStudio.jsx` and `SoloSpotlightModal.jsx`, eliminated dead initializations (`let resolvedMode;`) flagged by `no-useless-assignment`.
 
 ---
+
+## 21. Multi-Monitor Canvas Layout Normalization, Viewport Collision Prevention & Iconography Hardening (2026-10-29)
+
+### 1. Studio Canvas Desktop Geometry & Zero-Stacking Prevention
+- **Coordinate Normalization Invariant**:
+  - In `StudioVideoFeed.jsx`, `stationDisplays` memoizes displays across all metadata representations (`displays`, `Displays`, `displayTopology.displays`, `topology.displays`).
+  - When historical recordings or uncalibrated fallback metadata report identical `(0, 0)` offsets for multiple monitors, the auto-layout engine detects `allZeroCoords` and distributes monitor panes side-by-side using real horizontal physical offsets ($X_{\text{offset}} = \sum \text{Width}_i, Y = 0$).
+  - When physical DXGI virtual desktop coordinates are present, true physical topology is strictly preserved.
+- **Proportional Canvas Stage Board (`.feed-canvas-board`)**:
+  - Encapsulated display panes within `.feed-canvas-board` having inline `aspectRatio: totalWidth / totalHeight`.
+  - `.feed-canvas-container` provides top and boundary padding (`padding: 64px 24px 24px 24px`), preventing the canvas stage from stretching, distorting monitor aspect ratios, or hiding behind the command toolbar.
+
+### 2. Viewport HUD Decoupling & Collision Elimination
+- **Command Toolbar Centering**:
+  - `.feed-viewmode-toolbar` is horizontally centered at `top: 14px; left: 50%; transform: translateX(-50%); z-index: 30;` with `max-width: calc(100% - 240px); overflow-x: auto; scrollbar-width: none;`.
+  - Positioned safely away from the top-right corner, leaving room for HUD radars and status overlays.
+- **Minimap HUD Separation & Canvas Redundancy Filter**:
+  - `.persistent-minimap-hud` is anchored at `top: 14px; right: 14px; z-index: 25;`, completely preventing visual collision with the centered command bar.
+  - In `canvas` view mode, `PersistentMinimapHud` is intentionally unrendered, eliminating visual clutter since all monitors are already in full view.
+
+### 3. Tactical Bulk Recording Controls & Fleet Resilience
+- **Side Menu Actionability**:
+  - In `DashboardDock.jsx`, `canControlStations` evaluates `isOpenMode || isSystemRoot || hasPermission('stations.control')`, ensuring operators in standard Open/Air-gapped installations can trigger fleet recording without administrative deadlocks.
+  - In `useDashboardLogic.js`, `canStartAny` and `canStopAny` check multiple casing invariants (`isOnline`, `IsOnline`, `status: 1 | 2`, `isProcessRunning`, `isRecording`, `IsRecording`).
+  - `handleFilteredBulkStart` and `handleFilteredBulkStop` target unrecorded online stations from the active filtered view, and automatically fall back to the global fleet pool if filtered views are empty.
+  - `App.jsx` optimistically updates station recording badges upon dispatch, eliminating latency stalls.
+
+### 4. Iconography Hardening & Question Mark Elimination
+- **Clean SVG Icon Invariant**:
+  - Replaced corrupted character artifacts (`?`, `??`, `\uFFFD`) in `StationThumbnail.jsx`, `NotRecordingAlertBanner.jsx`, `StationsRolesTab.jsx`, `StorageRetentionTab.jsx`, `TopScopeBar.jsx`, and `SoloSpotlightModal.jsx` with crisp inline SVGs, semantic badges (`⏰`, `⚠️`, `📌`, `⏺`, `↺`), and correct Unicode symbols (`✕`, `→`, `—`).
+  - Preserves 100% offline, self-contained air-gapped compliance (zero external web fonts or CDN downloads).
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+
 
 
 
