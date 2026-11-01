@@ -404,6 +404,8 @@ export default function SystemOverviewTab({
         ];
     }, [serverTelemetry?.encoderProbe]);
 
+    const detectedGpus = useMemo(() => serverTelemetry?.encoderProbe?.detectedGpus || [], [serverTelemetry]);
+
     const activeEncoder = useMemo(() => {
         return encoderSteps.find(s => s.status === 'selected') || encoderSteps[encoderSteps.length - 1];
     }, [encoderSteps]);
@@ -651,6 +653,15 @@ export default function SystemOverviewTab({
                     <div className="pipeline-title-group">
                         <span className="pipeline-title">HARDWARE ENCODER INVARIANT EVALUATION (RULE 8)</span>
                         <span className="pipeline-rule-tag">PRIORITIZED FALLBACK PIPELINE</span>
+                        {detectedGpus.length > 0 && (
+                            <div className="detected-gpus-row" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                {detectedGpus.map((gpu, idx) => (
+                                    <span key={idx} className="detected-gpu-tag" style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(6, 182, 212, 0.12)', border: '1px solid rgba(6, 182, 212, 0.3)', color: '#38BDF8', fontFamily: 'monospace' }}>
+                                        🖥️ HOST GPU: <strong>{gpu.name}</strong> (v{gpu.driverVersion})
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     {activeEncoder && (
                         <div className="active-encoder-pill">

@@ -819,3 +819,29 @@ In enterprise operational deployments, operators may reconfigure the central ser
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+
+---
+
+## 22. Host GPU Hardware Detection & Architecture Diagnostics (2026-11-01)
+
+### 1. Host Hardware GPU Enumeration (HardwareProbe.cs)
+- **Lightweight System Registry & Kernel Probing**:
+  - **Windows**: Enumerates display adapters directly from the Windows Registry:
+    HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}. Extracts DriverDesc, DriverVersion, and ProviderName in sub-millisecond time without spawning heavy WMI or DirectX processes.
+  - **Linux**: Probes /proc/driver/nvidia/version or lspci for discrete acceleration hardware.
+  - Log output explicitly displays all detected graphics adapters at probe initialization (e.g., [PROBE] Detected Host GPU [0]: NVIDIA A100-PCIE-40GB (Driver: 31.0.15.5222, Provider: NVIDIA)).
+
+### 2. NVIDIA A100/H100 Compute-Only Architecture Invariant
+- **Architectural Clarification**:
+  - The **NVIDIA A100 (GA100)** and **H100 (GH100)** Tensor Core GPUs are designed by NVIDIA strictly for datacenter AI training, high-performance computing (HPC), and deep learning inference.
+  - **Physical Die Design**: NVIDIA intentionally **omitted NVENC hardware video encoding silicon** from the GA100 and GH100 chips. While they feature 5 NVDEC hardware video decoders and 1 JPEG decoder, they have **0 NVENC encoders**.
+  - **Encoder Failure Diagnosis**: When FFmpeg or MediaMTX attempts h264_nvenc against an A100, the NVIDIA driver returns exitCode -40 / Function not implemented or Driver does not support required nvenc API version.
+  - **Automated Diagnostic Logging**: HardwareProbe.cs now cross-references detected GPU hardware. If an A100 or H100 GPU is detected without NVENC support, it explicitly logs:
+    "NVIDIA A100/H100 architecture lacks NVENC video encoder (Compute-only GPU, NVDEC decoders only). Falling back to software/CPU encoding."
+  - The pipeline gracefully and deterministically transitions to CPU fallback (libx264, -preset ultrafast -tune zerolatency) or secondary workstation adapters.
+
+### 3. Tactical C2 UI Display (SystemOverviewTab.jsx)
+- Detected GPU models and driver versions are surfaced directly in the C2 Dashboard System Overview pipeline header as interactive badges (🖥️ HOST GPU: <Model> (v<Driver>)), providing immediate hardware visibility to NOC operators.
+
+---
+*End of System Book — ITB-SCREEN-RECORDER Architecture Team*

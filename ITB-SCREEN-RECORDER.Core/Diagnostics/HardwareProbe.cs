@@ -21,10 +21,26 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         public string FailureReason { get; set; } = string.Empty;
     }
 
+    public class GpuHardwareInfo
+    {
+        public string Name { get; set; } = string.Empty;
+        public string DriverVersion { get; set; } = string.Empty;
+        public string Provider { get; set; } = string.Empty;
+
+        public GpuHardwareInfo() { }
+        public GpuHardwareInfo(string name, string driverVersion, string provider)
+        {
+            Name = name;
+            DriverVersion = driverVersion;
+            Provider = provider;
+        }
+    }
+
     public class EncoderProbeReport
     {
         public string SelectedEncoder { get; set; } = "libx264";
         public List<EncoderProbeStep> Steps { get; set; } = new();
+        public List<GpuHardwareInfo> DetectedGpus { get; set; } = new();
     }
 
     public class HardwareMetricsSnapshot
@@ -105,6 +121,25 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 Logger.Info($"[PROBE] Probing hardware acceleration pipeline using FFmpeg: '{ffmpegPath}'");
 
+                var detectedGpus = GetDetectedGpus();
+                report.DetectedGpus = detectedGpus;
+
+                if (detectedGpus.Count > 0)
+                {
+                    foreach (var gpu in detectedGpus)
+                    {
+                        Logger.Info($"[PROBE] Detected Graphics Hardware: '{gpu.Name}' (Driver: {gpu.DriverVersion}, Provider: {gpu.Provider})");
+                    }
+                }
+                else
+                {
+                    Logger.Info("[PROBE] No dedicated graphics hardware identified via system display adapters.");
+                }
+
+                bool hasA100OrH100 = detectedGpus.Any(g =>
+                    g.Name.Contains("A100", StringComparison.OrdinalIgnoreCase) ||
+                    g.Name.Contains("H100", StringComparison.OrdinalIgnoreCase));
+
                 // 1. Test NVIDIA NVENC
                 Logger.Info("[PROBE] Testing NVIDIA NVENC hardware acceleration...");
                 var (nvencOk, nvencError) = await TestEncoderSupportAsync(ffmpegPath, "h264_nvenc").ConfigureAwait(false);
@@ -121,7 +156,12 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                     return report;
                 }
                 nvencStep.Status = "failed";
-                if (nvencError.Contains("Driver does not support the required nvenc API version", StringComparison.OrdinalIgnoreCase) ||
+                if (hasA100OrH100)
+                {
+                    nvencStep.FailureReason = "NVIDIA A100/H100 architecture lacks NVENC video encoder (Compute-only GPU, NVDEC decoders only)";
+                    Logger.Warn("[PROBE] [HARDWARE NOTICE] NVIDIA A100/H100 GPU detected. The NVIDIA A100 (GA100) is an enterprise datacenter GPU engineered without NVENC hardware video encoders (features NVDEC decoders only). CPU encoding (libx264) or an auxiliary workstation GPU will be utilized.");
+                }
+                else if (nvencError.Contains("Driver does not support the required nvenc API version", StringComparison.OrdinalIgnoreCase) ||
                     nvencError.Contains("minimum required Nvidia driver", StringComparison.OrdinalIgnoreCase))
                 {
                     nvencStep.FailureReason = "NVIDIA Driver is outdated (Requires driver update to 570+ for NVENC SDK 13.1)";
@@ -244,6 +284,58 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 Logger.Warn($"[PROBE] Probe execution for {encoderName} failed to start ({ex.Message}). Assuming unsupported.");
                 return (false, ex.Message);
             }
+        }
+
+                public static List<GpuHardwareInfo> GetDetectedGpus()
+        {
+            var list = new List<GpuHardwareInfo>();
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    using var classKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}");
+                    if (classKey != null)
+                    {
+                        foreach (var subKeyName in classKey.GetSubKeyNames())
+                        {
+                            if (subKeyName.Length == 4 && int.TryParse(subKeyName, out _))
+                            {
+                                using var subKey = classKey.OpenSubKey(subKeyName);
+                                if (subKey != null)
+                                {
+                                    var desc = subKey.GetValue("DriverDesc")?.ToString();
+                                    var version = subKey.GetValue("DriverVersion")?.ToString();
+                                    var provider = subKey.GetValue("ProviderName")?.ToString();
+
+                                    if (!string.IsNullOrWhiteSpace(desc) &&
+                                        !desc.Contains("Basic Display", StringComparison.OrdinalIgnoreCase) &&
+                                        !desc.Contains("RemoteFX", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        list.Add(new GpuHardwareInfo(desc.Trim(), (version ?? "Unknown").Trim(), (provider ?? "Unknown").Trim()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[PROBE] Registry GPU enumeration failed: {ex.Message}");
+                }
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    if (File.Exists("/proc/driver/nvidia/version"))
+                    {
+                        string line = File.ReadAllLines("/proc/driver/nvidia/version").FirstOrDefault() ?? "";
+                        list.Add(new GpuHardwareInfo("NVIDIA Graphics Device", line.Trim(), "NVIDIA"));
+                    }
+                }
+                catch { }
+            }
+            return list;
         }
 
         public static string GetLocalIpAddress()
