@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>ITB_SCREEN_RECORDER.Player.CallerShowcase</RootNamespace>
+    <AssemblyName>itb-player-caller-showcase</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.46</Version>
+    <Description>Showcase and reference integration sample for external callers communicating with ITB Player over encrypted duplex IPC</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ITB-SCREEN-RECORDER.Player.Core\ITB-SCREEN-RECORDER.Player.Core.csproj" />
+    <ProjectReference Include="..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
+  </ItemGroup>
+
+</Project>
