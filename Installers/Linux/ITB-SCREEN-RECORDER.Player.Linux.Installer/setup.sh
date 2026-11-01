@@ -13,6 +13,14 @@ echo "--> Creating command-line symlink in /usr/local/bin/itb-player..."
 mkdir -p /usr/local/bin
 ln -sf "$INSTALL_ROOT/itb-player" /usr/local/bin/itb-player
 
+if [ -d "$CURRENT_DIR/tools" ]; then
+    echo "--> Deploying tools to $INSTALL_ROOT/tools..."
+    mkdir -p "$INSTALL_ROOT/tools"
+    cp -r "$CURRENT_DIR/tools/"* "$INSTALL_ROOT/tools/"
+    chmod +x "$INSTALL_ROOT/tools/diagnostics/itb-diagnostics" 2>/dev/null || true
+    ln -sf "$INSTALL_ROOT/tools/diagnostics/itb-diagnostics" /usr/local/bin/itb-diagnostics 2>/dev/null || true
+fi
+
 echo "--> Installing application icon..."
 mkdir -p /usr/share/icons/hicolor/256x256/apps
 mkdir -p /usr/share/pixmaps

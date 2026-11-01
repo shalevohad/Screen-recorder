@@ -75,6 +75,20 @@
 						  WorkingDirectory="INSTALLFOLDER"
 						  Icon="PlayerAppIcon.ico" />
 
+				<Shortcut Id="DiagnosticsShortcut"
+						  Name="ITB Diagnostics"
+						  Description="ITB System Diagnostics &amp; Log RCA Tool"
+						  Target="[INSTALLFOLDER]Tools\Diagnostics\itb-diagnostics.exe"
+						  WorkingDirectory="INSTALLFOLDER"
+						  Icon="PlayerAppIcon.ico" />
+
+				<Shortcut Id="CallerShowcaseShortcut"
+						  Name="ITB Player Caller Showcase"
+						  Description="ITB Player C2 Replay Dispatcher Simulator &amp; Showcase"
+						  Target="[INSTALLFOLDER]Tools\CallerShowcase\itb-player-caller-showcase.exe"
+						  WorkingDirectory="INSTALLFOLDER"
+						  Icon="PlayerAppIcon.ico" />
+
 				<RemoveFolder Id="CleanUpProgramMenuFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
 				<RegistryValue Root="HKCU" Key="Software\ITB\Player" Name="installed" Type="integer" Value="1" KeyPath="yes" />
 			</Component>

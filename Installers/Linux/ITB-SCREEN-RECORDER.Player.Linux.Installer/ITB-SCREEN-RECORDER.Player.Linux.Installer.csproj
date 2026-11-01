@@ -28,8 +28,10 @@
 		<MakeDir Directories="$(StagingDir)/bin" />
 		<MakeDir Directories="$(FinalOutputDir)" />
 
-		<Message Importance="high" Text="=== [2/5] Publishing Player Core Engine (linux-x64) ===" />
+		<Message Importance="high" Text="=== [2/5] Publishing Player Core Engine &amp; Diagnostics Tool (linux-x64) ===" />
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)/Tools/ITB-SCREEN-RECORDER.Player.Core/ITB-SCREEN-RECORDER.Player.Core.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)/bin&quot;" />
+		<MakeDir Directories="$(StagingDir)/tools/diagnostics" />
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)/Tools/ITB-SCREEN-RECORDER.Diagnostics/ITB-SCREEN-RECORDER.Diagnostics.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)/tools/diagnostics&quot;" />
 
 		<Message Importance="high" Text="=== [3/5] Staging Setup Scripts and Desktop MIME Definitions ===" />
 		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
@@ -43,7 +45,7 @@
 		<Message Importance="high" Text="=== [5/5] Copying Binaries to Distribution Folder ($(FinalOutputDir)/Build) ===" />
 		<MakeDir Directories="$(FinalOutputDir)/Build" />
 		<ItemGroup>
-			<LinuxStagedFiles Include="$(StagingDir)/bin/**/*" />
+			<LinuxStagedFiles Include="$(StagingDir)/bin/**/*;$(StagingDir)/tools/**/*" />
 		</ItemGroup>
 		<Copy SourceFiles="@(LinuxStagedFiles)" DestinationFolder="$(FinalOutputDir)/Build/%(RecursiveDir)" SkipUnchangedFiles="false" />
 

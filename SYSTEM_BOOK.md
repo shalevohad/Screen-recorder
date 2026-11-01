@@ -974,9 +974,22 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
    - Exposes strongly typed async control methods (`PlayAsync`, `PauseAsync`, `SeekAsync`, `SetPlaybackRateAsync`, `SetAudioStationAsync`, `GetStatusAsync`, `CloseAsync`).
    - Exposes lifecycle and error events (`OnEventReceived`, `OnHeartbeatReceived`, `OnErrorReceived`, `OnStateChanged`).
 
-4. **Interactive Caller Showcase (`Tools/ITB-SCREEN-RECORDER.Player.CallerShowcase`)**:
-   - Reference standalone C2 console application (`itb-player-caller-showcase.exe`).
-   - Demonstrates real-time encrypted duplex IPC launching, private kernel `stdin` key injection, live discovery/slicing telemetry monitoring, and interactive keyboard remote controls (Play/Pause, Seek, Speed, Solo Audio switching, Graceful Shutdown).
+4. **Dynamic C2 Caller Showcase Tool (`Tools/ITB-SCREEN-RECORDER.Player.CallerShowcase`)**:
+   - Tactical Dark WPF application (`itb-player-caller-showcase.exe`) packaged directly alongside `ITB-SCREEN-RECORDER.Diagnostics` into the installation bundle (`Tools\CallerShowcase`).
+   - Installs Start Menu and desktop shortcuts for immediate tactical testing and integration verification.
+   - **Dynamic Network Discovery**: Scans local LAN via UDP Multicast (`239.210.1.5:5098`) for active ITB recording servers and queries recorded workstation inventories dynamically via REST (`/api/v1/extractor/recorded-hosts`).
+   - **Tactical C2 Remote Deck**:
+     - Interactive multi-station selection, time presets (15m, 30m, 1h, 4h, custom UTC), audio solo picker, and keystrokes burn-in mode.
+     - Ephemeral AES-256-GCM duplex IPC launch via `PlayerSecureLauncher` with anti-replay counters and zero-disk key injection via private kernel `stdin`.
+     - Live UTC playhead telemetry clock, interactive seek scrubber slider, real-time transport controls (`[PLAY/PAUSE]`, `[SEEK]`, `[RATE 0.25x-4x]`, `[AUDIO SWITCH]`, `[STOP/CLOSE]`).
+     - Live scrolling wire event monitor displaying bidirectional encrypted telemetry packets in real-time.
+
+5. **Distribution Packaging & Tools Integration**:
+   - **Windows WiX MSI (`Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer`)**:
+     - Publishes self-contained binaries for `ITB-SCREEN-RECORDER.Player` (root), `ITB-SCREEN-RECORDER.Diagnostics` (`Tools\Diagnostics`), and `ITB-SCREEN-RECORDER.Player.CallerShowcase` (`Tools\CallerShowcase`).
+     - Generates Start Menu shortcuts: `ITB Player`, `ITB Diagnostics`, and `ITB Player Caller Showcase`.
+   - **Linux Self-Extracting `.run` (`Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer`)**:
+     - Deploys headless player core and diagnostics to `/opt/itb-player/tools/` with symlinks in `/usr/local/bin/`.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
