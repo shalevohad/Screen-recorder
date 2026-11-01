@@ -19,7 +19,7 @@
   <Target Name="CopyToSolutionPublishWindows" AfterTargets="Build">
     <PropertyGroup>
       <SolutionRoot Condition="'$(SolutionRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..'))</SolutionRoot>
-      <PlayerWinPublish>$(SolutionRoot)\Publish\Player\windows</PlayerWinPublish>
+      <PlayerWinPublish>$(SolutionRoot)\Publish\Player\windows\Build</PlayerWinPublish>
     </PropertyGroup>
     <MakeDir Directories="$(PlayerWinPublish)" />
     <ItemGroup>

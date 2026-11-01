@@ -50,12 +50,12 @@
 		<MakeDir Directories="$(FinalOutputDir)" />
 		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FinalOutputDir)" SkipUnchangedFiles="false" />
 
-		<!-- Portable standalone binaries in Publish\Player\windows\standalone -->
-		<MakeDir Directories="$(FinalOutputDir)\standalone" />
+		<!-- Binaries in Publish\Player\windows\Build -->
+		<MakeDir Directories="$(FinalOutputDir)\Build" />
 		<ItemGroup>
 			<StagedPlayerFiles Include="$(StagingDir)\**\*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(StagedPlayerFiles)" DestinationFolder="$(FinalOutputDir)\standalone\%(RecursiveDir)" SkipUnchangedFiles="false" />
+		<Copy SourceFiles="@(StagedPlayerFiles)" DestinationFolder="$(FinalOutputDir)\Build\%(RecursiveDir)" SkipUnchangedFiles="false" />
 
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 	</Target>

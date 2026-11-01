@@ -39,12 +39,12 @@
 		<Message Importance="high" Text="=== [4/5] Packing Self-Extracting .run Installer ===" />
 		<Exec Command="$(PowerShellCmd) -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)/BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)/installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />
 
-		<Message Importance="high" Text="=== [5/5] Copying Standalone Binaries to Distribution Folder ($(FinalOutputDir)/standalone) ===" />
-		<MakeDir Directories="$(FinalOutputDir)/standalone" />
+		<Message Importance="high" Text="=== [5/5] Copying Binaries to Distribution Folder ($(FinalOutputDir)/Build) ===" />
+		<MakeDir Directories="$(FinalOutputDir)/Build" />
 		<ItemGroup>
 			<LinuxStagedFiles Include="$(StagingDir)/bin/**/*" />
 		</ItemGroup>
-		<Copy SourceFiles="@(LinuxStagedFiles)" DestinationFolder="$(FinalOutputDir)/standalone/%(RecursiveDir)" SkipUnchangedFiles="false" />
+		<Copy SourceFiles="@(LinuxStagedFiles)" DestinationFolder="$(FinalOutputDir)/Build/%(RecursiveDir)" SkipUnchangedFiles="false" />
 
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 	</Target>
