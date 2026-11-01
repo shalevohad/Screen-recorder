@@ -71,18 +71,31 @@
             <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0,0,8,0">
 
-                    <!-- CARD 1: SERVER DISCOVERY -->
+                    <!-- CARD 1: SERVER DISCOVERY & MULTICAST -->
                     <Border Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="1. RECORDING SERVER DISCOVERY" Foreground="{StaticResource AccentCyanBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,0,8" />
-                            <Grid Margin="0,0,0,8">
+                            <TextBlock Text="1. RECORDING SERVER DISCOVERY &amp; MULTICAST" Foreground="{StaticResource AccentCyanBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,0,8" />
+                            
+                            <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="65" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0" Text="{Binding SelectedServerUrl, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TacticalTextBoxStyle}" Margin="0,0,8,0" />
-                                <Button Grid.Column="1" Content="🔍 SCAN NETWORK" Command="{Binding ScanServersCommand}" Style="{StaticResource TacticalButtonStyle}" />
+                                <TextBox Grid.Column="0" Text="{Binding MulticastAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TacticalTextBoxStyle}" Margin="0,0,4,0" ToolTip="Multicast IP (e.g. 239.210.1.5)" />
+                                <TextBox Grid.Column="1" Text="{Binding MulticastPort, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TacticalTextBoxStyle}" Margin="0,0,6,0" ToolTip="Port (e.g. 5098)" />
+                                <Button Grid.Column="2" Content="🔍 SCAN LAN" Command="{Binding ScanServersCommand}" Style="{StaticResource TacticalButtonStyle}" Padding="8,4" FontSize="11" />
                             </Grid>
+
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="80" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="SERVER URL:" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" FontSize="11" FontWeight="Bold" />
+                                <TextBox Grid.Column="1" Text="{Binding SelectedServerUrl, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource TacticalTextBoxStyle}" />
+                            </Grid>
+
                             <TextBlock Text="{Binding DiscoveryStatus}" Foreground="{StaticResource TextMutedBrush}" FontSize="11" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
@@ -182,23 +195,32 @@
                     <!-- CARD 4: REPLAY OPTIONS & LAUNCH -->
                     <Border Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
                         <StackPanel>
-                            <TextBlock Text="4. AUDIO &amp; KEYSTROKE OPTIONS" Foreground="{StaticResource AccentCyanBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,0,8" />
+                            <TextBlock Text="4. REPLAY, AUDIO &amp; LAYOUT OPTIONS" Foreground="{StaticResource AccentCyanBrush}" FontWeight="Bold" FontSize="12" Margin="0,0,0,8" />
 
                             <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
                                     <TextBlock Text="SOLO AUDIO:" Foreground="{StaticResource TextMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,3" />
                                     <ComboBox ItemsSource="{Binding SelectedStationNames}" SelectedItem="{Binding SelectedAudioStation}" Background="#070A10" Foreground="#F8FAFC" Padding="6,4" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                                <StackPanel Grid.Column="1" Margin="4,0,4,0">
                                     <TextBlock Text="KEYSTROKES:" Foreground="{StaticResource TextMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,3" />
                                     <ComboBox SelectedValue="{Binding SelectedKeystrokeMode}" SelectedValuePath="Tag" Background="#070A10" Foreground="#F8FAFC" Padding="6,4">
-                                        <ComboBoxItem Content="Burn-In (Hardsub)" Tag="BurnIn" IsSelected="True" />
+                                        <ComboBoxItem Content="Burn-In" Tag="BurnIn" IsSelected="True" />
                                         <ComboBoxItem Content="Caption (SRT)" Tag="Caption" />
                                         <ComboBoxItem Content="None" Tag="None" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="4,0,0,0">
+                                    <TextBlock Text="LAYOUT:" Foreground="{StaticResource TextMutedBrush}" FontSize="10" FontWeight="Bold" Margin="0,0,0,3" />
+                                    <ComboBox SelectedValue="{Binding SelectedLayoutMode}" SelectedValuePath="Tag" Background="#070A10" Foreground="#F8FAFC" Padding="6,4">
+                                        <ComboBoxItem Content="Multi-Cam Grid" Tag="grid" IsSelected="True" />
+                                        <ComboBoxItem Content="PiP" Tag="pip" />
+                                        <ComboBoxItem Content="Split Screen" Tag="split" />
                                     </ComboBox>
                                 </StackPanel>
                             </Grid>
@@ -268,7 +290,7 @@
                             <StackPanel Grid.Column="0" Orientation="Horizontal">
                                 <Button Content="◀◀ -30s" Command="{Binding SeekRelativeCommand}" CommandParameter="-30" Style="{StaticResource TacticalButtonStyle}" Margin="0,0,6,0" Padding="8,6" FontSize="11" />
                                 <Button Content="◀ -10s" Command="{Binding SeekRelativeCommand}" CommandParameter="-10" Style="{StaticResource TacticalButtonStyle}" Margin="0,0,8,0" Padding="8,6" FontSize="11" />
-                                <Button Content="{Binding IsPlaying, Converter={StaticResource BoolToVis}, ConverterParameter='|| PAUSE;▶ PLAY'}" Command="{Binding PlayPauseCommand}" Style="{StaticResource TacticalAccentButtonStyle}" Margin="0,0,8,0" Padding="20,6" FontSize="12" />
+                                <Button Content="{Binding PlayPauseButtonText}" Command="{Binding PlayPauseCommand}" Style="{StaticResource TacticalAccentButtonStyle}" Margin="0,0,8,0" Padding="20,6" FontSize="12" />
                                 <Button Content="+10s ▶" Command="{Binding SeekRelativeCommand}" CommandParameter="10" Style="{StaticResource TacticalButtonStyle}" Margin="0,0,6,0" Padding="8,6" FontSize="11" />
                                 <Button Content="+30s ▶▶" Command="{Binding SeekRelativeCommand}" CommandParameter="30" Style="{StaticResource TacticalButtonStyle}" Padding="8,6" FontSize="11" />
                             </StackPanel>

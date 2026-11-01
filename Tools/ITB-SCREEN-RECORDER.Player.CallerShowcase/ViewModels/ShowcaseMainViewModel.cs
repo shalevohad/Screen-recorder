@@ -172,8 +172,16 @@ public sealed class ShowcaseMainViewModel : ViewModelBase, IAsyncDisposable, IDi
     public bool IsPlaying
     {
         get => _isPlaying;
-        set => SetProperty(ref _isPlaying, value);
+        set
+        {
+            if (SetProperty(ref _isPlaying, value))
+            {
+                OnPropertyChanged(nameof(PlayPauseButtonText));
+            }
+        }
     }
+
+    public string PlayPauseButtonText => _isPlaying ? "⏸ PAUSE" : "▶ PLAY";
 
     public double PlaybackRate
     {
@@ -580,12 +588,18 @@ public sealed class ShowcaseMainViewModel : ViewModelBase, IAsyncDisposable, IDi
         string baseDir = AppContext.BaseDirectory;
         string[] candidates = new[]
         {
-            // Debug build output
+            // Same directory
+            Path.GetFullPath(Path.Combine(baseDir, "ITB-SCREEN-RECORDER.Player.exe")),
+            // Distribution or installed folder (Tools\CallerShowcase -> ..\..)
+            Path.GetFullPath(Path.Combine(baseDir, @"..\..\ITB-SCREEN-RECORDER.Player.exe")),
+            // Debug win-x64 build output
+            Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\ITB-SCREEN-RECORDER.Player\bin\Debug\net8.0-windows\win-x64\ITB-SCREEN-RECORDER.Player.exe")),
+            // Debug any build output
             Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\ITB-SCREEN-RECORDER.Player\bin\Debug\net8.0-windows\ITB-SCREEN-RECORDER.Player.exe")),
-            // Release build output
+            // Release win-x64 build output
+            Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\ITB-SCREEN-RECORDER.Player\bin\Release\net8.0-windows\win-x64\ITB-SCREEN-RECORDER.Player.exe")),
+            // Release any build output
             Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\ITB-SCREEN-RECORDER.Player\bin\Release\net8.0-windows\ITB-SCREEN-RECORDER.Player.exe")),
-            // Distribution folder
-            Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Publish\Player\windows\Build\ITB-SCREEN-RECORDER.Player.exe")),
             // Installed location
             @"C:\Program Files\ITB\Player\ITB-SCREEN-RECORDER.Player.exe"
         };
@@ -595,7 +609,7 @@ public sealed class ShowcaseMainViewModel : ViewModelBase, IAsyncDisposable, IDi
             if (File.Exists(c)) return c;
         }
 
-        return candidates[0];
+        return candidates[1];
     }
 
     public async ValueTask DisposeAsync()
