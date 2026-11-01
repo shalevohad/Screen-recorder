@@ -974,5 +974,9 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
    - Exposes strongly typed async control methods (`PlayAsync`, `PauseAsync`, `SeekAsync`, `SetPlaybackRateAsync`, `SetAudioStationAsync`, `GetStatusAsync`, `CloseAsync`).
    - Exposes lifecycle and error events (`OnEventReceived`, `OnHeartbeatReceived`, `OnErrorReceived`, `OnStateChanged`).
 
+4. **Interactive Caller Showcase (`Tools/ITB-SCREEN-RECORDER.Player.CallerShowcase`)**:
+   - Reference standalone C2 console application (`itb-player-caller-showcase.exe`).
+   - Demonstrates real-time encrypted duplex IPC launching, private kernel `stdin` key injection, live discovery/slicing telemetry monitoring, and interactive keyboard remote controls (Play/Pause, Seek, Speed, Solo Audio switching, Graceful Shutdown).
+
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
