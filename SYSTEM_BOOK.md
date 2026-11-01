@@ -30,7 +30,7 @@
 20. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination](#20-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
 21. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture](#21-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
 22. [Host GPU Hardware Detection & Architecture Diagnostics](#22-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
-23. [ITB Forensic Standalone Player Architecture & Zero-Extract Ingestion Engine](#23-itb-forensic-standalone-player-architecture--zero-extract-ingestion-engine-2026-11-01)
+23. [ITB Standalone Player Architecture & Zero-Extract Ingestion Engine](#23-itb-standalone-player-architecture--zero-extract-ingestion-engine-2026-11-01)
 
 ---
 
@@ -878,12 +878,12 @@ To guarantee 100% deterministic time representation regardless of host operating
   - `parseSafeEpoch` parses ISO date strings without timezone indicators via `dateTimeToEpochMs` instead of browser-local parsing.
 
 ---
-## 24. ITB Forensic Standalone Player Architecture & Zero-Extract Ingestion Engine (2026-11-01)
+## 24. ITB Standalone Player Architecture & Zero-Extract Ingestion Engine (2026-11-01)
 
 ### 1. Operational Mission & Problem Statement
-Investigation export archives (`Investigation_*.tar`) contain multi-station, multi-monitor forensic video streams (H.264/AAC MP4) bundled with a forensic metadata manifest (`session.json`). 
-- **Scale Problem**: Export archives routinely range between 10GB and 200GB+. Standard media players (including classic VLC) require investigators to manually decompress or extract the entire archive to disk before playback, demanding redundant storage pools and introducing 10–20 minute disk extraction bottlenecks.
-- **Forensic Standalone Player Goal**: Provide a dedicated, air-gapped, VLC-grade desktop player (`ITB-FORENSIC-PLAYER`) that streams and synchronizes multi-monitor feeds directly from the exported `.tar` container in <200ms with zero prior extraction, rendering gaps, subtitles, and telemetry HUD overlays.
+Export archives (`*.tar` / `*.itbp`) contain multi-station, multi-monitor video streams (H.264/AAC MP4) bundled with a metadata manifest (`session.json`).
+- **Scale Problem**: Export archives routinely range between 10GB and 200GB+. Standard media players (including classic VLC) require users to manually decompress or extract the entire archive to disk before playback, demanding redundant storage pools and introducing 10–20 minute disk extraction bottlenecks.
+- **Standalone Player Goal**: Provide a dedicated, air-gapped, VLC-grade desktop player (`ITB-PLAYER`) that streams and synchronizes multi-monitor feeds directly from the exported `.tar` container in <200ms with zero prior extraction, rendering gaps, subtitles, and telemetry HUD overlays.
 
 ### 2. Zero-Extract Contiguous Block Streaming Engine
 - **POSIX/Pax TAR Direct Block Indexing**:
@@ -900,14 +900,14 @@ Investigation export archives (`Investigation_*.tar`) contain multi-station, mul
 - **Master Playback Clock**: Coordinates playback rate, unified play/pause, scrub synchronization, and frame-stepping (`.` / `,`) across up to 8+ simultaneous 1080p/4K 60fps monitor streams.
 - **Drift Auto-Correction**: Secondary video streams continuously calibrate their presentation timestamps (PTS) against the master clock, realigning automatically if decoder lag exceeds 50ms.
 
-### 4. Multi-View Forensic Layouts & Tactical Navigation
+### 4. Multi-View Layouts & Tactical Navigation
 - **Responsive Dynamic Grid / Split**: Tiled multicam layouts (1x1, 1x2, 2x2, 2x3, 3x3) preserving native aspect ratios.
 - **Picture-in-Picture (PIP) & 1-Click Swap (`⇄`)**: Primary monitor viewport paired with a floating draggable secondary monitor card with instant stream swapping.
 - **Solo / Focus Zoom Mode**: Double-clicking or pressing `Space`/`F` instantly maximizes any focused camera to 100% viewport.
 - **Persistent Minimap Radar HUD**: Interactive multi-monitor topology minimap displayed in solo view, providing one-click monitor switching.
 
 ### 5. Multi-Station Audio Mixer Engine & Delayed Echo Neutralization
-- **Concurrent Multi-Station Audio Playback**: Unlike live NOC monitoring where audio is strictly soloed, forensic investigation enables operators to listen to multiple workstations simultaneously (e.g. Operator and Intercom/Supervisor) to reconstruct synchronized spoken communications.
+- **Concurrent Multi-Station Audio Playback**: Unlike live NOC monitoring where audio is strictly soloed, replay enables operators to listen to multiple workstations simultaneously (e.g. Operator and Intercom/Supervisor) to reconstruct synchronized spoken communications.
 - **Per-Channel Channel Strips**: Each video feed features independent Volume (0–100%), individual Mute (`[M]`), instant Solo (`[S]`), live stereo VU meters, and spatial stereo panning (`L / C / R`) to separate distinct stations between Left and Right earcups in operator headphones.
 - **Discrete Dual-Channel Source Routing**:
   - Ingests the 2-channel audio tracks recorded by the Agent (Channel 0 = System Loopback, Channel 1 = Physical Microphone).
@@ -916,7 +916,7 @@ Investigation export archives (`Investigation_*.tar`) contain multi-station, mul
 - **Dynamic Voice Activity Cross-Ducking (Auto-Duck)**: Analyzes real-time leading voice envelopes; when Station A speaks, the delayed copy arriving over Station B's intercom/speakers is automatically ducked by -16dB, preventing unintelligible hollow double playback.
 - **Master Audio Bus**: Global volume control, master mute hotkey (`M`), and integrated peak limiting to prevent clipping distortion when multiple active audio feeds overlap.
 
-### 6. Forensic Timeline, Gap Visualizer & Keystroke Audit HUD
+### 6. Timeline, Gap Visualizer & Keystroke Audit HUD
 - **Dual Time Projection**: Displays both elapsed playback time (`00:14:22 / 01:00:00`) and true wall-clock UTC (`2026-11-01 10:14:22 UTC`) derived from `rangeStartUtc`.
 - **Gap Scrubber Markers**:
   - `removedGlobalGaps`: Visual orange hatched intervals on the seekbar indicate periods where fleet capture was paused or trimmed.
@@ -928,15 +928,15 @@ Investigation export archives (`Investigation_*.tar`) contain multi-station, mul
 
 ### 7. Standalone Tool Topology & Air-Gapped Installer Kits
 - **Autonomous Desktop Utility Taxonomy (Tools/)**:
-  - The Forensic Player is architected strictly as an autonomous, air-gapped desktop tool (Tools/ITB-SCREEN-RECORDER.Player and Tools/ITB-SCREEN-RECORDER.Player.Core), completely independent of the C2 Server and Web Dashboard runtime.
-  - Investigators execute the tool locally on analytical workstations to inspect exported packages without active network connectivity or server dependencies.
+  - The Player is architected strictly as an autonomous, air-gapped desktop tool (Tools/ITB-SCREEN-RECORDER.Player and Tools/ITB-SCREEN-RECORDER.Player.Core), completely independent of the C2 Server and Web Dashboard runtime.
+  - Users execute the tool locally on analytical workstations to inspect exported packages without active network connectivity or server dependencies.
 - **Windows Enterprise Installer (Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer)**:
-  - Engineered using **WiX Toolset v5** producing a standalone .msi (ITB-ForensicPlayer-Setup-1.0.x.msi).
+  - Engineered using **WiX Toolset v5** producing a standalone .msi (ITB-Player-Setup-1.0.x.msi).
   - Automatically registers Start Menu and Desktop shortcuts.
-  - **OS Shell File Association**: Maps .itbp (ITB Forensic Investigation Package) directly to the player executable, and injects an Explorer context menu verb for .tar files: Open with ITB Forensic Player.
+  - **OS Shell File Association**: Maps .itbp (ITB Screen Recording Package) directly to the player executable, and injects an Explorer context menu verb for .tar files: Open with ITB Player.
 - **Linux Self-Extracting Deployment Kit (Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer)**:
-  - Produces an autonomous .run self-extracting bundle (ITB-ForensicPlayer-Setup-1.0.x.run).
-  - Deploys binaries to /opt/itb-forensic-player/ with /usr/local/bin/itb-player CLI symlink.
-  - Installs XDG desktop entry (/usr/share/applications/itb-forensic-player.desktop) and registers shared MIME type pplication/x-itb-package for .itbp and .tar with system desktop databases.
+  - Produces an autonomous .run self-extracting bundle (ITB-Player-Setup-1.0.x.run).
+  - Deploys binaries to /opt/itb-player/ with /usr/local/bin/itb-player CLI symlink.
+  - Installs XDG desktop entry (/usr/share/applications/itb-player.desktop) and registers shared MIME type application/x-itb-package for .itbp and .tar with system desktop databases.
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

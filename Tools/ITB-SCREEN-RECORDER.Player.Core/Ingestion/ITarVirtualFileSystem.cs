@@ -15,7 +15,7 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
         string? ArchiveFilePath { get; }
         long ArchiveSizeBytes { get; }
         IReadOnlyList<TarBlockEntry> Entries { get; }
-        ForensicPackageManifest? Manifest { get; }
+        PlayerPackageManifest? Manifest { get; }
 
         Task OpenArchiveAsync(string archiveFilePath, CancellationToken ct = default);
         bool TryGetEntry(string entryName, out TarBlockEntry entry);

@@ -2,7 +2,7 @@
 set -e
 
 echo "============================================="
-echo "  ITB Forensic Player - Linux Setup"
+echo "  ITB Player - Linux Setup"
 echo "============================================="
 
 if [ "$EUID" -ne 0 ]; then
@@ -23,7 +23,7 @@ bash "$TMP_DIR/setup.sh"
 echo "==> Cleaning temporary cache..."
 rm -rf "$TMP_DIR"
 
-echo "=== ITB Forensic Player installation completed successfully! ==="
+echo "=== ITB Player installation completed successfully! ==="
 exit 0
 
 __PAYLOAD_BEGINS__

@@ -5,9 +5,9 @@ using System.Text.Json.Serialization;
 namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
 {
     /// <summary>
-    /// Deserialized model of session.json embedded inside an ITB forensic investigation export package (.tar/.itbp).
+    /// Deserialized model of session.json embedded inside an ITB export package (.tar/.itbp).
     /// </summary>
-    public sealed class ForensicPackageManifest
+    public sealed class PlayerPackageManifest
     {
         [JsonPropertyName("sessionId")]
         public string SessionId { get; set; } = string.Empty;
@@ -28,19 +28,19 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
         public double ExportedDurationSeconds { get; set; }
 
         [JsonPropertyName("audioConfiguration")]
-        public ForensicAudioConfiguration AudioConfiguration { get; set; } = new();
+        public PlayerAudioConfiguration AudioConfiguration { get; set; } = new();
 
         [JsonPropertyName("removedGlobalGaps")]
-        public List<ForensicGlobalGap> RemovedGlobalGaps { get; set; } = new();
+        public List<PlayerGlobalGap> RemovedGlobalGaps { get; set; } = new();
 
         [JsonPropertyName("stationGaps")]
-        public List<ForensicStationGap> StationGaps { get; set; } = new();
+        public List<PlayerStationGap> StationGaps { get; set; } = new();
 
         [JsonPropertyName("tracks")]
-        public List<ForensicTrackInfo> Tracks { get; set; } = new();
+        public List<PlayerTrackInfo> Tracks { get; set; } = new();
     }
 
-    public sealed class ForensicAudioConfiguration
+    public sealed class PlayerAudioConfiguration
     {
         [JsonPropertyName("channels")]
         public int Channels { get; set; } = 2;
@@ -59,7 +59,7 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
         public string Description { get; set; } = string.Empty;
     }
 
-    public sealed class ForensicGlobalGap
+    public sealed class PlayerGlobalGap
     {
         [JsonPropertyName("gapIndex")]
         public int GapIndex { get; set; }
@@ -77,7 +77,7 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
         public double TimelineOffsetSeconds { get; set; }
     }
 
-    public sealed class ForensicStationGap
+    public sealed class PlayerStationGap
     {
         [JsonPropertyName("stationId")]
         public string StationId { get; set; } = string.Empty;
@@ -95,7 +95,7 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
         public string BridgeType { get; set; } = "NoSignal";
     }
 
-    public sealed class ForensicTrackInfo
+    public sealed class PlayerTrackInfo
     {
         [JsonPropertyName("hostname")]
         public string Hostname { get; set; } = string.Empty;

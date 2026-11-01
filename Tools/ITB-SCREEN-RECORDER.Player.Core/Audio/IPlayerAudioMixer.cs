@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace ITB_SCREEN_RECORDER.Player.Core.Audio;
 
-public interface IForensicAudioMixer
+public interface IPlayerAudioMixer
 {
     IReadOnlyList<StationAudioSettings> Stations { get; }
     double MasterVolume { get; set; }

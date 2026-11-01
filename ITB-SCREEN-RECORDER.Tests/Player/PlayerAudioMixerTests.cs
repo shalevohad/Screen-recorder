@@ -5,12 +5,12 @@ using Xunit;
 
 namespace ITB_SCREEN_RECORDER.Tests.Player;
 
-public class ForensicAudioMixerTests
+public class PlayerAudioMixerTests
 {
     [Fact]
     public void MultiStationMixing_MixesSignalsLinearly()
     {
-        var mixer = new ForensicAudioMixer();
+        var mixer = new PlayerAudioMixer();
         mixer.RegisterStation("WS-01", "Station 1");
         mixer.RegisterStation("WS-02", "Station 2");
 
@@ -40,7 +40,7 @@ public class ForensicAudioMixerTests
     [Fact]
     public void SoloLogic_MutesNonSoloStations()
     {
-        var mixer = new ForensicAudioMixer();
+        var mixer = new PlayerAudioMixer();
         mixer.RegisterStation("WS-01", "Station 1");
         mixer.RegisterStation("WS-02", "Station 2");
 
@@ -66,7 +66,7 @@ public class ForensicAudioMixerTests
     [Fact]
     public void DiscreteChannelMode_IsolatesCh0AndCh1()
     {
-        var mixer = new ForensicAudioMixer();
+        var mixer = new PlayerAudioMixer();
         mixer.RegisterStation("WS-MIC", "Mic Test");
         mixer.SetChannelMode("WS-MIC", AudioChannelMode.MicrophoneOnly);
 
@@ -97,7 +97,7 @@ public class ForensicAudioMixerTests
     [Fact]
     public void VoiceActivityCrossDucker_AttenuatesListeningStationLoopback()
     {
-        var mixer = new ForensicAudioMixer();
+        var mixer = new PlayerAudioMixer();
         mixer.RegisterStation("WS-A", "Station A");
         mixer.RegisterStation("WS-B", "Station B");
 

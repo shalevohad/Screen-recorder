@@ -21,7 +21,7 @@ public class PlayerEndToEndPipelineTests : IDisposable
     {
         _tempDir = Path.Combine(Path.GetTempPath(), "itb_player_e2e_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
-        _tarPath = Path.Combine(_tempDir, "forensic_export.tar");
+        _tarPath = Path.Combine(_tempDir, "session_package.tar");
     }
 
     public void Dispose()
@@ -40,11 +40,11 @@ public class PlayerEndToEndPipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task FullForensicPlaybackPipeline_IngestsStreamsSyncsAndMixesAccurately()
+    public async Task FullPlaybackPipeline_IngestsStreamsSyncsAndMixesAccurately()
     {
-        // 1. Create a synthetic forensic package TAR
+        // 1. Create a synthetic package TAR
         var manifestJson = @"{
-  ""sessionId"": ""FORENSIC-E2E-TEST"",
+  ""sessionId"": ""SESSION-E2E-TEST"",
   ""rangeStartUtc"": ""2026-11-01T10:00:00Z"",
   ""rangeEndUtc"": ""2026-11-01T10:05:00Z"",
   ""originalDurationSeconds"": 300.0,
@@ -112,7 +112,7 @@ User typed: kill process
         await vfs.OpenArchiveAsync(_tarPath);
 
         Assert.NotNull(vfs.Manifest);
-        Assert.Equal("FORENSIC-E2E-TEST", vfs.Manifest.SessionId);
+        Assert.Equal("SESSION-E2E-TEST", vfs.Manifest.SessionId);
         Assert.Equal(4, vfs.Entries.Count);
 
         // 3. In-Process Loopback HTTP 206 Streaming Server
@@ -157,7 +157,7 @@ User typed: kill process
         Assert.True(searchResults[0].IsShortcutOrControlKey);
 
         // 6. Multi-Station Audio Mixer & Cross-Ducker
-        var mixer = new ForensicAudioMixer();
+        var mixer = new PlayerAudioMixer();
         mixer.RegisterStation("WS-ALPHA", "WS-ALPHA");
         mixer.RegisterStation("WS-BETA", "WS-BETA");
 

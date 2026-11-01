@@ -1,7 +1,7 @@
 namespace ITB_SCREEN_RECORDER.Player.Core.Audio;
 
 /// <summary>
-/// Channel routing modes for discrete 2-channel forensic station audio (Ch0 = Loopback, Ch1 = Mic).
+/// Channel routing modes for discrete 2-channel station audio (Ch0 = Loopback, Ch1 = Mic).
 /// </summary>
 public enum AudioChannelMode
 {
@@ -21,7 +21,7 @@ public enum AudioChannelMode
     MicrophoneOnly,
 
     /// <summary>
-    /// Routes Channel 0 hard-left and Channel 1 hard-right for forensic binaural discrimination.
+    /// Routes Channel 0 hard-left and Channel 1 hard-right for binaural channel discrimination.
     /// </summary>
     StereoSplit
 }

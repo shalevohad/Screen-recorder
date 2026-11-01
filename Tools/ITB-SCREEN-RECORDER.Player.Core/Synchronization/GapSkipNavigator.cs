@@ -6,18 +6,18 @@ using ITB_SCREEN_RECORDER.Player.Core.Ingestion;
 namespace ITB_SCREEN_RECORDER.Player.Core.Synchronization;
 
 /// <summary>
-/// Implements gap navigation and UTC &lt;-&gt; timeline offset mapping based on ForensicPackageManifest.
+/// Implements gap navigation and UTC &lt;-&gt; timeline offset mapping based on PlayerPackageManifest.
 /// </summary>
 public sealed class GapSkipNavigator : IGapSkipNavigator
 {
     private readonly DateTime _rangeStartUtc;
     private readonly DateTime _rangeEndUtc;
-    private readonly List<ForensicGlobalGap> _globalGaps;
-    private readonly Dictionary<string, List<ForensicStationGap>> _stationGapsByStation;
+    private readonly List<PlayerGlobalGap> _globalGaps;
+    private readonly Dictionary<string, List<PlayerStationGap>> _stationGapsByStation;
 
-    public IReadOnlyList<ForensicGlobalGap> GlobalGaps => _globalGaps;
+    public IReadOnlyList<PlayerGlobalGap> GlobalGaps => _globalGaps;
 
-    public GapSkipNavigator(ForensicPackageManifest manifest)
+    public GapSkipNavigator(PlayerPackageManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
 
@@ -25,9 +25,9 @@ public sealed class GapSkipNavigator : IGapSkipNavigator
         _rangeEndUtc = manifest.RangeEndUtc;
         _globalGaps = manifest.RemovedGlobalGaps != null
             ? manifest.RemovedGlobalGaps.OrderBy(g => g.TimelineOffsetSeconds).ToList()
-            : new List<ForensicGlobalGap>();
+            : new List<PlayerGlobalGap>();
 
-        _stationGapsByStation = new Dictionary<string, List<ForensicStationGap>>(StringComparer.OrdinalIgnoreCase);
+        _stationGapsByStation = new Dictionary<string, List<PlayerStationGap>>(StringComparer.OrdinalIgnoreCase);
         if (manifest.StationGaps != null)
         {
             foreach (var gap in manifest.StationGaps)
@@ -35,7 +35,7 @@ public sealed class GapSkipNavigator : IGapSkipNavigator
                 if (string.IsNullOrWhiteSpace(gap.StationId)) continue;
                 if (!_stationGapsByStation.TryGetValue(gap.StationId, out var list))
                 {
-                    list = new List<ForensicStationGap>();
+                    list = new List<PlayerStationGap>();
                     _stationGapsByStation[gap.StationId] = list;
                 }
                 list.Add(gap);
@@ -94,7 +94,7 @@ public sealed class GapSkipNavigator : IGapSkipNavigator
         return TimeSpan.FromSeconds(timelineSec);
     }
 
-    public bool IsStationInGap(string stationId, TimeSpan timelineOffset, out ForensicStationGap? gap)
+    public bool IsStationInGap(string stationId, TimeSpan timelineOffset, out PlayerStationGap? gap)
     {
         gap = null;
         if (string.IsNullOrWhiteSpace(stationId) || !_stationGapsByStation.TryGetValue(stationId, out var stationGaps))
@@ -115,12 +115,12 @@ public sealed class GapSkipNavigator : IGapSkipNavigator
         return false;
     }
 
-    public IReadOnlyList<ForensicStationGap> GetStationGaps(string stationId)
+    public IReadOnlyList<PlayerStationGap> GetStationGaps(string stationId)
     {
         if (!string.IsNullOrWhiteSpace(stationId) && _stationGapsByStation.TryGetValue(stationId, out var list))
         {
             return list;
         }
-        return Array.Empty<ForensicStationGap>();
+        return Array.Empty<PlayerStationGap>();
     }
 }

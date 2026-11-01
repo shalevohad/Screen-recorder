@@ -111,7 +111,7 @@ namespace ITB_SCREEN_RECORDER.Tests.Player
             byte[] cam1 = Encoding.UTF8.GetBytes("VIDEO-STREAM-CAM-1-RAW-PAYLOAD");
             byte[] cam2 = Encoding.UTF8.GetBytes("VIDEO-STREAM-CAM-2-RAW-PAYLOAD-WITH-DIFFERENT-LENGTH");
 
-            string tarPath = await CreateSampleTarPackageAsync("investigation.tar", cam1, cam2);
+            string tarPath = await CreateSampleTarPackageAsync("session_package.tar", cam1, cam2);
 
             using var vfs = new TarVirtualFileSystem();
             await vfs.OpenArchiveAsync(tarPath);

@@ -5,7 +5,7 @@
     <RootNamespace>ITB_SCREEN_RECORDER.Player.Core</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Description>Core forensic package ingestion, zero-extract streaming, synchronization, and audio mixer engine</Description>
+    <Description>Core package ingestion, zero-extract streaming, synchronization, and audio mixer engine</Description>
   </PropertyGroup>
 
   <ItemGroup>

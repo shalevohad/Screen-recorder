@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
     <mime-type type="application/x-itb-package">
-        <comment>ITB Forensic Investigation Package</comment>
+        <comment>ITB Screen Recording Package</comment>
         <glob pattern="*.itbp"/>
-        <icon name="itb-forensic-player"/>
+        <icon name="itb-player"/>
     </mime-type>
 </mime-info>

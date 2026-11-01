@@ -84,11 +84,11 @@ public class MasterPlaybackClockTests
         var startUtc = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
         var endUtc = new DateTime(2026, 11, 1, 10, 10, 0, DateTimeKind.Utc);
 
-        var manifest = new ForensicPackageManifest
+        var manifest = new PlayerPackageManifest
         {
             RangeStartUtc = startUtc,
             RangeEndUtc = endUtc,
-            RemovedGlobalGaps = new List<ForensicGlobalGap>
+            RemovedGlobalGaps = new List<PlayerGlobalGap>
             {
                 new()
                 {
@@ -99,7 +99,7 @@ public class MasterPlaybackClockTests
                     TimelineOffsetSeconds = 120.0          // at 2 minutes into export
                 }
             },
-            StationGaps = new List<ForensicStationGap>
+            StationGaps = new List<PlayerStationGap>
             {
                 new()
                 {

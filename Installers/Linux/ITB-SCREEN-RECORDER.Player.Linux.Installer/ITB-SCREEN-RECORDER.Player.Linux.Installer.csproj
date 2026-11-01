@@ -8,7 +8,7 @@
 
 		<StagingDir>$(SolutionRoot)/Publish/Staging/player_linux</StagingDir>
 		<FinalOutputDir>$(SolutionRoot)/Publish/Player/linux</FinalOutputDir>
-		<OutputRunFile>$(FinalOutputDir)/ITB-ForensicPlayer-Setup-$(Version).run</OutputRunFile>
+		<OutputRunFile>$(FinalOutputDir)/ITB-Player-Setup-$(Version).run</OutputRunFile>
 
 		<!-- Dynamic PowerShell engine by platform -->
 		<PowerShellCmd Condition="$([MSBuild]::IsOSPlatform('Windows'))">powershell.exe</PowerShellCmd>
@@ -18,8 +18,9 @@
 	<ItemGroup>
 		<None Include="installer-header.sh" />
 		<None Include="setup.sh" />
-		<None Include="itb-forensic-player.desktop" />
+		<None Include="itb-player.desktop" />
 		<None Include="itb-package.xml" />
+		<None Include="itb-player.png" />
 	</ItemGroup>
 
 	<Target Name="BuildLinuxPlayerPackage" AfterTargets="Build">
@@ -33,8 +34,9 @@
 
 		<Message Importance="high" Text="=== [3/5] Staging Setup Scripts and Desktop MIME Definitions ===" />
 		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
-		<Copy SourceFiles="itb-forensic-player.desktop" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="itb-player.desktop" DestinationFolder="$(StagingDir)" />
 		<Copy SourceFiles="itb-package.xml" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="itb-player.png" DestinationFolder="$(StagingDir)" />
 
 		<Message Importance="high" Text="=== [4/5] Packing Self-Extracting .run Installer ===" />
 		<Exec Command="$(PowerShellCmd) -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)/BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)/installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />

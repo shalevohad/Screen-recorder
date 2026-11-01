@@ -15,7 +15,7 @@
 		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
 		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
 
-		<OutputName>ITB-ForensicPlayer-Setup-$(Version)</OutputName>
+		<OutputName>ITB-Player-Setup-$(Version)</OutputName>
 
 		<StagingDir Condition="'$(StagingDir)' == ''">$(SolutionRoot)\Publish\Staging\player_win</StagingDir>
 		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Player\windows</FinalOutputDir>
@@ -35,7 +35,7 @@
 	</ItemGroup>
 
 	<Target Name="PublishPlayerBeforeBuild" BeforeTargets="BeforeBuild">
-		<Message Importance="high" Text="=== [1/2] Publishing Forensic Player to Staging ($(StagingDir)) ===" />
+		<Message Importance="high" Text="=== [1/2] Publishing Player to Staging ($(StagingDir)) ===" />
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 		<MakeDir Directories="$(StagingDir)" />
 

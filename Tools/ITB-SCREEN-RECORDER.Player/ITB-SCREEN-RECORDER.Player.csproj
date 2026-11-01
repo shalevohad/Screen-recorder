@@ -8,8 +8,12 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>ITB_SCREEN_RECORDER.Player</RootNamespace>
     <ApplicationIcon Condition="Exists('app.ico')">app.ico</ApplicationIcon>
-    <Description>ITB Forensic Investigation Package Standalone Player</Description>
+    <Description>ITB Screen Recorder Standalone Player</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\**\*" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.Player.Core\ITB-SCREEN-RECORDER.Player.Core.csproj" />

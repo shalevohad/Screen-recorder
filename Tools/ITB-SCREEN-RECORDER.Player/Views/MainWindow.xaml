@@ -3,7 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:ITB_SCREEN_RECORDER.Player.ViewModels"
         xmlns:audio="clr-namespace:ITB_SCREEN_RECORDER.Player.Core.Audio;assembly=ITB-SCREEN-RECORDER.Player.Core"
-        Title="ITB FORENSIC INVESTIGATION PLAYER"
+        Title="ITB PLAYER"
+        Icon="Assets/app.ico"
         Height="850" Width="1350"
         MinWidth="960" MinHeight="640"
         WindowStartupLocation="CenterScreen"
@@ -46,8 +47,9 @@
 
                 <!-- System Title & Session Badge -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="pack://application:,,,/Assets/LogoDark.png" Height="26" Margin="0,0,10,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
                     <TextBlock Text="ITB" Foreground="{StaticResource AccentCyanBrush}" FontWeight="ExtraBold" FontSize="16" Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBlock Text="FORENSIC INVESTIGATION PLAYER" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <TextBlock Text="PLAYER" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,16,0" />
 
                     <Border Background="#1E293B" CornerRadius="4" Padding="8,4" VerticalAlignment="Center"
                             Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}}">
@@ -112,7 +114,7 @@
                         BorderBrush="#1E293B" BorderThickness="2" CornerRadius="8" Margin="32" Background="#0A0F1D">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,16" />
-                        <TextBlock Text="DRAG &amp; DROP FORENSIC PACKAGE (.TAR / .ITBP)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                        <TextBlock Text="DRAG &amp; DROP ITB PACKAGE (.TAR / .ITBP)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,8" />
                         <TextBlock Text="Instant zero-extract byte-range streaming with multi-cam clock synchronization" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,0,0,16" />
                         <Button Style="{StaticResource TacticalAccentButtonStyle}" Content="SELECT FILE..." Command="{Binding OpenFileCommand}" HorizontalAlignment="Center" />
                     </StackPanel>
@@ -191,7 +193,7 @@
 
                     <Border Grid.Row="0" Background="#162032" Padding="12,0" VerticalAlignment="Stretch">
                         <Grid VerticalAlignment="Center">
-                            <TextBlock Text="⌨ KEYSTROKE AUDIT TRAIL" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" FontSize="12" />
+                            <TextBlock Text="⌨ KEYSTROKE &amp; ACTIVITY TRAIL" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" FontSize="12" />
                             <Button Content="✕" HorizontalAlignment="Right" Background="Transparent" Foreground="{StaticResource TextMutedBrush}" BorderThickness="0" Command="{Binding ToggleKeystrokeDrawerCommand}" />
                         </Grid>
                     </Border>
@@ -239,7 +241,7 @@
                 Visibility="{Binding IsAudioMixerVisible, Converter={StaticResource BoolToVis}}">
             <StackPanel>
                 <Grid Margin="0,0,0,8">
-                    <TextBlock Text="MULTI-STATION FORENSIC AUDIO MIXER (DISCRETE CH0/CH1 &amp; AUTO-DUCK ECHO SUPPRESSION)" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" FontSize="11" />
+                    <TextBlock Text="MULTI-STATION AUDIO MIXER (DISCRETE CH0/CH1 &amp; AUTO-DUCK ECHO SUPPRESSION)" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" FontSize="11" />
                     <Button Content="✕" HorizontalAlignment="Right" Background="Transparent" Foreground="{StaticResource TextMutedBrush}" BorderThickness="0" Command="{Binding ToggleAudioMixerCommand}" />
                 </Grid>
 

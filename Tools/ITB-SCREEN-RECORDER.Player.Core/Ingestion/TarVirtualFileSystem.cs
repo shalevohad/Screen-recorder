@@ -20,20 +20,20 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
 
         private string? _archiveFilePath;
         private long _archiveSizeBytes;
-        private ForensicPackageManifest? _manifest;
+        private PlayerPackageManifest? _manifest;
         private bool _isDisposed;
 
         public string? ArchiveFilePath => _archiveFilePath;
         public long ArchiveSizeBytes => _archiveSizeBytes;
         public IReadOnlyList<TarBlockEntry> Entries => _entries;
-        public ForensicPackageManifest? Manifest => _manifest;
+        public PlayerPackageManifest? Manifest => _manifest;
 
         public async Task OpenArchiveAsync(string archiveFilePath, CancellationToken ct = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(archiveFilePath);
             if (!File.Exists(archiveFilePath))
             {
-                throw new FileNotFoundException($"Investigation package archive not found: {archiveFilePath}", archiveFilePath);
+                throw new FileNotFoundException($"Package archive not found: {archiveFilePath}", archiveFilePath);
             }
 
             lock (_lock)
@@ -137,7 +137,7 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
                             {
                                 byte[] jsonBytes = new byte[effectiveSize];
                                 fs.Read(jsonBytes, 0, (int)effectiveSize);
-                                _manifest = JsonSerializer.Deserialize<ForensicPackageManifest>(jsonBytes, new JsonSerializerOptions
+                                _manifest = JsonSerializer.Deserialize<PlayerPackageManifest>(jsonBytes, new JsonSerializerOptions
                                 {
                                     PropertyNameCaseInsensitive = true
                                 });

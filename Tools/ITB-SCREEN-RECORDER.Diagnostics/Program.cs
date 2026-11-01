@@ -139,7 +139,7 @@ namespace ITB_SCREEN_RECORDER.Diagnostics
                 return 0;
             }
 
-            Console.WriteLine($"\n[INFO] Found {targetFiles.Count} log file(s). Running forensic rule engine...\n");
+            Console.WriteLine($"\n[INFO] Found {targetFiles.Count} log file(s). Running diagnostic rule engine...\n");
 
             var engine = new DiagnosticEngine();
             var report = new OverallDiagnosticReport();

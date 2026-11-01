@@ -20,7 +20,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private ITarVirtualFileSystem? _tarFs;
     private ILoopbackHttpRangeServer? _httpServer;
     private IMasterPlaybackClock? _clock;
-    private IForensicAudioMixer? _audioMixer;
+    private IPlayerAudioMixer? _audioMixer;
     private IKeystrokeAuditIndexer? _keystrokeIndexer;
     private IGapSkipNavigator? _gapNavigator;
     private IStreamDriftTracker? _driftTracker;
@@ -219,8 +219,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Open ITB Forensic Package",
-            Filter = "ITB Forensic Package (*.tar;*.itbp)|*.tar;*.itbp|All Files (*.*)|*.*"
+            Title = "Open ITB Package",
+            Filter = "ITB Package (*.tar;*.itbp)|*.tar;*.itbp|All Files (*.*)|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -251,7 +251,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         _gapNavigator = new GapSkipNavigator(manifest);
         _clock = new MasterPlaybackClock(TimeSpan.FromSeconds(TotalDurationSeconds), _gapNavigator, RangeStartUtc);
-        _audioMixer = new ForensicAudioMixer();
+        _audioMixer = new PlayerAudioMixer();
         _keystrokeIndexer = new KeystrokeAuditIndexer();
         _driftTracker = new StreamDriftTracker(_clock);
 

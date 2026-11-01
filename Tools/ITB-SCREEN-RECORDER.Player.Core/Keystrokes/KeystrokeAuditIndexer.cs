@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace ITB_SCREEN_RECORDER.Player.Core.Keystrokes;
 
 /// <summary>
-/// High-performance forensic keystroke and caption indexer.
+/// High-performance keystroke and caption indexer.
 /// Ingests SRT subtitle streams without disk extraction and provides sub-millisecond keyword lookup.
 /// </summary>
 public sealed class KeystrokeAuditIndexer : IKeystrokeAuditIndexer

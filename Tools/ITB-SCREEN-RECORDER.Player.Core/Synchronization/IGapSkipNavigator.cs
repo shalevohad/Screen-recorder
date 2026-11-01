@@ -24,15 +24,15 @@ public interface IGapSkipNavigator
     /// <summary>
     /// Checks whether a specific station is experiencing an internal synthetic "No Signal" gap at the given timeline offset.
     /// </summary>
-    bool IsStationInGap(string stationId, TimeSpan timelineOffset, out ForensicStationGap? gap);
+    bool IsStationInGap(string stationId, TimeSpan timelineOffset, out PlayerStationGap? gap);
 
     /// <summary>
     /// Gets all station gaps occurring within a time range for rendering timeline markers.
     /// </summary>
-    IReadOnlyList<ForensicStationGap> GetStationGaps(string stationId);
+    IReadOnlyList<PlayerStationGap> GetStationGaps(string stationId);
 
     /// <summary>
     /// Gets all global gaps for timeline visual marking.
     /// </summary>
-    IReadOnlyList<ForensicGlobalGap> GlobalGaps { get; }
+    IReadOnlyList<PlayerGlobalGap> GlobalGaps { get; }
 }

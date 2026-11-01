@@ -6,10 +6,10 @@ using System.Linq;
 namespace ITB_SCREEN_RECORDER.Player.Core.Audio;
 
 /// <summary>
-/// High-fidelity forensic audio mixer supporting multi-station simultaneous playback,
+/// High-fidelity audio mixer supporting multi-station simultaneous playback,
 /// discrete 2-channel routing, spatial panning, solo/mute governance, and auto-ducking echo neutralization.
 /// </summary>
-public sealed class ForensicAudioMixer : IForensicAudioMixer
+public sealed class PlayerAudioMixer : IPlayerAudioMixer
 {
     private readonly object _sync = new();
     private readonly Dictionary<string, StationAudioSettings> _stations = new(StringComparer.OrdinalIgnoreCase);
