@@ -2,19 +2,8 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/overlays/Playhead.jsx
 // ==========================================
 import React, { useMemo } from 'react';
+import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './Playhead.scss';
-
-const formatTimelineClock = (epochMs, mode = 'LOCAL') => {
-    if (!epochMs || isNaN(epochMs)) return '--:--:--';
-    const d = new Date(epochMs);
-    const pad = (n) => String(n).padStart(2, '0');
-
-    if (mode === 'UTC') {
-        return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-    }
-
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
 
 function Playhead({
     baseEpochMs = 0,

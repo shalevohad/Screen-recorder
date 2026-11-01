@@ -818,10 +818,6 @@ In enterprise operational deployments, operators may reconfigure the central ser
   - Once the server resumes listening on the new port, Agent discovery reconnects and drains buffered chunks without a single lost frame.
 
 ---
-*End of System Book — ITB-SCREEN-RECORDER Architecture Team*
-
----
-
 ## 22. Host GPU Hardware Detection & Architecture Diagnostics (2026-11-01)
 
 ### 1. Host Hardware GPU Enumeration (HardwareProbe.cs)
@@ -842,6 +838,41 @@ In enterprise operational deployments, operators may reconfigure the central ser
 
 ### 3. Tactical C2 UI Display (SystemOverviewTab.jsx)
 - Detected GPU models and driver versions are surfaced directly in the C2 Dashboard System Overview pipeline header as interactive badges (🖥️ HOST GPU: <Model> (v<Driver>)), providing immediate hardware visibility to NOC operators.
+
+---
+## 23. Server-Calibrated Time Engine & Playhead Synchronization Architecture (2026-11-02)
+
+### 1. Operational Problem: Client Host Timezone Drift & Playhead Desynchronization
+In air-gapped operational environments, client workstations accessing the Forensic Studio (`ExtractorAdvancedStudio`) or NOC Dashboard may run with divergent local OS timezones, uncalibrated system clocks, or UTC/GMT settings.
+- **Playhead Needle Clock Drift**: Previously, `Playhead.jsx` utilized a local `new Date().getHours()` formatter that queried the client browser's local OS clock. If the client machine was set to UTC while the server operated in Israel Standard/Daylight Time (IST/IDT), the playhead badge displayed UTC hours while the timeline ruler labels displayed calibrated server hours.
+- **Mission Time Range Modal Shift**: Opening `MasterTimeRangeModal.jsx` previously decomposed timestamps using browser-local date accessors (`getFullYear()`, `getHours()`). When saving the mission time range, it subtracted the server's DST offset from nominal UTC milliseconds, introducing a double-shift in `startEpoch` / `endEpoch`.
+- **Stream Seek Desynchronization**: Because backend chunk storage and `/api/v1/extractor-advanced/stream` query recordings via exact Unix Epoch milliseconds, the shifted timestamps caused video playback requests to fetch chunks from non-existent or misaligned time windows, creating an anomaly between the playhead needle, timeline cut boundaries, and the streamed video frames.
+
+### 2. Unified DST Time Decomposition Architecture (`dstEngine.js`)
+To guarantee 100% deterministic time representation regardless of host operating system or browser timezone settings, the shared DST Engine (`dstEngine.js`) was extended with pure mathematical time decomposition and composition utilities:
+- **`getLocalTimeComponents(epochMs)`**: Decomposes UTC Epoch milliseconds into `{ year, month, day, hour, minute, second, offsetMin, label }` by applying server-calibrated DST rules and reading UTC date parts from the offset-adjusted timestamp. Zero client OS timezone interference.
+- **`getUtcTimeComponents(epochMs)`**: Extracts pure UTC time components `{ year, month, day, hour, minute, second, offsetMin: 0, label: 'UTC' }`.
+- **`getTimeComponents(epochMs, mode = 'LOCAL')`**: Unified dispatcher returning either local calibrated or UTC time components.
+- **`formatDateTimeComponents(epochMs, mode = 'LOCAL')`**: Returns formatted `{ dateStr: "YYYY-MM-DD", timeStr: "HH:MM:SS", fullStr: "YYYY-MM-DDTHH:MM:SS", label, offsetMin }`.
+- **`dateTimeToEpochMs(dateStr, timeStr, mode = 'LOCAL', occurrence = 1)`**: Reconstructs exact UTC Unix Epoch milliseconds from nominal date and time strings with automated DST fall-back ambiguity resolution.
+
+### 3. Comprehensive Component Time Alignment
+- **Playhead Needle Badge (`Playhead.jsx`)**:
+  - Replaced internal flawed formatter with `formatTimelineClock(baseEpochMs + playheadMs, timeMode)`.
+  - Playhead needle badge now perfectly matches timeline ruler tick labels and server operational time across all zoom levels and time modes.
+- **Master Mission Time Picker Modal (`MasterTimeRangeModal.jsx`)**:
+  - Modal initialization and quick presets (`1h`, `4h`, `24h`, `7d`) populate date/time fields using `getTimeComponents(epoch, timeMode)`.
+  - Date picking and calendar navigation operate on UTC date instances (`getUTCFullYear()`, `getUTCMonth()`, `getUTCDate()`), eliminating midnight date skew in negative or positive timezone offsets.
+  - Form submission calculates exact Unix Epoch milliseconds via `dateTimeToEpochMs`.
+- **Tactical Mission Scope Bar (`TopScopeBar.jsx`)**:
+  - Uses `getTimeComponents` to format start and end dates/times, eliminating date mismatches across midnight boundaries.
+- **Keystroke Burst Overlay (`TimelineKeystrokes.jsx`)**:
+  - Tooltip timestamps now call `formatTimelineClock(cluster.startEpochMs, timeMode)`.
+- **Incident Bookmarks (`BookmarksModal.jsx`)**:
+  - Bookmark cut times format via `formatTimelineClock(epochMs, timeMode)` respecting active studio display mode.
+- **Studio Session Invariant (`ExtractorAdvancedStudio.jsx`)**:
+  - `generateDefaultTimeRange` formats initial time scope using `formatDateTimeComponents`.
+  - `parseSafeEpoch` parses ISO date strings without timezone indicators via `dateTimeToEpochMs` instead of browser-local parsing.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

@@ -318,6 +318,7 @@ export default function TimelineRuler({
                         stationHostname={stationHostname}
                         activeStationName={activeStationName}
                         baseEpochMs={baseEpochMs}
+                        timeMode={timeMode}
                         viewportStartMs={viewportStartMs}
                         viewportDurationMs={viewportDurationMs}
                         pixelWidth={pixelWidth}

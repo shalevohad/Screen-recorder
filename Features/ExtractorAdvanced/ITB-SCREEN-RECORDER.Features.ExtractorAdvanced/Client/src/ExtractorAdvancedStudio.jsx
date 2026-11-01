@@ -19,22 +19,23 @@ import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
 import { useTimelineNavigation } from './hooks/useTimelineNavigation.js';
 import { useStudioHotkeys } from './hooks/useStudioHotkeys.js';
 import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache } from './utils/studioSessionStore.js';
-import { initDstEngineAsync } from './utils/dstEngine.js';
+import { initDstEngineAsync, formatDateTimeComponents, dateTimeToEpochMs } from './utils/dstEngine.js';
 
 import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
 
 const pad = (n) => String(n).padStart(2, '0');
-const formatStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-const generateDefaultTimeRange = () => {
-    const now = new Date();
-    const fourHoursAgo = new Date(now.getTime() - (4 * 60 * 60 * 1000));
+const generateDefaultTimeRange = (mode = 'LOCAL') => {
+    const now = Date.now();
+    const fourHoursAgo = now - (4 * 60 * 60 * 1000);
+    const sComp = formatDateTimeComponents(fourHoursAgo, mode);
+    const eComp = formatDateTimeComponents(now, mode);
     return {
-        start: formatStr(fourHoursAgo),
-        end: formatStr(now),
-        startEpochMs: fourHoursAgo.getTime(),
-        endEpochMs: now.getTime(),
+        start: sComp.fullStr,
+        end: eComp.fullStr,
+        startEpochMs: fourHoursAgo,
+        endEpochMs: now,
         durationMs: 14400000
     };
 };
@@ -42,7 +43,14 @@ const generateDefaultTimeRange = () => {
 export const parseSafeEpoch = (dateStr) => {
     if (!dateStr) return Date.now();
     if (typeof dateStr === 'number') return dateStr;
-    const safeStr = String(dateStr).replace(' ', 'T');
+    const str = String(dateStr).trim();
+    if (/^\d+$/.test(str)) return Number(str);
+    if (str.includes('T') && !str.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(str)) {
+        const [d, t] = str.split('T');
+        const epoch = dateTimeToEpochMs(d, t.substring(0, 8), 'LOCAL');
+        if (epoch !== null && !isNaN(epoch)) return epoch;
+    }
+    const safeStr = str.replace(' ', 'T');
     const ms = new Date(safeStr).getTime();
     return isNaN(ms) ? Date.now() : ms;
 };
@@ -816,6 +824,7 @@ export default function ExtractorAdvancedStudio() {
             <BookmarksModal
                 isOpen={isBookmarksModalOpen}
                 onClose={() => setIsBookmarksModalOpen(false)}
+                timeMode={timeMode}
                 currentState={{
                     timeRange,
                     baseEpochMs: timelineBaseEpochMs,

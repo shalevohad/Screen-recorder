@@ -6,7 +6,9 @@ import { createPortal } from 'react-dom';
 import {
     checkTimeAmbiguity,
     getLocalOffsetMinutes,
-    findTransitionsInRange
+    findTransitionsInRange,
+    getTimeComponents,
+    dateTimeToEpochMs
 } from '../../../utils/dstEngine.js';
 import Tactical24HClockPicker from '../UI/Tactical24HClockPicker/Tactical24HClockPicker.jsx';
 import './MasterTimeRangeModal.scss';
@@ -93,37 +95,40 @@ export default function MasterTimeRangeModal({
         if (!isOpen) return;
         loadBookmarksFromStorage();
 
-        let sObj, eObj;
-        if (currentRange?.start && currentRange?.end) {
-            sObj = new Date(currentRange.start.replace(' ', 'T'));
-            eObj = new Date(currentRange.end.replace(' ', 'T'));
-            setActivePreset(null);
-        } else {
-            eObj = new Date();
-            sObj = new Date(eObj.getTime() - (24 * 3600 * 1000));
-            setActivePreset('24h');
+        let startEpoch = currentRange?.startEpochMs;
+        let endEpoch = currentRange?.endEpochMs;
+
+        if (!startEpoch || isNaN(startEpoch)) {
+            if (currentRange?.start) {
+                const sClean = String(currentRange.start).replace(' ', 'T');
+                const parsed = new Date(sClean).getTime();
+                startEpoch = isNaN(parsed) ? (Date.now() - 24 * 3600 * 1000) : parsed;
+            } else {
+                endEpoch = Date.now();
+                startEpoch = endEpoch - (24 * 3600 * 1000);
+            }
         }
 
-        const isUtc = timeMode === 'UTC';
-        const sy = isUtc ? sObj.getUTCFullYear() : sObj.getFullYear();
-        const sm = isUtc ? sObj.getUTCMonth() + 1 : sObj.getMonth() + 1;
-        const sd = isUtc ? sObj.getUTCDate() : sObj.getDate();
-        const sh = isUtc ? sObj.getUTCHours() : sObj.getHours();
-        const sMin = isUtc ? sObj.getUTCMinutes() : sObj.getMinutes();
-        const ss = isUtc ? sObj.getUTCSeconds() : sObj.getSeconds();
+        if (!endEpoch || isNaN(endEpoch)) {
+            if (currentRange?.end) {
+                const eClean = String(currentRange.end).replace(' ', 'T');
+                const parsed = new Date(eClean).getTime();
+                endEpoch = isNaN(parsed) ? Date.now() : parsed;
+            } else {
+                endEpoch = startEpoch + (24 * 3600 * 1000);
+            }
+        }
 
-        const ey = isUtc ? eObj.getUTCFullYear() : eObj.getFullYear();
-        const em = isUtc ? eObj.getUTCMonth() + 1 : eObj.getMonth() + 1;
-        const ed = isUtc ? eObj.getUTCDate() : eObj.getDate();
-        const eh = isUtc ? eObj.getUTCHours() : eObj.getHours();
-        const eMin = isUtc ? eObj.getUTCMinutes() : eObj.getMinutes();
-        const es = isUtc ? eObj.getUTCSeconds() : eObj.getSeconds();
+        setActivePreset(null);
 
-        setStartDateStr(`${sy}-${pad(sm)}-${pad(sd)}`);
-        setEndDateStr(`${ey}-${pad(em)}-${pad(ed)}`);
-        setStartTimeStr(`${pad(sh)}:${pad(sMin)}:${pad(ss)}`);
-        setEndTimeStr(`${pad(eh)}:${pad(eMin)}:${pad(es)}`);
-        setCalendarViewDate(new Date(sObj));
+        const sComp = getTimeComponents(startEpoch, timeMode);
+        const eComp = getTimeComponents(endEpoch, timeMode);
+
+        setStartDateStr(`${sComp.year}-${pad(sComp.month)}-${pad(sComp.day)}`);
+        setEndDateStr(`${eComp.year}-${pad(eComp.month)}-${pad(eComp.day)}`);
+        setStartTimeStr(`${pad(sComp.hour)}:${pad(sComp.minute)}:${pad(sComp.second)}`);
+        setEndTimeStr(`${pad(eComp.hour)}:${pad(eComp.minute)}:${pad(eComp.second)}`);
+        setCalendarViewDate(new Date(Date.UTC(sComp.year, sComp.month - 1, 1)));
     }, [isOpen, currentRange, timeMode, loadBookmarksFromStorage]);
 
     // Ensure end date defaults to start date if interacting with clocks while end date is empty
@@ -155,14 +160,18 @@ export default function MasterTimeRangeModal({
             const sDate = String(rawStart).substring(0, 10);
             const eDate = String(rawEnd).substring(0, 10);
 
-            let curr = new Date(sDate);
-            const endLimit = new Date(eDate);
+            const [sy, sm, sd] = sDate.split('-').map(Number);
+            const [ey, em, ed] = eDate.split('-').map(Number);
+            if (isNaN(sy) || isNaN(sm) || isNaN(sd) || isNaN(ey) || isNaN(em) || isNaN(ed)) return;
 
-            while (curr <= endLimit) {
-                const dKey = `${curr.getFullYear()}-${pad(curr.getMonth() + 1)}-${pad(curr.getDate())}`;
+            let curr = new Date(Date.UTC(sy, sm - 1, sd));
+            const endLimit = new Date(Date.UTC(ey, em - 1, ed));
+
+            while (curr.getTime() <= endLimit.getTime()) {
+                const dKey = `${curr.getUTCFullYear()}-${pad(curr.getUTCMonth() + 1)}-${pad(curr.getUTCDate())}`;
                 if (!map[dKey]) map[dKey] = [];
                 map[dKey].push(bm);
-                curr.setDate(curr.getDate() + 1);
+                curr.setUTCDate(curr.getUTCDate() + 1);
             }
         });
         return map;
@@ -200,7 +209,8 @@ export default function MasterTimeRangeModal({
         setEndDateStr(eDate);
         setStartTimeStr(sTime);
         setEndTimeStr(eTime);
-        setCalendarViewDate(new Date(sDate));
+        const [y, m] = sDate.split('-').map(Number);
+        setCalendarViewDate(new Date(Date.UTC(y, m - 1, 1)));
         setIsBookmarksDrawerOpen(false);
     };
 
@@ -226,39 +236,15 @@ export default function MasterTimeRangeModal({
     }, [endDateTime, timeMode]);
 
     const resolvedEpochs = useMemo(() => {
-        if (!startDateTime || !endDateTime) return null;
+        if (!startDateStr || !effectiveEndDateStr) return null;
 
-        let startEpoch;
-        let endEpoch;
+        const startEpoch = dateTimeToEpochMs(startDateStr, startTimeStr, timeMode, startOccurrence);
+        const endEpoch = dateTimeToEpochMs(effectiveEndDateStr, endTimeStr, timeMode, endOccurrence);
 
-        if (timeMode === 'UTC') {
-            const s = parseInputDateTime(startDateTime, 'UTC');
-            const e = parseInputDateTime(endDateTime, 'UTC');
-            if (!s || !e) return null;
-            startEpoch = s.getTime();
-            endEpoch = e.getTime();
-        } else {
-            if (startAmbiguity.isAmbiguous) {
-                startEpoch = startOccurrence === 1 ? startAmbiguity.firstOccurrenceEpoch : startAmbiguity.secondOccurrenceEpoch;
-            } else {
-                const dt = parseInputDateTime(startDateTime, 'LOCAL');
-                if (!dt) return null;
-                const { offsetMin } = getLocalOffsetMinutes(dt.getTime());
-                startEpoch = dt.getTime() - (offsetMin * 60000);
-            }
-
-            if (endAmbiguity.isAmbiguous) {
-                endEpoch = endOccurrence === 1 ? endAmbiguity.firstOccurrenceEpoch : endAmbiguity.secondOccurrenceEpoch;
-            } else {
-                const dt = parseInputDateTime(endDateTime, 'LOCAL');
-                if (!dt) return null;
-                const { offsetMin } = getLocalOffsetMinutes(dt.getTime());
-                endEpoch = dt.getTime() - (offsetMin * 60000);
-            }
-        }
+        if (startEpoch === null || endEpoch === null || isNaN(startEpoch) || isNaN(endEpoch)) return null;
 
         return { startEpoch, endEpoch, durationMs: endEpoch - startEpoch };
-    }, [startDateTime, endDateTime, timeMode, startAmbiguity, endAmbiguity, startOccurrence, endOccurrence]);
+    }, [startDateStr, startTimeStr, effectiveEndDateStr, endTimeStr, timeMode, startOccurrence, endOccurrence]);
 
     const transitionsInScope = useMemo(() => {
         if (!resolvedEpochs || resolvedEpochs.durationMs <= 0) return [];
@@ -276,10 +262,10 @@ export default function MasterTimeRangeModal({
     }, [resolvedEpochs]);
 
     const calendarDays = useMemo(() => {
-        const year = calendarViewDate.getFullYear();
-        const month = calendarViewDate.getMonth();
-        const firstDayOfMonth = new Date(year, month, 1).getDay();
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const year = calendarViewDate.getUTCFullYear();
+        const month = calendarViewDate.getUTCMonth();
+        const firstDayOfMonth = new Date(Date.UTC(year, month, 1)).getUTCDay();
+        const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 
         const cells = [];
         for (let i = 0; i < firstDayOfMonth; i++) cells.push(null);
@@ -299,12 +285,12 @@ export default function MasterTimeRangeModal({
                 setStartDateStr(dateStr);
                 setEndDateStr('');
             } else {
-                const s = new Date(startDateStr).getTime();
-                const e = new Date(dateStr).getTime();
+                const s = new Date(startDateStr + 'T00:00:00Z').getTime();
+                const e = new Date(dateStr + 'T00:00:00Z').getTime();
                 if (e - s > MAX_WINDOW_MS) {
                     alert('The selected scope exceeds 7 days (168 hours). Capped to 7 days.');
                     const capped = new Date(s + MAX_WINDOW_MS);
-                    setEndDateStr(`${capped.getFullYear()}-${pad(capped.getMonth() + 1)}-${pad(capped.getDate())}`);
+                    setEndDateStr(`${capped.getUTCFullYear()}-${pad(capped.getUTCMonth() + 1)}-${pad(capped.getUTCDate())}`);
                 } else {
                     setEndDateStr(dateStr);
                 }
@@ -314,28 +300,17 @@ export default function MasterTimeRangeModal({
 
     const handleQuickPreset = (durationMs, presetLabel) => {
         setActivePreset(presetLabel);
-        const now = new Date();
-        const sObj = new Date(now.getTime() - durationMs);
-        const isUtc = timeMode === 'UTC';
+        const endEpoch = Date.now();
+        const startEpoch = endEpoch - durationMs;
 
-        const sy = isUtc ? sObj.getUTCFullYear() : sObj.getFullYear();
-        const sm = isUtc ? sObj.getUTCMonth() + 1 : sObj.getMonth() + 1;
-        const sd = isUtc ? sObj.getUTCDate() : sObj.getDate();
-        const sh = isUtc ? sObj.getUTCHours() : sObj.getHours();
-        const sMin = isUtc ? sObj.getUTCMinutes() : sObj.getMinutes();
-        const ss = isUtc ? sObj.getUTCSeconds() : sObj.getSeconds();
+        const sComp = getTimeComponents(startEpoch, timeMode);
+        const eComp = getTimeComponents(endEpoch, timeMode);
 
-        const ey = isUtc ? now.getUTCFullYear() : now.getFullYear();
-        const em = isUtc ? now.getUTCMonth() + 1 : now.getMonth() + 1;
-        const ed = isUtc ? now.getUTCDate() : now.getDate();
-        const eh = isUtc ? now.getUTCHours() : now.getHours();
-        const eMin = isUtc ? now.getUTCMinutes() : now.getMinutes();
-        const es = isUtc ? now.getUTCSeconds() : now.getSeconds();
-
-        setStartDateStr(`${sy}-${pad(sm)}-${pad(sd)}`);
-        setEndDateStr(`${ey}-${pad(em)}-${pad(ed)}`);
-        setStartTimeStr(`${pad(sh)}:${pad(sMin)}:${pad(ss)}`);
-        setEndTimeStr(`${pad(eh)}:${pad(eMin)}:${pad(es)}`);
+        setStartDateStr(`${sComp.year}-${pad(sComp.month)}-${pad(sComp.day)}`);
+        setEndDateStr(`${eComp.year}-${pad(eComp.month)}-${pad(eComp.day)}`);
+        setStartTimeStr(`${pad(sComp.hour)}:${pad(sComp.minute)}:${pad(sComp.second)}`);
+        setEndTimeStr(`${pad(eComp.hour)}:${pad(eComp.minute)}:${pad(eComp.second)}`);
+        setCalendarViewDate(new Date(Date.UTC(sComp.year, sComp.month - 1, 1)));
     };
 
     const handleApply = () => {
@@ -563,11 +538,11 @@ export default function MasterTimeRangeModal({
                     <div className="picker-panel calendar-panel">
                         <div className="panel-top-nav">
                             <span className="nav-title">
-                                {calendarViewDate.toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase()}
+                                {calendarViewDate.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).toUpperCase()}
                             </span>
                             <div className="nav-arrows">
-                                <button type="button" onClick={() => setCalendarViewDate(p => new Date(p.getFullYear(), p.getMonth() - 1, 1))} className="btn-nav">◀</button>
-                                <button type="button" onClick={() => setCalendarViewDate(p => new Date(p.getFullYear(), p.getMonth() + 1, 1))} className="btn-nav">▶</button>
+                                <button type="button" onClick={() => setCalendarViewDate(p => new Date(Date.UTC(p.getUTCFullYear(), p.getUTCMonth() - 1, 1)))} className="btn-nav">◀</button>
+                                <button type="button" onClick={() => setCalendarViewDate(p => new Date(Date.UTC(p.getUTCFullYear(), p.getUTCMonth() + 1, 1)))} className="btn-nav">▶</button>
                             </div>
                         </div>
 

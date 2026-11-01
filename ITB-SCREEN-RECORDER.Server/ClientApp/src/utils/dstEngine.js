@@ -106,3 +106,114 @@ export function checkTimeAmbiguity(dateStr, timeStr) {
     }
     return { isAmbiguous: false };
 }
+
+/**
+ * Returns year, month (1-12), day, hour, minute, second for an epoch timestamp
+ * according to server-managed DST offset, immune to host browser timezone.
+ * 
+ * @param {number} epochMs 
+ * @returns {{ year: number, month: number, day: number, hour: number, minute: number, second: number, offsetMin: number, label: string }}
+ */
+export function getLocalTimeComponents(epochMs) {
+    const { offsetMin, label } = getLocalOffsetMinutes(epochMs);
+    const localMs = epochMs + (offsetMin * 60 * 1000);
+    const d = new Date(localMs);
+    return {
+        year: d.getUTCFullYear(),
+        month: d.getUTCMonth() + 1,
+        day: d.getUTCDate(),
+        hour: d.getUTCHours(),
+        minute: d.getUTCMinutes(),
+        second: d.getUTCSeconds(),
+        offsetMin,
+        label
+    };
+}
+
+/**
+ * Returns UTC date and time components for an epoch timestamp.
+ * 
+ * @param {number} epochMs 
+ * @returns {{ year: number, month: number, day: number, hour: number, minute: number, second: number, offsetMin: number, label: string }}
+ */
+export function getUtcTimeComponents(epochMs) {
+    const d = new Date(epochMs);
+    return {
+        year: d.getUTCFullYear(),
+        month: d.getUTCMonth() + 1,
+        day: d.getUTCDate(),
+        hour: d.getUTCHours(),
+        minute: d.getUTCMinutes(),
+        second: d.getUTCSeconds(),
+        offsetMin: 0,
+        label: 'UTC'
+    };
+}
+
+/**
+ * Returns time components in either 'LOCAL' or 'UTC' mode.
+ * 
+ * @param {number} epochMs 
+ * @param {'LOCAL'|'UTC'} mode 
+ * @returns {{ year: number, month: number, day: number, hour: number, minute: number, second: number, offsetMin: number, label: string }}
+ */
+export function getTimeComponents(epochMs, mode = 'LOCAL') {
+    return mode === 'UTC' ? getUtcTimeComponents(epochMs) : getLocalTimeComponents(epochMs);
+}
+
+/**
+ * Formats epoch into standardized dateStr (YYYY-MM-DD), timeStr (HH:MM:SS), and fullStr (ISO nominal).
+ * 
+ * @param {number} epochMs 
+ * @param {'LOCAL'|'UTC'} mode 
+ * @returns {{ dateStr: string, timeStr: string, fullStr: string, label: string, offsetMin: number }}
+ */
+export function formatDateTimeComponents(epochMs, mode = 'LOCAL') {
+    const pad = (n) => String(n).padStart(2, '0');
+    const comp = getTimeComponents(epochMs, mode);
+    return {
+        dateStr: `${comp.year}-${pad(comp.month)}-${pad(comp.day)}`,
+        timeStr: `${pad(comp.hour)}:${pad(comp.minute)}:${pad(comp.second)}`,
+        fullStr: `${comp.year}-${pad(comp.month)}-${pad(comp.day)}T${pad(comp.hour)}:${pad(comp.minute)}:${pad(comp.second)}`,
+        label: comp.label,
+        offsetMin: comp.offsetMin
+    };
+}
+
+/**
+ * Converts nominal date ("YYYY-MM-DD") and time ("HH:MM:SS") strings into UTC epoch milliseconds
+ * using calibrated server DST rules, completely independent of host machine timezone.
+ * 
+ * @param {string} dateStr 
+ * @param {string} timeStr 
+ * @param {'LOCAL'|'UTC'} mode 
+ * @param {number} occurrence - 1 for first occurrence during fallback transition, 2 for second
+ * @returns {number|null}
+ */
+export function dateTimeToEpochMs(dateStr, timeStr, mode = 'LOCAL', occurrence = 1) {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const [hh, mm, ss = 0] = (timeStr || '00:00:00').split(':').map(Number);
+    if (isNaN(y) || isNaN(m) || isNaN(d) || isNaN(hh) || isNaN(mm)) return null;
+
+    const nominalMs = Date.UTC(y, m - 1, d, hh, mm, ss);
+
+    if (mode === 'UTC') {
+        return nominalMs;
+    }
+
+    const amb = checkTimeAmbiguity(dateStr, timeStr);
+    if (amb.isAmbiguous) {
+        return occurrence === 2 ? amb.secondOccurrenceEpoch : amb.firstOccurrenceEpoch;
+    }
+
+    const approxUtc = nominalMs - (defaultOffsetMinutes * 60000);
+    const { offsetMin } = getLocalOffsetMinutes(approxUtc);
+    let epochMs = nominalMs - (offsetMin * 60000);
+
+    const verified = getLocalOffsetMinutes(epochMs);
+    if (verified.offsetMin !== offsetMin) {
+        epochMs = nominalMs - (verified.offsetMin * 60000);
+    }
+    return epochMs;
+}

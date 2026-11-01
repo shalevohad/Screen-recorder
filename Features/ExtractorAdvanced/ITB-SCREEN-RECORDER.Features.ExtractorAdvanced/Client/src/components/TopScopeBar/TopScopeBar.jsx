@@ -3,7 +3,7 @@
 // ==========================================
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { formatLocalClockWithDst } from '../../utils/dstEngine.js';
+import { getTimeComponents } from '../../utils/dstEngine.js';
 import './TopScopeBar.scss';
 
 /**
@@ -47,36 +47,26 @@ export default function TopScopeBar({
 
     // Calculate clean time scope range with pure rendering
     const formattedScopeRange = useMemo(() => {
-        const startEpoch = baseEpochMs || (timeRange?.start ? new Date(timeRange.start).getTime() : 0);
+        const startEpoch = baseEpochMs || (timeRange?.startEpochMs ? timeRange.startEpochMs : (timeRange?.start ? new Date(String(timeRange.start).replace(' ', 'T')).getTime() : 0));
         const durationMs = timeRange?.durationMs || 0;
         if (!startEpoch || durationMs <= 0) return '-- ➔ --';
 
         const endEpoch = startEpoch + durationMs;
         const pad = (n) => String(n).padStart(2, '0');
 
-        const dStart = new Date(startEpoch);
-        const dEnd = new Date(endEpoch);
+        const sComp = getTimeComponents(startEpoch, timeMode);
+        const eComp = getTimeComponents(endEpoch, timeMode);
 
-        if (timeMode === 'UTC') {
-            const sDate = `${dStart.getUTCFullYear()}-${pad(dStart.getUTCMonth() + 1)}-${pad(dStart.getUTCDate())}`;
-            const sTime = `${pad(dStart.getUTCHours())}:${pad(dStart.getUTCMinutes())}:${pad(dStart.getUTCSeconds())}`;
+        const sDate = `${sComp.year}-${pad(sComp.month)}-${pad(sComp.day)}`;
+        const sTime = `${pad(sComp.hour)}:${pad(sComp.minute)}:${pad(sComp.second)}`;
 
-            const eDate = `${dEnd.getUTCFullYear()}-${pad(dEnd.getUTCMonth() + 1)}-${pad(dEnd.getUTCDate())}`;
-            const eTime = `${pad(dEnd.getUTCHours())}:${pad(dEnd.getUTCMinutes())}:${pad(dEnd.getUTCSeconds())}`;
+        const eDate = `${eComp.year}-${pad(eComp.month)}-${pad(eComp.day)}`;
+        const eTime = `${pad(eComp.hour)}:${pad(eComp.minute)}:${pad(eComp.second)}`;
 
-            const endFormatted = sDate === eDate ? eTime : `${eDate} ${eTime}`;
-            return `${sDate} ${sTime} ➔ ${endFormatted} (UTC)`;
-        }
-
-        const sDate = `${dStart.getFullYear()}-${pad(dStart.getMonth() + 1)}-${pad(dStart.getDate())}`;
-        const sTime = formatLocalClockWithDst(startEpoch, true);
-
-        const eDate = `${dEnd.getFullYear()}-${pad(dEnd.getMonth() + 1)}-${pad(dEnd.getDate())}`;
-        const eTime = formatLocalClockWithDst(endEpoch, true);
-
+        const labelSuffix = timeMode === 'UTC' ? ' (UTC)' : (sComp.label ? ` (${sComp.label})` : '');
         const endFormatted = sDate === eDate ? eTime : `${eDate} ${eTime}`;
-        return `${sDate} ${sTime} ➔ ${endFormatted}`;
-    }, [baseEpochMs, timeRange?.start, timeRange?.durationMs, timeMode]);
+        return `${sDate} ${sTime} ➔ ${endFormatted}${labelSuffix}`;
+    }, [baseEpochMs, timeRange?.startEpochMs, timeRange?.start, timeRange?.durationMs, timeMode]);
 
     const formattedDuration = useMemo(() => {
         const totalMinutes = Math.floor((timeRange?.durationMs || 0) / 60000);

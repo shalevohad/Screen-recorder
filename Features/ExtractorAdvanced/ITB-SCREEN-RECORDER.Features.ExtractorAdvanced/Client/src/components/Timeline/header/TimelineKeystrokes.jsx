@@ -3,6 +3,7 @@
 // ==========================================
 import React, { useState, useEffect, useMemo, memo } from 'react';
 import { cleanKeyName, KEYSTROKE_CALIBRATION_OFFSET_MS } from '../../../utils/virtualKeyMap.js';
+import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './TimelineKeystrokes.scss';
 
 const MIN_PIXEL_DISTANCE = 8; // Pixel distance threshold for clustering close keystroke events
@@ -12,6 +13,7 @@ function TimelineKeystrokes({
     stationHostname = '',
     keystrokes: propKeystrokes = null,
     baseEpochMs = 0,
+    timeMode = 'LOCAL',
     viewportStartMs = 0,
     viewportDurationMs = 3600000,
     pixelWidth = 1000,
@@ -112,50 +114,45 @@ function TimelineKeystrokes({
         return result;
     }, [activeKeystrokes, baseEpochMs, viewportStartMs, viewportDurationMs, pixelWidth]);
 
-
-function formatBadgeText(cluster) {
-    if (!cluster.events.length) return '';
-    if (cluster.events.length === 1) {
-        return cleanKeyName(cluster.events[0].keyCombination);
-    }
-    // Prefer combination with shortcut modifier (Ctrl/Alt/Shift)
-    const combo = cluster.events.find(e => e.keyCombination.includes('+'));
-    if (combo) {
-        const cleaned = cleanKeyName(combo.keyCombination);
-        return cluster.events.length > 1 ? `${cleaned} (+${cluster.events.length - 1})` : cleaned;
-    }
-
-    // If all keys in cluster are identical
-    const firstClean = cleanKeyName(cluster.events[0].keyCombination);
-    const allSame = cluster.events.every(e => cleanKeyName(e.keyCombination) === firstClean);
-    if (allSame) {
-        return `${firstClean} ×${cluster.events.length}`;
-    }
-
-    // Mixed key sequence: show first key plus remaining count
-    return `${firstClean} (+${cluster.events.length - 1})`;
-}
-
-function formatTooltipTime(epochMs) {
-    const d = new Date(epochMs);
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    const ss = String(d.getSeconds()).padStart(2, '0');
-    return `${hh}:${mm}:${ss}`;
-}
-
-function groupClusterEvents(events) {
-    const groups = [];
-    for (const evt of events) {
-        const key = cleanKeyName(evt.keyCombination);
-        if (groups.length && groups[groups.length - 1].key === key) {
-            groups[groups.length - 1].count++;
-        } else {
-            groups.push({ key, count: 1 });
+    function formatBadgeText(cluster) {
+        if (!cluster.events.length) return '';
+        if (cluster.events.length === 1) {
+            return cleanKeyName(cluster.events[0].keyCombination);
         }
+        // Prefer combination with shortcut modifier (Ctrl/Alt/Shift)
+        const combo = cluster.events.find(e => e.keyCombination.includes('+'));
+        if (combo) {
+            const cleaned = cleanKeyName(combo.keyCombination);
+            return cluster.events.length > 1 ? `${cleaned} (+${cluster.events.length - 1})` : cleaned;
+        }
+
+        // If all keys in cluster are identical
+        const firstClean = cleanKeyName(cluster.events[0].keyCombination);
+        const allSame = cluster.events.every(e => cleanKeyName(e.keyCombination) === firstClean);
+        if (allSame) {
+            return `${firstClean} ×${cluster.events.length}`;
+        }
+
+        // Mixed key sequence: show first key plus remaining count
+        return `${firstClean} (+${cluster.events.length - 1})`;
     }
-    return groups;
-}
+
+    function formatTooltipTime(epochMs, mode = 'LOCAL') {
+        return formatTimelineClock(epochMs, mode);
+    }
+
+    function groupClusterEvents(events) {
+        const groups = [];
+        for (const evt of events) {
+            const key = cleanKeyName(evt.keyCombination);
+            if (groups.length && groups[groups.length - 1].key === key) {
+                groups[groups.length - 1].count++;
+            } else {
+                groups.push({ key, count: 1 });
+            }
+        }
+        return groups;
+    }
 
     if (!clusters.length) {
         return null;
@@ -167,7 +164,7 @@ function groupClusterEvents(events) {
                 const count = cluster.events.length;
                 const isCluster = count > 1;
                 const badgeText = formatBadgeText(cluster);
-                const timeLabel = formatTooltipTime(cluster.startEpochMs);
+                const timeLabel = formatTooltipTime(cluster.startEpochMs, timeMode);
                 const groups = groupClusterEvents(cluster.events);
                 const edgeClass = cluster.pct < 10 ? 'edge-left' : (cluster.pct > 90 ? 'edge-right' : '');
 

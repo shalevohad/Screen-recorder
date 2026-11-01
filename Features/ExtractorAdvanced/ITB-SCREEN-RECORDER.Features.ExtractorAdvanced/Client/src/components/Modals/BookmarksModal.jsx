@@ -3,6 +3,7 @@
 // ==========================================
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './BookmarksModal.scss';
 
 const FALLBACK_STORAGE_KEY = 'extractor_incident_bookmarks_fallback';
@@ -24,8 +25,10 @@ export default function BookmarksModal({
     isOpen,
     onClose,
     currentState,
-    onLoadBookmark
+    onLoadBookmark,
+    timeMode: propTimeMode
 }) {
+    const timeMode = propTimeMode || currentState?.timeMode || 'LOCAL';
     const [bookmarks, setBookmarks] = useState([]);
     const [noteText, setNoteText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -222,7 +225,7 @@ export default function BookmarksModal({
     const formatEpochTime = (epochMs) => {
         if (!epochMs || isNaN(epochMs)) return '--:--:--';
         const d = new Date(epochMs);
-        return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        return formatTimelineClock(epochMs, timeMode);
     };
 
     // 1. General mission time scope
