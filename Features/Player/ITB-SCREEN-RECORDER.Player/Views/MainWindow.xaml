@@ -1,0 +1,343 @@
+<Window x:Class="ITB_SCREEN_RECORDER.Player.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ITB_SCREEN_RECORDER.Player.ViewModels"
+        xmlns:audio="clr-namespace:ITB_SCREEN_RECORDER.Player.Core.Audio;assembly=ITB-SCREEN-RECORDER.Player.Core"
+        Title="ITB FORENSIC INVESTIGATION PLAYER"
+        Height="850" Width="1350"
+        MinWidth="960" MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgAppBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}"
+        AllowDrop="True"
+        Drop="Window_Drop"
+        DragOver="Window_DragOver">
+
+    <Window.DataContext>
+        <vm:MainViewModel x:Name="ViewModel" />
+    </Window.DataContext>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Row 0: Tactical Header Bar -->
+            <RowDefinition Height="52" />
+            <!-- Row 1: Central Viewport & Keystroke Drawer -->
+            <RowDefinition Height="*" />
+            <!-- Row 2: Collapsible Audio Mixer Dock -->
+            <RowDefinition Height="Auto" />
+            <!-- Row 3: Master Transport & Timeline Bar -->
+            <RowDefinition Height="68" />
+        </Grid.RowDefinitions>
+
+        <!-- ========================================== -->
+        <!-- ROW 0: TOP TACTICAL COMMAND BAR            -->
+        <!-- ========================================== -->
+        <Border Grid.Row="0" Background="{StaticResource SurfacePanelBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="0,0,0,1" Padding="16,0">
+            <Grid VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- System Title & Session Badge -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="ITB" Foreground="{StaticResource AccentCyanBrush}" FontWeight="ExtraBold" FontSize="16" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock Text="FORENSIC INVESTIGATION PLAYER" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,16,0" />
+
+                    <Border Background="#1E293B" CornerRadius="4" Padding="8,4" VerticalAlignment="Center"
+                            Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="SESSION: " Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" FontWeight="Bold" />
+                            <TextBlock Text="{Binding SessionId}" Foreground="{StaticResource AccentEmeraldBrush}" FontSize="11" FontWeight="Bold" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Current Wall-Clock UTC Clock Display -->
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="CLOCK: " Foreground="{StaticResource TextMutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding CurrentUtcDisplay}" Foreground="{StaticResource AccentCyanBrush}" FontSize="14" FontWeight="Bold" FontFamily="Consolas, monospace" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- Command Actions & Drawer Toggles -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource TacticalButtonStyle}" Margin="0,0,8,0"
+                            Command="{Binding ToggleLayoutCommand}"
+                            Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⊞ LAYOUT" FontSize="11" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource TacticalButtonStyle}" Margin="0,0,8,0"
+                            Command="{Binding ToggleAudioMixerCommand}"
+                            Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🔊 AUDIO MIXER" FontSize="11" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource TacticalButtonStyle}" Margin="0,0,12,0"
+                            Command="{Binding ToggleKeystrokeDrawerCommand}"
+                            Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⌨ KEYSTROKES" FontSize="11" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource TacticalAccentButtonStyle}" Content="OPEN ARCHIVE..." Command="{Binding OpenFileCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ========================================== -->
+        <!-- ROW 1: CENTRAL MULTICAM STAGE & DRAWER    -->
+        <!-- ========================================== -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Video Viewport Area -->
+            <Grid Grid.Column="0" Background="{StaticResource BgAppBrush}">
+                <!-- Empty State / Drag & Drop Target -->
+                <Border Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"
+                        BorderBrush="#1E293B" BorderThickness="2" CornerRadius="8" Margin="32" Background="#0A0F1D">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="📂" FontSize="48" HorizontalAlignment="Center" Margin="0,0,0,16" />
+                        <TextBlock Text="DRAG &amp; DROP FORENSIC PACKAGE (.TAR / .ITBP)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="Bold" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                        <TextBlock Text="Instant zero-extract byte-range streaming with multi-cam clock synchronization" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,0,0,16" />
+                        <Button Style="{StaticResource TacticalAccentButtonStyle}" Content="SELECT FILE..." Command="{Binding OpenFileCommand}" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <!-- Active Package View -->
+                <Grid Visibility="{Binding IsPackageLoaded, Converter={StaticResource BoolToVis}}">
+                    <!-- GRID MODE: Multi-Camera Station Canvas -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Tracks}" Margin="8">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="1" CornerRadius="6" Margin="6" Width="580" Height="380">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="32" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+
+                                            <!-- Card Header -->
+                                            <Border Grid.Row="0" Background="#1A2234" Padding="10,0" CornerRadius="6,6,0,0">
+                                                <Grid VerticalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Hostname}" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" Margin="0,0,8,0" />
+                                                        <TextBlock Text="{Binding DisplayName}" Foreground="{StaticResource TextMutedBrush}" FontSize="11" />
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                        <Border Background="#06B6D4" CornerRadius="3" Padding="4,1" Margin="4,0" Visibility="{Binding IsPrimary, Converter={StaticResource BoolToVis}}">
+                                                            <TextBlock Text="PRIMARY" Foreground="#FFFFFF" FontSize="9" FontWeight="Bold" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+
+                                            <!-- Video Surface / Media Player -->
+                                            <Grid Grid.Row="1" Background="#000000">
+                                                <MediaElement Source="{Binding StreamUrl}" LoadedBehavior="Play" UnloadedBehavior="Stop" ScrubbingEnabled="True" Stretch="Uniform" />
+
+                                                <!-- NO SIGNAL Slate Overlay during Station Gap -->
+                                                <Border Background="#E60F172A" Visibility="{Binding IsInGap, Converter={StaticResource BoolToVis}}">
+                                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <TextBlock Text="⚠ NO SIGNAL - STATION GAP" Foreground="{StaticResource AccentRoseBrush}" FontWeight="ExtraBold" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,4" />
+                                                        <TextBlock Text="Synthetic Slate Injected" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" HorizontalAlignment="Center" />
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <!-- Subtitle Overlay HUD -->
+                                                <Border VerticalAlignment="Bottom" HorizontalAlignment="Center" Background="#B3070A10" CornerRadius="4" Padding="10,4" Margin="0,0,0,16"
+                                                        Visibility="{Binding ActiveCaption, Converter={StaticResource BoolToVis}}">
+                                                    <TextBlock Text="{Binding ActiveCaption}" Foreground="#FFFFFF" FontWeight="SemiBold" FontSize="13" TextAlignment="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+
+            <!-- Collapsible Keystroke Audit Drawer -->
+            <Border Grid.Column="1" Width="360" Background="{StaticResource SurfacePanelBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="1,0,0,0"
+                    Visibility="{Binding IsKeystrokeDrawerVisible, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="44" />
+                        <RowDefinition Height="40" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#162032" Padding="12,0" VerticalAlignment="Stretch">
+                        <Grid VerticalAlignment="Center">
+                            <TextBlock Text="⌨ KEYSTROKE AUDIT TRAIL" FontWeight="Bold" Foreground="{StaticResource AccentCyanBrush}" FontSize="12" />
+                            <Button Content="✕" HorizontalAlignment="Right" Background="Transparent" Foreground="{StaticResource TextMutedBrush}" BorderThickness="0" Command="{Binding ToggleKeystrokeDrawerCommand}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Search Filter Box -->
+                    <Border Grid.Row="1" Padding="8,4" Background="#0F172A">
+                        <TextBox Background="#1E293B" Foreground="{StaticResource TextPrimaryBrush}" BorderBrush="#334155" Padding="6,4" FontSize="12"
+                                 Text="{Binding KeystrokeSearchQuery, UpdateSourceTrigger=PropertyChanged}" />
+                    </Border>
+
+                    <!-- Cues List -->
+                    <ListBox Grid.Row="2" ItemsSource="{Binding Keystrokes}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#151E2E" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="4" Margin="4,2" Padding="8,6">
+                                    <Border.InputBindings>
+                                        <MouseBinding MouseAction="LeftClick" Command="{Binding DataContext.SeekToKeystrokeCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                    </Border.InputBindings>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding TimeFormatted}" Foreground="{StaticResource AccentCyanBrush}" FontFamily="Consolas, monospace" FontSize="11" FontWeight="Bold" Margin="0,0,8,0" />
+                                            <TextBlock Text="{Binding StationId}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" />
+                                            <Border Background="#F43F5E" CornerRadius="3" Padding="4,1" Margin="8,0,0,0" Visibility="{Binding IsShortcutOrControlKey, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="HOTKEY" Foreground="#FFFFFF" FontSize="9" FontWeight="Bold" />
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Grid.Row="1" Text="{Binding Text}" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" FontSize="12" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ========================================== -->
+        <!-- ROW 2: COLLAPSIBLE AUDIO MIXER DOCK        -->
+        <!-- ========================================== -->
+        <Border Grid.Row="2" Background="{StaticResource SurfacePanelBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="0,1,0,0" Padding="16,8"
+                Visibility="{Binding IsAudioMixerVisible, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <Grid Margin="0,0,0,8">
+                    <TextBlock Text="MULTI-STATION FORENSIC AUDIO MIXER (DISCRETE CH0/CH1 &amp; AUTO-DUCK ECHO SUPPRESSION)" Foreground="{StaticResource TextSecondaryBrush}" FontWeight="Bold" FontSize="11" />
+                    <Button Content="✕" HorizontalAlignment="Right" Background="Transparent" Foreground="{StaticResource TextMutedBrush}" BorderThickness="0" Command="{Binding ToggleAudioMixerCommand}" />
+                </Grid>
+
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Tracks}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource SurfaceCardBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,10,0" Width="240">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Hostname}" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" Margin="0,0,0,6" />
+
+                                        <!-- Volume Slider -->
+                                        <Grid Margin="0,0,0,4">
+                                            <TextBlock Text="Vol:" Foreground="{StaticResource TextMutedBrush}" FontSize="10" />
+                                            <Slider Minimum="0.0" Maximum="1.0" Value="{Binding Volume}" Style="{StaticResource TacticalSliderStyle}" Margin="30,0,0,0" />
+                                        </Grid>
+
+                                        <!-- Pan Slider -->
+                                        <Grid Margin="0,0,0,6">
+                                            <TextBlock Text="Pan:" Foreground="{StaticResource TextMutedBrush}" FontSize="10" />
+                                            <Slider Minimum="-1.0" Maximum="1.0" Value="{Binding Pan}" Style="{StaticResource TacticalSliderStyle}" Margin="30,0,0,0" />
+                                        </Grid>
+
+                                        <!-- Solo / Mute Toggles -->
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ToggleButton Grid.Column="0" Content="SOLO" IsChecked="{Binding IsSolo}" Margin="0,0,4,0" Background="#1E293B" Foreground="{StaticResource AccentAmberBrush}" FontWeight="Bold" FontSize="10" />
+                                            <ToggleButton Grid.Column="1" Content="MUTE" IsChecked="{Binding IsMuted}" Margin="4,0,0,0" Background="#1E293B" Foreground="{StaticResource AccentRoseBrush}" FontWeight="Bold" FontSize="10" />
+                                        </Grid>
+
+                                        <!-- Channel Mode Selection -->
+                                        <TextBlock Text="Audio Mode: Both (Ch0+Ch1)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+
+        <!-- ========================================== -->
+        <!-- ROW 3: MASTER TRANSPORT & TIMELINE BAR     -->
+        <!-- ========================================== -->
+        <Border Grid.Row="3" Background="{StaticResource SurfacePanelBrush}" BorderBrush="{StaticResource BorderDarkBrush}" BorderThickness="0,1,0,0" Padding="16,6">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Top: High-Precision Timeline Scrubber -->
+                <Grid Grid.Row="0" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Slider Grid.Column="0" Minimum="0" Maximum="{Binding TotalDurationSeconds}" Value="{Binding CurrentTimelineSeconds}" Style="{StaticResource TacticalSliderStyle}" VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Column="1" Text="{Binding CurrentTimelineDisplay}" Foreground="{StaticResource TextSecondaryBrush}" FontFamily="Consolas, monospace" FontSize="12" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- Bottom: Transport Controls & Rates -->
+                <Grid Grid.Row="1" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <!-- Step -1f -->
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="◀| -1f" Command="{Binding StepBackwardCommand}" Margin="0,0,6,0" Padding="8,4" FontSize="11" />
+
+                        <!-- Play / Pause -->
+                        <Button Style="{StaticResource TacticalAccentButtonStyle}" Command="{Binding PlayPauseCommand}" Margin="0,0,6,0" Padding="16,4" FontWeight="Bold" FontSize="12">
+                            <TextBlock Text="{Binding IsPlaying, Converter={StaticResource BoolToVis}, ConverterParameter='|| PAUSE;▶ PLAY'}" />
+                        </Button>
+
+                        <!-- Step +1f -->
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="+1f |▶" Command="{Binding StepForwardCommand}" Margin="0,0,6,0" Padding="8,4" FontSize="11" />
+
+                        <!-- Stop -->
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="■ STOP" Command="{Binding StopCommand}" Margin="0,0,16,0" Padding="8,4" FontSize="11" />
+
+                        <!-- Rate Buttons -->
+                        <TextBlock Text="SPEED: " Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" FontSize="11" FontWeight="Bold" Margin="0,0,6,0" />
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="0.25x" Command="{Binding SetRateCommand}" CommandParameter="0.25" Margin="0,0,4,0" Padding="6,2" FontSize="10" />
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="0.5x" Command="{Binding SetRateCommand}" CommandParameter="0.5" Margin="0,0,4,0" Padding="6,2" FontSize="10" />
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="1.0x" Command="{Binding SetRateCommand}" CommandParameter="1.0" Margin="0,0,4,0" Padding="6,2" FontSize="10" />
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="2.0x" Command="{Binding SetRateCommand}" CommandParameter="2.0" Margin="0,0,4,0" Padding="6,2" FontSize="10" />
+                        <Button Style="{StaticResource TacticalButtonStyle}" Content="4.0x" Command="{Binding SetRateCommand}" CommandParameter="4.0" Margin="0,0,4,0" Padding="6,2" FontSize="10" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
