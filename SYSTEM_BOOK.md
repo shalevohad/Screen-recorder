@@ -947,9 +947,32 @@ To eliminate asset duplication and graphic drift across multiple applications an
 - `itb-player.png`: 256x256 application launcher icon for Linux desktop environments.
 - **Build-Time Propagation**:
   - `Tools/ITB-SCREEN-RECORDER.Player`: Automatically syncs icons and logos into `Assets/` via the `SyncBrandingFromCore` MSBuild target prior to compilation.
-  - `Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer`: WiX links directly to `$(var.CoreAssetsDir)\app.ico` for desktop shortcuts and the Windows Add/Remove Programs panel (`ARPPRODUCTICON`).
+  - `Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer`: WiX embeds `$(var.PublishDir)\app.ico` for desktop shortcuts and the Windows Add/Remove Programs panel (`ARPPRODUCTICON`).
   - `Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer`: Packaging pipeline pulls `itb-player.png` directly from Core during `.run` archive creation.
   - `ITB-SCREEN-RECORDER.Server`: Pre-compilation target `SyncBrandingToClientApp` synchronizes logos and favicons to `ClientApp/public/`.
+
+### 9. Encrypted Duplex IPC & Automated Multi-Station Replay Architecture
+Enables external dispatch systems, CAD, C2, and investigation applications to programmatically control and monitor ITB Player with zero network attack surface and zero eavesdropping risk:
+
+1. **Security & Cryptographic Invariants**:
+   - **Wire Protocol**: Custom binary framing (`ITBS` Magic, 64-bit Monotonic Sequence Number, 96-bit Nonce, 128-bit Authentication Tag, 32-bit Payload Length, Ciphertext).
+   - **Authenticated Encryption**: 100% of messages encrypted via **AES-256-GCM**.
+   - **Anti-Tampering**: Modifying any bit in transit triggers `CryptographicException: Authentication tag verification failed`, dropping the connection and dispatching an alert.
+   - **Anti-Replay**: Sequence numbers bound as Associated Authenticated Data (AAD); frames with `Seq <= LastSeenSeq` are immediately discarded.
+   - **Zero Command-Line Exposure**: 256-bit ephemeral session keys are piped directly through the child process kernel `stdin` pipe (`Process.Start` with `RedirectStandardInput = true`).
+   - **Process Isolation**: Named Pipes configured with restricted Windows ACLs for `Current User SID` only.
+
+2. **Automated Replay Pipeline (`ServerReplayOrchestrator`)**:
+   - Autonomous Multicast Discovery: Listens on `239.210.1.5:5098` (or custom endpoint) to find active ITB Central Servers.
+   - Remote Slicing Job: Triggers `POST /api/v1/extractor/jobs` with workstation list, UTC time bounds, keystroke mode, and layout.
+   - Progress Telemetry: Streams percent complete through encrypted IPC (`EXTRACTING_MEDIA`, `DOWNLOADING_PACKAGE`).
+   - Direct Jump: Seeks playback clock directly to target UTC playhead ($T_C$) upon load, unmuting the designated solo station.
+
+3. **Caller SDK Client (`PlayerSecureLauncher`)**:
+   - Generates ephemeral cryptographic keys and restricted pipes.
+   - Launches `itb-player.exe` with `--pipe <name>`.
+   - Exposes strongly typed async control methods (`PlayAsync`, `PauseAsync`, `SeekAsync`, `SetPlaybackRateAsync`, `SetAudioStationAsync`, `GetStatusAsync`, `CloseAsync`).
+   - Exposes lifecycle and error events (`OnEventReceived`, `OnHeartbeatReceived`, `OnErrorReceived`, `OnStateChanged`).
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

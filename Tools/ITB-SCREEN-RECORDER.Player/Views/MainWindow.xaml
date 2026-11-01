@@ -341,5 +341,23 @@
                 </Grid>
             </Grid>
         </Border>
+
+        <!-- ========================================== -->
+        <!-- REPLAY DISCOVERY & DOWNLOAD OVERLAY        -->
+        <!-- ========================================== -->
+        <Border Grid.Row="0" Grid.RowSpan="4" Background="#E6070A10"
+                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+                Panel.ZIndex="1000">
+            <Border Background="{StaticResource SurfacePanelBrush}" BorderBrush="{StaticResource AccentCyanBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="32,24" HorizontalAlignment="Center" VerticalAlignment="Center" Width="480">
+                <StackPanel HorizontalAlignment="Center">
+                    <Image Source="pack://application:,,,/Assets/LogoDark.png" Height="36" Margin="0,0,0,16" HorizontalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <TextBlock Text="PREPARING SYNCHRONIZED REPLAY" Foreground="{StaticResource AccentCyanBrush}" FontWeight="ExtraBold" FontSize="15" HorizontalAlignment="Center" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding LoadingStatusMessage}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12" HorizontalAlignment="Center" Margin="0,0,0,16" TextAlignment="Center" TextWrapping="Wrap" />
+                    <ProgressBar IsIndeterminate="{Binding IsLoadingIndeterminate}" Value="{Binding LoadingProgressPercent}" Maximum="100" Height="6" Background="#1E293B" Foreground="{StaticResource AccentCyanBrush}" BorderThickness="0" Margin="0,0,0,16" />
+                    <Button Style="{StaticResource TacticalButtonStyle}" Content="CANCEL" Command="{Binding CancelLoadingCommand}" HorizontalAlignment="Center" Padding="20,6" FontSize="11" />
+                </StackPanel>
+            </Border>
+        </Border>
     </Grid>
 </Window>

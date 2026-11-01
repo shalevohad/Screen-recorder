@@ -21,7 +21,7 @@
 		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Player\windows</FinalOutputDir>
 
 		<!-- Pass variables to WXS file -->
-		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version);CoreAssetsDir=$(SolutionRoot)\ITB-SCREEN-RECORDER.Core\Assets\Branding</DefineConstants>
+		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
 		<SuppressIces>ICE61;ICE43;ICE57</SuppressIces>
 	</PropertyGroup>
 
@@ -41,6 +41,9 @@
 
 		<!-- Self-Contained publish of WPF Player -->
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)\Tools\ITB-SCREEN-RECORDER.Player\ITB-SCREEN-RECORDER.Player.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(StagingDir)&quot;" />
+
+		<!-- Ensure central icon is copied to staging for MSI embedding -->
+		<Copy SourceFiles="$(SolutionRoot)\ITB-SCREEN-RECORDER.Core\Assets\Branding\app.ico" DestinationFolder="$(StagingDir)" SkipUnchangedFiles="true" />
 
 		<MakeDir Directories="$(FinalOutputDir)" />
 	</Target>

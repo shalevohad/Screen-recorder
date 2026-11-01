@@ -8,7 +8,9 @@ using System.Windows;
 using System.Windows.Input;
 using ITB_SCREEN_RECORDER.Player.Core.Audio;
 using ITB_SCREEN_RECORDER.Player.Core.Ingestion;
+using ITB_SCREEN_RECORDER.Player.Core.Ipc;
 using ITB_SCREEN_RECORDER.Player.Core.Keystrokes;
+using ITB_SCREEN_RECORDER.Player.Core.Orchestration;
 using ITB_SCREEN_RECORDER.Player.Core.Streaming;
 using ITB_SCREEN_RECORDER.Player.Core.Synchronization;
 using Microsoft.Win32;
@@ -24,6 +26,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private IKeystrokeAuditIndexer? _keystrokeIndexer;
     private IGapSkipNavigator? _gapNavigator;
     private IStreamDriftTracker? _driftTracker;
+    private PlayerSecureIpcService? _ipcService;
+    private CancellationTokenSource? _loadingCts;
+    private DateTime _lastHeartbeatTime = DateTime.MinValue;
 
     private bool _isPackageLoaded;
     private string _packageFilePath = string.Empty;
@@ -41,6 +46,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private bool _isKeystrokeDrawerVisible;
     private string _keystrokeSearchQuery = string.Empty;
     private VideoTrackViewModel? _focusedTrack;
+
+    private bool _isLoading;
+    private bool _isLoadingIndeterminate = true;
+    private string _loadingStatusMessage = "Loading...";
+    private int _loadingProgressPercent = 0;
 
     public bool IsPackageLoaded
     {
@@ -181,12 +191,50 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand ToggleKeystrokeDrawerCommand { get; }
     public ICommand SeekToKeystrokeCommand { get; }
     public ICommand FocusTrackCommand { get; }
+    public ICommand CancelLoadingCommand { get; }
+
+    public PlayerSecureIpcService? IpcService
+    {
+        get => _ipcService;
+        set => _ipcService = value;
+    }
+
+    public bool IsLoading
+    {
+        get => _isLoading;
+        set => SetProperty(ref _isLoading, value);
+    }
+
+    public bool IsLoadingIndeterminate
+    {
+        get => _isLoadingIndeterminate;
+        set => SetProperty(ref _isLoadingIndeterminate, value);
+    }
+
+    public string LoadingStatusMessage
+    {
+        get => _loadingStatusMessage;
+        set => SetProperty(ref _loadingStatusMessage, value);
+    }
+
+    public int LoadingProgressPercent
+    {
+        get => _loadingProgressPercent;
+        set
+        {
+            if (SetProperty(ref _loadingProgressPercent, value))
+            {
+                IsLoadingIndeterminate = (value <= 0);
+            }
+        }
+    }
 
     public MainViewModel()
     {
         OpenFileCommand = new RelayCommand(ExecuteOpenFile);
         PlayPauseCommand = new RelayCommand(ExecutePlayPause);
         StopCommand = new RelayCommand(ExecuteStop);
+        CancelLoadingCommand = new RelayCommand(() => _loadingCts?.Cancel());
         StepForwardCommand = new RelayCommand(() => _clock?.StepFrame(1, 30.0));
         StepBackwardCommand = new RelayCommand(() => _clock?.StepFrame(-1, 30.0));
         SetRateCommand = new RelayCommand(param =>
@@ -379,6 +427,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     }
                 }
             }
+
+            // Periodically emit heartbeat over IPC (throttled to 1 sec)
+            if (_ipcService != null && (DateTime.UtcNow - _lastHeartbeatTime).TotalSeconds >= 1.0)
+            {
+                _lastHeartbeatTime = DateTime.UtcNow;
+                EmitHeartbeatNow();
+            }
         };
 
         if (Application.Current?.Dispatcher != null)
@@ -389,6 +444,143 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             act();
         }
+    }
+
+    public async Task HandleReplayRequestAsync(ReplayLaunchParams? parameters, CancellationToken ct = default)
+    {
+        if (parameters == null) return;
+
+        _loadingCts?.Cancel();
+        _loadingCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var token = _loadingCts.Token;
+
+        Action startLoadingUi = () =>
+        {
+            IsLoading = true;
+            IsLoadingIndeterminate = true;
+            LoadingStatusMessage = "Discovering ITB Recording Server...";
+            LoadingProgressPercent = 0;
+        };
+
+        if (Application.Current?.Dispatcher != null)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(startLoadingUi);
+        }
+        else
+        {
+            startLoadingUi();
+        }
+
+        try
+        {
+            var orchestrator = new ServerReplayOrchestrator(_ipcService);
+            string packagePath = await orchestrator.PrepareReplayPackageAsync(parameters, token).ConfigureAwait(false);
+
+            if (Application.Current?.Dispatcher != null)
+            {
+                await Application.Current.Dispatcher.InvokeAsync(() => LoadingStatusMessage = "Loading synchronized video tracks...");
+            }
+
+            await LoadPackageAsync(packagePath, token).ConfigureAwait(false);
+
+            // Handle Seek
+            if (parameters.SeekTimeUtc.HasValue && _clock != null)
+            {
+                var offset = parameters.SeekTimeUtc.Value - RangeStartUtc;
+                if (offset < TimeSpan.Zero) offset = TimeSpan.Zero;
+                if (offset > TimeSpan.FromSeconds(TotalDurationSeconds)) offset = TimeSpan.FromSeconds(TotalDurationSeconds);
+                _clock.Seek(offset);
+            }
+
+            // Handle Audio Station
+            if (!string.IsNullOrEmpty(parameters.AudioStation))
+            {
+                if (Application.Current?.Dispatcher != null)
+                {
+                    await Application.Current.Dispatcher.InvokeAsync(() => SetAudioSolo(parameters.AudioStation));
+                }
+                else
+                {
+                    SetAudioSolo(parameters.AudioStation);
+                }
+            }
+
+            _clock?.Play();
+
+            if (_ipcService != null)
+            {
+                DateTime currentUtc = parameters.SeekTimeUtc ?? RangeStartUtc;
+                await _ipcService.PublishEventAsync(PlayerIpcEvent.StateChanged("PLAYING", "Playback started successfully."), token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (_ipcService != null)
+            {
+                await _ipcService.PublishEventAsync(PlayerIpcEvent.StateChanged("STOPPED", "Replay preparation was cancelled."), CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (Application.Current?.Dispatcher != null)
+            {
+                await Application.Current.Dispatcher.InvokeAsync(() => LoadingStatusMessage = $"Error: {ex.Message}");
+            }
+
+            if (_ipcService != null)
+            {
+                await _ipcService.PublishEventAsync(PlayerIpcEvent.Error(
+                    PlayerErrorCodes.ErrGeneralException,
+                    $"Replay preparation failed: {ex.Message}",
+                    isFatal: true), CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Action stopLoadingUi = () => IsLoading = false;
+            if (Application.Current?.Dispatcher != null)
+            {
+                await Application.Current.Dispatcher.InvokeAsync(stopLoadingUi);
+            }
+            else
+            {
+                stopLoadingUi();
+            }
+        }
+    }
+
+    public void SeekToUtc(DateTime? targetUtc)
+    {
+        if (_clock == null || !targetUtc.HasValue) return;
+        var offset = targetUtc.Value - RangeStartUtc;
+        if (offset < TimeSpan.Zero) offset = TimeSpan.Zero;
+        if (offset > TimeSpan.FromSeconds(TotalDurationSeconds)) offset = TimeSpan.FromSeconds(TotalDurationSeconds);
+        _clock.Seek(offset);
+        EmitHeartbeatNow();
+    }
+
+    public void SetAudioSolo(string station)
+    {
+        if (_audioMixer == null) return;
+        _audioMixer.SetSolo(station, true);
+        foreach (var track in Tracks)
+        {
+            track.IsMuted = !string.Equals(track.Hostname, station, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    public void EmitHeartbeatNow()
+    {
+        if (_ipcService == null || _clock == null) return;
+        DateTime currentUtc = RangeStartUtc.Add(_clock.CurrentTime);
+        string? soloStation = _audioMixer?.Stations.FirstOrDefault(s => s.IsSolo)?.Hostname;
+        _ = _ipcService.PublishEventAsync(PlayerIpcEvent.Heartbeat(
+            currentUtc,
+            IsPlaying,
+            PlaybackRate,
+            soloStation,
+            _clock.CurrentTime.TotalSeconds,
+            TotalDurationSeconds));
     }
 
     private void UpdateTimelineDisplay(TimeSpan time)

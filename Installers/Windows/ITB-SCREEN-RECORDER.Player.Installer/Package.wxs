@@ -85,7 +85,7 @@
 			</Files>
 		</ComponentGroup>
 
-		<Icon Id="PlayerAppIcon.ico" SourceFile="$(var.CoreAssetsDir)\app.ico" />
+		<Icon Id="PlayerAppIcon.ico" SourceFile="$(var.PublishDir)\app.ico" />
 
 		<Feature Id="MainFeature" Title="ITB Player" Level="1">
 			<ComponentGroupRef Id="PlayerComponents" />
