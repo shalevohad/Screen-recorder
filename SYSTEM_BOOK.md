@@ -27,6 +27,7 @@
 17. [Tactical C2 Bulk Recording Iconography & Ergonomic Inversion](#17-tactical-c2-bulk-recording-iconography--ergonomic-inversion-2026-10-28)
 18. [Multi-Monitor Mouse Pointer & Interaction Isolation Engine](#18-multi-monitor-mouse-pointer--interaction-isolation-engine-2026-10-28)
 19. [Zero-Black-Screen Persistent Player, Multi-Station Audio Listening & Studio Forensic Canvas Layout](#19-zero-black-screen-persistent-player-multi-station-audio-listening--studio-forensic-canvas-layout-2026-10-28)
+20. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination](#20-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
 
 ---
 
@@ -725,6 +726,57 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
 - **Clean SVG Icon Invariant**:
   - Replaced corrupted character artifacts (`?`, `??`, `\uFFFD`) in `StationThumbnail.jsx`, `NotRecordingAlertBanner.jsx`, `StationsRolesTab.jsx`, `StorageRetentionTab.jsx`, `TopScopeBar.jsx`, and `SoloSpotlightModal.jsx` with crisp inline SVGs, semantic badges (`⏰`, `⚠️`, `📌`, `⏺`, `↺`), and correct Unicode symbols (`✕`, `→`, `—`).
   - Preserves 100% offline, self-contained air-gapped compliance (zero external web fonts or CDN downloads).
+
+---
+## 20. Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination (2026-11-01)
+
+### 1. Operational Problem: Acoustic Bleed & Delayed Intercom Loopback
+In multi-station recording environments (control rooms, dispatch consoles, operations centers):
+- When an operator on Station A speaks into their microphone, their voice is captured immediately ($t = 0$).
+- Station B listens to the broadcast over VoIP/intercom/speakers, where network transmission, audio drivers, and buffering introduce a latency of $\Delta t \approx 100\text{ms} - 300\text{ms}$.
+- Because workstations previously summed system loopback and microphone audio into a single mixed stereo stream, Station B re-recorded Station A's voice from its loopback speakers with delay $\Delta t$.
+- When an investigator or operator listens to both Station A and Station B simultaneously, speech is repeated with a hollow, unintelligible echo ("השמעה כפולה בדיליי").
+
+### 2. Endpoint Discrete Multiplexing Pipeline (AgentWorker)
+- **Architectural Solution**: Separation of system audio and operator voice into discrete channels at the capture source.
+- **`DiscreteStereoSampleProvider.cs`**:
+  - Implements an allocation-free, zero-lock interleaved stereo sample multiplexer.
+  - Channel 0 (Left): Loopback (System audio, incoming communications, VoIP, applications).
+  - Channel 1 (Right): Microphone (Local operator voice capture).
+- **`WasapiDualMixer.cs` Refactoring**:
+  - Replaced the unified `MixingSampleProvider` with two isolated mixers: `_loopbackMixer` (mono 48kHz) and `_micMixer` (mono 48kHz).
+  - Multi-device render endpoints are downmixed to mono and routed strictly to Channel 0.
+  - The default capture device is downmixed to mono and routed strictly to Channel 1.
+  - High-precision 20ms pacer outputs standard 2-channel IEEE float32 PCM over TCP loopback to FFmpeg.
+- **Protocol Invariant & Zero Breaking Changes**:
+  - FFmpeg encodes the stream as standard 2-channel 48kHz AAC (`-c:a aac -b:a 128k -ar 48000 -ac 2`) into RTMP.
+  - MediaMTX, chunk storage, SQLite indexing, and WebRTC WHEP remain 100% compliant with existing invariants.
+
+### 3. Live Dashboard Matrix Mixer & Dual VU Meters (`MasterAudioDock.jsx`)
+- **Real-Time Web Audio API Routing**:
+  - `MasterAudioDock` uses `createChannelSplitter(2)` and `createChannelMerger(2)` to dynamically matrix the live WebRTC audio stream without element reloads.
+  - **4 Tactical Listening Modes**:
+    1. **🎧 BOTH (Balanced Downmix, Default)**: Sums Channel 0 (System) and Channel 1 (Mic) equally (gain: 0.5 each) into both ears. The operator hears everything centered with natural balance.
+    2. **🎤 MIC ONLY**: Mutes system loopback and routes operator microphone to both ears. Instantly eliminates delayed intercom echo when listening to multiple workstations.
+    3. **🔊 SYS ONLY**: Mutes local microphone and routes system/VoIP audio to both ears.
+    4. **⮂ STEREO SPLIT**: Routes System Audio to Left ear and Microphone to Right ear.
+- **Discrete Dual-Channel Tactical VU Meters**:
+  - Real-time spectrum analysis with dedicated visual bars for `[SYS]` (Channel 0) and `[MIC]` (Channel 1).
+  - Operators can immediately distinguish between workstation background noise and active voice transmission.
+
+### 4. Forensic Track Extraction & Studio Playback
+- **Export Packaging (`ExtractorService.cs` & `ExtractorContracts.cs`)**:
+  - Extractor tracks preserve the 2 discrete audio channels with full fidelity (`-ac 2`).
+  - `session.json` includes typed `audioConfiguration` metadata:
+    ```json
+    "audioConfiguration": {
+      "channels": 2,
+      "sampleRate": 48000,
+      "discreteMapping": { "0": "Loopback", "1": "Microphone" }
+    }
+    ```
+- **Forensic Studio Replay (`TransportBar.jsx` & `studioSessionStore.js`)**:
+  - Integrated channel mode toggle `[🎧 BOTH | 🎤 MIC | 🔊 SYS | ⮂ STEREO]` directly on the transport bar, enabling investigators to isolate clean dialogue across multi-camera timelines.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

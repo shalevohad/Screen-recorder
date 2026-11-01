@@ -52,14 +52,15 @@ export default function TransportBar({
         return () => window.removeEventListener('itb-audio-state-changed', handleAudioSync);
     }, []);
 
-    const updateAudio = useCallback((newVolume, newMuted) => {
+    const updateAudio = useCallback((newVolume, newMuted, newMode) => {
         const updated = {
             volume: typeof newVolume === 'number' ? newVolume : volume,
-            isMuted: typeof newMuted === 'boolean' ? newMuted : isMuted
+            isMuted: typeof newMuted === 'boolean' ? newMuted : isMuted,
+            channelMode: newMode || audioState.channelMode || 'both'
         };
         setAudioState(updated);
         saveAudioSettings(updated);
-    }, [volume, isMuted]);
+    }, [volume, isMuted, audioState.channelMode]);
 
     const handlePlayPause = (e) => {
         e?.stopPropagation();
@@ -358,8 +359,36 @@ export default function TransportBar({
                         value={isMuted ? 0 : volume}
                         onChange={handleVolumeSliderChange}
                         className="volume-slider"
-                        title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
                     />
+
+                    <button
+                        type="button"
+                        className="btn-audio-mode-toggle"
+                        onClick={() => {
+                            const modes = ['both', 'mic', 'sys', 'stereo'];
+                            const currentMode = audioState.channelMode || 'both';
+                            const nextMode = modes[(modes.indexOf(currentMode) + 1) % modes.length];
+                            updateAudio(volume, isMuted, nextMode);
+                        }}
+                        title={`Discrete Audio Channel: ${(audioState.channelMode || 'both').toUpperCase()} (Click to cycle Both / Mic / System / Stereo)`}
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(6, 182, 212, 0.35)',
+                            borderRadius: '4px',
+                            color: '#06B6D4',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        {(audioState.channelMode || 'both') === 'mic' ? '🎤 MIC' :
+                         (audioState.channelMode || 'both') === 'sys' ? '🔊 SYS' :
+                         (audioState.channelMode || 'both') === 'stereo' ? '⮂ STEREO' : '🎧 BOTH'}
+                    </button>
+
+
                 </div>
             )}
         </div>

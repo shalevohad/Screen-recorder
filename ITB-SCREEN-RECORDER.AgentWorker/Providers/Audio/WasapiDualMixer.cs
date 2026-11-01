@@ -16,7 +16,10 @@ using ITB_SCREEN_RECORDER.Core.Configuration;
 namespace ITBRecorderAgent.Providers.Audio
 {
     /// <summary>
-    /// Dual audio capture provider that captures and hardware-mixes speaker loopback and microphone audio via WASAPI.
+    /// Dual discrete audio capture provider that captures loopback (system audio) and microphone audio via WASAPI
+    /// and multiplexes them into discrete stereo channels:
+    /// - Channel 0 (Left): Loopback (System audio, incoming communications, VoIP)
+    /// - Channel 1 (Right): Microphone (Local operator voice capture)
     /// Multi-device resilient: automatically hooks all active playback endpoints and the default microphone.
     /// </summary>
     [SupportedOSPlatform("windows")]
@@ -27,7 +30,9 @@ namespace ITBRecorderAgent.Providers.Audio
 
         private readonly List<AudioCaptureStream> _loopbackStreams = new();
         private AudioCaptureStream? _micStream;
-        private MixingSampleProvider? _mixer;
+        private MixingSampleProvider? _loopbackMixer;
+        private MixingSampleProvider? _micMixer;
+        private DiscreteStereoSampleProvider? _discreteMixer;
 
         private CancellationTokenSource? _renderCts;
         private readonly object _lockObj = new();
@@ -69,7 +74,9 @@ namespace ITBRecorderAgent.Providers.Audio
 
                 StopCaptureStreamsOnly();
 
-                _mixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, Channels));
+                _loopbackMixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, 1));
+                _micMixer = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, 1));
+                _discreteMixer = new DiscreteStereoSampleProvider(_loopbackMixer, _micMixer);
 
                 var renderDevices = new List<MMDevice>();
                 MMDevice? defaultCapture = null;
@@ -78,33 +85,29 @@ namespace ITBRecorderAgent.Providers.Audio
                 {
                     try
                     {
-                        var endpoints = _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-                        foreach (var ep in endpoints)
+                        var devCol = _deviceEnumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+                        foreach (var d in devCol)
                         {
-                            renderDevices.Add(ep);
+                            renderDevices.Add(d);
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn($"[AUDIO] Failed enumerating active render endpoints: {ex.Message}");
-                    }
+                    catch { }
 
-                    // Fallback to default render endpoints if enumeration was empty
                     if (renderDevices.Count == 0)
                     {
                         try
                         {
-                            var defConsole = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
-                            if (defConsole != null) renderDevices.Add(defConsole);
+                            var defRender = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                            if (defRender != null) renderDevices.Add(defRender);
                         }
                         catch { }
 
                         try
                         {
-                            var defMulti = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                            if (defMulti != null && !renderDevices.Exists(d => d.ID == defMulti.ID))
+                            var defConsole = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
+                            if (defConsole != null && !renderDevices.Exists(d => d.ID == defConsole.ID))
                             {
-                                renderDevices.Add(defMulti);
+                                renderDevices.Add(defConsole);
                             }
                         }
                         catch { }
@@ -117,14 +120,17 @@ namespace ITBRecorderAgent.Providers.Audio
                     }
                 }
 
-                // If no render devices at all, create one silence stream
+                // If no render devices at all, create one silence stream for Channel 0
                 if (renderDevices.Count == 0)
                 {
                     var fallbackStream = new AudioCaptureStream();
                     fallbackStream.Start(null, isLoopback: true);
                     _loopbackStreams.Add(fallbackStream);
-                    var sp = EnsureTargetFormat(fallbackStream.Buffer!);
-                    _mixer.AddMixerInput(sp);
+                    if (fallbackStream.Buffer != null)
+                    {
+                        var sp = EnsureMonoTargetFormat(fallbackStream.Buffer);
+                        _loopbackMixer.AddMixerInput(sp);
+                    }
                     Logger.Warn("[AUDIO] No active render devices found on system. Initialized synthetic silence loopback.");
                 }
                 else
@@ -138,9 +144,9 @@ namespace ITBRecorderAgent.Providers.Audio
                             _loopbackStreams.Add(stream);
                             if (stream.Buffer != null)
                             {
-                                var sp = EnsureTargetFormat(stream.Buffer);
-                                _mixer.AddMixerInput(sp);
-                                Logger.Info($"[AUDIO] Hooked WASAPI loopback on render device '{dev.FriendlyName}'.");
+                                var sp = EnsureMonoTargetFormat(stream.Buffer);
+                                _loopbackMixer.AddMixerInput(sp);
+                                Logger.Info($"[AUDIO] Hooked WASAPI loopback on render device '{dev.FriendlyName}' (Discrete Ch 0: System).");
                             }
                         }
                         catch (Exception ex)
@@ -150,13 +156,14 @@ namespace ITBRecorderAgent.Providers.Audio
                     }
                 }
 
-                // Hook microphone stream
+                // Hook microphone stream for Channel 1
                 _micStream = new AudioCaptureStream();
                 _micStream.Start(defaultCapture, isLoopback: false);
                 if (_micStream.Buffer != null)
                 {
-                    var micSp = EnsureTargetFormat(_micStream.Buffer);
-                    _mixer.AddMixerInput(micSp);
+                    var micSp = EnsureMonoTargetFormat(_micStream.Buffer);
+                    _micMixer.AddMixerInput(micSp);
+                    Logger.Info($"[AUDIO] Hooked WASAPI microphone capture on '{defaultCapture?.FriendlyName ?? "Default Capture"}' (Discrete Ch 1: Mic).");
                 }
 
                 StartRenderLoop();
@@ -164,19 +171,22 @@ namespace ITBRecorderAgent.Providers.Audio
             }
         }
 
-        private ISampleProvider EnsureTargetFormat(IWaveProvider waveProvider)
+        private ISampleProvider EnsureMonoTargetFormat(IWaveProvider waveProvider)
         {
             ISampleProvider sampleProvider = waveProvider.ToSampleProvider();
 
-            if (sampleProvider.WaveFormat.Channels == 1 && Channels == 2)
+            if (sampleProvider.WaveFormat.Channels == 2)
             {
-                sampleProvider = new MonoToStereoSampleProvider(sampleProvider);
+                sampleProvider = new StereoToMonoSampleProvider(sampleProvider)
+                {
+                    LeftVolume = 0.5f,
+                    RightVolume = 0.5f
+                };
             }
             else if (sampleProvider.WaveFormat.Channels > 2)
             {
-                var multiplexer = new MultiplexingSampleProvider(new[] { sampleProvider }, 2);
+                var multiplexer = new MultiplexingSampleProvider(new[] { sampleProvider }, 1);
                 multiplexer.ConnectInputToOutput(0, 0);
-                multiplexer.ConnectInputToOutput(1, 1);
                 sampleProvider = multiplexer;
             }
 
@@ -202,7 +212,7 @@ namespace ITBRecorderAgent.Providers.Audio
                 float[] sampleBuffer = new float[bufferSize / 4];
                 byte[] byteBuffer = new byte[bufferSize];
 
-                Logger.Info("[AUDIO] Shared-Memory Audio Mixing Engine Pipeline started (Anti-Starvation Active, High-Precision Pacing).");
+                Logger.Info("[AUDIO] Discrete-Channel Audio Mixing Engine Pipeline started (Ch0=Loopback, Ch1=Mic, Anti-Starvation Active, High-Precision Pacing).");
 
                 long startTicks = Stopwatch.GetTimestamp();
                 long chunksSent = 0;
@@ -210,12 +220,12 @@ namespace ITBRecorderAgent.Providers.Audio
 
                 while (!token.IsCancellationRequested)
                 {
-                    if (_mixer != null)
+                    if (_discreteMixer != null)
                     {
                         int samplesRead = 0;
                         try
                         {
-                            samplesRead = _mixer.Read(sampleBuffer, 0, sampleBuffer.Length);
+                            samplesRead = _discreteMixer.Read(sampleBuffer, 0, sampleBuffer.Length);
                         }
                         catch { }
 
@@ -258,15 +268,24 @@ namespace ITBRecorderAgent.Providers.Audio
         {
             if (_isDisposed) return;
             Logger.Warn("Audio device change detected. Re-aligning streams...");
-            Task.Run(() =>
+
+            Task.Run(async () =>
             {
-                Thread.Sleep(1000);
-                StartCaptureStreams();
+                await Task.Delay(1000);
+                if (_isDisposed) return;
+                lock (_lockObj)
+                {
+                    StartCaptureStreams();
+                }
             });
         }
 
         private void StopCaptureStreamsOnly()
         {
+            _renderCts?.Cancel();
+            _renderCts?.Dispose();
+            _renderCts = null;
+
             foreach (var stream in _loopbackStreams)
             {
                 try { stream.Dispose(); } catch { }
@@ -275,7 +294,9 @@ namespace ITBRecorderAgent.Providers.Audio
 
             _micStream?.Dispose();
             _micStream = null;
-            _mixer = null;
+            _loopbackMixer = null;
+            _micMixer = null;
+            _discreteMixer = null;
             IsRunning = false;
         }
 

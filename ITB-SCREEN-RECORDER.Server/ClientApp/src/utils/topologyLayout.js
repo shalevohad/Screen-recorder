@@ -47,7 +47,8 @@ export const INITIAL_AUDIO_SOLO_STATE = {
     activeAudioStationIds: [],
     activeAudioStationId: null, // Backward compatibility for single-station consumers
     audioVolume: 0.8,
-    isGlobalMuted: false
+    isGlobalMuted: false,
+    audioChannelMode: 'both'
 };
 
 export function audioSoloReducer(state, action) {
@@ -94,6 +95,9 @@ export function audioSoloReducer(state, action) {
         }
         case 'TOGGLE_GLOBAL_MUTE': {
             return { ...state, isGlobalMuted: !state.isGlobalMuted };
+        }
+        case 'SET_CHANNEL_MODE': {
+            return { ...state, audioChannelMode: action.channelMode || 'both' };
         }
         case 'SET_VOLUME': {
             return { ...state, audioVolume: clampVolume(action.volume) };

@@ -235,7 +235,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         VideoFileName = entryName,
                         StartOffsetMs = 0,
                         DurationMs = exportedDurationSec * 1000.0,
-                        HasAudio = track.HasAudio
+                        HasAudio = track.HasAudio,
+                        AudioChannels = 2,
+                        AudioChannelMapping = "0:Loopback,1:Microphone"
                     });
                 }
 
@@ -247,6 +249,17 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     keystrokeMode = request.KeystrokeMode.ToString(),
                     originalDurationSeconds = originalDurationSec,
                     exportedDurationSeconds = exportedDurationSec,
+                    audioConfiguration = new
+                    {
+                        channels = 2,
+                        sampleRate = 48000,
+                        discreteMapping = new Dictionary<string, string>
+                        {
+                            ["0"] = "Loopback",
+                            ["1"] = "Microphone"
+                        },
+                        description = "Channel 0: System loopback audio. Channel 1: Operator local microphone."
+                    },
                     removedGlobalGaps = plan.RemovedGlobalGaps.Select(g => new
                     {
                         gapIndex = g.GapIndex,

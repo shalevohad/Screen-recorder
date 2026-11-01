@@ -106,5 +106,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public double StartOffsetMs { get; set; }
         public double DurationMs { get; set; }
         public bool HasAudio { get; set; }
+        public int AudioChannels { get; set; } = 2;
+        public string? AudioChannelMapping { get; set; } = "0:Loopback,1:Microphone";
     }
 }

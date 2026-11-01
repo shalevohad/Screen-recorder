@@ -7,11 +7,13 @@ const AudioSoloContext = createContext({
     activeAudioStationId: null,
     audioVolume: 0.8,
     isGlobalMuted: false,
+    audioChannelMode: 'both',
     activeAudioStream: null,
     activeAudioStreams: [],
     toggleAudioSolo: () => {},
     muteStation: () => {},
     setAudioVolume: () => {},
+    setAudioChannelMode: () => {},
     toggleGlobalMute: () => {},
     stopAudioSolo: () => {},
     registerStationStream: () => {},
@@ -24,6 +26,7 @@ export function AudioSoloProvider({ children }) {
     const streamsMapRef = useRef(new Map());
     const [activeAudioStream, setActiveAudioStream] = useState(null);
     const [activeAudioStreams, setActiveAudioStreams] = useState([]);
+
 
     const updateActiveStreams = useCallback((stationIds) => {
         if (!stationIds || stationIds.length === 0) {
@@ -52,6 +55,10 @@ export function AudioSoloProvider({ children }) {
 
     const toggleGlobalMute = useCallback(() => {
         dispatch({ type: 'TOGGLE_GLOBAL_MUTE' });
+    }, []);
+
+    const setAudioChannelMode = useCallback((channelMode) => {
+        dispatch({ type: 'SET_CHANNEL_MODE', channelMode });
     }, []);
 
     const setAudioVolume = useCallback((volume) => {
@@ -108,6 +115,8 @@ export function AudioSoloProvider({ children }) {
                 activeAudioStationId: state.activeAudioStationId,
                 audioVolume: state.audioVolume,
                 isGlobalMuted: state.isGlobalMuted,
+                audioChannelMode: state.audioChannelMode || 'both',
+                setAudioChannelMode,
                 activeAudioStream,
                 activeAudioStreams,
                 toggleAudioSolo,

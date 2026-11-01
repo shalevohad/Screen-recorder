@@ -7,6 +7,8 @@ export default function MasterAudioDock({ stations = [] }) {
         activeAudioStationIds = [],
         audioVolume,
         isGlobalMuted,
+        audioChannelMode = 'both',
+        setAudioChannelMode,
         activeAudioStream,
         activeAudioStreams = [],
         setAudioVolume,
@@ -15,24 +17,29 @@ export default function MasterAudioDock({ stations = [] }) {
         muteStation
     } = useAudioSolo();
 
-    const bar1Ref = useRef(null);
-    const bar2Ref = useRef(null);
-    const bar3Ref = useRef(null);
-    const bar4Ref = useRef(null);
-    const bar5Ref = useRef(null);
+    // Dual VU meters: System (Channel 0) and Mic (Channel 1)
+    const sysBar1Ref = useRef(null);
+    const sysBar2Ref = useRef(null);
+    const sysBar3Ref = useRef(null);
+
+    const micBar1Ref = useRef(null);
+    const micBar2Ref = useRef(null);
+    const micBar3Ref = useRef(null);
 
     const audioCtxRef = useRef(null);
-    const analyserRef = useRef(null);
     const sourcesRef = useRef([]);
+    const masterGainRef = useRef(null);
+    const matrixGainsRef = useRef({});
     const animFrameRef = useRef(null);
 
     const activeStreamToAnalyze = activeAudioStream || (activeAudioStreams && activeAudioStreams[0]) || null;
 
     useEffect(() => {
-        const bars = [bar1Ref.current, bar2Ref.current, bar3Ref.current, bar4Ref.current, bar5Ref.current];
+        const sysBars = [sysBar1Ref.current, sysBar2Ref.current, sysBar3Ref.current];
+        const micBars = [micBar1Ref.current, micBar2Ref.current, micBar3Ref.current];
 
         const resetBars = () => {
-            bars.forEach(b => {
+            [...sysBars, ...micBars].forEach(b => {
                 if (b) {
                     b.style.height = '3px';
                     b.style.background = isGlobalMuted ? '#64748B' : 'linear-gradient(180deg, #10B981, #06B6D4)';
@@ -65,45 +72,101 @@ export default function MasterAudioDock({ stations = [] }) {
         }
 
         try {
-            const analyser = ctx.createAnalyser();
-            analyser.fftSize = 64; // 32 frequency bins
-            analyser.smoothingTimeConstant = 0.45;
-            analyserRef.current = analyser;
+            // Channel Splitter: separates discrete Channel 0 (System Loopback) and Channel 1 (Microphone)
+            const splitter = ctx.createChannelSplitter(2);
+            const merger = ctx.createChannelMerger(2);
+
+            const analyserSys = ctx.createAnalyser();
+            analyserSys.fftSize = 32;
+            analyserSys.smoothingTimeConstant = 0.4;
+
+            const analyserMic = ctx.createAnalyser();
+            analyserMic.fftSize = 32;
+            analyserMic.smoothingTimeConstant = 0.4;
+
+            splitter.connect(analyserSys, 0); // Channel 0: System
+            splitter.connect(analyserMic, 1); // Channel 1: Mic
+
+            // Matrix mixer routing nodes
+            const gainSysL = ctx.createGain();
+            const gainSysR = ctx.createGain();
+            const gainMicL = ctx.createGain();
+            const gainMicR = ctx.createGain();
+
+            splitter.connect(gainSysL, 0);
+            splitter.connect(gainSysR, 0);
+            splitter.connect(gainMicL, 1);
+            splitter.connect(gainMicR, 1);
+
+            gainSysL.connect(merger, 0, 0);
+            gainSysR.connect(merger, 0, 1);
+            gainMicL.connect(merger, 0, 0);
+            gainMicR.connect(merger, 0, 1);
+
+            // Configure Matrix gains based on active audioChannelMode
+            // 'both' (default balanced): System and Mic downmixed to both ears equally
+            // 'mic': Only microphone in both ears
+            // 'sys': Only system loopback in both ears
+            // 'stereo': System in Left ear, Mic in Right ear
+            if (audioChannelMode === 'mic') {
+                gainSysL.gain.value = 0.0;
+                gainSysR.gain.value = 0.0;
+                gainMicL.gain.value = 1.0;
+                gainMicR.gain.value = 1.0;
+            } else if (audioChannelMode === 'sys') {
+                gainSysL.gain.value = 1.0;
+                gainSysR.gain.value = 1.0;
+                gainMicL.gain.value = 0.0;
+                gainMicR.gain.value = 0.0;
+            } else if (audioChannelMode === 'stereo') {
+                gainSysL.gain.value = 1.0;
+                gainSysR.gain.value = 0.0;
+                gainMicL.gain.value = 0.0;
+                gainMicR.gain.value = 1.0;
+            } else {
+                // 'both' (balanced downmix)
+                gainSysL.gain.value = 0.5;
+                gainSysR.gain.value = 0.5;
+                gainMicL.gain.value = 0.5;
+                gainMicR.gain.value = 0.5;
+            }
+
+            matrixGainsRef.current = { gainSysL, gainSysR, gainMicL, gainMicR };
+
+            const masterGain = ctx.createGain();
+            masterGain.gain.setValueAtTime(isGlobalMuted ? 0 : audioVolume, ctx.currentTime);
+            masterGainRef.current = masterGain;
+
+            merger.connect(masterGain);
+            masterGain.connect(ctx.destination);
 
             const source = ctx.createMediaStreamSource(activeStreamToAnalyze);
             sourcesRef.current = [source];
-            source.connect(analyser);
+            source.connect(splitter);
 
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
+            const sysBuffer = new Uint8Array(analyserSys.frequencyBinCount);
+            const micBuffer = new Uint8Array(analyserMic.frequencyBinCount);
 
             const renderMeter = () => {
-                if (!analyserRef.current) return;
-                analyserRef.current.getByteFrequencyData(dataArray);
+                analyserSys.getByteFrequencyData(sysBuffer);
+                analyserMic.getByteFrequencyData(micBuffer);
 
-                const bands = [
-                    dataArray[1] || 0,
-                    dataArray[3] || 0,
-                    dataArray[6] || 0,
-                    dataArray[10] || 0,
-                    dataArray[15] || 0
-                ];
-
-                const maxHeight = 20; // px
-                bands.forEach((val, idx) => {
-                    const el = bars[idx];
-                    if (el) {
+                const updateBars = (bars, buf) => {
+                    const maxHeight = 18;
+                    bars.forEach((el, idx) => {
+                        if (!el) return;
+                        const val = buf[idx * 2 + 1] || 0;
                         const normalized = val < 10 ? 0 : (val - 10) / 245;
                         const h = Math.max(3, Math.round(3 + normalized * (maxHeight - 3)));
                         el.style.height = `${h}px`;
+                        el.style.background = val > 160
+                            ? 'linear-gradient(180deg, #F59E0B, #10B981)'
+                            : 'linear-gradient(180deg, #10B981, #06B6D4)';
+                    });
+                };
 
-                        if (val > 150) {
-                            el.style.background = 'linear-gradient(180deg, #F59E0B, #10B981)';
-                        } else {
-                            el.style.background = 'linear-gradient(180deg, #10B981, #06B6D4)';
-                        }
-                    }
-                });
+                updateBars(sysBars, sysBuffer);
+                updateBars(micBars, micBuffer);
 
                 animFrameRef.current = requestAnimationFrame(renderMeter);
             };
@@ -119,13 +182,17 @@ export default function MasterAudioDock({ stations = [] }) {
                     try { s.disconnect(); } catch { }
                 });
                 sourcesRef.current = [];
-                analyserRef.current = null;
+                try {
+                    splitter.disconnect();
+                    merger.disconnect();
+                    masterGain.disconnect();
+                } catch { }
                 resetBars();
             };
         } catch (err) {
             console.warn('[MasterAudioDock] Web Audio visualizer setup:', err);
         }
-    }, [activeStreamToAnalyze, isGlobalMuted]);
+    }, [activeStreamToAnalyze, isGlobalMuted, audioVolume, audioChannelMode]);
 
     // Cleanup audio context on unmount
     useEffect(() => {
@@ -146,7 +213,7 @@ export default function MasterAudioDock({ stations = [] }) {
             <div className="dock-left-meta">
                 <span className={`intercom-pulse-dot ${isGlobalMuted ? 'muted' : 'live'}`} />
                 <span className="intercom-badge">
-                    {listeningCount > 1 ? `🎧 MULTI-INTERCOM (${listeningCount})` : '🎧 LIVE INTERCOM'}
+                    {listeningCount > 1 ? `🎧 MULTI (${listeningCount})` : '🎧 LIVE'}
                 </span>
 
                 <div className="dock-station-chips-list">
@@ -180,13 +247,56 @@ export default function MasterAudioDock({ stations = [] }) {
                 </div>
             </div>
 
-            {/* Tactical Spectral VU Meter (Real-time Web Audio Analyser) */}
-            <div className={`dock-spectral-vu ${isGlobalMuted ? 'silent' : 'active'}`} title="Real-time Web Audio Spectrum Waveform">
-                <span ref={bar1Ref} className="vu-bar bar-1" />
-                <span ref={bar2Ref} className="vu-bar bar-2" />
-                <span ref={bar3Ref} className="vu-bar bar-3" />
-                <span ref={bar4Ref} className="vu-bar bar-4" />
-                <span ref={bar5Ref} className="vu-bar bar-5" />
+            {/* Tactical Dual VU Meter: Discrete System (Ch0) and Microphone (Ch1) */}
+            <div className="dock-dual-vu-container">
+                <div className={`dock-spectral-vu sys-vu ${isGlobalMuted ? 'silent' : 'active'}`} title="System Audio (Ch 0)">
+                    <span className="vu-label">SYS</span>
+                    <span ref={sysBar1Ref} className="vu-bar bar-1" />
+                    <span ref={sysBar2Ref} className="vu-bar bar-2" />
+                    <span ref={sysBar3Ref} className="vu-bar bar-3" />
+                </div>
+                <div className={`dock-spectral-vu mic-vu ${isGlobalMuted ? 'silent' : 'active'}`} title="Microphone (Ch 1)">
+                    <span className="vu-label">MIC</span>
+                    <span ref={micBar1Ref} className="vu-bar bar-1" />
+                    <span ref={micBar2Ref} className="vu-bar bar-2" />
+                    <span ref={micBar3Ref} className="vu-bar bar-3" />
+                </div>
+            </div>
+
+            {/* Discrete Channel Mode Selector */}
+            <div className="dock-channel-mode-selector">
+                <button
+                    type="button"
+                    className={`btn-channel-mode ${audioChannelMode === 'both' ? 'active' : ''}`}
+                    onClick={() => setAudioChannelMode?.('both')}
+                    title="Balanced: Mix System and Microphone to both ears equally"
+                >
+                    🎧 BOTH
+                </button>
+                <button
+                    type="button"
+                    className={`btn-channel-mode ${audioChannelMode === 'mic' ? 'active' : ''}`}
+                    onClick={() => setAudioChannelMode?.('mic')}
+                    title="Mic Only: Listen only to local operator microphone (eliminates echo)"
+                >
+                    🎤 MIC
+                </button>
+                <button
+                    type="button"
+                    className={`btn-channel-mode ${audioChannelMode === 'sys' ? 'active' : ''}`}
+                    onClick={() => setAudioChannelMode?.('sys')}
+                    title="System Only: Listen only to computer sound / incoming calls"
+                >
+                    🔊 SYS
+                </button>
+                <button
+                    type="button"
+                    className={`btn-channel-mode ${audioChannelMode === 'stereo' ? 'active' : ''}`}
+                    onClick={() => setAudioChannelMode?.('stereo')}
+                    title="Stereo Split: System in Left ear, Mic in Right ear"
+                >
+                    ⮂ STEREO
+                </button>
             </div>
 
             {/* Volume Control Slider */}
