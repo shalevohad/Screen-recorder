@@ -926,9 +926,17 @@ Investigation export archives (`Investigation_*.tar`) contain multi-station, mul
   - Decodes embedded MP4 subtitle tracks (`mov_text` titled "Keystroke Audit") and external SRT/JSON event sidecars.
   - Searchable Keystroke Audit Drawer: Operators can search for typed keywords, hotkeys, or process names, and click any event to seek all synchronized video feeds directly to that precise millisecond.
 
-### 7. Air-Gapped Packaging & OS Shell Integration
-- **Zero-Dependency Portable Distribution**: Self-contained single-file publish bundling native LibVLC runtime libraries for Windows (and Linux via Avalonia).
-- **Shell File Association**: Registers file associations for `.tar` and `.itbp` (ITB Package) to enable direct double-click launching from Windows Explorer.
-
+### 7. Standalone Tool Topology & Air-Gapped Installer Kits
+- **Autonomous Desktop Utility Taxonomy (Tools/)**:
+  - The Forensic Player is architected strictly as an autonomous, air-gapped desktop tool (Tools/ITB-SCREEN-RECORDER.Player and Tools/ITB-SCREEN-RECORDER.Player.Core), completely independent of the C2 Server and Web Dashboard runtime.
+  - Investigators execute the tool locally on analytical workstations to inspect exported packages without active network connectivity or server dependencies.
+- **Windows Enterprise Installer (Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer)**:
+  - Engineered using **WiX Toolset v5** producing a standalone .msi (ITB-ForensicPlayer-Setup-1.0.x.msi).
+  - Automatically registers Start Menu and Desktop shortcuts.
+  - **OS Shell File Association**: Maps .itbp (ITB Forensic Investigation Package) directly to the player executable, and injects an Explorer context menu verb for .tar files: Open with ITB Forensic Player.
+- **Linux Self-Extracting Deployment Kit (Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer)**:
+  - Produces an autonomous .run self-extracting bundle (ITB-ForensicPlayer-Setup-1.0.x.run).
+  - Deploys binaries to /opt/itb-forensic-player/ with /usr/local/bin/itb-player CLI symlink.
+  - Installs XDG desktop entry (/usr/share/applications/itb-forensic-player.desktop) and registers shared MIME type pplication/x-itb-package for .itbp and .tar with system desktop databases.
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

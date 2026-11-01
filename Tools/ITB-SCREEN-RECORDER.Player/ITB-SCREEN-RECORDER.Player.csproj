@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.Player.Core\ITB-SCREEN-RECORDER.Player.Core.csproj" />
-    <ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
+    <ProjectReference Include="..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
   </ItemGroup>
 
 </Project>

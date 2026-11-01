@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ITB Forensic Player
+GenericName=Forensic Video & Keystroke Replay Suite
+Comment=Zero-extract multi-screen forensic investigation player
+Exec=/usr/local/bin/itb-player %F
+Icon=itb-forensic-player
+Terminal=false
+Categories=AudioVideo;Player;Forensics;Security;
+MimeType=application/x-itb-package;application/x-tar;
+StartupNotify=true

@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<OutputType>Library</OutputType>
+		<Version Condition="'$(Version)' == ''">1.0.46</Version>
+		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../..'))</SolutionRoot>
+		<LinuxRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/..'))</LinuxRoot>
+
+		<StagingDir>$(SolutionRoot)/Publish/Staging/player_linux</StagingDir>
+		<FinalOutputDir>$(SolutionRoot)/Publish/Player/linux</FinalOutputDir>
+		<OutputRunFile>$(FinalOutputDir)/ITB-ForensicPlayer-Setup-$(Version).run</OutputRunFile>
+
+		<!-- Dynamic PowerShell engine by platform -->
+		<PowerShellCmd Condition="$([MSBuild]::IsOSPlatform('Windows'))">powershell.exe</PowerShellCmd>
+		<PowerShellCmd Condition="!$([MSBuild]::IsOSPlatform('Windows'))">pwsh</PowerShellCmd>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="installer-header.sh" />
+		<None Include="setup.sh" />
+		<None Include="itb-forensic-player.desktop" />
+		<None Include="itb-package.xml" />
+	</ItemGroup>
+
+	<Target Name="BuildLinuxPlayerPackage" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+		<Message Importance="high" Text="=== [1/4] Preparing Clean Player Staging ===" />
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+		<MakeDir Directories="$(StagingDir)/bin" />
+		<MakeDir Directories="$(FinalOutputDir)" />
+
+		<Message Importance="high" Text="=== [2/4] Publishing Player Core Engine (linux-x64) ===" />
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)/Tools/ITB-SCREEN-RECORDER.Player.Core/ITB-SCREEN-RECORDER.Player.Core.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)/bin&quot;" />
+
+		<Message Importance="high" Text="=== [3/4] Staging Setup Scripts and Desktop MIME Definitions ===" />
+		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="itb-forensic-player.desktop" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="itb-package.xml" DestinationFolder="$(StagingDir)" />
+
+		<Message Importance="high" Text="=== [4/4] Packing Self-Extracting .run Installer ===" />
+		<Exec Command="$(PowerShellCmd) -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)/BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)/installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />
+
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+	</Target>
+</Project>

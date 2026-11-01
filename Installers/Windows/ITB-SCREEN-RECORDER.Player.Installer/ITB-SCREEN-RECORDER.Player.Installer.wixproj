@@ -1,0 +1,47 @@
+<Project Sdk="WixToolset.Sdk/5.0.0">
+	<PropertyGroup>
+		<OutputType>Package</OutputType>
+		<Platform>x64</Platform>
+		<Platforms>x64</Platforms>
+
+		<!-- Solution root path: 3 levels up from Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer -->
+		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..'))</SolutionRoot>
+
+		<!-- Normalize version to 3 segments (Major.Minor.Build) -->
+		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.46</RawVersion>
+
+		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
+		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
+
+		<OutputName>ITB-ForensicPlayer-Setup-$(Version)</OutputName>
+
+		<StagingDir Condition="'$(StagingDir)' == ''">$(SolutionRoot)\Publish\Staging\player_win</StagingDir>
+		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Player\windows</FinalOutputDir>
+
+		<!-- Pass variables to WXS file -->
+		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
+		<SuppressIces>ICE61</SuppressIces>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="License.rtf" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="WixToolset.Util.wixext" Version="5.0.0" />
+		<PackageReference Include="WixToolset.UI.wixext" Version="5.0.0" />
+	</ItemGroup>
+
+	<Target Name="PublishPlayerBeforeBuild" BeforeTargets="BeforeBuild">
+		<Message Importance="high" Text="=== [1/2] Publishing Forensic Player to Staging ($(StagingDir)) ===" />
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+		<MakeDir Directories="$(StagingDir)" />
+
+		<!-- Self-Contained publish of WPF Player -->
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)\Tools\ITB-SCREEN-RECORDER.Player\ITB-SCREEN-RECORDER.Player.csproj&quot; -c $(Configuration) -r win-x64 --self-contained true -o &quot;$(StagingDir)&quot;" />
+
+		<MakeDir Directories="$(FinalOutputDir)" />
+	</Target>
+</Project>

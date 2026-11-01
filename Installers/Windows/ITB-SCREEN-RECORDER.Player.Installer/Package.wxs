@@ -1,0 +1,91 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+	<Package Name="ITB Forensic Investigation Player $(var.Version)"
+			 Manufacturer="ITB"
+			 Version="$(var.Version)"
+			 UpgradeCode="C59B1D4E-7E3A-4F98-A12B-0E8C2D4F6A5B"
+			 Scope="perMachine"
+			 Compressed="yes">
+
+		<MajorUpgrade DowngradeErrorMessage="A newer version of ITB Forensic Player is already installed."
+					  AllowSameVersionUpgrades="yes"
+					  Schedule="afterInstallValidate" />
+
+		<Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
+		<MediaTemplate EmbedCab="yes" />
+
+		<!-- Close player instance if running -->
+		<util:CloseApplication Target="ITB-SCREEN-RECORDER.Player.exe" CloseMessage="no" RebootPrompt="no" TerminateProcess="1" />
+
+		<!-- Standard UI with License RTF -->
+		<ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+		<WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+		<!-- Directories -->
+		<StandardDirectory Id="ProgramFiles64Folder">
+			<Directory Id="ITBCompanyFolder" Name="ITB">
+				<Directory Id="INSTALLFOLDER" Name="ForensicPlayer" />
+			</Directory>
+		</StandardDirectory>
+
+		<StandardDirectory Id="ProgramMenuFolder">
+			<Directory Id="ApplicationProgramsFolder" Name="ITB" />
+		</StandardDirectory>
+
+		<StandardDirectory Id="DesktopFolder" />
+
+		<!-- Components -->
+		<ComponentGroup Id="PlayerComponents" Directory="INSTALLFOLDER">
+			<Component Id="PlayerExecutable" Bitness="always64" Guid="D2A4F8B1-6E9C-4D3A-8F0E-1B5C7D9E3A2F">
+				<File Id="PlayerExe" Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.Player.exe" KeyPath="yes">
+					<!-- Start Menu Shortcut -->
+					<Shortcut Id="StartMenuShortcut"
+							  Directory="ApplicationProgramsFolder"
+							  Name="ITB Forensic Player"
+							  Description="ITB Forensic Investigation Package Replay Suite"
+							  WorkingDirectory="INSTALLFOLDER"
+							  Icon="PlayerAppIcon.ico"
+							  Advertise="no" />
+
+					<!-- Desktop Shortcut -->
+					<Shortcut Id="DesktopShortcut"
+							  Directory="DesktopFolder"
+							  Name="ITB Forensic Player"
+							  Description="ITB Forensic Investigation Package Replay Suite"
+							  WorkingDirectory="INSTALLFOLDER"
+							  Icon="PlayerAppIcon.ico"
+							  Advertise="no" />
+				</File>
+
+				<!-- Registry entries for File Associations -->
+				<!-- 1. Associate .itbp (ITB Forensic Package) -->
+				<ProgId Id="ITB.ForensicPackage" Description="ITB Forensic Investigation Package">
+					<Extension Id="itbp" ContentType="application/x-itb-package">
+						<Verb Id="open" Command="Open with ITB Forensic Player" TargetFile="PlayerExe" Argument="&quot;%1&quot;" />
+					</Extension>
+				</ProgId>
+
+				<!-- 2. Context Menu for .tar investigation packages -->
+				<RegistryKey Root="HKCR" Key="SystemFileAssociations\.tar\shell\OpenWithITBPlayer">
+					<RegistryValue Type="string" Value="Open with ITB Forensic Player" />
+					<RegistryValue Key="command" Type="string" Value="&quot;[#PlayerExe]&quot; &quot;%1&quot;" />
+				</RegistryKey>
+
+				<!-- Remove shortcuts on uninstall -->
+				<RemoveFolder Id="CleanUpProgramMenuFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+			</Component>
+
+			<Files Include="$(var.PublishDir)\**">
+				<Exclude Files="$(var.PublishDir)\ITB-SCREEN-RECORDER.Player.exe" />
+			</Files>
+		</ComponentGroup>
+
+		<Icon Id="PlayerAppIcon.ico" SourceFile="$(var.PublishDir)\ITB-SCREEN-RECORDER.Player.exe" />
+
+		<Feature Id="MainFeature" Title="ITB Forensic Player" Level="1">
+			<ComponentGroupRef Id="PlayerComponents" />
+		</Feature>
+	</Package>
+</Wix>
