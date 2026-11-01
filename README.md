@@ -53,6 +53,8 @@ The codebase is structured into clear architectural layers:
 | [**`ITB-SCREEN-RECORDER.AgentWorker`**](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker) | Console Application | Session 1+ interactive worker. Captures screen frames via DXGI Desktop Duplication API (DDA), mixes WASAPI speaker and microphone audio, captures keystroke events, and streams hardware-encoded RTMP to MediaMTX. |
 | [**`Features/Extractor`**](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor) | Feature Plugin | Video export and multicam synchronized track cutting engine ([`SynchronizedTrackCutter.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/SynchronizedTrackCutter.cs)). Aligns timecodes, removes global idle gaps, and injects synthetic "No Signal" gap filler clips. |
 | [**`Features/ExtractorAdvanced`**](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced) | Feature Plugin + Web | Forensic video investigation suite with Near-Live LiveTail DVR scanner and multi-station synchronized canvas timeline. |
+| [**`Features/Player/ITB-SCREEN-RECORDER.Player.Core`**](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Player/ITB-SCREEN-RECORDER.Player.Core) | Class Library (.NET 8) | Core playback engine: native 512-byte block TAR VFS, loopback HTTP 206 range server, master presentation clock, discrete audio mixer, and keystroke indexer. |
+| [**`Features/Player/ITB-SCREEN-RECORDER.Player`**](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Player/ITB-SCREEN-RECORDER.Player) | Standalone WPF App | Tactical dark forensic player UI: multi-camera canvas/PiP, instant zero-extract TAR playback, timeline scrubber, audio mixer dock, and keystroke audit trail. |
 | [**`Installers`**](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Installers) | WiX v4 / Scripts | Enterprise installers for Windows (.msi) and Linux systemd packages. |
 | [**`ITB-SCREEN-RECORDER.Tests`**](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Tests) | xUnit | Comprehensive test suite covering IPC, service-to-server communication, chunk math, and storage resolution. |
 
@@ -110,6 +112,20 @@ The codebase is structured into clear architectural layers:
 - **Extractor Advanced Multi-Track Studio & Manual Override**:
   - Dedicated **Director Track** (`DirectorTrack.jsx`) in the multicam timeline board with visual badges (`[⚡ Auto: Mon 1]` vs `[✋ Override: Mon 2]`).
   - Full investigator control: split at playhead (`S` hotkey), right-click context menu, or click any monitor on the Minimap HUD to override display choice for any temporal segment.
+
+---
+
+
+### 9. Standalone Forensic Player & Zero-Extract Multi-Station Replay (ITB-FORENSIC-PLAYER)
+- **Zero-Extract Direct Streaming (TarVirtualFileSystem)**: Plays exported .tar and .itbp investigation packages directly from disk with <50ms initial load time, completely bypassing multi-gigabyte disk decompression.
+- **In-Process HTTP 206 Partial Content Server (LoopbackHttpRangeServer)**: Ephemeral loopback HTTP streaming server serving media decoders directly from uncompressed 512-byte POSIX/PAX TAR byte offsets.
+- **Master Presentation Clock & Multi-Stream Drift Correction (MasterPlaybackClock & StreamDriftTracker)**: Synchronizes multiple displays and stations across variable frame rates with millisecond precision, single-frame stepping (forward/backward), and automatic $\pm 50\text{ms}$ drift recalibration.
+- **Wall-Clock UTC & Global Gap Navigation (GapSkipNavigator)**: Maps continuous exported timeline seconds back to real-world UTC wall-clock time, seamlessly skipping removed global gaps and highlighting synthetic "No Signal" station bridge intervals.
+- **Multi-Station Forensic Audio Mixer & Auto-Duck Echo Neutralization (ForensicAudioMixer)**:
+  - Independent volume, pan (spatial L/R separation), mute, and solo controls per station.
+  - Discrete 2-channel routing: isolates Channel 0 (incoming intercom / system audio) and Channel 1 (operator desk microphone), or routes as stereo split.
+  - **VoiceActivityCrossDucker**: Automatically detects local operator speech on Channel 1 and ducks Channel 0 by -16dB on other listening stations to eliminate delayed acoustic intercom echo.
+- **Keystroke Intelligence & Subtitle Cues Indexer (KeystrokeAuditIndexer)**: Ingests embedded SRT subtitle tracks and session keystrokes, providing sub-millisecond keyword and hotkey search with instant one-click timeline seek.
 
 ---
 
