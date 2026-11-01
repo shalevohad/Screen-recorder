@@ -938,5 +938,18 @@ Export archives (`*.tar` / `*.itbp`) contain multi-station, multi-monitor video 
   - Produces an autonomous .run self-extracting bundle (ITB-Player-Setup-1.0.x.run).
   - Deploys binaries to /opt/itb-player/ with /usr/local/bin/itb-player CLI symlink.
   - Installs XDG desktop entry (/usr/share/applications/itb-player.desktop) and registers shared MIME type application/x-itb-package for .itbp and .tar with system desktop databases.
+
+### 8. Centralized Enterprise Branding Architecture (SSOT in Core)
+To eliminate asset duplication and graphic drift across multiple applications and installers, all canonical brand assets reside centrally in `ITB-SCREEN-RECORDER.Core/Assets/Branding/`:
+- `app.ico` / `favicon.ico`: High-density multi-resolution Windows and browser application icon.
+- `LogoDark.png` & `Logo.png`: Primary tactical dark and light vector-rendered enterprise logos.
+- `LogoDark2.png`: Extended horizontal tactical badge.
+- `itb-player.png`: 256x256 application launcher icon for Linux desktop environments.
+- **Build-Time Propagation**:
+  - `Tools/ITB-SCREEN-RECORDER.Player`: Automatically syncs icons and logos into `Assets/` via the `SyncBrandingFromCore` MSBuild target prior to compilation.
+  - `Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer`: WiX links directly to `$(var.CoreAssetsDir)\app.ico` for desktop shortcuts and the Windows Add/Remove Programs panel (`ARPPRODUCTICON`).
+  - `Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer`: Packaging pipeline pulls `itb-player.png` directly from Core during `.run` archive creation.
+  - `ITB-SCREEN-RECORDER.Server`: Pre-compilation target `SyncBrandingToClientApp` synchronizes logos and favicons to `ClientApp/public/`.
+
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

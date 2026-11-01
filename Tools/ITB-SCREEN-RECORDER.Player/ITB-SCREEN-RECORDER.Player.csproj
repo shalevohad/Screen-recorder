@@ -7,9 +7,21 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <RootNamespace>ITB_SCREEN_RECORDER.Player</RootNamespace>
-    <ApplicationIcon Condition="Exists('app.ico')">app.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\ITB-SCREEN-RECORDER.Core\Assets\Branding\app.ico</ApplicationIcon>
     <Description>ITB Screen Recorder Standalone Player</Description>
   </PropertyGroup>
+
+  <!-- Auto-sync central branding assets from ITB-SCREEN-RECORDER.Core before build -->
+  <Target Name="SyncBrandingFromCore" BeforeTargets="BeforeBuild;BeforeRebuild">
+    <PropertyGroup>
+      <CoreBrandingDir>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\ITB-SCREEN-RECORDER.Core\Assets\Branding'))</CoreBrandingDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <CoreBrandingFiles Include="$(CoreBrandingDir)\*" />
+    </ItemGroup>
+    <MakeDir Directories="$(MSBuildProjectDirectory)\Assets" />
+    <Copy SourceFiles="@(CoreBrandingFiles)" DestinationFolder="$(MSBuildProjectDirectory)\Assets" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Resource Include="Assets\**\*" />

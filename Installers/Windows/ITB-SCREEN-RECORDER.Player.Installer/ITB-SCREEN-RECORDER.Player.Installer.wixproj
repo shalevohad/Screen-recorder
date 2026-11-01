@@ -21,7 +21,7 @@
 		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Player\windows</FinalOutputDir>
 
 		<!-- Pass variables to WXS file -->
-		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
+		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version);CoreAssetsDir=$(SolutionRoot)\ITB-SCREEN-RECORDER.Core\Assets\Branding</DefineConstants>
 		<SuppressIces>ICE61;ICE43;ICE57</SuppressIces>
 	</PropertyGroup>
 

@@ -20,7 +20,6 @@
 		<None Include="setup.sh" />
 		<None Include="itb-player.desktop" />
 		<None Include="itb-package.xml" />
-		<None Include="itb-player.png" />
 	</ItemGroup>
 
 	<Target Name="BuildLinuxPlayerPackage" AfterTargets="Build">
@@ -36,7 +35,7 @@
 		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
 		<Copy SourceFiles="itb-player.desktop" DestinationFolder="$(StagingDir)" />
 		<Copy SourceFiles="itb-package.xml" DestinationFolder="$(StagingDir)" />
-		<Copy SourceFiles="itb-player.png" DestinationFolder="$(StagingDir)" />
+		<Copy SourceFiles="$(SolutionRoot)/ITB-SCREEN-RECORDER.Core/Assets/Branding/itb-player.png" DestinationFolder="$(StagingDir)" />
 
 		<Message Importance="high" Text="=== [4/5] Packing Self-Extracting .run Installer ===" />
 		<Exec Command="$(PowerShellCmd) -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)/BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)/installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />

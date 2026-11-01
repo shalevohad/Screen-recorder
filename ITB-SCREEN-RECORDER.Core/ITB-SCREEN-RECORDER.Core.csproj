@@ -19,9 +19,9 @@
 
 	<ItemGroup>
 		<PackageReference Include="Dapper" Version="2.1.89" />
-		<!-- 💡 גרסה 8.0.12 יציבה ומותאמת ל-.NET 8 עבור SQLite -->
+		<!-- SQLite 8.0.12 -->
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
-		<!-- 💡 חבילת Native עבור libe_sqlite3.so בלינוקס ו-e_sqlite3.dll בווינדוס -->
+		<!-- Native libe_sqlite3 -->
 		<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.10" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
 		<PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
@@ -32,6 +32,9 @@
 		<None Update="appsettings*.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Never</CopyToPublishDirectory>
+		</None>
+		<None Include="Assets\Branding\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 
