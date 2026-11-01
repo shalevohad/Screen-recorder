@@ -46,7 +46,7 @@ public static class ServerConfigurator
             string serverRole = parts.Length > 6 && !string.IsNullOrWhiteSpace(parts[6]) ? parts[6].Trim() : "Active-Active";
             string serverPriority = parts.Length > 7 && !string.IsNullOrWhiteSpace(parts[7]) ? parts[7].Trim() : "1";
             string discPort = parts.Length > 8 && !string.IsNullOrWhiteSpace(parts[8]) ? parts[8].Trim() : "5098";
-            string discMcast = parts.Length > 9 && !string.IsNullOrWhiteSpace(parts[9]) ? parts[9].Trim() : "239.255.10.90";
+            string discMcast = parts.Length > 9 && !string.IsNullOrWhiteSpace(parts[9]) ? parts[9].Trim() : "239.210.1.5";
             bool enableVip = parts.Length > 10 && (parts[10] == "1" || string.Equals(parts[10], "true", StringComparison.OrdinalIgnoreCase));
             string virtualIp = parts.Length > 11 ? parts[11].Trim() : "";
             string partnerUrl = parts.Length > 12 ? parts[12].Trim() : "";

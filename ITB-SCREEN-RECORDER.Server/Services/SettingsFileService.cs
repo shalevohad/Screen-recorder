@@ -57,7 +57,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
                 DisplayTimezone = (string)(systemConfig["DisplayTimezone"] ?? "Asia/Jerusalem"),
 
-                // 💡 קריאת ה-Locale
+                // Read display locale setting
                 DisplayLocale = (string)(systemConfig["DisplayLocale"] ?? "en-US"),
 
                 Storage = new StorageSettingsDto
@@ -90,7 +90,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
                 systemConfig["DisplayTimezone"] = dto.DisplayTimezone;
 
-                // 💡 כתיבת ה-Locale לדיסק
+                // Persist display locale to disk
                 systemConfig["DisplayLocale"] = dto.DisplayLocale;
 
                 storage["NetAppUncPath"] = dto.Storage.NetAppUncPath;

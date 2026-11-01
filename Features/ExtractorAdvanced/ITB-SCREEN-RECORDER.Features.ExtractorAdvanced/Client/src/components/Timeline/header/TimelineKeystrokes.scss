@@ -32,7 +32,7 @@
             transition: all 0.15s ease;
         }
 
-        // סמן מיקרו-טקטי עדין שאינו מזהם את מספרי הסרגל
+        // Subtle micro-tactical marker without obscuring ruler numerals
         .keystroke-pip-anchor {
             position: absolute;
             top: 2px;
@@ -70,7 +70,7 @@
             }
         }
 
-        // עיצוב אשכול מרובה אירועים
+        // Multi-event cluster styling
         &.is-cluster {
             .keystroke-tick-line {
                 width: 1.5px;
@@ -86,7 +86,7 @@
             }
         }
 
-        // טולטיפ צף מעל השנתת (נפתח כלפי מעלה כדי למנוע חיתוך בתחתית המסך)
+        // Floating tooltip above tick mark (opens upward to avoid clipping on bottom)
         .keystroke-tooltip {
             position: absolute;
             bottom: calc(100% + 5px);
@@ -108,7 +108,7 @@
             z-index: 99999;
             transition: opacity 0.15s ease, transform 0.15s ease;
 
-            // חץ קטן המצביע כלפי מטה לעבר השנתת
+            // Small downward indicator arrow towards tick mark
             &::before {
                 content: '';
                 position: absolute;

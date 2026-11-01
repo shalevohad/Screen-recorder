@@ -41,7 +41,7 @@ export function saveStudioSessionCache(data) {
                 inPointMs: typeof data.inPointMs === 'number' ? data.inPointMs : null,
                 outPointMs: typeof data.outPointMs === 'number' ? data.outPointMs : null,
                 playheadMs: typeof data.playheadMs === 'number' ? data.playheadMs : null,
-                // 💡 שמירת ערכי Epoch מוחלטים עבור נקודות ה-Cut
+                // Absolute Epoch millisecond timestamps for cut points
                 inEpochMs: typeof data.inEpochMs === 'number' ? data.inEpochMs : null,
                 outEpochMs: typeof data.outEpochMs === 'number' ? data.outEpochMs : null,
                 playheadEpochMs: typeof data.playheadEpochMs === 'number' ? data.playheadEpochMs : null,
@@ -79,14 +79,15 @@ export function getAudioSettings() {
             const parsed = JSON.parse(raw);
             return {
                 volume: typeof parsed.volume === 'number' ? parsed.volume : 0.8,
-                isMuted: typeof parsed.isMuted === 'boolean' ? parsed.isMuted : true
+                isMuted: typeof parsed.isMuted === 'boolean' ? parsed.isMuted : true,
+                channelMode: parsed.channelMode || 'both'
             };
         }
     } catch (e) {
         console.warn('[SessionStore] Failed to read audio settings:', e);
     }
 
-    return { volume: 0.8, isMuted: true };
+    return { volume: 0.8, isMuted: true, channelMode: 'both' };
 }
 
 export function saveAudioSettings(settings) {

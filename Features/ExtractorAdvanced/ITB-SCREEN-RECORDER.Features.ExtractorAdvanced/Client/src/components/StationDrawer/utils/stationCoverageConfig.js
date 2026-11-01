@@ -1,18 +1,23 @@
-﻿// Client/src/components/StationDrawer/utils/stationCoverageConfig.js
+// Client/src/components/StationDrawer/utils/stationCoverageConfig.js
 
 /**
- * ספי הכיסוי באחוזים לשיטת הרמזור (ניתנים לשינוי והתאמה מערכתית)
+ * Station recording coverage percentage thresholds for traffic-light health status.
  */
 export const COVERAGE_THRESHOLDS = {
-    // 95% ומעלה (ללא פערים משמעותיים) - ירוק
+    // 95% and above (without significant gaps) - Optimal green
     optimalMinPct: 95,
-    // 70% עד 94% - צהוב (פערים קלים/תקינות חלקית)
+    // 70% to 94% - Warning amber (minor gaps or partial coverage)
     warningMinPct: 70,
-    // מתחת ל-70% - אדום (פערים קריטיים)
+    // Below 70% - Critical rose (critical missing intervals)
 };
 
 /**
- * קובע את רמת הרמזור עבור עמדה לפי אחוז הכיסוי וקיום פערים
+ * Evaluates traffic-light health level for a station based on coverage percentage and gap status.
+ * 
+ * @param {number} coveragePct - Percentage of time covered (0-100).
+ * @param {boolean} hasGaps - Whether recording has detected internal gaps.
+ * @param {typeof COVERAGE_THRESHOLDS} [thresholds=COVERAGE_THRESHOLDS] - Custom threshold levels.
+ * @returns {{ level: 'optimal'|'warning'|'critical', color: string, label: string, badgeClass: string }}
  */
 export function evaluateTrafficLight(coveragePct, hasGaps, thresholds = COVERAGE_THRESHOLDS) {
     if (coveragePct >= thresholds.optimalMinPct && !hasGaps) {

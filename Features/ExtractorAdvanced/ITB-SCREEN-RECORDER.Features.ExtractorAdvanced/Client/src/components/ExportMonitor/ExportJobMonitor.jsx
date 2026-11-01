@@ -5,8 +5,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './ExportJobMonitor.scss';
 
+/**
+ * ExportJobMonitor renders the floating export status pill and drawer queue.
+ * 
+ * @param {Object} props
+ * @param {boolean} [props.isGlobalHost=false] - Whether this instance is the primary global host mounted in body.
+ * @returns {JSX.Element|null}
+ */
 export default function ExportJobMonitor({ isGlobalHost = false }) {
-    // 💡 כל ה-Hooks מוגדרים ללא תנאים בראש הקומפוננטה (Rules of Hooks)
+    // All hooks defined unconditionally at the top of the component (Rules of Hooks)
     const [jobs, setJobs] = useState([]);
     const [dismissingIds, setDismissingIds] = useState(new Set());
     const drawerRef = useRef(null);
@@ -119,7 +126,7 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
         return () => document.removeEventListener('pointerdown', handleOutsideClick);
     }, [isOpen, isPinned]);
 
-    // 💡 תנאי בדיקת Host גלובלי — מתבצע אך ורק לאחר שכל ה-Hooks הוגדרו במלואם
+    // Global host guard check — evaluated only after all hooks are declared
     const hasGlobalHost = typeof document !== 'undefined' && !!document.getElementById('itb-global-export-job-monitor-root');
     if (!isGlobalHost && hasGlobalHost) {
         return null;

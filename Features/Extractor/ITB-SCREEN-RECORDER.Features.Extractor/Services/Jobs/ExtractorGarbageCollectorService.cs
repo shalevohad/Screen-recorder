@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Services/ExtractorGarbageCollectorService.cs
 // ==========================================
 using System;
@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 {
     /// <summary>
-    /// שירות רקע לניקוי קבצי זבל בדיסק וסגירת תהליכי FFmpeg/FFprobe תקועים ויתומים
+    /// Background service that cleans orphaned temporary spool files on disk and terminates runaway or orphaned FFmpeg/FFprobe processes.
     /// </summary>
     public class ExtractorGarbageCollectorService : BackgroundService
     {
@@ -62,52 +62,64 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             CleanupDiskArtifacts();
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _trackedExtractorPids = new();
+
+        /// <summary>
+        /// Registers a spawned Extractor FFmpeg/FFprobe process ID so that garbage collection only terminates Extractor-owned tasks.
+        /// </summary>
+        public static void TrackProcess(int processId)
+        {
+            _trackedExtractorPids[processId] = DateTime.UtcNow;
+        }
+
+        public static void UntrackProcess(int processId)
+        {
+            _trackedExtractorPids.TryRemove(processId, out _);
+        }
+
         private void CleanupOrphanProcesses()
         {
-            string[] targetProcessNames = { "ffmpeg", "ffprobe" };
-            DateTime processThreshold = DateTime.Now - MaxProcessLifetime;
+            DateTime processThreshold = DateTime.UtcNow - MaxProcessLifetime;
             int killedCount = 0;
 
-            foreach (var procName in targetProcessNames)
+            // Only clean up Extractor-spawned processes that have been explicitly tracked and timed out.
+            // NEVER blindly terminate system-wide FFmpeg processes (which breaks continuous live recording and streaming).
+            foreach (var kvp in _trackedExtractorPids.ToArray())
             {
-                Process[] processes;
-                try
-                {
-                    processes = Process.GetProcessesByName(procName);
-                }
-                catch
-                {
-                    continue;
-                }
+                int pid = kvp.Key;
+                DateTime startedAt = kvp.Value;
 
-                foreach (var proc in processes)
+                if (startedAt < processThreshold)
                 {
                     try
                     {
-                        if (proc.HasExited) continue;
-
-                        if (proc.StartTime < processThreshold)
+                        var proc = Process.GetProcessById(pid);
+                        if (!proc.HasExited)
                         {
-                            _logger.LogWarning("[Extractor GC] Killing stale process {Name} (PID: {Pid}, Running since: {StartTime:HH:mm:ss})",
-                                procName, proc.Id, proc.StartTime);
-
+                            _logger.LogWarning("[Extractor GC] Killing stale Extractor job process (PID: {Pid}, Running since: {StartTime:HH:mm:ss})",
+                                pid, startedAt);
                             proc.Kill(entireProcessTree: true);
                             killedCount++;
                         }
                     }
-                    catch (Exception)
+                    catch (ArgumentException)
                     {
+                        // Process already exited
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("[Extractor GC] Could not kill tracked process {Pid}: {Msg}", pid, ex.Message);
                     }
                     finally
                     {
-                        proc.Dispose();
+                        _trackedExtractorPids.TryRemove(pid, out _);
                     }
                 }
             }
 
             if (killedCount > 0)
             {
-                _logger.LogInformation("[Extractor GC] Terminated {Count} orphaned FFmpeg/FFprobe processes.", killedCount);
+                _logger.LogInformation("[Extractor GC] Terminated {Count} orphaned Extractor FFmpeg/FFprobe processes.", killedCount);
             }
         }
 
@@ -120,7 +132,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             string tempPath = Path.GetTempPath();
 
-            // כולל תחיליות של שני המנועים: itb_spool_, cut_, bridge_, concat_, manifest_
+            // Covers temp prefixes for both extractor engines: itb_spool_, cut_, bridge_, concat_, manifest_
             string[] tempPrefixes = { "spritesheet_", "sync_", "frame_", "stream_", "manifest_", "bridge_", "concat_", "itb_spool_", "cut_" };
 
             try

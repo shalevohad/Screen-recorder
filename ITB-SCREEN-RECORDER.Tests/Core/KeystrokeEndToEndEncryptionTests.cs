@@ -40,22 +40,22 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
     [Fact]
     public void WorkerPayloadEncryption_ProducesCompliantEnvelope_AndObfuscatesKeystrokes()
     {
-        // 1. מדמה מפתח פעיל שמועבר מהשרת לסוכן ול-Worker דרך ה-IPC
+        // 1. Simulate active key dispatched from server to agent and worker via IPC
         byte[] activeKey = PayloadEncryptionManager.GenerateKey();
         string keyId = "KEY-TACTICAL-2026-X1";
         string plainCombo = "Ctrl + Alt + Delete";
 
-        // 2. ביצוע הצפנת המקשים בתוך ה-WorkerEngine
+        // 2. Execute keystroke encryption inside WorkerEngine
         string encrypted = PayloadEncryptionManager.Encrypt(plainCombo, keyId, activeKey);
 
-        // 3. אימות מבנה המעטפה והסתרת הטקסט הגלוי
+        // 3. Verify envelope structure and cleartext obfuscation
         Assert.NotNull(encrypted);
         Assert.StartsWith(PayloadEncryptionManager.EnvelopePrefix + keyId + ":", encrypted);
         Assert.DoesNotContain("Ctrl", encrypted);
         Assert.DoesNotContain("Alt", encrypted);
         Assert.DoesNotContain("Delete", encrypted);
 
-        // וידוא שהחלק של ה-Base64 מכיל לפחות 28 בתים (12 בתים Nonce + 16 בתים Tag)
+        // Verify base64 component contains at least 28 bytes (12 bytes Nonce + 16 bytes Tag)
         string base64Part = encrypted.Substring((PayloadEncryptionManager.EnvelopePrefix + keyId + ":").Length);
         byte[] payloadBytes = Convert.FromBase64String(base64Part);
         Assert.True(payloadBytes.Length >= 28);
@@ -64,14 +64,14 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
     [Fact]
     public async Task ServerHeartbeatPipeline_IngestsEncryptedToDatabase_AndDecryptsForSignalRBroadcast()
     {
-        // 1. אתחול שירות ניהול המפתחות (KeyRingService)
+        // 1. Initialize key ring management service (KeyRingService)
         var keyRing = new KeyRingService(_factory);
         await keyRing.InitializeAsync();
         var (activeKeyId, activeKeyBytes) = keyRing.GetActiveKey();
 
         var catalogRepo = new CatalogRepository(_factory, keyRing);
 
-        // 2. דימוי לכידת מקשים מוצפנים בצד ה-Worker
+        // 2. Simulate worker-side encrypted keystroke capture
         string host = "FINANCE-STATION-01";
         long baseEpoch = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -89,10 +89,10 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
             KeyCombination = PayloadEncryptionManager.Encrypt(e.ClearText, activeKeyId, activeKeyBytes)
         }).ToList();
 
-        // 3. דימוי קבלת Heartbeat ב-AgentController: שמירה למסד נתונים (At-Rest Encryption)
+        // 3. Simulate heartbeat ingestion in AgentController: store to database (At-Rest Encryption)
         await catalogRepo.BulkInsertKeystrokesAsync(host, encryptedKeystrokeDtos);
 
-        // אימות שבמסד הנתונים השורות אכן נשמרו מוצפנות (ללא דליפת טקסט גלוי בדיסק)
+        // Verify stored rows in database are strictly encrypted (zero cleartext leakage on disk)
         using (var db = _factory.CreateConnection())
         {
             var storedRows = (await db.QueryAsync<string>(
@@ -108,7 +108,7 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
             }
         }
 
-        // 4. דימוי פענוח אוטומטי של שרת עבור שידור חי ב-SignalR Hub (לצופים מורשים בדשבורד)
+        // 4. Simulate server-side automatic decryption for live SignalR broadcast to authorized dashboard subscribers
         var decryptedForBroadcast = encryptedKeystrokeDtos.Select(k => new KeystrokeEventDto
         {
             EpochMs = k.EpochMs,
@@ -127,26 +127,26 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
         var keyRing = new KeyRingService(_factory);
         await keyRing.InitializeAsync();
 
-        // מפתח ראשוני דור 1
+        // Initial key: Generation 1
         var (k1Id, k1Bytes) = keyRing.GetActiveKey();
         string text1 = "PasswordPhase1!";
         string enc1 = PayloadEncryptionManager.Encrypt(text1, k1Id, k1Bytes);
 
-        // סבב מפתחות ראשון -> דור 2
+        // First rotation -> Generation 2
         string k2Id = await keyRing.RotateKeyAsync();
         var (k2ActiveId, k2Bytes) = keyRing.GetActiveKey();
         Assert.Equal(k2Id, k2ActiveId);
         string text2 = "SensitiveCommandPhase2";
         string enc2 = PayloadEncryptionManager.Encrypt(text2, k2Id, k2Bytes);
 
-        // סבב מפתחות שני -> דור 3
+        // Second rotation -> Generation 3
         string k3Id = await keyRing.RotateKeyAsync();
         var (k3ActiveId, k3Bytes) = keyRing.GetActiveKey();
         Assert.Equal(k3Id, k3ActiveId);
         string text3 = "RestrictedInputPhase3";
         string enc3 = PayloadEncryptionManager.Encrypt(text3, k3Id, k3Bytes);
 
-        // וידוא שה-KeyRingService מפענח את כל הדורות הישנים והחדשים ללא צורך בהצפנה מחדש
+        // Verify KeyRingService transparently decrypts all generations (both past and current) without re-encryption
         Assert.Equal(text1, keyRing.Decrypt(enc1));
         Assert.Equal(text2, keyRing.Decrypt(enc2));
         Assert.Equal(text3, keyRing.Decrypt(enc3));
@@ -161,31 +161,31 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
 
         string validEncrypted = PayloadEncryptionManager.Encrypt(plaintext, keyId, key);
 
-        // 1. שיבוש מכוון של בייט אחד בתוך ה-Ciphertext (מדמה ניסיון זיוף או שיבוש תעבורה)
+        // 1. Deliberately tamper with one byte in the ciphertext payload (simulates tampering or transit corruption)
         string prefix = $"{PayloadEncryptionManager.EnvelopePrefix}{keyId}:";
         string base64Payload = validEncrypted.Substring(prefix.Length);
         byte[] payloadBytes = Convert.FromBase64String(base64Payload);
 
-        // שינוי של בייט בחלק של ה-Ciphertext
+        // Modify byte in ciphertext portion
         payloadBytes[payloadBytes.Length - 1] ^= 0xFF;
         string tamperedEncrypted = prefix + Convert.ToBase64String(payloadBytes);
 
-        // פענוח של מידע משובש: AesGcm יזרוק AuthenticationTagMismatchException והמנהל יחזיר DECRYPTION_FAILED
+        // Decryption of tampered ciphertext: AesGcm throws AuthenticationTagMismatchException and returns DECRYPTION_FAILED
         string result = PayloadEncryptionManager.Decrypt(tamperedEncrypted, id => id == keyId ? key : null);
         Assert.Equal("[DECRYPTION_FAILED]", result);
 
-        // 2. שיבוש אורך החבילה (פחות מ-28 בתים)
+        // 2. Tampered payload length (<28 bytes)
         byte[] shortBytes = new byte[15];
         string shortEncrypted = prefix + Convert.ToBase64String(shortBytes);
         string shortResult = PayloadEncryptionManager.Decrypt(shortEncrypted, id => id == keyId ? key : null);
         Assert.Equal("[CORRUPTED_PAYLOAD]", shortResult);
 
-        // 3. Base64 בלתי חוקי לחלוטין
+        // 3. Completely invalid Base64 string
         string corruptBase64 = prefix + "!!!NOT_VALID_BASE64@@@";
         string corruptResult = PayloadEncryptionManager.Decrypt(corruptBase64, id => id == keyId ? key : null);
         Assert.Equal("[DECRYPTION_FAILED]", corruptResult);
 
-        // 4. מזהה מפתח לא ידוע
+        // 4. Unrecognized key identifier
         string unknownKeyEncrypted = $"{PayloadEncryptionManager.EnvelopePrefix}UNKNOWN-KEY-999:{base64Payload}";
         string unknownResult = PayloadEncryptionManager.Decrypt(unknownKeyEncrypted, _ => null);
         Assert.Equal("[UNRESOLVED_KEY:UNKNOWN-KEY-999]", unknownResult);
@@ -239,7 +239,7 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
         string stationId = "EXPORT-STATION-01";
         long baseEpoch = 1790000000000L;
 
-        // הכנסת מקשים מוצפנים למסד
+        // Insert encrypted keystrokes into database
         var keys = new List<KeystrokeEventDto>
         {
             new KeystrokeEventDto
@@ -258,10 +258,10 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
 
         await catalogRepo.BulkInsertKeystrokesAsync(stationId, keys);
 
-        // הפעלת מחולל הכתוביות (SRT + ASS Keycaps)
+        // Execute subtitle generator (SRT + ASS Keycaps)
         var srtGenerator = new KeystrokeSrtGenerator(catalogRepo);
 
-        // 1. יצירת קובץ SRT
+        // 1. Generate SRT subtitle file
         string? srtPath = await srtGenerator.CreateSrtFileAsync(stationId, baseEpoch, baseEpoch + 10000);
         Assert.NotNull(srtPath);
         Assert.True(File.Exists(srtPath));
@@ -278,7 +278,7 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
             if (File.Exists(srtPath)) File.Delete(srtPath);
         }
 
-        // 2. יצירת קובץ ASS Keycaps מעוצב
+        // 2. Generate styled ASS Keycaps subtitle file
         string? assPath = await srtGenerator.CreateAssKeycapsFileAsync(stationId, baseEpoch, baseEpoch + 10000);
         Assert.NotNull(assPath);
         Assert.True(File.Exists(assPath));
@@ -313,7 +313,7 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
         string stationA = "FLEET-PC-01";
         string stationB = "FLEET-PC-02";
 
-        // עמדה A כרגע במצב המתנה (לא משדרת)
+        // Station A initially in standby (not streaming)
         var reportA = new AgentTelemetryReport
         {
             Hostname = stationA,
@@ -321,7 +321,7 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
         };
         await telemetryState.ProcessHeartbeatAsync(reportA, "127.0.0.1");
 
-        // עמדה B כרגע במצב שידור פעיל
+        // Station B initially streaming actively
         var reportB = new AgentTelemetryReport
         {
             Hostname = stationB,
@@ -330,22 +330,23 @@ public class KeystrokeEndToEndEncryptionTests : IDisposable
         };
         await telemetryState.ProcessHeartbeatAsync(reportB, "127.0.0.1");
 
-        // 1. הפעלת Start All ממוקד על עמדה A (Start Requested)
+        // 1. Trigger Start All targeting Station A (Start Requested)
         telemetryState.SetAgentStreamState(stationA, true);
 
-        // ה-Heartbeat הבא של עמדה A מקבל פקודת StartStream ו-ShouldStream = true
+        // The next heartbeat from Station A receives StartStream command and ShouldStream = true
         var nextRespA = await telemetryState.ProcessHeartbeatAsync(reportA, "127.0.0.1");
         Assert.NotNull(nextRespA);
         Assert.True(nextRespA.ShouldStream);
         Assert.Equal(ServerCommand.StartStream, nextRespA.Command);
 
-        // 2. הפעלת Stop All ממוקד על עמדה B (Stop Requested)
+        // 2. Trigger Stop Recording targeting Station B (Stop Recording Requested -> Monitor Only)
         telemetryState.SetAgentStreamState(stationB, false);
 
-        // ה-Heartbeat הבא של עמדה B מקבל פקודת StopStream ו-ShouldStream = false
+        // Station continues live streaming (24/7 live monitoring), but recording state is stopped
         var nextRespB = await telemetryState.ProcessHeartbeatAsync(reportB, "127.0.0.1");
         Assert.NotNull(nextRespB);
-        Assert.False(nextRespB.ShouldStream);
-        Assert.Equal(ServerCommand.StopStream, nextRespB.Command);
+        Assert.True(nextRespB.ShouldStream);
+        Assert.False(reportB.IsRecording);
+        Assert.Null(reportB.RecordingStartedAtUtc);
     }
 }

@@ -59,7 +59,7 @@
         margin: 0 1px;
     }
 
-    // 🎯 מצב VIEWPORT בכרטיס התחנה
+    // Viewport presentation mode inside station card
     &.mode-viewport {
         bottom: 12px;
         left: 50%;
@@ -80,7 +80,7 @@
         }
     }
 
-    // 🎯 מצב CAPTION: כתובית סרטים רכה בתחתית
+    // Caption mode: soft movie subtitle bar at bottom
     &.mode-caption {
         .caption-bar {
             display: inline-flex;
@@ -136,7 +136,7 @@
         }
     }
 
-    // 🎯 מצב FULLSCREEN / THEATER
+    // Fullscreen / theater presentation mode
     &.mode-fullscreen {
         bottom: 36px;
         left: 50%;
@@ -171,7 +171,7 @@
     }
 }
 
-// 🎯 תצוגה דחוסה לטבלת תחנות
+// Compact pill presentation for dense station grid view
 .live-keystroke-compact-pill {
     display: inline-flex;
     align-items: center;

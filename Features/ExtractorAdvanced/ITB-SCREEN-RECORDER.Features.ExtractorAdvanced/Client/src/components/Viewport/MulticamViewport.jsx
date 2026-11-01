@@ -48,7 +48,7 @@ export default function MulticamViewport({
     timelineStations = [],
     onSelectActiveStation,
     onOpenSpotlight,
-    onStationContextMenu, // 💡 פרופ חדש
+    onStationContextMenu, // Context menu event callback: (stationId, mouseEvent) => void
     baseEpochMs = 0,
     playheadMs = 0,
     playheadEpochMs = 0,
@@ -63,7 +63,10 @@ export default function MulticamViewport({
     recordingSegments = {},
     playbackSpeed = 1,
     keystrokeMode = 'BURN_IN',
-    keystrokes = []
+    keystrokes = [],
+    directorPlan,
+    onOverrideDisplay,
+    onResetOverride
 }) {
     const resizeObserverRef = useRef(null);
     const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
@@ -245,6 +248,9 @@ export default function MulticamViewport({
                             recordingSegments={recordingSegments}
                             globalGaps={globalGaps}
                             showWatermark={false}
+                            directorPlan={directorPlan || soloStationToRender?.directorPlan}
+                            onOverrideDisplay={onOverrideDisplay}
+                            onResetOverride={onResetOverride}
                         />
 
                         <KeystrokePlaybackOverlay

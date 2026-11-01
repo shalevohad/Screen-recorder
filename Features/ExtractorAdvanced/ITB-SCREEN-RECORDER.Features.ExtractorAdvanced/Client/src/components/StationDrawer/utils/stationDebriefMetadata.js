@@ -1,8 +1,11 @@
-﻿// Client/src/components/StationDrawer/utils/stationDebriefMetadata.js
+// Client/src/components/StationDrawer/utils/stationDebriefMetadata.js
 import { COVERAGE_THRESHOLDS, evaluateTrafficLight } from './stationCoverageConfig.js';
 
 /**
- * מפרמט מילישניות למחרוזת שעות, דקות ושניות (HH:mm:ss)
+ * Formats duration in milliseconds into HH:mm:ss string.
+ * 
+ * @param {number} durationMs - Duration in milliseconds.
+ * @returns {string} Formatted duration.
  */
 function formatDurationMs(durationMs) {
     if (!durationMs || durationMs <= 0) return '00:00:00';
@@ -15,7 +18,10 @@ function formatDurationMs(durationMs) {
 }
 
 /**
- * מפרמט גודל קבצים מבתים למחרוזת קריאה (MB / GB)
+ * Formats bytes into human-readable string (MB / GB).
+ * 
+ * @param {number} bytes - Size in bytes.
+ * @returns {string} Formatted file size.
  */
 function formatBytes(bytes) {
     if (!bytes || bytes <= 0) return '0 MB';
@@ -26,13 +32,13 @@ function formatBytes(bytes) {
 }
 
 /**
- * מנוע חישוב נתוני תחקור עבור עמדה.
- * מקבל את העמדה, מקטעי ההקלטה האמיתיים שלה וחלון הזמן המבוקש.
+ * Computes station debrief telemetry, health status, recorded duration, and coverage segments.
  *
- * @param {Object} station אובייקט העמדה מהשרת
- * @param {Array} rawSegments רשימת מקטעי ההקלטה: [{ startEpoch, endEpoch }]
- * @param {Object} scope טווח הזמן: { baseEpochMs, durationMs }
- * @param {Object} thresholds ספי רמזור
+ * @param {Object} station - Server station object.
+ * @param {Array<{ startEpoch: number, endEpoch: number }>} [rawSegments=[]] - Recorded segments list.
+ * @param {{ baseEpochMs: number, durationMs: number }} [scope={ baseEpochMs: 0, durationMs: 0 }] - Time window bounds.
+ * @param {Object} [thresholds=COVERAGE_THRESHOLDS] - Coverage traffic light thresholds.
+ * @returns {Object} Debrief telemetry metadata.
  */
 export function getStationDebriefMeta(
     station,
@@ -42,14 +48,14 @@ export function getStationDebriefMeta(
 ) {
     const { baseEpochMs, durationMs } = scope;
 
-    // מאפייני וידאו ושמע ישירות מהאובייקט שמחזיר השרת
+    // Video and audio properties directly from server entity
     const hasAudio = Boolean(station?.hasAudio);
     const audioChannels = station?.audioChannels || (hasAudio ? 'AUDIO STREAM' : 'MUTED');
     const resolution = station?.resolution || (station?.width && station?.height ? `${station.height}p` : '1080p');
     const fps = station?.fps || 30;
     const fileSize = station?.fileSize || (station?.bytesRecorded ? formatBytes(station.bytesRecorded) : '--');
 
-    // אם אין חלון זמן מוגדר או שאין מקטעים כלל
+    // Return empty gap profile if window or segments are missing
     if (!durationMs || durationMs <= 0 || !Array.isArray(rawSegments) || rawSegments.length === 0) {
         const trafficStatus = evaluateTrafficLight(0, false, thresholds);
         return {
@@ -70,7 +76,7 @@ export function getStationDebriefMeta(
     const windowStart = baseEpochMs;
     const windowEnd = baseEpochMs + durationMs;
 
-    // 1. סינון וחיתוך מקטעים כך שיהיו מוגבלים לחלון הזמן המבוקש בלבד
+    // 1. Clip segments to the active time window
     const clippedSegments = [];
     for (const seg of rawSegments) {
         const s = Math.max(seg.startEpoch, windowStart);
@@ -80,17 +86,17 @@ export function getStationDebriefMeta(
         }
     }
 
-    // מיון כרונולוגי
+    // Chronological ordering
     clippedSegments.sort((a, b) => a.startEpoch - b.endEpoch);
 
-    // 2. מיזוג מקטעים חופפים או צמודים (Merge overlapping/adjacent)
+    // 2. Merge overlapping or adjacent segments
     const merged = [];
     for (const seg of clippedSegments) {
         if (merged.length === 0) {
             merged.push({ ...seg });
         } else {
             const last = merged[merged.length - 1];
-            if (seg.startEpoch <= last.endEpoch + 1000) { // טולרנטיות של שניה אחת
+            if (seg.startEpoch <= last.endEpoch + 1000) { // 1-second tolerance
                 last.endEpoch = Math.max(last.endEpoch, seg.endEpoch);
             } else {
                 merged.push({ ...seg });
@@ -98,7 +104,7 @@ export function getStationDebriefMeta(
         }
     }
 
-    // 3. חישוב סך זמן ההקלטה במילישניות
+    // 3. Compute total recorded duration in milliseconds
     let totalRecordedMs = 0;
     for (const seg of merged) {
         totalRecordedMs += (seg.endEpoch - seg.startEpoch);
@@ -106,14 +112,14 @@ export function getStationDebriefMeta(
 
     const coveragePct = Math.min(100, Math.round((totalRecordedMs / durationMs) * 100));
 
-    // 4. בניית רצועת מקטעי ההקלטה והפערים (Segments & Gaps) באחוזים 0-100%
+    // 4. Construct visual segment and gap percentages (0-100%)
     const trackSegments = [];
     let currentCursor = windowStart;
     let gapsCount = 0;
 
     for (const seg of merged) {
-        // אם יש פער לפני המקטע הנוכחי
-        if (seg.startEpoch > currentCursor + 2000) { // פער של מעל 2 שניות
+        // Gap preceding current segment
+        if (seg.startEpoch > currentCursor + 2000) { // Gap > 2 seconds
             const gapWidthPct = ((seg.startEpoch - currentCursor) / durationMs) * 100;
             const gapStartPct = ((currentCursor - windowStart) / durationMs) * 100;
             trackSegments.push({
@@ -124,7 +130,7 @@ export function getStationDebriefMeta(
             gapsCount++;
         }
 
-        // מקטע הקלטה תקין
+        // Active recording segment
         const recWidthPct = ((seg.endEpoch - seg.startEpoch) / durationMs) * 100;
         const recStartPct = ((seg.startEpoch - windowStart) / durationMs) * 100;
         trackSegments.push({
@@ -136,7 +142,7 @@ export function getStationDebriefMeta(
         currentCursor = seg.endEpoch;
     }
 
-    // פער בסוף חלון הזמן עד ל-windowEnd
+    // Trailing gap up to windowEnd
     if (currentCursor < windowEnd - 2000) {
         const gapWidthPct = ((windowEnd - currentCursor) / durationMs) * 100;
         const gapStartPct = ((currentCursor - windowStart) / durationMs) * 100;

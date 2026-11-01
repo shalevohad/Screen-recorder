@@ -7,23 +7,26 @@ const pendingTiles = new Map();
 let requestQueue = [];
 let activeWorkers = 0;
 
-// 💡 מקביליות מבוקרת (3 עובדים) כדי לשמור על תגובתיות מלאה של השרת, הווידאו וציר הזמן
+// Controlled concurrency (3 workers) to maintain server responsiveness and video/timeline playback
 const MAX_CONCURRENT = 3;
 const TASK_TIMEOUT_MS = 8000;
-const MAX_CACHE_ENTRIES = 80; // 💡 מטמון רזה ב-RAM (~3-5MB מקסימום) למניעת קריסת זיכרון דפדפן
+const MAX_CACHE_ENTRIES = 80; // Compact RAM cache (~3-5MB max) to prevent browser memory exhaustion
 
 function scheduleQueueProcessing() {
     setTimeout(processQueue, 0);
 }
 
+/**
+ * Processes queued spritesheet generation requests in LIFO order.
+ */
 function processQueue() {
     if (activeWorkers >= MAX_CONCURRENT || requestQueue.length === 0) return;
 
-    // סינון משימות שבוטלו טרם הריצה
+    // Filter out requests aborted prior to execution
     requestQueue = requestQueue.filter(task => !task.signal?.aborted);
 
     while (activeWorkers < MAX_CONCURRENT && requestQueue.length > 0) {
-        // 💡 LIFO: שליפת האריח האחרון שהמשתמש מביט בו כעת ב-Viewport
+        // LIFO: Fetch the most recent tile currently visible in viewport
         const task = requestQueue.pop();
         if (!task || task.signal?.aborted) continue;
 
@@ -32,6 +35,11 @@ function processQueue() {
     }
 }
 
+/**
+ * Executes a single spritesheet tile generation task.
+ * 
+ * @param {{ key: string, hostname: string, startEpoch: number, endEpoch: number, frameCount: number, signal: AbortSignal, resolve: (val: any) => void }} task
+ */
 async function executeTask(task) {
     const { key, hostname, startEpoch, endEpoch, frameCount, signal, resolve } = task;
     let isCleanedUp = false;
@@ -61,7 +69,7 @@ async function executeTask(task) {
             if (blob && blob.size > 1500) {
                 const blobUrl = URL.createObjectURL(blob);
 
-                // ניהול LRU: שחרור אריח ישן אם המטמון חורג מהגודל המרבי
+                // LRU eviction: revoke and remove oldest entry when exceeding cache limit
                 if (tileCache.size >= MAX_CACHE_ENTRIES) {
                     const oldestKey = tileCache.keys().next().value;
                     const oldestUrl = tileCache.get(oldestKey);
@@ -70,7 +78,7 @@ async function executeTask(task) {
                 }
 
                 tileCache.set(key, blobUrl);
-                resolve(blobUrl); // 💡 שיבוץ מיידי ברגע שהאריח מוכן
+                resolve(blobUrl); // Immediate resolve upon tile readiness
                 return;
             }
         }
@@ -83,20 +91,39 @@ async function executeTask(task) {
 }
 
 export const spritesheetStore = {
+    /**
+     * Gets a cached spritesheet tile URL synchronously.
+     * 
+     * @param {string} hostname
+     * @param {number} startEpoch
+     * @param {number} endEpoch
+     * @param {number} [frameCount=6]
+     * @returns {string|undefined} Blob URL if cached.
+     */
     get(hostname, startEpoch, endEpoch, frameCount = 6) {
         const key = `${hostname}_${startEpoch}_${endEpoch}_${frameCount}`;
         return tileCache.get(key);
     },
 
+    /**
+     * Fetches a spritesheet tile asynchronously with queueing and deduplication.
+     * 
+     * @param {string} hostname
+     * @param {number} startEpoch
+     * @param {number} endEpoch
+     * @param {number} [frameCount=6]
+     * @param {AbortSignal} [signal=null]
+     * @returns {Promise<string|null>}
+     */
     fetchTile(hostname, startEpoch, endEpoch, frameCount = 6, signal = null) {
         const key = `${hostname}_${startEpoch}_${endEpoch}_${frameCount}`;
 
-        // 1. שליפה מיידית מזיכרון ה-RAM (0ms)
+        // 1. Immediate retrieval from RAM cache (0ms)
         if (tileCache.has(key)) {
             return Promise.resolve(tileCache.get(key));
         }
 
-        // 2. אם הבקשה כבר בתהליך, החזרת ה-Promise הקיים למניעת כפילות
+        // 2. Return in-flight promise to prevent duplicate requests
         if (pendingTiles.has(key)) {
             return pendingTiles.get(key);
         }

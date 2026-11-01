@@ -6,16 +6,16 @@ import { spritesheetStore } from '../../../utils/spritesheetStore.js';
 import './TimelineTrack.scss';
 
 const getLodConfig = (viewportDurationMs) => {
-    // 💡 מדרגות LOD דינמיות מבוקרות: שמירה הדוקה על כ-10 עד 16 אריחים בכל רוחב תצוגה
-    if (viewportDurationMs <= 60 * 1000) return { tileDurationMs: 5 * 1000, framesPerTile: 4 };              // עד 1 דקה -> אריח 5 שניות (~12)
-    if (viewportDurationMs <= 5 * 60 * 1000) return { tileDurationMs: 20 * 1000, framesPerTile: 4 };          // עד 5 דקות -> אריח 20 שניות (~15)
-    if (viewportDurationMs <= 30 * 60 * 1000) return { tileDurationMs: 2 * 60 * 1000, framesPerTile: 4 };     // עד 30 דקות -> אריח 2 דקות (~15)
-    if (viewportDurationMs <= 2 * 60 * 60 * 1000) return { tileDurationMs: 8 * 60 * 1000, framesPerTile: 5 }; // עד שעתיים -> אריח 8 דקות (~15)
-    if (viewportDurationMs <= 8 * 60 * 60 * 1000) return { tileDurationMs: 30 * 60 * 1000, framesPerTile: 5 };// עד 8 שעות -> אריח 30 דקות (~16)
-    if (viewportDurationMs <= 24 * 60 * 60 * 1000) return { tileDurationMs: 2 * 60 * 60 * 1000, framesPerTile: 5 }; // עד 24 שעות -> אריח שעתיים (~12)
-    if (viewportDurationMs <= 72 * 60 * 60 * 1000) return { tileDurationMs: 6 * 60 * 60 * 1000, framesPerTile: 4 }; // עד 3 ימים -> אריח 6 שעות (~12)
-    if (viewportDurationMs <= 7 * 24 * 60 * 60 * 1000) return { tileDurationMs: 14 * 60 * 60 * 1000, framesPerTile: 4 }; // עד שבוע -> אריח 14 שעות (~12)
-    // מעל שבוע: התאמה אוטומטית לעד 14 אריחים לכל היותר
+    // Controlled dynamic Level-of-Detail (LOD) steps: maintains ~10 to 16 tiles per visible viewport width
+    if (viewportDurationMs <= 60 * 1000) return { tileDurationMs: 5 * 1000, framesPerTile: 4 };              // Up to 1 min -> 5 sec tiles (~12)
+    if (viewportDurationMs <= 5 * 60 * 1000) return { tileDurationMs: 20 * 1000, framesPerTile: 4 };          // Up to 5 min -> 20 sec tiles (~15)
+    if (viewportDurationMs <= 30 * 60 * 1000) return { tileDurationMs: 2 * 60 * 1000, framesPerTile: 4 };     // Up to 30 min -> 2 min tiles (~15)
+    if (viewportDurationMs <= 2 * 60 * 60 * 1000) return { tileDurationMs: 8 * 60 * 1000, framesPerTile: 5 }; // Up to 2 hours -> 8 min tiles (~15)
+    if (viewportDurationMs <= 8 * 60 * 60 * 1000) return { tileDurationMs: 30 * 60 * 1000, framesPerTile: 5 };// Up to 8 hours -> 30 min tiles (~16)
+    if (viewportDurationMs <= 24 * 60 * 60 * 1000) return { tileDurationMs: 2 * 60 * 60 * 1000, framesPerTile: 5 }; // Up to 24 hours -> 2 hour tiles (~12)
+    if (viewportDurationMs <= 72 * 60 * 60 * 1000) return { tileDurationMs: 6 * 60 * 60 * 1000, framesPerTile: 4 }; // Up to 3 days -> 6 hour tiles (~12)
+    if (viewportDurationMs <= 7 * 24 * 60 * 60 * 1000) return { tileDurationMs: 14 * 60 * 60 * 1000, framesPerTile: 4 }; // Up to 1 week -> 14 hour tiles (~12)
+    // Beyond 1 week: automatically calibrate to at most 14 tiles
     const autoTileMs = Math.max(24 * 60 * 60 * 1000, Math.round(viewportDurationMs / 14));
     return { tileDurationMs: autoTileMs, framesPerTile: 4 };
 };
@@ -45,7 +45,7 @@ export default function TimelineTrack({
     const hostname = station?.hostname || station?.name || '';
     const stationId = station?.id || hostname;
 
-    // 💡 תיקון: שליפת המקטעים לפי id התחנה (מניעת Tracks ריקים)
+    // Retrieve recording segments by station identifier (prevents empty tracks)
     const activeSegments = useMemo(() => {
         const stationSegs = recordingSegments[stationId] || recordingSegments[hostname] || rawSegments || [];
         if (!stationSegs || stationSegs.length === 0) return [];
@@ -95,7 +95,7 @@ export default function TimelineTrack({
             }
         });
 
-        // 💡 תקרת ביטחון מוחלטת: הגבלה לעד 20 אריחים מקסימום עם עדיפות למרכז ה-Viewport
+        // Hard safety ceiling: clamp to 20 tiles max prioritizing the viewport center
         if (tiles.length > 20) {
             const centerEpoch = baseEpochMs + viewportStartMs + (viewportDurationMs / 2);
             tiles.sort((a, b) => {
@@ -132,7 +132,7 @@ export default function TimelineTrack({
             }
         });
 
-        // 💡 ניקוי RAM יזום: סילוק אריחים ישנים מ-tilesMap שאינם בטווח הנראה
+        // Proactive RAM cleanup: evict expired tiles outside visible viewport from tilesMap
         const visibleKeySet = new Set(timelineTiles.map(t => t.key));
         const currentMap = tilesMapRef.current;
         const pruned = {};
@@ -153,7 +153,7 @@ export default function TimelineTrack({
 
         if (missingTiles.length === 0) return () => { isMounted = false; };
 
-        // 💡 דיבאונס מבוקר (150ms): מונע ירי של בקשות רשת ו-FFmpeg תוך כדי גרירת סליידרים או זום מהיר
+        // Controlled debouncing (150ms): prevents network and FFmpeg spam during slider drag or rapid zoom
         const debounceTimer = setTimeout(() => {
             missingTiles.forEach(tile => {
                 spritesheetStore.fetchTile(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile, abortController.signal)
@@ -319,7 +319,9 @@ export default function TimelineTrack({
         return resultGaps;
     }, [activeSegments, globalGaps, baseEpochMs, viewportStartMs, viewportDurationMs, inPointMs, outPointMs]);
 
-    const stationDisplayName = station?.displayName || station?.hostname || station?.name || '';
+    const stationDisplayName = station?.displayName || station?.roleAlias || station?.hostname || station?.name || '';
+    const physicalHost = station?.hostname || '';
+    const hasDifferentHost = Boolean(physicalHost && stationDisplayName && physicalHost.toLowerCase() !== stationDisplayName.toLowerCase());
 
     return (
         <div
@@ -333,9 +335,16 @@ export default function TimelineTrack({
             }}
             className={`timeline-track-container ${isActive ? 'active-track' : 'collapsed-track'}`}
         >
-            <div className="track-sidebar" title={`Right-click to deselect ${stationDisplayName}`}>
+            <div className="track-sidebar" title={`Right-click to deselect ${stationDisplayName}${hasDifferentHost ? ` (${physicalHost})` : ''}`}>
                 <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
-                <span className="station-label" title={stationDisplayName}>{stationDisplayName}</span>
+                <div className="station-sidebar-labels">
+                    <span className="station-label" title={stationDisplayName}>{stationDisplayName}</span>
+                    {hasDifferentHost && (
+                        <span className="station-physical-sublabel" title={`Physical Machine: ${physicalHost}`}>
+                            {physicalHost}
+                        </span>
+                    )}
+                </div>
             </div>
 
             <div className="track-canvas">

@@ -10,6 +10,9 @@ using ITB_SCREEN_RECORDER.Server.Services.Network;
 using ITB_SCREEN_RECORDER.Server.Data.Repositories;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 
+using System.IO;
+using Microsoft.Extensions.Logging;
+
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
     [ApiController]
@@ -79,18 +82,25 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 bool isStreaming = agent.IsStreaming;
                 aliases.TryGetValue(agent.Hostname, out string? roleAlias);
 
+                var topology = agent.DisplayTopology;
+                var displays = topology?.Displays ?? new List<ITB_SCREEN_RECORDER.Core.Contracts.Topology.DisplayMetadataDto>();
+
                 return new
                 {
                     agent.Hostname,
                     RoleAlias = roleAlias,
+                    DisplayName = !string.IsNullOrWhiteSpace(roleAlias) ? roleAlias : agent.Hostname,
                     agent.IpAddress,
                     IsOnline = isOnline,
                     IsStreaming = isStreaming,
-                    IsRecording = isStreaming,
-                    RecordingStartedAtUtc = isStreaming ? agent.RecordingStartedAtUtc : null,
-                    Status = isOnline ? (isStreaming ? "Recording" : "Standby") : "Offline",
+                    IsRecording = agent.IsRecording,
+                    RecordingStartedAtUtc = agent.IsRecording ? agent.RecordingStartedAtUtc : null,
+                    Status = isOnline ? (agent.IsRecording ? "Recording" : (isStreaming ? "Monitoring" : "Standby")) : "Offline",
 
-                    HasAudio = agent.HasActiveMicrophone || agent.HasActiveSpeakers,
+                    HasAudio = agent.HasAudio,
+                    HasActiveMicrophone = agent.HasActiveMicrophone,
+                    HasActiveSpeakers = agent.HasActiveSpeakers,
+                    IsAudioStreaming = agent.IsAudioStreaming,
                     LastSeenUtc = agent.Timestamp,
 
                     ActualFps = agent.ActualFps,
@@ -113,9 +123,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     Gpu3dPct = agent.Gpu3dPct,
                     GpuNvencPct = agent.GpuNvencPct,
 
+                    DisplayTopology = topology,
+                    Displays = displays,
+
                     HlsUrl = $"{Request.Scheme}://{host}:{hlsPort}/live/{agent.Hostname}/index.m3u8"
                 };
             });
+
 
             return Ok(result);
         }

@@ -122,7 +122,7 @@
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 
-		<!-- 💡 העתקת כלי FFmpeg ו-FFprobe עבור שרת Windows -->
+		<!-- 💡 העתקת כלי FFmpeg ו-FFprobe וכלי הדיאגנוסטיקה עבור שרת Windows -->
 		<None Include="Tools\Win\ffmpeg.exe" Condition="Exists('Tools\Win\ffmpeg.exe')">
 			<TargetPath>Tools\Win\ffmpeg.exe</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -134,6 +134,12 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 		</None>
+
+		<None Include="$(SolutionRoot)\Publish\Diagnostics\win-x64\itb-diagnostics.exe" Condition="Exists('$(SolutionRoot)\Publish\Diagnostics\win-x64\itb-diagnostics.exe')">
+			<TargetPath>Tools\itb-diagnostics.exe</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
+		</None>
 	</ItemGroup>
 
 	<!-- התאמות ייעודיות ל-Linux -->
@@ -144,7 +150,7 @@
 			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 
-		<!-- 💡 העתקת כלי FFmpeg ו-FFprobe עבור שרת Linux -->
+		<!-- 💡 העתקת כלי FFmpeg ו-FFprobe וכלי הדיאגנוסטיקה עבור שרת Linux -->
 		<None Include="Tools/Linux/ffmpeg" Condition="Exists('Tools/Linux/ffmpeg')">
 			<TargetPath>Tools/Linux/ffmpeg</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -155,6 +161,12 @@
 			<TargetPath>Tools/Linux/ffprobe</TargetPath>
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+		</None>
+
+		<None Include="$(SolutionRoot)/Publish/Diagnostics/linux-x64/itb-diagnostics" Condition="Exists('$(SolutionRoot)/Publish/Diagnostics/linux-x64/itb-diagnostics')">
+			<TargetPath>Tools/itb-diagnostics</TargetPath>
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Always</CopyToPublishDirectory>
 		</None>
 	</ItemGroup>
 
@@ -187,10 +199,13 @@
 	</ItemGroup>
 
 	<Target Name="CompileFrontend" BeforeTargets="Build" Condition="Exists('ClientApp/package.json')">
-		<Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies and building ClientApp..." />
+		<Message Importance="high" Text="[ITB SCREEN RECORDER BUILD] Installing dependencies, linting, testing, and building ClientApp..." />
 		<Exec Command="npm install" WorkingDirectory="ClientApp" Condition="!Exists('ClientApp/node_modules')" />
+		<Exec Command="npm run lint" WorkingDirectory="ClientApp" />
+		<Exec Command="npm test" WorkingDirectory="ClientApp" />
 		<Exec Command="npm run build" WorkingDirectory="ClientApp" ContinueOnError="true" />
 	</Target>
+
 
 	<!-- ========================================================== -->
 	<!-- מערכת לאיתור ובניית Features                               -->

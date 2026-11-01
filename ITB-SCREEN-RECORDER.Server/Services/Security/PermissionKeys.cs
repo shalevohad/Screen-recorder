@@ -4,25 +4,25 @@ using System.Collections.Generic;
 
 public static class PermissionKeys
 {
-    // תחנות ושידור חי
+    // Workstations and live streaming
     public const string StationsView = "stations.view";
     public const string StationsControl = "stations.control";
     public const string StationsManage = "stations.manage";
 
-    // תחקור, חילוץ ועריכה
+    // Forensic playback, extraction, and studio editing
     public const string PlaybackView = "playback.view";
     public const string PlaybackExport = "playback.export";
     public const string BookmarksManage = "bookmarks.manage";
     public const string ExtractorView = "extractor.view";
     public const string StudioView = "studio.view";
 
-    // הגדרות מערכת ותשתיות
+    // System settings and storage infrastructure
     public const string SettingsView = "settings.view";
     public const string SettingsAgents = "settings.agents";
     public const string SettingsStorage = "settings.storage";
     public const string SettingsMaintenance = "settings.maintenance";
 
-    // משתמשים ואבטחה
+    // User management and security policies
     public const string SecurityUsersManage = "security.users.manage";
     public const string SecurityRolesManage = "security.roles.manage";
 

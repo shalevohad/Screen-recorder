@@ -1,4 +1,4 @@
-﻿// Client/src/components/StationDrawer/views/Hub/StationHubTableRow.scss
+// Client/src/components/StationDrawer/views/Hub/StationHubTableRow.scss
 
 .hub-table-row {
     display: flex;
@@ -137,16 +137,16 @@
                     position: absolute;
                     top: 0;
                     bottom: 0;
-                    /* הבלטת מקטע הקלטה עם רוחב מינימלי וזוהר */
+                    /* Highlight recording segment with minimum width and glow */
                     &.rec {
-                        min-width: 5px !important; // לעולם לא ייעלם
+                        min-width: 5px !important; // Never disappear
                         background: #10b981;
                         border-radius: 2px;
                         z-index: 3;
                         box-shadow: 0 0 6px #10b981, 0 0 12px rgba(52, 211, 153, 0.9);
                         border: 0.5px solid #6ee7b7;
                     }
-                    /* עמעום פסי ה-Gap */
+                    /* Dim gap strips */
                     &.gap {
                         background: rgba(15, 23, 42, 0.95);
                         background-image: repeating-linear-gradient( -45deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.12) 3px, rgba(15, 23, 42, 0.95) 3px, rgba(15, 23, 42, 0.95) 6px );

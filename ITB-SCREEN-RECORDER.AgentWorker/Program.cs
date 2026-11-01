@@ -15,6 +15,12 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
 #if WINDOWS
             if (OperatingSystem.IsWindows())
             {
+                if (args.Length > 0)
+                {
+                    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+                    static extern bool AttachConsole(int dwProcessId);
+                    AttachConsole(-1);
+                }
                 ITBRecorderAgent.Providers.Video.WindowsDpiHelper.EnablePerMonitorDpiAwareness();
             }
 #endif

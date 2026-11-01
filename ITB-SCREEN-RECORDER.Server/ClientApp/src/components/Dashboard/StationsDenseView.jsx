@@ -17,7 +17,9 @@ export default function StationsDenseView({
     setInspectedHostname,
     setFullscreenHostname,
     liveKeystrokes = {},
-    keystrokeMode = 'burn-in'
+    keystrokeMode = 'burn-in',
+    onOpenSnoozeModal,
+    _onCancelSnooze
 }) {
     return (
         <div className="stations-dense-container">
@@ -42,19 +44,25 @@ export default function StationsDenseView({
                 {paginatedStations.map((s) => {
                     const hasDrops = (s.droppedFrames || 0) > 0;
                     const isPending = actionPending[s.hostname] || false;
-                    const isStarting = isPending === 'starting' || (Boolean(isPending) && !s.isStreaming);
-                    const isStopping = isPending === 'stopping' || (Boolean(isPending) && s.isStreaming);
-                    const isRec = Boolean(s.isStreaming) && !isPending;
+                    const isRec = Boolean(s.isRecording ?? (s.status === 'Recording')) && !isPending;
+                    const isLive = Boolean(s.isOnline && (s.isStreaming || s.isRecording)) && !isPending;
+                    const isOnline = Boolean(s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
+                    const isMonitoring = isLive && !isRec;
+                    const isStarting = isPending === 'starting' || (Boolean(isPending) && !isRec);
+                    const isStopping = isPending === 'stopping' || (Boolean(isPending) && isRec);
+                    const isNotRecording = isOnline && !isRec && !isStarting;
+                    const isAlertActive = isNotRecording && !s.isSnoozed;
+                    const isAlertSnoozed = isNotRecording && Boolean(s.isSnoozed);
                     const primaryTitle = s.roleAlias || s.displayName || s.hostname;
-                    const secondaryHost = s.roleAlias ? s.hostname : null;
+                    const secondaryHost = s.hostname && primaryTitle.toLowerCase() !== s.hostname.toLowerCase() ? s.hostname : null;
 
                     return (
                         <div
                             key={s.hostname}
-                            className={`dense-row-card ${!s.isOnline ? 'is-offline' : ''} ${hasDrops ? 'has-crit' : ''}`}
+                            className={`dense-row-card ${!s.isOnline ? 'is-offline' : ''} ${isNotRecording ? 'is-not-recording' : ''} ${isAlertActive ? 'alert-active' : ''} ${isAlertSnoozed ? 'alert-snoozed' : ''} ${hasDrops ? 'has-crit' : ''}`}
                             onClick={() => setInspectedHostname(s.hostname)}
-                            onDoubleClick={() => isRec && setFullscreenHostname(s.hostname)}
-                            title={isRec ? "Click to inspect, double-click for Fullscreen" : "Click to inspect"}
+                            onDoubleClick={() => isLive && setFullscreenHostname(s.hostname)}
+                            title={isLive ? "Click to inspect, double-click for Fullscreen" : "Click to inspect"}
                         >
                             <div className="dense-col status-col">
                                 <span className={`dense-beacon ${s.isOnline ? 'online' : 'offline'}`} />
@@ -75,13 +83,41 @@ export default function StationsDenseView({
                                     <span className="dense-badge pending" style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', border: '1px solid rgba(239, 68, 68, 0.4)' }}>STOPPING</span>
                                 ) : isRec ? (
                                     <span className="dense-badge rec">REC</span>
+                                ) : isAlertActive ? (
+                                    <div className="dense-alert-cluster">
+                                        <span className="dense-badge alert-unrecorded" title="Workstation is online but NOT recording!">⚠️ NOT REC</span>
+                                        <button
+                                            type="button"
+                                            className="dense-snooze-quick-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onOpenSnoozeModal?.(s.hostname);
+                                            }}
+                                            title="Postpone recording alert (Snooze)"
+                                        >
+                                            ⏱
+                                        </button>
+                                    </div>
+                                ) : isAlertSnoozed ? (
+                                    <span
+                                        className="dense-badge alert-snoozed"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onOpenSnoozeModal?.(s.hostname);
+                                        }}
+                                        title="Recording alert postponed. Click to adjust or cancel."
+                                    >
+                                        ⏱ {s.snoozeRemainingMinutes || 0}m
+                                    </span>
+                                ) : isMonitoring ? (
+                                    <span className="dense-badge monitor" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', border: '1px solid rgba(245, 158, 11, 0.4)' }}>MONITOR</span>
                                 ) : (
-                                    <span className="dense-badge idle">IDLE</span>
+                                    <span className="dense-badge idle">STANDBY</span>
                                 )}
-                                {isRec && (
+                                {isLive && (
                                     <LiveKeystrokeOverlay
-                                        keystrokes={s.recentKeystrokes || liveKeystrokes[s.hostname?.toLowerCase()]}
-                                        isLive={isRec}
+                                        keystrokes={s.recentKeystrokes || s.keystrokes || s.Keystrokes || liveKeystrokes[s.hostname?.toLowerCase()] || liveKeystrokes[s.hostname]}
+                                        isLive={isLive}
                                         variant="compact"
                                         mode={keystrokeMode}
                                     />
@@ -98,22 +134,22 @@ export default function StationsDenseView({
                                 <Can permission="stations.control" disabled disabledTooltip="No stream control permissions">
                                     <button
                                         type="button"
-                                        className={`dense-act-btn ${s.isStreaming ? 'stop' : 'start'}`}
+                                        className={`dense-act-btn ${isRec ? 'stop' : 'start'}`}
                                         disabled={!s.isOnline || Boolean(isPending)}
-                                        onClick={() => onToggleStream(s.hostname, Boolean(s.isStreaming), {
+                                        onClick={() => onToggleStream(s.hostname, isRec, {
                                             bitrate: s.effectiveBitrate,
                                             fps: s.effectiveFps
                                         })}
                                     >
-                                        {isStarting ? '...' : isStopping ? '...' : s.isStreaming ? 'STOP' : 'START'}
+                                        {isStarting ? '...' : isStopping ? '...' : isRec ? 'STOP' : 'START REC'}
                                     </button>
                                 </Can>
                                 <button
                                     type="button"
-                                    className={`dense-act-btn full ${!isRec ? 'disabled' : ''}`}
-                                    onClick={() => isRec && setFullscreenHostname(s.hostname)}
-                                    disabled={!isRec}
-                                    title={isRec ? "Open Station in Fullscreen View" : "Fullscreen unavailable while idle or offline"}
+                                    className={`dense-act-btn full ${!isLive ? 'disabled' : ''}`}
+                                    onClick={() => isLive && setFullscreenHostname(s.hostname)}
+                                    disabled={!isLive}
+                                    title={isLive ? "Open Station in Fullscreen View" : "Fullscreen unavailable while offline"}
                                 >
                                     FULL
                                 </button>

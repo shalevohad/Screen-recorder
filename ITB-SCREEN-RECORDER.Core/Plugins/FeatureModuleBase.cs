@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -24,7 +24,7 @@ namespace ITB_SCREEN_RECORDER.Core.Plugins
         {
             var assembly = this.GetType().Assembly;
 
-            // 1. חיפוש חסין מערכות הפעלה (התעלמות מ-Case Sensitivity בלינוקס)
+            // 1. Cross-platform case-insensitive search for embedded feature manifest
             var resourceName = assembly.GetManifestResourceNames()
                 .FirstOrDefault(n => n.EndsWith("feature.json", StringComparison.OrdinalIgnoreCase));
 
@@ -35,14 +35,14 @@ namespace ITB_SCREEN_RECORDER.Core.Plugins
 
             using var stream = assembly.GetManifestResourceStream(resourceName);
 
-            // 2. הגדרת קידוד מפורש ל-UTF8 למניעת קריסות BOM בלינוקס
+            // 2. Explicit UTF-8 decoding to handle BOM gracefully across platforms
             using var reader = new StreamReader(stream!, Encoding.UTF8);
             var jsonString = reader.ReadToEnd();
 
             using var doc = JsonDocument.Parse(jsonString);
             var root = doc.RootElement;
 
-            // 3. חילוץ Case-Insensitive בטוח
+            // 3. Case-insensitive extraction of manifest attributes
             Id = GetJsonPropertyCaseInsensitive(root, "id")?.GetString() ?? throw new Exception("Manifest missing 'id'");
 
             Title = GetJsonPropertyCaseInsensitive(root, "name")?.GetString() ??
@@ -59,7 +59,12 @@ namespace ITB_SCREEN_RECORDER.Core.Plugins
             }
         }
 
-        // פונקציית עזר קריטית לסביבות לינוקס: מאפשרת גמישות אם במניפסט נכתב "Id" במקום "id"
+        /// <summary>
+        /// Helper function resolving JSON properties in a case-insensitive manner.
+        /// </summary>
+        /// <param name="element">JSON element to inspect.</param>
+        /// <param name="propertyName">Target property name.</param>
+        /// <returns>Matching JsonElement if found; otherwise null.</returns>
         private JsonElement? GetJsonPropertyCaseInsensitive(JsonElement element, string propertyName)
         {
             foreach (var prop in element.EnumerateObject())

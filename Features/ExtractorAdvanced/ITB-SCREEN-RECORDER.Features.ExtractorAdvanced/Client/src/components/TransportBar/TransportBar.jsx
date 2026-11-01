@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/TransportBar/TransportBar.jsx
 // ==========================================
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -7,6 +7,18 @@ import './TransportBar.scss';
 
 const SPEED_STEPS = [0.5, 1, 1.25, 1.5, 2, 4];
 
+/**
+ * TransportBar renders the tactical media playback transport toolbar, providing frame stepping,
+ * jump-to-cut markers, speed controls, loop toggle, and audio volume adjustment.
+ * 
+ * @param {Object} props
+ * @param {string|null} props.activeStationId - Currently active workstation ID.
+ * @param {boolean} props.isPlaying - Current playback running status.
+ * @param {(val: boolean) => void} props.setIsPlaying - Playback status setter.
+ * @param {boolean} [props.isLooping=true] - Loop playback within in/out points.
+ * @param {(val: boolean) => void} props.setIsLooping - Loop toggle callback.
+ * @returns {JSX.Element}
+ */
 export default function TransportBar({
     activeStationId,
     isPlaying,
@@ -40,14 +52,15 @@ export default function TransportBar({
         return () => window.removeEventListener('itb-audio-state-changed', handleAudioSync);
     }, []);
 
-    const updateAudio = useCallback((newVolume, newMuted) => {
+    const updateAudio = useCallback((newVolume, newMuted, newMode) => {
         const updated = {
             volume: typeof newVolume === 'number' ? newVolume : volume,
-            isMuted: typeof newMuted === 'boolean' ? newMuted : isMuted
+            isMuted: typeof newMuted === 'boolean' ? newMuted : isMuted,
+            channelMode: newMode || audioState.channelMode || 'both'
         };
         setAudioState(updated);
         saveAudioSettings(updated);
-    }, [volume, isMuted]);
+    }, [volume, isMuted, audioState.channelMode]);
 
     const handlePlayPause = (e) => {
         e?.stopPropagation();
@@ -83,7 +96,7 @@ export default function TransportBar({
         }
     };
 
-    // 💡 מנגנון לחיצה רציפה ומאיצה על כפתורי הפריים
+    // Continuous and accelerating frame step mechanism on mouse/touch hold
     const useContinuousStep = (direction) => {
         const timerRef = useRef(null);
         const intervalRef = useRef(null);
@@ -124,7 +137,7 @@ export default function TransportBar({
             timerRef.current = setTimeout(() => {
                 intervalRef.current = setInterval(() => {
                     const elapsed = performance.now() - holdStartRef.current;
-                    // האצה הדרגתית: רגיל -> פי 2 אחרי שנייה -> פי 4 אחרי 2.5 שניות
+                    // Gradual acceleration: normal -> 2x after 1s -> 4x after 2.5s
                     const multiplier = elapsed > 2500 ? 4 : (elapsed > 1000 ? 2 : 1);
                     doStep(multiplier);
                 }, 50);
@@ -145,7 +158,7 @@ export default function TransportBar({
     const stepBackwardHandlers = useContinuousStep('backward');
     const stepForwardHandlers = useContinuousStep('forward');
 
-    // 💡 קפיצה ישירה לתחילת החיתוך (IN)
+    // Direct jump to IN point
     const handleJumpToIn = (e) => {
         e.stopPropagation();
         if (!isEnabled) return;
@@ -155,7 +168,7 @@ export default function TransportBar({
         }
     };
 
-    // 💡 קפיצה ישירה לסוף החיתוך (OUT)
+    // Direct jump to OUT point
     const handleJumpToOut = (e) => {
         e.stopPropagation();
         if (!isEnabled) return;
@@ -209,7 +222,7 @@ export default function TransportBar({
                 {playbackSpeed}x
             </button>
 
-            {/* כפתור CUT IN */}
+            {/* CUT IN Button */}
             <button
                 type="button"
                 className="btn-cut-action cut-in"
@@ -242,7 +255,7 @@ export default function TransportBar({
 
                 <div className="divider" />
 
-                {/* 1. קפיצה לתחילת החיתוך IN (הכפתור החיצוני) */}
+                {/* 1. Jump to start of cut (IN) */}
                 <button
                     type="button"
                     className="btn-ctrl-action btn-jump-cut accent-in"
@@ -256,7 +269,7 @@ export default function TransportBar({
                     </svg>
                 </button>
 
-                {/* 2. צעד פריים אחורה (הכפתור הפנימי בצמוד ל-Play, תומך לחיצה רציפה ומאיצה) */}
+                {/* 2. Step 1 Frame Back (Continuous accelerating scrub) */}
                 <button
                     type="button"
                     className="btn-ctrl-action btn-step"
@@ -269,7 +282,7 @@ export default function TransportBar({
                     </svg>
                 </button>
 
-                {/* 3. כפתור Play / Pause */}
+                {/* 3. Play / Pause Button */}
                 <button
                     type="button"
                     className={`btn-play-hero ${isPlaying ? 'playing' : ''}`}
@@ -289,7 +302,7 @@ export default function TransportBar({
                     )}
                 </button>
 
-                {/* 4. צעד פריים קדימה (הכפתור הפנימי בצמוד ל-Play, תומך לחיצה רציפה ומאיצה) */}
+                {/* 4. Step 1 Frame Forward (Continuous accelerating scrub) */}
                 <button
                     type="button"
                     className="btn-ctrl-action btn-step"
@@ -302,7 +315,7 @@ export default function TransportBar({
                     </svg>
                 </button>
 
-                {/* 5. קפיצה לסוף החיתוך OUT (הכפתור החיצוני) */}
+                {/* 5. Jump to end of cut (OUT) */}
                 <button
                     type="button"
                     className="btn-ctrl-action btn-jump-cut accent-out"
@@ -317,7 +330,7 @@ export default function TransportBar({
                 </button>
             </div>
 
-            {/* כפתור CUT OUT */}
+            {/* CUT OUT Button */}
             <button
                 type="button"
                 className="btn-cut-action cut-out"
@@ -346,8 +359,36 @@ export default function TransportBar({
                         value={isMuted ? 0 : volume}
                         onChange={handleVolumeSliderChange}
                         className="volume-slider"
-                        title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
                     />
+
+                    <button
+                        type="button"
+                        className="btn-audio-mode-toggle"
+                        onClick={() => {
+                            const modes = ['both', 'mic', 'sys', 'stereo'];
+                            const currentMode = audioState.channelMode || 'both';
+                            const nextMode = modes[(modes.indexOf(currentMode) + 1) % modes.length];
+                            updateAudio(volume, isMuted, nextMode);
+                        }}
+                        title={`Discrete Audio Channel: ${(audioState.channelMode || 'both').toUpperCase()} (Click to cycle Both / Mic / System / Stereo)`}
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            border: '1px solid rgba(6, 182, 212, 0.35)',
+                            borderRadius: '4px',
+                            color: '#06B6D4',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                        }}
+                    >
+                        {(audioState.channelMode || 'both') === 'mic' ? '🎤 MIC' :
+                         (audioState.channelMode || 'both') === 'sys' ? '🔊 SYS' :
+                         (audioState.channelMode || 'both') === 'stereo' ? '⮂ STEREO' : '🎧 BOTH'}
+                    </button>
+
+
                 </div>
             )}
         </div>

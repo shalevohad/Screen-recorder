@@ -12,8 +12,8 @@ using Microsoft.Extensions.Logging;
 namespace ITB_SCREEN_RECORDER.Server.Services
 {
     /// <summary>
-    /// שירות רקע אוטונומי המוודא חידוש רציף של תעודות השרת וה-Root CA
-    /// ללא צורך בהתערבות ידנית, ללא הפסקת שירות וללא פקיעת תוקף בעוד 10 שנים ומעלה.
+    /// Autonomous background service verifying continuous renewal of server and Root CA certificates,
+    /// ensuring unbroken service operation without manual intervention or certificate expiration over 10+ years.
     /// </summary>
     public class CertificateRenewalWorker : BackgroundService
     {
@@ -29,7 +29,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
         {
             _logger.LogInformation("[PKI-WATCHDOG] Certificate renewal background worker active. Interval: 24h.");
 
-            // המתנה קלה בעלייה ראשונית כדי לתת לשירותים המרכזיים להתייצב
+            // Brief initial delay allowing core web host services to stabilize before running PKI check
             await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)

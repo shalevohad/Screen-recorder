@@ -26,8 +26,8 @@ public class FeatureSelectionSimulatorTests
     }
 
     /// <summary>
-    /// מודל סימולציה של חלון ה-UI לבחירת פיצ'רים (Headless WinForms Simulator).
-    /// בודק ומדמה לחיצות, נעילות, כפתורי Select All / Clear All וחישוב דריסות ללא פתיחת ממשק גרפי.
+    /// Headless WinForms dialog simulator for feature selection UI.
+    /// Simulates clicks, locking, Select All / Clear All actions, and supersedes resolution without spinning up a graphical UI.
     /// </summary>
     public class FeatureSelectionDialogSimulator
     {
@@ -87,7 +87,7 @@ public class FeatureSelectionSimulatorTests
 
         public void EvaluateSupersedes()
         {
-            // איסוף ה-IDs שנדרסים על ידי פיצ'רים שמסומנים
+            // Collect IDs superseded by currently checked features
             var supIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in Cards)
             {
@@ -97,7 +97,7 @@ public class FeatureSelectionSimulatorTests
                 }
             }
 
-            // עדכון המצב בסימולטור
+            // Update card states in simulator
             foreach (var c in Cards)
             {
                 if (supIds.Contains(c.Feature.Id))

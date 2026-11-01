@@ -8,16 +8,33 @@ namespace ITBRecorderAgent.Providers.Video
     [SupportedOSPlatform("windows")]
     public class ResilientScreenCapture : IScreenCaptureProvider
     {
-        private readonly DxgiScreenCapture _dxgi = new();
-        private readonly GdiScreenCapture _gdi = new();
+        private readonly DxgiScreenCapture _dxgi;
+        private readonly GdiScreenCapture _gdi;
         private IScreenCaptureProvider? _activeProvider;
         private int _consecutiveDxgiErrors = 0;
-        private const int MaxDxgiConsecutiveErrors = 60; // כ-2 שניות של איבוד פריימים
+        private const int MaxDxgiConsecutiveErrors = 60; // Approximately 2 seconds of consecutive lost frames at 30fps
+
+        public ResilientScreenCapture(
+            uint adapterIndex = 0,
+            uint outputIndex = 0,
+            string displayId = "mon-0",
+            int x = 0,
+            int y = 0,
+            int width = 0,
+            int height = 0)
+        {
+            _dxgi = new DxgiScreenCapture(adapterIndex, outputIndex, displayId);
+            _gdi = new GdiScreenCapture(x, y, width, height);
+        }
 
         public int Width => _activeProvider?.Width ?? 0;
         public int Height => _activeProvider?.Height ?? 0;
         public bool IsInitialized => _activeProvider?.IsInitialized ?? false;
 
+        /// <summary>
+        /// Initializes screen capture by attempting hardware-accelerated DXGI Desktop Duplication first,
+        /// falling back to resilient GDI capture if DXGI initialization fails.
+        /// </summary>
         public void Initialize()
         {
             try
@@ -34,7 +51,7 @@ namespace ITBRecorderAgent.Providers.Video
                 Logger.Warn($"[VIDEO] DXGI Desktop Duplication failed ({ex.Message}). Falling back to resilient GDI capture pipeline.");
             }
 
-            // Fallback ל-GDI
+            // Fallback to GDI capture pipeline
             try
             {
                 _gdi.Initialize();

@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import './StationThumbnail.scss';
-import WebRTCPlayer from '../Player/WebRTCPlayer';
+import VirtualTopologyCanvas from './VirtualTopologyCanvas';
+import StationDisplayBar from './StationDisplayBar';
 import LiveKeystrokeOverlay from '../Keystroke/LiveKeystrokeOverlay';
 import { useAuth } from '../../context/AuthContext';
+import { useAudioSolo } from '../../context/AudioSoloContext';
 
 export default function StationThumbnail(props) {
     const {
@@ -24,33 +26,77 @@ export default function StationThumbnail(props) {
         onToggleStream,
         onSelectStation,
         onOpenFullscreen,
-        onQuickBookmark,
-        onQuickPlayback,
         onQuickExport
     } = props;
 
     const [recordingSeconds, setRecordingSeconds] = useState(0);
+    const [activeDisplayId, setActiveDisplayId] = useState('canvas');
 
     const { hasPermission } = useAuth();
+    const { activeAudioStationIds, isListeningStation, audioVolume, isGlobalMuted, toggleAudioSolo, registerStationStream } = useAudioSolo();
+    const isListeningThisStation = isListeningStation ? isListeningStation(hostname) : ((activeAudioStationIds || []).includes(hostname) && !isGlobalMuted);
     const canControl = hasPermission('stations.control');
-    const canBookmark = hasPermission('bookmarks.manage');
-    const canPlayback = hasPermission('playback.view');
     const canExport = hasPermission('playback.export');
 
-    const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const webrtcPort = import.meta.env?.VITE_WEBRTC_PORT || '8889';
-    const dynamicWebrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:'
-        ? '/api/v1/whep'
-        : `http://${serverHost}:${webrtcPort}`;
-
-    const isStarting = isPending === 'starting' || (Boolean(isPending) && !isStreaming);
-    const isStopping = isPending === 'stopping' || (Boolean(isPending) && isStreaming);
-    const isLive = isOnline && isStreaming && !isPending;
+    const isRecording = props.isRecording !== undefined
+        ? Boolean(props.isRecording)
+        : (props.status === 'Recording' || (Boolean(isStreaming) && props.status !== 'Monitoring'));
+    const isStarting = isPending === 'starting' || (Boolean(isPending) && !isRecording);
+    const isStopping = isPending === 'stopping' || (Boolean(isPending) && isRecording);
+    // Workstations stream continuous live RTMP/WebRTC regardless of recording state.
+    // Keep isLive true during record toggles so the stream is never unmounted or reloaded.
+    const isLive = Boolean(isOnline && (isStreaming || isRecording));
     const hasCriticalError = isOnline && (droppedFrames > 5);
 
     const audioHasPlayback = Boolean(hasActiveSpeakers);
     const audioHasMic = Boolean(hasActiveMicrophone);
-    const isAudioLive = Boolean(isAudioStreaming || hasAudio || audioHasPlayback || audioHasMic);
+    const hasExpectedAudio = Boolean(hasActiveSpeakers || hasActiveMicrophone || hasAudio);
+    const isDirectAudioFlowing = Boolean(isAudioStreaming);
+
+    const [audioStatus, setAudioStatus] = useState(() => {
+        if (!isOnline) return 'muted';
+        if (isDirectAudioFlowing) return 'active';
+        if (hasExpectedAudio) return 'fault';
+        return 'muted';
+    });
+
+    const audioDebounceRef = useRef(null);
+
+    useEffect(() => {
+        if (!isOnline) {
+            setAudioStatus('muted');
+            return;
+        }
+
+        if (isDirectAudioFlowing) {
+            if (audioDebounceRef.current) {
+                clearTimeout(audioDebounceRef.current);
+                audioDebounceRef.current = null;
+            }
+            setAudioStatus('active');
+        } else if (hasExpectedAudio) {
+            if (!audioDebounceRef.current) {
+                audioDebounceRef.current = setTimeout(() => {
+                    setAudioStatus('fault');
+                    audioDebounceRef.current = null;
+                }, 3500);
+            }
+        } else {
+            if (audioDebounceRef.current) {
+                clearTimeout(audioDebounceRef.current);
+                audioDebounceRef.current = null;
+            }
+            setAudioStatus('muted');
+        }
+
+        return () => {
+            if (audioDebounceRef.current) {
+                clearTimeout(audioDebounceRef.current);
+            }
+        };
+    }, [isOnline, isDirectAudioFlowing, hasExpectedAudio]);
+
+    const isAudioLive = audioStatus === 'active';
 
     const hasCustomPolicy = Boolean(
         isCustomOverride ||
@@ -61,13 +107,32 @@ export default function StationThumbnail(props) {
     );
 
     useEffect(() => {
-        if (!isLive) return;
+        if (!isLive || !isRecording) {
+            setRecordingSeconds(0);
+            return;
+        }
         const timer = setInterval(() => setRecordingSeconds(p => p + 1), 1000);
         return () => {
             clearInterval(timer);
             setRecordingSeconds(0);
         };
-    }, [isLive]);
+    }, [isLive, isRecording]);
+
+    const displays = useMemo(() => {
+        const raw = props.displays || props.Displays || props.displayTopology?.displays || props.DisplayTopology?.Displays;
+        if (raw && raw.length > 0) {
+            return raw.map(d => ({
+                DisplayId: d.DisplayId || d.displayId || 'mon-0',
+                DisplayName: d.DisplayName || d.displayName || 'Display',
+                IsPrimary: Boolean(d.IsPrimary ?? d.isPrimary),
+                X: d.X ?? d.x ?? 0,
+                Y: d.Y ?? d.y ?? 0,
+                Width: d.Width || d.width || 1920,
+                Height: d.Height || d.height || 1080
+            }));
+        }
+        return [];
+    }, [props.displays, props.Displays, props.displayTopology, props.DisplayTopology]);
 
     const formatTimer = (sec) => {
         const m = Math.floor(sec / 60);
@@ -78,7 +143,7 @@ export default function StationThumbnail(props) {
     const triggerFullscreenModal = (e) => {
         e?.stopPropagation?.();
         if (!isLive) return;
-        onOpenFullscreen?.(props);
+        onOpenFullscreen?.({ ...props, initialDisplayId: activeDisplayId });
     };
 
     const handleViewportClick = (e) => {
@@ -93,7 +158,7 @@ export default function StationThumbnail(props) {
     const handleQuickToggleRec = (e) => {
         e.stopPropagation();
         if (!canControl || !isOnline || isPending) return;
-        onToggleStream?.(hostname, isStreaming);
+        onToggleStream?.(hostname, isRecording);
     };
 
     const computeHealthScore = () => {
@@ -115,32 +180,84 @@ export default function StationThumbnail(props) {
         return isAudioLive ? 'AUDIO ON' : 'MUTED';
     };
 
+    const isAlertActive = isLive && !isRecording && !props.isSnoozed;
+    const isAlertSnoozed = isLive && !isRecording && Boolean(props.isSnoozed);
+
+    const handleStreamAvailable = useCallback((stream) => {
+        registerStationStream(hostname, stream);
+    }, [hostname, registerStationStream]);
+
+    const handleSelectDisplay = useCallback((dispId) => {
+        setActiveDisplayId(dispId);
+    }, []);
+
+    const operationalTitle = props.roleAlias || props.displayName || props.RoleAlias || hostname;
+    const hasAlias = Boolean(props.roleAlias || (props.displayName && props.displayName.toLowerCase() !== hostname.toLowerCase()));
+
     return (
         <div
-            className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
+            className={`station-tactical-card ${!isOnline ? 'is-offline' : ''} ${isLive && !isRecording ? 'is-not-recording' : ''} ${isAlertActive ? 'alert-active' : ''} ${isAlertSnoozed ? 'alert-snoozed' : ''} ${hasCriticalError ? 'has-critical' : ''}`}
             onClick={() => onSelectStation?.(props)}
             title="Click card to open Station Inspector"
         >
             <div className="card-minimal-header">
-                <div className="station-brand">
-                    <span className="station-name">{hostname}</span>
+                <div className="station-brand" title={`${operationalTitle}${hasAlias ? ` (${hostname})` : ''} � ${ipAddress}`}>
+                    <div className="station-title-row">
+                        <span className="station-name">{operationalTitle}</span>
+                        {hasAlias && (
+                            <span className="station-host-badge" title={`Physical Machine: ${hostname}`}>
+                                {hostname}
+                            </span>
+                        )}
+                    </div>
                     <span className="station-ip">{ipAddress}</span>
                 </div>
 
                 <div className="station-header-right">
                     <button
                         type="button"
-                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : (isLive || isStreaming) && !isStopping ? 'is-rec' : 'is-idle'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
+                        className={`tactical-audio-listen-btn ${isListeningThisStation ? 'listening' : ''}`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleAudioSolo(hostname);
+                        }}
+                        title={isListeningThisStation ? "Mute audio intercom for this station" : "Listen to audio feed (Multi-sink)"}
+                    >
+                        <span className="audio-icon">{isListeningThisStation ? '🔊' : '🎧'}</span>
+                        <span>{isListeningThisStation ? 'LISTENING' : 'LISTEN'}</span>
+                    </button>
+
+                    {isLive && !isRecording && (
+                        <button
+                            type="button"
+                            className={`tactical-snooze-btn ${isAlertSnoozed ? 'is-snoozed' : ''}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                props.onOpenSnoozeModal?.(hostname);
+                            }}
+                            title={isAlertSnoozed ? `Postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust or cancel.` : "Postpone recording alert (Snooze)"}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="12" height="12">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            <span>{isAlertSnoozed ? `SNOOZED (${props.snoozeRemainingMinutes || 0}m)` : 'SNOOZE'}</span>
+                        </button>
+                    )}
+
+                    <button
+                        type="button"
+                        className={`one-click-rec-btn ${!isOnline ? 'is-offline' : isRecording && !isStopping ? 'is-rec' : 'is-monitor'} ${isPending ? 'is-pending' : ''} ${!canControl ? 'no-perm' : ''}`}
                         onClick={handleQuickToggleRec}
                         disabled={!isOnline || Boolean(isPending) || !canControl}
-                        title={!canControl ? "Access restricted (requires stations.control)" : undefined}
+                        title={!canControl ? "Access restricted (requires stations.control)" : (isRecording ? "Stop Recording (Remain in Live Monitor)" : "Start Recording")}
                     >
                         <span className="rec-indicator-dot" />
                         <div className="rec-text-wrapper">
                             <span className="rec-state">
-                                {!canControl ? 'LOCKED' : !isOnline ? 'OFFLINE' : isStarting ? 'STARTING...' : isStopping ? 'STOPPING...' : isStreaming ? 'REC' : 'IDLE'}
+                                {!canControl ? 'LOCKED' : !isOnline ? 'OFFLINE' : isStarting ? 'STARTING...' : isStopping ? 'STOPPING...' : isRecording ? 'REC' : 'MONITOR'}
                             </span>
-                            {isLive && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
+                            {isRecording && <span className="rec-time">{formatTimer(recordingSeconds)}</span>}
                         </div>
                     </button>
 
@@ -185,16 +302,38 @@ export default function StationThumbnail(props) {
                 title={isLive ? "Click video to open Fullscreen Theater" : "Click screen to open Station Inspector"}
             >
                 {isLive ? (
-                    <div className="webrtc-container" style={{ pointerEvents: 'none' }}>
-                        <WebRTCPlayer
-                            streamPath={`live/${hostname}`}
-                            webrtcBaseUrl={dynamicWebrtcBaseUrl}
+                    <div className={`webrtc-container ${!isRecording ? 'is-not-recording' : ''}`} style={{ pointerEvents: 'none' }}>
+                        <VirtualTopologyCanvas
+                            station={props}
+                            activeDisplayId={activeDisplayId}
+                            onSelectDisplay={handleSelectDisplay}
+                            isMuted={!isListeningThisStation}
+                            volume={audioVolume}
+                            webrtcBaseUrl={props.webrtcBaseUrl || '/api/v1/whep'}
+                            onStreamAvailable={handleStreamAvailable}
                         />
+                        <div className={`monitor-only-overlay ${isRecording ? 'hidden' : 'visible'}`}>
+                            <button
+                                type="button"
+                                className={`monitor-tag ${isAlertActive ? 'alert' : 'snoozed'}`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    props.onOpenSnoozeModal?.(hostname);
+                                }}
+                                title={isAlertSnoozed ? `Alert postponed for ${props.snoozeRemainingMinutes || 0}m. Click to adjust.` : "Station is in Monitor-Only mode. Click to postpone alert."}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="11" height="11">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                                <span>{isAlertActive ? '⚠️ MONITOR ONLY' : `⏰ SNOOZED (${props.snoozeRemainingMinutes || 0}m)`}</span>
+                            </button>
+                        </div>
                     </div>
                 ) : (isStarting || isStopping) ? (
                     <div className="stream-loading-matte">
                         <div className="tactical-stream-spinner" />
-                        <span className="loading-label">{isStarting ? 'INITIALIZING STREAM...' : 'STOPPING STREAM...'}</span>
+                        <span className="loading-label">{isStarting ? 'STARTING RECORDING...' : 'STOPPING RECORDING...'}</span>
                         <span className="loading-sub">{isStarting ? 'CONNECTING MEDIA PIPELINE' : 'FLUSHING RECORDING BUFFER'}</span>
                     </div>
                 ) : (
@@ -203,10 +342,18 @@ export default function StationThumbnail(props) {
                     </div>
                 )}
 
-                {Boolean(isStreaming || isLive) && (
+                {displays.length > 1 && (
+                    <StationDisplayBar
+                        displays={displays}
+                        activeDisplayId={activeDisplayId}
+                        onSelectDisplay={(dispId) => setActiveDisplayId(dispId)}
+                    />
+                )}
+
+                {Boolean(isStreaming || isLive || props.recentKeystrokes?.length || props.keystrokes?.length || props.Keystrokes?.length) && (
                     <LiveKeystrokeOverlay
-                        keystrokes={props.recentKeystrokes || props.keystrokes}
-                        isLive={Boolean(isStreaming || isLive)}
+                        keystrokes={props.recentKeystrokes || props.keystrokes || props.Keystrokes}
+                        isLive={true}
                         variant="viewport"
                         mode={props.keystrokeMode || 'burn-in'}
                     />
@@ -246,12 +393,12 @@ export default function StationThumbnail(props) {
                 <div className="hover-action-bar" onClick={(e) => e.stopPropagation()}>
                     <button
                         type="button"
-                        className={`action-btn ${isStreaming ? 'stop' : 'start'} ${!canControl || Boolean(isPending) ? 'disabled' : ''}`}
+                        className={`action-btn ${isRecording ? 'stop' : 'start'} ${!canControl || Boolean(isPending) ? 'disabled' : ''}`}
                         onClick={handleQuickToggleRec}
                         disabled={!canControl || Boolean(isPending)}
-                        title={!canControl ? "Access restricted (stations.control)" : (isStreaming ? "Stop Stream" : "Start Stream")}
+                        title={!canControl ? "Access restricted (stations.control)" : (isRecording ? "Stop Recording (Remain in Live Monitor)" : "Start Recording")}
                     >
-                        {isPending ? '...' : isStreaming ? 'STOP' : 'START'}
+                        {isPending ? '...' : isRecording ? 'STOP REC' : 'START REC'}
                     </button>
                     <button
                         type="button"
@@ -262,26 +409,6 @@ export default function StationThumbnail(props) {
                     >
                         FULL
                     </button>
-                    {canBookmark && (
-                        <button
-                            type="button"
-                            className="action-btn"
-                            onClick={() => onQuickBookmark?.(hostname)}
-                            title="Add Bookmark"
-                        >
-                            BM
-                        </button>
-                    )}
-                    {canPlayback && (
-                        <button
-                            type="button"
-                            className="action-btn"
-                            onClick={() => onQuickPlayback?.(hostname)}
-                            title="Open Playback"
-                        >
-                            PLAY
-                        </button>
-                    )}
                     {canExport && (
                         <button
                             type="button"

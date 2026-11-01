@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Services.Security;
+namespace ITB_SCREEN_RECORDER.Server.Services.Security;
 
 using System;
 using System.Text.Encodings.Web;
@@ -21,8 +21,8 @@ public sealed class AuthorizePermissionAttribute : AuthorizeAttribute
 }
 
 /// <summary>
-/// סכמת אימות ברירת מחדל: מחזירה 401/403 במקום חריגה בעת Challenge/Forbid.
-/// הזהות עצמה נקבעת ע"י ה-Bearer middleware ב-Program.cs.
+/// Default passthrough authentication scheme returning 401 Unauthorized / 403 Forbidden without throwing unhandled exceptions.
+/// User identity is established by the Bearer middleware in Program.cs.
 /// </summary>
 public sealed class BearerPassthroughAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
@@ -71,22 +71,22 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
 
     protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
     {
-        // 1. משתמש העל (ROOT) מורשה תמיד לכל פעולה
+        // 1. Root superuser (is_root) is always authorized for all operations
         if (context.User.HasClaim("is_root", "true"))
         {
             context.Succeed(requirement);
             return;
         }
 
-        // 2. משתמש הנושא את מפתח ההרשאה הספציפי
+        // 2. User carries the explicit permission claim
         if (context.User.HasClaim("perm", requirement.Permission))
         {
             context.Succeed(requirement);
             return;
         }
 
-        // 3. מצב פתוח (Open Mode) - מאפשר אך ורק הרשאות מבצעיות!
-        // הרשאות settings ו-security מוגנות תמיד ומחייבות מנהל מאומת:
+        // 3. Open Mode: permits operational actions only!
+        // Settings and security permissions remain protected and require an authenticated administrator:
         var policy = await _repository.GetSecurityPolicyAsync();
         if (policy.CurrentMode == AuthMode.Open)
         {

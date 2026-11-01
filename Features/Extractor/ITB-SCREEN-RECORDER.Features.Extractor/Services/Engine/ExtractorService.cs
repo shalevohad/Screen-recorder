@@ -155,6 +155,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
 
                 plan.KeystrokeMode = request.KeystrokeMode;
+                plan.LayoutMode = request.LayoutMode;
+                plan.TargetDisplayId = request.TargetDisplayId;
+                plan.IsPipSwapped = request.IsPipSwapped;
+                plan.DirectorSegments = request.DirectorSegments;
 
                 double originalDurationSec = Math.Max(1.0, (request.EndTimeUtc - request.StartTimeUtc).TotalSeconds);
                 double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);
@@ -231,7 +235,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         VideoFileName = entryName,
                         StartOffsetMs = 0,
                         DurationMs = exportedDurationSec * 1000.0,
-                        HasAudio = track.HasAudio
+                        HasAudio = track.HasAudio,
+                        AudioChannels = 2,
+                        AudioChannelMapping = "0:Loopback,1:Microphone"
                     });
                 }
 
@@ -243,6 +249,17 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     keystrokeMode = request.KeystrokeMode.ToString(),
                     originalDurationSeconds = originalDurationSec,
                     exportedDurationSeconds = exportedDurationSec,
+                    audioConfiguration = new
+                    {
+                        channels = 2,
+                        sampleRate = 48000,
+                        discreteMapping = new Dictionary<string, string>
+                        {
+                            ["0"] = "Loopback",
+                            ["1"] = "Microphone"
+                        },
+                        description = "Channel 0: System loopback audio. Channel 1: Operator local microphone."
+                    },
                     removedGlobalGaps = plan.RemovedGlobalGaps.Select(g => new
                     {
                         gapIndex = g.GapIndex,
@@ -311,7 +328,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             if (_trackCutter != null && _planBuilder != null)
             {
                 var dict = new Dictionary<string, List<RecordingChunkMetadata>> { [stationId] = chunks };
-                // תיקון: העברת List<string> במקום מערך string[]
+                // Pass List<string> for single station synchronization plan
                 var plan = _planBuilder.BuildSynchronizationPlan(new List<string> { stationId }, startUtc, endUtc, dict);
                 plan.KeystrokeMode = keystrokeMode;
 

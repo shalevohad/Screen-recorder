@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITB-SCREEN-RECORDER | תדריך הנהלה בכירה והדגמת יכולות מבצעיות</title>
+  <style>
+    :root {
+      --bg-primary: #070A10;
+      --bg-surface: #0F172A;
+      --bg-card: #151E2E;
+      --bg-card-hover: #1A263B;
+      --border-subtle: #243248;
+      --border-accent: #334B6E;
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+      --accent-cyan: #06B6D4;
+      --accent-emerald: #10B981;
+      --accent-gold: #F59E0B;
+      --accent-rose: #F43F5E;
+      --accent-blue: #38BDF8;
+      --accent-purple: #A855F7;
+      --font-sans: 'Segoe UI', system-ui, -apple-system, 'Rubik', 'Heebo', Arial, sans-serif;
+      --font-mono: 'Consolas', 'Courier New', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      direction: rtl;
+    }
+
+    /* Top Header Bar */
+    header.deck-header {
+      height: 60px;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      font-size: 1.05rem;
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      color: #070A10;
+      font-size: 0.72rem;
+      font-weight: 900;
+      padding: 3px 10px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .deck-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slide-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-nav {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      font-family: var(--font-sans);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-nav:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-cyan);
+      color: #FFF;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.25);
+    }
+
+    .btn-primary-action {
+      background: linear-gradient(135deg, #0284C7, #0369A1);
+      border: 1px solid #38BDF8;
+      color: #FFF;
+    }
+
+    .btn-primary-action:hover {
+      background: linear-gradient(135deg, #0369A1, #075985);
+      border-color: #7DD3FC;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+    }
+
+    /* Main Deck Viewport */
+    main.deck-viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 48px;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 24px 48px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 36px 44px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(30px);
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      overflow-y: auto;
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    /* Slide Header */
+    .slide-tag {
+      align-self: flex-start;
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+    }
+
+    .slide-tag.gold {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-gold);
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+
+    .slide-tag.emerald {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      border-color: rgba(16, 185, 129, 0.35);
+    }
+
+    .slide-tag.purple {
+      background: rgba(168, 85, 247, 0.15);
+      color: var(--accent-purple);
+      border-color: rgba(168, 85, 247, 0.35);
+    }
+
+    .slide-title {
+      font-size: 2.1rem;
+      font-weight: 900;
+      color: #FFF;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+      line-height: 1.25;
+    }
+
+    .slide-subtitle {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      max-width: 95%;
+      line-height: 1.5;
+    }
+
+    /* KPI Metrics Bar */
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .metric-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .metric-box:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-cyan);
+    }
+
+    .metric-box::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      height: 3px;
+      background: var(--accent-cyan);
+    }
+
+    .metric-box.emerald::before { background: var(--accent-emerald); }
+    .metric-box.gold::before { background: var(--accent-gold); }
+    .metric-box.purple::before { background: var(--accent-purple); }
+
+    .metric-value {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: #FFF;
+      font-family: var(--font-mono);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .metric-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Cards Grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      flex: 1;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 22px 24px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card.highlight {
+      border-color: rgba(6, 182, 212, 0.45);
+      background: linear-gradient(180deg, rgba(6, 182, 212, 0.06), var(--bg-card));
+    }
+
+    .card.highlight-emerald {
+      border-color: rgba(16, 185, 129, 0.45);
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.06), var(--bg-card));
+    }
+
+    .card.highlight-gold {
+      border-color: rgba(245, 158, 11, 0.45);
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.06), var(--bg-card));
+    }
+
+    .card.highlight-purple {
+      border-color: rgba(168, 85, 247, 0.45);
+      background: linear-gradient(180deg, rgba(168, 85, 247, 0.06), var(--bg-card));
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #FFF;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      color: #CBD5E1;
+      font-size: 0.94rem;
+      line-height: 1.55;
+    }
+
+    .card-list li {
+      position: relative;
+      padding-right: 20px;
+    }
+
+    .card-list li::before {
+      content: '◀';
+      position: absolute;
+      right: 0;
+      color: var(--accent-cyan);
+      font-size: 0.65rem;
+      top: 5px;
+    }
+
+    .card-list.emerald li::before { color: var(--accent-emerald); }
+    .card-list.gold li::before { color: var(--accent-gold); }
+    .card-list.purple li::before { color: var(--accent-purple); }
+
+    /* Interactive Mockups */
+    .mockup-container {
+      background: #090E17;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      height: 100%;
+    }
+
+    .mockup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1E293B;
+      padding-bottom: 8px;
+      font-size: 0.8rem;
+    }
+
+    .mockup-badge {
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      font-family: var(--font-mono);
+    }
+
+    .mockup-badge.live {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+
+    .mockup-badge.auto {
+      background: rgba(6, 182, 212, 0.2);
+      color: #38BDF8;
+      border: 1px solid rgba(6, 182, 212, 0.4);
+    }
+
+    /* Comparison Table */
+    .comp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin-top: 10px;
+    }
+
+    .comp-table th {
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      text-align: right;
+      padding: 12px 14px;
+      border-bottom: 2px solid var(--border-accent);
+      font-weight: 800;
+      font-size: 0.8rem;
+      letter-spacing: 0.3px;
+    }
+
+    .comp-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: #CBD5E1;
+      vertical-align: middle;
+    }
+
+    .comp-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .comp-table td.brand-col {
+      background: rgba(6, 182, 212, 0.08);
+      font-weight: 800;
+      color: #FFF;
+      border-right: 2px solid var(--accent-cyan);
+      border-left: 2px solid var(--accent-cyan);
+    }
+
+    .comp-check {
+      color: #34D399;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .comp-cross {
+      color: #F87171;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Demo Steps */
+    .demo-step {
+      display: flex;
+      gap: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 16px;
+      align-items: flex-start;
+    }
+
+    .demo-step-num {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: var(--accent-cyan);
+      color: #070A10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 1.15rem;
+      flex-shrink: 0;
+    }
+
+    .demo-step-body h4 {
+      color: #FFF;
+      font-size: 1.05rem;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .demo-step-body p {
+      color: #94A3B8;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .demo-script-box {
+      background: #020617;
+      border-right: 3px solid var(--accent-gold);
+      padding: 8px 12px;
+      margin-top: 8px;
+      border-radius: 6px 0 0 6px;
+      font-size: 0.84rem;
+      color: #FDE68A;
+      font-family: var(--font-sans);
+      line-height: 1.5;
+    }
+
+    /* Progress & Footer */
+    .deck-progress-bar {
+      position: absolute;
+      bottom: 44px;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue), var(--accent-cyan));
+      transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 101;
+    }
+
+    footer.deck-footer {
+      height: 44px;
+      background: rgba(15, 23, 42, 0.95);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      z-index: 100;
+    }
+
+    kbd {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 2px 7px;
+      border-radius: 4px;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+
+    /* Print Styles */
+    @media print {
+      body {
+        overflow: visible !important;
+        height: auto !important;
+        background: #070A10 !important;
+        color: #F8FAFC !important;
+      }
+      header.deck-header, footer.deck-footer, .deck-controls, .deck-progress-bar {
+        display: none !important;
+      }
+      main.deck-viewport {
+        display: block !important;
+        padding: 0 !important;
+      }
+      .slide {
+        display: flex !important;
+        position: relative !important;
+        top: auto !important;
+        bottom: auto !important;
+        left: auto !important;
+        right: auto !important;
+        opacity: 1 !important;
+        transform: none !important;
+        page-break-after: always !important;
+        height: 100vh !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 40px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header Navigation -->
+  <header class="deck-header">
+    <div class="brand">
+      <span class="brand-badge">תדריך הנהלה בכירה</span>
+      <span>ITB-SCREEN-RECORDER <span style="color:var(--text-muted); font-weight:400;">| מודיעין ויזואלי ומערך חוזי מבצעי</span></span>
+    </div>
+    <div class="deck-controls">
+      <span class="slide-indicator" id="slideIndicator">שקופית 01 / 13</span>
+      <button class="btn-nav" id="prevBtn">הקודם ▶</button>
+      <button class="btn-nav" id="nextBtn">◀ הבא</button>
+      <button class="btn-nav" id="fullscreenBtn">⛶ מסך מלא</button>
+      <button class="btn-nav btn-primary-action" id="printBtn">🖨️ הדפסה / ייצוא PDF</button>
+    </div>
+  </header>
+
+  <!-- Animated Progress Bar -->
+  <div class="deck-progress-bar" id="progressBar" style="width: 7.69%;"></div>
+
+  <!-- Viewport -->
+  <main class="deck-viewport">
+
+    <!-- ==========================================
+         SLIDE 1: Executive Overview & Strategic Mission
+         ========================================== -->
+    <div class="slide active" data-index="1">
+      <span class="slide-tag">סקירה אסטרטגית ומטרת-על</span>
+      <h1 class="slide-title">ניטור ויזואלי מבצעי והבטחת אירועים קריטיים</h1>
+      <p class="slide-subtitle">פלטפורמת הקלטה רציפה, קיר וידאו C2 חי ב-WebRTC ותחקור וידאו פורנזי בריבונות מוחלטת לרשתות מבודדות (Air-Gapped).</p>
+
+      <div class="metric-row">
+        <div class="metric-box">
+          <span class="metric-value" style="color:var(--accent-cyan);">100+</span>
+          <span class="metric-label">עמדות קצה פעילות בו-זמנית לשרת</span>
+        </div>
+        <div class="metric-box emerald">
+          <span class="metric-value" style="color:var(--accent-emerald);">&lt; 1%</span>
+          <span class="metric-label">עומס CPU בעמדה (האצת GPU מלאה)</span>
+        </div>
+        <div class="metric-box">
+          <span class="metric-value" style="color:var(--accent-blue);">&lt; 300ms</span>
+          <span class="metric-label">שיהוי שידור חי Glass-to-Glass</span>
+        </div>
+        <div class="metric-box gold">
+          <span class="metric-value" style="color:var(--accent-gold);">100%</span>
+          <span class="metric-label">ריבונות רשת מבודדת (ללא ענן)</span>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span>🎯</span> ייעוד הפלטפורמה למקבלי ההחלטות</div>
+          <p style="color:#CBD5E1; font-size:1.02rem; line-height:1.65; margin-bottom:14px;">
+            ITB-SCREEN-RECORDER מעניקה שקיפות מבצעית מוחלטת, אמינות משפטית ויכולת תחקור מיידית עבור חדרי מבצעים, מוקדי שליטה וסביבות ביטחוניות מסווגות.
+          </p>
+          <ul class="card-list">
+            <li><strong>אחריות ויזואלית רציפה:</strong> הקלטה רציפה 24/7 של כלל המסכים, ערוצי השמע והאינטראקציות.</li>
+            <li><strong>אפס חיכוך למפעיל:</strong> פעילות שקופה לחלוטין ברקע ללא לאגים בעכבר או פגיעה בביצועי מערכות השו"ב.</li>
+            <li><strong>שחזור אירועים מיידי:</strong> קיצור תחקירים מורכבים של מספר ימים לדקות בודדות של ראיות חותכות.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>🌟</span> הבידול והעוצמה הייחודית של המערכת</div>
+          <ul class="card-list">
+            <li><strong>Auto-Director לריבוי מסכים:</strong> בימוי אוטומטי מבוסס בינת פעילות מפעיל (מקלדת/עכבר) עם תצוגות Split, PiP ו-Canvas.</li>
+            <li><strong>מודיעין הקשות פורנזי:</strong> דגימת מקלדת ברמת מילי-שניות המסונכרנת לווידאו ונצרבת ככתוביות ראייתיות (.SRT / .ASS).</li>
+            <li><strong>סנכרון רב-עמדתי בלתי ניתן לשבירה:</strong> חיתוך אחיד לפי שעון עולמי והזרקת שקופית "No Signal" למניעת שבירת רצף הזמן.</li>
+            <li><strong>הזדהות שקטה (Silent AD SSO):</strong> כניסה אוטומטית של משתמשי דומיין ללא שמות משתמש, סיסמאות או חלונות קופצים.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 2: Why Commercial Tools Fail
+         ========================================== -->
+    <div class="slide" data-index="2">
+      <span class="slide-tag gold">מציאות מבצעית</span>
+      <h2 class="slide-title">מדוע כלי מדף וענן נכשלים במערך מבצעי?</h2>
+      <p class="slide-subtitle">מדוע זום, טימס, OBS, Camtasia ומערכות VMS מסחריות אינן ישימות במתקנים ביטחוניים ורשתות מבודדות.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title" style="color:#F87171;"><span>❌</span> עומס CPU משתק בעמדה</div>
+          <p style="color:#CBD5E1; font-size:0.95rem; line-height:1.6; margin-bottom:10px;">
+            תוכנות הקלטה מסחריות (OBS, Camtasia) צורכות <strong>25% עד 50% מכוח העיבוד (CPU)</strong>.
+          </p>
+          <ul class="card-list" style="font-size:0.88rem;">
+            <li>עמדת המפעיל קופאת ומאטה במהלך אירועים מבצעיים עתירי עומס.</li>
+            <li>לאגים קשים בעכבר מקשים על תגובה מהירה ברגעי חירום.</li>
+            <li>סכנה מוחשית לקריסת תוכנות שו"ב קריטיות עקב חנק זיכרון ומעבד.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="color:#F87171;"><span>❌</span> דרישות ענן וחשיפת אבטחה</div>
+          <p style="color:#CBD5E1; font-size:0.95rem; line-height:1.6; margin-bottom:10px;">
+            פתרונות ענן (Zoom, Teams, SaaS) מחייבים חיבור אינטרנט פעיל ומשדרים וידאו לחוות שרתים חיצוניות.
+          </p>
+          <ul class="card-list" style="font-size:0.88rem;">
+            <li>פסולות לחלוטין ברשתות מבודדות (Air-Gapped) ומסווגות.</li>
+            <li>תלות קריטית ברישוי חיצוני ובשרתי רישוי העלולים להשבית את המערכת.</li>
+            <li>אובדן שליטה וריבונות על קובצי הווידאו וההקלטות הרגישות.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="color:#F87171;"><span>❌</span> סנכרון זמן שבור בין עמדות</div>
+          <p style="color:#CBD5E1; font-size:0.95rem; line-height:1.6; margin-bottom:10px;">
+            מערכות וידאו קונבנציונליות מייצרות קליפים ללא יישור זמן. בעת אתחול עמדה, הנגן "מכווץ" את הפער.
+          </p>
+          <ul class="card-list" style="font-size:0.88rem;">
+            <li>חוסר יכולת לבצע קורלציה בציר הזמן בין עמדות שונות בצוות.</li>
+            <li>תחקור אירוע דורש ימים ארוכים של עריכה ידנית בניסיון לסנכרן קבצים.</li>
+            <li>הראיות אינן קבילות בתחקירים רשמיים עקב סטיית שעונים בלתי נשלטת.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 3: Live C2 Command Wall
+         ========================================== -->
+    <div class="slide" data-index="3">
+      <span class="slide-tag">שליטה ובקרה בזמן אמת</span>
+      <h2 class="slide-title">קיר פיקוד C2 חי בשיהוי תת-שנייתי</h2>
+      <p class="slide-subtitle">תמונת מצב חיה של 70–100+ עמדות ללא עומס וללא קריסת מפענחי דפדפן (Zero Browser Crash).</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span>📡</span> הזרמת וידאו מהירה ב-WebRTC WHEP</div>
+          <ul class="card-list">
+            <li><strong>שיהוי זניח (200–300ms):</strong> צפייה חיה בזמן אמת ברשת המקומית ללא השהיות ה-Buffering של HLS רגיל.</li>
+            <li><strong>חסינות מקריסת דפדפן:</strong> וירטואליזציה חכמה (DOM Virtualization) המוודאת שרק כרטיסים הנמצאים על המסך מפענחים וידאו.</li>
+            <li><strong>מעבר חלק ב-0ms ללא מסך שחור:</strong> הנגנים נשארים מחוברים ברקע ומעבר בין מסכים מתבצע מיידית באנימציית CSS מואצת חומרה.</li>
+            <li><strong>תחנת האזנה אחודה (Multi-Sink Audio Dock):</strong> סרגל האזנה חי המאפשר האזנה למספר עמדות במקביל, השתקה מהירה ומד VU ספקטרלי.</li>
+            <li><strong>עמידות לחיבור/ניתוק מסכים חם (Hot-Plug):</strong> הוספה או ניתוק של מסכי 4K/1080p נקלטת אוטומטית ללא פגיעה בהזרמות הפעילות.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>🖥️</span> הדמיית קיר פיקוד ושליטה מבצעי</div>
+          <div class="mockup-container">
+            <div class="mockup-header">
+              <span style="color:#38BDF8; font-weight:800;">COMMAND WALL [לוח בקרה טקטי]</span>
+              <span class="mockup-badge live">● 78 עמדות משדרות בלייב</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; margin-top:6px;">
+              <div style="background:#131D2D; border:1px solid #334B6E; border-radius:6px; padding:10px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                  <span style="color:#FFF; font-weight:700;">ALPHA-01 (מבצעים ראשי)</span>
+                  <span style="color:#10B981;">30 FPS • 1080p</span>
+                </div>
+                <div style="height:65px; background:#0B111A; display:flex; align-items:center; justify-content:center; color:#64748B; border-radius:4px; font-size:0.85rem;">
+                  [ שידור חי WebRTC WHEP • שיהוי 180ms ]
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.75rem; color:#94A3B8;">
+                  <span>שמע: מושמע פעיל 🔊</span>
+                  <span style="color:#06B6D4;">חומרת NVENC</span>
+                </div>
+              </div>
+              <div style="background:#131D2D; border:1px solid #334B6E; border-radius:6px; padding:10px;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                  <span style="color:#FFF; font-weight:700;">BRAVO-04 (מכ"ם ובקרה)</span>
+                  <span style="color:#10B981;">30 FPS • 1440p</span>
+                </div>
+                <div style="height:65px; background:#0B111A; display:flex; align-items:center; justify-content:center; color:#64748B; border-radius:4px; font-size:0.85rem;">
+                  [ שידור חי WebRTC WHEP • שיהוי 210ms ]
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.75rem; color:#94A3B8;">
+                  <span>שמע: מושתק 🔇</span>
+                  <span style="color:#06B6D4;">חומרת QSV</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 4: Auto-Director Multi-Monitor
+         ========================================== -->
+    <div class="slide" data-index="4">
+      <span class="slide-tag emerald">🌟 בידול ייחודי #1</span>
+      <h2 class="slide-title">בימוי חכם לריבוי מסכים: Auto-Director</h2>
+      <p class="slide-subtitle">ניתוב פוקוס אוטומטי מבוסס בינת פעילות מפעיל עם שליטה ידנית, מסך מפוצל ותצוגת Canvas פיזית.</p>
+
+      <div class="grid-2">
+        <div class="card highlight-emerald">
+          <div class="card-title"><span>🎬</span> מנוע בימוי אוטומטי בציר הזמן</div>
+          <p style="color:#CBD5E1; font-size:0.98rem; line-height:1.6; margin-bottom:14px;">
+            מפעילים עובדים מול 2 עד 4 מסכים במקביל. מתחקר אינו מסוגל לעקוב אחר 4 מסכים מלאים בו-זמנית. מנגנון ה-Auto-Director פותר זאת אוטומטית:
+          </p>
+          <ul class="card-list emerald">
+            <li><strong>פוקוס פעילות דינמי:</strong> המערכת מזהה הקשות מקלדת ותנועות עכבר ומנתבת אוטומטית את הווידאו הראשי למסך שבו המפעיל עובד כרגע.</li>
+            <li><strong>חיווי אוריינטציה חי (HUD):</strong> המתחקר יודע בדיוק באיזה מסך הוא צופה:
+              <br><code style="color:#38BDF8; background:#0F172A; padding:2px 6px; border-radius:4px;">⚡ MON-0 (AUTO)</code> מול <code style="color:#FBBF24; background:#0F172A; padding:2px 6px; border-radius:4px;">✋ MON-1 (OVERRIDE)</code>.
+            </li>
+            <li><strong>פיצול ועקיפה ידנית בלחיצה:</strong> חיתוך מקטע בציר הזמן (<kbd>✂️ Split</kbd> או מקש <kbd>S</kbd>) לקביעת פוקוס ידני ומעביר שידור חי (`[CAM 1]`, `[CAM 2]`, `[↩ AUTO]`).</li>
+            <li><strong>בידוד עכבר מושלם (Zero Ghost Ripple):</strong> תנועות ולחיצות עכבר מבודדות לחלוטין למסך שבו בוצעו ללא "גלים" צולבים.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>🎛️</span> מצבי תצוגה גמישים בסטודיו</div>
+          <div class="mockup-container">
+            <div class="mockup-header">
+              <span style="color:#10B981; font-weight:800;">סרגל מצבי תצוגה ומעביר שידור</span>
+              <span class="mockup-badge auto">פעיל: תצוגת CANVAS פיזית</span>
+            </div>
+            <div style="display:flex; gap:8px; margin:6px 0; flex-wrap:wrap;">
+              <span style="padding:4px 8px; background:rgba(6,182,212,0.2); color:#38BDF8; border-radius:4px; font-size:0.75rem;">🎬 DIRECTOR</span>
+              <span style="padding:4px 8px; background:rgba(16,185,129,0.3); color:#34D399; border-radius:4px; font-size:0.75rem; font-weight:800;">⊞ CANVAS (מבנה פיזי)</span>
+              <span style="padding:4px 8px; background:rgba(148,163,184,0.1); color:#94A3B8; border-radius:4px; font-size:0.75rem;">🔲 SPLIT (מפוצל)</span>
+              <span style="padding:4px 8px; background:rgba(148,163,184,0.1); color:#94A3B8; border-radius:4px; font-size:0.75rem;">🪟 PiP (תמונה-בתמונה)</span>
+            </div>
+
+            <!-- View Mockup Display -->
+            <div style="height:125px; background:#0B111A; border:1px solid #243248; border-radius:6px; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+              <span style="color:#94A3B8; font-size:0.85rem;">[ מסך ראשי: Mon-0 (מפת שו"ב טקטית) ]</span>
+              
+              <!-- PiP Inset -->
+              <div style="position:absolute; bottom:8px; left:8px; width:130px; height:75px; background:#1E293B; border:2px solid #10B981; border-radius:4px; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.7);">
+                <span style="color:#FFF; font-size:0.7rem; font-weight:700;">MON-1 (טלמטריה)</span>
+                <span style="color:#10B981; font-size:0.6rem;">[ לחיצה להחלפה מיידית ]</span>
+              </div>
+            </div>
+
+            <!-- Director Track Simulation -->
+            <div style="background:#111827; border:1px solid #374151; border-radius:4px; padding:6px 10px; margin-top:4px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:#94A3B8; margin-bottom:4px;">
+                <span>רצועת בימוי (DIRECTOR TRACK):</span>
+                <span style="color:#FBBF24;">⚡ MON-0 (00:00 - 04:30) ➔ ✋ MON-1 (עקיפה ידנית)</span>
+              </div>
+              <div style="height:12px; display:flex; border-radius:3px; overflow:hidden;">
+                <div style="width:55%; background:#06B6D4;" title="Mon-0 (Auto)"></div>
+                <div style="width:45%; background:#F59E0B;" title="Mon-1 (Manual Override)"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 5: Forensic Keystrokes
+         ========================================== -->
+    <div class="slide" data-index="5">
+      <span class="slide-tag gold">🌟 בידול ייחודי #2</span>
+      <h2 class="slide-title">מודיעין הקשות פורנזי וכתוביות וידאו</h2>
+      <p class="slide-subtitle">הוכחת כוונת המפעיל וחיבור חד-משמעי בין פקודות מקלדת לתוצאות במסך ברמת המילי-שנייה.</p>
+
+      <div class="grid-2">
+        <div class="card highlight-gold">
+          <div class="card-title"><span>⌨️</span> קורלציה ראייתית שאינה ניתנת לערעור</div>
+          <p style="color:#CBD5E1; font-size:0.98rem; line-height:1.6; margin-bottom:12px;">
+            ווידאו בלבד מציג רק את מה שהתרחש על המסך; מודיעין הקשות מוכיח <strong>מי הקליד איזו פקודה, מתי ובאיזה רצף</strong>.
+          </p>
+          <ul class="card-list gold">
+            <li><strong>לכידה ברמת מערכת הפעלה (Low-Level Hook):</strong> דגימת צירופי מקשים, קיצורים ופקודות טרמינל בחותמת זמן UTC בדיוק מילי-שניות.</li>
+            <li><strong>צריבת כתוביות ראייתיות (.SRT / .ASS):</strong> חבילות ייצוא כוללות ערוץ כתוביות מובנה המציג את הפקודות על גבי הסרטון בדיוק ברגע ההקלדה.</li>
+            <li><strong>מנגנון הגנת פרטיות (Privacy Shield):</strong> השהייה אוטומטית בעת נעילת העמדה והגנה על שדות רגישים.</li>
+            <li><strong>מנוע חיפוש פקודות מרכזי:</strong> איתור פקודות קריטיות (כגון <code>reboot</code>, <code>authorize</code>, <code>execute</code>) וקפיצה מיידית לנקודת הזמן המדויקת בסרטון.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>📄</span> תצוגה מקדימה של כתוביות ראייתיות</div>
+          <div class="mockup-container">
+            <div class="mockup-header">
+              <span style="color:#F59E0B; font-weight:800;">ווידאו + שכבת כתוביות מסונכרנת</span>
+              <span class="mockup-badge live">סנכרון: 0.00ms JITTER</span>
+            </div>
+            
+            <div style="height:150px; background:#000; border:1px solid #334155; border-radius:6px; position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; padding:12px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#64748B;">
+                <span>עמדה: TACTICAL-OPS-03</span>
+                <span>זמן UTC: 2026-10-28 14:32:05.120</span>
+              </div>
+              <div style="text-align:center; color:#475569; font-size:0.85rem;">
+                [ תצוגת מסך מבצעי ברזולוציה מלאה ]
+              </div>
+              
+              <!-- Burned-in Subtitle Bar -->
+              <div style="background:rgba(15, 23, 42, 0.85); border:1px solid rgba(245, 158, 11, 0.4); border-radius:4px; padding:6px 12px; text-align:center;">
+                <span style="color:#FBBF24; font-weight:700;">[אירוע מקלדת]</span>
+                <span style="color:#FFF; font-weight:800; margin-right:8px;">Ctrl + Alt + Del ➔ target_confirm --force-execute</span>
+              </div>
+            </div>
+
+            <div style="font-size:0.75rem; color:#94A3B8; line-height:1.5;">
+              <span style="color:#34D399; font-weight:700;">✔ קבילות משפטית מוחלטת:</span> הכתוביות מיוצאות בפורמטים סטנדרטיים הניתנים לניגון בכל נגן מדיה תקני ללא תוכנות מיוחדות.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 6: Cross-Station Synchronicity
+         ========================================== -->
+    <div class="slide" data-index="6">
+      <span class="slide-tag purple">🌟 בידול ייחודי #3</span>
+      <h2 class="slide-title">ציר זמן אחוד ורצף כרונולוגי חסין נפילות</h2>
+      <p class="slide-subtitle">שחזור אירועים צוותיים מורכבים ב-70+ עמדות בסנכרון זמנים הרמטי (Temporal Lockstep).</p>
+
+      <div class="grid-2">
+        <div class="card highlight-purple">
+          <div class="card-title"><span>⏱️</span> חיתוך צמוד שעון עולמי והזרקת No Signal</div>
+          <p style="color:#CBD5E1; font-size:0.98rem; line-height:1.6; margin-bottom:12px;">
+            באירועים מבצעיים מורכבים, הבנת רצף הפעולות בין כלל חברי הצוות היא קריטית. המערכת מבטיחה סנכרון מושלם:
+          </p>
+          <ul class="card-list">
+            <li><strong>חיתוך דטרמיניסטי לפי שעון עולמי:</strong> הקבצים נחתכים במרווחי 5 דקות מדויקים לפי שעון עולמי (14:00, 14:05, 14:10). אפס סטיית זמן (Drift) בין תחנות.</li>
+            <li><strong>תחקור רב-עמדתי מסונכרן:</strong> נגינה מקבילה של עד 16 עמדות בנעילת זמן מוחלטת. כשעמדה א' שולחת דיווח, רואים את עמדה ב' מקבלת אותו באותה השנייה.</li>
+            <li><strong>ערבות רציפות הזמן (Time Continuity Guarantee):</strong> אם מחשב קורס או מאותחל, המנוע מזריק אוטומטית שקופית <strong>"No Signal"</strong> מדויקת.</li>
+            <li><strong>מניעת קריסת ציר הזמן:</strong> תוכנות אחרות מוחקות את הפער ושוברות את הסנכרון הצוותי. אצלנו ציר הזמן נשאר מתואם לנצח.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>🛡️</span> השוואת השלמת פערים כרונולוגיים</div>
+          <div class="mockup-container">
+            <div class="mockup-header">
+              <span style="color:#A855F7; font-weight:800;">סנכרון רב-עמדתי בתחקיר אירוע</span>
+              <span class="mockup-badge auto">DEBRIEF STUDIO</span>
+            </div>
+
+            <!-- Standard Video Flaw -->
+            <div style="background:#131B2B; border-right:3px solid #EF4444; padding:8px 10px; border-radius:4px 0 0 4px;">
+              <span style="color:#F87171; font-weight:800;">תוכנות מסחריות (זמן שבור ומטעה)</span>
+              <p style="color:#94A3B8; font-size:0.75rem; margin-top:2px;">עמדה 2 אותחלה ל-3 דקות. הנגן מדלג על הפער ו"מכווץ" את ציר הזמן. הווידאו של עמדה 2 מציג אירועים 3 דקות מוקדם יותר מזמנם האמיתי!</p>
+            </div>
+
+            <!-- ITB Pattern Solution -->
+            <div style="background:#131B2B; border-right:3px solid #10B981; padding:8px 10px; border-radius:4px 0 0 4px; margin-top:6px;">
+              <span style="color:#34D399; font-weight:800;">ITB-SCREEN-RECORDER (מנוע רציפות זמן)</span>
+              <p style="color:#CBD5E1; font-size:0.75rem; margin-top:2px;">המנוע מזריק שקופית "No Signal" מסונתזת. עמדה 1 ועמדה 2 נשארות מסונכרנות ב-100%. התחקיר אמין, מדויק וקביל משפטית.</p>
+            </div>
+
+            <!-- Visual Timeline Track Graphic -->
+            <div style="margin-top:8px;">
+              <div style="font-size:0.7rem; color:#94A3B8; margin-bottom:3px;">עמדה 1 (מנהל מבצעים):</div>
+              <div style="height:10px; background:#10B981; border-radius:3px; width:100%;"></div>
+              
+              <div style="font-size:0.7rem; color:#94A3B8; margin-top:6px; margin-bottom:3px;">עמדה 2 (מכ"ם - אותחלה ב-14:15):</div>
+              <div style="height:10px; display:flex; border-radius:3px; overflow:hidden;">
+                <div style="width:40%; background:#10B981;"></div>
+                <div style="width:20%; background:#475569;" title="No Signal הוזרק"></div>
+                <div style="width:40%; background:#10B981;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 7: Zero Workstation Impact
+         ========================================== -->
+    <div class="slide" data-index="7">
+      <span class="slide-tag">הגנה על חומרת העמדה</span>
+      <h2 class="slide-title">אפס עומס על עמדת הקצה: האצת חומרה (GPU)</h2>
+      <p class="slide-subtitle">ביצועי שיא של מערכות השו"ב והמכ"ם לצד הקלטה ושידור רציפים ברקע.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span>🚀</span> בחירה תלת-שלבית אוטומטית של מקודד</div>
+          <p style="color:#CBD5E1; font-size:0.98rem; line-height:1.6; margin-bottom:12px;">
+            סוכן ההקלטה דוגם את רכיבי החומרה בעת ההפעלה ומנתב 100% מדחיסת הווידאו לכרטיס הגרפי:
+          </p>
+          <ul class="card-list">
+            <li><strong>רמה 1 — חומרת NVIDIA NVENC:</strong> קידוד ישיר בסיליקון של הכרטיס הגרפי. מעבד המחשב (CPU) נשאר פנוי לחלוטין (<strong>&lt;0.8% CPU</strong>).</li>
+            <li><strong>רמה 2 — חומרת Intel QuickSync (QSV):</strong> ניצול המעבד הגרפי המובנה של אינטל בעמדות משרדיות סטנדרטיות (<strong>~2% CPU בלבד</strong>).</li>
+            <li><strong>רמה 3 — קידוד תוכנה מותאם:</strong> גיבוי תוכנתי מהיר במיוחד ללא שיהוי בעמדות נדירות ללא כרטיס גרפי.</li>
+            <li><strong>אפס לאגים למפעיל:</strong> מערכות מפות תלת-ממד, מכ"מים מהירים ותוכנות שו"ב רצות חלק ללא נפילת פריימים.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>📊</span> השוואת צריכת משאבי מעבד (CPU)</div>
+          <div style="display:flex; flex-direction:column; gap:16px; margin-top:10px;">
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:0.88rem; margin-bottom:6px;">
+                <span>תוכנות הקלטה מסחריות (עיבוד תוכנה ב-CPU)</span>
+                <span style="color:#EF4444; font-weight:800;">35% - 60% CPU</span>
+              </div>
+              <div style="background:#0F172A; height:12px; border-radius:6px; overflow:hidden;">
+                <div style="width:52%; height:100%; background:#EF4444;"></div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:0.88rem; margin-bottom:6px;">
+                <span>ITB-SCREEN-RECORDER (חומרת Intel QuickSync)</span>
+                <span style="color:#F59E0B; font-weight:800;">~2.0% CPU</span>
+              </div>
+              <div style="background:#0F172A; height:12px; border-radius:6px; overflow:hidden;">
+                <div style="width:5%; height:100%; background:#F59E0B;"></div>
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:0.88rem; margin-bottom:6px;">
+                <span>ITB-SCREEN-RECORDER (חומרת NVIDIA NVENC)</span>
+                <span style="color:#10B981; font-weight:800;">&lt; 0.8% CPU (אפס השפעה מורגשת)</span>
+              </div>
+              <div style="background:#0F172A; height:12px; border-radius:6px; overflow:hidden;">
+                <div style="width:2%; height:100%; background:#10B981;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:24px; padding:12px; background:rgba(6, 182, 212, 0.08); border:1px solid rgba(6, 182, 212, 0.3); border-radius:8px; font-size:0.84rem; color:#E0F2FE;">
+            <strong>💡 מסקנה למנהלים:</strong> פריסת הסוכן ברחבי הצי אינה דורשת שדרוג חומרה בעמדות ומבטלת לחלוטין את החשש מהאטת המחשבים של המפעילים.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 8: 100% Air-Gapped & Silent SSO
+         ========================================== -->
+    <div class="slide" data-index="8">
+      <span class="slide-tag emerald">אבטחת מידע וארגון</span>
+      <h2 class="slide-title">100% רשת מבודדת (Air-Gap) והזדהות שקטה (SSO)</h2>
+      <p class="slide-subtitle">תכנון הנדסי מהיום הראשון לרשתות ביטחוניות סגורות ללא תלות בענן.</p>
+
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title"><span>🏰</span> עמידה מוחלטת ב-Air-Gap</div>
+          <p style="color:#CBD5E1; font-size:0.92rem; line-height:1.55; margin-bottom:10px;">
+            אפס קישורים לאינטרנט חיצוני, אפס שירותי CDN מרוחקים, אפס גופנים מרוחקים ואפס שיחות ענן.
+          </p>
+          <ul class="card-list" style="font-size:0.85rem;">
+            <li>עצמאות מלאה ב-100% ברשת הפנימית/אינטראנט.</li>
+            <li>ללא שרתי רישוי חיצוניים או טלמטריה יוצאת.</li>
+            <li>תאימות מלאה לסיווגי אבטחה גבוהים ביותר.</li>
+          </ul>
+        </div>
+
+        <div class="card highlight-emerald">
+          <div class="card-title"><span>🔑</span> כניסה שקטה (Active Directory SSO)</div>
+          <p style="color:#CBD5E1; font-size:0.92rem; line-height:1.55; margin-bottom:10px;">
+            משתמשי דומיין הנכנסים למערכת מזוהים אוטומטית בפרוטוקול Kerberos/Negotiate של Windows.
+          </p>
+          <ul class="card-list emerald" style="font-size:0.85rem;">
+            <li>ללא חלונות התחברות וללא הקלדת סיסמה.</li>
+            <li>מיפוי קבוצות AD (<code>memberOf</code>) לתפקידים מבצעיים.</li>
+            <li>הרשאות מדורגות: צופה חי, מתחקר פורנזי ומנהל מערכת.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>💾</span> שרידות אחסון כפולה (Dual-Path Failover)</div>
+          <p style="color:#CBD5E1; font-size:0.92rem; line-height:1.55; margin-bottom:10px;">
+            המשך הקלטה רציף מובטח גם במקרה של ניתוק רשת או נפילת שרת אחסון.
+          </p>
+          <ul class="card-list" style="font-size:0.85rem;">
+            <li>הקלטה ראשית לאחסון NetApp מרכזי עם בדיקת דופק כל 3 שניות.</li>
+            <li>מעבר אוטומטי מיידי לכונן NVMe מקומי במקרה של נתק.</li>
+            <li>עמדות הקצה שומרות מקומית בעת ניתוק רשת ומסנכרנות בחזרה אוטומטית.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 9: Forensic Studio NLE
+         ========================================== -->
+    <div class="slide" data-index="9">
+      <span class="slide-tag">עוצמת תחקור</span>
+      <h2 class="slide-title">סטודיו תחקור ויזואלי מתקדם (Forensic NLE)</h2>
+      <p class="slide-subtitle">קיצור זמני תחקיר ואיסוף ראיות מימים ארוכים לדקות בודדות.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span>🎞️</span> יכולות עריכה ותחקור אינטראקטיביות</div>
+          <ul class="card-list">
+            <li><strong>גלילה ויזואלית מהירה (Instant Scrubbing):</strong> תמונות ממוזערות מרחפות על גבי HTML5 Canvas מאפשרות סריקת 24 שעות הקלטה מיידית ללא המתנה לטעינה.</li>
+            <li><strong>סימניות והערות לא-הרסניות:</strong> סימון נקודות כניסה/יציאה (IN/OUT), הוספת הערות תחקיר ושיתוף פרויקטים בין חוקרים.</li>
+            <li><strong>תור ייצוא מקבילי:</strong> מנוע ייצוא ברקע המאפשר חיתוך עמדה בודדת ללא איבוד איכות או אריזת חבילות רב-עמדתיות מסונכרנות.</li>
+            <li><strong>חבילת תחקיר מלאה:</strong> קובצי הווידאו מיוצאים יחד עם חותמת זמן UTC צרובה, כתוביות הקשות (.SRT) ומטא-דאטה מפורט של המפעיל.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>📈</span> מדד יעילות התחקור המבצעי</div>
+          <div style="background:#090E17; border:1px solid #243248; border-radius:10px; padding:20px; display:flex; flex-direction:column; gap:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <span style="font-size:2.2rem; font-weight:900; color:#34D399;">90%</span>
+                <span style="color:#94A3B8; font-size:0.9rem; margin-right:8px;">חיסכון בזמן הפקת תחקיר</span>
+              </div>
+              <span class="mockup-badge live">ROI מדיד</span>
+            </div>
+
+            <div style="border-top:1px solid #1E293B; padding-top:12px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px; color:#94A3B8;">
+                <span>תחקיר קונבנציונלי (תשאול מפעילים והצלבת לוגים ידנית):</span>
+                <span style="color:#F87171; font-weight:700;">24 - 48 שעות</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:#94A3B8;">
+                <span>תחקור מהיר בסטודיו ITB-SCREEN-RECORDER:</span>
+                <span style="color:#34D399; font-weight:700;">&lt; 5 דקות</span>
+              </div>
+            </div>
+
+            <p style="font-size:0.85rem; color:#CBD5E1; line-height:1.5; margin-top:4px;">
+              מפקדים אינם תלויים עוד בזיכרון של מפעילים או בלוגים טקסטואליים חלקיים. תחקור ויזואלי של 5 דקות מספק תמונה חד-משמעית של מה שהתרחש על המסך.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 10: Competitive Matrix
+         ========================================== -->
+    <div class="slide" data-index="10">
+      <span class="slide-tag gold">יתרון תחרותי</span>
+      <h2 class="slide-title">טבלת עליונות תחרותית מול פתרונות בשוק</h2>
+      <p class="slide-subtitle">כיצד ITB-SCREEN-RECORDER מתעלה על פתרונות מדף קיימים בסביבות ביטחוניות ומבצעיות.</p>
+
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>יכולת / מדד מפתח</th>
+            <th style="color:var(--accent-cyan);">ITB-SCREEN-RECORDER</th>
+            <th>מערכות VMS (GENETEC/MILESTONE)</th>
+            <th>תוכנות הקלטת מסך (OBS/CAMTASIA)</th>
+            <th>כלי פגישות ענן (ZOOM/TEAMS)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>עומס CPU על עמדת הקצה</strong></td>
+            <td class="brand-col"><span class="comp-check">✔ &lt; 1% (האצת GPU מלאה)</span></td>
+            <td><span class="comp-cross">✖ 15% - 25%</span></td>
+            <td><span class="comp-cross">✖ 35% - 60%</span></td>
+            <td><span class="comp-cross">✖ 20% - 40%</span></td>
+          </tr>
+          <tr>
+            <td><strong>100% רשת מבודדת (ללא ענן)</strong></td>
+            <td class="brand-col"><span class="comp-check">✔ עצמאי ומבודד מלא</span></td>
+            <td><span class="comp-check">✔ נתמך (מורכב ויקר)</span></td>
+            <td><span class="comp-check">✔ קובץ מקומי בלבד</span></td>
+            <td><span class="comp-cross">✖ מחייב חיבור ענן</span></td>
+          </tr>
+          <tr>
+            <td><strong>Auto-Director וריבוי מסכים</strong></td>
+            <td class="brand-col"><span class="comp-check">✔ כן (בינה / פיצול / PiP / Canvas)</span></td>
+            <td><span class="comp-cross">✖ אין (תצוגה ידנית)</span></td>
+            <td><span class="comp-cross">✖ אין</span></td>
+            <td><span class="comp-cross">✖ מסך בודד בלבד</span></td>
+          </tr>
+          <tr>
+            <td><strong>כתוביות הקשות מסונכרנות</strong></td>
+            <td class="brand-col"><span class="comp-check">✔ סנכרון SRT/ASS במילי-שניות</span></td>
+            <td><span class="comp-cross">✖ אין תיעוד מקלדת</span></td>
+            <td><span class="comp-cross">✖ אין תיעוד מקלדת</span></td>
+            <td><span class="comp-cross">✖ אין</span></td>
+          </tr>
+          <tr>
+            <td><strong>סנכרון רב-עמדתי והגנת פערים</strong></td>
+            <td class="brand-col"><span class="comp-check">✔ מובטח (שקופית No-Signal)</span></td>
+            <td><span class="comp-cross">✖ פערי זמן מכווצים</span></td>
+            <td><span class="comp-cross">✖ קבצים בלתי מסונכרנים</span></td>
+            <td><span class="comp-cross">✖ אין</span></td>
+          </tr>
+          <tr>
+            <td><strong>שיהוי קיר וידאו בלייב</strong></td>
+            <td class="brand-col"><span class="comp-check">✔ &lt; 300ms (WebRTC WHEP)</span></td>
+            <td><span class="comp-cross">✖ 2 - 5 שניות (RTSP/HLS)</span></td>
+            <td><span class="comp-cross">✖ ללא קיר עמדות</span></td>
+            <td><span class="comp-cross">✖ 1 - 3 שניות בענן</span></td>
+          </tr>
+          <tr>
+            <td><strong>הזדהות שקטה (AD SSO)</strong></td>
+            <td class="brand-col"><span class="comp-check">✔ כניסה שקופה ללא סיסמה</span></td>
+            <td><span class="comp-check">✔ קיים בהגדרה מורכבת</span></td>
+            <td><span class="comp-cross">✖ חשבונות מקומיים בלבד</span></td>
+            <td><span class="comp-cross">✖ אימות ענן בלבד</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 11: Measurable ROI
+         ========================================== -->
+    <div class="slide" data-index="11">
+      <span class="slide-tag emerald">כדאיות עסקית ומבצעית</span>
+      <h2 class="slide-title">החזר השקעה (ROI) ותועלת עסקית מדידה</h2>
+      <p class="slide-subtitle">ציות רגולטורי מחמיר, הגנה בתחקירים ויעילות תשתיות מקסימלית.</p>
+
+      <div class="grid-3">
+        <div class="card highlight-emerald">
+          <div class="card-title"><span>⏱️</span> גמישות ויעילות מבצעית</div>
+          <ul class="card-list emerald" style="font-size:0.88rem;">
+            <li><strong>סגירת תחקירים ב-90% פחות זמן:</strong> הפקת סרטי תחקיר בדקות ספורות ללא צורך בתשאול ממושך.</li>
+            <li><strong>ערך הדרכתי מתמשך:</strong> שימוש בהקלטות של אירועי אמת עם כתוביות הקשות להכשרת מפעילים חדשים.</li>
+            <li><strong>רציפות תפעולית:</strong> עמדות הקצה פועלות ב-100% תפוקה ללא האטות כלל.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>⚖️</span> הגנה משפטית ותאימות מלאה</div>
+          <ul class="card-list" style="font-size:0.88rem;">
+            <li><strong>ראיות קבילות משפטית:</strong> רציפות זמן מדויקת לפי שעון עולמי ושקופיות No Signal עומדות ברף החקירתי המחמיר ביותר.</li>
+            <li><strong>נתיב ביקורת שאינו ניתן להכחשה:</strong> שילוב בין התמונה על המסך, הקשות המקלדת והשמע.</li>
+            <li><strong>ניהול נתונים אוטומטי:</strong> מדיניות שמירה ל-30 יום ומחיקה אוטומטית לפי נפח ללא תחזוקה ידנית.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>💰</span> חיסכון תקציבי וכלכלי</div>
+          <ul class="card-list" style="font-size:0.88rem;">
+            <li><strong>צפיפות שרתים גבוהה:</strong> 100+ עמדות מוקלטות על גבי שרת ארגוני תקני יחיד.</li>
+            <li><strong>ללא צורך בכרטיסי GPU בשרת:</strong> הקידוד מבוצע בחומרת עמדות הקצה הקיימות.</li>
+            <li><strong>ללא מלכודות רישוי SaaS:</strong> בעלות מלאה וקבועה (Perpetual On-Premises) ללא תשלומים חודשיים לענן.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 12: Presenter's Live Demo Playbook
+         ========================================== -->
+    <div class="slide" data-index="12">
+      <span class="slide-tag gold">מדריך הדגמה חיה</span>
+      <h2 class="slide-title">תסריט הדגמה חיה: מה להציג להנהלה כעת</h2>
+      <p class="slide-subtitle">זרימת הדגמה אינטראקטיבית צעד-אחר-צעד למפגש ההנהלה הבכירה.</p>
+
+      <div class="grid-2">
+        <div class="demo-step">
+          <div class="demo-step-num">1</div>
+          <div class="demo-step-body">
+            <h4>קיר פיקוד חי וכניסה שקטה (SSO)</h4>
+            <p>פתחו את הדפדפן לכתובת המערכת. הראו כניסה מיידית דרך Windows SSO ללא הקלדת שם משתמש וסיסמה.</p>
+            <div class="demo-script-box">
+              <strong>🗣️ מה לומר להנהלה:</strong> "שימו לב שהמערכת זיהתה את פרטי הדומיין שלי ונכנסה ישירות ללא צורך בהקלדת סיסמה. אנו צופים כעת בצי העמדות בשידור חי בשיהוי של פחות מ-300 מילי-שניות, ללא כל עומס על מחשבי המפעילים."
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">2</div>
+          <div class="demo-step-body">
+            <h4>בימוי חכם (Auto-Director) ותצוגות ריבוי מסכים</h4>
+            <p>פתחו עמדה מרובת מסכים בסטודיו. הציגו את רצועת ה-Director מתחת לפס הווידאו. הדגימו תצוגות מפוצלת, PiP ותצוגת Canvas.</p>
+            <div class="demo-script-box">
+              <strong>🗣️ מה לומר להנהלה:</strong> "ראו מה קורה כאשר המפעיל מקליד במסך 2: ה-Auto-Director עובר אוטומטית למסך הפעיל. בלחיצה אחת ניתן לפצל את התצוגה (SPLIT), להפעיל תמונה-בתמונה (PiP) או לעבור לתצוגת Canvas פיזית. אין פתרון כזה באף מערכת אחרת."
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">3</div>
+          <div class="demo-step-body">
+            <h4>לכידת מקלדת וכתוביות צרובות</h4>
+            <p>הדגישו מקטע שבו הוזנו פקודות. הציגו את שכבת ההקשות החיה והראו כיצד כתוביות נצרבות בסרטון המיוצא.</p>
+            <div class="demo-script-box">
+              <strong>🗣️ מה לומר להנהלה:</strong> "זוהי ראיה חותכת לפעולת המפעיל: כל קיצור מקשים ופקודה נלכדים בדיוק של מילי-שניות ונצרבים ישירות ככתוביות בתוך קובץ הווידאו המיוצא."
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-step">
+          <div class="demo-step-num">4</div>
+          <div class="demo-step-body">
+            <h4>סנכרון רב-עמדתי ושקופית No Signal</h4>
+            <p>בחרו מספר עמדות בסטודיו וגללו את ציר הזמן. הראו כיצד כל המסכים מתקדמים בסנכרון הרמטי משותף.</p>
+            <div class="demo-script-box">
+              <strong>🗣️ מה לומר להנהלה:</strong> "כל העמדות נעולות בדיוק לאותה מילי-שנייה לפי שעון עולמי. אם עמדה כלשהי נכבית או מאותחלת, המנוע מזריק שקופית No Signal כך שציר הזמן של שאר העמדות לעולם לא נשבר או נמרח."
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         SLIDE 13: Strategic Summary & Next Steps
+         ========================================== -->
+    <div class="slide" data-index="13">
+      <span class="slide-tag">סיכום ותוכנית פעולה</span>
+      <h2 class="slide-title">סיכום: בשלות מלאה לפריסה מבצעית</h2>
+      <p class="slide-subtitle">פלטפורמה בשלה, מוכחת ונבדקה בעומס גבוה המעניקה עליונות ויזואלית מלאה.</p>
+
+      <div class="grid-2">
+        <div class="card highlight">
+          <div class="card-title"><span>🌟</span> נקודות מפתח להנהלה הבכירה</div>
+          <ul class="card-list">
+            <li><strong>ארכיטקטורה מוכחת בעומס:</strong> הקלטה רציפה של 100+ עמדות לשרת בפחות מ-1% עומס CPU.</li>
+            <li><strong>עוצמת תחקור ללא תחרות:</strong> Auto-Director חכם, כתוביות הקשות וסנכרון רב-עמדתי ללא שבירת זמן.</li>
+            <li><strong>ריבונות וביטחון מוחלטים:</strong> 100% רשת מבודדת (Air-Gap), ללא ענן וכניסה שקטה מבוססת Active Directory.</li>
+            <li><strong>החזר השקעה מיידי:</strong> קיצור זמני תחקירים ב-90% והגנה הרמטית מתקלות תפעוליות.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title"><span>🚀</span> שלבי פריסה מומלצים בצי העמדות</div>
+          <div style="display:flex; flex-direction:column; gap:12px; margin-top:6px;">
+            <div style="background:#131E2F; border-right:3px solid var(--accent-cyan); padding:10px 14px; border-radius:6px 0 0 6px;">
+              <strong style="color:#FFF;">שלב 1: פיילוט מבצעי (מיידי)</strong>
+              <p style="color:#94A3B8; font-size:0.84rem; margin-top:2px;">פריסה על 15 עמדות מפתח בתא שליטה מרכזי לבדיקת שידור חי ובימוי Auto-Director.</p>
+            </div>
+            <div style="background:#131E2F; border-right:3px solid var(--accent-gold); padding:10px 14px; border-radius:6px 0 0 6px;">
+              <strong style="color:#FFF;">שלב 2: הפצה רחבה בצי העמדות</strong>
+              <p style="color:#94A3B8; font-size:0.84rem; margin-top:2px;">הפצה שקטה ואוטומטית על 70–100+ עמדות באמצעות כלי הפצה מרכזיים וחיבור לאחסון NetApp.</p>
+            </div>
+            <div style="background:#131E2F; border-right:3px solid var(--accent-emerald); padding:10px 14px; border-radius:6px 0 0 6px;">
+              <strong style="color:#FFF;">שלב 3: אינטגרציה מלאה ומשילות</strong>
+              <p style="color:#94A3B8; font-size:0.84rem; margin-top:2px;">הגדרת מדיניות שמירה ל-30 יום, שיוך קבוצות AD להרשאות והדרכת מתחקרים מבצעיים.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px; padding:16px 20px; background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <span style="font-weight:800; color:#FFF; font-size:1.05rem;">תדריך הנהלה ITB-SCREEN-RECORDER</span>
+          <span style="color:var(--text-muted); font-size:0.88rem; margin-right:12px;">מערכת עצמאית מתוכננת לרשתות ביטחוניות סגורות</span>
+        </div>
+        <button class="btn-nav btn-primary-action" onclick="window.print()">
+          🖨️ הדפסה / שמירה כ-PDF
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Controls & Keybindings Indicator -->
+  <footer class="deck-footer">
+    <div>ITB-SCREEN-RECORDER | תדריך הנהלה בכירה והדגמת יכולות מבצעיות</div>
+    <div>ניווט במקלדת: <kbd>◀</kbd> <kbd>▶</kbd> / <kbd>רווח</kbd> / <kbd>F</kbd> למסך מלא / <kbd>Ctrl+P</kbd> להדפסה ו-PDF</div>
+  </footer>
+
+  <script>
+    (function () {
+      const slides = document.querySelectorAll('.slide');
+      const totalSlides = slides.length;
+      let currentSlide = 1;
+
+      const indicator = document.getElementById('slideIndicator');
+      const progressBar = document.getElementById('progressBar');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const fullscreenBtn = document.getElementById('fullscreenBtn');
+      const printBtn = document.getElementById('printBtn');
+
+      function updateSlide(newIndex) {
+        if (newIndex < 1) newIndex = 1;
+        if (newIndex > totalSlides) newIndex = totalSlides;
+
+        slides.forEach(slide => {
+          slide.classList.remove('active');
+          if (parseInt(slide.getAttribute('data-index')) === newIndex) {
+            slide.classList.add('active');
+          }
+        });
+
+        currentSlide = newIndex;
+        indicator.textContent = `שקופית ${String(currentSlide).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`;
+        progressBar.style.width = `${(currentSlide / totalSlides) * 100}%`;
+      }
+
+      function nextSlide() {
+        if (currentSlide < totalSlides) updateSlide(currentSlide + 1);
+      }
+
+      function prevSlide() {
+        if (currentSlide > 1) updateSlide(currentSlide - 1);
+      }
+
+      // In RTL UI: Next goes to higher index (slide + 1), Prev goes to lower index (slide - 1)
+      nextBtn.addEventListener('click', nextSlide);
+      prevBtn.addEventListener('click', prevSlide);
+
+      document.addEventListener('keydown', (e) => {
+        // Support RTL navigation: Left arrow advances forward in RTL, Right arrow goes backward,
+        // and Space / PageDown always advances forward!
+        if (e.key === 'ArrowLeft' || e.key === ' ' || e.key === 'PageDown') {
+          e.preventDefault();
+          nextSlide();
+        } else if (e.key === 'ArrowRight' || e.key === 'PageUp') {
+          e.preventDefault();
+          prevSlide();
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          updateSlide(1);
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          updateSlide(totalSlides);
+        } else if (e.key.toLowerCase() === 'f') {
+          toggleFullscreen();
+        }
+      });
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+
+      fullscreenBtn.addEventListener('click', toggleFullscreen);
+      printBtn.addEventListener('click', () => window.print());
+
+      // Touch Swipe Support for Tablets / Laptops
+      let startX = 0;
+      document.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+      }, { passive: true });
+
+      document.addEventListener('touchend', (e) => {
+        const diffX = startX - e.changedTouches[0].clientX;
+        if (Math.abs(diffX) > 50) {
+          // In RTL: swipe right to left = next slide
+          if (diffX > 0) nextSlide();
+          else prevSlide();
+        }
+      }, { passive: true });
+
+      updateSlide(1);
+    })();
+  </script>
+</body>
+</html>

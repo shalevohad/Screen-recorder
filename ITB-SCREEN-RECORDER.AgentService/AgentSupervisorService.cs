@@ -8,6 +8,7 @@ using ITB_SCREEN_RECORDER.Core.Ipc;
 using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Network.Discovery;
 using ITB_SCREEN_RECORDER.Core.Security.Pki;
+using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System;
@@ -47,10 +48,15 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private DateTime _lastFailbackCheckUtc = DateTime.MinValue;
 
         private bool _isWorkerStreaming;
+        private bool _isWorkerRecording;
+        private bool? _lastServerShouldStream = null;
+        private bool? _lastServerShouldRecord = null;
+        private DateTime _lastStartCommandDispatchUtc = DateTime.MinValue;
         private DateTime? _workerRecordingStartedAtUtc = null;
         private DateTime _lastWorkerHeartbeat = DateTime.MinValue;
         private DateTime _lastWorkerLaunchTime = DateTime.MinValue;
-        private StreamWriter? _workerCommandWriter;
+        private Channel<string>? _workerCommandChannel;
+        private volatile bool _isWorkerIpcConnected;
         private TimeSpan _serverUtcOffset = TimeSpan.Zero;
         private IpcTelemetryDto? _lastTelemetry = null;
         private string? _activeKeystrokeKeyId;
@@ -60,14 +66,15 @@ namespace ITB_SCREEN_RECORDER.AgentService
         private bool _lastWorkerHasActiveSpeakers = false;
         private bool _lastWorkerHasActiveMicrophone = false;
         private bool _lastWorkerIsAudioStreaming = false;
+        private StationDisplayTopologyDto? _lastWorkerDisplayTopology = null;
 
         private long _lastTelemetryPayloadSizeBytes = 0;
         private DateTime _lastTelemetrySendTime = DateTime.UtcNow;
 
-        // 💡 תור צבירה של אירועי מקלדת לדיווח ברפורט הטלמטריה
+        // Accumulation queue for keystroke events to be transmitted in periodic telemetry reports
         private readonly ConcurrentQueue<KeystrokeEventDto> _pendingKeystrokes = new();
 
-        // 💡 ערוץ מהיר לשידור מקשים מיידי מה-Worker לשרת באפס השהייה (Fast Path)
+        // High-priority low-latency channel for real-time keystroke transmission from Worker to Server (Fast Path)
         private readonly Channel<KeystrokeEventDto> _fastKeystrokesChannel = Channel.CreateBounded<KeystrokeEventDto>(new BoundedChannelOptions(1000)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
@@ -87,6 +94,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             public bool IsAudioStreaming { get; set; }
             public IpcTelemetryDto? Telemetry { get; set; }
             public List<KeystrokeEventDto>? Keystrokes { get; set; }
+            public StationDisplayTopologyDto? DisplayTopology { get; set; }
         }
 
         private class IpcTelemetryDto
@@ -157,7 +165,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 Timeout = TimeSpan.FromSeconds(5)
             };
 
-            // 💡 האזנה לרענון תעודות אוטומטי במקרה של עמדה שנותקה זמן רב או שתעודתה חודשה
+            // Listen for automatic certificate trust refresh when an endpoint reconnects after a long partition
             AgentCertificateValidator.OnTrustRefreshRequired += () =>
             {
                 _logger.LogInformation("[PKI-AUTO-RECOVERY] Station recovery detected. Refreshing Root CA bundle from server...");
@@ -308,7 +316,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
         private async Task PeriodicTrustSyncLoopAsync(CancellationToken ct)
         {
-            // בדיקה ראשונית זמן קצר לאחר עליית השירות
+            // Initial trust probe shortly after service launch
             await Task.Delay(TimeSpan.FromSeconds(5), ct);
             while (!ct.IsCancellationRequested)
             {
@@ -321,7 +329,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch { }
 
-                // סנכרון תעודות תקופתי אחת ל-6 שעות
+                // Periodic certificate synchronization every 6 hours
                 await Task.Delay(TimeSpan.FromHours(6), ct);
             }
         }
@@ -332,6 +340,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
             while (!ct.IsCancellationRequested)
             {
+                CancellationTokenSource? connCts = null;
+                Task? channelWriterTask = null;
                 try
                 {
                     using var pipeServer = IpcServerFactory.CreateSecureServerPipe("ITB_Agent_IPC");
@@ -343,12 +353,40 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     using var reader = new StreamReader(pipeServer);
                     using var writer = new StreamWriter(pipeServer) { AutoFlush = true };
 
-                    _workerCommandWriter = writer;
-
-                    if (_serverUtcOffset != TimeSpan.Zero)
+                    var commandChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(500)
                     {
-                        await writer.WriteLineAsync($"SyncClock|{_serverUtcOffset.Ticks}");
-                    }
+                        FullMode = BoundedChannelFullMode.DropOldest,
+                        SingleReader = true,
+                        SingleWriter = false
+                    });
+
+                    _workerCommandChannel = commandChannel;
+                    _isWorkerIpcConnected = true;
+
+                    connCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+                    // Dedicated single-writer background task strictly serializing all writes to pipeServer
+                    channelWriterTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            while (!connCts.Token.IsCancellationRequested && pipeServer.IsConnected)
+                            {
+                                if (await commandChannel.Reader.WaitToReadAsync(connCts.Token).ConfigureAwait(false))
+                                {
+                                    while (commandChannel.Reader.TryRead(out var cmd))
+                                    {
+                                        await writer.WriteLineAsync(cmd).ConfigureAwait(false);
+                                    }
+                                }
+                            }
+                        }
+                        catch (OperationCanceledException) { }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug("[IPC] Command writer terminated: {Msg}", ex.Message);
+                        }
+                    }, connCts.Token);
 
                     bool isIpcAuthenticated = false;
                     while (pipeServer.IsConnected && !ct.IsCancellationRequested)
@@ -365,9 +403,22 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     {
                                         isIpcAuthenticated = true;
                                         _logger.LogInformation("[IPC] Worker successfully authenticated with session key.");
+
+                                        if (_serverUtcOffset != TimeSpan.Zero)
+                                        {
+                                            await SendCommandToWorkerAsync($"SyncClock|{_serverUtcOffset.Ticks}");
+                                        }
+
                                         if (!string.IsNullOrEmpty(_activeKeystrokeKeyId) && !string.IsNullOrEmpty(_activeKeystrokeKeyMaterial))
                                         {
-                                            await writer.WriteLineAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
+                                            await SendCommandToWorkerAsync($"SetEncryptionKey|{_activeKeystrokeKeyId}|{_activeKeystrokeKeyMaterial}");
+                                        }
+
+                                        if (_lastServerShouldStream == true || (_lastServerShouldStream == null && _config.AutoStartRecordingOnLaunch))
+                                        {
+                                            string dest = GetEffectiveRtmpDestination();
+                                            await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                            _lastStartCommandDispatchUtc = DateTime.UtcNow;
                                         }
                                         continue;
                                     }
@@ -376,7 +427,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 break;
                             }
 
-                            // 💡 בדיקת הודעות Fast Path להעברת מקשים מיידית
+                            // Check for Fast Path messages to forward immediate keystrokes
                             if (line.StartsWith("Key|", StringComparison.OrdinalIgnoreCase))
                             {
                                 try
@@ -422,7 +473,19 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 if (status != null)
                                 {
                                     _isWorkerStreaming = status.IsStreaming;
+                                    _isWorkerRecording = status.IsRecording;
                                     _workerRecordingStartedAtUtc = status.RecordingStartedAtUtc;
+
+                                    if (!_isWorkerStreaming && (_lastServerShouldStream == true || (_lastServerShouldStream == null && _config.AutoStartRecordingOnLaunch)))
+                                    {
+                                        if ((DateTime.UtcNow - _lastStartCommandDispatchUtc).TotalSeconds > 10)
+                                        {
+                                            _lastStartCommandDispatchUtc = DateTime.UtcNow;
+                                            _logger.LogInformation("[IPC] Worker is in standby while recording is desired. Dispatching Start command.");
+                                            string dest = GetEffectiveRtmpDestination();
+                                            await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                        }
+                                    }
                                     _lastTelemetry = status.Telemetry;
                                     _lastWorkerHeartbeat = DateTime.UtcNow;
                                     _lastWorkerLaunchTime = DateTime.MinValue;
@@ -432,7 +495,12 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                     _lastWorkerHasActiveMicrophone = status.HasActiveMicrophone || (status.Telemetry?.HasActiveMicrophone ?? false);
                                     _lastWorkerIsAudioStreaming = status.IsAudioStreaming || (status.Telemetry?.IsAudioStreaming ?? false);
 
-                                    // 💡 קליטת מקשים חיים שנשלחו מה-Worker
+                                    if (status.DisplayTopology != null && status.DisplayTopology.Displays != null && status.DisplayTopology.Displays.Count > 0)
+                                    {
+                                        _lastWorkerDisplayTopology = status.DisplayTopology;
+                                    }
+
+                                    // Ingest live keystroke batch sent from the Worker
                                     if (status.Keystrokes != null && status.Keystrokes.Count > 0)
                                     {
                                         foreach (var k in status.Keystrokes)
@@ -457,7 +525,14 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 finally
                 {
-                    _workerCommandWriter = null;
+                    connCts?.Cancel();
+                    if (channelWriterTask != null)
+                    {
+                        try { await channelWriterTask.ConfigureAwait(false); } catch { }
+                    }
+                    connCts?.Dispose();
+                    _workerCommandChannel = null;
+                    _isWorkerIpcConnected = false;
                     _lastWorkerHeartbeat = DateTime.MinValue;
                     _isWorkerStreaming = false;
                 }
@@ -470,7 +545,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
             string targetEndpoint = _serverBaseUrl;
             try
             {
-                bool isWorkerAlive = _workerCommandWriter != null && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 10;
+                bool isWorkerAlive = _isWorkerIpcConnected && (DateTime.UtcNow - _lastWorkerHeartbeat).TotalSeconds < 10;
                 bool isStreaming = isWorkerAlive && _isWorkerStreaming;
 
                 var fallbackHwStats = HardwareProbe.GetTelemetrySnapshot();
@@ -490,7 +565,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 }
                 catch { }
 
-                // 💡 שליפת מקשים מתוך התור לשידור בטיק הנוכחי
+                // Dequeue keystrokes to transmit in current telemetry report tick
                 var keysBatch = new List<KeystrokeEventDto>();
                 while (_pendingKeystrokes.TryDequeue(out var k) && keysBatch.Count < 500)
                 {
@@ -504,8 +579,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
                     Status = isStreaming ? AgentStatus.Streaming : AgentStatus.Standby,
                     IsProcessRunning = isWorkerAlive,
                     IsStreaming = isStreaming,
-                    IsRecording = isStreaming,
-                    RecordingStartedAtUtc = isStreaming ? _workerRecordingStartedAtUtc : null,
+                    IsRecording = isStreaming && _isWorkerRecording,
+                    RecordingStartedAtUtc = _isWorkerRecording ? _workerRecordingStartedAtUtc : null,
                     AutoStartRecordingOnLaunch = _config.AutoStartRecordingOnLaunch,
                     IsScreenCapturing = isStreaming,
 
@@ -542,6 +617,8 @@ namespace ITB_SCREEN_RECORDER.AgentService
 
                     OfflineFilesCount = offlineFilesCount,
                     OfflineFilesTotalSizeMb = offlineFilesSizeMb,
+
+                    DisplayTopology = _lastWorkerDisplayTopology,
 
                     Keystrokes = keysBatch.Count > 0 ? keysBatch : null
                 };
@@ -632,14 +709,30 @@ namespace ITB_SCREEN_RECORDER.AgentService
                                 }
                             }
 
+                            bool shouldStart = heartbeatResponse.Command == ServerCommand.StartStream
+                                            || (heartbeatResponse.ShouldStream && !_isWorkerStreaming);
+
                             if (heartbeatResponse.Command == ServerCommand.StopStream)
                             {
+                                _lastServerShouldStream = false;
                                 await SendCommandToWorkerAsync("Stop");
                             }
-                            else if (heartbeatResponse.Command == ServerCommand.StartStream)
+                            else if (shouldStart)
                             {
+                                _lastServerShouldStream = true;
+                                _lastStartCommandDispatchUtc = DateTime.UtcNow;
                                 string dest = GetEffectiveRtmpDestination();
                                 await SendCommandToWorkerAsync($"Start|{dest}|{_serverUtcOffset.Ticks}|{_currentPolicy.TargetFps}|{_currentPolicy.VideoBitrate}");
+                                bool initialRecord = _lastServerShouldRecord ?? _config.AutoStartRecordingOnLaunch;
+                                await SendCommandToWorkerAsync($"SetRecording|{initialRecord}");
+                            }
+
+                            bool shouldRecord = heartbeatResponse.ShouldRecord;
+                            if (_lastServerShouldRecord != shouldRecord)
+                            {
+                                _lastServerShouldRecord = shouldRecord;
+                                _logger.LogInformation("[RECORDING STATE] Server requested ShouldRecord={ShouldRecord}. Sending SetRecording to worker.", shouldRecord);
+                                await SendCommandToWorkerAsync($"SetRecording|{shouldRecord}");
                             }
                         }
                     }
@@ -648,7 +741,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                         _logger.LogWarning("Failed to process heartbeat response: {Msg}", ex.Message);
                     }
 
-                    // בדוק האם אנחנו מחוברים כרגע לשרת Standby והשרת הראשי התאושש (Failback) - רלוונטי רק כשאין VIP
+                    // Check if currently connected to a Standby server while the Primary has recovered (Failback) - relevant when VIP is disabled
                     if (_activeServer != null && !_activeServer.EnableVirtualIp && (_activeServer.Priority > 1 || string.Equals(_activeServer.Role, "Standby", StringComparison.OrdinalIgnoreCase)))
                     {
                         if ((DateTime.UtcNow - _lastFailbackCheckUtc).TotalSeconds >= 30)
@@ -674,7 +767,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     _consecutiveServerFailures++;
                     _logger.LogWarning("Server returned non-success during telemetry ({Endpoint}): {StatusCode} {Reason}", targetEndpoint, (int)response.StatusCode, response.ReasonPhrase);
-                    // שחזור המקשים לתור אם השרת החזיר שגיאה
+                    // Requeue failed keystrokes for subsequent retry
                     foreach (var k in keysBatch) _pendingKeystrokes.Enqueue(k);
                 }
             }
@@ -683,7 +776,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 _consecutiveServerFailures++;
                 _logger.LogWarning("Telemetry transmission failed ({Endpoint}): {Msg}", targetEndpoint, ex.Message);
 
-                // בדיקת מעבר מיידי לשרת גיבוי (Failover) במקרה של כשל רצוף
+                // Proactive failover to backup cluster node on persistent server unreachable error
                 if (_consecutiveServerFailures >= 3)
                 {
                     // If VIP is enabled, wait a few cycles for cluster ARP migration before abandoning VIP
@@ -925,7 +1018,7 @@ namespace ITB_SCREEN_RECORDER.AgentService
                 {
                     MachineName = Environment.MachineName,
                     OsVersion = Environment.OSVersion.ToString(),
-                    AgentVersion = "1.0.4",
+                    AgentVersion = typeof(AgentSupervisorService).Assembly.GetName().Version?.ToString(3) ?? "1.0.46",
                     RequestTimestampUtc = DateTime.UtcNow
                 };
 
@@ -957,19 +1050,21 @@ namespace ITB_SCREEN_RECORDER.AgentService
             }
         }
 
-        private async Task SendCommandToWorkerAsync(string command)
+        private Task SendCommandToWorkerAsync(string command)
         {
-            if (_workerCommandWriter != null)
+            var channel = _workerCommandChannel;
+            if (channel != null && _isWorkerIpcConnected)
             {
                 try
                 {
-                    await _workerCommandWriter.WriteLineAsync(command);
+                    channel.Writer.TryWrite(command);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning("Failed to dispatch command to worker: {Msg}", ex.Message);
+                    _logger.LogWarning("Failed to enqueue command to worker: {Msg}", ex.Message);
                 }
             }
+            return Task.CompletedTask;
         }
 
         private void EnsureWorkerRunning()
@@ -978,6 +1073,39 @@ namespace ITB_SCREEN_RECORDER.AgentService
             {
                 string processName = Path.GetFileNameWithoutExtension(_workerPath);
                 var procs = Process.GetProcessesByName(processName);
+
+#if WINDOWS
+                if (OperatingSystem.IsWindows() && procs.Length > 0)
+                {
+                    uint activeConsoleSession = InteractiveProcessLauncher.GetActiveConsoleSessionId();
+                    if (activeConsoleSession != 0xFFFFFFFF && activeConsoleSession != 0)
+                    {
+                        var mismatchedProcs = procs.Where(p =>
+                        {
+                            try { return p.SessionId == 0 || (uint)p.SessionId != activeConsoleSession; }
+                            catch { return false; }
+                        }).ToList();
+
+                        if (mismatchedProcs.Count > 0)
+                        {
+                            _logger.LogWarning("Found {Count} worker process(es) in invalid/dead sessions (Active session: {ActiveSession}). Terminating...",
+                                mismatchedProcs.Count, activeConsoleSession);
+
+                            foreach (var p in mismatchedProcs)
+                            {
+                                try
+                                {
+                                    p.Kill();
+                                    p.WaitForExit(1000);
+                                }
+                                catch { }
+                            }
+
+                            procs = Process.GetProcessesByName(processName);
+                        }
+                    }
+                }
+#endif
 
                 bool hasEverReceivedHeartbeat = _lastWorkerHeartbeat != DateTime.MinValue;
                 if (procs.Length > 0 && !hasEverReceivedHeartbeat && _lastWorkerLaunchTime == DateTime.MinValue)

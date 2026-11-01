@@ -4,13 +4,13 @@
 		<Platform>x64</Platform>
 		<Platforms>x64</Platforms>
 
-		<!-- נתיב לשורש הפתרון: 3 רמות למעלה מ-Installers/Windows/ITB-SCREEN-RECORDER.Installer -->
+		<!-- Solution root path: 3 levels up from Installers/Windows/ITB-SCREEN-RECORDER.Installer -->
 		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..'))</SolutionRoot>
 
-		<!-- נרמול גרסה ל-3 מקטעים בלבד (Major.Minor.Build) -->
+		<!-- Normalize version to 3 segments (Major.Minor.Build) -->
 		<RawVersion Condition="'$(ProductVersion)' != ''">$(ProductVersion)</RawVersion>
 		<RawVersion Condition="'$(RawVersion)' == '' and '$(Version)' != ''">$(Version)</RawVersion>
-		<RawVersion Condition="'$(RawVersion)' == ''">1.0.39</RawVersion>
+		<RawVersion Condition="'$(RawVersion)' == ''">1.0.46</RawVersion>
 
 		<Version>$([System.Text.RegularExpressions.Regex]::Match($(RawVersion), '^\d+\.\d+\.\d+').Value)</Version>
 		<Version Condition="'$(Version)' == ''">$(RawVersion)</Version>
@@ -20,7 +20,7 @@
 		<StagingDir Condition="'$(StagingDir)' == ''">$(SolutionRoot)\Publish\Staging\agent_win</StagingDir>
 		<FinalOutputDir Condition="'$(FinalOutputDir)' == ''">$(SolutionRoot)\Publish\Agent\windows</FinalOutputDir>
 
-		<!-- העברת משתנים לקובץ ה-WXS -->
+		<!-- Pass variables to WXS file -->
 		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
 		<SuppressIces>ICE61</SuppressIces>
 	</PropertyGroup>

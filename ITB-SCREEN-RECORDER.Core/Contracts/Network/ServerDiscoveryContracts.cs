@@ -13,7 +13,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Network
         /// Administratively scoped IPv4 Multicast address (RFC 2365: 239.255.0.0/16).
         /// Safe for private/enterprise networks without public routing.
         /// </summary>
-        public const string DefaultMulticastAddress = "239.255.10.90";
+        public const string DefaultMulticastAddress = "239.210.1.5";
         public const string DefaultBroadcastAddress = "255.255.255.255";
         public const string DefaultSubnetMask = "255.255.255.0";
 

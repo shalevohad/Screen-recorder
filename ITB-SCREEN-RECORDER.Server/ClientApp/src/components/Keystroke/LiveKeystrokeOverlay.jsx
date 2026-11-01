@@ -1,13 +1,19 @@
 // ==========================================
 // File: ClientApp/src/components/Keystroke/LiveKeystrokeOverlay.jsx
 // ==========================================
-import React, { useMemo } from 'react';
+import React from 'react';
 import { parseKeyCombination, cleanKeyCombination } from '../../utils/keyUtils';
 import './LiveKeystrokeOverlay.scss';
 
 const DISPLAY_DURATION_MS = 2800;
 const FADE_DURATION_MS = 450;
 
+/**
+ * LiveKeystrokeOverlay Component.
+ * Displays real-time keystroke overlays over active video streams.
+ * Inputs: keystrokes array, isLive boolean, variant ('viewport' | 'fullscreen' | 'compact'), mode ('burn-in' | 'caption' | 'none').
+ * Outputs: Rendered HUD keystroke element or null.
+ */
 export default function LiveKeystrokeOverlay({
     keystrokes = [],
     isLive = false,
@@ -16,7 +22,7 @@ export default function LiveKeystrokeOverlay({
 }) {
     const normalizedMode = (mode || 'burn-in').toLowerCase().replace('_', '-');
 
-    // 💡 מצב כבוי לחלוטין (None / Off)
+    // Overlay completely disabled (None / Off)
     if (normalizedMode === 'none' || normalizedMode === 'off') {
         return null;
     }
@@ -25,7 +31,7 @@ export default function LiveKeystrokeOverlay({
         return null;
     }
 
-    // שליפת האירוע העדכני ביותר מתוך המקשים הפעילים
+    // Extract the most recent event from active keystrokes
     const latestEvent = Array.isArray(keystrokes) ? keystrokes[keystrokes.length - 1] : keystrokes;
     if (!latestEvent) {
         return null;
@@ -43,7 +49,7 @@ export default function LiveKeystrokeOverlay({
         return null;
     }
 
-    // חישוב שקיפות עדינה ב-Fade Out
+    // Calculate smooth fade-out opacity
     let opacity = 1;
     if (elapsed > (DISPLAY_DURATION_MS - FADE_DURATION_MS)) {
         const fadeProgress = (elapsed - (DISPLAY_DURATION_MS - FADE_DURATION_MS)) / FADE_DURATION_MS;
@@ -56,7 +62,7 @@ export default function LiveKeystrokeOverlay({
 
     const cleanCombo = cleanKeyCombination(rawCombo) || rawCombo;
 
-    // תצוגה דחוסה לשורות ב-Dense View
+    // Compact pill view for dense station grid rows
     if (variant === 'compact') {
         return (
             <div className="live-keystroke-compact-pill" style={{ opacity }} title={`Live Keystroke: ${cleanCombo}`}>
@@ -68,7 +74,7 @@ export default function LiveKeystrokeOverlay({
 
     const isFullscreen = variant === 'fullscreen';
 
-    // 🎯 מצב 1: כתובית תחתונה רכה (Soft Caption) - כמו בסטודיו
+    // Mode 1: Soft studio caption
     if (normalizedMode === 'caption') {
         return (
             <div
@@ -82,7 +88,7 @@ export default function LiveKeystrokeOverlay({
         );
     }
 
-    // 🎯 מצב 2: צריבה קשיחה טקטית (Hard Burn-in) - Keycaps זוהרים
+    // Mode 2: Tactical hard burn-in - glowing keycaps
     const keys = parseKeyCombination(rawCombo);
     if (!keys || keys.length === 0) {
         return null;

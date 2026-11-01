@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Client/src/components/UI/TabConfigModal.jsx
 // ==========================================
 import { useState, useEffect, useMemo } from 'react';
@@ -119,7 +119,7 @@ export default function TabConfigModal({
                             </div>
                         ) : null}
 
-                        {/* תגיות העמדות שנבחרו */}
+                        {/* Selected assigned stations chips */}
                         <div className="form-group">
                             <label className="field-label">
                                 Assigned Stations ({assignedHostnames.length}):
@@ -151,7 +151,7 @@ export default function TabConfigModal({
                             </div>
                         </div>
 
-                        {/* שדה חיפוש עמדות */}
+                        {/* Station search and selection input */}
                         <div className="form-group">
                             <label className="field-label">Or Select Stations Explicitly:</label>
                             <div className="station-search-filter-field">

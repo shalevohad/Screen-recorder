@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Server/Models/StorageTelemetryDto.cs
 // ==========================================
 using System;
@@ -14,7 +14,7 @@ namespace ITB_SCREEN_RECORDER.Server.Models
         public bool IsConfigured { get; set; }
         public bool IsAccessible { get; set; }
 
-        // 💡 חיווי האם המערכת פועלת כרגע על נתיב ה-Fallback במקום האחסון הראשי
+        // Indicates whether the storage subsystem is actively operating on the local fallback path instead of primary UNC storage
         public bool IsFallbackActive { get; set; }
 
         public long TotalSizeBytes { get; set; }

@@ -2,7 +2,7 @@
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
 		<OutputType>Library</OutputType>
-		<Version Condition="'$(Version)' == ''">1.0.39</Version>
+		<Version Condition="'$(Version)' == ''">1.0.46</Version>
 		<SolutionRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../..'))</SolutionRoot>
 		<LinuxRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/..'))</LinuxRoot>
 
@@ -10,7 +10,7 @@
 		<FinalOutputDir>$(SolutionRoot)/Publish/Server/linux</FinalOutputDir>
 		<OutputRunFile>$(FinalOutputDir)/ITB-ScreenRecorder-Server-Setup-$(Version).run</OutputRunFile>
 
-		<!-- מנוע PowerShell דינמי ובידוד מתג STA של Windows -->
+		<!-- Dynamic PowerShell engine and Windows STA isolation -->
 		<PowerShellCmd Condition="$([MSBuild]::IsOSPlatform('Windows'))">powershell.exe</PowerShellCmd>
 		<PowerShellCmd Condition="!$([MSBuild]::IsOSPlatform('Windows'))">pwsh</PowerShellCmd>
 		<PowerShellSta Condition="$([MSBuild]::IsOSPlatform('Windows'))">-Sta </PowerShellSta>
@@ -31,8 +31,9 @@
 		<MakeDir Directories="$(StagingDir)/features" />
 		<MakeDir Directories="$(FinalOutputDir)" />
 
-		<Message Importance="high" Text="=== [2/5] Publishing Central Server (linux-x64) ===" />
+		<Message Importance="high" Text="=== [2/5] Publishing Central Server &amp; Diagnostics Tool (linux-x64) ===" />
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)/ITB-SCREEN-RECORDER.Server/ITB-SCREEN-RECORDER.Server.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)/server&quot;" />
+		<Exec Command="dotnet publish &quot;$(SolutionRoot)/Tools/ITB-SCREEN-RECORDER.Diagnostics/ITB-SCREEN-RECORDER.Diagnostics.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -p:PublishSingleFile=true -o &quot;$(StagingDir)/server/Tools&quot;" />
 		<RemoveDir Directories="$(StagingDir)/server/Features" ContinueOnError="true" />
 
 		<Message Importance="high" Text="=== [3/5] Publishing All Discovered Modular Features (linux-x64) ===" />

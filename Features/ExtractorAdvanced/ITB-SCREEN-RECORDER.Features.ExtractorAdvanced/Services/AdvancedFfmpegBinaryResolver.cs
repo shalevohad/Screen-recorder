@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Services/AdvancedFfmpegBinaryResolver.cs
 // ==========================================
 using System;
@@ -11,6 +11,9 @@ using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 {
+    /// <summary>
+    /// Specialized binary resolver prioritizing ExtractorAdvanced directory paths for FFmpeg and FFprobe discovery.
+    /// </summary>
     public class AdvancedFfmpegBinaryResolver : FfmpegBinaryResolver
     {
         public AdvancedFfmpegBinaryResolver(
@@ -20,15 +23,19 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         {
         }
 
+        /// <summary>
+        /// Returns candidate search directories for FFmpeg and FFprobe binaries.
+        /// </summary>
+        /// <returns>Sequence of candidate directory paths.</returns>
         protected override IEnumerable<string> GetCandidateDirectories()
         {
             var baseDir = AppContext.BaseDirectory;
 
-            // נתיבים ייעודיים של ה-Advanced בעדיפות עליונה
+            // Highest priority: Dedicated ExtractorAdvanced feature binary directories
             yield return Path.Combine(baseDir, "Features", "ExtractorAdvanced");
             yield return Path.Combine(baseDir, "Features", "ExtractorAdvanced", "Bin");
 
-            // כל שאר הנתיבים של מחלקת הבסיס
+            // Remaining base resolver search directories
             foreach (var dir in base.GetCandidateDirectories())
             {
                 yield return dir;

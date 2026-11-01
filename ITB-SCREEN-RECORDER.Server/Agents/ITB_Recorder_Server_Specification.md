@@ -394,5 +394,29 @@ app.Run("http://0.0.0.0:8080");
 
 ---
 
+## 9. מפרט תמיכה בתחנות מרובות מסכים (Multi-Monitor & Topology Routing)
+
+### 9.1 ניהול טופולוגיית מסכים (Display Topology DTO & Telemetry)
+ה-Agent מדווח בפעימות ה-Telemetry ובחיבור ראשוני על מערך המסכים הפיזי:
+```json
+{
+  "hostname": "WS-OPERATOR-01",
+  "displays": [
+    { "displayId": "mon-0", "displayName": "\\\\.\\DISPLAY1", "isPrimary": true, "adapter": "NVIDIA RTX 4070", "x": 0, "y": 0, "width": 3840, "height": 2160, "fps": 30 },
+    { "displayId": "mon-1", "displayName": "\\\\.\\DISPLAY2", "isPrimary": false, "adapter": "Intel UHD Graphics 770", "x": 3840, "y": 0, "width": 1920, "height": 1080, "fps": 20 }
+  ],
+  "virtualDesktopBounds": { "x": 0, "y": 0, "width": 5760, "height": 2160 }
+}
+```
+
+### 9.2 נתיבי הזרמה ופרוקסי WHEP
+* **RTMP Ingestion**: `live/{hostname}/mon-0` (מסך ראשי + אודיו), `live/{hostname}/mon-1` (מסך משני וידאו).
+* **WHEP Proxy**: `WhepProxyController` תומך בנתיב מרובה מקטעים: `/api/v1/whep/live/{hostname}/{displayId}` ומנתב ישירות ל-MediaMTX WebRTC ללא Mixed-Content.
+* **Storage Chunking**: תיקיות אחסון נשמרות בהיררכיה `{root}/{hostname}/{displayId}/{epoch}.mp4`.
+* **Dynamic Hot-Plug**: חיבור או ניתוק מסך בתחנה מייצר אירוע C2 המעדכן מיידית את ה-Dashboard דרך SignalR מבלי להפריע להקלטת המסך הראשי.
+
+---
+
 ## 📌 סיכום וצעדים הבאים
 מסמך זה מהווה את התוכנית הארכיטקטונית המלאה לבניית שרת ה-Middleware. הקוד מוכן ליישום מיידי ב-Visual Studio 2022 תחת פרויקט **ASP.NET Core Web API (.NET 8)**, ומספק מענה אמין, מהיר ושקוף לניהול 100 תחנות הקצה בארגון.
+

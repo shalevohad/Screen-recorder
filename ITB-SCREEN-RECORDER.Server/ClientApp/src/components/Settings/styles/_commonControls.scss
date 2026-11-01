@@ -1,6 +1,6 @@
 // Client/src/components/Settings/styles/_commonControls.scss
 
-/* שדות Fieldsets משותפים */
+/* Shared Form Fieldsets */
 .settings-fieldset {
     border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
     background: var(--surface-card, rgba(15, 23, 42, 0.60));
@@ -176,7 +176,7 @@
     }
 }
 
-/* סליידרים טקטיים עם סרגל Ticks */
+/* Tactical Range Sliders with Ticks Scale */
 .range-with-input {
     display: flex;
     flex-direction: column;
@@ -196,7 +196,7 @@
             width: calc(100% - 87px);
             min-width: 0;
             cursor: pointer;
-            height: 4px; /* גובה 4px תקני */
+            height: 4px; /* Standard 4px track height */
             background: rgba(148, 163, 184, 0.15);
             border-radius: var(--radius-full, 9999px);
             appearance: none;

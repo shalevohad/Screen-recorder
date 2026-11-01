@@ -3,7 +3,9 @@
 // ==========================================
 
 /**
- * מנרמל שם מקש בודד לתצוגה אחידה
+ * Normalizes a single key label to uniform tactical display representation.
+ * @param {string} part - Raw key name string.
+ * @returns {string} Normalized key name (e.g. 'Ctrl', 'Shift', 'Alt', 'Esc').
  */
 export function normalizeKeyPart(part) {
     if (!part || typeof part !== 'string') return '';
@@ -28,8 +30,10 @@ export function normalizeKeyPart(part) {
 }
 
 /**
- * מפרק מחרוזת של צירוף מקשים (כגון "Ctrl+C", "Alt+Tab", "Ctrl+Shift+Esc", "*")
- * לרשימת מקשים נקיים ומסוננים ללא כפילויות
+ * Parses a keystroke combination string (e.g. "Ctrl+C", "Alt+Tab", "Ctrl+Shift+Esc")
+ * into a deduplicated list of cleaned and normalized key parts.
+ * @param {string} rawCombo - Raw keystroke combination string.
+ * @returns {string[]} Array of normalized key names.
  */
 export function parseKeyCombination(rawCombo) {
     if (!rawCombo || typeof rawCombo !== 'string') return [];
@@ -52,7 +56,10 @@ export function parseKeyCombination(rawCombo) {
 }
 
 /**
- * מחזיר מחרוזת נקייה, מעוצבת וקריאה של צירוף המקשים
+ * Returns a formatted, human-readable representation of a key combination.
+ * @param {string} rawCombo - Raw key combination string.
+ * @param {string} [joiner=' + '] - Delimiter string.
+ * @returns {string} Formatted combination string.
  */
 export function cleanKeyCombination(rawCombo, joiner = ' + ') {
     const keys = parseKeyCombination(rawCombo);

@@ -1,4 +1,4 @@
-﻿using ITB_SCREEN_RECORDER.Core.Common;
+using ITB_SCREEN_RECORDER.Core.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -91,7 +91,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 snapshot.AppMediaTxMbps = Math.Round((mediaBytes * 8.0) / (elapsedSeconds * 1_000_000.0), 2);
                 snapshot.AppTelemetryTxKbps = Math.Round((telemBytes * 8.0) / (elapsedSeconds * 1_000.0), 2);
 
-                // סינון מתאמים פעילים - הותרת כרטיסים פיזיים ו-vEthernet שנושא תעבורה
+                // Filter active network adapters: preserve physical NICs and traffic-bearing vEthernet adapters
                 var activeNics = NetworkInterface.GetAllNetworkInterfaces()
                     .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
                                   nic.NetworkInterfaceType != NetworkInterfaceType.Loopback &&

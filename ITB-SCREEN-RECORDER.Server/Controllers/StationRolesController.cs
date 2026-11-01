@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Server.Controllers;
+namespace ITB_SCREEN_RECORDER.Server.Controllers;
 
 using System;
 using System.Collections.Generic;
@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 public record UpdateRoleAliasRequest(string? RoleAlias);
+public record SwapRoleAliasesRequest(string StationA, string StationB);
 public record ApplyMappingRequest(List<StationRoleMappingEntry> Mappings);
 public record StationRoleMappingEntry(string Hostname, string? RoleAlias);
 
@@ -36,10 +37,37 @@ public class StationRolesController : ControllerBase
     [AuthorizePermission(PermissionKeys.StationsManage)]
     public async Task<IActionResult> SetRoleAlias(string hostname, [FromBody] UpdateRoleAliasRequest request)
     {
-        if (string.IsNullOrWhiteSpace(hostname)) return BadRequest("Hostname is required.");
+        if (string.IsNullOrWhiteSpace(hostname)) return BadRequest(new { error = "Hostname is required." });
 
-        await _stationRolesService.SetRoleAliasAsync(hostname.Trim(), request?.RoleAlias?.Trim());
-        return Ok(new { Hostname = hostname, RoleAlias = request?.RoleAlias?.Trim(), Success = true });
+        try
+        {
+            await _stationRolesService.SetRoleAliasAsync(hostname.Trim(), request?.RoleAlias?.Trim());
+            return Ok(new { Hostname = hostname, RoleAlias = request?.RoleAlias?.Trim(), Success = true });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("swap")]
+    [AuthorizePermission(PermissionKeys.StationsManage)]
+    public async Task<IActionResult> SwapRoleAliases([FromBody] SwapRoleAliasesRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.StationA) || string.IsNullOrWhiteSpace(request.StationB))
+        {
+            return BadRequest(new { error = "Both StationA and StationB hostnames are required." });
+        }
+
+        try
+        {
+            await _stationRolesService.SwapRoleAliasesAsync(request.StationA.Trim(), request.StationB.Trim());
+            return Ok(new { Success = true, StationA = request.StationA.Trim(), StationB = request.StationB.Trim() });
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpPost("upload-mapping")]
@@ -74,8 +102,15 @@ public class StationRolesController : ControllerBase
             }
         }
 
-        await _stationRolesService.ApplyMappingAsync(list);
-        return Ok(new { Success = true, UpdatedCount = list.Count });
+        try
+        {
+            await _stationRolesService.ApplyMappingAsync(list);
+            return Ok(new { Success = true, UpdatedCount = list.Count });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("export-mapping")]

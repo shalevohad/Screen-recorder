@@ -191,10 +191,16 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             db.EnsureColumn("recording_chunks", "has_audio", "INTEGER NOT NULL DEFAULT 0");
             db.EnsureColumn("recording_chunks", "is_finalized", "INTEGER NOT NULL DEFAULT 0");
             db.EnsureColumn("recording_chunks", "indexed_at_utc", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("recording_chunks", "display_id", "TEXT NOT NULL DEFAULT 'mon-0'");
+            db.EnsureColumn("recording_chunks", "is_primary", "INTEGER NOT NULL DEFAULT 1");
+            db.EnsureColumn("recording_chunks", "display_bounds", "TEXT");
 
             db.Execute(@"
                 CREATE INDEX IF NOT EXISTS idx_chunks_station_window_covering 
-                ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms, is_finalized, file_path, file_size_bytes, fps, width, height, has_audio);
+                ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms, is_finalized, file_path, file_size_bytes, fps, width, height, has_audio, display_id);
+
+                CREATE INDEX IF NOT EXISTS idx_chunks_station_display
+                ON recording_chunks (station_id COLLATE NOCASE, display_id, start_epoch_ms, end_epoch_ms);
 
                 CREATE INDEX IF NOT EXISTS idx_keystrokes_station_epoch
                 ON keystroke_events (station_id, epoch_ms ASC);
@@ -297,7 +303,7 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             }
         }
 
-        // גיבוב PBKDF2 תקני עבור SysMaster2026!
+        // Standard PBKDF2 hash for initial bootstrap account SysMaster2026!
         string initialPasswordHash = PasswordHasher.Hash("SysMaster2026!");
 
         db.Execute(@"

@@ -50,7 +50,7 @@ namespace ITB_SCREEN_RECORDER.Tests.Core
 
             string encryptedWithOld = PayloadEncryptionManager.Encrypt(text, oldKeyId, oldKey);
 
-            // במקרה ש-KeyResolver לא מזהה ישירות לפי ה-ID, מנסים fallback של כלל המפתחות
+            // When KeyResolver does not directly map the ID, evaluate dictionary key fallback
             var keyDict = new Dictionary<string, byte[]>
             {
                 { "KEY-NEW", newKey },
@@ -78,22 +78,22 @@ namespace ITB_SCREEN_RECORDER.Tests.Core
             Assert.False(string.IsNullOrEmpty(initialKeyId));
             Assert.Equal(32, initialKeyBytes.Length);
 
-            // הצפנת מידע עם המפתח הראשוני
+            // Encrypt data with the initial active key
             string text1 = "PasswordInput";
             string enc1 = PayloadEncryptionManager.Encrypt(text1, initialKeyId, initialKeyBytes);
 
-            // ביצוע סבב מפתחות (Key Rotation)
+            // Execute key rotation
             string newKeyId = await keyRing.RotateKeyAsync();
             Assert.NotEqual(initialKeyId, newKeyId);
 
             var (activeId, activeBytes) = keyRing.GetActiveKey();
             Assert.Equal(newKeyId, activeId);
 
-            // הצפנת מידע נוסף עם המפתח החדש
+            // Encrypt additional data with the rotated new key
             string text2 = "NewSessionInput";
             string enc2 = PayloadEncryptionManager.Encrypt(text2, activeId, activeBytes);
 
-            // פענוח אוטומטי של שניהם דרך ה-Keyring
+            // Transparent automatic decryption of both entries via KeyRing
             string dec1 = keyRing.Decrypt(enc1);
             string dec2 = keyRing.Decrypt(enc2);
 

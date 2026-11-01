@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 
-const ITEMS_PER_PAGE = 4;
+// Dynamic itemsPerPage replaces static itemsPerPage
 
 const FPS_TICKS = [
     { val: 10, label: '10' },
@@ -29,11 +29,25 @@ export default function StationOverridesTab({
     const [overrideFps, setOverrideFps] = useState(20);
     const [overrideBitrateKbps, setOverrideBitrateKbps] = useState(2500);
 
-    // ניהול חיפוש מתקפל, סינון ודפדוף
+    // Collapsible search state, filtering mode, and pagination
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterMode, setFilterMode] = useState('all'); // 'all' | 'custom' | 'default'
-    const [currentPage, setCurrentPage] = useState(1);
+        const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(8);
+    const listRef = useRef(null);
+
+    useEffect(() => {
+        const updateCapacity = () => {
+            const h = listRef.current?.clientHeight || (window.innerHeight - 380);
+            const rowHeight = 72;
+            const usableH = Math.max(200, h - 50);
+            setItemsPerPage(Math.max(4, Math.floor(usableH / rowHeight)));
+        };
+        updateCapacity();
+        window.addEventListener('resize', updateCapacity);
+        return () => window.removeEventListener('resize', updateCapacity);
+    }, []);
 
     const customOverridesCount = Object.keys(overrides).length;
 
@@ -72,7 +86,7 @@ export default function StationOverridesTab({
         setCurrentPage(1);
     };
 
-    // סינון ומיון העמדות
+    // Filter and sort station list
     const filteredStations = useMemo(() => {
         return stations
             .filter(st => {
@@ -93,9 +107,9 @@ export default function StationOverridesTab({
             });
     }, [stations, overrides, searchQuery, filterMode]);
 
-    const totalPages = Math.max(1, Math.ceil(filteredStations.length / ITEMS_PER_PAGE));
+    const totalPages = Math.max(1, Math.ceil(filteredStations.length / itemsPerPage));
     const activePage = Math.min(currentPage, totalPages);
-    const paginatedStations = filteredStations.slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE);
+    const paginatedStations = filteredStations.slice((activePage - 1) * itemsPerPage, activePage * itemsPerPage);
 
     const renderSliderWithTicks = (value, min, max, step, onChange, ticks) => (
         <div className="range-with-input">
@@ -147,7 +161,7 @@ export default function StationOverridesTab({
             <legend>Station Stream Overrides</legend>
 
             <div className="overrides-toolbar">
-                {/* שורת חיפוש לרוחב מלא - מופיעה רק בלחיצה על אייקון החיפוש */}
+                {/* Full-width search bar - revealed when search icon is clicked */}
                 {isSearchOpen && (
                     <div className="toolbar-search-fullwidth">
                         <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
@@ -170,12 +184,12 @@ export default function StationOverridesTab({
                             onClick={handleCloseSearch}
                             title="Close search"
                         >
-                            ✕
+                            ?
                         </button>
                     </div>
                 )}
 
-                {/* שורת כפתורי סינון - יורדת מתחת לחיפוש כשהוא פתוח */}
+                {/* Filter action buttons toolbar */}
                 <div className="toolbar-actions-row">
                     {!isSearchOpen && (
                         <button
@@ -228,7 +242,7 @@ export default function StationOverridesTab({
                 </div>
             </div>
 
-            {/* רשימת עמדות */}
+            {/* Stations list */}
             <div className="overrides-list">
                 {paginatedStations.length === 0 ? (
                     <div className="no-stations-notice">No stations match the selected filter.</div>
@@ -249,7 +263,12 @@ export default function StationOverridesTab({
                             <div key={st.hostname} className={`station-override-card ${isCustom ? 'is-custom' : ''}`}>
                                 <div className="card-top-row">
                                     <div className="station-title-group">
-                                        <span className="station-name">{st.hostname}</span>
+                                        <span className="station-name">{st.roleAlias || st.displayName || st.hostname}</span>
+                                        {st.hostname && (st.roleAlias || st.displayName) && (st.roleAlias || st.displayName).toLowerCase() !== st.hostname.toLowerCase() && (
+                                            <span className="station-host-badge" title={`Physical Machine: ${st.hostname}`}>
+                                                {st.hostname}
+                                            </span>
+                                        )}
                                         {isCustom && <span className="custom-indicator-dot" title="Custom override active"></span>}
                                     </div>
                                     <span className={`policy-badge ${isCustom ? 'custom' : 'default'}`}>
@@ -338,7 +357,7 @@ export default function StationOverridesTab({
                 )}
             </div>
 
-            {/* דפדוף */}
+            {/* Pagination controls */}
             {totalPages > 1 && (
                 <div className="overrides-pagination">
                     <span className="page-indicator">
@@ -351,7 +370,7 @@ export default function StationOverridesTab({
                             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                             className="btn-page"
                         >
-                            ◀ Prev
+                            ? Prev
                         </button>
                         <button
                             type="button"
@@ -359,7 +378,7 @@ export default function StationOverridesTab({
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             className="btn-page"
                         >
-                            Next ▶
+                            Next ?
                         </button>
                     </div>
                 </div>

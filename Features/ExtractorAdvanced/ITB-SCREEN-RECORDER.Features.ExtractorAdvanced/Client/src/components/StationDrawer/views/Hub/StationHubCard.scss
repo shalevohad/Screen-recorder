@@ -1,4 +1,4 @@
-﻿// Client/src/components/StationDrawer/views/Hub/StationHubCard.scss
+// Client/src/components/StationDrawer/views/Hub/StationHubCard.scss
 
 .hub-station-card {
     background: rgba(15, 23, 42, 0.7);
@@ -233,16 +233,16 @@
                     position: absolute;
                     top: 0;
                     bottom: 0;
-                    /* הבלטת מקטעים קצרים עם רוחב מינימלי וזוהר כפול */
+                    /* Emphasize short segments with minimum width and double glow */
                     &.rec {
-                        min-width: 5px !important; // לעולם לא ייבלע
+                        min-width: 5px !important; // Never swallowed
                         background: #10b981;
                         border-radius: 2px;
                         z-index: 3;
                         box-shadow: 0 0 6px #10b981, 0 0 12px rgba(52, 211, 153, 0.9);
                         border: 0.5px solid #6ee7b7;
                     }
-                    /* עמעום פסי ה-Gap כדי שהירוק יבלוט מיד */
+                    /* Dim gap strips to make recorded green strips prominent */
                     &.gap {
                         background: rgba(15, 23, 42, 0.95);
                         background-image: repeating-linear-gradient( -45deg, rgba(244, 63, 94, 0.12), rgba(244, 63, 94, 0.12) 4px, rgba(15, 23, 42, 0.95) 4px, rgba(15, 23, 42, 0.95) 8px );

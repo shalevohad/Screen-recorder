@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -78,12 +78,12 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         private NvmlDeviceGetUtilizationRatesDelegate? _getUtilization;
         private NvmlDeviceGetEncoderUtilizationDelegate? _getEncoderUtilization;
 
-        // משתנים למעקב CPU מארח (Windows)
+        // Host CPU tracking fields (Windows)
         private ulong _prevSysIdle = 0;
         private ulong _prevSysKernel = 0;
         private ulong _prevSysUser = 0;
 
-        // משתנים למעקב CPU מארח (Linux)
+        // Host CPU tracking fields (Linux)
         private ulong _prevIdleTime = 0;
         private ulong _prevTotalTime = 0;
 
@@ -91,7 +91,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
         private TimeSpan _lastTotalProcessorTime;
         private readonly Process _currentProcess;
 
-        // רשימת מונים דינמית לכל מנועי ה-GPU הפעילים (Intel / AMD / Nvidia Generic)
+        // Dynamic counter list across all active GPU engines (Intel / AMD / Nvidia Generic)
         private readonly List<PerformanceCounter> _gpuCounters = new();
         private bool _isGenericGpuInitialized = false;
 
@@ -149,13 +149,13 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                     var category = new PerformanceCounterCategory("GPU Engine");
                     var instanceNames = category.GetInstanceNames();
 
-                    // איסוף כל המנועים שקשורים לרינדור 3D או Compute (תומך בכל סוגי הכרטיסים)
+                    // Collect all engines related to 3D rendering or Compute (supports all vendor adapters)
                     foreach (var name in instanceNames.Where(n => n.Contains("engtype_3D") || n.Contains("engtype_Compute") || n.Contains("engtype_Render")))
                     {
                         try
                         {
                             var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", name, true);
-                            counter.NextValue(); // קריאה ראשונה לאתחול ה-Baseline
+                            counter.NextValue(); // First read to initialize baseline delta
                             _gpuCounters.Add(counter);
                         }
                         catch { }
@@ -175,12 +175,16 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             }
         }
 
+        /// <summary>
+        /// Retrieves GPU compute and hardware encoder utilization percentages.
+        /// </summary>
+        /// <returns>A tuple containing (Gpu3D, GpuNvenc) percentages clamped between 0 and 100.</returns>
         public (float Gpu3D, float GpuNvenc) GetGpuUsage()
         {
             float gpu3D = 0f;
             float nvenc = 0f;
 
-            // 1. ניסיון קריאה דרך NVIDIA NVML הישיר
+            // 1. Primary probe: query directly via NVIDIA NVML
             if (_isNvmlInitialized && _nvmlDeviceHandle != IntPtr.Zero)
             {
                 try
@@ -196,7 +200,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 catch { }
             }
 
-            // 2. ניסיון קריאה דרך מוני ה-GPU הכלליים (Intel / AMD / Generic Windows)
+            // 2. Secondary probe: query via generic Windows GPU performance counters (Intel / AMD / Generic Windows)
             if (_isGenericGpuInitialized && _gpuCounters.Count > 0)
             {
                 try

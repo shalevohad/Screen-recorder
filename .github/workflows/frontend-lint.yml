@@ -2,9 +2,9 @@ name: Frontend Linting CI
 
 on:
   push:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "master", "release" ]
+    branches: [ "**" ]
 
 jobs:
   lint-frontend:
@@ -19,7 +19,7 @@ jobs:
       with:
         node-version: '20.x'
         cache: 'npm'
-        cache-dependency-path: '**/package-lock.json'
+        cache-dependency-path: './ITB-SCREEN-RECORDER.Server/ClientApp/package-lock.json'
 
     - name: Install dependencies
       working-directory: ./ITB-SCREEN-RECORDER.Server/ClientApp

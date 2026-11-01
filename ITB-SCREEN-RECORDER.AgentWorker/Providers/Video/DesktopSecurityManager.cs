@@ -76,6 +76,11 @@ namespace ITBRecorderAgent.Providers.Video
             }
         }
 
+        /// <summary>
+        /// Attempts to attach the calling thread to the currently active Windows input desktop,
+        /// handling transitions between the default user desktop, lock screen, and UAC prompt.
+        /// </summary>
+        /// <returns>True if successfully attached to the active desktop; otherwise, false.</returns>
         public static bool TryAttachToInputDesktop()
         {
             if (!OperatingSystem.IsWindows()) return false;
@@ -84,7 +89,7 @@ namespace ITBRecorderAgent.Providers.Video
 
             try
             {
-                // נסיון פתיחת ה-Input Desktop הנוכחי (תומך גם ב-Lock Screen / UAC אם יש הרשאה מתאימה)
+                // Attempt to open the active input desktop (supports lock screen / UAC prompts if permissions allow)
                 IntPtr hDesk = OpenInputDesktop(0, false, DESKTOP_ALL);
                 if (hDesk == IntPtr.Zero)
                 {
@@ -93,7 +98,7 @@ namespace ITBRecorderAgent.Providers.Video
 
                 if (hDesk == IntPtr.Zero)
                 {
-                    // Fallback לשולחן העבודה הראשי של המשתמש
+                    // Fallback to the standard user desktop ("Default")
                     hDesk = OpenDesktop("Default", 0, false, DESKTOP_ALL);
                 }
 

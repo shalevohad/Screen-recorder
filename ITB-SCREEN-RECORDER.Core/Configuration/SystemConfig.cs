@@ -11,7 +11,9 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
     {
         public const string SectionName = "SystemConfig";
 
-        // 💡 פורט ההאזנה של שרת ה-HTTP והדשבורד
+        /// <summary>
+        /// HTTP listener and dashboard port for the central ASP.NET Core server.
+        /// </summary>
         [Range(1, 65535)]
         public int HttpPort { get; set; } = 5090;
 
@@ -28,10 +30,14 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         public string DisplayLocale { get; set; } = "en-US";
 
-        // 💡 מעברי שעון ידניים בקונפיגורציה (Cross-Platform)
+        /// <summary>
+        /// Cross-platform manual Daylight Saving Time (DST) transition rules.
+        /// </summary>
         public List<DstTransitionRule> ManualDstTransitions { get; set; } = new();
 
-        // 💡 הגדרות תצוגת הדשבורד (זמני Snapshot ומכסת סטרים חי)
+        /// <summary>
+        /// Tactical dashboard settings including snapshot polling intervals and live concurrency limits.
+        /// </summary>
         public DashboardSettings Dashboard { get; set; } = new DashboardSettings();
 
         [Required]
@@ -62,7 +68,7 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
         [Range(1024, 65535)]
         public int Port { get; set; } = 5098;
 
-        public string MulticastAddress { get; set; } = "239.255.10.90";
+        public string MulticastAddress { get; set; } = "239.210.1.5";
 
         public bool EnableBroadcastFallback { get; set; } = true;
 

@@ -1,13 +1,14 @@
-﻿// ==========================================
+// ==========================================
 // File: ClientApp/src/utils/dstEngine.js
 // ==========================================
 
 let configuredTransitions = [];
-let defaultOffsetMinutes = 120; // ברירת מחדל חורף (IST = UTC+2)
+let defaultOffsetMinutes = 120; // Default winter offset (IST = UTC+2)
 let isInitialized = false;
 
 /**
- * טעינת מעברי השעון מהשרת דרך SettingsController
+ * Initializes and fetches DST transition tables from server via SettingsController.
+ * @returns {Promise<void>}
  */
 export async function initDstEngineAsync() {
     if (isInitialized) return;

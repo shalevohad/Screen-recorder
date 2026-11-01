@@ -17,9 +17,9 @@ using ITB_SCREEN_RECORDER.Core.Common;
 namespace ITB_SCREEN_RECORDER.Core.Security.Pki
 {
     /// <summary>
-    /// מאמת תעודות חכם חוצה פלטפורמות (Windows & Linux) עבור עמדות קצה (Agents).
-    /// מאפשר התחברות מאובטחת ומוצפנת ב-100% מול שרת ה-C2, כולל תמיכה מלאה בהתאוששות עמדות
-    /// שהיו כבויות זמן רב (או שהתעודה שלהן פגה תוקף עקב מעבר שנים או הפרשי שעון).
+    /// Intelligent cross-platform certificate validator (Windows and Linux) for remote recording agents.
+    /// Provides 100% encrypted and validated TLS connectivity to the C2 server, including automated recovery
+    /// for endpoints offline for prolonged durations (e.g. clock drift, expired leaf certificates, or rotated CA).
     /// </summary>
     public static class AgentCertificateValidator
     {
@@ -32,8 +32,8 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         private static int _isRefreshing = 0;
 
         /// <summary>
-        /// אירוע המופעל כאשר עמדה מתחברת באמצעות מנגנון ההתאוששות (תעודה פגת תוקף / CA מעודכן),
-        /// ומאותת שיש לבצע הורדה ורענון של ה-CA Bundle המעודכן מהשרת.
+        /// Event triggered when an endpoint connects via the recovery mechanism (expired leaf cert or rotated CA),
+        /// signaling that the client should download and refresh the updated CA bundle from the central server.
         /// </summary>
         public static event Action? OnTrustRefreshRequired;
 
@@ -43,8 +43,9 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         }
 
         /// <summary>
-        /// מגדיר HttpClientHandler לעבודה מוצפנת ומאובטחת עם אימות תעודות חכם.
+        /// Configures the provided HttpClientHandler for resilient encrypted TLS communication with custom certificate validation.
         /// </summary>
+        /// <param name="handler">The HttpClientHandler to configure.</param>
         public static void ConfigureHandler(HttpClientHandler handler)
         {
             if (handler == null) return;
@@ -52,8 +53,13 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         }
 
         /// <summary>
-        /// פונקציית האימות המרכזית עבור פניות TLS.
+        /// Primary TLS server certificate validation callback for HTTPS and WSS connections.
         /// </summary>
+        /// <param name="request">The HTTP request message.</param>
+        /// <param name="serverCert">The X509 certificate presented by the server.</param>
+        /// <param name="chain">The certificate chain constructed by the OS.</param>
+        /// <param name="sslPolicyErrors">SSL policy error flags reported by the runtime.</param>
+        /// <returns>True if the server certificate is trusted; false otherwise.</returns>
         public static bool ValidateServerCertificate(
             HttpRequestMessage request,
             X509Certificate2? serverCert,
@@ -62,25 +68,25 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         {
             if (serverCert == null) return false;
 
-            // 1. אם מערכת ההפעלה כבר מאמתת את התעודה ללא שום שגיאה (ה-CA כבר מותקן ב-Windows/Linux) - מאושר מיד
+            // 1. If OS already validates certificate with no errors (CA is in Windows/Linux system trust store) - accept immediately
             if (sslPolicyErrors == SslPolicyErrors.None)
             {
                 return true;
             }
 
-            // בדיקת Cache מהיר לפי Thumbprint שאומת בעבר
+            // Fast cache lookup by verified certificate thumbprint
             if (VerifiedThumbprintCache.ContainsKey(serverCert.Thumbprint))
             {
                 return true;
             }
 
-            // 2. רענון CA מקומי מהדיסק אם עברו יותר מ-10 דקות
+            // 2. Periodic reload of local CA bundle from disk if more than 10 minutes elapsed
             if ((DateTime.UtcNow - _lastBundleDiskCheck).TotalMinutes > 10)
             {
                 ReloadLocalCaCertificates();
             }
 
-            // 3. אימות שרשרת מול חנות ה-CA של הפרויקט (CustomTrustStore ב-.NET 8)
+            // 3. Chain validation against the custom project CA store (.NET 8 CustomTrustStore)
             bool chainValid = ValidateAgainstCustomTrustStore(serverCert);
             if (chainValid)
             {
@@ -88,9 +94,9 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                 return true;
             }
 
-            // 4. 💡 טיפול חכם בעמדות שנותקו זמן רב (תעודה פגת תוקף / הפרש שעונים / חידוש CA):
-            // אם התעודה נחתמה מתמטית ע"י ה-Root CA של הפרויקט, אך השגיאה היחידה היא NotTimeValid
-            // או שחסר ה-CA המעודכן - מאפשרים התחברות ומפעילים עדכון תעודה ברקע!
+            // 4. Resilient handling for long-disconnected stations (expired leaf cert / clock drift / rotated CA):
+            // If the certificate is cryptographically signed by the project's Root CA, but the only error is NotTimeValid,
+            // permit connectivity and trigger background trust refresh.
             if (VerifyCryptographicSignature(serverCert, out bool isSignatureValid))
             {
                 if (isSignatureValid)
@@ -102,7 +108,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                 }
             }
 
-            // 5. בדיקה האם שם הנושא תואם למבנה השרת של ITB
+            // 5. Verify whether subject and issuer match the canonical ITB Server structure
             if (serverCert.Subject.Contains(ExpectedServerSubject, StringComparison.OrdinalIgnoreCase) &&
                 serverCert.Issuer.Contains(ExpectedCaSubject, StringComparison.OrdinalIgnoreCase))
             {
@@ -132,7 +138,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                 bool built = chain.Build(serverCert);
                 if (built) return true;
 
-                // בדיקה האם כל השגיאות הן רק ענייני זמן (פג תוקף / שעון לא מסונכרן)
+                // Check if all chain errors are purely temporal (expired cert / desynchronized clock)
                 bool onlyTimeErrors = chain.ChainStatus.All(s => s.Status == X509ChainStatusFlags.NotTimeValid);
                 if (onlyTimeErrors && chain.ChainStatus.Length > 0)
                 {
@@ -156,9 +162,9 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                         using var rsa = ca.GetRSAPublicKey();
                         if (rsa != null)
                         {
-                            // אימות החתימה המתמטית של ה-CA על גבי תעודת השרת
+                            // Validate CA mathematical signature on the server leaf certificate
                             byte[] rawData = serverCert.RawData;
-                            // אם שמו של ה-Issuer תואם לשם ה-Subject של ה-CA
+                            // Verify if issuer name matches the CA subject
                             if (string.Equals(serverCert.Issuer, ca.Subject, StringComparison.OrdinalIgnoreCase))
                             {
                                 isValid = true;
@@ -175,7 +181,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         }
 
         /// <summary>
-        /// טוען את תעודות ה-CA המקומיות מהדיסק (ca.crt ו-ca-bundle.crt) ב-Windows וב-Linux.
+        /// Loads local CA certificates from disk (ca.crt and ca-bundle.crt) across Windows and Linux path conventions.
         /// </summary>
         public static void ReloadLocalCaCertificates()
         {
@@ -227,8 +233,9 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         }
 
         /// <summary>
-        /// שומר תעודת Root CA חדשה שהורדה מהשרת ומעדכן את המאגר המקומי.
+        /// Ingests and stores a renewed Root CA certificate downloaded from the server, updating local cache and trust stores.
         /// </summary>
+        /// <param name="caPemContent">PEM-encoded certificate content.</param>
         public static void IngestRenewedCaCertificate(string caPemContent)
         {
             if (string.IsNullOrWhiteSpace(caPemContent)) return;
@@ -254,14 +261,14 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
                     File.WriteAllText(bundlePath, caPemContent, Encoding.UTF8);
                 }
 
-                // טעינה מחדש של ה-Cache
+                // Reload memory cache
                 var newCert = X509Certificate2.CreateFromPem(caPemContent);
                 if (!TrustedCaCache.Any(c => c.Thumbprint == newCert.Thumbprint))
                 {
                     TrustedCaCache.Add(newCert);
                 }
 
-                // רישום בחנות המערכת במידת האפשר
+                // Register into OS system trust store if permissions permit
                 CertificateAuthorityManager.TryRegisterCaInSystemTrust(newCert, caCrtPath);
                 Logger.AlwaysInfo($"[PKI-CLIENT] Successfully ingested renewed CA into local trust store ({newCert.Thumbprint}).");
             }
@@ -272,8 +279,10 @@ namespace ITB_SCREEN_RECORDER.Core.Security.Pki
         }
 
         /// <summary>
-        /// מבצע רענון תעודות מול השרת ברקע (עבור תחנות שהיו מנותקות זמן רב).
+        /// Refreshes CA bundle and certificates from server in the background for stations that were offline.
         /// </summary>
+        /// <param name="serverBaseUrl">Base URL of the central server.</param>
+        /// <param name="ct">Cancellation token.</param>
         public static async Task RefreshTrustFromServerAsync(string serverBaseUrl, CancellationToken ct = default)
         {
             if (Interlocked.CompareExchange(ref _isRefreshing, 1, 0) != 0) return;

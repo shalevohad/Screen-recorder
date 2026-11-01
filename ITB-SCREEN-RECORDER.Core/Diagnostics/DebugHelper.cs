@@ -11,23 +11,32 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
     {
         private static bool? _manualDebugOverride;
 
+        /// <summary>
+        /// Explicitly overrides the debug mode state in-memory.
+        /// </summary>
+        /// <param name="enabled">True to enable verbose debug mode; false to disable.</param>
         public static void SetDebugMode(bool enabled)
         {
             _manualDebugOverride = enabled;
         }
 
+        /// <summary>
+        /// Determines whether debug mode is active by checking manual override, environment variables,
+        /// command-line arguments, and Windows Registry keys.
+        /// </summary>
+        /// <returns>True if debug mode is active; false otherwise.</returns>
         public static bool IsDebugModeEnabled()
         {
             if (_manualDebugOverride.HasValue) return _manualDebugOverride.Value;
 
-            // 1. בדיקת משתנה סביבה (תקף גם תחת Windows וגם תחת Linux)
+            // 1. Environment variable probe (cross-platform Windows & Linux)
             var envDebug = Environment.GetEnvironmentVariable("ITB_DEBUG_MODE");
             if (envDebug == "1" || string.Equals(envDebug, "true", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
-            // 2. בדיקת פרמטרי שורת פקודה (--debug או -d)
+            // 2. Command-line flags probe (--debug or -d)
             try
             {
                 var args = Environment.GetCommandLineArgs();
@@ -42,7 +51,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             }
             catch { }
 
-            // 3. בדיקת Windows Registry (בדיקה ב-HKLM ולאחר מכן ב-HKCU)
+            // 3. Windows Registry probe (HKLM followed by HKCU across 64-bit and 32-bit views)
             if (OperatingSystem.IsWindows())
             {
 #if WINDOWS
@@ -66,7 +75,7 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                         }
                         catch
                         {
-                            // התעלמות והמשך ניסיון בנתיב המקביל
+                            // Ignore access exceptions and proceed to alternate hive/view
                         }
                     }
                 }

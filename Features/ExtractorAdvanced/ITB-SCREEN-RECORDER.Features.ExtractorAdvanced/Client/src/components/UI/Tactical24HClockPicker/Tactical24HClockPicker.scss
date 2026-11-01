@@ -43,7 +43,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            /* בורר AM / PM טקטי */
+            /* Tactical AM / PM selector */
             .am-pm-toggle-pill {
                 display: flex;
                 background: rgba(0, 0, 0, 0.45);
@@ -217,7 +217,7 @@
             }
         }
     }
-    /* ערכת CYAN (Start Time) */
+    /* Cyan theme (Start Time) */
     &.cyan {
         .am-pm-toggle-pill .btn-period.active {
             background: var(--accent-cyan, #06B6D4);
@@ -246,7 +246,7 @@
             stroke: var(--clock-hand-hour-start, #06B6D4);
         }
     }
-    /* ערכת AMBER (End Time) */
+    /* Amber theme (End Time) */
     &.amber {
         .am-pm-toggle-pill .btn-period.active {
             background: var(--accent-amber, #F59E0B);

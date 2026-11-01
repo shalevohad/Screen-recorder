@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/hooks/useStudioHotkeys.js
 // ==========================================
 import { useEffect } from 'react';
@@ -20,6 +20,7 @@ export function useStudioHotkeys({
     zoomLevel = 1,
     togglePlaySmart,
     onToggleHelpModal,
+    onSplitDirectorAtPlayhead,
     isModalActive = false
 }) {
     useEffect(() => {
@@ -51,6 +52,12 @@ export function useStudioHotkeys({
             if (e.code === 'KeyO') {
                 e.preventDefault();
                 setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)));
+                return;
+            }
+
+            if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                onSplitDirectorAtPlayhead?.();
                 return;
             }
 
@@ -134,6 +141,7 @@ export function useStudioHotkeys({
         zoomLevel,
         togglePlaySmart,
         onToggleHelpModal,
+        onSplitDirectorAtPlayhead,
         isModalActive
     ]);
 }

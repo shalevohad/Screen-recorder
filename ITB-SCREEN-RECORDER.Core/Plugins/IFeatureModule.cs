@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace ITB_SCREEN_RECORDER.Core.Plugins
 {
@@ -14,8 +14,10 @@ namespace ITB_SCREEN_RECORDER.Core.Plugins
         int MinHeight { get; }
         bool IsEnabled { get; }
 
-        // 💡 היכולת החדשה: כל פיצ'ר יכול להצהיר את מי הוא דורס. 
-        // ברירת המחדל היא מערך ריק (לא דורס אף אחד).
+        /// <summary>
+        /// Feature IDs that this module supersedes or replaces in the dashboard navigation.
+        /// Defaults to an empty array (no supersession).
+        /// </summary>
         string[] SupersedesIds => Array.Empty<string>();
     }
 }

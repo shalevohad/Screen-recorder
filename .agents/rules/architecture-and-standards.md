@@ -27,3 +27,7 @@ This rule file is automatically loaded by Antigravity and AI coding agents when 
 - Follow [ui_ux_design_specification.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/Agents/ui_ux_design_specification.md).
 - Use tactical NOC colors: `--bg-app: #070A10`, `--surface-panel: #0F172A`, `--surface-card: #151E2E`, `--accent-cyan: #06B6D4`, `--accent-emerald: #10B981`, `--accent-rose: #F43F5E`.
 - No plain or generic browser colors.
+
+## 6. Continuous System Book Synchronization
+- Maintain [SYSTEM_BOOK.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/SYSTEM_BOOK.md) as the active, authoritative developer handbook.
+- Any modifications to endpoints, contracts, video pipelines, storage schedules, or architecture must be updated in `SYSTEM_BOOK.md` in the same commit/task.

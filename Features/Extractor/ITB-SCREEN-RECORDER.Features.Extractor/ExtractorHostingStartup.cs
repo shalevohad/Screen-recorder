@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/ExtractorHostingStartup.cs
 // ==========================================
 using System;
@@ -18,23 +18,31 @@ using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor
 {
+    /// <summary>
+    /// Autonomous hosting startup for the Extractor feature plugin.
+    /// Configures dependency injection, SQLite persistence, FFmpeg resolver, and track cutting services.
+    /// </summary>
     public class ExtractorHostingStartup : IHostingStartup
     {
+        /// <summary>
+        /// Configures web host services for the Extractor feature assembly.
+        /// </summary>
+        /// <param name="builder">The web host builder to configure.</param>
         public void Configure(IWebHostBuilder builder)
         {
             builder.ConfigureServices((context, services) =>
             {
                 services.Configure<ExtractorOptions>(context.Configuration.GetSection(ExtractorOptions.SectionName));
 
-                // 1. תשתית מסד הנתונים SQLite של הפיצ'ר
+                // 1. Feature SQLite Database Infrastructure
                 services.AddSingleton<IExtractorConnectionFactory, ExtractorConnectionFactory>();
                 services.AddSingleton<IFeatureDbInitializer, ExtractorDbInitializer>();
                 services.AddSingleton<IExportJobRepository, ExportJobRepository>();
 
-                // 2. איתור בינאריים תשתיתי (FFmpeg / FFprobe)
+                // 2. Underlying Binary Discovery (FFmpeg / FFprobe)
                 services.AddSingleton<IFfmpegBinaryResolver, FfmpegBinaryResolver>();
 
-                // 3. שירותי סנכרון, מטא-דאטה ורינדור Core
+                // 3. Core Synchronization, Metadata, and Rendering Services
                 services.AddSingleton<IStorageScannerService, StorageScannerService>();
                 services.AddSingleton<IFfmpegConcatRunner, FfmpegConcatRunner>();
                 services.AddSingleton<IMediaProbeService, MediaProbeService>();
@@ -43,11 +51,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
                 services.AddSingleton<ISynchronizationPlanBuilder, SynchronizationPlanBuilder>();
                 services.AddSingleton<ISynchronizedTrackCutter, SynchronizedTrackCutter>();
 
-                // 4. מנוע ה-Extractor הראשי
+                // 4. Primary Extractor Engine
                 services.AddSingleton<ExtractorService>();
                 services.AddSingleton<IExtractorService>(sp => sp.GetRequiredService<ExtractorService>());
 
-                // 5. ניהול ג'ובים, תחזוקת רקע ומודול
+                // 5. Job Execution Management, Background Garbage Collection, and Module Registration
                 services.AddSingleton<IDummyVideoGenerator, DummyVideoGenerator>();
                 services.AddSingleton<ExportJobManager>();
                 services.AddSingleton<IExportJobManager>(sp => sp.GetRequiredService<ExportJobManager>());
@@ -57,12 +65,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor
                 services.AddControllers()
                     .AddApplicationPart(typeof(ExtractorHostingStartup).Assembly);
 
-                // 6. אתחול אוטונומי וניתוב UI סטטי
+                // 6. Autonomous Database Migration and Static UI Asset Routing
                 services.AddTransient<IStartupFilter, ExtractorStartupFilter>();
             });
         }
     }
 
+    /// <summary>
+    /// Startup filter that triggers database migration and static web asset mounting for the Extractor feature.
+    /// </summary>
     public class ExtractorStartupFilter : IStartupFilter
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next)

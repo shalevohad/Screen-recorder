@@ -42,7 +42,7 @@ builder.Logging.SetMinimumLevel(LogLevel.Debug);
 
 builder.Services.AddSingleton(appConfig);
 
-// 💡 הרשמה מקבילה של ההשגחה והסנכרון
+// Register parallel hosted background services for supervisor and offline buffer drain
 builder.Services.AddHostedService<AgentSupervisorService>();
 builder.Services.AddHostedService<OfflineBufferDrainingService>();
 

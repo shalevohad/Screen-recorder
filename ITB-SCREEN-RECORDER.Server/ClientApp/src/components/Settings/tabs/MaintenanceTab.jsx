@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export default function MaintenanceTab() {
+export default function MaintenanceTab({ onTriggerRestart }) {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [triggering, setTriggering] = useState(false);
@@ -81,7 +81,7 @@ export default function MaintenanceTab() {
         <fieldset className="settings-fieldset maintenance-fieldset">
             <legend>System Catalog & Storage Maintenance</legend>
 
-            {/* כרטיסי טלמטריה טקטיים (4-Cell Grid) */}
+            {/* Tactical Telemetry Metric Cards (4-Cell Grid) */}
             <div className="catalog-telemetry-grid">
                 <div className="telemetry-card">
                     <span className="telemetry-lbl">TOTAL RECORDINGS</span>
@@ -103,7 +103,7 @@ export default function MaintenanceTab() {
                 </div>
             </div>
 
-            {/* חיווי משימה פעילה (Active Telemetry Micro-Bar) */}
+            {/* Active Task Telemetry Micro-Bar */}
             {isRunning ? (
                 <div className="running-job-panel">
                     <div className="job-header">
@@ -136,7 +136,7 @@ export default function MaintenanceTab() {
                 </div>
             )}
 
-            {/* בדיקת תקינות ואימות אינדקסים (Integrity & Repair) */}
+            {/* Integrity Verification and Repair (Integrity & Repair) */}
             <div className="maintenance-actions-box">
                 <div className="action-info">
                     <h4>Catalog Integrity & Duration Audit</h4>
@@ -155,7 +155,7 @@ export default function MaintenanceTab() {
                 </div>
             </div>
 
-            {/* כפתורי פעולה טקטיים */}
+            {/* Tactical Storage Action Controls */}
             <div className="maintenance-actions-box">
                 <div className="action-info">
                     <h4>Delta Storage Indexing</h4>
@@ -183,6 +183,30 @@ export default function MaintenanceTab() {
                     </button>
                 </div>
             </div>
+            {/* System Service Lifecycle Controls */}
+            {onTriggerRestart && (
+                <div className="maintenance-actions-box">
+                    <div className="action-info">
+                        <h4>Server Service Lifecycle Management</h4>
+                        <p>Gracefully restarts the central server process / Windows Service (ITB_ServerService). Active recording pipelines buffer locally on endpoints without data loss during the brief restart window.</p>
+                    </div>
+
+                    <div className="action-buttons-row">
+                        <button
+                            type="button"
+                            className="btn-maintenance-action amber"
+                            disabled={isRunning || triggering}
+                            onClick={() => {
+                                if (window.confirm('Restart server service? Active dashboard connections will temporarily reconnect.')) {
+                                    onTriggerRestart();
+                                }
+                            }}
+                        >
+                            ⚡ Restart Server Service
+                        </button>
+                    </div>
+                </div>
+            )}
         </fieldset>
     );
 }

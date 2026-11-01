@@ -13,6 +13,8 @@ import DashboardDock from './DashboardDock';
 import SearchShelf from './SearchShelf';
 import StationsGridView from './StationsGridView';
 import StationsDenseView from './StationsDenseView';
+import NotRecordingAlertBanner from './NotRecordingAlertBanner';
+import SnoozeAlertModal from './SnoozeAlertModal';
 
 import './DashboardGrid.scss';
 
@@ -21,15 +23,12 @@ export default function DashboardGrid(props) {
 
     const {
         stations = [], actionPending, onToggleStream,
-        onQuickBookmark, onQuickPlayback, systemConfig, onSystemConfigUpdate,
-        direction, hideOffline, onToggleHideOffline,
+        systemConfig, onSystemConfigUpdate,
+        direction,
         isFaultFilterActive, onExitFaultFilter, liveKeystrokes = {}
     } = props;
 
-    const serverHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const dynamicWebrtcBaseUrl = typeof window !== 'undefined' && window.location.protocol === 'https:'
-        ? '/api/v1/whep'
-        : `http://${serverHost}:${import.meta.env?.VITE_WEBRTC_PORT || '8889'}`;
+    const dynamicWebrtcBaseUrl = '/api/v1/whep';
 
     const isFeatureMode = Boolean(logic.activeFeatureObject);
 
@@ -38,7 +37,7 @@ export default function DashboardGrid(props) {
         logic.handleCloseFeature(featId);
     }, [logic]);
 
-    // 💡 שמירה על יציבות ה-Host הפעיל כך שהווידג'ט בסטודיו לא יאותחל כשעמדה אחרת מתנתקת או מתחברת
+    // Maintain stable active host reference so embedded studio widgets are not reset upon fleet disconnects
     const stableDefaultHostRef = useRef(null);
     if (!stableDefaultHostRef.current && stations.length > 0) {
         stableDefaultHostRef.current = stations[0]?.hostname;
@@ -112,6 +111,11 @@ export default function DashboardGrid(props) {
                                     {logic.currentTabFilter !== 'ALL' && (
                                         <span className="tactical-filter-pill">
                                             STATUS: <strong>{logic.currentTabFilter}</strong>
+                                            {(logic.currentTabFilter === 'MONITORED' || logic.currentTabFilter === 'IDLE') && logic.currentMonitoredSubFilter !== 'ALL' && (
+                                                <span style={{ marginLeft: 4, opacity: 0.85 }}>
+                                                    ({logic.currentMonitoredSubFilter === 'SNOOZED' ? 'SNOOZED' : 'NOT SNOOZED'})
+                                                </span>
+                                            )}
                                         </span>
                                     )}
                                 </div>
@@ -154,10 +158,25 @@ export default function DashboardGrid(props) {
                         handleClearFilter={logic.handleClearFilter}
                         currentTabFilter={logic.currentTabFilter}
                         setFilterForTab={logic.setFilterForTab}
+                        monitoredSubFilter={logic.currentMonitoredSubFilter}
+                        setMonitoredSubFilter={logic.setMonitoredSubFilterForTab}
+                        monitoredCounts={logic.monitoredCounts}
                         resultCount={logic.processedStations.length}
-                        hideOffline={hideOffline}
-                        onToggleHideOffline={onToggleHideOffline}
                     />
+
+                    {!isFeatureMode && (
+                        <NotRecordingAlertBanner
+                            unrecordedStations={logic.activeUnrecordedStations}
+                            snoozedStations={logic.activeSnoozedStations}
+                            onStartRecordingStation={logic.handleStartRecordingStation}
+                            onStartRecordingAll={logic.handleStartRecordingAllUnrecorded}
+                            onOpenSnoozeModal={logic.handleOpenSnoozeModal}
+                            onOpenBulkSnoozeModal={logic.handleOpenBulkSnoozeModal}
+                            onSelectStation={(h) => logic.setInspectedHostname(h)}
+                            isPrioritizeAtFront={logic.isPrioritizeAlertsAtFront}
+                            onTogglePrioritizeAtFront={() => logic.setIsPrioritizeAlertsAtFront(p => !p)}
+                        />
+                    )}
 
                     <FleetTabs
                         activeTabId={logic.activeTabId}
@@ -226,11 +245,11 @@ export default function DashboardGrid(props) {
                                         onToggleStream={onToggleStream}
                                         setInspectedHostname={logic.setInspectedHostname}
                                         setFullscreenHostname={logic.setFullscreenHostname}
-                                        onQuickBookmark={onQuickBookmark}
-                                        onQuickPlayback={onQuickPlayback}
                                         handleFeatureQuickExport={logic.handleFeatureQuickExport}
                                         liveKeystrokes={liveKeystrokes}
                                         keystrokeMode={logic.keystrokeMode}
+                                        onOpenSnoozeModal={logic.handleOpenSnoozeModal}
+                                        onCancelSnooze={logic.cancelSnooze}
                                     />
                                 ) : (
                                     <StationsDenseView
@@ -245,6 +264,8 @@ export default function DashboardGrid(props) {
                                         setFullscreenHostname={logic.setFullscreenHostname}
                                         liveKeystrokes={liveKeystrokes}
                                         keystrokeMode={logic.keystrokeMode}
+                                        onOpenSnoozeModal={logic.handleOpenSnoozeModal}
+                                        onCancelSnooze={logic.cancelSnooze}
                                     />
                                 )}
 
@@ -323,8 +344,6 @@ export default function DashboardGrid(props) {
                 station={logic.inspectedStation}
                 onClose={() => logic.setInspectedHostname(null)}
                 onToggleStream={onToggleStream}
-                onQuickBookmark={onQuickBookmark}
-                onQuickPlayback={onQuickPlayback}
                 onQuickExport={logic.handleFeatureQuickExport}
                 onToggleFullscreen={() => {
                     logic.setFullscreenHostname(logic.inspectedHostname);
@@ -336,14 +355,12 @@ export default function DashboardGrid(props) {
                 <FullscreenModal
                     {...logic.fullscreenStation}
                     hostname={logic.fullscreenStation.hostname}
-                    isStreaming={logic.fullscreenStation.isStreaming}
+                    isStreaming={Boolean(logic.fullscreenStation.isStreaming || logic.fullscreenStation.isRecording || logic.fullscreenStation.status === 'Recording' || logic.fullscreenStation.isOnline)}
                     webrtcBaseUrl={dynamicWebrtcBaseUrl}
-                    recentKeystrokes={liveKeystrokes[logic.fullscreenStation?.hostname?.toLowerCase()]}
+                    recentKeystrokes={liveKeystrokes[logic.fullscreenStation?.hostname?.toLowerCase()] || liveKeystrokes[logic.fullscreenStation?.hostname] || logic.fullscreenStation?.recentKeystrokes || logic.fullscreenStation?.keystrokes || logic.fullscreenStation?.Keystrokes}
                     keystrokeMode={logic.keystrokeMode}
                     onClose={() => logic.setFullscreenHostname(null)}
                     onToggleStream={onToggleStream}
-                    onQuickBookmark={onQuickBookmark}
-                    onQuickPlayback={onQuickPlayback}
                     onQuickExport={logic.handleFeatureQuickExport}
                     onOpenInspector={() => {
                         logic.setInspectedHostname(logic.fullscreenHostname);
@@ -351,6 +368,18 @@ export default function DashboardGrid(props) {
                     }}
                 />
             )}
+
+            <SnoozeAlertModal
+                isOpen={logic.snoozeModalState.isOpen}
+                onClose={logic.handleCloseSnoozeModal}
+                targetHostname={logic.snoozeModalState.targetHostname}
+                isBulk={logic.snoozeModalState.isBulk}
+                bulkCount={logic.snoozeModalState.bulkCount}
+                isCurrentlySnoozed={logic.snoozeModalState.targetHostname ? (logic.processedStations.find(s => s.hostname === logic.snoozeModalState.targetHostname)?.isSnoozed || false) : false}
+                currentRemainingMinutes={logic.snoozeModalState.targetHostname ? (logic.processedStations.find(s => s.hostname === logic.snoozeModalState.targetHostname)?.snoozeRemainingMinutes || 0) : 0}
+                onConfirmSnooze={logic.handleConfirmSnooze}
+                onCancelSnooze={logic.handleCancelSnoozeModal}
+            />
         </div>
     );
 }

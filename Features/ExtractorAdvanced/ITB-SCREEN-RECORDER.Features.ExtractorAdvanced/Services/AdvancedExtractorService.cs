@@ -99,10 +99,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             CancellationToken ct = default) =>
             _trackCutter.CutSynchronizedTrackAsync(stationId, plan, stationChunks, tempOutputDir, isMultiStation, progress, ct);
 
-        public async Task<Stream> ExtractFrameAsync(string hostname, long epochMs, CancellationToken ct = default)
+        public async Task<Stream> ExtractFrameAsync(string hostname, long epochMs, string? displayId = null, CancellationToken ct = default)
         {
             long quantEpoch = (epochMs / 250) * 250;
-            string cacheKey = $"frame_{hostname}_{quantEpoch}";
+            string cleanDisplay = string.IsNullOrWhiteSpace(displayId) ? "mon-0" : displayId.Trim().ToLowerInvariant();
+            string cacheKey = $"frame_{hostname}_{cleanDisplay}_{quantEpoch}";
 
             if (_memoryCache != null && _memoryCache.TryGetValue(cacheKey, out byte[]? cached) && cached != null)
             {
@@ -113,7 +114,16 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, targetUtc.AddMinutes(-5), targetUtc.AddMinutes(5));
 
-            // 💡 חילוץ מקטעים רלוונטיים: מקטעים שמכסים ישירות את נקודת הזמן מקבלים עדיפות עליונה, ולאחריהם מקטעים בתחום של ±2 שניות לתפרי צ'אנקים.
+            if (!string.IsNullOrWhiteSpace(displayId))
+            {
+                var displayChunks = chunks.Where(c => string.Equals(c.DisplayId, displayId, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (displayChunks.Count > 0)
+                {
+                    chunks = displayChunks;
+                }
+            }
+
+            // Extract relevant chunks: chunks directly enclosing target timestamp receive top priority, followed by boundary chunks within ±2s
             var candidates = chunks
                 .Where(c => !string.IsNullOrEmpty(c.FullPath) && File.Exists(c.FullPath) &&
                             c.StartUtc <= targetUtc.AddSeconds(2) && targetUtc.AddSeconds(-2) <= c.EndUtc)
@@ -138,7 +148,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     offsetSeconds = maxSafeOffset;
                 }
 
-                // 💡 אם הפריים המבוקש נמצא בתחילת המקטע (<0.20s), נדלג קלות ל-0.25s כדי לעקוף פריים חימום שחור
+                // If requested frame is at the very beginning of the chunk (<0.20s), offset slightly to 0.25s to bypass initial black warmup frames
                 double seekOffset = offsetSeconds;
                 if (seekOffset < 0.20 && chunk.Duration.TotalSeconds >= 0.3)
                 {
@@ -147,8 +157,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 byte[]? frameData = await ExtractKeyframeDirectAsync(ffmpegPath, chunk.FullPath, seekOffset, ct);
 
-                // 💡 זיהוי פריים שחור/ריק: פריים JPEG שחור ב-1080p/2K/4K שוקל כ-24KB.
-                // אם המשקל נמוך מ-28KB, נבצע ניסיון שני מעט קדימה כדי לדלות פריים וידאו מלא
+                // Black frame detection: blank/black 1080p/2K/4K JPEG frames typically weigh <24KB.
+                // If frame size is below 28KB, perform a second probe slightly forward to extract active content
                 if (frameData != null && frameData.Length <= 28000 && chunk.Duration.TotalSeconds >= 0.6)
                 {
                     double retryOffset = Math.Min(seekOffset + 0.4, maxSafeOffset);
@@ -240,7 +250,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 double fileDuration = sampleChunk.Duration.TotalSeconds;
                 if (fileDuration <= 0.3) continue;
 
-                // 💡 דילוג בטוח על פריים החימום השחור ב-0.0s
+                // Safely skip initial black encoder warmup frames at 0.0s
                 double offsetSeconds = Math.Max(0.25, (startUtc - sampleChunk.StartUtc).TotalSeconds);
                 double maxSafeOffset = Math.Max(0.25, fileDuration - 0.25);
                 if (offsetSeconds > maxSafeOffset)
@@ -248,9 +258,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     offsetSeconds = maxSafeOffset;
                 }
 
-                // 💡 קביעת משך הטווח הזמין לדגימה בתוך הקובץ:
-                // הגבלת משך הדגימה לעד 18 שניות לכל היותר עבור אריח תצוגה
-                // הדבר מבטיח שליפה סילונית (~200-300ms) ללא פענוח כבד של מאות ואלפי פריימים
+                // Determine available sampling range within the file:
+                // Cap sample duration to 18 seconds max for timeline tile spritesheets to ensure ultra-fast extraction (~200-300ms)
                 double availableDuration = Math.Max(0.5, fileDuration - offsetSeconds);
                 double tileSpan = Math.Max(0.5, (endUtc - startUtc).TotalSeconds);
                 double targetSpan = Math.Min(availableDuration, Math.Min(tileSpan, 18.0));
@@ -287,7 +296,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     await process.StandardOutput.BaseStream.CopyToAsync(memoryStream, 16384, linkedCts.Token);
                     await process.WaitForExitAsync(linkedCts.Token);
 
-                    // 💡 וידוא שהתקבל אריח אמיתי (אריח שחור ריק ממוצע שוקל פחות מ-1.5KB)
+                    // Verify non-empty tile (blank black tile typically weighs less than 1.5KB)
                     if (memoryStream.Length > 2000)
                     {
                         byte[] sheetBytes = memoryStream.ToArray();

@@ -146,7 +146,7 @@
                     }
                 }
             }
-            /* פופאובר שנפתח כלפי מעלה כדי שלא ייחתך בתחתית המסך */
+            /* Upward opening popover menu to prevent clipping at viewport bottom */
             .overflow-popover-menu.upward {
                 position: absolute;
                 bottom: calc(100% + 8px);

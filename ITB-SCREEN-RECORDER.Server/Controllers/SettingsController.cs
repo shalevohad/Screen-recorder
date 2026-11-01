@@ -3,6 +3,7 @@
 // ==========================================
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -43,6 +44,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly ServerTelemetryHostService _telemetryHostService;
         private readonly TelemetryBroadcastService _broadcastService;
         private readonly IStorageTelemetryService _storageTelemetryService;
+        private readonly IServerRestartService? _restartService;
         private readonly Microsoft.Extensions.Logging.ILogger<SettingsController> _logger;
 
         public SettingsController(
@@ -54,7 +56,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             ServerTelemetryHostService telemetryHostService,
             TelemetryBroadcastService broadcastService,
             IStorageTelemetryService storageTelemetryService,
-            Microsoft.Extensions.Logging.ILogger<SettingsController> logger)
+            Microsoft.Extensions.Logging.ILogger<SettingsController> logger,
+            IServerRestartService? restartService = null)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
@@ -65,6 +68,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _broadcastService = broadcastService;
             _storageTelemetryService = storageTelemetryService;
             _logger = logger;
+            _restartService = restartService;
         }
 
         [HttpGet]
@@ -122,6 +126,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public async Task<IActionResult> Save([FromBody] SystemConfig updatedConfig)
         {
             if (updatedConfig == null) return BadRequest(new { message = "Invalid configuration payload." });
+
+            int oldHttpPort = _configMonitor.CurrentValue.HttpPort;
+            bool portChanged = updatedConfig.HttpPort > 0 && updatedConfig.HttpPort != oldHttpPort;
 
             try
             {
@@ -203,10 +210,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
                 var currentConfig = _configMonitor.CurrentValue;
 
-                // 1. כפיית החלת נתיבי האחסון, הפורמט ופרקי הזמן מיידית ב-MediaMTX
+                // 1. Immediately apply and propagate storage paths, format, and intervals to MediaMTX
                 try
                 {
-                    await _chunkScheduler.ApplyMediaMtxStorageConfigAsync(currentConfig, HttpContext.RequestAborted);
+                    if (_chunkScheduler != null) await _chunkScheduler.ApplyMediaMtxStorageConfigAsync(currentConfig, HttpContext?.RequestAborted ?? default);
                     _logger.LogInformation("[SETTINGS] Successfully propagated live storage configuration to MediaMTX.");
                 }
                 catch (Exception ex)
@@ -214,10 +221,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     _logger.LogWarning(ex, "[SETTINGS] Failed to apply storage changes to MediaMTX immediately.");
                 }
 
-                // 2. חישוב ושידור מיידי של טלמטריית המערכת והאחסון לכלל הלקוחות המחוברים
+                // 2. Immediately calculate and broadcast updated system and storage telemetry to all connected clients
                 try
                 {
-                    await _telemetryHostService.BroadcastImmediateTelemetryAsync();
+                    if (_telemetryHostService != null) await _telemetryHostService.BroadcastImmediateTelemetryAsync();
                     _logger.LogInformation("[SETTINGS] Broadcasted immediate telemetry update after settings save.");
                 }
                 catch (Exception ex)
@@ -225,22 +232,56 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                     _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting immediate telemetry after settings save.");
                 }
 
-                // 3. שידור הגדרות המערכת החדשות בזמן אמת ל-Dashboard (ReceiveSystemConfig)
+                // 3. Broadcast updated system configuration in real-time to Dashboard (ReceiveSystemConfig)
                 try
                 {
-                    await _broadcastService.BroadcastSystemConfigUpdateAsync(currentConfig);
+                    if (_broadcastService != null) await _broadcastService.BroadcastSystemConfigUpdateAsync(currentConfig);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting updated system config.");
                 }
 
-                return Ok(currentConfig);
+                if (portChanged)
+                {
+                    _logger.LogInformation("[SETTINGS] HTTP listening port changed from {OldPort} to {NewPort}. Triggering server self-restart sequence...", oldHttpPort, currentConfig.HttpPort);
+                    _restartService?.ScheduleRestart(1500);
+                }
+
+                return Ok(new
+                {
+                    currentConfig.HttpPort,
+                    currentConfig.RecordingRetentionDays,
+                    currentConfig.MaxStorageQuotaGb,
+                    currentConfig.DashboardRefreshRateMs,
+                    currentConfig.DisplayTimezone,
+                    currentConfig.DisplayLocale,
+                    currentConfig.ManualDstTransitions,
+                    currentConfig.Dashboard,
+                    currentConfig.MediaMtx,
+                    currentConfig.Storage,
+                    currentConfig.DefaultVideoBitrate,
+                    currentConfig.DefaultTargetFps,
+                    currentConfig.Discovery,
+                    currentConfig.Security,
+                    requiresRestart = portChanged,
+                    oldPort = oldHttpPort,
+                    newPort = currentConfig.HttpPort
+                });
             }
             catch (Exception ex)
             {
                 return Problem($"Failed to synchronize configuration: {ex.Message}", statusCode: 500);
             }
+        }
+
+        [HttpPost("restart")]
+        [AuthorizePermission(PermissionKeys.SettingsAgents)]
+        public IActionResult RestartServer()
+        {
+            _logger.LogInformation("[SETTINGS] Manual server self-restart requested via API.");
+            _restartService?.ScheduleRestart(1000);
+            return Ok(new { success = true, message = "Server self-restart scheduled." });
         }
 
         [HttpGet("storage-status")]
@@ -277,10 +318,10 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 return BadRequest(new { message = "Invalid request payload." });
             }
 
-            // בדיקת הגנה מנעילה (Pre-Flight Lockout Validation)
+            // Pre-Flight Lockout Validation
             if (req.Mode != AuthMode.Open)
             {
-                // בדיקה אם קיים משתמש העל הסודי או משתמש אדמין מקומי פעיל
+                // Verify that either the built-in sys_master account or an active local administrator account exists
                 var rootUser = await _catalogRepo.GetUserByUsernameAsync("sys_master");
                 bool hasRootAdmin = rootUser != null && rootUser.IsActive;
 
@@ -466,6 +507,126 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             return Ok(new { success = true });
         }
 
+        #endregion
+
+        #region Directory Browser
+
+        public record CreateFolderRequest(string ParentPath, string FolderName);
+
+        [HttpGet("browse-directories")]
+        public IActionResult BrowseDirectories([FromQuery] string? path = null)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    var drives = DriveInfo.GetDrives()
+                        .Where(d => d.IsReady || OperatingSystem.IsWindows())
+                        .Select(d => new
+                        {
+                            name = d.Name,
+                            fullPath = d.RootDirectory.FullName,
+                            driveType = d.DriveType.ToString(),
+                            isReady = d.IsReady,
+                            availableFreeSpaceBytes = d.IsReady ? d.AvailableFreeSpace : 0,
+                            totalSizeBytes = d.IsReady ? d.TotalSize : 0
+                        })
+                        .ToList();
+
+                    return Ok(new
+                    {
+                        currentPath = "",
+                        parentPath = (string?)null,
+                        isRoot = true,
+                        drives,
+                        directories = new List<object>()
+                    });
+                }
+
+                string cleanPath = path.Trim();
+
+                if (!Directory.Exists(cleanPath))
+                {
+                    return Ok(new
+                    {
+                        currentPath = cleanPath,
+                        parentPath = (string?)null,
+                        exists = false,
+                        isRoot = false,
+                        drives = DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => new { name = d.Name, fullPath = d.RootDirectory.FullName }),
+                        directories = new List<object>()
+                    });
+                }
+
+                var dirInfo = new DirectoryInfo(cleanPath);
+                string? parent = dirInfo.Parent?.FullName;
+
+                var subDirs = new List<object>();
+                try
+                {
+                    foreach (var sub in dirInfo.EnumerateDirectories())
+                    {
+                        try
+                        {
+                            if ((sub.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0 && sub.Name.StartsWith("$"))
+                                continue;
+
+                            subDirs.Add(new
+                            {
+                                name = sub.Name,
+                                fullPath = sub.FullName,
+                                lastModifiedUtc = sub.LastWriteTimeUtc
+                            });
+                        }
+                        catch
+                        {
+                            // Inaccessible individual folder - skip
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Access restricted
+                }
+
+                return Ok(new
+                {
+                    currentPath = dirInfo.FullName,
+                    parentPath = parent,
+                    exists = true,
+                    isRoot = dirInfo.Parent == null,
+                    drives = new List<object>(),
+                    directories = subDirs.OrderBy(d => ((dynamic)d).name).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[BrowseDirectories] Failed browsing path {Path}", path);
+                return StatusCode(500, $"Failed browsing directory: {ex.Message}");
+            }
+        }
+
+        [HttpPost("create-directory")]
+        public IActionResult CreateDirectory([FromBody] CreateFolderRequest req)
+        {
+            if (req == null || string.IsNullOrWhiteSpace(req.ParentPath) || string.IsNullOrWhiteSpace(req.FolderName))
+                return BadRequest("ParentPath and FolderName are required.");
+
+            try
+            {
+                string target = Path.Combine(req.ParentPath.Trim(), req.FolderName.Trim());
+                if (!Directory.Exists(target))
+                {
+                    Directory.CreateDirectory(target);
+                }
+                return Ok(new { success = true, fullPath = target });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[CreateDirectory] Failed creating directory {FolderName} under {ParentPath}", req.FolderName, req.ParentPath);
+                return StatusCode(500, $"Failed creating directory: {ex.Message}");
+            }
+        }
         #endregion
     }
 }

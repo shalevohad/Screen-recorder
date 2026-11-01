@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/ExtractorAdvancedHostingStartup.cs
 // ==========================================
 using System;
@@ -19,40 +19,48 @@ using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced
 {
+    /// <summary>
+    /// Autonomous hosting startup for the ExtractorAdvanced (Forensic Studio / NLE) plugin assembly.
+    /// Configures SQLite persistence, repositories, retention shield, and overrides core extraction services.
+    /// </summary>
     public class ExtractorAdvancedHostingStartup : IHostingStartup
     {
+        /// <summary>
+        /// Configures web host services for the ExtractorAdvanced feature plugin.
+        /// </summary>
+        /// <param name="builder">The web host builder to configure.</param>
         public void Configure(IWebHostBuilder builder)
         {
             builder.ConfigureServices((context, services) =>
             {
                 services.Configure<ExtractorOptions>(context.Configuration.GetSection(ExtractorOptions.SectionName));
 
-                // 1. תשתית מסד הנתונים advance_extractor.db (SQLite ב-WAL Mode)
+                // 1. Database infrastructure for advance_extractor.db (SQLite in WAL mode)
                 services.AddSingleton<IAdvancedExtractorConnectionFactory, AdvancedExtractorConnectionFactory>();
                 services.AddSingleton<IFeatureDbInitializer, AdvancedExtractorDbInitializer>();
 
-                // 2. שכבת הנתונים (Repositories)
+                // 2. Data Access Repositories
                 services.AddSingleton<IBookmarkRepository, BookmarkRepository>();
                 services.AddSingleton<IEditingDraftRepository, EditingDraftRepository>();
                 services.AddSingleton<IAdvanceJobRepository, AdvanceJobRepository>();
 
-                // 3. הגנת אחסון (Retention Shield)
+                // 3. Storage Retention Shield (protects bookmarked / active studio ranges from purge)
                 services.AddSingleton<IRetentionShieldProvider, AdvancedRetentionShieldProvider>();
 
-                // 4. רישום המודול עבור מערך הפלאגינים וממשק ה-UI הראשי
+                // 4. Feature Module registration for UI plugins list and command dashboard integration
                 services.AddSingleton<IFeatureModule, ExtractorAdvancedModule>();
 
-                // 5. מטמון RAM עבור פריימים ו-LOD
+                // 5. In-Memory caching for frame sprites and timeline LOD
                 services.AddMemoryCache();
 
-                // 6. שירותי NLE מתקדמים ודריסת מנוע החילוץ
+                // 6. Advanced NLE Services and Extractor Engine Override
                 services.AddSingleton<IFfmpegBinaryResolver, AdvancedFfmpegBinaryResolver>();
                 services.AddSingleton<AdvancedExtractorService>();
 
-                // 💡 דריסת ממשק ה-Core כך שכל ייצוא במערכת ינותב דרך Advanced ויקבל תמיכה מלאה ב-Studio
+                // Override core IExtractorService so all extraction exports utilize advanced Studio pipelines
                 services.AddSingleton<IExtractorService>(sp => sp.GetRequiredService<AdvancedExtractorService>());
 
-                // 7. ניהול משימות חיתוך מתקדמות
+                // 7. Advanced Job Execution Management
                 services.AddSingleton<AdvanceJobManager>();
                 services.AddSingleton<IAdvanceJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());
                 services.AddSingleton<IExportJobManager>(sp => sp.GetRequiredService<AdvanceJobManager>());

@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: ITB-SCREEN-RECORDER.AgentWorker/Providers/Keyboard/KeyboardCaptureFactory.cs
 // ==========================================
 using System;
@@ -26,7 +26,8 @@ namespace ITB_SCREEN_RECORDER.AgentWorker.Providers.Keyboard
     }
 
     /// <summary>
-    /// Fallback שקט לפלטפורמות לא נתמכות או ריצה ללא ממשק גרפי
+    /// Silent fallback keyboard capture provider for unsupported platforms or headless execution without a GUI.
+    /// Does not produce any keystroke events.
     /// </summary>
     internal sealed class NullKeyboardCaptureProvider : IKeyboardCaptureProvider
     {

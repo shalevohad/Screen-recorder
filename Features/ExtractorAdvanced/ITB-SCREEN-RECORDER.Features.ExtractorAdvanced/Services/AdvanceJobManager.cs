@@ -178,8 +178,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 FileSizeBytes = estimatedSize,
                 EstimatedSecondsRemaining = Math.Max(10, (int)(durationMinutes * request.StationIds.Count * 2)),
                 CreatedAtUtc = DateTime.UtcNow,
-                // 💡 העברת ה-KeystrokeMode שהמשתמש בחר ב-UI ישירות לתוך מודל הג'וב
-                KeystrokeMode = request.KeystrokeMode
+                // Assign keystroke presentation mode selected by user in the UI directly to the job descriptor
+                KeystrokeMode = request.KeystrokeMode,
+                LayoutMode = request.LayoutMode ?? "director",
+                TargetDisplayId = request.TargetDisplayId,
+                IsPipSwapped = request.IsPipSwapped,
+                DirectorSegments = request.DirectorSegments
             };
 
             _jobs[job.JobId] = job;
@@ -243,8 +247,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 var plan = _advancedExtractorService.BuildSynchronizationPlan(job.StationIds, startUtc, endUtc, allStationChunks);
 
-                // 💡 העברת מצב המקלדת הנבחר מהג'וב ישירות לתוך ה-SynchronizationPlan שנמסר ל-TrackCutter
+                // Transfer selected keystroke mode and layout configuration from job descriptor to the SynchronizationPlan passed to TrackCutter
                 plan.KeystrokeMode = job.KeystrokeMode;
+                plan.LayoutMode = job.LayoutMode ?? "director";
+                plan.TargetDisplayId = job.TargetDisplayId;
+                plan.IsPipSwapped = job.IsPipSwapped;
+                plan.DirectorSegments = job.DirectorSegments;
 
                 double originalDurationSec = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
                 double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);

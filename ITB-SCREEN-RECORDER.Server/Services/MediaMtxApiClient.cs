@@ -131,6 +131,17 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             return false;
         }
 
+        public async Task<bool> SetPathRecordingStateAsync(int apiPort, string pathName, bool record, CancellationToken cancellationToken)
+        {
+            string encodedName = Uri.EscapeDataString(pathName);
+            _logger.LogInformation("[MediaMTX API] Setting recording={Record} for stream '{Path}'", record, pathName);
+
+            await EnsurePathEntryExistsAsync(apiPort, encodedName, cancellationToken).ConfigureAwait(false);
+
+            string route = $"/v3/config/paths/patch/{encodedName}";
+            return await PatchAsync(apiPort, route, new Dictionary<string, object> { ["record"] = record }, cancellationToken).ConfigureAwait(false);
+        }
+
         private async Task EnsurePathEntryExistsAsync(int apiPort, string encodedName, CancellationToken cancellationToken)
         {
             using var client = CreateClient(apiPort);

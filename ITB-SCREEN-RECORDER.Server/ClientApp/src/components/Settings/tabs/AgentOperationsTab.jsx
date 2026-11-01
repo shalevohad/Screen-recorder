@@ -6,7 +6,7 @@ export default function AgentOperationsTab({ form, updateField }) {
         { val: 60, label: '60' }
     ];
 
-    // 💡 טווח ה-Bitrate מותאם כעת מ-1000 ועד 20000 (20M) עם הטיקים המדויקים
+    // Bitrate range scaled from 1000 up to 20000 (20M) with precision tactical ticks
     const bitrateTicks = [
         { val: 1000, label: '1M' },
         { val: 5000, label: '5M' },
@@ -77,7 +77,7 @@ export default function AgentOperationsTab({ form, updateField }) {
                     {renderSliderWithTicks(
                         form.defaultVideoBitrateKbps || 2500,
                         1000,
-                        20000, // 💡 מקסימום 20,000 Kbps (20M)
+                        20000, // Maximum 20,000 Kbps (20M)
                         250,
                         val => updateField('defaultVideoBitrateKbps', val),
                         bitrateTicks

@@ -14,7 +14,7 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
         [DllImport("wtsapi32.dll", SetLastError = true)]
         private static extern bool WTSQueryUserToken(uint sessionId, out IntPtr phToken);
 
-        // API ליצירת בלוק משתני הסביבה המדויק של המשתמש
+        // Win32 API to construct the exact environment variable block for the target user token
         [DllImport("userenv.dll", SetLastError = true)]
         private static extern bool CreateEnvironmentBlock(out IntPtr lpEnvironment, IntPtr hToken, bool bInherit);
 
@@ -60,13 +60,25 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
             public uint dwThreadId;
         }
 
-        // דגל שמורה ל-Windows לקרוא את משתני הסביבה בפורמט הנכון
+        // Flag instructing Windows to read environment block formatted as Unicode
         private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+        private const uint CREATE_NO_WINDOW = 0x08000000;
+        private const uint STARTF_USESHOWWINDOW = 0x00000001;
+        private const short SW_HIDE = 0;
 
+        public static uint GetActiveConsoleSessionId() => WTSGetActiveConsoleSessionId();
+
+        /// <summary>
+        /// Launches the worker executable inside the active interactive desktop session (Session 1+),
+        /// duplicating user session token and constructing an explicit environment block to bypass Session 0 isolation.
+        /// </summary>
+        /// <param name="appPath">Target executable absolute path.</param>
+        /// <param name="arguments">Command-line arguments.</param>
+        /// <returns>True if process was spawned successfully; false otherwise.</returns>
         public static bool StartProcessInActiveSession(string appPath, string arguments = "")
         {
             uint sessionId = WTSGetActiveConsoleSessionId();
-            if (sessionId == 0xFFFFFFFF) return false;
+            if (sessionId == 0xFFFFFFFF || sessionId == 0) return false;
 
             IntPtr userToken = IntPtr.Zero;
             IntPtr envBlock = IntPtr.Zero;
@@ -76,7 +88,21 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 if (!WTSQueryUserToken(sessionId, out userToken))
                 {
                     int lastError = Marshal.GetLastWin32Error();
-                    // אם אנו לא רצים כ-SYSTEM (למשל הרצה ידנית/אינטראקטיבית לצורכי בדיקות או פיתוח), נשגר ישירות בסשן הנוכחי
+                    bool isRunningAsSystem = false;
+                    try
+                    {
+                        isRunningAsSystem = System.Security.Principal.WindowsIdentity.GetCurrent().IsSystem;
+                    }
+                    catch { }
+
+                    if (isRunningAsSystem)
+                    {
+                        // When running as SYSTEM service in Session 0, never launch worker inside Session 0
+                        // Await active user interactive logon into Session 1+
+                        return false;
+                    }
+
+                    // Development / manual fallback when not running as SYSTEM: launch directly in current session
                     try
                     {
                         var psi = new System.Diagnostics.ProcessStartInfo
@@ -97,7 +123,7 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                     }
                 }
 
-                // 1. קריטי: בניית סביבת המשתמש (מניעת שגיאת 0xc0000142)
+                // 1. Critical: Construct user environment block to prevent error 0xc0000142
                 if (!CreateEnvironmentBlock(out envBlock, userToken, false))
                 {
                     Console.WriteLine($"[InteractiveLauncher] CreateEnvironmentBlock failed. Error: {Marshal.GetLastWin32Error()}");
@@ -107,13 +133,17 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                 var startupInfo = new STARTUPINFO();
                 startupInfo.cb = Marshal.SizeOf(startupInfo);
 
-                // 2. שיוך לשולחן העבודה הפעיל של המשתמש לצורך הקלטת מסך
+                // 2. Associate with active interactive desktop station to enable DXGI screen capture, but keep window hidden
                 startupInfo.lpDesktop = @"winsta0\default";
+                startupInfo.dwFlags = STARTF_USESHOWWINDOW;
+                startupInfo.wShowWindow = SW_HIDE;
 
                 string workDir = Path.GetDirectoryName(appPath) ?? AppContext.BaseDirectory;
                 string cmdLine = $"\"{appPath}\" {arguments}";
 
-                // 3. שיגור התהליך עם ה-Token ועם בלוק המשתנים שיצרנו
+                // 3. Spawn process under user token with constructed environment block and suppressed window (no console window popup)
+                uint creationFlags = CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW;
+
                 bool result = CreateProcessAsUserW(
                     userToken,
                     null,
@@ -121,7 +151,7 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
                     IntPtr.Zero,
                     IntPtr.Zero,
                     false,
-                    CREATE_UNICODE_ENVIRONMENT,
+                    creationFlags,
                     envBlock,
                     workDir,
                     ref startupInfo,
@@ -141,7 +171,7 @@ namespace ITB_SCREEN_RECORDER.AgentService.Infrastructure
             }
             finally
             {
-                // ניקוי זיכרון חובה
+                // Mandatory unmanaged cleanup
                 if (envBlock != IntPtr.Zero) DestroyEnvironmentBlock(envBlock);
                 if (userToken != IntPtr.Zero) CloseHandle(userToken);
             }

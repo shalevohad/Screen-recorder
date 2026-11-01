@@ -1,4 +1,4 @@
-﻿// Client/src/components/Timeline/TimelineMinimap.jsx
+// Client/src/components/Timeline/TimelineMinimap.jsx
 import React from 'react';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './TimelineMinimap.scss';
@@ -16,7 +16,7 @@ export default function TimelineMinimap({
     playheadMs = 0,
     onStartDragMinimap
 }) {
-    // חישובי מיקומים באחוזים מתוך כלל הסשן
+    // Percentage position calculations relative to the entire session
     const inPercent = Math.max(0, Math.min(100, (inPointMs / totalDurationMs) * 100));
     const outPercent = Math.max(0, Math.min(100, (outPointMs / totalDurationMs) * 100));
     const cutWidthPercent = Math.max(0, outPercent - inPercent);
@@ -27,17 +27,17 @@ export default function TimelineMinimap({
 
     const isZoomed = zoomLevel > 1.05;
 
-    // רוחב תגית ממוצע דורש כ-7% מרוחב המיני-מפה כדי למנוע התנגשות
+    // Average label width requires ~7% of minimap width to avoid text collision
     const COLLISION_THRESHOLD = 7;
 
-    // 1. תגיות חיתוך (IN / OUT) - העדיפות הראשית למשתמש
+    // 1. Cut markers (IN / OUT) - Primary user focus
     const canFitCutTags = cutWidthPercent >= 10;
     const canFitBothCutTags = cutWidthPercent >= 16;
 
     const showCutIn = canFitCutTags;
     const showCutOut = canFitBothCutTags;
 
-    // 2. תגיות Viewport (זמני החלון המוגדל) - מוצגות רק אם אינן דורסות את תגיות החיתוך
+    // 2. Viewport tags (zoomed view bounds) - Only displayed if not colliding with cut tags
     const isVpStartColliding = showCutIn && Math.abs(vpStartPercent - inPercent) < COLLISION_THRESHOLD;
     const showVpStart = isZoomed && vpWidthPercent >= 12 && !isVpStartColliding;
 
@@ -50,7 +50,7 @@ export default function TimelineMinimap({
             className="overview-track-canvas"
             onMouseDown={(e) => onStartDragMinimap && onStartDragMinimap('minimap-viewport', e)}
         >
-            {/* 1. מקטע החיתוך (Cut Highlight) */}
+            {/* 1. Cut segment (Cut Highlight) */}
             <div
                 className="minimap-cut-highlight"
                 style={{ left: `${inPercent}%`, width: `${cutWidthPercent}%` }}
@@ -68,7 +68,7 @@ export default function TimelineMinimap({
                 )}
             </div>
 
-            {/* 2. חלון ה-Viewport המוזז */}
+            {/* 2. Scaled Viewport window */}
             <div
                 className="minimap-viewport-box"
                 style={{ left: `${vpStartPercent}%`, width: `${vpWidthPercent}%` }}
@@ -86,7 +86,7 @@ export default function TimelineMinimap({
                 )}
             </div>
 
-            {/* 3. מחט המיקום (Playhead Needle) */}
+            {/* 3. Playhead indicator needle */}
             <div
                 className="minimap-needle"
                 style={{ left: `${(playheadMs / totalDurationMs) * 100}%` }}

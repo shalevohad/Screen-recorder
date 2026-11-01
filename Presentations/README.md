@@ -1,59 +1,49 @@
-# ITB-SCREEN-RECORDER Presentations
+# ITB-SCREEN-RECORDER Presentations (מצגות המערכת)
 
-This directory contains two presentations in English, available in both **PowerPoint (`.pptx`)** and **Interactive Web Deck (`.html`)** formats:
-
-## 1. Technical & Engineering Architecture Presentation (Full Deep-Dive)
-* **PowerPoint Presentation:** [ITB_SCREEN_RECORDER_Technical_Architecture.pptx](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Presentations/ITB_SCREEN_RECORDER_Technical_Architecture.pptx)
-* **Web Slide Deck:** [Technical_Architecture_Presentation.html](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Presentations/Technical_Architecture_Presentation.html)
-* **Slides:** 21 Engineering Slides (Concise, high-density, no fluff).
-* **Target Audience:** System Architects, Software Engineers, DevOps, Security Engineers, and Integrators.
-* **Key Content:**
-  * End-to-End System Connectivity & Network Topology (Detailed Wiring Schema).
-  * UML Component Architecture & Assembly Separation.
-  * Windows Session 0 vs. Session 1 Desktop Token Impersonation.
-  * DirectX Desktop Duplication (DDA) & WASAPI Dual-Loopback Audio Pacing.
-  * Tri-tier GPU Hardware Probing (NVENC &rarr; Intel QuickSync &rarr; CPU).
-  * Deterministic Wall-Clock Chunking Engine (Rule 1, MediaMTX v1.15.4 version pinning).
-  * Storage Dual-Path Failover (NetApp UNC primary with 3s probe & local NVMe fallback).
-  * In-Memory SQLite WAL Mode Database, Covering Indices & Schema.
-  * Storage Scanner & Automated Video Cataloging Pipeline.
-  * UML Sequence Diagrams:
-    1. Agent Ingestion & Telemetry Handshake.
-    2. Wall-Clock Segment Rotation.
-    3. Multi-Track Synchronized NLE Video Extraction.
-  * Gap Interpolation & `NoSignalPatternService` Temporal Guarantee.
-  * Low-Level Keystroke Capture & Synchronized `.srt` Generation.
-  * Frontend React 18, Vite, WebRTC WHEP & Canvas Timeline NLE.
-  * Security, LDAP / Active Directory & RBAC.
-  * Fault Tolerance & High-Availability Matrix.
+This directory contains executive and technical architecture presentations in **Hebrew (עברית)** and **English**, available in both **PowerPoint (`.pptx`)** and **Interactive Web Deck (`.html`)** formats:
 
 ---
 
-## 2. Executive Management Presentation (High-Level Overview)
-* **PowerPoint Presentation:** [ITB_SCREEN_RECORDER_Executive_Management.pptx](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Presentations/ITB_SCREEN_RECORDER_Executive_Management.pptx)
-* **Web Slide Deck:** [Executive_Management_Presentation.html](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Presentations/Executive_Management_Presentation.html)
-* **Slides:** 14 Executive Slides (Zero code, strategic & business value focused).
-* **Target Audience:** C-Level, VP R&D, Operations Directors, Security & Compliance Officers.
-* **Key Content:**
-  * Core Mission & Value Proposition.
-  * Why standard commercial tools fail in mission-critical facilities.
-  * 3-Tier Operational Blueprint (Workstations &rarr; Central C2 & Storage &rarr; Operations Suite).
-  * The "Zero Workstation Impact" guarantee (&lt;1% CPU usage via GPU acceleration).
-  * 24/7 Resilience: Network outage buffering & automatic self-healing.
-  * Live Fleet Command Wall (Sub-second WebRTC monitoring).
-  * Forensic Synchronized Replay & Visual NLE Studio.
-  * The "Time-Continuity Guarantee" (Accredited incident debriefs).
-  * Forensic Keystroke Intelligence & Subtitles.
-  * Storage Economics & Automated 30-Day Retention.
-  * 100% Air-Gapped Sovereignty & Enterprise Active Directory Integration.
-  * Scalability & Low Total Cost of Ownership (COTS hardware, 100+ stations per node).
-  * Quantifiable ROI: 90% faster debriefs, compliance defense, operator productivity.
-  * Conclusion & Next Steps.
+## 🇮🇱 1. מצגת הנהלה בכירה והדגמת יכולות מבצעיות (עברית — Executive Show)
+* **מצגת PowerPoint בעברית:** [ITB_SCREEN_RECORDER_Executive_Management_HE.pptx](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/Presentations/ITB_SCREEN_RECORDER_Executive_Management_HE.pptx)
+* **מצגת דפדפן אינטראקטיבית (HTML5 RTL):** [Executive_Management_Presentation_HE.html](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/Presentations/Executive_Management_Presentation_HE.html)
+* **מדריך למציג ותסריט הדגמה חיה (Playbook):** [executive_presentation_playbook_he.md](file:///C:/Users/Ohad/.gemini/antigravity-ide/brain/396e7da6-bd04-49ec-b751-80a2d77a7620/executive_presentation_playbook_he.md)
+* **היקף:** 13 שקופיות אסטרטגיות ממוקדות הנהלה בכירה ומקבלי החלטות (ללא רעש מנהלתי).
+* **קהל יעד:** הנהלה בכירה, סמנכ"לי פיתוח ותפעול, מפקדי מכלולים, קציני ביטחון וציות.
+* **תכנים ויכולות עיקריות:**
+  * מטרת-העל וביצועים בסד"כ של 100+ עמדות לשרת יחיד.
+  * מדוע כלי מדף וענן נכשלים במערך מבצעי (עומס מעבד, פרצות ענן, שבירת סנכרון זמן).
+  * קיר פיקוד C2 חי בשיהוי תת-שנייתי (<300ms ב-WebRTC WHEP, מעבר 0ms ללא מסך שחור, סרגל האזנה רב-עמדתי).
+  * **🌟 בידול #1: בימוי חכם לריבוי מסכים (Auto-Director)** — ניתוב פוקוס אוטומטי לפי הקלדה ועכבר, תצוגות Canvas פיזית, מסך מפוצל ו-PiP, מעביר שידור חי (`[CAM 1]`, `[CAM 2]`, `[AUTO]`).
+  * **🌟 בידול #2: מודיעין הקשות פורנזי וכתוביות וידאו** — דגימת מקלדת במילי-שניות, צריבת כתוביות ראייתיות (.SRT/.ASS) ומנוע חיפוש פקודות מרכזי.
+  * **🌟 בידול #3: ציר זמן אחוד ורצף No Signal** — חיתוך צמוד שעון עולמי, שחזור רב-עמדתי הרמטי והזרקת שקופית "No Signal" למניעת שבירת זמנים.
+  * אפס עומס על עמדת הקצה (<1% CPU באמצעות חומרת NVIDIA NVENC ו-Intel QuickSync).
+  * 100% רשת מבודדת (Air-Gap), שרידות אחסון כפולה וכניסה שקטה מבוססת Active Directory (SSO).
+  * סטודיו תחקור ויזואלי מתקדם (Forensic NLE) וחיסכון של 90% בזמן הפקת תחקירים.
+  * טבלת עליונות תחרותית מול פתרונות בשוק (ITB מול VMS, OBS וכלי ענן).
+  * החזר השקעה (ROI) ותועלת עסקית מדידה.
+  * **תסריט הדגמה חיה צעד-אחר-צעד** (מה להציג ומה לומר למנהלים מילה במילה).
+  * סיכום אסטרטגי ותוכנית פריסה תלת-שלבית בצי העמדות.
 
 ---
 
-## Interactive Presentation Controls:
-* **Next Slide:** <kbd>→</kbd> (Right Arrow), <kbd>Space</kbd>, or click **Next ▶**
-* **Previous Slide:** <kbd>←</kbd> (Left Arrow) or click **◀ Prev**
-* **Fullscreen:** Press <kbd>F</kbd> or click **⛶ Fullscreen**
-* **Export to PDF:** Click **🖨️ PDF** (or press <kbd>Ctrl</kbd> + <kbd>P</kbd>) — optimized `@media print` style renders flawless presentation slides for distribution.
+## 🇺🇸 2. Executive Management Presentation & Capabilities Showcase (English)
+* **PowerPoint Presentation:** [ITB_SCREEN_RECORDER_Executive_Management.pptx](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/Presentations/ITB_SCREEN_RECORDER_Executive_Management.pptx)
+* **Interactive Web Slide Deck:** [Executive_Management_Presentation.html](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/Presentations/Executive_Management_Presentation.html)
+* **Executive Playbook (EN):** [executive_presentation_playbook.md](file:///C:/Users/Ohad/.gemini/antigravity-ide/brain/396e7da6-bd04-49ec-b751-80a2d77a7620/executive_presentation_playbook.md)
+* **Slides:** 13 Executive Showcase Slides.
+
+---
+
+## 🇺🇸 3. Technical & Engineering Architecture Presentation (Full Deep-Dive)
+* **PowerPoint Presentation:** [ITB_SCREEN_RECORDER_Technical_Architecture.pptx](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/Presentations/ITB_SCREEN_RECORDER_Technical_Architecture.pptx)
+* **Web Slide Deck:** [Technical_Architecture_Presentation.html](file:///f:/Ohad%20Shalev/C%23%20Build/ScreenRecorder/Presentations/Technical_Architecture_Presentation.html)
+* **Slides:** 21 Engineering Slides for Architects and DevOps.
+
+---
+
+## מקשי ניווט במצגות הדפדפן (HTML Deck Controls):
+* **שקופית הבאה:** <kbd>◀</kbd> (חץ שמאלה בעברית), <kbd>רווח</kbd>, או לחיצה על **◀ הבא**
+* **שקופית קודמת:** <kbd>▶</kbd> (חץ ימינה בעברית) או לחיצה על **הקודם ▶**
+* **מסך מלא:** מקש <kbd>F</kbd> או לחיצה על **⛶ מסך מלא**
+* **הדפסה וייצוא ל-PDF:** מקש <kbd>Ctrl</kbd> + <kbd>P</kbd> או לחיצה על **🖨️ הדפסה / ייצוא PDF**

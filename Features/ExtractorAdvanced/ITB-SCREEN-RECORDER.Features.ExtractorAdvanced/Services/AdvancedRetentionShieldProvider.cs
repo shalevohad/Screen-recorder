@@ -10,6 +10,9 @@ using System.Threading.Tasks;
 
 namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 {
+    /// <summary>
+    /// Retention shield provider that shields recording chunks overlapping active bookmarks or forensic cases from disk purge.
+    /// </summary>
     public sealed class AdvancedRetentionShieldProvider : IRetentionShieldProvider
     {
         private readonly IBookmarkRepository _bookmarkRepository;
@@ -25,6 +28,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// Checks whether the specified station recording chunk interval overlaps any active bookmark shield.
+        /// </summary>
+        /// <param name="stationId">The station identifier.</param>
+        /// <param name="startEpochMs">Start timestamp in Unix epoch milliseconds.</param>
+        /// <param name="endEpochMs">End timestamp in Unix epoch milliseconds.</param>
+        /// <returns>True if the range is shielded from deletion; otherwise, false.</returns>
         public async Task<bool> IsRangeShieldedAsync(string stationId, long startEpochMs, long endEpochMs)
         {
             if (string.IsNullOrWhiteSpace(stationId) || startEpochMs >= endEpochMs)
@@ -37,7 +47,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var startUtc = DateTimeOffset.FromUnixTimeMilliseconds(startEpochMs).UtcDateTime;
                 var endUtc = DateTimeOffset.FromUnixTimeMilliseconds(endEpochMs).UtcDateTime;
 
-                // 1. בדיקת חפיפה לכלל הסימניות בטווח הזמנים (מגן על כל הקלטה בכל תחנה שנופלת בטווח הסימניה)
+                // 1. Check bookmark time-window overlap across all bookmarks (shields any recording falling inside bookmarked range)
                 bool isShielded = await _bookmarkRepository.HasAnyOverlapAsync(startUtc, endUtc);
 
                 if (isShielded)
@@ -53,7 +63,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
             catch (Exception ex)
             {
-                // Fail-Safe: מניעת מחיקת מידע אם יש שגיאה רגעית במסד
+                // Fail-safe: prevent accidental data deletion if database is temporarily unreachable
                 _logger.LogError(ex,
                     "[RETENTION SHIELD] Error querying bookmark shields for station '{Station}'. Falling back to protected state.",
                     stationId);

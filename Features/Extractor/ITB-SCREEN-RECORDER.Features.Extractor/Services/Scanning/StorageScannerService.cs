@@ -110,11 +110,20 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         fps INTEGER NOT NULL DEFAULT 0,
                         has_audio INTEGER NOT NULL DEFAULT 0,
                         is_finalized INTEGER NOT NULL DEFAULT 0,
-                        indexed_at_utc INTEGER NOT NULL
+                        indexed_at_utc INTEGER NOT NULL,
+                        display_id TEXT NOT NULL DEFAULT 'mon-0',
+                        is_primary INTEGER NOT NULL DEFAULT 1,
+                        display_bounds TEXT
                     );
                     CREATE INDEX IF NOT EXISTS idx_chunks_station_range 
-                    ON recording_chunks (station_id COLLATE NOCASE, start_epoch_ms, end_epoch_ms);";
+                    ON recording_chunks (station_id COLLATE NOCASE, start_epoch_ms, end_epoch_ms);
+                    CREATE INDEX IF NOT EXISTS idx_chunks_station_display
+                    ON recording_chunks (station_id COLLATE NOCASE, display_id, start_epoch_ms, end_epoch_ms);";
                 cmd.ExecuteNonQuery();
+
+                EnsureColumn(conn, "recording_chunks", "display_id", "TEXT NOT NULL DEFAULT 'mon-0'");
+                EnsureColumn(conn, "recording_chunks", "is_primary", "INTEGER NOT NULL DEFAULT 1");
+                EnsureColumn(conn, "recording_chunks", "display_bounds", "TEXT");
             }
 
             TriggerCatalogSelfHeal();
@@ -137,12 +146,19 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     FROM recording_chunks 
                     WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs
                     UNION
+                    SELECT station_id FROM recording_chunks
+                    UNION
                     SELECT station_id FROM station_nodes;";
 
                 var dbHosts = await conn.QueryAsync<string>(sql, new { startMs, endMs });
                 foreach (var h in dbHosts.Where(s => !string.IsNullOrWhiteSpace(s)))
                 {
                     string clean = h.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? h.Substring(5) : h;
+                    int slashIdx = clean.IndexOf('/');
+                    if (slashIdx > 0)
+                    {
+                        clean = clean.Substring(0, slashIdx);
+                    }
                     hostsSet.Add(clean);
                 }
             }
@@ -151,6 +167,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 _logger.LogWarning(ex, "[STORAGE SCANNER] Failed querying available hosts from DB.");
             }
 
+            // DB-FIRST: If stations are indexed in the database, return them immediately with 0 disk/network I/O
+            if (hostsSet.Count > 0)
+            {
+                return hostsSet.OrderBy(h => h).ToList();
+            }
+
+            // Fallback scan is executed ONLY if the database catalog is completely empty (cold start / fresh installation)
             foreach (var root in ResolveActiveStorageRoots().Where(Directory.Exists))
             {
                 try
@@ -189,7 +212,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     string.Equals(dirName, "recordings", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(dirName, "temp", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(dirName, "buffer", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(dirName, "logs", StringComparison.OrdinalIgnoreCase))
+                    string.Equals(dirName, "logs", StringComparison.OrdinalIgnoreCase) ||
+                    dirName.StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                    dirName.StartsWith("display-", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -199,21 +224,108 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _lastDiskScanTimes = new(StringComparer.OrdinalIgnoreCase);
 
+        public async Task<RecordingChunkMetadata?> GetStationSampleChunkAsync(string hostname)
+        {
+            if (string.IsNullOrWhiteSpace(hostname)) return null;
+            string cleanHost = hostname.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? hostname.Substring(5) : hostname;
+
+            try
+            {
+                using var conn = OpenCatalogDbConnection();
+                const string sql = @"
+                    SELECT file_path AS FullPath, station_id AS Hostname,
+                           start_epoch_ms AS StartEpochMs, end_epoch_ms AS EndEpochMs,
+                           file_size_bytes AS FileSizeBytes,
+                           COALESCE(width, 1920) AS Width,
+                           COALESCE(height, 1080) AS Height,
+                           COALESCE(fps, 30) AS Fps,
+                           COALESCE(has_audio, 1) AS HasAudio,
+                           COALESCE(is_finalized, 1) AS IsFinalized,
+                           COALESCE(display_id, 'mon-0') AS DisplayId,
+                           COALESCE(is_primary, 1) AS IsPrimary
+                    FROM recording_chunks
+                    WHERE (station_id = @cleanHost 
+                           OR station_id = ('live/' || @cleanHost) 
+                           OR station_id = @rawHost
+                           OR station_id LIKE (@cleanHost || '/%')
+                           OR station_id LIKE ('live/' || @cleanHost || '/%')) COLLATE NOCASE
+                    ORDER BY start_epoch_ms DESC
+                    LIMIT 1;";
+
+                var row = await conn.QueryFirstOrDefaultAsync(sql, new { cleanHost, rawHost = hostname });
+                if (row != null)
+                {
+                    return new RecordingChunkMetadata
+                    {
+                        FullPath = (string)row.FullPath,
+                        Hostname = cleanHost,
+                        StartUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)row.StartEpochMs).UtcDateTime,
+                        EndUtc = DateTimeOffset.FromUnixTimeMilliseconds((long)row.EndEpochMs).UtcDateTime,
+                        FileSizeBytes = (long)row.FileSizeBytes,
+                        Width = (int)row.Width,
+                        Height = (int)row.Height,
+                        Fps = (double)row.Fps,
+                        HasAudio = (long)row.HasAudio != 0,
+                        IsFinalized = (long)row.IsFinalized != 0,
+                        DisplayId = row.DisplayId != null ? (string)row.DisplayId : "mon-0",
+                        IsPrimary = row.IsPrimary != null ? ((long)row.IsPrimary != 0) : true
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[STORAGE SCANNER] Failed querying sample chunk for '{Host}' from DB.", cleanHost);
+            }
+
+            return null;
+        }
+
         public async Task<List<RecordingChunkMetadata>> GetChunksForStationAsync(string hostname, DateTime startUtc, DateTime endUtc)
         {
             string cleanHost = hostname.StartsWith("live/", StringComparison.OrdinalIgnoreCase) ? hostname.Substring(5) : hostname;
             long startMs = new DateTimeOffset(startUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
             long endMs = new DateTimeOffset(endUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-            // 1. שליפה מהירה מה-DB עם תמיכה מלאה ב-COLLATE NOCASE
+            // 1. DB-FIRST: High-speed indexed query from database with 0 disk I/O (a few milliseconds)
             var dbChunks = await QueryChunksFromDbAsync(cleanHost, startMs, endMs);
 
-            // 2. סריקה דינמית בדיסק לאיתור קבצים שטרם אונדקסו או סגירת קבצים שהיו active
-            bool isRecentScope = endUtc >= DateTime.UtcNow.AddMinutes(-30);
-            double cooldownSeconds = isRecentScope ? 1.5 : 30.0;
+            bool isHistorical = endUtc < DateTime.UtcNow.AddMinutes(-15);
+
+            // Historical range found in DB: return immediately! Zero disk or network share access!
+            if (isHistorical && dbChunks.Count > 0)
+            {
+                return dbChunks;
+            }
+
+            // Disk access cooldown check per station
+            bool isRecentScope = !isHistorical;
+            double cooldownSeconds = isRecentScope ? 3.0 : 60.0;
             bool hasRecentScan = _lastDiskScanTimes.TryGetValue(cleanHost, out var lastScan) && (DateTime.UtcNow - lastScan).TotalSeconds < cooldownSeconds;
-            bool hasUnfinalized = dbChunks.Any(c => !c.IsFinalized);
-            bool shouldScanDisk = dbChunks.Count == 0 || !hasRecentScan || hasUnfinalized;
+
+            if (hasRecentScan)
+            {
+                return dbChunks;
+            }
+
+            // Determine if a disk scan is necessary to locate gaps or update the active hot chunk
+            bool shouldScanDisk = false;
+
+            if (dbChunks.Count == 0)
+            {
+                // DB contains no chunks for station in requested range - scan disk to discover segments
+                shouldScanDisk = true;
+            }
+            else if (isRecentScope)
+            {
+                bool hasUnfinalized = dbChunks.Any(c => !c.IsFinalized);
+                var latestChunk = dbChunks.MaxBy(c => c.EndUtc);
+                bool tailIsPast = latestChunk != null && (DateTime.UtcNow - latestChunk.EndUtc).TotalSeconds > 10;
+
+                if (hasUnfinalized || tailIsPast)
+                {
+                    shouldScanDisk = true;
+                }
+            }
 
             if (shouldScanDisk)
             {
@@ -255,7 +367,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 var existing = await conn.QueryAsync<string>(
                     @"SELECT file_path FROM recording_chunks 
-                      WHERE (station_id = @cleanHost OR station_id = ('live/' || @cleanHost) OR station_id = @rawHost) 
+                      WHERE (station_id = @cleanHost 
+                             OR station_id = ('live/' || @cleanHost) 
+                             OR station_id = @rawHost 
+                             OR station_id LIKE (@cleanHost || '/%') 
+                             OR station_id LIKE ('live/' || @cleanHost || '/%')) 
                         AND is_finalized = 1;",
                     new { cleanHost, rawHost = hostname });
                 foreach (var p in existing) knownFinalizedPaths.Add(p);
@@ -287,9 +403,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                        COALESCE(height, 1080) AS Height,
                        COALESCE(fps, 30) AS Fps,
                        COALESCE(has_audio, 1) AS HasAudio,
-                       COALESCE(is_finalized, 1) AS IsFinalized
+                       COALESCE(is_finalized, 1) AS IsFinalized,
+                       COALESCE(display_id, 'mon-0') AS DisplayId,
+                       COALESCE(is_primary, 1) AS IsPrimary
                 FROM recording_chunks
-                WHERE (station_id = @cleanHost OR station_id = ('live/' || @cleanHost) OR station_id = @rawHost) COLLATE NOCASE
+                WHERE (station_id = @cleanHost 
+                       OR station_id = ('live/' || @cleanHost) 
+                       OR station_id = @rawHost
+                       OR station_id LIKE (@cleanHost || '/%')
+                       OR station_id LIKE ('live/' || @cleanHost || '/%')) COLLATE NOCASE
                   AND end_epoch_ms >= @startMs
                   AND start_epoch_ms <= @endMsTolerance
                 ORDER BY start_epoch_ms ASC;";
@@ -317,7 +439,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     Height = (int)r.Height,
                     Fps = (double)r.Fps,
                     HasAudio = (long)r.HasAudio != 0,
-                    IsFinalized = isFin
+                    IsFinalized = isFin,
+                    DisplayId = r.DisplayId != null ? (string)r.DisplayId : "mon-0",
+                    IsPrimary = r.IsPrimary != null ? ((long)r.IsPrimary != 0) : true
                 });
             }
 
@@ -396,43 +520,93 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 string? targetDir = FindStationDirectory(root, cleanHost);
                 if (targetDir == null) continue;
 
-                var candidateFiles = Directory.EnumerateFiles(targetDir, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase) && !knownPaths.Contains(f))
-                    .OrderBy(f => f)
-                    .ToList();
+                var searchDirs = new List<string> { targetDir };
+                try
+                {
+                    var displaySubDirs = Directory.EnumerateDirectories(targetDir)
+                        .Where(d => Path.GetFileName(d).StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                                    Path.GetFileName(d).StartsWith("display-", StringComparison.OrdinalIgnoreCase));
+                    searchDirs.AddRange(displaySubDirs);
+                }
+                catch { }
+
+                var candidateFiles = new List<string>();
+                foreach (var d in searchDirs)
+                {
+                    try
+                    {
+                        candidateFiles.AddRange(Directory.EnumerateFiles(d, "*.*", SearchOption.TopDirectoryOnly)
+                            .Where(f => SupportedVideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase) && !knownPaths.Contains(f)));
+                    }
+                    catch { }
+                }
+
+                candidateFiles = candidateFiles.OrderBy(f => f).ToList();
 
                 for (int i = 0; i < candidateFiles.Count; i++)
                 {
                     string file = candidateFiles[i];
                     var parsed = TryParseChunkFast(file, cleanHost);
-                    if (parsed != null)
-                    {
-                        long fStart = new DateTimeOffset(parsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-                        long fEnd = 0;
-                        bool isLocked = IsFileLocked(file);
-                        bool isFinalized = !isLocked;
+                    if (parsed == null) continue;
 
-                        if (i + 1 < candidateFiles.Count)
+                    long fStart = new DateTimeOffset(parsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+                    // Fast in-memory boundary filtering prior to disk access: skip files outside requested range
+                    if (fStart > (endMs + 300000) || (fStart + 3600000) < startMs)
+                    {
+                        continue;
+                    }
+
+                    long fEnd = 0;
+                    bool isLocked = IsFileLocked(file);
+                    bool isFinalized = !isLocked;
+
+                    if (i + 1 < candidateFiles.Count)
+                    {
+                        var nextParsed = TryParseChunkFast(candidateFiles[i + 1], cleanHost);
+                        if (nextParsed != null)
                         {
-                            var nextParsed = TryParseChunkFast(candidateFiles[i + 1], cleanHost);
-                            if (nextParsed != null)
+                            long nextStart = new DateTimeOffset(nextParsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                            if (nextStart > fStart && (nextStart - fStart) <= (30 * 60 * 1000))
                             {
-                                long nextStart = new DateTimeOffset(nextParsed.StartUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-                                if (nextStart > fStart && (nextStart - fStart) <= (30 * 60 * 1000))
-                                {
-                                    long accurateMs = GetAccurateChunkDurationMs(file, parsed.StartUtc, nextStart - fStart);
-                                    fEnd = fStart + accurateMs;
-                                }
+                                // Chunk duration is defined by the start of the succeeding chunk without FFprobe invocation
+                                fEnd = nextStart;
                             }
                         }
+                    }
 
-                        if (fEnd <= 0)
+                    if (fEnd <= 0)
+                    {
+                        if (isLocked)
                         {
-                            long accurateMs = GetAccurateChunkDurationMs(file, parsed.StartUtc, defaultDurationMs);
-                            fEnd = fStart + accurateMs;
+                            long activeDurMs = (long)(DateTime.UtcNow - parsed.StartUtc).TotalMilliseconds;
+                            fEnd = fStart + (activeDurMs > 500 ? activeDurMs : defaultDurationMs);
                         }
+                        else
+                        {
+                            try
+                            {
+                                var fi = new FileInfo(file);
+                                if (fi.Exists && fi.LastWriteTimeUtc > parsed.StartUtc)
+                                {
+                                    long writeDiffMs = (long)(fi.LastWriteTimeUtc - parsed.StartUtc).TotalMilliseconds;
+                                    fEnd = fStart + (writeDiffMs > 500 ? Math.Min(writeDiffMs, defaultDurationMs) : defaultDurationMs);
+                                }
+                                else
+                                {
+                                    fEnd = fStart + defaultDurationMs;
+                                }
+                            }
+                            catch
+                            {
+                                fEnd = fStart + defaultDurationMs;
+                            }
+                        }
+                    }
 
-                        if (fEnd >= startMs && fStart <= (endMs + 300000))
+                    if (fEnd >= startMs && fStart <= (endMs + 300000))
+                    {
+                        try
                         {
                             var fi = new FileInfo(file);
                             if (fi.Exists && fi.Length >= 1024)
@@ -440,6 +614,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                 missing.Add((cleanHost, file, fStart, fEnd, fi.Length, isFinalized));
                             }
                         }
+                        catch { }
                     }
                 }
             }
@@ -454,21 +629,32 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 var fi = new FileInfo(filePath);
                 if (!fi.Exists || fi.Length < 1024) return fallbackDurationMs;
 
-                // בדיקה אם הקובץ עדיין נכתב פעיל (Locked / DVR)
+                // Check if file is still being actively written (Locked / Near-Live DVR)
                 if (IsFileLocked(filePath))
                 {
                     long activeDurMs = (long)(DateTime.UtcNow - startUtc).TotalMilliseconds;
                     return activeDurMs > 500 ? activeDurMs : fallbackDurationMs;
                 }
 
-                // הקובץ סגור! נדגום משך מדויק באמצעות FFprobe
+                // Fast check without external child processes based on disk file modification time (LastWriteTimeUtc)
+                if (fi.LastWriteTimeUtc > startUtc)
+                {
+                    long diffMs = (long)(fi.LastWriteTimeUtc - startUtc).TotalMilliseconds;
+                    if (diffMs > 500 && diffMs <= (30 * 60 * 1000))
+                    {
+                        return diffMs;
+                    }
+                }
+
+                // Final fallback probe via FFprobe only if not derivable from file metadata
+                // The file is finalized on disk: sample accurate duration using FFprobe
                 string? ffprobePath = ResolveFfprobePath();
                 if (!string.IsNullOrWhiteSpace(ffprobePath) && File.Exists(ffprobePath))
                 {
                     var psi = new ProcessStartInfo
                     {
                         FileName = ffprobePath,
-                        Arguments = $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
+                        Arguments = $"-v error -analyzeduration 1M -probesize 1M -threads 2 -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath.Replace('\\', '/')}\"",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -489,16 +675,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         {
                             try { proc.Kill(); } catch { }
                         }
-                    }
-                }
-
-                // Fallback לפי שעת סגירת הקובץ בדיסק (LastWriteTimeUtc)
-                if (fi.LastWriteTimeUtc > startUtc)
-                {
-                    long diffMs = (long)(fi.LastWriteTimeUtc - startUtc).TotalMilliseconds;
-                    if (diffMs > 500)
-                    {
-                        return diffMs;
                     }
                 }
             }
@@ -797,21 +973,28 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             const string sql = @"
                 INSERT INTO recording_chunks (
                     station_id, file_path, start_epoch_ms, end_epoch_ms, 
-                    duration_ms, file_size_bytes, width, height, fps, has_audio, is_finalized, indexed_at_utc
+                    duration_ms, file_size_bytes, width, height, fps, has_audio, is_finalized, indexed_at_utc,
+                    display_id, is_primary
                 ) VALUES (
                     @StationId, @Path, @StartMs, @EndMs, 
-                    (@EndMs - @StartMs), @Size, 1920, 1080, 30, 1, @IsFinalized, @Now
+                    (@EndMs - @StartMs), @Size, 1920, 1080, 30, 1, @IsFinalized, @Now,
+                    @DisplayId, @IsPrimary
                 ) ON CONFLICT(file_path) DO UPDATE SET
                     station_id = excluded.station_id,
                     end_epoch_ms = excluded.end_epoch_ms,
                     duration_ms = (excluded.end_epoch_ms - recording_chunks.start_epoch_ms),
                     file_size_bytes = excluded.file_size_bytes,
                     is_finalized = excluded.is_finalized,
-                    indexed_at_utc = excluded.indexed_at_utc;";
+                    indexed_at_utc = excluded.indexed_at_utc,
+                    display_id = excluded.display_id,
+                    is_primary = excluded.is_primary;";
 
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             foreach (var item in items)
             {
+                string displayId = ExtractDisplayIdFromPath(item.Path);
+                int isPrimary = displayId.Equals("mon-0", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
                 await conn.ExecuteAsync(new CommandDefinition(sql, new { 
                     item.StationId, 
                     item.Path, 
@@ -819,10 +1002,58 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     item.EndMs, 
                     item.Size, 
                     IsFinalized = item.IsFinalized ? 1 : 0, 
-                    Now = now 
+                    Now = now,
+                    DisplayId = displayId,
+                    IsPrimary = isPrimary
                 }, tx, cancellationToken: ct));
             }
             await tx.CommitAsync(ct);
+        }
+
+        private static string ExtractDisplayIdFromPath(string filePath)
+        {
+            try
+            {
+                var parent = Directory.GetParent(filePath);
+                if (parent != null)
+                {
+                    if (parent.Name.StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ||
+                        parent.Name.StartsWith("display-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return parent.Name;
+                    }
+                }
+            }
+            catch { }
+            return "mon-0";
+        }
+
+        private static void EnsureColumn(SqliteConnection conn, string tableName, string columnName, string columnDefinition)
+        {
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"PRAGMA table_info({tableName});";
+                using var reader = cmd.ExecuteReader();
+                bool exists = false;
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+                reader.Close();
+
+                if (!exists)
+                {
+                    using var alterCmd = conn.CreateCommand();
+                    alterCmd.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};";
+                    alterCmd.ExecuteNonQuery();
+                }
+            }
+            catch { }
         }
 
         private IEnumerable<string> ResolveActiveStorageRoots()
@@ -869,7 +1100,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 }
             }
 
-            // בדיקת תבנית Epoch ישירה במילישניות (13 ספרות)
+            // Direct Unix epoch timestamp pattern in milliseconds (13 digits)
             var matchEpochMs = Regex.Match(fileName, @"(?:^(?<host>[a-zA-Z0-9_\-\.]+?)[_-])?(?<epoch>\d{13})\.(mp4|fmp4|flv|mkv|ts|mov)$", RegexOptions.IgnoreCase);
             if (matchEpochMs.Success)
             {

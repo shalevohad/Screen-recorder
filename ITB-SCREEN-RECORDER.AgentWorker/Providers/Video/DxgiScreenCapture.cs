@@ -16,6 +16,12 @@ namespace ITBRecorderAgent.Providers.Video
     {
         public int Width { get; private set; }
         public int Height { get; private set; }
+        public int X { get; private set; }
+        public int Y { get; private set; }
+        public string DeviceName { get; private set; } = string.Empty;
+        public uint AdapterIndex { get; }
+        public uint OutputIndex { get; }
+        public string DisplayId { get; }
         public bool IsInitialized { get; private set; }
 
         private ID3D11Device? _device;
@@ -23,11 +29,19 @@ namespace ITBRecorderAgent.Providers.Video
         private IDXGIOutputDuplication? _deskDupl;
         private ID3D11Texture2D? _stagingTexture;
 
-        // באפר קבוע ורב-פעמי. אין יותר הקצאות של byte[] בזמן ריצה!
+        // Reusable preallocated raw frame buffer to eliminate runtime heap allocations of byte[]
         private byte[]? _frameBuffer;
+        private bool _hasCapturedFrame = false;
 
         private DateTime _lastReinitAttemptUtc = DateTime.MinValue;
         private static readonly TimeSpan ReinitRetryInterval = TimeSpan.FromSeconds(2);
+
+        public DxgiScreenCapture(uint adapterIndex = 0, uint outputIndex = 0, string displayId = "mon-0")
+        {
+            AdapterIndex = adapterIndex;
+            OutputIndex = outputIndex;
+            DisplayId = displayId;
+        }
 
         public void Initialize()
         {
@@ -35,24 +49,40 @@ namespace ITBRecorderAgent.Providers.Video
             {
                 DesktopSecurityManager.TryAttachToInputDesktop();
 
-                D3D11.D3D11CreateDevice(
-                    (IDXGIAdapter?)null, DriverType.Hardware, DeviceCreationFlags.BgraSupport,
-                    new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
-                    out _device, out _context);
+                using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
+                if (!factory.EnumAdapters1(AdapterIndex, out var adapter).Success)
+                {
+                    throw new InvalidOperationException($"Cannot find DXGI Adapter {AdapterIndex}");
+                }
 
-                using var dxgiDevice = _device!.QueryInterface<IDXGIDevice>();
-                using var adapter = dxgiDevice.GetAdapter();
+                using (adapter)
+                {
+                    D3D11.D3D11CreateDevice(
+                        adapter, DriverType.Unknown, DeviceCreationFlags.BgraSupport,
+                        new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
+                        out _device, out _context);
 
-                adapter.EnumOutputs(0, out IDXGIOutput output);
-                using var output1 = output.QueryInterface<IDXGIOutput1>();
+                    if (!adapter.EnumOutputs(OutputIndex, out IDXGIOutput output).Success)
+                    {
+                        throw new InvalidOperationException($"Cannot find DXGI Output {OutputIndex} on Adapter {AdapterIndex}");
+                    }
 
-                var desc = output.Description;
-                Width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
-                Height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
+                    using (output)
+                    {
+                        using var output1 = output.QueryInterface<IDXGIOutput1>();
 
-                // מוודאים שיוך שולחן עבודה גם מיד לפני שכפול הפלט
-                DesktopSecurityManager.TryAttachToInputDesktop();
-                _deskDupl = output1.DuplicateOutput(_device);
+                        var desc = output.Description;
+                        Width = desc.DesktopCoordinates.Right - desc.DesktopCoordinates.Left;
+                        Height = desc.DesktopCoordinates.Bottom - desc.DesktopCoordinates.Top;
+                        X = desc.DesktopCoordinates.Left;
+                        Y = desc.DesktopCoordinates.Top;
+                        DeviceName = desc.DeviceName;
+
+                        // Ensure thread desktop attachment immediately before duplicating output surface
+                        DesktopSecurityManager.TryAttachToInputDesktop();
+                        _deskDupl = output1.DuplicateOutput(_device);
+                    }
+                }
 
                 var textureDesc = new Texture2DDescription
                 {
@@ -70,8 +100,21 @@ namespace ITBRecorderAgent.Providers.Video
 
                 _stagingTexture = _device.CreateTexture2D(textureDesc);
 
-                // הקצאה חד-פעמית
+                // One-time preallocation of byte array
                 _frameBuffer = new byte[Width * Height * 4];
+
+                // Pre-populate buffer with real desktop snapshot via GDI so it never transmits all-zeroes black frames
+                try
+                {
+                    using var gdi = new GdiScreenCapture(X, Y, Width, Height);
+                    gdi.Initialize();
+                    if (gdi.TryCaptureFrame(out var initial) && initial != null)
+                    {
+                        Buffer.BlockCopy(initial, 0, _frameBuffer, 0, Math.Min(initial.Length, _frameBuffer.Length));
+                        _hasCapturedFrame = true;
+                    }
+                }
+                catch { }
 
                 IsInitialized = true;
                 Logger.Info($"[VIDEO] DXGI Desktop Duplication initialized: {Width}x{Height}");
@@ -84,6 +127,11 @@ namespace ITBRecorderAgent.Providers.Video
             }
         }
 
+        /// <summary>
+        /// Attempts to acquire the next screen frame from DXGI Desktop Duplication into a preallocated byte buffer.
+        /// </summary>
+        /// <param name="frameData">Outputs reference to preallocated BGRA frame buffer on success, or null on timeout/error.</param>
+        /// <returns>True if a frame was successfully acquired and mapped; false on timeout or initialization error.</returns>
         public bool TryCaptureFrame(out byte[]? frameData)
         {
             frameData = null;
@@ -100,33 +148,56 @@ namespace ITBRecorderAgent.Providers.Video
 
             try
             {
-                // Timeout שונה ל-5ms. אנחנו רוצים שהלולאה תחזור לעבוד מיד אם אין שינוי!
+                // 5ms acquire timeout: returns immediately to capture loop if frame is unchanged
                 var result = _deskDupl.AcquireNextFrame(5, out _, out var desktopResource);
 
                 if (result.Failure)
                 {
-                    if (result.Code == Vortice.DXGI.ResultCode.AccessLost.Code)
+                    if (result.Code != Vortice.DXGI.ResultCode.WaitTimeout.Code)
                     {
-                        Logger.Warn("[VIDEO] DXGI Access Lost. Reinitializing...");
+                        Logger.Warn($"[VIDEO] DXGI error (0x{result.Code:X8}). Reinitializing capture pipeline...");
                         Reinitialize();
+                    }
+
+                    // Static screen / WaitTimeout: return current valid frame buffer rather than failing to black
+                    if (_hasCapturedFrame && _frameBuffer != null)
+                    {
+                        frameData = _frameBuffer;
+                        return true;
                     }
                     return false;
                 }
 
-                using (desktopResource)
-                using (var desktopTexture = desktopResource.QueryInterface<ID3D11Texture2D>())
+                if (desktopResource == null)
                 {
-                    _context.CopyResource(_stagingTexture, desktopTexture);
+                    _deskDupl.ReleaseFrame();
+                    if (_hasCapturedFrame && _frameBuffer != null)
+                    {
+                        frameData = _frameBuffer;
+                        return true;
+                    }
+                    return false;
                 }
 
-                _deskDupl.ReleaseFrame();
+                try
+                {
+                    using (desktopResource)
+                    using (var desktopTexture = desktopResource.QueryInterface<ID3D11Texture2D>())
+                    {
+                        _context.CopyResource(_stagingTexture, desktopTexture);
+                    }
+                }
+                finally
+                {
+                    _deskDupl.ReleaseFrame();
+                }
 
                 var mapped = _context.Map(_stagingTexture, 0, MapMode.Read, Vortice.Direct3D11.MapFlags.None);
                 try
                 {
                     int rowPitch = Width * 4;
 
-                    // אופטימיזציה מטורפת: אם ה-RowPitch מושלם, מבצעים העתקת בלוק אחת בלבד
+                    // Optimization: if row pitch equals tightly packed width * 4, execute single block copy
                     if (mapped.RowPitch == rowPitch)
                     {
                         Marshal.Copy(mapped.DataPointer, _frameBuffer, 0, _frameBuffer.Length);
@@ -140,7 +211,8 @@ namespace ITBRecorderAgent.Providers.Video
                         }
                     }
 
-                    frameData = _frameBuffer; // מחזירים רפרנס לבאפר שלנו (אפס אובייקטים חדשים ב-RAM!)
+                    _hasCapturedFrame = true;
+                    frameData = _frameBuffer; // Return cached buffer reference (zero runtime GC allocations)
                     return true;
                 }
                 finally
@@ -150,6 +222,11 @@ namespace ITBRecorderAgent.Providers.Video
             }
             catch
             {
+                if (_hasCapturedFrame && _frameBuffer != null)
+                {
+                    frameData = _frameBuffer;
+                    return true;
+                }
                 return false;
             }
         }
@@ -158,12 +235,21 @@ namespace ITBRecorderAgent.Providers.Video
         {
             _lastReinitAttemptUtc = DateTime.UtcNow;
             Dispose();
-            Initialize();
+            try
+            {
+                Initialize();
+            }
+            catch
+            {
+                // Desktop may still be locked, sleeping, or in transition.
+                // IsInitialized remains false; TryCaptureFrame will retry per ReinitRetryInterval.
+            }
         }
 
         public void Dispose()
         {
             IsInitialized = false;
+            _hasCapturedFrame = false;
             _stagingTexture?.Dispose();
             _stagingTexture = null;
             _deskDupl?.Dispose();

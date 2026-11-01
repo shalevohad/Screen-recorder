@@ -2,6 +2,17 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import './SelectedStationsChips.scss';
 
+/**
+ * SelectedStationsChips displays active station selection chips with overflow popover and clear controls.
+ * 
+ * @param {Object} props
+ * @param {Array<string>} [props.selectedStationIds=[]] - Selected station ID array.
+ * @param {Array} [props.allStations=[]] - All available station objects.
+ * @param {(id: string) => void} props.onToggleStation - Toggle station selection handler.
+ * @param {() => void} props.onClearAll - Clear all selections callback.
+ * @param {number} [props.maxVisible=3] - Maximum visible chips before overflow grouping.
+ * @returns {JSX.Element}
+ */
 export default function SelectedStationsChips({
     selectedStationIds = [],
     allStations = [],
@@ -12,7 +23,7 @@ export default function SelectedStationsChips({
     const [isOverflowOpen, setIsOverflowOpen] = useState(false);
     const popoverRef = useRef(null);
 
-    // סגירת הפופאובר בלחיצה מחוץ לרכיב
+    // Dismiss popover on outside pointer down
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (popoverRef.current && !popoverRef.current.contains(e.target)) {
@@ -30,7 +41,7 @@ export default function SelectedStationsChips({
         return selectedStationIds.map(id => stationMap.get(id) || { id, hostname: `Station ${id}` });
     }, [selectedStationIds, allStations]);
 
-    // במצב שבו לא נבחרה עמדה - מציג רמז טקטי עדין בגובה קבוע
+    // Empty selection state — render subtle tactical hint bar
     if (selectedStationIds.length === 0) {
         return (
             <div className="selected-chips-dock-root empty-selection">
@@ -72,7 +83,7 @@ export default function SelectedStationsChips({
                     );
                 })}
 
-                {/* כפתור עודפים חכם עם פופאובר הנפתח כלפי מעלה */}
+                {/* Smart overflow pill button with upward opening popover */}
                 {hasOverflow && (
                     <div className="overflow-popover-container" ref={popoverRef}>
                         <button

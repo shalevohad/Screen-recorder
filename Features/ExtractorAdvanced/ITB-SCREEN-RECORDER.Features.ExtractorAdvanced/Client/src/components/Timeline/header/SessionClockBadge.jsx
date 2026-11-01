@@ -21,7 +21,7 @@ export default function SessionClockBadge({
     const [inInputText, setInInputText] = useState('');
     const [outInputText, setOutInputText] = useState('');
 
-    // 💡 עיצוב שעה מדויק ומכויל מול מנוע ה-DST של השרת
+    // Precise time formatting calibrated against the server DST engine
     const formatEpochTime = useCallback((epochMs) => {
         if (!epochMs || isNaN(epochMs) || epochMs <= 0) {
             return { timeStr: '--:--:--', zoneLabel: '' };
@@ -35,7 +35,7 @@ export default function SessionClockBadge({
             };
         }
 
-        // שימוש בסטיית ה-DST המנוהלת מהשרת
+        // Apply managed DST offset from server engine
         const { offsetMin, label } = getLocalOffsetMinutes(epochMs);
         const localDate = new Date(epochMs + (offsetMin * 60 * 1000));
 
@@ -58,10 +58,10 @@ export default function SessionClockBadge({
     const outInfo = useMemo(() => formatEpochTime(baseEpochMs + outPointMs), [formatEpochTime, baseEpochMs, outPointMs]);
     const durationDisplayStr = useMemo(() => formatDuration(Math.max(0, outPointMs - inPointMs)), [formatDuration, inPointMs, outPointMs]);
 
-    // 💡 פענוח קלט ידני מבוסס Epoch ו-dstEngine (כולל פתרון חכם לשעות כפולות)
+    // Parse manual text input based on Epoch and dstEngine (including ambiguous hour resolution)
     const parseTimeStringToMs = useCallback((inputStr, fallbackMs) => {
         if (!inputStr || !inputStr.trim()) return fallbackMs;
-        const cleanInput = inputStr.trim().split(' ')[0]; // הסרת תגית אזור זמן אם הוקלדה בטעות
+        const cleanInput = inputStr.trim().split(' ')[0]; // Strip timezone label if accidentally typed
         const parts = cleanInput.split(':').map(Number);
         if (parts.length < 2 || parts.some(isNaN)) return fallbackMs;
 
@@ -79,7 +79,7 @@ export default function SessionClockBadge({
             return isNaN(offset) ? fallbackMs : Math.max(0, Math.min(totalDurationMs, offset));
         }
 
-        // חישוב זמן מקומי מכויל מול dstEngine
+        // Compute calibrated local time against dstEngine
         const { offsetMin: baseOffset } = getLocalOffsetMinutes(baseEpochMs);
         const baseLocalDate = new Date(baseEpochMs + (baseOffset * 60000));
         const y = baseLocalDate.getUTCFullYear();
@@ -89,12 +89,12 @@ export default function SessionClockBadge({
         const dateStr = `${y}-${pad(mo + 1)}-${pad(day)}`;
         const timeStr = `${pad(h)}:${pad(m)}:${pad(s)}`;
 
-        // בדיקת שעה עמומה (מעבר חורף)
+        // Check for ambiguous repeated hour (winter DST transition)
         const ambiguity = checkTimeAmbiguity(dateStr, timeStr);
         let candidateEpoch;
 
         if (ambiguity.isAmbiguous) {
-            // בחירת המופע הקרוב ביותר לערך הנוכחי (inPoint / outPoint)
+            // Select candidate closest to current position (inPoint / outPoint)
             const currentEpoch = baseEpochMs + fallbackMs;
             const diff1 = Math.abs(ambiguity.firstOccurrenceEpoch - currentEpoch);
             const diff2 = Math.abs(ambiguity.secondOccurrenceEpoch - currentEpoch);
@@ -148,7 +148,7 @@ export default function SessionClockBadge({
 
     return (
         <div className="tactical-timecode-console">
-            {/* שורת IN */}
+            {/* IN point row */}
             <div className="console-row in-accent">
                 <span className="console-tag">IN</span>
                 {isEditingIn ? (
@@ -176,7 +176,7 @@ export default function SessionClockBadge({
                 )}
             </div>
 
-            {/* שורת OUT */}
+            {/* OUT point row */}
             <div className="console-row out-accent">
                 <span className="console-tag">OUT</span>
                 {isEditingOut ? (
@@ -204,7 +204,7 @@ export default function SessionClockBadge({
                 )}
             </div>
 
-            {/* מדף משך זמן (Duration) */}
+            {/* Duration display shelf */}
             <div className="console-duration-shelf">
                 <div className="dur-label-group">
                     <span className="dur-dot" />

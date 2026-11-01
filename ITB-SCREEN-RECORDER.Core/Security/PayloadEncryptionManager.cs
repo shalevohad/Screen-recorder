@@ -6,8 +6,9 @@ using System.Text;
 namespace ITB_SCREEN_RECORDER.Core.Security
 {
     /// <summary>
-    /// מנהל הצפנה עבור נתוני Payload רגישים (כגון מקשים וטלמטריה) באמצעות AES-256-GCM מאומת.
-    /// הפורמט כולל KeyId מובנה לזיהוי אוטומטי של המפתח לפענוח (Key Rotation).
+    /// Encryption manager for sensitive payload data (such as keystrokes and telemetry)
+    /// utilizing authenticated AES-256-GCM.
+    /// The formatted envelope includes an embedded KeyId for automatic key resolution and key rotation.
     /// </summary>
     public static class PayloadEncryptionManager
     {
@@ -16,8 +17,9 @@ namespace ITB_SCREEN_RECORDER.Core.Security
         private const int TagSize = 16;   // 128 bits auth tag
 
         /// <summary>
-        /// מייצר מפתח AES-256 קריפטוגרפי אקראי (32 בתים)
+        /// Generates a cryptographically strong random AES-256 key (32 bytes).
         /// </summary>
+        /// <returns>A 32-byte cryptographic key array.</returns>
         public static byte[] GenerateKey()
         {
             byte[] key = new byte[32];
@@ -26,8 +28,12 @@ namespace ITB_SCREEN_RECORDER.Core.Security
         }
 
         /// <summary>
-        /// מצפין טקסט פשוט ומחזיר מעטפה עם KeyId
+        /// Encrypts plaintext string using AES-256-GCM and returns an envelope formatted with KeyId.
         /// </summary>
+        /// <param name="plaintext">Unencrypted text to protect.</param>
+        /// <param name="keyId">Identifier of the encryption key for rotation support.</param>
+        /// <param name="keyBytes">32-byte AES key.</param>
+        /// <returns>Envelope formatted string (e.g., "ENC:v1:{keyId}:{base64Payload}").</returns>
         public static string Encrypt(string plaintext, string keyId, byte[] keyBytes)
         {
             if (string.IsNullOrEmpty(plaintext)) return string.Empty;
@@ -48,7 +54,7 @@ namespace ITB_SCREEN_RECORDER.Core.Security
                 aesGcm.Encrypt(nonce, plaintextBytes, ciphertext, tag);
             }
 
-            // שילוב: Nonce (12) + Tag (16) + Ciphertext
+            // Combine: Nonce (12) + Tag (16) + Ciphertext
             byte[] combined = new byte[NonceSize + TagSize + ciphertext.Length];
             Buffer.BlockCopy(nonce, 0, combined, 0, NonceSize);
             Buffer.BlockCopy(tag, 0, combined, NonceSize, TagSize);
@@ -59,13 +65,17 @@ namespace ITB_SCREEN_RECORDER.Core.Security
         }
 
         /// <summary>
-        /// מפענח מעטפה מוצפנת. אם המחרוזת אינה מוצפנת (טקסט לגסי רגיל), מחזיר אותה ללא שינוי.
+        /// Decrypts an encrypted envelope. If the input string is not encrypted (legacy plaintext), returns it untouched.
         /// </summary>
+        /// <param name="input">Encrypted envelope or plaintext string.</param>
+        /// <param name="keyResolver">Function resolving the 32-byte key given a KeyId.</param>
+        /// <param name="fallbackResolver">Optional fallback function if decryption fails or key is missing.</param>
+        /// <returns>Decrypted UTF-8 string or legacy plaintext.</returns>
         public static string Decrypt(string input, Func<string, byte[]?> keyResolver, Func<string, string>? fallbackResolver = null)
         {
             if (string.IsNullOrEmpty(input) || !input.StartsWith(EnvelopePrefix, StringComparison.Ordinal))
             {
-                return input; // Passthrough לגסי
+                return input; // Legacy plaintext passthrough
             }
 
             try

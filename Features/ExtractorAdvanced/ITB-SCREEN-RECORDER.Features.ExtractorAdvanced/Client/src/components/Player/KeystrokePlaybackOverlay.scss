@@ -8,7 +8,7 @@
     z-index: 45;
     user-select: none;
     transition: opacity 0.08s linear;
-    // 🎯 מצב BURN-IN: במרכז המסך עם Keycaps ציאן תלת-ממדיים
+    // BURN-IN mode: Centered in viewport with 3D cyan keycaps
     &.mode-burnin {
         top: 50%;
         left: 50%;
@@ -29,12 +29,12 @@
                 height: 62px;
                 padding: 0 24px;
                 box-sizing: border-box;
-                // גוף המקש הפיזי
+                // Physical key body
                 background: linear-gradient(180deg, #1c2434 0%, #0c101a 100%);
-                // מסגרת ניאון ציאן טקטית (#00F0FF) בעובי 2.5px
+                // Tactical cyan neon border (#00F0FF) 2.5px
                 border: 2.5px solid #00f0ff;
                 border-radius: 10px;
-                // הילת צל רכה מתחת למקש + זוהר ציאן
+                // Soft shadow under key + cyan glow
                 box-shadow: 0 0 16px rgba(0, 240, 255, 0.45), 0 10px 24px rgba(0, 0, 0, 0.85), inset 0 2px 1px rgba(255, 255, 255, 0.45);
 
                 .keycap-text {
@@ -58,14 +58,14 @@
             }
         }
     }
-    // 🎯 מצב CAPTION: כתובית סרטים רכה בתחתית הנגן
+    // CAPTION mode: Subtitle banner at bottom of player
     &.mode-caption {
         bottom: 35px;
         left: 50%;
         transform: translateX(-50%);
         z-index: 50;
 
-        // התאמה למסך מלא (SoloSpotlightModal): מרחף מעל האי התחתון (שגובהו ~210px-240px)
+        // Fullscreen adaptation (SoloSpotlightModal): Float above bottom island (~210px-240px)
         .solo-spotlight-modal-overlay & {
             bottom: 245px;
             z-index: 75;

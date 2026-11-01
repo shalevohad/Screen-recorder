@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Card/CameraCard.jsx
 // ==========================================
 import React from 'react';
@@ -22,7 +22,7 @@ export default function CameraCard({
     onOpenSpotlight,
     onSelectActiveStation,
     recordingSegments = {},
-    // 💡 תיקון: קבלת מהירות הניגון מהאב
+    // Playback rate inherited from parent viewport (e.g. 1x, 2x, 4x)
     playbackSpeed = 1
 }) {
     const isOffline = (station.hostname || station.name || '').includes('Offline');
@@ -55,7 +55,12 @@ export default function CameraCard({
                 <div className="card-topbar">
                     <div className="station-meta">
                         <span className={`status-pulse ${statusClass}`} />
-                        <span className="station-name">{station.displayName || station.hostname || station.name}</span>
+                        <span className="station-name">{station.displayName || station.roleAlias || station.hostname || station.name}</span>
+                        {station.hostname && (station.displayName || station.roleAlias) && (station.displayName || station.roleAlias).toLowerCase() !== station.hostname.toLowerCase() && (
+                            <span className="station-physical-badge" title={`Physical Machine: ${station.hostname}`}>
+                                {station.hostname}
+                            </span>
+                        )}
                     </div>
 
                     <div className="card-header-actions">

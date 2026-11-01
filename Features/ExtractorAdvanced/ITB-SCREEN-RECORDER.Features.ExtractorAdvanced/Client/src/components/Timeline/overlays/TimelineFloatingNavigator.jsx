@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import './TimelineFloatingNavigator.scss';
 
 export default function TimelineFloatingNavigator({
@@ -11,7 +11,7 @@ export default function TimelineFloatingNavigator({
     outPointMs,
     playheadMs
 }) {
-    // מציג את ה-HUD הצף אך ורק כאשר מופעל זום
+    // Only render floating HUD navigator when timeline is zoomed in (>1x)
     if (zoomLevel <= 1) return null;
 
     const toPercent = (ms) => `${Math.max(0, Math.min((ms / durationMs) * 100, 100))}%`;
@@ -27,9 +27,9 @@ export default function TimelineFloatingNavigator({
                 </div>
             </div>
 
-            {/* מפת ניווט ממוזערת של כל השעה */}
+            {/* Mini overview map of entire timeline session */}
             <div className="hud-track-mini">
-                {/* תחום החיתוך המסומן */}
+                {/* Active cut range highlight */}
                 <div
                     className="hud-cut-range"
                     style={{
@@ -37,7 +37,7 @@ export default function TimelineFloatingNavigator({
                         width: `${((outPointMs - inPointMs) / durationMs) * 100}%`
                     }}
                 />
-                {/* מחט הסמן במפה */}
+                {/* Playhead position needle on minimap */}
                 <div
                     className="hud-playhead-needle"
                     style={{ left: toPercent(playheadMs) }}

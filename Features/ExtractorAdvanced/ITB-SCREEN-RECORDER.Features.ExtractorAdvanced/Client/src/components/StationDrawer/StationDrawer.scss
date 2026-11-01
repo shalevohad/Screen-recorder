@@ -1,4 +1,4 @@
-﻿// Client/src/components/StationDrawer/StationDrawer.scss
+// Client/src/components/StationDrawer/StationDrawer.scss
 
 .station-drawer-panel {
     position: relative;
@@ -78,7 +78,7 @@
             }
         }
     }
-    /* סרגל פעולות מהיר קבוע בראש המגירה הצרה */
+    /* Fixed quick actions bar at top of compact drawer */
     .drawer-quick-actions-bar {
         display: flex;
         align-items: center;
@@ -368,7 +368,7 @@
                     }
                 }
             }
-            /* סרגל פעולות Select All / Clear במסך מלא */
+            /* Fullscreen Select All / Clear bulk actions toolbar */
             .hub-bulk-actions-bar {
                 display: flex;
                 align-items: center;

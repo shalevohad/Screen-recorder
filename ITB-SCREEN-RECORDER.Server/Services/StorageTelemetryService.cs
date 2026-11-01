@@ -85,11 +85,15 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 }
                 catch
                 {
-                    // סביבות ללא הרשאות Performance Counters
+                    // Environments lacking Performance Counter permissions (e.g. non-admin containers)
                 }
             }
         }
 
+        /// <summary>
+        /// Probes primary and fallback storage pools, calculates capacity/free space, and measures real-time IOPS.
+        /// </summary>
+        /// <returns>StorageTelemetryDto containing accessibility flags, active paths, free/used percentages, and IOPS.</returns>
         public StorageTelemetryDto GetCurrentStorageTelemetry()
         {
             var telemetry = new StorageTelemetryDto();
@@ -108,7 +112,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             string activePathToQuery = string.Empty;
             bool isUsingFallback = false;
 
-            // 1. בדיקת זמינות של הנתיב הראשי (NetApp / Primary Share)
+            // 1. Probe primary storage availability (NetApp / Primary UNC Share)
             bool isPrimaryAccessible = false;
             if (!string.IsNullOrWhiteSpace(primaryPath))
             {
@@ -122,7 +126,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 }
             }
 
-            // 2. החלטה על הנתיב הפעיל (Failover Logic)
+            // 2. Dual-path failover logic
             if (isPrimaryAccessible)
             {
                 activePathToQuery = primaryPath!;
@@ -131,7 +135,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
             }
             else
             {
-                // הראשי אינו נגיש – בודקים האם ה-Fallback זמין
+                // Primary path is unreachable; probe local fallback availability
                 bool isFallbackAccessible = false;
                 if (!string.IsNullOrWhiteSpace(fallbackPath))
                 {
@@ -153,7 +157,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
                 }
                 else
                 {
-                    // שניהם לא נגישים
+                    // Both primary and fallback paths are inaccessible
                     activePathToQuery = !string.IsNullOrWhiteSpace(primaryPath) ? primaryPath! : (fallbackPath ?? string.Empty);
                     isUsingFallback = true;
                     telemetry.StorageLabel = "OFFLINE POOL";
@@ -176,7 +180,7 @@ namespace ITB_SCREEN_RECORDER.Server.Services
 
             telemetry.IsAccessible = isAccessible;
 
-            // 3. תשאול שטח מוקצה מול פנוי של הנתיב הפעיל (Cross-Platform)
+            // 3. Query allocated vs. free disk capacity of active path (Cross-Platform)
             if (isAccessible)
             {
                 if (OperatingSystem.IsWindows())

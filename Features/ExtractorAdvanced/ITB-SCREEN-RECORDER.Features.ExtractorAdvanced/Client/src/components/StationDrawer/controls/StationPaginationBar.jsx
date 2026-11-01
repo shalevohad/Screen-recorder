@@ -2,6 +2,19 @@
 import React from 'react';
 import './StationPaginationBar.scss';
 
+/**
+ * StationPaginationBar provides pagination navigation and page-size selection controls.
+ * 
+ * @param {Object} props
+ * @param {number} props.currentPage - 1-based current page index.
+ * @param {number} props.totalPages - Total page count.
+ * @param {number} props.pageSize - Current page size.
+ * @param {number} props.totalItems - Total item count.
+ * @param {(page: number) => void} props.onPageChange - Page change callback.
+ * @param {(size: number) => void} props.onPageSizeChange - Page size change callback.
+ * @param {'table'|'grid'} [props.viewMode='table'] - Active drawer view mode.
+ * @returns {JSX.Element|null}
+ */
 export default function StationPaginationBar({
     currentPage,
     totalPages,
@@ -19,9 +32,9 @@ export default function StationPaginationBar({
     const pageSizeOptions = viewMode === 'table' ? [5, 10, 15, 25] : [4, 8, 12, 16];
     const isSinglePage = totalPages <= 1;
 
-    // בדיקה מתמטית האם בחירה באפשרות זו תשנה בפועל את תמונת המסך או את מספר העמודים
+    // Checks whether selecting this candidate page size alters visible item count or page count
     const wouldChangeView = (candidateSize) => {
-        if (candidateSize === pageSize) return true; // הכפתור הפעיל תמיד מוצג כ-active
+        if (candidateSize === pageSize) return true; // Active button always remains selectable/active
         const currentVisibleCount = Math.min(pageSize, totalItems);
         const newVisibleCount = Math.min(candidateSize, totalItems);
         const currentPages = Math.ceil(totalItems / pageSize);

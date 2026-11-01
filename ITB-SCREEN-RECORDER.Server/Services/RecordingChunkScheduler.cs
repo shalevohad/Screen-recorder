@@ -103,11 +103,12 @@ public class RecordingChunkScheduler : BackgroundService
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         string cleanRoot = root.Replace('\\', '/').TrimEnd('/');
 
-        // 💡 שימוש בתבנית Epoch (%s_%f) למניעת בעיות אזורי זמן ושעוני מערכת הפעלה
+        // Use Epoch template (%s_%f) to eliminate OS timezone differences and local clock skew
         string recordPath = $"{cleanRoot}/%path/%s_%f";
         string recordFormat = string.IsNullOrWhiteSpace(config.Storage.RecordFormat) ? "fmp4" : config.Storage.RecordFormat.Trim().ToLowerInvariant();
         string chunkDuration = $"{config.Storage.ChunkIntervalMinutes}m";
-        string retentionHours = $"{config.Storage.RetentionDays * 24}h";
+        // Disable unmanaged MediaMTX purging; retention is governed by StorageRetentionWorker with BookmarkShield
+        string retentionHours = "0s";
 
         bool applied = await _apiClient.PatchPathDefaultsAsync(
             config.MediaMtx.ApiPort,
@@ -132,10 +133,23 @@ public class RecordingChunkScheduler : BackgroundService
         string root = await _storageResolver.ResolveActiveRootAsync(config.Storage, _logger).ConfigureAwait(false);
         var activePaths = await _apiClient.GetActivePathNamesAsync(config.MediaMtx.ApiPort, stoppingToken).ConfigureAwait(false);
 
+        var activeAgents = _telemetryState.GetAllAgents().ToList();
         var finalizedChunksToIndex = new List<ChunkFinalizedEvent>();
 
         foreach (string path in activePaths)
         {
+            string[] parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            string hostCandidate = parts.Length > 1 && parts[0].Equals("live", StringComparison.OrdinalIgnoreCase)
+                ? parts[1]
+                : parts[0];
+
+            var matchAgent = activeAgents.FirstOrDefault(a => string.Equals(a.Hostname, hostCandidate, StringComparison.OrdinalIgnoreCase));
+            if (matchAgent != null && !matchAgent.IsRecording)
+            {
+                // Station is streaming live in Monitor-Only mode (not recording). Skip chunk rotation and catalog indexing.
+                continue;
+            }
+
             bool rotated = await _apiClient.RotatePathRecordingAsync(config.MediaMtx.ApiPort, path, stoppingToken).ConfigureAwait(false);
             await _eventLogger.LogChunkCutAsync(config.Storage.ChunkEventLogPath, path, root, rotated, stoppingToken).ConfigureAwait(false);
 
@@ -188,7 +202,7 @@ public class RecordingChunkScheduler : BackgroundService
             long startEpochMs = 0;
             long endEpochMs = new DateTimeOffset(boundaryUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
 
-            // 1. קריאת מטא-דאטה מוטבע מתוך הקובץ (In-Band Metadata) כעדיפות עליונה
+            // 1. Read in-band embedded metadata from video container (highest priority)
             var fileMeta = TryExtractFileMetadata(lastClosedFile.FullName);
             if (fileMeta.HasValue)
             {
@@ -199,12 +213,12 @@ public class RecordingChunkScheduler : BackgroundService
                 }
             }
 
-            // 2. אם המטא-דאטה לא זמין, חילוץ משם הקובץ (Epoch או תאריך)
+            // 2. If embedded metadata is unavailable, extract timestamp from filename (Epoch or legacy datetime)
             if (startEpochMs <= 0)
             {
                 string fileNameWithoutExt = Path.GetFileNameWithoutExtension(lastClosedFile.Name);
 
-                // א. בדיקת תבנית Epoch (%s_%f או %s)
+                // a. Check Epoch regex pattern (%s_%f or %s)
                 var matchEpoch = Regex.Match(fileNameWithoutExt, @"(?:^|[_-])(?<sec>\d{10})(?:[_-](?<micro>\d{1,6}))?");
                 if (matchEpoch.Success && long.TryParse(matchEpoch.Groups["sec"].Value, out long sec))
                 {
@@ -217,7 +231,7 @@ public class RecordingChunkScheduler : BackgroundService
                 }
                 else
                 {
-                    // ב. בדיקת תבניות תאריך קודמות
+                    // b. Check legacy hyphenated and compact datetime patterns
                     var matchHyphen = Regex.Match(fileNameWithoutExt, @"(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:-\d+)?)");
                     var matchCompact = Regex.Match(fileNameWithoutExt, @"(\d{8}_\d{6})");
 
@@ -238,7 +252,7 @@ public class RecordingChunkScheduler : BackgroundService
                 }
             }
 
-            // ג. ברירת מחדל אם טרם חולץ
+            // c. Default interval calculation if timestamp extraction yielded nothing
             int intervalMinutes = Math.Max(1, config.Storage.ChunkIntervalMinutes);
             if (startEpochMs <= 0)
             {
@@ -249,8 +263,18 @@ public class RecordingChunkScheduler : BackgroundService
                 endEpochMs = startEpochMs + (intervalMinutes * 60 * 1000);
             }
 
-            string stationName = Path.GetFileName(stationPath);
-            var (width, height, fps, hasAudio) = ResolveTelemetryMetadata(stationName, config);
+            string norm = stationPath.Replace('\\', '/').Trim('/');
+            if (norm.StartsWith("live/", StringComparison.OrdinalIgnoreCase))
+            {
+                norm = norm.Substring("live/".Length);
+            }
+            string[] parts = norm.Split('/');
+            string stationName = parts[0];
+            string displayId = parts.Length > 1 && parts[1].StartsWith("mon-", StringComparison.OrdinalIgnoreCase)
+                ? parts[1]
+                : "mon-0";
+
+            var (width, height, fps, hasAudio) = ResolveTelemetryMetadata(stationName, displayId, config);
 
             return new ChunkFinalizedEvent(
                 StationId: stationName,
@@ -262,7 +286,8 @@ public class RecordingChunkScheduler : BackgroundService
                 Width: width,
                 Height: height,
                 Fps: fps,
-                HasAudio: hasAudio
+                HasAudio: hasAudio,
+                DisplayId: displayId
             );
         }
         catch (Exception ex)
@@ -283,7 +308,7 @@ public class RecordingChunkScheduler : BackgroundService
 
             string headerText = Encoding.ASCII.GetString(buffer, 0, read);
 
-            // בדיקת תגית ITB_EPOCH:1759583561000 שהוטבעה ע"י הסוכן
+            // Check for ITB_EPOCH:1759583561000 tag embedded by agent
             var matchEpoch = Regex.Match(headerText, @"ITB_EPOCH:(\d{10,13})");
             if (matchEpoch.Success && long.TryParse(matchEpoch.Groups[1].Value, out long epoch))
             {
@@ -291,7 +316,7 @@ public class RecordingChunkScheduler : BackgroundService
                 return (startMs, 0);
             }
 
-            // בדיקת תגית itb_start_epoch_ms
+            // Check for itb_start_epoch_ms metadata tag
             var matchStartEpoch = Regex.Match(headerText, @"itb_start_epoch_ms[^\d]*(\d{10,13})");
             if (matchStartEpoch.Success && long.TryParse(matchStartEpoch.Groups[1].Value, out long startEpoch))
             {
@@ -299,7 +324,7 @@ public class RecordingChunkScheduler : BackgroundService
                 return (startMs, 0);
             }
 
-            // בדיקת תגית creation_time בפורמט ISO
+            // Check for creation_time in ISO datetime format
             var matchIso = Regex.Match(headerText, @"creation_time[^\d]*(\d{4}-\d{2}-\d{2}[T_ ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)");
             if (matchIso.Success && DateTime.TryParse(matchIso.Groups[1].Value, CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime dtUtc))
@@ -312,7 +337,7 @@ public class RecordingChunkScheduler : BackgroundService
         return null;
     }
 
-    private (int Width, int Height, int Fps, bool HasAudio) ResolveTelemetryMetadata(string stationId, SystemConfig config)
+    private (int Width, int Height, int Fps, bool HasAudio) ResolveTelemetryMetadata(string stationId, string displayId, SystemConfig config)
     {
         try
         {
@@ -321,10 +346,18 @@ public class RecordingChunkScheduler : BackgroundService
 
             if (agent != null)
             {
-                int width = agent.ScreenWidth > 0 ? agent.ScreenWidth : 0;
-                int height = agent.ScreenHeight > 0 ? agent.ScreenHeight : 0;
-                int fps = agent.ActualFps > 0 ? agent.ActualFps : (agent.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0);
-                bool hasAudio = agent.HasAudio;
+                var display = agent.DisplayTopology?.Displays?
+                    .FirstOrDefault(d => string.Equals(d.DisplayId, displayId, StringComparison.OrdinalIgnoreCase));
+
+                int width = display?.Width ?? (agent.ScreenWidth > 0 ? agent.ScreenWidth : 0);
+                int height = display?.Height ?? (agent.ScreenHeight > 0 ? agent.ScreenHeight : 0);
+                int fps = display?.TargetFps ?? (agent.ActualFps > 0 ? agent.ActualFps : (agent.InternalCaptureFps > 0 ? agent.InternalCaptureFps : 0));
+                
+                bool isCarrier = display?.HasAudio 
+                    ?? (agent.DisplayTopology?.AudioCarrierDisplayId != null 
+                        ? string.Equals(displayId, agent.DisplayTopology.AudioCarrierDisplayId, StringComparison.OrdinalIgnoreCase) 
+                        : string.Equals(displayId, "mon-0", StringComparison.OrdinalIgnoreCase));
+                bool hasAudio = isCarrier && agent.HasAudio;
 
                 return (width, height, fps, hasAudio);
             }

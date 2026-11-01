@@ -4,11 +4,23 @@
 import React from 'react';
 import './ExtractorHeader.scss';
 
+/**
+ * ExtractorHeader renders the top control bar of the archive extractor interface.
+ * 
+ * @param {Object} props
+ * @param {'LOCAL'|'UTC'} props.timeMode - Active display time mode.
+ * @param {(mode: 'LOCAL'|'UTC') => void} props.onToggleTimeMode - Callback triggered when toggling time mode.
+ * @param {number} props.activeJobsCount - Number of packaging / processing jobs currently running.
+ * @param {number} props.readyJobsCount - Number of completed export jobs ready for download.
+ * @param {number} props.selectedCount - Count of currently selected stations.
+ * @param {number} props.totalCount - Total count of available stations.
+ * @returns {JSX.Element}
+ */
 export default function ExtractorHeader({
     timeMode,
     onToggleTimeMode,
     activeJobsCount,
-    readyJobsCount, // משימות שהסתיימו ומוכנות להורדה
+    readyJobsCount, // Completed jobs ready for download
     selectedCount,
     totalCount
 }) {
@@ -43,7 +55,7 @@ export default function ExtractorHeader({
             </div>
 
             <div className="header-badges">
-                {/* 1. משימות רצות כעת */}
+                {/* 1. Currently active packaging tasks */}
                 {activeJobsCount > 0 && (
                     <button
                         type="button"
@@ -56,7 +68,7 @@ export default function ExtractorHeader({
                     </button>
                 )}
 
-                {/* 2. משימות שהסתיימו ומוכנות להורדה (בולט למחשבים אחרים ברשת!) */}
+                {/* 2. Finished tasks ready for download across the network */}
                 {readyJobsCount > 0 && (
                     <button
                         type="button"

@@ -8,6 +8,7 @@ import SessionClockBadge from './header/SessionClockBadge.jsx';
 import TimelineMinimap from './header/TimelineMinimap.jsx';
 import TimelineHeaderActions from './header/TimelineHeaderActions.jsx';
 import TimelineTrack from './tracks/TimelineTrack.jsx';
+import DirectorTrack from './tracks/DirectorTrack.jsx';
 import Playhead from './overlays/Playhead.jsx';
 import TimelineContextMenu from './overlays/TimelineContextMenu.jsx';
 import TimelineVerticalExportBtn from './export/TimelineVerticalExportBtn.jsx';
@@ -23,7 +24,7 @@ export default function TimelineBoard({
     stations = [],
     activeStationId,
     onSelectActiveStation,
-    onStationContextMenu, // 💡 פרופ חדש
+    onStationContextMenu, // Context menu event callback: (stationId, mouseEvent) => void
     baseEpochMs = 0,
     timeMode = 'LOCAL',
     totalDurationMs = 3600000,
@@ -46,9 +47,13 @@ export default function TimelineBoard({
     onJumpViewportTo,
     keystrokeMode = 'BURN_IN',
     onChangeKeystrokeMode,
+    keystrokes = [],
     showKeystrokes = false,
     showRulerKeystrokes = false,
-    onToggleRulerKeystrokes
+    onToggleRulerKeystrokes,
+    onSplitDirectorSegment,
+    onChangeDirectorSegmentDisplay,
+    onResetDirectorSegmentToAuto
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [trackBankIndex, setTrackBankIndex] = useState(0);
@@ -205,8 +210,10 @@ export default function TimelineBoard({
                             outPointMs={outPointMs}
                             earliestMediaMs={earliestMediaMs}
                             movieBoundaries={movieBoundaries}
+                            stationHostname={activeStationObj?.hostname || activeStationObj?.id || activeStationObj?.name}
                             activeStationName={activeStationObj?.displayName || activeStationObj?.hostname || activeStationObj?.name}
                             showKeystrokes={Boolean(showRulerKeystrokes ?? showKeystrokes)}
+                            keystrokes={keystrokes}
                         />
                     </div>
                 </div>
@@ -254,22 +261,41 @@ export default function TimelineBoard({
                 <div className="tracks-scroll-area">
                     {stations.length > 0 ? (
                         currentBankStations.map(station => (
-                            <TimelineTrack
-                                key={station.id}
-                                station={station}
-                                isActive={station.id === activeStationId}
-                                onSelect={() => onSelectActiveStation?.(station.id)}
-                                onStationContextMenu={onStationContextMenu} // 💡 העברה לטראק
-                                viewportStartMs={viewportStartMs}
-                                viewportDurationMs={viewportDurationMs}
-                                inPointMs={inPointMs}
-                                outPointMs={outPointMs}
-                                baseEpochMs={baseEpochMs}
-                                segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
-                                recordingSegments={recordingSegments}
-                                globalGaps={estimateData?.removedGlobalGaps || []}
-                                disableFilmstrip={stations.length > 1 && station.id !== activeStationId}
-                            />
+                            <React.Fragment key={station.id}>
+                                <TimelineTrack
+                                    station={station}
+                                    isActive={station.id === activeStationId}
+                                    onSelect={() => onSelectActiveStation?.(station.id)}
+                                    onStationContextMenu={onStationContextMenu}
+                                    viewportStartMs={viewportStartMs}
+                                    viewportDurationMs={viewportDurationMs}
+                                    inPointMs={inPointMs}
+                                    outPointMs={outPointMs}
+                                    baseEpochMs={baseEpochMs}
+                                    segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
+                                    recordingSegments={recordingSegments}
+                                    globalGaps={estimateData?.removedGlobalGaps || []}
+                                    disableFilmstrip={stations.length > 1 && station.id !== activeStationId}
+                                />
+                                {((station.displays?.length > 1) || (station.topology?.displays?.length > 1)) && (
+                                    <DirectorTrack
+                                        stationId={station.id}
+                                        directorPlan={station.directorPlan || {
+                                            segments: [
+                                                { startEpochMs: baseEpochMs, endEpochMs: baseEpochMs + totalDurationMs, targetDisplayId: 'mon-0', isManualOverride: false }
+                                            ]
+                                        }}
+                                        viewportStartMs={viewportStartMs}
+                                        viewportDurationMs={viewportDurationMs}
+                                        baseEpochMs={baseEpochMs}
+                                        playheadMs={playheadMs}
+                                        availableDisplays={station.displays || station.topology?.displays || []}
+                                        onSplitSegment={onSplitDirectorSegment}
+                                        onChangeSegmentDisplay={onChangeDirectorSegmentDisplay}
+                                        onResetSegmentToAuto={onResetDirectorSegmentToAuto}
+                                    />
+                                )}
+                            </React.Fragment>
                         ))
                     ) : (
                         <div className="timeline-empty-tracks-placeholder">

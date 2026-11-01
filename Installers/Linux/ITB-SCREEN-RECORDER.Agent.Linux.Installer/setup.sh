@@ -7,7 +7,7 @@ CURRENT_DIR="$(dirname "$(readlink -f "$0")")"
 # Optional arguments for server IP/Host and Discovery configuration
 SERVER_HOST=""
 DISCOVERY_PORT=5098
-DISCOVERY_MULTICAST="239.255.10.90"
+DISCOVERY_MULTICAST="239.210.1.5"
 DISCOVERY_BROADCAST="255.255.255.255"
 
 for arg in "$@"; do

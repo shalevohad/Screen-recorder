@@ -1,29 +1,32 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/Extractor/Models/SmartCutRequestDto.cs
 // ==========================================
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 
 namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 {
+    /// <summary>
+    /// Parameters requesting a single-station precision smart cut between In/Out epoch timestamps.
+    /// </summary>
     public class SmartCutRequestDto
     {
         /// <summary>
-        /// מזהה העמדה לחיתוך (Hostname)
+        /// Workstation identifier (Hostname).
         /// </summary>
         public string StationId { get; set; } = string.Empty;
 
         /// <summary>
-        /// נקודת כניסה (Epoch MS ב-UTC)
+        /// In-point timestamp in UTC Unix epoch milliseconds.
         /// </summary>
         public long InEpochMs { get; set; }
 
         /// <summary>
-        /// נקודת יציאה (Epoch MS ב-UTC)
+        /// Out-point timestamp in UTC Unix epoch milliseconds.
         /// </summary>
         public long OutEpochMs { get; set; }
 
         /// <summary>
-        /// אופן ייצוא מקשי המקלדת (Caption / BurnIn / None)
+        /// Keystroke presentation export mode (Caption SRT, BurnIn, or None).
         /// </summary>
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
     }

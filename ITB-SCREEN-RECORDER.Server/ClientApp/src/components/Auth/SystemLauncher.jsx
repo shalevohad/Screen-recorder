@@ -16,9 +16,9 @@ export default function SystemLauncher({ onLaunchApp }) {
 
     const canAccessSettings = isSystemRoot || hasPermission('settings.view');
 
-    // כניסה מהירה כאורח - זמינה אך ורק למרכז הקלטות המסכים!
+    // Quick guest launch - strictly available for Screen Recorder Monitoring Dashboard only!
     const handleLaunchAsGuest = async (appId) => {
-        if (appId === 'settings') return; // חסימה מוחלטת
+        if (appId === 'settings') return; // Strict lock preventing guest access to settings
         if (!isAuthenticated) {
             await enterAsGuest();
         }
@@ -26,16 +26,16 @@ export default function SystemLauncher({ onLaunchApp }) {
         onLaunchApp(appId);
     };
 
-    // בחירת מערכת מהפורטל
+    // Subsystem launch selection handler from portal
     const handleSelectSystem = async (appId) => {
-        // 🔒 מערכת ההגדרות: לעולם לא כאורח!
+        // Administrative settings console: requires privileged authentication (never guest)
         if (appId === 'settings') {
             if (isAuthenticated && canAccessSettings) {
                 onLaunchApp('settings');
                 return;
             }
 
-            // פתיחת מודאל אימות מנהל
+            // Open administrator credential authentication dialog
             setPendingTargetApp('settings');
             setUsername('');
             setPassword('');
@@ -49,7 +49,7 @@ export default function SystemLauncher({ onLaunchApp }) {
 
 
 
-        // 🎬 מרכז הקלטות המסכים:
+        // Screen Recording Center launch path:
         if (isOpenMode) {
             await handleLaunchAsGuest('recording');
             return;
@@ -66,7 +66,7 @@ export default function SystemLauncher({ onLaunchApp }) {
         setLoginError(null);
     };
 
-    // הגשת טופס התחברות
+    // Process credentials login submission
     const handleLoginSubmit = async (e) => {
         e.preventDefault();
         if (!username.trim() || !password) return;
@@ -99,7 +99,7 @@ export default function SystemLauncher({ onLaunchApp }) {
     return (
         <div className="system-launcher-backdrop" dir="ltr">
             <div className="launcher-canvas">
-                {/* סרגל עליון לחיווי משתמש מחובר */}
+                {/* Top active user identity status bar */}
                 {user && (
                     <div className="active-user-strip">
                         <div className="user-details">
@@ -120,7 +120,7 @@ export default function SystemLauncher({ onLaunchApp }) {
                     </div>
                 )}
 
-                {/* לוגו המערכת הגדול והכותרת */}
+                {/* System emblem and portal title header */}
                 <div className="launcher-header">
                     <div className="launcher-brand-emblem">
                         <img
@@ -140,9 +140,9 @@ export default function SystemLauncher({ onLaunchApp }) {
                     </p>
                 </div>
 
-                {/* 2 המערכות לבחירה */}
+                {/* Dual subsystem launch grid */}
                 <div className="systems-dual-grid">
-                    {/* מערכת 1: מרכז הקלטות המסכים (מאפשרת כניסת אורח ב-Open Mode) */}
+                    {/* Subsystem 1: Screen Recording Center (allows guest login in Open Mode) */}
                     <div
                         className="system-app-card recording-card"
                         onClick={() => handleSelectSystem('recording')}
@@ -182,7 +182,7 @@ export default function SystemLauncher({ onLaunchApp }) {
                             </div>
                         </div>
                     </div>
-                    {/* מערכת 2: ניהול והגדרות מערכת (נעולה לחלוטין – מנהל בלבד) */}
+                    {/* Subsystem 2: System Settings & Administration (strictly requires administrator privileges) */}
                     <div
                         className={`system-app-card settings-card ${!canAccessSettings ? 'admin-required' : ''}`}
                         onClick={() => handleSelectSystem('settings')}
@@ -222,7 +222,7 @@ export default function SystemLauncher({ onLaunchApp }) {
                 </div>
             </div>
 
-            {/* דיאלוג כניסה / אימות חשבון */}
+            {/* Login / credential authentication dialog */}
             {pendingTargetApp && (
                 <div className="portal-login-modal-overlay" onClick={() => setPendingTargetApp(null)}>
                     <div className="portal-login-card" onClick={e => e.stopPropagation()}>
@@ -240,7 +240,7 @@ export default function SystemLauncher({ onLaunchApp }) {
                                 : 'Authenticate to access the operational Screen Recording Center'}
                         </p>
 
-                        {/* כפתור אורח מוצג אך ורק אם היעד אינו הגדרות! */}
+                        {/* Guest option is rendered only if target is not administrative settings */}
                         {isOpenMode && pendingTargetApp !== 'settings' && (
                             <div className="guest-quick-access-box">
                                 <button

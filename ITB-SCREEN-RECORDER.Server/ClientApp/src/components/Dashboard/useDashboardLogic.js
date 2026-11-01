@@ -1,7 +1,15 @@
-// Client/src/components/Dashboard/useDashboardLogic.js
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useAlertSnooze } from '../../hooks/useAlertSnooze';
 
 const isStationFaulty = (s) => (s.isOnline || s.status === 1 || s.status === 2) && (s.droppedFrames || 0) > 5;
+
+export const isStationNotRecording = (s) => {
+    if (!s) return false;
+    const isOnline = Boolean(s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
+    if (!isOnline) return false;
+    const isRec = Boolean(s.isRecording ?? (s.status === 'Recording'));
+    return !isRec;
+};
 
 const getCssPixelValue = (varName, fallback) => {
     if (typeof window === 'undefined') return fallback;
@@ -11,13 +19,14 @@ const getCssPixelValue = (varName, fallback) => {
 
 export function useDashboardLogic({
     stations = [],
-    hideOffline = true,
+    _hideOffline = true,
     isFaultFilterActive = false,
     onExitFaultFilter,
     onBulkStart,
     onBulkStop,
     onUpdateStationSettings,
-    onQuickExport
+    onQuickExport,
+    onToggleStream
 }) {
     const [sortAsc, setSortAsc] = useState(true);
     const [inspectedHostname, setInspectedHostname] = useState(null);
@@ -26,9 +35,11 @@ export function useDashboardLogic({
     const [activeTabId, setActiveTabId] = useState('ALL');
     const [tabFilters, setTabFilters] = useState({});
     const currentTabFilter = tabFilters[activeTabId] || 'ALL';
+    const [monitoredSubFilters, setMonitoredSubFilters] = useState({});
+    const currentMonitoredSubFilter = monitoredSubFilters[activeTabId] || 'ALL'; // 'ALL' | 'NOT_SNOOZED' | 'SNOOZED'
     const [currentPage, setCurrentPage] = useState(1);
 
-    // 💡 שליפת רשימת הטאבים הישירה מ-SQLite
+    // Fetch operational tab definitions directly from SQLite
     const [fleetTabsList, setFleetTabsList] = useState([]);
 
     const fetchTabsFromDb = useCallback(async () => {
@@ -60,7 +71,7 @@ export function useDashboardLogic({
         return fleetTabsList.find(t => t.id === activeTabId) || null;
     }, [fleetTabsList, activeTabId]);
 
-    // 💡 סינון אמיתי ומדויק של תחנות הטאב עם שמירת יציבות רפרנס למניעת קפיצות
+    // Filter stations belonging to the active tab while preserving reference stability to prevent re-render jumps
     const prevFilteredStationsRef = useRef([]);
     const tabFilteredStations = useMemo(() => {
         if (activeTabId === 'ALL' || !activeFleetTabConfig) return stations;
@@ -71,7 +82,8 @@ export function useDashboardLogic({
         const filtered = stations.filter(station => {
             const host = (station.hostname || '').toLowerCase();
             const disp = (station.displayName || '').toLowerCase();
-            const matchesNames = assigned.includes(host) || assigned.includes(disp);
+            const alias = (station.roleAlias || '').toLowerCase();
+            const matchesNames = assigned.includes(host) || assigned.includes(disp) || (alias && assigned.includes(alias));
 
             const ou = (station.ou || '').toLowerCase();
             const grp = (station.group || '').toLowerCase();
@@ -80,7 +92,7 @@ export function useDashboardLogic({
             return matchesNames || matchesOu;
         });
 
-        // 💡 בדיקת שוויון רדודה למניעת קפיצות מסך אם תחנה מחוץ לטאב השתנתה/התווספה/ירדה
+        // Shallow equality check to avoid UI jumps if an unrelated station changed/added/removed
         const prev = prevFilteredStationsRef.current;
         if (prev && prev.length === filtered.length) {
             let isIdentical = true;
@@ -153,7 +165,7 @@ export function useDashboardLogic({
     const [viewMode, setViewMode] = useState(() => localStorage.getItem('itb_dashboard_view_mode') || 'grid');
     useEffect(() => localStorage.setItem('itb_dashboard_view_mode', viewMode), [viewMode]);
 
-    // 🎯 מצב תצוגת מקשים: 'burn-in' (צריבה קשיחה) | 'caption' (כתובית רכה) | 'none' (כבוי)
+    // Keystroke overlay presentation mode: 'burn-in' (hard HUD) | 'caption' (soft subtitle) | 'none' (disabled)
     const [keystrokeMode, setKeystrokeMode] = useState(() => localStorage.getItem('itb_dashboard_keystroke_mode') || 'burn-in');
     useEffect(() => localStorage.setItem('itb_dashboard_keystroke_mode', keystrokeMode), [keystrokeMode]);
 
@@ -178,14 +190,26 @@ export function useDashboardLogic({
     const searchInputRef = useRef(null);
 
     const hasActiveFilter = useMemo(() => {
-        return Boolean(searchQuery.trim() || (currentTabFilter && currentTabFilter !== 'ALL'));
-    }, [searchQuery, currentTabFilter]);
+        return Boolean(
+            searchQuery.trim() ||
+            (currentTabFilter && currentTabFilter !== 'ALL') ||
+            ((currentTabFilter === 'MONITORED' || currentTabFilter === 'IDLE') && currentMonitoredSubFilter !== 'ALL')
+        );
+    }, [searchQuery, currentTabFilter, currentMonitoredSubFilter]);
 
     const handleClearFilter = () => { setSearchQuery(''); searchInputRef.current?.focus(); };
-    const setFilterForTab = (val) => setTabFilters(p => ({ ...p, [activeTabId]: val }));
+    const setFilterForTab = (val) => {
+        setTabFilters(p => ({ ...p, [activeTabId]: val }));
+        setCurrentPage(1);
+    };
+    const setMonitoredSubFilterForTab = (val) => {
+        setMonitoredSubFilters(p => ({ ...p, [activeTabId]: val }));
+        setCurrentPage(1);
+    };
     const handleResetAllFilters = () => {
         setSearchQuery('');
         setFilterForTab('ALL');
+        setMonitoredSubFilterForTab('ALL');
         searchInputRef.current?.focus();
     };
 
@@ -203,49 +227,209 @@ export function useDashboardLogic({
     useEffect(() => localStorage.setItem('itb_dashboard_auto_zoom', JSON.stringify(isAutoZoom)), [isAutoZoom]);
     useEffect(() => { if (isSearchOpen && searchInputRef.current) searchInputRef.current.focus(); }, [isSearchOpen]);
 
+    // ==========================================
+    // 🔔 Recording Alert Snooze & Prioritization Engine
+    // ==========================================
+    const {
+        isStationSnoozed,
+        getRemainingMinutes,
+        getSnoozeReason,
+        snoozeStation,
+        snoozeMultipleStations,
+        cancelSnooze,
+        cancelAllSnoozes
+    } = useAlertSnooze();
+
+    const [isPrioritizeAlertsAtFront, setIsPrioritizeAlertsAtFront] = useState(() => {
+        try {
+            const saved = localStorage.getItem('itb_dashboard_prioritize_alerts');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch {
+            return true;
+        }
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('itb_dashboard_prioritize_alerts', JSON.stringify(isPrioritizeAlertsAtFront));
+        } catch { /* noop */ }
+    }, [isPrioritizeAlertsAtFront]);
+
+    // All unrecorded stations across current tab selection
+    const unrecordedStations = useMemo(() => {
+        return tabFilteredStations.filter(isStationNotRecording);
+    }, [tabFilteredStations]);
+
+    // Active unrecorded alerts (not snoozed)
+    const activeUnrecordedStations = useMemo(() => {
+        return unrecordedStations.filter(s => !isStationSnoozed(s.hostname));
+    }, [unrecordedStations, isStationSnoozed]);
+
+    // Snoozed unrecorded stations
+    const activeSnoozedStations = useMemo(() => {
+        return unrecordedStations
+            .filter(s => isStationSnoozed(s.hostname))
+            .map(s => ({
+                ...s,
+                remainingMinutes: typeof getRemainingMinutes === 'function'
+                    ? getRemainingMinutes(s.hostname)
+                    : 0,
+                snoozeReason: typeof getSnoozeReason === 'function' ? getSnoozeReason(s.hostname) : ''
+            }));
+    }, [unrecordedStations, isStationSnoozed, getRemainingMinutes, getSnoozeReason]);
+
+    // Counts for monitored filter pills & sub-filter badges
+    const monitoredCounts = useMemo(() => {
+        const monitored = tabFilteredStations.filter(isStationNotRecording);
+        const snoozed = monitored.filter(s => isStationSnoozed(s.hostname)).length;
+        const notSnoozed = monitored.length - snoozed;
+        return {
+            total: monitored.length,
+            snoozed,
+            notSnoozed
+        };
+    }, [tabFilteredStations, isStationSnoozed]);
+
+    // Modal state for snoozing alert(s)
+    const [snoozeModalState, setSnoozeModalState] = useState({
+        isOpen: false,
+        targetHostname: null,
+        isBulk: false,
+        bulkCount: 0
+    });
+
+    const handleOpenSnoozeModal = useCallback((hostname) => {
+        setSnoozeModalState({
+            isOpen: true,
+            targetHostname: hostname,
+            isBulk: false,
+            bulkCount: 1
+        });
+    }, []);
+
+    const handleOpenBulkSnoozeModal = useCallback(() => {
+        setSnoozeModalState({
+            isOpen: true,
+            targetHostname: null,
+            isBulk: true,
+            bulkCount: activeUnrecordedStations.length
+        });
+    }, [activeUnrecordedStations.length]);
+
+    const handleCloseSnoozeModal = useCallback(() => {
+        setSnoozeModalState(prev => ({ ...prev, isOpen: false }));
+    }, []);
+
+    const handleConfirmSnooze = useCallback((minutes, reason) => {
+        if (snoozeModalState.isBulk) {
+            const targets = activeUnrecordedStations.map(s => s.hostname);
+            snoozeMultipleStations(targets, minutes, reason);
+        } else if (snoozeModalState.targetHostname) {
+            snoozeStation(snoozeModalState.targetHostname, minutes, reason);
+        }
+        setSnoozeModalState(prev => ({ ...prev, isOpen: false }));
+    }, [snoozeModalState, activeUnrecordedStations, snoozeMultipleStations, snoozeStation]);
+
+    const handleCancelSnoozeModal = useCallback(() => {
+        if (snoozeModalState.targetHostname) {
+            cancelSnooze(snoozeModalState.targetHostname);
+        }
+        setSnoozeModalState(prev => ({ ...prev, isOpen: false }));
+    }, [snoozeModalState.targetHostname, cancelSnooze]);
+
+    const handleStartRecordingStation = useCallback((hostname) => {
+        onToggleStream?.(hostname, false, {
+            bitrate: activeFleetTabConfig?.defaultBitrate || null,
+            fps: activeFleetTabConfig?.defaultFps || null
+        });
+    }, [onToggleStream, activeFleetTabConfig]);
+
+    const handleStartRecordingAllUnrecorded = useCallback(() => {
+        const targets = activeUnrecordedStations.map(s => s.hostname);
+        if (targets.length === 0) return;
+        onBulkStart?.(targets, {
+            bitrate: activeFleetTabConfig?.defaultBitrate || null,
+            fps: activeFleetTabConfig?.defaultFps || null
+        });
+    }, [activeUnrecordedStations, onBulkStart, activeFleetTabConfig]);
+
     const faultyStationsCount = useMemo(() => tabFilteredStations.filter(isStationFaulty).length, [tabFilteredStations]);
     useEffect(() => { if (isFaultFilterActive && faultyStationsCount === 0) onExitFaultFilter?.(); }, [isFaultFilterActive, faultyStationsCount, onExitFaultFilter]);
 
     const processedStations = useMemo(() => {
         let list = [...tabFilteredStations];
-        if (isFaultFilterActive) list = list.filter(isStationFaulty);
-        else if (currentTabFilter === 'OFFLINE') list = list.filter(s => !s.isOnline);
-        else if (hideOffline) list = list.filter(s => s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning);
+        if (isFaultFilterActive) {
+            list = list.filter(isStationFaulty);
+        } else if (currentTabFilter === 'OFFLINE') {
+            list = list.filter(s => !s.isOnline);
+        }
 
-        if (currentTabFilter === 'RECORDING') list = list.filter(s => s.isStreaming);
-        else if (currentTabFilter === 'IDLE') list = list.filter(s => s.isOnline && !s.isStreaming);
-        else if (currentTabFilter === 'ONLINE') list = list.filter(s => s.isOnline);
+        if (currentTabFilter === 'RECORDING' || currentTabFilter === 'REC') {
+            list = list.filter(s => Boolean(s.isRecording ?? (s.status === 'Recording')));
+        } else if (currentTabFilter === 'MONITORED' || currentTabFilter === 'IDLE') {
+            list = list.filter(isStationNotRecording);
+            if (currentMonitoredSubFilter === 'SNOOZED') {
+                list = list.filter(s => isStationSnoozed(s.hostname));
+            } else if (currentMonitoredSubFilter === 'NOT_SNOOZED') {
+                list = list.filter(s => !isStationSnoozed(s.hostname));
+            }
+        } else if (currentTabFilter === 'ONLINE') {
+            list = list.filter(s => s.isOnline);
+        }
 
         if (searchQuery.trim()) {
             const q = searchQuery.trim().toLowerCase();
-            list = list.filter(s => (s.hostname && s.hostname.toLowerCase().includes(q)) || (s.displayName && s.displayName.toLowerCase().includes(q)) || (s.ipAddress && s.ipAddress.includes(q)));
+            list = list.filter(s =>
+                (s.hostname && s.hostname.toLowerCase().includes(q)) ||
+                (s.roleAlias && s.roleAlias.toLowerCase().includes(q)) ||
+                (s.displayName && s.displayName.toLowerCase().includes(q)) ||
+                (s.ipAddress && s.ipAddress.includes(q))
+            );
         }
 
         list.sort((a, b) => {
-            const comp = (a.displayName || a.hostname || '').toLowerCase().localeCompare((b.displayName || b.hostname || '').toLowerCase(), undefined, { numeric: true, sensitivity: 'base' });
+            if (isPrioritizeAlertsAtFront) {
+                const aAlertActive = isStationNotRecording(a) && !isStationSnoozed(a.hostname);
+                const bAlertActive = isStationNotRecording(b) && !isStationSnoozed(b.hostname);
+                if (aAlertActive && !bAlertActive) return -1;
+                if (!aAlertActive && bAlertActive) return 1;
+            }
+            const aName = a.roleAlias || a.displayName || a.hostname || '';
+            const bName = b.roleAlias || b.displayName || b.hostname || '';
+            const comp = aName.toLowerCase().localeCompare(bName.toLowerCase(), undefined, { numeric: true, sensitivity: 'base' });
             return sortAsc ? comp : -comp;
         });
 
-        if (activeFleetTabConfig) {
-            list = list.map(station => ({
+        list = list.map(station => {
+            const isSnoozed = isStationSnoozed(station.hostname);
+            return {
                 ...station,
-                effectiveBitrate: station.customBitrate || activeFleetTabConfig.defaultBitrate || station.bitrate,
-                effectiveFps: station.customFps || activeFleetTabConfig.defaultFps || station.fps
-            }));
-        }
+                isSnoozed,
+                snoozeRemainingMinutes: isSnoozed
+                    ? (typeof getRemainingMinutes === 'function'
+                        ? getRemainingMinutes(station.hostname)
+                        : 0)
+                    : 0,
+                snoozeReason: isSnoozed
+                    ? (typeof getSnoozeReason === 'function' ? getSnoozeReason(station.hostname) : null)
+                    : null,
+                effectiveBitrate: station.customBitrate || activeFleetTabConfig?.defaultBitrate || station.bitrate,
+                effectiveFps: station.customFps || activeFleetTabConfig?.defaultFps || station.fps
+            };
+        });
 
         return list;
-    }, [tabFilteredStations, isFaultFilterActive, hideOffline, currentTabFilter, searchQuery, sortAsc, activeFleetTabConfig]);
+    }, [tabFilteredStations, isFaultFilterActive, currentTabFilter, currentMonitoredSubFilter, searchQuery, sortAsc, isPrioritizeAlertsAtFront, isStationSnoozed, getRemainingMinutes, getSnoozeReason, activeFleetTabConfig]);
 
-    const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
+    const [prevFilters, setPrevFilters] = useState({ searchQuery, tabFilters, monitoredSubFilters, activeTabId, viewMode });
     if (
         prevFilters.searchQuery !== searchQuery ||
         prevFilters.tabFilters !== tabFilters ||
+        prevFilters.monitoredSubFilters !== monitoredSubFilters ||
         prevFilters.activeTabId !== activeTabId ||
-        prevFilters.viewMode !== viewMode ||
-        prevFilters.hideOffline !== hideOffline
+        prevFilters.viewMode !== viewMode
     ) {
-        setPrevFilters({ searchQuery, tabFilters, activeTabId, viewMode, hideOffline });
+        setPrevFilters({ searchQuery, tabFilters, monitoredSubFilters, activeTabId, viewMode });
         setCurrentPage(1);
     }
 
@@ -291,7 +475,7 @@ export function useDashboardLogic({
         const availW = Math.max(300, (pane ? pane.clientWidth : containerSize.width) - padX);
         const availH = Math.max(160, (pane ? pane.clientHeight : containerSize.height) - padY - 8);
 
-        const cardWidths = { 5: 700, 4: 570, 3: 450, 2: 360, 1: 290 };
+        const cardWidths = { 5: 760, 4: 620, 3: 500, 2: 420, 1: 340 };
 
         for (let z = 5; z >= 1; z--) {
             const w = getCssPixelValue(`--zoom-card-w-${z}`, cardWidths[z]);
@@ -311,7 +495,7 @@ export function useDashboardLogic({
 
     const effectiveZoom = isAutoZoom ? autoOptimalZoom : manualZoom;
 
-    // 💡 חישוב גודל עמוד דינמי כמכפלה של עמודות ושורות מלאות (cols * rows) למילוי מושלם של כל הריבועים בדף
+    // Dynamically calculate page capacity as multiple of full rows and columns (cols * rows) for seamless grid tile packing
     const itemsPerPage = useMemo(() => {
         const pane = typeof document !== 'undefined' ? document.querySelector('.tab-pane-content-wrapper') : null;
         const padY = pane ? (parseFloat(getComputedStyle(pane).paddingTop) + parseFloat(getComputedStyle(pane).paddingBottom)) : 40;
@@ -351,20 +535,76 @@ export function useDashboardLogic({
         return processedStations.slice(start, start + itemsPerPage);
     }, [processedStations, currentPage, itemsPerPage]);
 
+    const isStationOnlineHelper = useCallback((s) => {
+        return Boolean(s && (s.isOnline || s.IsOnline || s.status === 1 || s.status === 2 || s.status === 'Standby' || s.status === 'Streaming' || s.isProcessRunning));
+    }, []);
+
+    const isStationRecordingHelper = useCallback((s) => {
+        return Boolean(s && (s.isRecording ?? s.IsRecording ?? (s.status === 2 || s.status === 'Recording' || s.status === 'Streaming')));
+    }, []);
+
     const canSort = processedStations.length > 1;
-    const canStartAny = useMemo(() => processedStations.some(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming), [processedStations]);
-    const canStopAny = useMemo(() => processedStations.some(s => s.isStreaming), [processedStations]);
+
+    const canStartAny = useMemo(() => {
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        return pool.some(s => isStationOnlineHelper(s) && !isStationRecordingHelper(s));
+    }, [processedStations, tabFilteredStations, stations, isStationOnlineHelper, isStationRecordingHelper]);
+
+    const canStopAny = useMemo(() => {
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        return pool.some(s => isStationRecordingHelper(s));
+    }, [processedStations, tabFilteredStations, stations, isStationRecordingHelper]);
 
     const handleFilteredBulkStart = () => {
-        if (!canStartAny) return;
-        const targetHostnames = processedStations.filter(s => (s.isOnline || s.status === 1 || s.status === 2 || s.isProcessRunning) && !s.isStreaming).map(s => s.hostname);
-        onBulkStart?.(targetHostnames, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        let targets = pool
+            .filter(s => isStationOnlineHelper(s) && !isStationRecordingHelper(s))
+            .map(s => s.hostname || s.name || s.id)
+            .filter(Boolean);
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations
+                .filter(s => isStationOnlineHelper(s) && !isStationRecordingHelper(s))
+                .map(s => s.hostname || s.name || s.id)
+                .filter(Boolean);
+        }
+
+        if (targets.length === 0 && pool.length > 0) {
+            targets = pool.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0) return;
+        onBulkStart?.(targets, { bitrate: activeFleetTabConfig?.defaultBitrate || null, fps: activeFleetTabConfig?.defaultFps || null });
     };
 
     const handleFilteredBulkStop = () => {
-        if (!canStopAny) return;
-        const targetHostnames = processedStations.filter(s => s.isStreaming).map(s => s.hostname);
-        onBulkStop?.(targetHostnames);
+        const pool = processedStations.length > 0 ? processedStations : (tabFilteredStations.length > 0 ? tabFilteredStations : stations);
+        let targets = pool
+            .filter(s => isStationRecordingHelper(s))
+            .map(s => s.hostname || s.name || s.id)
+            .filter(Boolean);
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations
+                .filter(s => isStationRecordingHelper(s))
+                .map(s => s.hostname || s.name || s.id)
+                .filter(Boolean);
+        }
+
+        if (targets.length === 0 && pool.length > 0) {
+            targets = pool.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0 && stations && stations.length > 0) {
+            targets = stations.map(s => s.hostname || s.name || s.id).filter(Boolean);
+        }
+
+        if (targets.length === 0) return;
+        onBulkStop?.(targets);
     };
 
     const handlePolicyApplication = ({ tabData, overrideCustomSettings }) => {
@@ -387,6 +627,7 @@ export function useDashboardLogic({
         fullscreenHostname, setFullscreenHostname,
         activeTabId, setActiveTabId,
         tabFilters, setFilterForTab, currentTabFilter,
+        monitoredSubFilters, setMonitoredSubFilterForTab, currentMonitoredSubFilter, monitoredCounts,
         currentPage, setCurrentPage, itemsPerPage, totalPages,
         viewMode, setViewMode,
         isSearchOpen, setIsSearchOpen,
@@ -402,6 +643,14 @@ export function useDashboardLogic({
 
         canSort, canStartAny, canStopAny,
         keystrokeMode, setKeystrokeMode, handleCycleKeystrokeMode,
+
+        // Alert & Snooze engine exports
+        isPrioritizeAlertsAtFront, setIsPrioritizeAlertsAtFront,
+        unrecordedStations, activeUnrecordedStations, activeSnoozedStations,
+        snoozeModalState, handleOpenSnoozeModal, handleOpenBulkSnoozeModal,
+        handleCloseSnoozeModal, handleConfirmSnooze, handleCancelSnoozeModal,
+        cancelSnooze, cancelAllSnoozes,
+        handleStartRecordingStation, handleStartRecordingAllUnrecorded,
 
         handleToggleFeature, handleCloseFeature, handleFeatureQuickExport,
         handleZoomOut, handleZoomIn, handleSliderChange,

@@ -1,9 +1,10 @@
-namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
+﻿namespace ITB_SCREEN_RECORDER.Server.Data.Repositories;
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Server.Models.Security;
 
 public record StationOverrideRecord(string Hostname, string? VideoBitrate, int? TargetFps, long UpdatedAtUtc)
@@ -25,11 +26,11 @@ public record CustomTabRecord(
     long UpdatedAtUtc
 );
 
-public interface ICatalogRepository : IKeystrokeRepository
+public interface ICatalogRepository : IKeystrokeRepository, IStationRoleProvider
 {
     // Recording Chunks
     Task BulkUpsertChunksAsync(IEnumerable<ChunkFinalizedEvent> chunks);
-    Task UpsertActiveChunkAsync(string stationId, string filePath, long startEpochMs, int fps, int width, int height, bool hasAudio);
+    Task UpsertActiveChunkAsync(string stationId, string filePath, long startEpochMs, int fps, int width, int height, bool hasAudio, string displayId = "mon-0");
     Task FinalizeChunkAsync(string filePath, long endEpochMs, long fileSizeBytes);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetChunksForWindowAsync(string stationId, long fromEpochMs, long toEpochMs);
     Task<IReadOnlyList<ChunkFinalizedEvent>> GetExpiredCandidateChunksAsync(long cutoffUtc, int batchLimit);
@@ -53,10 +54,11 @@ public interface ICatalogRepository : IKeystrokeRepository
     Task UpsertOverrideAsync(string hostname, string? videoBitrate, int? targetFps);
     Task<bool> DeleteOverrideAsync(string hostname);
 
-    // Station Roles
-    Task<Dictionary<string, string>> GetAllStationRoleAliasesAsync();
+    // Station Roles (Inherits GetAllStationRoleAliasesAsync from IStationRoleProvider)
+    Task<HashSet<string>> GetAllKnownStationHostnamesAsync();
     Task SetStationRoleAliasAsync(string hostname, string? roleAlias);
     Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings);
+    Task SwapStationRoleAliasesAsync(string stationA, string stationB);
 
     // Security & Policies
     Task<SecurityPolicyStateDto> GetSecurityPolicyAsync();

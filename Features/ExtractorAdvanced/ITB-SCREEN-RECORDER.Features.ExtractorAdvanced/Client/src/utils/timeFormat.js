@@ -6,13 +6,13 @@ import { getLocalOffsetMinutes } from './dstEngine.js';
 const pad = (n) => String(n).padStart(2, '0');
 
 /**
- * עיצוב חותמת זמן Epoch לשעון תצוגה בציר הזמן (Timeline Clock)
- * מותאם ומכויל באופן מלא מול מנוע ה-DST המנוהל של השרת ללא תלות באזור הזמן של מערכת ההפעלה.
+ * Formats an Epoch timestamp in milliseconds into a timeline clock string.
+ * Calibrated against server-managed DST offset independent of host OS timezone.
  * 
- * @param {number} epochMs - זמן ב-Unix Epoch (מילי-שניות)
- * @param {'LOCAL'|'UTC'} mode - מצב תצוגה
- * @param {boolean|{showZone?: boolean, includeSeconds?: boolean}} options - אפשרויות תצוגה
- * @returns {string} מחרוזת שעה מפורמטת (למשל: "14:30:00" או "01:30:00 IDT")
+ * @param {number} epochMs - Unix Epoch timestamp in milliseconds.
+ * @param {'LOCAL'|'UTC'} mode - Display mode ('LOCAL' or 'UTC').
+ * @param {boolean|{showZone?: boolean, includeSeconds?: boolean}} options - Display options.
+ * @returns {string} Formatted time string (e.g., "14:30:00" or "01:30:00 IDT").
  */
 export function formatTimelineClock(epochMs, mode = 'LOCAL', options = {}) {
     if (!epochMs || isNaN(epochMs) || epochMs <= 0) return '--:--:--';
@@ -36,7 +36,7 @@ export function formatTimelineClock(epochMs, mode = 'LOCAL', options = {}) {
         return showZone ? `${timeStr} UTC` : timeStr;
     }
 
-    // 💡 מצב LOCAL - חישוב הזמן המקומי על בסיס סטיית השעון של מנוע ה-DST מהשרת
+    // LOCAL mode - Compute local time based on DST offset engine from server
     const { offsetMin, label } = getLocalOffsetMinutes(epochMs);
     const localDate = new Date(epochMs + (offsetMin * 60 * 1000));
 
@@ -49,9 +49,10 @@ export function formatTimelineClock(epochMs, mode = 'LOCAL', options = {}) {
 }
 
 /**
- * עיצוב משך זמן במילי-שניות למחרוזת שעות:דקות:שניות
- * @param {number} ms - משך זמן במילי-שניות
- * @returns {string} למשל "01:23:45" או "05:30"
+ * Formats duration in milliseconds to HH:MM:SS or MM:SS string.
+ * 
+ * @param {number} ms - Duration in milliseconds.
+ * @returns {string} Formatted duration (e.g. "01:23:45" or "05:30").
  */
 export function formatDuration(ms) {
     if (!ms || isNaN(ms)) ms = 0;

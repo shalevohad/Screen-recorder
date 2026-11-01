@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/ExportMonitor/ExportJobMonitor.scss
 // ==========================================
 
@@ -6,7 +6,7 @@
     direction: ltr !important;
     text-align: left !important;
     font-family: inherit;
-    // 💡 z-index עודכן ל-1000001 כדי שירחף מעל ה-SoloSpotlightModal (999999)
+    // Floating HUD layer positioned above SoloSpotlightModal (z-index: 1000001)
     .export-floating-hud {
         position: fixed;
         bottom: 24px;
@@ -89,7 +89,7 @@
             }
         }
     }
-    // 💡 z-index עודכן ל-1000002 כדי שמגירת המשימות תיפתח ישירות מעל ה-SoloSpotlightModal
+    // Drawer backdrop layer positioned above SoloSpotlightModal (z-index: 1000002)
     .export-drawer-backdrop {
         position: fixed;
         inset: 0;

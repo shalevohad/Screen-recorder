@@ -14,8 +14,8 @@ using Microsoft.Extensions.Options;
 namespace ITB_SCREEN_RECORDER.Server.Controllers
 {
     /// <summary>
-    /// פרוקסי WHEP פנימי המאפשר לנגן ה-WebRTC בדפדפן לפעול בתוך אותו Origin של ה-HTTPS
-    /// ללא שגיאות Mixed Content וללא צורך באישור תעודות כפול בפורטים שונים בדפדפן.
+    /// Internal WHEP (WebRTC HTTP Egress Protocol) reverse proxy enabling browser WebRTC players
+    /// to operate within the identical HTTPS origin, eliminating Mixed Content restrictions and multi-port certificate trust prompts.
     /// </summary>
     [ApiController]
     [Route("api/v1/whep")]
@@ -64,10 +64,11 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 var method = new HttpMethod(Request.Method);
                 using var requestMessage = new HttpRequestMessage(method, targetUrl);
 
+                string bodyContent = "";
                 if (Request.ContentLength > 0 || (Request.ContentType != null && Request.Method != "GET" && Request.Method != "OPTIONS"))
                 {
                     using var reader = new StreamReader(Request.Body, Encoding.UTF8);
-                    string bodyContent = await reader.ReadToEndAsync();
+                    bodyContent = await reader.ReadToEndAsync();
                     if (!string.IsNullOrWhiteSpace(bodyContent))
                     {
                         var content = new StringContent(bodyContent, Encoding.UTF8);
@@ -80,6 +81,44 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
 
                 var response = await client.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead);
                 string responseContent = await response.Content.ReadAsStringAsync();
+
+                // Multi-monitor stream path compatibility fallback:
+                // If live/{hostname}/mon-0 was requested and returned 404, fallback to live/{hostname}
+                // If live/{hostname} was requested and returned 404, fallback to live/{hostname}/mon-0
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    string fallbackSubPath = "";
+                    if (targetSubPath.Contains("/mon-0/whep", StringComparison.OrdinalIgnoreCase))
+                    {
+                        fallbackSubPath = targetSubPath.Replace("/mon-0/whep", "/whep", StringComparison.OrdinalIgnoreCase);
+                    }
+                    else if (targetSubPath.EndsWith("/whep", StringComparison.OrdinalIgnoreCase) && !targetSubPath.Contains("/mon-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        fallbackSubPath = targetSubPath.Replace("/whep", "/mon-0/whep", StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    if (!string.IsNullOrEmpty(fallbackSubPath))
+                    {
+                        string fallbackUrl = $"http://127.0.0.1:{webrtcPort}/{fallbackSubPath}";
+                        using var fallbackReq = new HttpRequestMessage(method, fallbackUrl);
+                        if (!string.IsNullOrWhiteSpace(bodyContent))
+                        {
+                            var content = new StringContent(bodyContent, Encoding.UTF8);
+                            var rawContentType = Request.ContentType?.Split(';')[0].Trim();
+                            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                                string.IsNullOrEmpty(rawContentType) ? "application/sdp" : rawContentType);
+                            fallbackReq.Content = content;
+                        }
+
+                        var fallbackResp = await client.SendAsync(fallbackReq, HttpCompletionOption.ResponseHeadersRead);
+                        if (fallbackResp.IsSuccessStatusCode)
+                        {
+                            _logger.LogInformation("[WHEP-PROXY] Resolved stream path fallback: '{TargetUrl}' -> '{FallbackUrl}'", targetUrl, fallbackUrl);
+                            response = fallbackResp;
+                            responseContent = await response.Content.ReadAsStringAsync();
+                        }
+                    }
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {

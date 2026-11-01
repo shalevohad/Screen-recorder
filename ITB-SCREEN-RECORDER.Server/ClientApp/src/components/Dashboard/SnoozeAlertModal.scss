@@ -1,0 +1,331 @@
+// ==========================================
+// File: Client/src/components/Dashboard/SnoozeAlertModal.scss
+// ==========================================
+
+.snooze-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(7, 10, 16, 0.78);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.snooze-modal-window {
+    background: #0F172A;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    border-radius: 12px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 25px rgba(245, 158, 11, 0.18);
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: modalScaleUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+    .snooze-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 18px;
+        background: rgba(15, 23, 42, 0.95);
+        border-bottom: 1px solid rgba(245, 158, 11, 0.2);
+
+        .header-icon-cluster {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+
+            .snooze-pulse-icon {
+                font-size: 20px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
+                background: rgba(245, 158, 11, 0.15);
+                border: 1px solid rgba(245, 158, 11, 0.35);
+            }
+
+            .header-titles {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+
+                .modal-title {
+                    margin: 0;
+                    color: #F59E0B;
+                    font-size: 14px;
+                    font-weight: 800;
+                    font-family: 'JetBrains Mono', monospace;
+                    letter-spacing: 0.5px;
+                }
+
+                .modal-target {
+                    color: #94A3B8;
+                    font-size: 12px;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-weight: 600;
+                }
+            }
+        }
+
+        .btn-close-modal {
+            background: transparent;
+            border: none;
+            color: #64748B;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+
+            &:hover {
+                color: #FFF;
+                background: rgba(255, 255, 255, 0.08);
+            }
+        }
+    }
+
+    .snooze-modal-body {
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+
+        .snooze-instruction {
+            margin: 0;
+            color: #CBD5E1;
+            font-size: 12.5px;
+            line-height: 1.5;
+
+            strong {
+                color: #F59E0B;
+            }
+        }
+
+        .currently-snoozed-alert-box {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            border-radius: 8px;
+
+            .box-icon {
+                font-size: 16px;
+            }
+
+            .box-content {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+
+                strong {
+                    color: #F59E0B;
+                    font-size: 12px;
+                    font-family: 'JetBrains Mono', monospace;
+                }
+
+                span {
+                    color: #94A3B8;
+                    font-size: 11.5px;
+                }
+            }
+        }
+
+        .snooze-field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+
+            .field-label {
+                color: #94A3B8;
+                font-size: 11px;
+                font-family: 'JetBrains Mono', monospace;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }
+
+            .preset-buttons-row {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 8px;
+
+                .btn-preset-duration {
+                    background: rgba(30, 41, 59, 0.7);
+                    border: 1px solid rgba(148, 163, 184, 0.15);
+                    color: #E2E8F0;
+                    padding: 8px 12px;
+                    font-size: 12px;
+                    font-weight: 700;
+                    font-family: 'JetBrains Mono', monospace;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        background: rgba(51, 65, 85, 0.9);
+                        border-color: rgba(245, 158, 11, 0.4);
+                        color: #FFF;
+                    }
+
+                    &.active {
+                        background: rgba(245, 158, 11, 0.2);
+                        border-color: #F59E0B;
+                        color: #F59E0B;
+                        box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+                    }
+                }
+            }
+
+            .custom-input-wrapper {
+                position: relative;
+                display: flex;
+                align-items: center;
+
+                .custom-minutes-input {
+                    width: 100%;
+                    background: #090D16;
+                    border: 1px solid rgba(245, 158, 11, 0.5);
+                    border-radius: 6px;
+                    color: #F8FAFC;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 13px;
+                    font-weight: 700;
+                    padding: 9px 70px 9px 12px;
+                    outline: none;
+                    box-sizing: border-box;
+
+                    &:focus {
+                        border-color: #F59E0B;
+                        box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+                    }
+                }
+
+                .custom-suffix {
+                    position: absolute;
+                    right: 12px;
+                    color: #64748B;
+                    font-size: 11px;
+                    font-family: 'JetBrains Mono', monospace;
+                    pointer-events: none;
+                }
+            }
+
+            .reason-text-input {
+                width: 100%;
+                background: #090D16;
+                border: 1px solid rgba(148, 163, 184, 0.15);
+                border-radius: 6px;
+                color: #F8FAFC;
+                font-size: 12.5px;
+                padding: 9px 12px;
+                outline: none;
+                box-sizing: border-box;
+                transition: border-color 0.15s ease;
+
+                &:focus {
+                    border-color: rgba(245, 158, 11, 0.5);
+                }
+
+                &::placeholder {
+                    color: #475569;
+                }
+            }
+        }
+    }
+
+    .snooze-modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 18px;
+        background: rgba(15, 23, 42, 0.95);
+        border-top: 1px solid rgba(148, 163, 184, 0.1);
+
+        .btn-cancel-snooze {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #F87171;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 7px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+
+            &:hover {
+                background: rgba(239, 68, 68, 0.25);
+                color: #FFF;
+            }
+        }
+
+        .footer-right-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+
+            .btn-cancel {
+                background: transparent;
+                border: 1px solid rgba(148, 163, 184, 0.2);
+                color: #94A3B8;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 7px 14px;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    color: #E2E8F0;
+                    border-color: rgba(148, 163, 184, 0.4);
+                }
+            }
+
+            .btn-confirm-snooze {
+                background: #F59E0B;
+                border: 1px solid #D97706;
+                color: #070A10;
+                font-size: 12px;
+                font-weight: 800;
+                font-family: 'JetBrains Mono', monospace;
+                padding: 7px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+                transition: all 0.15s ease;
+
+                &:hover {
+                    background: #FBBF24;
+                    box-shadow: 0 0 18px rgba(245, 158, 11, 0.5);
+                    transform: translateY(-1px);
+                }
+            }
+        }
+    }
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes modalScaleUp {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}

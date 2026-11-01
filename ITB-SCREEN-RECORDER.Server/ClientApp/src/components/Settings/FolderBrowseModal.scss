@@ -1,0 +1,469 @@
+// ==========================================
+// File: ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Settings/FolderBrowseModal.scss
+// ==========================================
+.folder-browse-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(2, 6, 23, 0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999999;
+    padding: 24px;
+    box-sizing: border-box;
+
+    .folder-browse-modal-card {
+        width: 100%;
+        max-width: 680px;
+        max-height: 85vh;
+        background: #0f172a;
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 25px rgba(6, 182, 212, 0.25);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        animation: folderModalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: #070a10;
+            border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+
+            .header-title-stack {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+
+                .folder-icon {
+                    font-size: 1.4rem;
+                }
+
+                .title-text-wrap {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+
+                    h3 {
+                        margin: 0;
+                        font-family: var(--font-primary, 'Inter', sans-serif);
+                        font-size: 1rem;
+                        font-weight: 800;
+                        color: #f8fafc;
+                        letter-spacing: 0.05em;
+                    }
+
+                    .header-subtitle {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 0.65rem;
+                        color: #38bdf8;
+                        font-weight: 700;
+                        letter-spacing: 0.08em;
+                    }
+                }
+            }
+
+            .btn-close-modal {
+                background: transparent;
+                border: none;
+                color: #94a3b8;
+                font-size: 1.1rem;
+                cursor: pointer;
+                transition: color 0.15s ease;
+
+                &:hover {
+                    color: #f43f5e;
+                }
+            }
+        }
+
+        .modal-toolbar {
+            padding: 12px 20px;
+            background: rgba(15, 23, 42, 0.95);
+            border-bottom: 1px solid rgba(30, 41, 59, 0.8);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+
+            .path-input-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+
+                .btn-toolbar-nav,
+                .btn-toolbar-go {
+                    background: rgba(30, 41, 59, 0.8);
+                    border: 1px solid rgba(56, 189, 248, 0.3);
+                    color: #38bdf8;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    padding: 6px 12px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover:not(:disabled) {
+                        background: rgba(56, 189, 248, 0.2);
+                        border-color: #38bdf8;
+                        color: #ffffff;
+                    }
+
+                    &:disabled {
+                        opacity: 0.4;
+                        cursor: not-allowed;
+                    }
+                }
+
+                .path-text-input {
+                    flex: 1;
+                    background: #070a10;
+                    border: 1px solid rgba(148, 163, 184, 0.25);
+                    color: #f8fafc;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.75rem;
+                    padding: 6px 10px;
+                    border-radius: 4px;
+                    outline: none;
+                    transition: border-color 0.15s ease;
+
+                    &:focus {
+                        border-color: #06b6d4;
+                    }
+                }
+            }
+
+            .drives-shortcuts-row {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+
+                .drives-label {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.65rem;
+                    color: #64748b;
+                    font-weight: 700;
+                    margin-right: 4px;
+                }
+
+                .btn-drive-chip {
+                    background: rgba(30, 41, 59, 0.6);
+                    border: 1px solid rgba(148, 163, 184, 0.2);
+                    color: #cbd5e1;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        background: rgba(6, 182, 212, 0.2);
+                        border-color: #06b6d4;
+                        color: #22d3ee;
+                    }
+                }
+            }
+        }
+
+        .folder-browse-error {
+            padding: 8px 20px;
+            background: rgba(244, 63, 94, 0.15);
+            border-bottom: 1px solid rgba(244, 63, 94, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: #fb7185;
+
+            button {
+                background: transparent;
+                border: 1px solid #fb7185;
+                color: #fb7185;
+                font-size: 0.65rem;
+                padding: 2px 8px;
+                border-radius: 3px;
+                cursor: pointer;
+
+                &:hover {
+                    background: #fb7185;
+                    color: #ffffff;
+                }
+            }
+        }
+
+        .modal-body-content {
+            flex: 1;
+            min-height: 240px;
+            max-height: 380px;
+            overflow-y: auto;
+            padding: 14px 20px;
+            background: #0a0f1d;
+
+            .folder-loading-spinner {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 180px;
+                gap: 12px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.75rem;
+                color: #38bdf8;
+                font-weight: 700;
+
+                .spinner-ring {
+                    width: 32px;
+                    height: 32px;
+                    border: 3px solid rgba(56, 189, 248, 0.2);
+                    border-top-color: #38bdf8;
+                    border-radius: 50%;
+                    animation: folderSpin 0.8s linear infinite;
+                }
+            }
+
+            .empty-directories-placeholder {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 140px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.75rem;
+                color: #64748b;
+            }
+
+            .directory-items-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 8px;
+
+                .directory-item-card {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 8px 10px;
+                    background: rgba(15, 23, 42, 0.7);
+                    border: 1px solid rgba(30, 41, 59, 0.8);
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                    user-select: none;
+
+                    &:hover {
+                        background: rgba(56, 189, 248, 0.15);
+                        border-color: #38bdf8;
+                        transform: translateY(-1px);
+                    }
+
+                    .item-icon {
+                        font-size: 1.1rem;
+                    }
+
+                    .item-meta {
+                        display: flex;
+                        flex-direction: column;
+                        overflow: hidden;
+
+                        .item-name {
+                            font-family: 'JetBrains Mono', monospace;
+                            font-size: 0.75rem;
+                            font-weight: 700;
+                            color: #e2e8f0;
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                        }
+
+                        .item-date {
+                            font-family: 'JetBrains Mono', monospace;
+                            font-size: 0.6rem;
+                            color: #64748b;
+                        }
+                    }
+                }
+            }
+        }
+
+        .new-folder-form-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 20px;
+            background: rgba(15, 23, 42, 0.95);
+            border-top: 1px solid rgba(30, 41, 59, 0.8);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: #38bdf8;
+
+            input {
+                flex: 1;
+                background: #070a10;
+                border: 1px solid rgba(56, 189, 248, 0.4);
+                color: #ffffff;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.72rem;
+            }
+
+            .btn-confirm-create {
+                background: #06b6d4;
+                border: none;
+                color: #ffffff;
+                font-weight: 700;
+                padding: 4px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+
+            .btn-cancel-create {
+                background: transparent;
+                border: 1px solid #64748b;
+                color: #94a3b8;
+                padding: 4px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+        }
+
+        .create-folder-toggle-bar {
+            padding: 6px 20px;
+            background: rgba(15, 23, 42, 0.9);
+            border-top: 1px solid rgba(30, 41, 59, 0.8);
+
+            .btn-toggle-create {
+                background: transparent;
+                border: 1px dashed rgba(56, 189, 248, 0.4);
+                color: #38bdf8;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.68rem;
+                font-weight: 700;
+                padding: 4px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover:not(:disabled) {
+                    background: rgba(56, 189, 248, 0.15);
+                    border-color: #38bdf8;
+                }
+
+                &:disabled {
+                    opacity: 0.35;
+                    cursor: not-allowed;
+                }
+            }
+        }
+
+        .modal-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            background: #070a10;
+            border-top: 1px solid rgba(56, 189, 248, 0.25);
+
+            .selected-path-preview {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                max-width: 60%;
+                overflow: hidden;
+
+                .preview-label {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.6rem;
+                    color: #64748b;
+                    font-weight: 700;
+                }
+
+                .preview-val {
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.72rem;
+                    font-weight: 700;
+                    color: #22d3ee;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+            }
+
+            .footer-actions {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+
+                .btn-cancel {
+                    background: transparent;
+                    border: 1px solid rgba(148, 163, 184, 0.3);
+                    color: #cbd5e1;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.75rem;
+                    font-weight: 700;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        background: rgba(148, 163, 184, 0.15);
+                        color: #ffffff;
+                    }
+                }
+
+                .btn-select {
+                    background: #06b6d4;
+                    border: 1px solid #22d3ee;
+                    color: #ffffff;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.75rem;
+                    font-weight: 800;
+                    padding: 8px 18px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    letter-spacing: 0.05em;
+                    box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+                    transition: all 0.15s ease;
+
+                    &:hover:not(:disabled) {
+                        background: #0891b2;
+                        transform: translateY(-1px);
+                        box-shadow: 0 0 20px rgba(6, 182, 212, 0.6);
+                    }
+
+                    &:disabled {
+                        opacity: 0.4;
+                        cursor: not-allowed;
+                        box-shadow: none;
+                    }
+                }
+            }
+        }
+    }
+}
+
+@keyframes folderModalFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes folderSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
