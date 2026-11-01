@@ -44,6 +44,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         private readonly ServerTelemetryHostService _telemetryHostService;
         private readonly TelemetryBroadcastService _broadcastService;
         private readonly IStorageTelemetryService _storageTelemetryService;
+        private readonly IServerRestartService? _restartService;
         private readonly Microsoft.Extensions.Logging.ILogger<SettingsController> _logger;
 
         public SettingsController(
@@ -55,7 +56,8 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             ServerTelemetryHostService telemetryHostService,
             TelemetryBroadcastService broadcastService,
             IStorageTelemetryService storageTelemetryService,
-            Microsoft.Extensions.Logging.ILogger<SettingsController> logger)
+            Microsoft.Extensions.Logging.ILogger<SettingsController> logger,
+            IServerRestartService? restartService = null)
         {
             _syncService = syncService;
             _configMonitor = configMonitor;
@@ -66,6 +68,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
             _broadcastService = broadcastService;
             _storageTelemetryService = storageTelemetryService;
             _logger = logger;
+            _restartService = restartService;
         }
 
         [HttpGet]
@@ -123,6 +126,9 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
         public async Task<IActionResult> Save([FromBody] SystemConfig updatedConfig)
         {
             if (updatedConfig == null) return BadRequest(new { message = "Invalid configuration payload." });
+
+            int oldHttpPort = _configMonitor.CurrentValue.HttpPort;
+            bool portChanged = updatedConfig.HttpPort > 0 && updatedConfig.HttpPort != oldHttpPort;
 
             try
             {
@@ -207,7 +213,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 // 1. Immediately apply and propagate storage paths, format, and intervals to MediaMTX
                 try
                 {
-                    await _chunkScheduler.ApplyMediaMtxStorageConfigAsync(currentConfig, HttpContext.RequestAborted);
+                    if (_chunkScheduler != null) await _chunkScheduler.ApplyMediaMtxStorageConfigAsync(currentConfig, HttpContext?.RequestAborted ?? default);
                     _logger.LogInformation("[SETTINGS] Successfully propagated live storage configuration to MediaMTX.");
                 }
                 catch (Exception ex)
@@ -218,7 +224,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 // 2. Immediately calculate and broadcast updated system and storage telemetry to all connected clients
                 try
                 {
-                    await _telemetryHostService.BroadcastImmediateTelemetryAsync();
+                    if (_telemetryHostService != null) await _telemetryHostService.BroadcastImmediateTelemetryAsync();
                     _logger.LogInformation("[SETTINGS] Broadcasted immediate telemetry update after settings save.");
                 }
                 catch (Exception ex)
@@ -229,19 +235,53 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                 // 3. Broadcast updated system configuration in real-time to Dashboard (ReceiveSystemConfig)
                 try
                 {
-                    await _broadcastService.BroadcastSystemConfigUpdateAsync(currentConfig);
+                    if (_broadcastService != null) await _broadcastService.BroadcastSystemConfigUpdateAsync(currentConfig);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "[SETTINGS] Failed broadcasting updated system config.");
                 }
 
-                return Ok(currentConfig);
+                if (portChanged)
+                {
+                    _logger.LogInformation("[SETTINGS] HTTP listening port changed from {OldPort} to {NewPort}. Triggering server self-restart sequence...", oldHttpPort, currentConfig.HttpPort);
+                    _restartService?.ScheduleRestart(1500);
+                }
+
+                return Ok(new
+                {
+                    currentConfig.HttpPort,
+                    currentConfig.RecordingRetentionDays,
+                    currentConfig.MaxStorageQuotaGb,
+                    currentConfig.DashboardRefreshRateMs,
+                    currentConfig.DisplayTimezone,
+                    currentConfig.DisplayLocale,
+                    currentConfig.ManualDstTransitions,
+                    currentConfig.Dashboard,
+                    currentConfig.MediaMtx,
+                    currentConfig.Storage,
+                    currentConfig.DefaultVideoBitrate,
+                    currentConfig.DefaultTargetFps,
+                    currentConfig.Discovery,
+                    currentConfig.Security,
+                    requiresRestart = portChanged,
+                    oldPort = oldHttpPort,
+                    newPort = currentConfig.HttpPort
+                });
             }
             catch (Exception ex)
             {
                 return Problem($"Failed to synchronize configuration: {ex.Message}", statusCode: 500);
             }
+        }
+
+        [HttpPost("restart")]
+        [AuthorizePermission(PermissionKeys.SettingsAgents)]
+        public IActionResult RestartServer()
+        {
+            _logger.LogInformation("[SETTINGS] Manual server self-restart requested via API.");
+            _restartService?.ScheduleRestart(1000);
+            return Ok(new { success = true, message = "Server self-restart scheduled." });
         }
 
         [HttpGet("storage-status")]

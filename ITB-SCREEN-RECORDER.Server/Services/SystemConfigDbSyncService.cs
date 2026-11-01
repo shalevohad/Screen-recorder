@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using ITB_SCREEN_RECORDER.Core.Configuration;
@@ -85,7 +86,7 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
             await _catalogRepo.SetConfigurationAsync("SystemConfig", updatedJson);
 
             // 2. Persist and synchronize across all JSON config files on disk
-            await WriteConfigToDiskFilesAsync(updatedJson);
+            await WriteConfigToDiskFilesAsync(updatedJson, config.HttpPort);
 
             _logger.LogInformation("[CONFIG SYNC] System configuration updated in SQLite and flushed to disk configuration files.");
         }
@@ -97,7 +98,7 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private async Task WriteConfigToDiskFilesAsync(string updatedJson)
+    private async Task WriteConfigToDiskFilesAsync(string updatedJson, int httpPort)
     {
         var candidatePaths = new List<string>();
 
@@ -141,6 +142,29 @@ public class SystemConfigDbSyncService : IHostedService, ISystemConfigDbSyncServ
                         : "SystemConfig";
 
                     rootNode[sectionKey] = JsonNode.Parse(updatedJson);
+
+                    // Ensure Kestrel listening endpoints stay synchronized with HttpPort
+                    if (httpPort > 0)
+                    {
+                        if (rootNode["Kestrel"]?["Endpoints"]?["Https"] is JsonObject httpsEndpoint)
+                        {
+                            string? existingUrl = httpsEndpoint["Url"]?.ToString();
+                            if (!string.IsNullOrWhiteSpace(existingUrl))
+                            {
+                                httpsEndpoint["Url"] = Regex.Replace(existingUrl, @":(\d+)", $":{httpPort}");
+                            }
+                        }
+
+                        if (rootNode["Kestrel"]?["Endpoints"]?["Http"] is JsonObject httpEndpoint)
+                        {
+                            string? existingUrl = httpEndpoint["Url"]?.ToString();
+                            if (!string.IsNullOrWhiteSpace(existingUrl))
+                            {
+                                httpEndpoint["Url"] = Regex.Replace(existingUrl, @":(\d+)", $":{httpPort}");
+                            }
+                        }
+                    }
+
                     await File.WriteAllTextAsync(filePath, rootNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
                     _logger.LogInformation("[CONFIG SYNC] Flushed updated configuration into '{Path}'", filePath);
                 }

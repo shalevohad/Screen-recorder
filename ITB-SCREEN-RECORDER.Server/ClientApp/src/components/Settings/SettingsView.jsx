@@ -10,6 +10,7 @@ import StationsRolesTab from './tabs/StationsRolesTab';
 import SecurityAccessTab from './tabs/SecurityAccessTab';
 import MaintenanceTab from './tabs/MaintenanceTab';
 import SystemNetworkTab from './tabs/SystemNetworkTab';
+import ServerRestartModal from './ServerRestartModal';
 import { useAuth } from '../../context/AuthContext';
 
 import './SettingsView.scss';
@@ -56,6 +57,7 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
     const [stations, setStations] = useState([]);
     const [overrides, setOverrides] = useState({});
     const [status, setStatus] = useState({ loading: true, saving: false, error: null, saved: false });
+    const [restartState, setRestartState] = useState(null);
 
     // Ensure active tab is permitted for user; if not, switch to first permitted tab
     useEffect(() => {
@@ -136,8 +138,59 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
             setStatus(s => ({ ...s, saving: false, saved: true }));
 
             if (onSettingsSaved) onSettingsSaved(saved);
+
+            if (saved.requiresRestart) {
+                const protocol = window.location.protocol;
+                const hostname = window.location.hostname;
+                const newPort = saved.newPort || form.httpPort;
+                let targetUrl = '';
+                if (newPort === 80 && protocol === 'http:') {
+                    targetUrl = `http://${hostname}/`;
+                } else if (newPort === 443 && protocol === 'https:') {
+                    targetUrl = `https://${hostname}/`;
+                } else {
+                    targetUrl = `${protocol}//${hostname}:${newPort}/`;
+                }
+
+                setRestartState({
+                    active: true,
+                    newPort: newPort,
+                    oldPort: saved.oldPort || form.httpPort,
+                    countdown: 5,
+                    targetUrl
+                });
+            }
         } catch (err) {
             setStatus(s => ({ ...s, saving: false, error: err.message }));
+        }
+    };
+
+    const handleTriggerRestart = async () => {
+        try {
+            const res = await fetch('/api/v1/settings/restart', { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to schedule restart.');
+
+            const currentPort = form?.httpPort || (window.location.port ? Number(window.location.port) : (window.location.protocol === 'https:' ? 443 : 80));
+            const protocol = window.location.protocol;
+            const hostname = window.location.hostname;
+            let targetUrl = '';
+            if (currentPort === 80 && protocol === 'http:') {
+                targetUrl = `http://${hostname}/`;
+            } else if (currentPort === 443 && protocol === 'https:') {
+                targetUrl = `https://${hostname}/`;
+            } else {
+                targetUrl = `${protocol}//${hostname}:${currentPort}/`;
+            }
+
+            setRestartState({
+                active: true,
+                newPort: currentPort,
+                oldPort: currentPort,
+                countdown: 5,
+                targetUrl
+            });
+        } catch (err) {
+            console.error('Restart failed:', err);
         }
     };
 
@@ -353,11 +406,13 @@ export default function SettingsView({ onReturnToPortal, onSettingsSaved }) {
                         )}
 
                         {activeTab === 'maintenance' && (
-                            <MaintenanceTab />
+                            <MaintenanceTab onTriggerRestart={handleTriggerRestart} />
                         )}
                     </div>
                 )}
             </div>
+
+            <ServerRestartModal restartState={restartState} />
         </div>
     );
 }

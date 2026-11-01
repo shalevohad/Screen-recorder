@@ -35,7 +35,7 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
 
                 <div className="settings-fields-row">
                     <div className="settings-field">
-                        <span>HTTP Server Port</span>
+                        <span>HTTP / HTTPS Server Port</span>
                         <input
                             type="number"
                             min="1"
@@ -44,6 +44,9 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                             onChange={e => updateField('httpPort', Number(e.target.value))}
                             required
                         />
+                        <span className="field-note" style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '4px' }}>
+                            שינוי פורט יאתחל אוטומטית את השרת ויעביר את הדפדפן לכתובת החדשה (ברירת מחדל ללא פורט: 443 ל-HTTPS, 80 ל-HTTP).
+                        </span>
                     </div>
 
                     <div className="settings-field">

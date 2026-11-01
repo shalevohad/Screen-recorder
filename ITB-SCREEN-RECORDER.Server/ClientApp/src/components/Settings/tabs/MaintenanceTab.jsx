@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export default function MaintenanceTab() {
+export default function MaintenanceTab({ onTriggerRestart }) {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [triggering, setTriggering] = useState(false);
@@ -183,6 +183,30 @@ export default function MaintenanceTab() {
                     </button>
                 </div>
             </div>
+            {/* System Service Lifecycle Controls */}
+            {onTriggerRestart && (
+                <div className="maintenance-actions-box">
+                    <div className="action-info">
+                        <h4>Server Service Lifecycle Management</h4>
+                        <p>Gracefully restarts the central server process / Windows Service (ITB_ServerService). Active recording pipelines buffer locally on endpoints without data loss during the brief restart window.</p>
+                    </div>
+
+                    <div className="action-buttons-row">
+                        <button
+                            type="button"
+                            className="btn-maintenance-action amber"
+                            disabled={isRunning || triggering}
+                            onClick={() => {
+                                if (window.confirm('Restart server service? Active dashboard connections will temporarily reconnect.')) {
+                                    onTriggerRestart();
+                                }
+                            }}
+                        >
+                            ⚡ Restart Server Service
+                        </button>
+                    </div>
+                </div>
+            )}
         </fieldset>
     );
 }

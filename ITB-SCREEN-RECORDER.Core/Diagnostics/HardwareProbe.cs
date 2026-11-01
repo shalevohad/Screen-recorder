@@ -107,7 +107,8 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 // 1. Test NVIDIA NVENC
                 Logger.Info("[PROBE] Testing NVIDIA NVENC hardware acceleration...");
-                if (await TestEncoderSupportAsync(ffmpegPath, "h264_nvenc").ConfigureAwait(false))
+                var (nvencOk, nvencError) = await TestEncoderSupportAsync(ffmpegPath, "h264_nvenc").ConfigureAwait(false);
+                if (nvencOk)
                 {
                     nvencStep.Status = "selected";
                     amfStep.Status = "untested";
@@ -120,11 +121,25 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                     return report;
                 }
                 nvencStep.Status = "failed";
-                nvencStep.FailureReason = "Hardware / driver unavailable";
+                if (nvencError.Contains("Driver does not support the required nvenc API version", StringComparison.OrdinalIgnoreCase) ||
+                    nvencError.Contains("minimum required Nvidia driver", StringComparison.OrdinalIgnoreCase))
+                {
+                    nvencStep.FailureReason = "NVIDIA Driver is outdated (Requires driver update to 570+ for NVENC SDK 13.1)";
+                    Logger.Warn($"[PROBE] [ACTION REQUIRED] NVIDIA GPU/NVENC detected, but the installed NVIDIA driver is older than the NVENC SDK 13.1 API required by FFmpeg. Please update the NVIDIA driver to version 570.xx or newer (Production Branch / Enterprise) on this server.");
+                }
+                else if (nvencError.Contains("Cannot load nvcuda.dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    nvencStep.FailureReason = "NVIDIA Driver / CUDA DLL missing";
+                }
+                else
+                {
+                    nvencStep.FailureReason = "Hardware / driver unavailable";
+                }
 
                 // 2. Test AMD AMF
                 Logger.Info("[PROBE] NVENC unavailable. Testing AMD AMF (Radeon) hardware acceleration...");
-                if (await TestEncoderSupportAsync(ffmpegPath, "h264_amf").ConfigureAwait(false))
+                var (amfOk, amfError) = await TestEncoderSupportAsync(ffmpegPath, "h264_amf").ConfigureAwait(false);
+                if (amfOk)
                 {
                     amfStep.Status = "selected";
                     qsvStep.Status = "untested";
@@ -140,7 +155,8 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
 
                 // 3. Test Intel QuickSync (QSV)
                 Logger.Info("[PROBE] AMD AMF unavailable. Testing Intel Quick Sync (QSV) hardware acceleration...");
-                if (await TestEncoderSupportAsync(ffmpegPath, "h264_qsv").ConfigureAwait(false))
+                var (qsvOk, qsvError) = await TestEncoderSupportAsync(ffmpegPath, "h264_qsv").ConfigureAwait(false);
+                if (qsvOk)
                 {
                     qsvStep.Status = "selected";
                     cpuStep.Status = "untested";
@@ -181,12 +197,12 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
             return report.SelectedEncoder;
         }
 
-        private static async Task<bool> TestEncoderSupportAsync(string ffmpegPath, string encoderName)
+        private static async Task<(bool Supported, string ErrorMessage)> TestEncoderSupportAsync(string ffmpegPath, string encoderName)
         {
             if (string.IsNullOrWhiteSpace(ffmpegPath))
             {
                 Logger.Warn($"[PROBE] Cannot test {encoderName}: FFmpeg binary path was not provided.");
-                return false;
+                return (false, "FFmpeg binary path was not provided");
             }
 
             try
@@ -211,21 +227,22 @@ namespace ITB_SCREEN_RECORDER.Core.Diagnostics
                 {
                     try { proc.Kill(); } catch { }
                     Logger.Warn($"[PROBE] FFmpeg probe for {encoderName} timed out and was terminated.");
-                    return false;
+                    return (false, "Probe execution timed out");
                 }
 
                 if (proc.ExitCode != 0)
                 {
-                    Logger.Warn($"[PROBE] {encoderName} is not supported. FFmpeg ExitCode: {proc.ExitCode}. Error Details: {errorOutput.Trim()}");
-                    return false;
+                    string details = errorOutput.Trim();
+                    Logger.Warn($"[PROBE] {encoderName} is not supported. FFmpeg ExitCode: {proc.ExitCode}. Error Details: {details}");
+                    return (false, details);
                 }
 
-                return true;
+                return (true, string.Empty);
             }
             catch (Exception ex)
             {
                 Logger.Warn($"[PROBE] Probe execution for {encoderName} failed to start ({ex.Message}). Assuming unsupported.");
-                return false;
+                return (false, ex.Message);
             }
         }
 

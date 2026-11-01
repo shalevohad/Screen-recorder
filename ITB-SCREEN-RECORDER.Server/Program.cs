@@ -335,6 +335,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, CustomAuthorizationMiddlewareResultHandler>();
 
                 builder.Services.AddSingleton<ISystemConfigDbSyncService, SystemConfigDbSyncService>();
+                builder.Services.AddSingleton<IServerRestartService, ServerRestartService>();
                 builder.Services.AddHostedService(sp => (SystemConfigDbSyncService)sp.GetRequiredService<ISystemConfigDbSyncService>());
 
                 builder.Services.AddSingleton<CatalogMaintenanceService>();

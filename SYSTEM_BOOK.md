@@ -779,9 +779,43 @@ In multi-station recording environments (control rooms, dispatch consoles, opera
   - Integrated channel mode toggle `[🎧 BOTH | 🎤 MIC | 🔊 SYS | ⮂ STEREO]` directly on the transport bar, enabling investigators to isolate clean dialogue across multi-camera timelines.
 
 ---
+
+## 21. Graceful Central Server Self-Restart & Online Port Re-Binding Architecture (2026-11-01)
+
+### 1. Operational Problem: Kestrel Dynamic Port Re-Binding
+In enterprise operational deployments, operators may reconfigure the central server port (e.g. from default `:5090` to `:8080`, `:443` for standard HTTPS, or `:80` for standard HTTP) directly via the C2 Settings Dashboard (`SystemNetworkTab`).
+- **Operating System Socket Invariant**: The ASP.NET Core Kestrel web server binds its TCP listening sockets at process initialization. Under OS network constraints, an active socket cannot be rebound dynamically without restarting the host process.
+- **Agent Discovery Desynchronization Risk**: If the server persisted a port change without immediately rebinding, Multicast Discovery would broadcast the new port while Kestrel remained listening on the old port, temporarily severing communications.
+
+### 2. Backend Self-Restart & Cross-Platform Orchestration (`ServerRestartService.cs`)
+- **`IServerRestartService` & `ServerRestartService.cs`**:
+  - Encapsulates delayed asynchronous dispatching (`ScheduleRestart(int delayMilliseconds = 1500)`) allowing the current HTTP response to flush completely to the client.
+  - **Windows Service Orchestration (`ITB_ServerService`)**:
+    Detects if running under Windows Service context via `WindowsServiceHelpers.IsWindowsService()`. Spawns a detached background PowerShell command:
+    ```powershell
+    Start-Sleep -Seconds 2; try { Restart-Service -Name 'ITB_ServerService' -Force } catch { Start-Service -Name 'ITB_ServerService' }
+    ```
+  - **Console / Interactive Fallback**:
+    In developer workstations or standalone executions, restarts the executable via `Process.Start(Environment.ProcessPath)` and calls `_appLifetime.StopApplication()`.
+  - **Linux Systemd Support**:
+    Executes detached `systemctl restart ITB_ServerService || itb-server`.
+- **Atomic Disk & Database Synchronization (`SystemConfigDbSyncService.cs`)**:
+  - Updates the SQLite catalog table (`catalog_config`).
+  - Atomically writes updated settings across `appsettings.json`, `appsettings.Windows.json`, and `appsettings.Linux.json`.
+  - Synchronizes both `SystemConfig:HttpPort` and `Kestrel:Endpoints:Https:Url` / `Http:Url` using regex replacement so that on boot, Kestrel binds to the new port without configuration drift.
+- **C2 API Endpoints (`SettingsController.cs`)**:
+  - `PUT /api/v1/settings`: Detects port changes (`updatedConfig.HttpPort != currentConfig.HttpPort`), flushes configuration, returns `{ requiresRestart: true, oldPort, newPort }`, and schedules restart.
+  - `POST /api/v1/settings/restart`: Dedicated operator endpoint for on-demand server restarts.
+
+### 3. Frontend Tactical Redirect & Transition Overlay (`ServerRestartModal.jsx`)
+- **`ServerRestartModal.jsx` & `_serverRestartModal.scss`**:
+  - Automatically intercepts `requiresRestart` responses from settings updates or maintenance restart triggers.
+  - Renders a tactical NOC countdown overlay with radar radar pulse animations and real-time transition metrics (`oldPort ➔ newPort`).
+  - Pre-computes target URL handling standard browser port omissions (omits `:443` for HTTPS, `:80` for HTTP).
+  - Provides a 5-second countdown with an instant "GO NOW" override button, redirecting the operator's browser smoothly to the new endpoint (`window.location.href`).
+- **Endpoint Offline Buffering Invariant (Zero Data Loss)**:
+  - During the 2–3 second restart window, Agent workers smoothly store continuous captures in `LocalBufferPath` (`RecordingsBuffer`) under Rule 1 & Rule 2.
+  - Once the server resumes listening on the new port, Agent discovery reconnects and drains buffered chunks without a single lost frame.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
-
-
-
-
-
