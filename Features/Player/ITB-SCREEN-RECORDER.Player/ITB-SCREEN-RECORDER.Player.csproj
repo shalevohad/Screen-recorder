@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>ITB_SCREEN_RECORDER.Player</RootNamespace>
+    <ApplicationIcon Condition="Exists('app.ico')">app.ico</ApplicationIcon>
+    <Description>ITB Forensic Investigation Package Standalone Player</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ITB-SCREEN-RECORDER.Player.Core\ITB-SCREEN-RECORDER.Player.Core.csproj" />
+    <ProjectReference Include="..\..\..\ITB-SCREEN-RECORDER.Core\ITB-SCREEN-RECORDER.Core.csproj" />
+  </ItemGroup>
+
+</Project>
