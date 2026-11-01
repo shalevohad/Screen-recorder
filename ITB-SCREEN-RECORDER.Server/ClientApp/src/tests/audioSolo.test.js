@@ -115,4 +115,32 @@ describe('Audio Solo Exclusive Sink State Machine', () => {
         });
         assert.equal(stateUnder.audioVolume, 0.0);
     });
+
+    it('manages discrete audio channel modes (both, mic, sys, stereo)', () => {
+        assert.equal(INITIAL_AUDIO_SOLO_STATE.audioChannelMode, 'both');
+
+        const stateMic = audioSoloReducer(INITIAL_AUDIO_SOLO_STATE, {
+            type: 'SET_CHANNEL_MODE',
+            channelMode: 'mic'
+        });
+        assert.equal(stateMic.audioChannelMode, 'mic');
+
+        const stateSys = audioSoloReducer(stateMic, {
+            type: 'SET_CHANNEL_MODE',
+            channelMode: 'sys'
+        });
+        assert.equal(stateSys.audioChannelMode, 'sys');
+
+        const stateStereo = audioSoloReducer(stateSys, {
+            type: 'SET_CHANNEL_MODE',
+            channelMode: 'stereo'
+        });
+        assert.equal(stateStereo.audioChannelMode, 'stereo');
+
+        const stateFallback = audioSoloReducer(stateStereo, {
+            type: 'SET_CHANNEL_MODE',
+            channelMode: null
+        });
+        assert.equal(stateFallback.audioChannelMode, 'both');
+    });
 });
