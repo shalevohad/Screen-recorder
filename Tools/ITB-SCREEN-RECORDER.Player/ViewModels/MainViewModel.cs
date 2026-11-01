@@ -6,16 +6,24 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using Microsoft.Win32;
 using ITB_SCREEN_RECORDER.Player.Core.Audio;
 using ITB_SCREEN_RECORDER.Player.Core.Ingestion;
 using ITB_SCREEN_RECORDER.Player.Core.Ipc;
-using ITB_SCREEN_RECORDER.Player.Core.Keystrokes;
-using ITB_SCREEN_RECORDER.Player.Core.Orchestration;
 using ITB_SCREEN_RECORDER.Player.Core.Streaming;
 using ITB_SCREEN_RECORDER.Player.Core.Synchronization;
-using Microsoft.Win32;
+using ITB_SCREEN_RECORDER.Player.Core.Keystrokes;
+using ITB_SCREEN_RECORDER.Player.Core.Orchestration;
 
 namespace ITB_SCREEN_RECORDER.Player.ViewModels;
+
+public enum PlayerViewMode
+{
+    Canvas,
+    Split,
+    Solo,
+    AllGrid
+}
 
 public sealed class MainViewModel : ViewModelBase, IDisposable
 {
@@ -47,10 +55,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private string _keystrokeSearchQuery = string.Empty;
     private VideoTrackViewModel? _focusedTrack;
 
+    private StationGroupViewModel? _selectedStation;
+    private PlayerViewMode _viewMode = PlayerViewMode.Canvas;
+    private VideoTrackViewModel? _activeSoloDisplay;
+    private bool _isCanvasFullscreen;
+
     private bool _isLoading;
     private bool _isLoadingIndeterminate = true;
     private string _loadingStatusMessage = "Loading...";
     private int _loadingProgressPercent = 0;
+
+    public event Action<TimeSpan>? SeekRequested;
+    public event Action<bool>? PlaybackStateChanged;
+    public event Action<double>? PlaybackRateChanged;
+    public event Action? StopRequested;
 
     public bool IsPackageLoaded
     {
@@ -104,7 +122,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 // When dragged by user slider
                 if (_clock != null && Math.Abs(_clock.CurrentTime.TotalSeconds - value) > 0.5)
                 {
-                    _clock.Seek(TimeSpan.FromSeconds(value));
+                    var offset = TimeSpan.FromSeconds(value);
+                    _clock.Seek(offset);
+                    SeekRequested?.Invoke(offset);
                 }
             }
         }
@@ -119,7 +139,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public bool IsPlaying
     {
         get => _isPlaying;
-        set => SetProperty(ref _isPlaying, value);
+        set
+        {
+            if (SetProperty(ref _isPlaying, value))
+            {
+                PlaybackStateChanged?.Invoke(value);
+            }
+        }
     }
 
     public double PlaybackRate
@@ -130,6 +156,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (SetProperty(ref _playbackRate, value))
             {
                 if (_clock != null) _clock.PlaybackRate = value;
+                PlaybackRateChanged?.Invoke(value);
             }
         }
     }
@@ -177,6 +204,57 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public StationGroupViewModel? SelectedStation
+    {
+        get => _selectedStation;
+        set
+        {
+            if (SetProperty(ref _selectedStation, value))
+            {
+                foreach (var st in Stations)
+                {
+                    st.IsSelected = (st == _selectedStation);
+                }
+                OnPropertyChanged(nameof(IsAllStationsView));
+            }
+        }
+    }
+
+    public bool IsAllStationsView => SelectedStation == null;
+
+    public PlayerViewMode ViewMode
+    {
+        get => _viewMode;
+        set
+        {
+            if (SetProperty(ref _viewMode, value))
+            {
+                OnPropertyChanged(nameof(IsCanvasMode));
+                OnPropertyChanged(nameof(IsSplitMode));
+                OnPropertyChanged(nameof(IsSoloMode));
+                OnPropertyChanged(nameof(IsAllGridMode));
+            }
+        }
+    }
+
+    public bool IsCanvasMode => ViewMode == PlayerViewMode.Canvas;
+    public bool IsSplitMode => ViewMode == PlayerViewMode.Split;
+    public bool IsSoloMode => ViewMode == PlayerViewMode.Solo;
+    public bool IsAllGridMode => ViewMode == PlayerViewMode.AllGrid;
+
+    public VideoTrackViewModel? ActiveSoloDisplay
+    {
+        get => _activeSoloDisplay;
+        set => SetProperty(ref _activeSoloDisplay, value);
+    }
+
+    public bool IsCanvasFullscreen
+    {
+        get => _isCanvasFullscreen;
+        set => SetProperty(ref _isCanvasFullscreen, value);
+    }
+
+    public ObservableCollection<StationGroupViewModel> Stations { get; } = new();
     public ObservableCollection<VideoTrackViewModel> Tracks { get; } = new();
     public ObservableCollection<KeystrokeItemViewModel> Keystrokes { get; } = new();
 
@@ -193,11 +271,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand FocusTrackCommand { get; }
     public ICommand CancelLoadingCommand { get; }
 
-    public PlayerSecureIpcService? IpcService
-    {
-        get => _ipcService;
-        set => _ipcService = value;
-    }
+    public ICommand SelectStationCommand { get; }
+    public ICommand SelectAllStationsCommand { get; }
+    public ICommand SetViewModeCommand { get; }
+    public ICommand SelectDisplayCommand { get; }
+    public ICommand SelectMonitorByIndexCommand { get; }
+    public ICommand ToggleFullscreenCanvasCommand { get; }
+    public ICommand ReturnToCanvasCommand { get; }
 
     public bool IsLoading
     {
@@ -220,13 +300,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public int LoadingProgressPercent
     {
         get => _loadingProgressPercent;
-        set
-        {
-            if (SetProperty(ref _loadingProgressPercent, value))
-            {
-                IsLoadingIndeterminate = (value <= 0);
-            }
-        }
+        set => SetProperty(ref _loadingProgressPercent, value);
     }
 
     public MainViewModel()
@@ -235,8 +309,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         PlayPauseCommand = new RelayCommand(ExecutePlayPause);
         StopCommand = new RelayCommand(ExecuteStop);
         CancelLoadingCommand = new RelayCommand(() => _loadingCts?.Cancel());
-        StepForwardCommand = new RelayCommand(() => _clock?.StepFrame(1, 30.0));
-        StepBackwardCommand = new RelayCommand(() => _clock?.StepFrame(-1, 30.0));
+        StepForwardCommand = new RelayCommand(() =>
+        {
+            _clock?.StepFrame(1, 30.0);
+            if (_clock != null) SeekRequested?.Invoke(_clock.CurrentTime);
+        });
+        StepBackwardCommand = new RelayCommand(() =>
+        {
+            _clock?.StepFrame(-1, 30.0);
+            if (_clock != null) SeekRequested?.Invoke(_clock.CurrentTime);
+        });
         SetRateCommand = new RelayCommand(param =>
         {
             if (param != null && double.TryParse(param.ToString(), out double rate))
@@ -252,6 +334,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (param is KeystrokeItemViewModel item && _clock != null)
             {
                 _clock.Seek(item.StartTime);
+                SeekRequested?.Invoke(item.StartTime);
             }
         });
         FocusTrackCommand = new RelayCommand(param =>
@@ -261,6 +344,141 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 FocusedTrack = track;
             }
         });
+
+        SelectStationCommand = new RelayCommand(param =>
+        {
+            if (param is StationGroupViewModel station)
+            {
+                SelectStation(station);
+            }
+            else if (param is string hostname)
+            {
+                var st = Stations.FirstOrDefault(s => string.Equals(s.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
+                if (st != null) SelectStation(st);
+            }
+        });
+
+        SelectAllStationsCommand = new RelayCommand(() =>
+        {
+            SelectedStation = null;
+            ViewMode = PlayerViewMode.AllGrid;
+        });
+
+        SetViewModeCommand = new RelayCommand(param =>
+        {
+            if (param is PlayerViewMode mode)
+            {
+                ViewMode = mode;
+            }
+            else if (param is string modeStr)
+            {
+                if (Enum.TryParse<PlayerViewMode>(modeStr, true, out var parsedMode))
+                {
+                    ViewMode = parsedMode;
+                }
+            }
+        });
+
+        SelectDisplayCommand = new RelayCommand(param =>
+        {
+            if (param is VideoTrackViewModel disp)
+            {
+                SelectDisplay(disp);
+            }
+        });
+
+        SelectMonitorByIndexCommand = new RelayCommand(param =>
+        {
+            if (param != null && int.TryParse(param.ToString(), out int idx1Based))
+            {
+                SelectMonitorByIndex(idx1Based);
+            }
+        });
+
+        ToggleFullscreenCanvasCommand = new RelayCommand(() =>
+        {
+            IsCanvasFullscreen = !IsCanvasFullscreen;
+        });
+
+        ReturnToCanvasCommand = new RelayCommand(() =>
+        {
+            ReturnToCanvas();
+        });
+    }
+
+    public void SelectStation(StationGroupViewModel? station)
+    {
+        SelectedStation = station;
+        if (station == null)
+        {
+            ViewMode = PlayerViewMode.AllGrid;
+            return;
+        }
+
+        if (station.HasMultipleDisplays)
+        {
+            ViewMode = PlayerViewMode.Canvas;
+            ActiveSoloDisplay = station.PrimaryDisplay;
+        }
+        else
+        {
+            ViewMode = PlayerViewMode.Solo;
+            ActiveSoloDisplay = station.PrimaryDisplay;
+        }
+    }
+
+    public void SelectDisplay(VideoTrackViewModel display)
+    {
+        if (display == null) return;
+
+        var st = Stations.FirstOrDefault(s => string.Equals(s.Hostname, display.Hostname, StringComparison.OrdinalIgnoreCase));
+        if (st != null && SelectedStation != st)
+        {
+            SelectedStation = st;
+        }
+
+        if (SelectedStation != null)
+        {
+            foreach (var d in SelectedStation.Displays)
+            {
+                d.IsSelectedInCanvas = (d == display);
+            }
+        }
+
+        ActiveSoloDisplay = display;
+        ViewMode = PlayerViewMode.Solo;
+    }
+
+    public void SelectMonitorByIndex(int index1Based)
+    {
+        if (SelectedStation != null && SelectedStation.Displays.Count > 0)
+        {
+            int idx0 = index1Based - 1;
+            if (idx0 >= 0 && idx0 < SelectedStation.Displays.Count)
+            {
+                SelectDisplay(SelectedStation.Displays[idx0]);
+            }
+        }
+        else if (SelectedStation == null && Stations.Count > 0)
+        {
+            int sIdx = index1Based - 1;
+            if (sIdx >= 0 && sIdx < Stations.Count)
+            {
+                SelectStation(Stations[sIdx]);
+            }
+        }
+    }
+
+    public void ReturnToCanvas()
+    {
+        if (SelectedStation != null && SelectedStation.HasMultipleDisplays)
+        {
+            ViewMode = PlayerViewMode.Canvas;
+        }
+        else
+        {
+            ViewMode = PlayerViewMode.AllGrid;
+        }
     }
 
     private void ExecuteOpenFile()
@@ -328,6 +546,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         Action initUiAction = () =>
         {
             Tracks.Clear();
+            Stations.Clear();
             Keystrokes.Clear();
 
             int trackIdx = 0;
@@ -347,8 +566,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 {
                     TrackIndex = trackIdx,
                     Hostname = track.Hostname,
+                    DisplayId = string.IsNullOrEmpty(track.DisplayId) ? $"mon-{monIdx}" : track.DisplayId,
                     MonitorIndex = monIdx,
                     IsPrimary = track.IsPrimary,
+                    Width = track.Width > 0 ? track.Width : 1920,
+                    Height = track.Height > 0 ? track.Height : 1080,
+                    X = track.X,
+                    Y = track.Y,
                     StreamUrl = streamUrl,
                     OnAudioSettingChanged = HandleTrackAudioSettingChanged
                 };
@@ -357,10 +581,35 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 trackIdx++;
             }
 
+            // Group into Stations
+            var grouped = Tracks.GroupBy(t => t.Hostname, StringComparer.OrdinalIgnoreCase);
+            foreach (var g in grouped)
+            {
+                var stVm = new StationGroupViewModel
+                {
+                    Hostname = g.Key
+                };
+                foreach (var t in g.OrderBy(x => x.MonitorIndex))
+                {
+                    stVm.Displays.Add(t);
+                }
+                stVm.RecalculateTopologyLayout();
+                Stations.Add(stVm);
+            }
+
             FocusedTrack = Tracks.FirstOrDefault();
             PerformKeystrokeSearch();
             IsPackageLoaded = true;
             UpdateTimelineDisplay(TimeSpan.Zero);
+
+            if (Stations.Count > 0)
+            {
+                SelectStation(Stations[0]);
+            }
+            else
+            {
+                ViewMode = PlayerViewMode.AllGrid;
+            }
         };
 
         if (Application.Current?.Dispatcher != null)
@@ -389,6 +638,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private void ExecuteStop()
     {
         _clock?.Stop();
+        StopRequested?.Invoke();
     }
 
     private void OnClockStateChanged(PlaybackState state)
@@ -428,8 +678,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 }
             }
 
-            // Periodically emit heartbeat over IPC (throttled to 1 sec)
-            if (_ipcService != null && (DateTime.UtcNow - _lastHeartbeatTime).TotalSeconds >= 1.0)
+            if ((DateTime.UtcNow - _lastHeartbeatTime).TotalSeconds >= 1.0)
             {
                 _lastHeartbeatTime = DateTime.UtcNow;
                 EmitHeartbeatNow();
@@ -446,19 +695,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public async Task HandleReplayRequestAsync(ReplayLaunchParams? parameters, CancellationToken ct = default)
+    public PlayerSecureIpcService? IpcService
     {
-        if (parameters == null) return;
+        get => _ipcService;
+        set => _ipcService = value;
+    }
 
+    public async Task HandleReplayRequestAsync(ReplayLaunchParams parameters, CancellationToken ct = default)
+    {
         _loadingCts?.Cancel();
         _loadingCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var token = _loadingCts.Token;
 
         Action startLoadingUi = () =>
         {
             IsLoading = true;
             IsLoadingIndeterminate = true;
-            LoadingStatusMessage = "Discovering ITB Recording Server...";
+            LoadingStatusMessage = "Connecting to server and requesting replay stream...";
             LoadingProgressPercent = 0;
         };
 
@@ -474,14 +726,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         try
         {
             var orchestrator = new ServerReplayOrchestrator(_ipcService);
-            string packagePath = await orchestrator.PrepareReplayPackageAsync(parameters, token).ConfigureAwait(false);
+            string packagePath = await orchestrator.PrepareReplayPackageAsync(parameters, _loadingCts.Token).ConfigureAwait(false);
 
             if (Application.Current?.Dispatcher != null)
             {
                 await Application.Current.Dispatcher.InvokeAsync(() => LoadingStatusMessage = "Loading synchronized video tracks...");
             }
 
-            await LoadPackageAsync(packagePath, token).ConfigureAwait(false);
+            await LoadPackageAsync(packagePath, _loadingCts.Token).ConfigureAwait(false);
 
             // Handle Seek
             if (parameters.SeekTimeUtc.HasValue && _clock != null)
@@ -490,6 +742,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 if (offset < TimeSpan.Zero) offset = TimeSpan.Zero;
                 if (offset > TimeSpan.FromSeconds(TotalDurationSeconds)) offset = TimeSpan.FromSeconds(TotalDurationSeconds);
                 _clock.Seek(offset);
+                SeekRequested?.Invoke(offset);
             }
 
             // Handle Audio Station
@@ -510,7 +763,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             if (_ipcService != null)
             {
                 DateTime currentUtc = parameters.SeekTimeUtc ?? RangeStartUtc;
-                await _ipcService.PublishEventAsync(PlayerIpcEvent.StateChanged("PLAYING", "Playback started successfully."), token).ConfigureAwait(false);
+                await _ipcService.PublishEventAsync(PlayerIpcEvent.StateChanged("PLAYING", "Playback started successfully."), ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -556,6 +809,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         if (offset < TimeSpan.Zero) offset = TimeSpan.Zero;
         if (offset > TimeSpan.FromSeconds(TotalDurationSeconds)) offset = TimeSpan.FromSeconds(TotalDurationSeconds);
         _clock.Seek(offset);
+        SeekRequested?.Invoke(offset);
         EmitHeartbeatNow();
     }
 

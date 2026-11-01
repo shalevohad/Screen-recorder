@@ -163,46 +163,115 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 double originalDurationSec = Math.Max(1.0, (request.EndTimeUtc - request.StartTimeUtc).TotalSeconds);
                 double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);
 
-                var generatedTracks = new List<(string StationId, string FilePath, bool HasAudio)>();
-                bool isMultiStation = request.Hostnames.Count > 1;
+                bool isAllDisplaysMode = string.Equals(request.LayoutMode, "all-displays", StringComparison.OrdinalIgnoreCase);
 
-                int hostCount = request.Hostnames.Count;
-                double slicePerHost = 80.0 / Math.Max(1, hostCount);
+                var renderTasks = new List<(string StationId, string DisplayId, bool IsPrimary, int Width, int Height, int X, int Y, List<RecordingChunkMetadata> Chunks, SynchronizationPlan Plan)>();
 
-                for (int i = 0; i < hostCount; i++)
+                for (int sIdx = 0; sIdx < request.Hostnames.Count; sIdx++)
+                {
+                    string host = request.Hostnames[sIdx];
+                    var chunks = allStationChunks.TryGetValue(host, out var cList) ? cList : new List<RecordingChunkMetadata>();
+
+                    if (isAllDisplaysMode)
+                    {
+                        var displayGroups = chunks
+                            .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
+                            .OrderBy(g => g.Key)
+                            .ToList();
+
+                        if (displayGroups.Count == 0)
+                        {
+                            var fallbackPlan = new SynchronizationPlan
+                            {
+                                ActiveSegments = plan.ActiveSegments,
+                                KeystrokeMode = plan.KeystrokeMode,
+                                LayoutMode = "mon-0",
+                                TargetDisplayId = "mon-0",
+                                RemovedGlobalGaps = plan.RemovedGlobalGaps,
+                                StationGaps = plan.StationGaps
+                            };
+                            renderTasks.Add((host, "mon-0", true, 1920, 1080, 0, 0, chunks, fallbackPlan));
+                        }
+                        else
+                        {
+                            int dispIndex = 0;
+                            int currentX = 0;
+                            foreach (var group in displayGroups)
+                            {
+                                string dispKey = group.Key;
+                                var repChunk = group.FirstOrDefault();
+                                int w = repChunk?.Width > 0 ? repChunk.Width : 1920;
+                                int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
+                                bool isPrimary = repChunk?.IsPrimary ?? (dispIndex == 0);
+                                int x = currentX;
+                                int y = 0;
+                                currentX += w;
+
+                                var dispPlan = new SynchronizationPlan
+                                {
+                                    ActiveSegments = plan.ActiveSegments,
+                                    KeystrokeMode = plan.KeystrokeMode,
+                                    LayoutMode = dispKey,
+                                    TargetDisplayId = dispKey,
+                                    RemovedGlobalGaps = plan.RemovedGlobalGaps,
+                                    StationGaps = plan.StationGaps
+                                };
+
+                                renderTasks.Add((host, dispKey, isPrimary, w, h, x, y, chunks, dispPlan));
+                                dispIndex++;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var repChunk = chunks.FirstOrDefault();
+                        int w = repChunk?.Width > 0 ? repChunk.Width : 1920;
+                        int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
+                        bool isPrimary = true;
+                        string dispKey = !string.IsNullOrEmpty(request.TargetDisplayId) ? request.TargetDisplayId : "mon-0";
+
+                        renderTasks.Add((host, dispKey, isPrimary, w, h, 0, 0, chunks, plan));
+                    }
+                }
+
+                var generatedTracks = new List<(string StationId, string DisplayId, bool IsPrimary, int Width, int Height, int X, int Y, string FilePath, bool HasAudio)>();
+                bool isMultiStation = renderTasks.Count > 1;
+                double slicePerTrack = 80.0 / Math.Max(1, renderTasks.Count);
+
+                for (int i = 0; i < renderTasks.Count; i++)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var host = request.Hostnames[i];
-                    var chunks = allStationChunks[host];
-                    double basePct = 3.0 + (i * slicePerHost);
+                    var task = renderTasks[i];
+                    string stationSubId = isAllDisplaysMode ? $"{task.StationId}/{task.DisplayId}" : task.StationId;
+                    double basePct = 3.0 + (i * slicePerTrack);
 
                     if (_trackCutter != null)
                     {
                         var stationProgress = new Progress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>(p =>
                         {
                             double fraction = Math.Clamp(p.SecondsProcessed / Math.Max(0.1, exportedDurationSec), 0.0, 1.0);
-                            int pct = (int)Math.Clamp(Math.Round(basePct + fraction * slicePerHost, 0), 2, 84);
+                            int pct = (int)Math.Clamp(Math.Round(basePct + fraction * slicePerTrack, 0), 2, 84);
                             double effectiveSpeed = Math.Max(0.2, p.SpeedMultiplier);
                             double remSec = (Math.Max(0, exportedDurationSec - p.SecondsProcessed) / effectiveSpeed)
-                                          + ((hostCount - 1 - i) * (exportedDurationSec / effectiveSpeed));
-                            progress?.Report((pct, $"Rendering station {i + 1}/{hostCount} ({host}): {p.Fps:0} fps", 0, (int)Math.Round(remSec, 0)));
+                                          + ((renderTasks.Count - 1 - i) * (exportedDurationSec / effectiveSpeed));
+                            progress?.Report((pct, $"Rendering track {i + 1}/{renderTasks.Count} ({task.StationId} - {task.DisplayId}): {p.Fps:0} fps", 0, (int)Math.Round(remSec, 0)));
                         });
 
                         var trackResult = await _trackCutter.CutSynchronizedTrackAsync(
-                            host, plan, chunks, stagingDir, isMultiStation, stationProgress, ct);
+                            stationSubId, task.Plan, task.Chunks, stagingDir, isMultiStation, stationProgress, ct);
 
-                        generatedTracks.Add((host, trackResult.OutputFilePath, trackResult.HasAudio));
+                        generatedTracks.Add((task.StationId, task.DisplayId, task.IsPrimary, task.Width, task.Height, task.X, task.Y, trackResult.OutputFilePath, trackResult.HasAudio));
                     }
                     else
                     {
-                        string tempSpool = Path.Combine(stagingDir, $"{host}_{request.StartTimeUtc:yyyyMMdd_HHmmss}.mp4");
-                        string concatManifest = await _storageScanner.BuildConcatManifestAsync(chunks, request.StartTimeUtc, request.EndTimeUtc);
+                        string tempSpool = Path.Combine(stagingDir, $"{task.StationId}_{task.DisplayId}_{request.StartTimeUtc:yyyyMMdd_HHmmss}.mp4");
+                        string concatManifest = await _storageScanner.BuildConcatManifestAsync(task.Chunks, request.StartTimeUtc, request.EndTimeUtc);
 
                         await using (var fs = new FileStream(tempSpool, FileMode.Create, FileAccess.Write, FileShare.None))
                         {
                             await _ffmpegRunner.ExecuteStreamCopyAsync(concatManifest, fs, ct);
                         }
-                        generatedTracks.Add((host, tempSpool, true));
+                        generatedTracks.Add((task.StationId, task.DisplayId, task.IsPrimary, task.Width, task.Height, task.X, task.Y, tempSpool, true));
                     }
                 }
 
@@ -232,6 +301,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                     sessionTracks.Add(new SessionTrackInfo
                     {
                         Hostname = track.StationId,
+                        DisplayId = track.DisplayId,
+                        IsPrimary = track.IsPrimary,
+                        Width = track.Width,
+                        Height = track.Height,
+                        X = track.X,
+                        Y = track.Y,
                         VideoFileName = entryName,
                         StartOffsetMs = 0,
                         DurationMs = exportedDurationSec * 1000.0,

@@ -154,7 +154,7 @@ export default function StudioVideoFeed({
     // Active Display calculation based on mode & director plan
     const activeDisplayId = useMemo(() => {
         if (!hasMultipleDisplays) return 'mon-0';
-        if (viewMode === 'split' || viewMode === 'pip' || viewMode === 'canvas') {
+        if (viewMode === 'split' || viewMode === 'pip' || viewMode === 'canvas' || viewMode === 'all-displays') {
             const primaryId = (stationDisplays[0]?.displayId ?? 'mon-0').toLowerCase();
             const secondId = (stationDisplays[1]?.displayId ?? 'mon-1').toLowerCase();
             return isPipSwapped ? secondId : primaryId;
@@ -932,7 +932,7 @@ export default function StudioVideoFeed({
             )}
 
             {/* Virtual Desktop Canvas View: Real physical OS monitor arrangement */}
-            {viewMode === 'canvas' && hasMultipleDisplays && (
+            {(viewMode === 'canvas' || viewMode === 'all-displays') && hasMultipleDisplays && (
                 <div className="feed-canvas-container">
                     <div className="feed-canvas-grid-bg" />
                     <div

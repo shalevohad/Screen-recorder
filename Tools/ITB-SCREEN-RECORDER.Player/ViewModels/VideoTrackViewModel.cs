@@ -15,14 +15,57 @@ public sealed class VideoTrackViewModel : ViewModelBase
     private AudioChannelMode _channelMode = AudioChannelMode.Both;
     private bool _isDucked;
     private float _vuPeak;
+    private double _canvasLeft;
+    private double _canvasTop;
+    private double _canvasWidth = 1920;
+    private double _canvasHeight = 1080;
+    private bool _isSelectedInCanvas;
 
     public int TrackIndex { get; set; }
     public string Hostname { get; set; } = string.Empty;
+    public string DisplayId { get; set; } = "mon-0";
     public int MonitorIndex { get; set; }
     public bool IsPrimary { get; set; }
     public string StreamUrl { get; set; } = string.Empty;
 
-    public string DisplayName => $"{Hostname} (Mon {MonitorIndex}){(IsPrimary ? " [Primary]" : "")}";
+    public int Width { get; set; } = 1920;
+    public int Height { get; set; } = 1080;
+    public int X { get; set; } = 0;
+    public int Y { get; set; } = 0;
+
+    public string DisplayName => $"{Hostname} (Mon {MonitorIndex + 1}){(IsPrimary ? " [Primary]" : "")}";
+    public string DisplayTitle => $"🖥 DISPLAY {MonitorIndex + 1}{(IsPrimary ? " [PRIMARY]" : "")}";
+    public string ResolutionLabel => $"{Width}×{Height}";
+
+    public double CanvasLeft
+    {
+        get => _canvasLeft;
+        set => SetProperty(ref _canvasLeft, value);
+    }
+
+    public double CanvasTop
+    {
+        get => _canvasTop;
+        set => SetProperty(ref _canvasTop, value);
+    }
+
+    public double CanvasWidth
+    {
+        get => _canvasWidth;
+        set => SetProperty(ref _canvasWidth, value);
+    }
+
+    public double CanvasHeight
+    {
+        get => _canvasHeight;
+        set => SetProperty(ref _canvasHeight, value);
+    }
+
+    public bool IsSelectedInCanvas
+    {
+        get => _isSelectedInCanvas;
+        set => SetProperty(ref _isSelectedInCanvas, value);
+    }
 
     public bool IsFocused
     {

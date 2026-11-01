@@ -265,29 +265,102 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var generatedTrackPaths = new List<string>();
                 var sessionTracks = new List<object>();
 
-                bool isMultiStation = job.StationIds.Count > 1;
-                double slicePerStation = 78.0 / Math.Max(1, job.StationIds.Count);
+                bool isAllDisplaysMode = string.Equals(job.LayoutMode, "all-displays", StringComparison.OrdinalIgnoreCase);
+
+                // Prepare discrete render items (handling single composite or all individual monitors per station)
+                var renderTasks = new List<(string StationId, string DisplayId, bool IsPrimary, int Width, int Height, int X, int Y, List<RecordingChunkMetadata> Chunks, SynchronizationPlan Plan)>();
+
+                for (int sIdx = 0; sIdx < job.StationIds.Count; sIdx++)
+                {
+                    string sId = job.StationIds[sIdx];
+                    var sChunks = allStationChunks.TryGetValue(sId, out var chunksList) ? chunksList : new List<RecordingChunkMetadata>();
+
+                    if (isAllDisplaysMode)
+                    {
+                        var displayGroups = sChunks
+                            .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
+                            .OrderBy(g => g.Key)
+                            .ToList();
+
+                        if (displayGroups.Count == 0)
+                        {
+                            var fallbackPlan = new SynchronizationPlan
+                            {
+                                ActiveSegments = plan.ActiveSegments,
+                                KeystrokeMode = plan.KeystrokeMode,
+                                LayoutMode = "mon-0",
+                                TargetDisplayId = "mon-0",
+                                RemovedGlobalGaps = plan.RemovedGlobalGaps,
+                                StationGaps = plan.StationGaps
+                            };
+                            renderTasks.Add((sId, "mon-0", true, 1920, 1080, 0, 0, sChunks, fallbackPlan));
+                        }
+                        else
+                        {
+                            int dispIndex = 0;
+                            int currentX = 0;
+                            foreach (var group in displayGroups)
+                            {
+                                string dispKey = group.Key;
+                                var repChunk = group.FirstOrDefault();
+                                int w = repChunk?.Width > 0 ? repChunk.Width : 1920;
+                                int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
+                                bool isPrimary = repChunk?.IsPrimary ?? (dispIndex == 0);
+                                int x = currentX;
+                                int y = 0;
+                                currentX += w;
+
+                                var dispPlan = new SynchronizationPlan
+                                {
+                                    ActiveSegments = plan.ActiveSegments,
+                                    KeystrokeMode = plan.KeystrokeMode,
+                                    LayoutMode = dispKey,
+                                    TargetDisplayId = dispKey,
+                                    RemovedGlobalGaps = plan.RemovedGlobalGaps,
+                                    StationGaps = plan.StationGaps
+                                };
+
+                                renderTasks.Add((sId, dispKey, isPrimary, w, h, x, y, sChunks, dispPlan));
+                                dispIndex++;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var repChunk = sChunks.FirstOrDefault();
+                        int w = repChunk?.Width > 0 ? repChunk.Width : 1920;
+                        int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
+                        bool isPrimary = true;
+                        string dispKey = !string.IsNullOrEmpty(job.TargetDisplayId) ? job.TargetDisplayId : "mon-0";
+
+                        renderTasks.Add((sId, dispKey, isPrimary, w, h, 0, 0, sChunks, plan));
+                    }
+                }
+
+                bool isMultiStation = renderTasks.Count > 1;
+                double slicePerTrack = 78.0 / Math.Max(1, renderTasks.Count);
                 var stopwatch = Stopwatch.StartNew();
                 DateTime lastPersistUtc = DateTime.UtcNow;
 
-                job.StatusMessage = $"Starting synchronized render ({job.StationIds.Count} stations)...";
+                job.StatusMessage = $"Starting synchronized render ({renderTasks.Count} track(s))...";
                 job.ProgressPercent = 5;
                 _ = _advanceRepository.UpsertJobAsync(job);
 
-                for (int i = 0; i < job.StationIds.Count; i++)
+                for (int i = 0; i < renderTasks.Count; i++)
                 {
-                    string stationId = job.StationIds[i];
-                    double baseStationProgress = 5.0 + (i * slicePerStation);
+                    var task = renderTasks[i];
+                    string stationSubId = isAllDisplaysMode ? $"{task.StationId}/{task.DisplayId}" : task.StationId;
+                    double baseTrackProgress = 5.0 + (i * slicePerTrack);
 
                     var trackProgress = new Progress<(double SecondsProcessed, double Fps, double SpeedMultiplier)>(p =>
                     {
                         double fraction = Math.Clamp(p.SecondsProcessed / exportedDurationSec, 0.0, 1.0);
-                        double totalProgress = baseStationProgress + (fraction * slicePerStation);
+                        double totalProgress = baseTrackProgress + (fraction * slicePerTrack);
                         job.ProgressPercent = (int)Math.Clamp(Math.Round(totalProgress, 0), 5, 84);
 
                         double remainingStationSec = Math.Max(0, exportedDurationSec - p.SecondsProcessed);
                         double totalRemSec = (remainingStationSec / Math.Max(0.1, p.SpeedMultiplier))
-                                           + ((job.StationIds.Count - 1 - i) * (exportedDurationSec / Math.Max(0.1, p.SpeedMultiplier)))
+                                           + ((renderTasks.Count - 1 - i) * (exportedDurationSec / Math.Max(0.1, p.SpeedMultiplier)))
                                            + 3.0;
 
                         job.EstimatedSecondsRemaining = Math.Round(totalRemSec, 0);
@@ -311,7 +384,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                         double builtMb = currentBuiltBytes / (1024.0 * 1024.0);
                         string speedTxt = p.SpeedMultiplier > 0.1 ? $"{p.SpeedMultiplier:0.1}x" : $"{job.SpeedMBps:0.1} MB/s";
-                        job.StatusMessage = $"Rendering Track {i + 1} of {job.StationIds.Count}: {stationId} ({p.Fps:0} fps, {speedTxt}) • Built: {builtMb:0.1} MB";
+                        job.StatusMessage = $"Rendering Track {i + 1} of {renderTasks.Count}: {task.StationId} ({task.DisplayId}) ({p.Fps:0} fps, {speedTxt}) • Built: {builtMb:0.1} MB";
 
                         if ((DateTime.UtcNow - lastPersistUtc).TotalSeconds >= 1.0)
                         {
@@ -321,17 +394,25 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     });
 
                     var trackResult = await _advancedExtractorService.CutSynchronizedTrackAsync(
-                        stationId, plan, allStationChunks[stationId], tempStagingDir, isMultiStation, trackProgress, CancellationToken.None);
+                        stationSubId, task.Plan, task.Chunks, tempStagingDir, isMultiStation, trackProgress, CancellationToken.None);
 
                     generatedTrackPaths.Add(trackResult.OutputFilePath);
 
                     sessionTracks.Add(new
                     {
-                        hostname = stationId,
+                        hostname = task.StationId,
+                        displayId = task.DisplayId,
+                        isPrimary = task.IsPrimary,
+                        width = task.Width,
+                        height = task.Height,
+                        x = task.X,
+                        y = task.Y,
                         videoFileName = Path.GetFileName(trackResult.OutputFilePath),
                         startOffsetMs = 0,
                         durationMs = exportedDurationSec * 1000.0,
-                        hasAudio = trackResult.HasAudio
+                        hasAudio = trackResult.HasAudio,
+                        audioChannels = 2,
+                        audioChannelMapping = "0:Loopback,1:Microphone"
                     });
                 }
 

@@ -900,11 +900,32 @@ Export archives (`*.tar` / `*.itbp`) contain multi-station, multi-monitor video 
 - **Master Playback Clock**: Coordinates playback rate, unified play/pause, scrub synchronization, and frame-stepping (`.` / `,`) across up to 8+ simultaneous 1080p/4K 60fps monitor streams.
 - **Drift Auto-Correction**: Secondary video streams continuously calibrate their presentation timestamps (PTS) against the master clock, realigning automatically if decoder lag exceeds 50ms.
 
-### 4. Multi-View Layouts & Tactical Navigation
-- **Responsive Dynamic Grid / Split**: Tiled multicam layouts (1x1, 1x2, 2x2, 2x3, 3x3) preserving native aspect ratios.
-- **Picture-in-Picture (PIP) & 1-Click Swap (`⇄`)**: Primary monitor viewport paired with a floating draggable secondary monitor card with instant stream swapping.
-- **Solo / Focus Zoom Mode**: Double-clicking or pressing `Space`/`F` instantly maximizes any focused camera to 100% viewport.
-- **Persistent Minimap Radar HUD**: Interactive multi-monitor topology minimap displayed in solo view, providing one-click monitor switching.
+### 4. Multi-View Layouts & Tactical Multi-Display Navigation
+- **Discrete Multi-Display Packaging (`all-displays`)**:
+  - Export engine (`AdvanceJobManager.cs` & `ExtractorService.cs`) slices discrete synchronized MP4 video files for every screen of every station (`recordings/{stationId}_{displayId}.mp4`).
+  - `session.json` registers physical display geometry (`width`, `height`, `x`, `y`, `displayId`, `isPrimary`).
+  - Secondary displays automatically borrow synchronized audio streams from `mon-0` when discrete microphone/loopback audio is anchored to the primary adapter.
+- **Station-to-Display Operational Hierarchy**:
+  - Top tactical tab bar partitions the fleet cleanly: `[ ⊞ ALL STATIONS | 🖥 STATION-01 (2 Screens) | 🖥 STATION-02 ... ]`.
+  - When an individual station is selected, displays are governed by `StationGroupViewModel` and normalized by `StationTopologyCalculator`.
+- **Virtual Desktop Topology Canvas (`PlayerViewMode.Canvas`)**:
+  - Reconstructs the exact physical OS monitor bounds and arrangement inside a scalable Viewbox Canvas.
+  - Monitors render at proportional pixel coordinates (`Canvas.Left`, `Canvas.Top`, `Width`, `Height`) with glowing tactical cyan borders, resolution badges (`1920×1080`), and click-to-focus zoom.
+- **Split Screen Mode (`PlayerViewMode.Split`)**:
+  - Displays all monitors of the active station side-by-side in equal aspect-ratio panes.
+- **Solo Zoom & Interactive Minimap Radar HUD (`PlayerViewMode.Solo`)**:
+  - 100% viewport focus on a single display with breadcrumb return (`⊞ BACK TO CANVAS`).
+  - Floating bottom-right Minimap HUD displays remaining station monitors with instant 1-click display hopping.
+- **General Canvas Fullscreen Presentation**:
+  - Pressing `F` or `F11` or clicking `⛶ FULLSCREEN` toggles borderless fullscreen presentation of the entire Virtual Desktop Canvas.
+- **Tactical Keyboard Hotkeys**:
+  - `Space`: Master Play / Pause
+  - `Left` / `Right`: High-precision scrub step (-5s / +5s)
+  - `1` .. `9`: Quick-switch display (or station in All Stations view)
+  - `0` or `C`: Return to Virtual Desktop Topology Canvas
+  - `S`: Switch to Split Screen
+  - `F` or `F11`: Toggle Fullscreen Canvas
+  - `Esc`: Exit Fullscreen or return from Solo mode back to Canvas
 
 ### 5. Multi-Station Audio Mixer Engine & Delayed Echo Neutralization
 - **Concurrent Multi-Station Audio Playback**: Unlike live NOC monitoring where audio is strictly soloed, replay enables operators to listen to multiple workstations simultaneously (e.g. Operator and Intercom/Supervisor) to reconstruct synchronized spoken communications.
