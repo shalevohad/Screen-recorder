@@ -22,7 +22,7 @@
 
 		<!-- Pass variables to WXS file -->
 		<DefineConstants>PublishDir=$(StagingDir);Version=$(Version)</DefineConstants>
-		<SuppressIces>ICE61</SuppressIces>
+		<SuppressIces>ICE61;ICE43;ICE57</SuppressIces>
 	</PropertyGroup>
 
 	<ItemGroup>

@@ -38,45 +38,47 @@
 
 		<!-- Components -->
 		<ComponentGroup Id="PlayerComponents" Directory="INSTALLFOLDER">
+			<!-- 1. Executable and Per-Machine File Associations -->
 			<Component Id="PlayerExecutable" Bitness="always64" Guid="D2A4F8B1-6E9C-4D3A-8F0E-1B5C7D9E3A2F">
-				<File Id="PlayerExe" Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.Player.exe" KeyPath="yes">
-					<!-- Start Menu Shortcut -->
-					<Shortcut Id="StartMenuShortcut"
-							  Directory="ApplicationProgramsFolder"
-							  Name="ITB Forensic Player"
-							  Description="ITB Forensic Investigation Package Replay Suite"
-							  WorkingDirectory="INSTALLFOLDER"
-							  Icon="PlayerAppIcon.ico"
-							  Advertise="no" />
-
-					<!-- Desktop Shortcut -->
-					<Shortcut Id="DesktopShortcut"
-							  Directory="DesktopFolder"
-							  Name="ITB Forensic Player"
-							  Description="ITB Forensic Investigation Package Replay Suite"
-							  WorkingDirectory="INSTALLFOLDER"
-							  Icon="PlayerAppIcon.ico"
-							  Advertise="no" />
-				</File>
+				<File Id="PlayerExe" Source="$(var.PublishDir)\ITB-SCREEN-RECORDER.Player.exe" KeyPath="yes" />
 
 				<!-- Registry entries for File Associations -->
-				<!-- 1. Associate .itbp (ITB Forensic Package) -->
+				<!-- Associate .itbp (ITB Forensic Package) -->
 				<ProgId Id="ITB.ForensicPackage" Description="ITB Forensic Investigation Package">
 					<Extension Id="itbp" ContentType="application/x-itb-package">
 						<Verb Id="open" Command="Open with ITB Forensic Player" TargetFile="PlayerExe" Argument="&quot;%1&quot;" />
 					</Extension>
 				</ProgId>
 
-				<!-- 2. Context Menu for .tar investigation packages -->
+				<!-- Context Menu for .tar investigation packages -->
 				<RegistryKey Root="HKCR" Key="SystemFileAssociations\.tar\shell\OpenWithITBPlayer">
 					<RegistryValue Type="string" Value="Open with ITB Forensic Player" />
 					<RegistryValue Key="command" Type="string" Value="&quot;[#PlayerExe]&quot; &quot;%1&quot;" />
 				</RegistryKey>
-
-				<!-- Remove shortcuts on uninstall -->
-				<RemoveFolder Id="CleanUpProgramMenuFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
 			</Component>
 
+			<!-- 2. Application Shortcuts (ICE43 & ICE57 Compliant with HKCU KeyPath) -->
+			<Component Id="PlayerShortcuts" Directory="ApplicationProgramsFolder" Guid="B1E2D3C4-F5A6-7B8C-9D0E-1F2A3B4C5D6E">
+				<Shortcut Id="StartMenuShortcut"
+						  Name="ITB Forensic Player"
+						  Description="ITB Forensic Investigation Package Replay Suite"
+						  Target="[#PlayerExe]"
+						  WorkingDirectory="INSTALLFOLDER"
+						  Icon="PlayerAppIcon.ico" />
+
+				<Shortcut Id="DesktopShortcut"
+						  Directory="DesktopFolder"
+						  Name="ITB Forensic Player"
+						  Description="ITB Forensic Investigation Package Replay Suite"
+						  Target="[#PlayerExe]"
+						  WorkingDirectory="INSTALLFOLDER"
+						  Icon="PlayerAppIcon.ico" />
+
+				<RemoveFolder Id="CleanUpProgramMenuFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+				<RegistryValue Root="HKCU" Key="Software\ITB\ForensicPlayer" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+			</Component>
+
+			<!-- 3. Staged Runtime Dependencies -->
 			<Files Include="$(var.PublishDir)\**">
 				<Exclude Files="$(var.PublishDir)\ITB-SCREEN-RECORDER.Player.exe" />
 			</Files>
