@@ -28,6 +28,9 @@
 18. [Multi-Monitor Mouse Pointer & Interaction Isolation Engine](#18-multi-monitor-mouse-pointer--interaction-isolation-engine-2026-10-28)
 19. [Zero-Black-Screen Persistent Player, Multi-Station Audio Listening & Studio Forensic Canvas Layout](#19-zero-black-screen-persistent-player-multi-station-audio-listening--studio-forensic-canvas-layout-2026-10-28)
 20. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination](#20-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
+21. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture](#21-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
+22. [Host GPU Hardware Detection & Architecture Diagnostics](#22-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
+23. [ITB Forensic Standalone Player Architecture & Zero-Extract Ingestion Engine](#23-itb-forensic-standalone-player-architecture--zero-extract-ingestion-engine-2026-11-01)
 
 ---
 
@@ -873,6 +876,59 @@ To guarantee 100% deterministic time representation regardless of host operating
 - **Studio Session Invariant (`ExtractorAdvancedStudio.jsx`)**:
   - `generateDefaultTimeRange` formats initial time scope using `formatDateTimeComponents`.
   - `parseSafeEpoch` parses ISO date strings without timezone indicators via `dateTimeToEpochMs` instead of browser-local parsing.
+
+---
+## 24. ITB Forensic Standalone Player Architecture & Zero-Extract Ingestion Engine (2026-11-01)
+
+### 1. Operational Mission & Problem Statement
+Investigation export archives (`Investigation_*.tar`) contain multi-station, multi-monitor forensic video streams (H.264/AAC MP4) bundled with a forensic metadata manifest (`session.json`). 
+- **Scale Problem**: Export archives routinely range between 10GB and 200GB+. Standard media players (including classic VLC) require investigators to manually decompress or extract the entire archive to disk before playback, demanding redundant storage pools and introducing 10–20 minute disk extraction bottlenecks.
+- **Forensic Standalone Player Goal**: Provide a dedicated, air-gapped, VLC-grade desktop player (`ITB-FORENSIC-PLAYER`) that streams and synchronizes multi-monitor feeds directly from the exported `.tar` container in <200ms with zero prior extraction, rendering gaps, subtitles, and telemetry HUD overlays.
+
+### 2. Zero-Extract Contiguous Block Streaming Engine
+- **POSIX/Pax TAR Direct Block Indexing**:
+  - Uncompressed TAR containers store files contiguously with 512-byte headers.
+  - Upon file selection (`.tar` or `.itbp`), `TarVirtualFileSystem` scans headers sequentially in under 50ms, compiling an in-memory byte-offset index `(StartByteOffset, LengthBytes)` for each embedded media file and `session.json`.
+  - Zero disk extraction or file duplication is performed.
+- **In-Process Loopback HTTP 206 Range Server**:
+  - A lightweight, ephemeral in-process loopback HTTP server (bound to `127.0.0.1:{ephemeralPort}`) serves individual tracks at `http://127.0.0.1:{port}/stream/{trackIndex}`.
+  - When media player decoders request byte chunks (`Range: bytes=start-end`), the loopback server opens the `.tar` archive using non-locking `FileShare.ReadWrite` streams, seeks directly to `TarOffset + HttpRangeStart`, and streams raw MP4 bytes.
+  - Enables instant random-access seeking, rapid scrub buffering, and sub-millisecond timeline jumping across files of arbitrary size.
+
+### 3. LibVLC-Grade Multi-Stream Hardware Playback Core
+- Built on `LibVLCSharp` (.NET 8) backed by native `libvlc.dll`, guaranteeing complete codec independence and GPU hardware decoding acceleration (Direct3D 11 / NVDEC / QSV).
+- **Master Playback Clock**: Coordinates playback rate, unified play/pause, scrub synchronization, and frame-stepping (`.` / `,`) across up to 8+ simultaneous 1080p/4K 60fps monitor streams.
+- **Drift Auto-Correction**: Secondary video streams continuously calibrate their presentation timestamps (PTS) against the master clock, realigning automatically if decoder lag exceeds 50ms.
+
+### 4. Multi-View Forensic Layouts & Tactical Navigation
+- **Responsive Dynamic Grid / Split**: Tiled multicam layouts (1x1, 1x2, 2x2, 2x3, 3x3) preserving native aspect ratios.
+- **Picture-in-Picture (PIP) & 1-Click Swap (`⇄`)**: Primary monitor viewport paired with a floating draggable secondary monitor card with instant stream swapping.
+- **Solo / Focus Zoom Mode**: Double-clicking or pressing `Space`/`F` instantly maximizes any focused camera to 100% viewport.
+- **Persistent Minimap Radar HUD**: Interactive multi-monitor topology minimap displayed in solo view, providing one-click monitor switching.
+
+### 5. Multi-Station Audio Mixer Engine & Delayed Echo Neutralization
+- **Concurrent Multi-Station Audio Playback**: Unlike live NOC monitoring where audio is strictly soloed, forensic investigation enables operators to listen to multiple workstations simultaneously (e.g. Operator and Intercom/Supervisor) to reconstruct synchronized spoken communications.
+- **Per-Channel Channel Strips**: Each video feed features independent Volume (0–100%), individual Mute (`[M]`), instant Solo (`[S]`), live stereo VU meters, and spatial stereo panning (`L / C / R`) to separate distinct stations between Left and Right earcups in operator headphones.
+- **Discrete Dual-Channel Source Routing**:
+  - Ingests the 2-channel audio tracks recorded by the Agent (Channel 0 = System Loopback, Channel 1 = Physical Microphone).
+  - Includes mode selection: `[🎧 BOTH | 🎤 MIC ONLY | 🔊 SYS ONLY | ⮂ STEREO SPLIT]`.
+  - When listening to multiple stations, selecting **🎤 MIC ONLY** completely cuts delayed intercom and speaker bleed from the other workstations.
+- **Dynamic Voice Activity Cross-Ducking (Auto-Duck)**: Analyzes real-time leading voice envelopes; when Station A speaks, the delayed copy arriving over Station B's intercom/speakers is automatically ducked by -16dB, preventing unintelligible hollow double playback.
+- **Master Audio Bus**: Global volume control, master mute hotkey (`M`), and integrated peak limiting to prevent clipping distortion when multiple active audio feeds overlap.
+
+### 6. Forensic Timeline, Gap Visualizer & Keystroke Audit HUD
+- **Dual Time Projection**: Displays both elapsed playback time (`00:14:22 / 01:00:00`) and true wall-clock UTC (`2026-11-01 10:14:22 UTC`) derived from `rangeStartUtc`.
+- **Gap Scrubber Markers**:
+  - `removedGlobalGaps`: Visual orange hatched intervals on the seekbar indicate periods where fleet capture was paused or trimmed.
+  - `stationGaps`: Grey markers represent station-specific dropouts bridged with synthetic "No Signal" test patterns.
+  - Scrubber supports toggleable "Auto-Skip Gaps" playback mode.
+- **Keystroke & Telemetry Captions HUD**:
+  - Decodes embedded MP4 subtitle tracks (`mov_text` titled "Keystroke Audit") and external SRT/JSON event sidecars.
+  - Searchable Keystroke Audit Drawer: Operators can search for typed keywords, hotkeys, or process names, and click any event to seek all synchronized video feeds directly to that precise millisecond.
+
+### 7. Air-Gapped Packaging & OS Shell Integration
+- **Zero-Dependency Portable Distribution**: Self-contained single-file publish bundling native LibVLC runtime libraries for Windows (and Linux via Avalonia).
+- **Shell File Association**: Registers file associations for `.tar` and `.itbp` (ITB Package) to enable direct double-click launching from Windows Explorer.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
