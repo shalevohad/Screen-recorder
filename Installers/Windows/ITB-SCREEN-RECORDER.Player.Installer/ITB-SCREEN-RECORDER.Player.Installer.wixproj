@@ -44,4 +44,23 @@
 
 		<MakeDir Directories="$(FinalOutputDir)" />
 	</Target>
+
+	<Target Name="FinalizeDistributionPackage" AfterTargets="Build">
+		<Message Importance="high" Text="=== [2/2] Moving Final Package to Distribution Folder ($(FinalOutputDir)) ===" />
+		<MakeDir Directories="$(FinalOutputDir)" />
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FinalOutputDir)" SkipUnchangedFiles="false" />
+
+		<!-- Portable standalone binaries in Publish\Player\windows\standalone -->
+		<MakeDir Directories="$(FinalOutputDir)\standalone" />
+		<ItemGroup>
+			<StagedPlayerFiles Include="$(StagingDir)\**\*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(StagedPlayerFiles)" DestinationFolder="$(FinalOutputDir)\standalone\%(RecursiveDir)" SkipUnchangedFiles="false" />
+
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+	</Target>
+
+	<Target Name="CleanStagingOnProjectClean" AfterTargets="Clean">
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+	</Target>
 </Project>

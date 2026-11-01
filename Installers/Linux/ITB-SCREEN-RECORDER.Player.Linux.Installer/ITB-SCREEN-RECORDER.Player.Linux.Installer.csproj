@@ -22,23 +22,34 @@
 		<None Include="itb-package.xml" />
 	</ItemGroup>
 
-	<Target Name="BuildLinuxPlayerPackage" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
-		<Message Importance="high" Text="=== [1/4] Preparing Clean Player Staging ===" />
+	<Target Name="BuildLinuxPlayerPackage" AfterTargets="Build">
+		<Message Importance="high" Text="=== [1/5] Preparing Clean Player Staging ===" />
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 		<MakeDir Directories="$(StagingDir)/bin" />
 		<MakeDir Directories="$(FinalOutputDir)" />
 
-		<Message Importance="high" Text="=== [2/4] Publishing Player Core Engine (linux-x64) ===" />
+		<Message Importance="high" Text="=== [2/5] Publishing Player Core Engine (linux-x64) ===" />
 		<Exec Command="dotnet publish &quot;$(SolutionRoot)/Tools/ITB-SCREEN-RECORDER.Player.Core/ITB-SCREEN-RECORDER.Player.Core.csproj&quot; -c $(Configuration) -r linux-x64 --self-contained true -o &quot;$(StagingDir)/bin&quot;" />
 
-		<Message Importance="high" Text="=== [3/4] Staging Setup Scripts and Desktop MIME Definitions ===" />
+		<Message Importance="high" Text="=== [3/5] Staging Setup Scripts and Desktop MIME Definitions ===" />
 		<Copy SourceFiles="setup.sh" DestinationFolder="$(StagingDir)" />
 		<Copy SourceFiles="itb-forensic-player.desktop" DestinationFolder="$(StagingDir)" />
 		<Copy SourceFiles="itb-package.xml" DestinationFolder="$(StagingDir)" />
 
-		<Message Importance="high" Text="=== [4/4] Packing Self-Extracting .run Installer ===" />
+		<Message Importance="high" Text="=== [4/5] Packing Self-Extracting .run Installer ===" />
 		<Exec Command="$(PowerShellCmd) -NoProfile -ExecutionPolicy Bypass -Command &quot;&amp; '$(LinuxRoot)/BuildRunPackage.ps1' -PayloadDir '$(StagingDir)' -HeaderScript '$(MSBuildProjectDirectory)/installer-header.sh' -OutputFile '$(OutputRunFile)'&quot;" />
 
+		<Message Importance="high" Text="=== [5/5] Copying Standalone Binaries to Distribution Folder ($(FinalOutputDir)/standalone) ===" />
+		<MakeDir Directories="$(FinalOutputDir)/standalone" />
+		<ItemGroup>
+			<LinuxStagedFiles Include="$(StagingDir)/bin/**/*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(LinuxStagedFiles)" DestinationFolder="$(FinalOutputDir)/standalone/%(RecursiveDir)" SkipUnchangedFiles="false" />
+
+		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
+	</Target>
+
+	<Target Name="CleanStagingOnProjectClean" AfterTargets="Clean">
 		<RemoveDir Directories="$(StagingDir)" ContinueOnError="true" />
 	</Target>
 </Project>
