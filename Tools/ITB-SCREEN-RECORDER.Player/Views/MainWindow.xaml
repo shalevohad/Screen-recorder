@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:ITB_SCREEN_RECORDER.Player.ViewModels"
         xmlns:audio="clr-namespace:ITB_SCREEN_RECORDER.Player.Core.Audio;assembly=ITB-SCREEN-RECORDER.Player.Core"
         Title="ITB PLAYER"
-        Icon="Assets/app.ico"
+        Icon="pack://application:,,,/Assets/app.ico"
         Height="850" Width="1350"
         MinWidth="960" MinHeight="640"
         WindowStartupLocation="CenterScreen"
