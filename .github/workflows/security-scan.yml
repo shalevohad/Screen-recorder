@@ -1,4 +1,4 @@
-name: Dependency Security Architecture Scan
+name: Dependency & Code Security Architecture Scan
 
 on:
   push:
@@ -16,8 +16,36 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # נדרש להיסטוריה מלאה של commits עבור TruffleHog
 
-    # ─── .NET NuGet Vulnerability Scan ───────────────────────────────────────
+    # ─── שכבה 1: סריקת דליפת סודות ומפתחות (AI Leaks Defense) ─────────────
+    - name: Secret Leak Detection (TruffleHog)
+      uses: trufflesecurity/trufflehog@main
+      with:
+        extra_args: --only-verified
+
+    # ─── שכבה 2: ניתוח קוד סטטי (SAST) עם Semgrep עבור C# ו-JS/TS ────────
+    - name: Static Code Analysis (Semgrep)
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/csharp
+          p/typescript
+          p/react
+          p/security-audit
+          p/owasp-top-ten
+      env:
+        SEMGREP_RULES: p/ci
+
+    # ─── שכבה 3: בדיקת תלויות עוינות והזיות חבילות (Socket Security) ──────
+    - name: Scan NPM Dependencies with Socket.dev
+      uses: socketsecurity/socket-action@v1
+      continue-on-error: true # מומלץ להפעיל במצב אזהרה תחילה עד הגדרת הטוקן
+      with:
+        api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+
+    # ─── שכבה 4: סריקת פגיעויות ב-NuGet (.NET) ───────────────────────────
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
       with:
@@ -30,15 +58,12 @@ jobs:
       run: |
         OUTPUT=$(dotnet list ITB-Screen-Recorder.sln package --vulnerable 2>&1 || true)
         echo "$OUTPUT"
-        # Exit non-zero only when an actual vulnerability is reported.
-        # WiX projects on Linux skip restore and emit 'No assets file was found',
-        # exiting 1. We check specifically for actual vulnerability reports.
         if echo "$OUTPUT" | grep -q "has the following vulnerable"; then
           echo "::error::Vulnerable NuGet packages detected. Review the output above."
           exit 1
         fi
 
-    # ─── NPM Vulnerability Scan ──────────────────────────────────────────────
+    # ─── שכבה 5: סריקת NPM Audit קיימת ──────────────────────────────────
     - name: Use Node.js 20.x
       uses: actions/setup-node@v4
       with:
@@ -48,7 +73,6 @@ jobs:
 
     - name: Scan all NPM projects for vulnerabilities
       run: |
-        # Directories containing package.json / package-lock.json
         PROJECTS=(
           "./ITB-SCREEN-RECORDER.Server/ClientApp"
           "./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Client"
@@ -63,13 +87,13 @@ jobs:
 
             cd "$dir"
 
-            echo "-> Installing dependencies..."
-            npm ci --include=optional
+            echo "-> Installing dependencies without lifecycle scripts..."
+            # --ignore-scripts חוסם הרצת סקריפטים זדוניים בשלב ה-install
+            npm ci --include=optional --ignore-scripts
 
             echo "-> Running security audit (high + critical only)..."
             npm audit --audit-level=high || echo "::warning::Audit issues found in $dir"
 
-            # Return to repository root
             cd - > /dev/null
             echo ""
           else
