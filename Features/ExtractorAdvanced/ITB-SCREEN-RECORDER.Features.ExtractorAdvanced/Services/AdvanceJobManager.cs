@@ -364,10 +364,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     foreach (var p in distinctPlacements)
                     {
                         string sId = p.StationId;
-                        string targetDisp = !string.IsNullOrEmpty(p.DisplayId) ? p.DisplayId : "mon-0";
-
                         allStationChunks.TryGetValue(sId, out var sChunks);
                         sChunks ??= new List<RecordingChunkMetadata>();
+
+                        var availableDisps = sChunks.Select(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant()).Distinct().OrderBy(d => d).ToList();
+                        string targetDisp = ResolveTargetDisplayKey(p.DisplayId, availableDisps);
 
                         var dispChunks = sChunks.Where(c => string.Equals(c.DisplayId, targetDisp, StringComparison.OrdinalIgnoreCase)).ToList();
                         if (dispChunks.Count == 0) dispChunks = sChunks;
@@ -475,6 +476,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                     StartEpochMs = s.StartEpochMs,
                                     EndEpochMs = s.EndEpochMs,
                                     TargetDisplayId = s.TargetDisplayId,
+                                    TargetDisplayNumber = s.TargetDisplayNumber,
+                                    TargetDisplayName = s.TargetDisplayName,
                                     IsManualOverride = s.IsManualOverride
                                 }).ToList();
                             }
@@ -498,7 +501,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         int w = repChunk?.Width > 0 ? repChunk.Width : 1920;
                         int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
                         bool isPrimary = true;
-                        string dispKey = !string.IsNullOrEmpty(job.TargetDisplayId) ? job.TargetDisplayId : "mon-0";
+                        var availableDisps = sChunks.Select(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant()).Distinct().OrderBy(d => d).ToList();
+                        string dispKey = ResolveTargetDisplayKey(job.TargetDisplayId, availableDisps);
 
                         renderTasks.Add((sId, dispKey, isPrimary, w, h, 0, 0, sChunks, plan));
                     }
@@ -742,7 +746,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
                         {
                             if (string.Equals(tracks[tIdx].StationId, seg.TargetDisplayId, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(tracks[tIdx].DisplayId, seg.TargetDisplayId, StringComparison.OrdinalIgnoreCase))
+                                MatchesDisplay(seg.TargetDisplayId, tracks[tIdx].DisplayId, tIdx))
                             {
                                 inIdx = tIdx;
                                 break;
@@ -1126,6 +1130,62 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (hex.StartsWith("#")) hex = "0x" + hex.Substring(1);
             if (!hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = "0x" + hex;
             return hex;
+        }
+
+        public static string ResolveTargetDisplayKey(string? targetDisplayId, IEnumerable<string> availableDisplays)
+        {
+            var list = availableDisplays.ToList();
+            if (list.Count == 0) return "mon-0";
+            if (string.IsNullOrWhiteSpace(targetDisplayId)) return list[0];
+
+            string target = targetDisplayId.Trim();
+            var exact = list.FirstOrDefault(d => string.Equals(d, target, StringComparison.OrdinalIgnoreCase));
+            if (exact != null) return exact;
+
+            if (int.TryParse(target, out int num1) && num1 >= 1 && num1 <= list.Count)
+                return list[num1 - 1];
+
+            var m = System.Text.RegularExpressions.Regex.Match(target, @"(?:Screen|Display)\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (m.Success && int.TryParse(m.Groups[1].Value, out int sNum) && sNum >= 1 && sNum <= list.Count)
+                return list[sNum - 1];
+
+            var mMon = System.Text.RegularExpressions.Regex.Match(target, @"mon-(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (mMon.Success && int.TryParse(mMon.Groups[1].Value, out int monIdx))
+            {
+                var monMatch = list.FirstOrDefault(d => string.Equals(d, $"mon-{monIdx}", StringComparison.OrdinalIgnoreCase));
+                if (monMatch != null) return monMatch;
+                if (monIdx >= 1 && monIdx <= list.Count)
+                    return list[monIdx - 1];
+            }
+
+            return list[0];
+        }
+
+        public static bool MatchesDisplay(string? target, string trackDisplayId, int displayIndex)
+        {
+            if (string.IsNullOrWhiteSpace(target)) return displayIndex == 0;
+            string normTarget = target.Trim();
+            if (string.Equals(normTarget, trackDisplayId, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (int.TryParse(normTarget, out int oneBased) && oneBased - 1 == displayIndex)
+                return true;
+
+            var match = System.Text.RegularExpressions.Regex.Match(normTarget, @"(?:Screen|Display|mon-?)\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int extractedNum))
+            {
+                if (normTarget.StartsWith("Screen", StringComparison.OrdinalIgnoreCase) || normTarget.StartsWith("Display", StringComparison.OrdinalIgnoreCase))
+                {
+                    return extractedNum - 1 == displayIndex;
+                }
+                if (normTarget.StartsWith("mon", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (extractedNum == displayIndex) return true;
+                    if (extractedNum - 1 == displayIndex) return true;
+                }
+            }
+
+            return false;
         }
     }
 }

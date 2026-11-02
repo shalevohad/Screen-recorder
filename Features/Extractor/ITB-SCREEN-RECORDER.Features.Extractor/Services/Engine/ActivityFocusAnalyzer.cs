@@ -42,11 +42,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             // If station has 0 or 1 display, entire duration is single primary display segment
             if (displays.Count <= 1)
             {
+                int dispNum = ResolveDisplayNumber(primaryDisplayId, displays);
+                string dispName = ResolveDisplayName(primaryDisplayId, displays);
                 plan.Segments.Add(new StationDirectorSegmentDto
                 {
                     StartEpochMs = timelineStartEpochMs,
                     EndEpochMs = timelineEndEpochMs,
                     TargetDisplayId = primaryDisplayId,
+                    TargetDisplayNumber = dispNum,
+                    TargetDisplayName = dispName,
                     IsManualOverride = false,
                     TriggerReason = DirectorTriggerReason.Default,
                     TransitionDurationSec = 0.3
@@ -124,11 +128,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
 
                     if (cutTime > currentSegmentStart)
                     {
+                        int dispNum = ResolveDisplayNumber(currentDisplayId, displays);
+                        string dispName = ResolveDisplayName(currentDisplayId, displays);
                         plan.Segments.Add(new StationDirectorSegmentDto
                         {
                             StartEpochMs = currentSegmentStart,
                             EndEpochMs = cutTime,
                             TargetDisplayId = currentDisplayId,
+                            TargetDisplayNumber = dispNum,
+                            TargetDisplayName = dispName,
                             IsManualOverride = false,
                             TriggerReason = currentReason,
                             TransitionDurationSec = 0.3
@@ -144,11 +152,15 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             // Close trailing segment
             if (currentSegmentStart < timelineEndEpochMs)
             {
+                int dispNum = ResolveDisplayNumber(currentDisplayId, displays);
+                string dispName = ResolveDisplayName(currentDisplayId, displays);
                 plan.Segments.Add(new StationDirectorSegmentDto
                 {
                     StartEpochMs = currentSegmentStart,
                     EndEpochMs = timelineEndEpochMs,
                     TargetDisplayId = currentDisplayId,
+                    TargetDisplayNumber = dispNum,
+                    TargetDisplayName = dispName,
                     IsManualOverride = false,
                     TriggerReason = currentReason,
                     TransitionDurationSec = 0.3
@@ -188,6 +200,42 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
                 }
             }
             return fallbackDisplayId;
+        }
+
+        private static int ResolveDisplayNumber(string displayId, IReadOnlyList<DisplayMetadataDto> displays)
+        {
+            if (displays != null && displays.Count > 0)
+            {
+                for (int i = 0; i < displays.Count; i++)
+                {
+                    if (string.Equals(displays[i].DisplayId, displayId, StringComparison.OrdinalIgnoreCase))
+                        return displays[i].DisplayNumber > 0 ? displays[i].DisplayNumber : i + 1;
+                }
+            }
+            var m = System.Text.RegularExpressions.Regex.Match(displayId ?? string.Empty, @"\d+");
+            if (m.Success && int.TryParse(m.Value, out int n))
+            {
+                return (displayId ?? string.Empty).StartsWith("mon-", StringComparison.OrdinalIgnoreCase) ? n + 1 : n;
+            }
+            return 1;
+        }
+
+        private static string ResolveDisplayName(string displayId, IReadOnlyList<DisplayMetadataDto> displays)
+        {
+            if (displays != null && displays.Count > 0)
+            {
+                for (int i = 0; i < displays.Count; i++)
+                {
+                    if (string.Equals(displays[i].DisplayId, displayId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!string.IsNullOrWhiteSpace(displays[i].DisplayName))
+                            return displays[i].DisplayName;
+                        return $"Screen {i + 1}";
+                    }
+                }
+            }
+            int num = ResolveDisplayNumber(displayId, displays ?? Array.Empty<DisplayMetadataDto>());
+            return $"Screen {num}";
         }
     }
 }

@@ -1355,8 +1355,32 @@ When `LayoutMode = "custom"` or `CanvasLayout` is supplied in `AdvanceCutRequest
   - **Forensic Inspection API (`/inspect`)**: Returns bidirectional `RoleToStationMap` and `StationToRoleMap` along with `RoleHistory` corresponding specifically to the inspected time window.
   - **Master MP4 Export Pipeline**: When external systems request a cut for "Commander" at a given time window, `AdvanceJobManager` resolves the role alias to the physical machine that actually operated as Commander **during that historical time range**, completely preventing accidental extraction of stations that only assumed the role at a later date.
 
----
 
+### 7. Universal 1-Based Display & Screen Numbering Standard across UI, DTOs & Export Pipeline (2026-11-02)
+
+- **Requirement & Mission Objective**:
+  - In tactical command centers and multi-display environments, screen numbering must strictly start from **1** (`Screen 1`, `Screen 2`, `Display 1`, `Display 2`) across all operator interfaces, timeline tracks, inspector dialogs, and external API responses.
+  - Exposing raw zero-indexed hardware device keys (e.g. `mon-0`) in user badges, tooltips, or director cut segments is prohibited.
+- **Data Model & DTO Standard**:
+  - `DisplayMetadataDto`: Added `DisplayNumber` (`int`, 1-based) alongside `DisplayName` (`"Screen 1"`, `"Screen 2"`).
+  - `StationDirectorSegmentDto` and `DirectorCutSegmentDto`: Added `TargetDisplayNumber` (`int`, 1-based) and `TargetDisplayName` (`string`, e.g. `"Screen 1"`, `"Screen 2"`).
+  - `StationDisplayInspectionDto`: Emits `DisplayNumber` (1, 2...) and clean `DisplayName` without hardware suffixes.
+- **Auto-Director Bitrate Focus Hysteresis Resolution**:
+  - In dual/multi-display environments where keystroke coordinates are unmapped, `ComputeStationDirectorPlanAsync` infers focus transitions by comparing chunk encoding bitrates across monitors over time slices.
+  - Previous implementations emitted isolated `MouseMove` events that were discarded by the hysteresis minimum dwell threshold (`minDwellMs`). The analyzer now tracks active display continuity (`lastActiveDisp`) and triggers immediate cut transitions (`ActivityEventType.MouseClick`) when encoding bitrate shifts between displays and smoothly returns to the primary monitor when active work returns.
+- **Bidirectional Display Identifier Resolution (`AdvanceJobManager.cs`)**:
+  - External API clients and UI components can refer to displays using any convention:
+    - 1-Based Numbers: `"1"`, `"2"`, `"3"`
+    - Tactical Names: `"Screen 1"`, `"Screen 2"`, `"Display 1"`, `"Display 2"`
+    - Hardware Keys: `"mon-0"`, `"mon-1"`, `"mon-2"`
+  - `ResolveTargetDisplayKey` and `MatchesDisplay` automatically normalize and resolve these references to the appropriate track and stream segments, ensuring 100% interoperability without breaks.
+- **Frontend Living UI Alignments**:
+  - `DirectorTrack.jsx`: Active badge displays `⚡ AUTO: SCREEN 1` or `✋ OVERRIDE: SCREEN 2`. Timeline segment badges display `SCREEN 1` / `SCREEN 2`. Hover quick-action buttons display `1`, `2` (1-based).
+  - `StudioVideoFeed.jsx`: Split view pane headers render `SCREEN 1` and `SCREEN 2`. PiP inset header renders `PiP: SCREEN 2`. Multicam Punch buttons render `SCREEN 1`, `SCREEN 2`. Orientation banner renders `⚡ AUTO-DIRECTOR: SCREEN 1` (or active screen).
+  - `PersistentMinimapHud.jsx`: Radar overlay displays active orientation as `SCREEN 1` / `SCREEN 2` with numeric nodes `1`, `2`.
+  - `SoloSpotlightModal.jsx`: Export cut action button displays `EXPORT CUT (SCREEN 1)` or `EXPORT CUT (SCREEN 2)`.
+
+---
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

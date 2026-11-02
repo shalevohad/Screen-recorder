@@ -95,6 +95,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public long StartEpochMs { get; set; }
         public long EndEpochMs { get; set; }
         public string TargetDisplayId { get; set; } = "mon-0";
+        public int TargetDisplayNumber { get; set; } = 1;
+        public string TargetDisplayName { get; set; } = "Screen 1";
         public bool IsManualOverride { get; set; } = false;
     }
 }

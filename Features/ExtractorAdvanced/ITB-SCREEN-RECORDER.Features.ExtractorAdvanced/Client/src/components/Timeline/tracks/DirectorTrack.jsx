@@ -1,7 +1,7 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/DirectorTrack.jsx
 // ==========================================
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './DirectorTrack.scss';
 
@@ -60,16 +60,38 @@ export default function DirectorTrack({
         });
     }, [segments, vpStartEpoch, vpEndEpoch]);
 
-    // Format list of displays
+    // Format list of displays with 1-based numbering
     const displayList = useMemo(() => {
         if (availableDisplays && availableDisplays.length > 0) {
-            return availableDisplays.map(d => ({
-                id: (d.displayId ?? d.DisplayId ?? 'mon-0').toLowerCase(),
-                label: (d.displayName ?? d.DisplayName ?? d.displayId ?? 'mon-0').toUpperCase()
-            }));
+            return availableDisplays.map((d, idx) => {
+                const id = (d.displayId ?? d.DisplayId ?? `mon-${idx}`).toLowerCase();
+                const num = d.displayNumber ?? d.DisplayNumber ?? (idx + 1);
+                const rawName = d.displayName || d.DisplayName || `Screen ${num}`;
+                const label = rawName.replace(/\s*\(mon-\d+\)/i, '').trim().toUpperCase();
+                return {
+                    id,
+                    number: num,
+                    label
+                };
+            });
         }
         return [];
     }, [availableDisplays]);
+
+    const getDisplayLabel = useCallback((dispId) => {
+        if (!dispId) return 'SCREEN 1';
+        const norm = dispId.toLowerCase();
+        const found = displayList.find(d => d.id === norm);
+        if (found) return found.label;
+        if (norm === 'mon-0' || norm === '0') return 'SCREEN 1';
+        if (norm === 'mon-1' || norm === '1') return 'SCREEN 2';
+        const match = norm.match(/\d+/);
+        if (match) {
+            const n = parseInt(match[0], 10);
+            return `SCREEN ${norm.startsWith('mon-') ? n + 1 : n}`;
+        }
+        return dispId.toUpperCase();
+    }, [displayList]);
 
     // Close menu on outside click
     useEffect(() => {
@@ -105,11 +127,11 @@ export default function DirectorTrack({
                 <span className="director-title">DIRECTOR FOCUS</span>
                 <span 
                     className={`director-active-badge ${isActiveOverride ? 'is-override' : 'is-auto'}`}
-                    title={`Current orientation at playhead: ${activeDisplayId} (${isActiveOverride ? 'Manual Override' : 'Auto-Director'}) [${activeStartClock} - ${activeEndClock}]`}
+                    title={`Current orientation at playhead: ${getDisplayLabel(activeDisplayId)} (${isActiveOverride ? 'Manual Override' : 'Auto-Director'}) [${activeStartClock} - ${activeEndClock}]`}
                 >
                     <span className="badge-pulse" />
                     {isActiveOverride ? '✋ OVERRIDE: ' : '⚡ AUTO: '}
-                    {activeDisplayId}
+                    {getDisplayLabel(activeDisplayId)}
                     {activeStartClock && (
                         <span className="active-interval-time">
                             [{activeStartClock} - {activeEndClock}]
@@ -142,7 +164,8 @@ export default function DirectorTrack({
                 {visibleSegments.map((seg, idx) => {
                     const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
                     const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
-                    const targetDisplay = (seg.targetDisplayId ?? seg.TargetDisplayId ?? 'mon-0').toUpperCase();
+                    const targetDisplay = (seg.targetDisplayId ?? seg.TargetDisplayId ?? 'mon-0').toLowerCase();
+                    const targetDisplayLabel = getDisplayLabel(targetDisplay);
                     const isOverride = Boolean(seg.isManualOverride ?? seg.IsManualOverride);
                     const isAtPlayhead = playheadEpoch >= s && playheadEpoch <= e;
 
@@ -160,7 +183,7 @@ export default function DirectorTrack({
                                 left: `${leftPct}%`,
                                 width: `${widthPct}%`
                             }}
-                            title={`${isOverride ? 'Manual Override' : 'Auto-Director'}: ${targetDisplay} (${Math.round((e - s) / 1000)}s) • Click for options`}
+                            title={`${isOverride ? 'Manual Override' : 'Auto-Director'}: ${targetDisplayLabel} (${Math.round((e - s) / 1000)}s) • Click for options`}
                             onClick={(ev) => {
                                 ev.stopPropagation();
                                 const rect = ev.currentTarget.getBoundingClientRect();
@@ -169,7 +192,7 @@ export default function DirectorTrack({
                                     e,
                                     x: rect.left,
                                     y: rect.bottom + 4,
-                                    targetDisplay: targetDisplay.toLowerCase(),
+                                    targetDisplay: targetDisplay,
                                     isOverride
                                 });
                             }}
@@ -182,7 +205,7 @@ export default function DirectorTrack({
                                     e,
                                     x: rect.left,
                                     y: rect.bottom + 4,
-                                    targetDisplay: targetDisplay.toLowerCase(),
+                                    targetDisplay: targetDisplay,
                                     isOverride
                                 });
                             }}
@@ -191,7 +214,7 @@ export default function DirectorTrack({
                                 {isOverride ? '✋' : '⚡'}
                             </span>
                             <span className="segment-badge-label">
-                                {targetDisplay}
+                                {targetDisplayLabel}
                             </span>
                             {widthPct >= 5 && (
                                 <span className="segment-badge-time">
@@ -210,8 +233,8 @@ export default function DirectorTrack({
                             {/* Tactical inline quick-actions on hover */}
                             <div className="segment-quick-actions" onClick={(ev) => ev.stopPropagation()}>
                                 {displayList.map(disp => {
-                                    const isCurrent = disp.id === targetDisplay.toLowerCase();
-                                    const shortNum = disp.id.replace('mon-', '');
+                                    const isCurrent = disp.id === targetDisplay;
+                                    const shortNum = disp.number;
                                     return (
                                         <button
                                             key={disp.id}

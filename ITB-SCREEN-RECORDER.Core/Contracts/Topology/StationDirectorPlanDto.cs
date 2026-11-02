@@ -35,6 +35,8 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Topology
         public long StartEpochMs { get; set; }
         public long EndEpochMs { get; set; }
         public string TargetDisplayId { get; set; } = "mon-0"; // "mon-0", "mon-1", etc.
+        public int TargetDisplayNumber { get; set; } = 1;      // 1-based display number: 1, 2, ...
+        public string TargetDisplayName { get; set; } = "Screen 1";
         public bool IsManualOverride { get; set; }
         public DirectorTriggerReason TriggerReason { get; set; } = DirectorTriggerReason.Default;
         public double TransitionDurationSec { get; set; } = 0.3; // Default 300ms Dip-to-Black

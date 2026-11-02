@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Xml.Serialization;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
+using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
 using Moq;
 using Xunit;
@@ -401,5 +402,71 @@ public class ExternalApiAndCustomCanvasTests
         var map2 = rolesShift2.ToDictionary(kvp => kvp.Value, kvp => kvp.Key, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("WS-BRAVO", map2["Commander"]);
         Assert.Equal("WS-ALPHA", map2["Observer"]);
+    }
+
+    [Fact]
+    public void ActivityFocusAnalyzer_NumbersDisplaysStartingFromOne()
+    {
+        var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
+        var topology = new StationDisplayTopologyDto
+        {
+            Hostname = "WS-COMMAND",
+            Displays = new List<DisplayMetadataDto>
+            {
+                new DisplayMetadataDto { DisplayId = "mon-0", DisplayNumber = 1, DisplayName = "Screen 1", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 },
+                new DisplayMetadataDto { DisplayId = "mon-1", DisplayNumber = 2, DisplayName = "Screen 2", IsPrimary = false, X = 1920, Y = 0, Width = 1920, Height = 1080 }
+            }
+        };
+
+        var events = new List<ActivityEventDto>
+        {
+            new ActivityEventDto { TimestampEpochMs = 1700000005000, Type = ActivityEventType.MouseClick, DisplayId = "mon-1" }
+        };
+
+        var plan = analyzer.AnalyzeFocus("WS-COMMAND", 1700000000000, 1700000010000, topology, events);
+
+        Assert.NotEmpty(plan.Segments);
+        // First segment (mon-0) must be numbered starting at 1
+        var seg0 = plan.Segments[0];
+        Assert.Equal("mon-0", seg0.TargetDisplayId);
+        Assert.Equal(1, seg0.TargetDisplayNumber);
+        Assert.Equal("Screen 1", seg0.TargetDisplayName);
+
+        // Second segment (mon-1) must be numbered starting at 2
+        var seg1 = plan.Segments[1];
+        Assert.Equal("mon-1", seg1.TargetDisplayId);
+        Assert.Equal(2, seg1.TargetDisplayNumber);
+        Assert.Equal("Screen 2", seg1.TargetDisplayName);
+    }
+
+    [Theory]
+    [InlineData("1", "mon-0")]
+    [InlineData("2", "mon-1")]
+    [InlineData("Screen 1", "mon-0")]
+    [InlineData("Screen 2", "mon-1")]
+    [InlineData("Display 1", "mon-0")]
+    [InlineData("Display 2", "mon-1")]
+    [InlineData("mon-0", "mon-0")]
+    [InlineData("mon-1", "mon-1")]
+    public void AdvanceJobManager_ResolveTargetDisplayKey_SupportsOneBasedAndCanonicalKeys(string inputKey, string expectedResolved)
+    {
+        var availableDisplays = new[] { "mon-0", "mon-1" };
+        string resolved = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services.AdvanceJobManager.ResolveTargetDisplayKey(inputKey, availableDisplays);
+        Assert.Equal(expectedResolved, resolved);
+    }
+
+    [Theory]
+    [InlineData("1", "mon-0", 0, true)]
+    [InlineData("Screen 1", "mon-0", 0, true)]
+    [InlineData("2", "mon-1", 1, true)]
+    [InlineData("Screen 2", "mon-1", 1, true)]
+    [InlineData("mon-0", "mon-0", 0, true)]
+    [InlineData("mon-1", "mon-1", 1, true)]
+    [InlineData("mon-0", "mon-1", 1, false)]
+    [InlineData("Screen 1", "mon-1", 1, false)]
+    public void AdvanceJobManager_MatchesDisplay_CorrectlyMatchesTracks(string target, string trackDisplayId, int displayIndex, bool expectedMatch)
+    {
+        bool matched = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services.AdvanceJobManager.MatchesDisplay(target, trackDisplayId, displayIndex);
+        Assert.Equal(expectedMatch, matched);
     }
 }

@@ -565,19 +565,27 @@ export default function SoloSpotlightModal({
                             <span className="val">{formatCutDurationSMPTE(outPointMs - inPointMs)}</span>
                         </div>
 
-                        <button
-                            type="button"
-                            className="btn-export-cut-hero"
-                            onClick={handleTriggerExport}
-                            title={`Export Selected Cut Window as ${viewMode.toUpperCase()} (Ctrl+E)`}
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <polyline points="7 10 12 15 17 10" />
-                                <line x1="12" y1="15" x2="12" y2="3" />
-                            </svg>
-                            <span>{viewMode === 'all-displays' ? 'EXPORT ALL SCREENS & DIRECTOR' : `EXPORT CUT (${viewMode.toUpperCase()})`}</span>
-                        </button>
+                        {(() => {
+                            const viewModeLabel = viewMode === 'mon-0' ? 'SCREEN 1' :
+                                                  viewMode === 'mon-1' ? 'SCREEN 2' :
+                                                  viewMode.startsWith('mon-') ? `SCREEN ${parseInt(viewMode.slice(4)) + 1}` :
+                                                  viewMode.toUpperCase();
+                            return (
+                                <button
+                                    type="button"
+                                    className="btn-export-cut-hero"
+                                    onClick={handleTriggerExport}
+                                    title={`Export Selected Cut Window as ${viewModeLabel} (Ctrl+E)`}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                        <polyline points="7 10 12 15 17 10" />
+                                        <line x1="12" y1="15" x2="12" y2="3" />
+                                    </svg>
+                                    <span>{viewMode === 'all-displays' ? 'EXPORT ALL SCREENS & DIRECTOR' : `EXPORT CUT (${viewModeLabel})`}</span>
+                                </button>
+                            );
+                        })()}
                     </div>
 
                     <TransportBar

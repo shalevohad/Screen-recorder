@@ -37,7 +37,10 @@ export default function PersistentMinimapHud({
     }
 
     const activeDisplay = displays.find(d => (d.displayId ?? d.DisplayId) === activeDisplayId) || displays[0];
-    const activeLabel = activeDisplay ? (activeDisplay.displayId ?? activeDisplay.DisplayId ?? 'mon-0').toUpperCase() : 'MON-0';
+    const activeIndex = displays.indexOf(activeDisplay);
+    const rawLabel = activeDisplay ? (activeDisplay.displayName ?? activeDisplay.DisplayName ?? '') : '';
+    const cleanLabel = rawLabel.replace(/\s*\(mon-\d+\)/i, '').trim();
+    const activeLabel = (cleanLabel || SCREEN ).toUpperCase();
 
     return (
         <aside 

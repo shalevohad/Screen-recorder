@@ -98,13 +98,19 @@ export default function StudioVideoFeed({
             }
 
             const dispId = (d.displayId ?? d.DisplayId ?? `mon-${idx}`).toLowerCase();
-            const dispName = d.displayName || d.DisplayName || `Display ${idx + 1}`;
+            const dispNum = d.displayNumber ?? d.DisplayNumber ?? (idx + 1);
+            const rawName = d.displayName || d.DisplayName || '';
+            const cleanName = rawName.replace(/\s*\(mon-\d+\)/i, '').trim();
+            const dispName = cleanName || `Screen ${dispNum}`;
             const isPrimary = Boolean(d.isPrimary ?? d.IsPrimary ?? (idx === 0));
 
             return {
                 ...d,
                 displayId: dispId,
                 DisplayId: dispId,
+                displayIndex: idx,
+                displayNumber: dispNum,
+                DisplayNumber: dispNum,
                 displayName: dispName,
                 DisplayName: dispName,
                 isPrimary,
@@ -169,6 +175,25 @@ export default function StudioVideoFeed({
         const other = stationDisplays.find(d => (d.displayId ?? d.DisplayId ?? '').toLowerCase() !== activeDisplayId);
         return other ? (other.displayId ?? other.DisplayId).toLowerCase() : (stationDisplays[1]?.displayId || 'mon-1').toLowerCase();
     }, [hasMultipleDisplays, stationDisplays, activeDisplayId]);
+
+    const activeDisplayLabel = useMemo(() => {
+        const match = stationDisplays.find(d => (d.displayId ?? '').toLowerCase() === (activeDisplayId || '').toLowerCase());
+        if (match) return match.displayName || `Screen ${match.displayNumber || 1}`;
+        if (activeDisplayId === 'mon-0' || activeDisplayId === '0') return 'Screen 1';
+        if (activeDisplayId === 'mon-1' || activeDisplayId === '1') return 'Screen 2';
+        const m = (activeDisplayId || '').match(/\d+/);
+        if (m) {
+            const n = parseInt(m[0], 10);
+            return `Screen ${(activeDisplayId || '').startsWith('mon-') ? n + 1 : n}`;
+        }
+        return (activeDisplayId || 'Screen 1').toUpperCase();
+    }, [stationDisplays, activeDisplayId]);
+
+    const secondaryDisplayLabel = useMemo(() => {
+        const match = stationDisplays.find(d => (d.displayId ?? '').toLowerCase() === (secondaryDisplayId || '').toLowerCase());
+        if (match) return match.displayName || `Screen ${match.displayNumber || 2}`;
+        return 'Screen 2';
+    }, [stationDisplays, secondaryDisplayId]);
 
     const isCurrentManualOverride = useMemo(() => {
         if (viewMode !== 'director' && viewMode !== 'split' && viewMode !== 'pip' && viewMode !== 'canvas') return true;
@@ -646,15 +671,17 @@ export default function StudioVideoFeed({
                     <div className="toolbar-divider" />
                     {stationDisplays.map((d, i) => {
                         const id = (d.displayId ?? `mon-${i}`).toLowerCase();
+                        const num = d.displayNumber ?? (i + 1);
+                        const label = d.displayName || `Screen ${num}`;
                         return (
                             <button
                                 key={id}
                                 type="button"
                                 className={`btn-mode ${viewMode === id ? 'active' : ''}`}
                                 onClick={() => setViewMode(id)}
-                                title={`Pin directly to Display ${i + 1} (${id})`}
+                                title={`Pin directly to ${label}`}
                             >
-                                🖥️ {i + 1}
+                                🖥️ {num}
                             </button>
                         );
                     })}
@@ -667,6 +694,8 @@ export default function StudioVideoFeed({
                                 <span className="punch-strip-label">PUNCH:</span>
                                 {stationDisplays.map((d, i) => {
                                     const id = (d.displayId ?? `mon-${i}`).toLowerCase();
+                                    const num = d.displayNumber ?? (i + 1);
+                                    const label = d.displayName || `Screen ${num}`;
                                     const isPunchActive = activeDisplayId === id;
                                     return (
                                         <button
@@ -676,9 +705,9 @@ export default function StudioVideoFeed({
                                             onClick={() => {
                                                 onOverrideDisplay?.(stationId, baseEpochMs + playheadMs, id);
                                             }}
-                                            title={`Punch CAM ${i + 1} (${id.toUpperCase()}) as override at playhead`}
+                                            title={`Punch ${label} as override at playhead`}
                                         >
-                                            <span className="cam-num">CAM {i + 1}</span>
+                                            <span className="cam-num">SCREEN {num}</span>
                                             {isPunchActive && (
                                                 <span className="cam-status">
                                                     {isCurrentManualOverride ? '✋' : '⚡'}
@@ -713,8 +742,8 @@ export default function StudioVideoFeed({
                     <span className="banner-text">
                         {viewMode === 'canvas' ? '⊞ CANVAS (PHYSICAL OS TOPOLOGY)' :
                          viewMode === 'split' ? '🔲 SPLIT SCREEN (ALL MONITORS)' :
-                         viewMode === 'pip' ? `🪟 PiP MODE: ${activeDisplayId.toUpperCase()} (HERO)` :
-                         `${isCurrentManualOverride ? '✋ MANUAL OVERRIDE' : '⚡ AUTO-DIRECTOR'}: ${activeDisplayId.toUpperCase()}`}
+                         viewMode === 'pip' ? `🪟 PiP MODE: ${activeDisplayLabel.toUpperCase()} (HERO)` :
+                         `${isCurrentManualOverride ? '✋ MANUAL OVERRIDE' : '⚡ AUTO-DIRECTOR'}: ${activeDisplayLabel.toUpperCase()}`}
                     </span>
                     {isCurrentManualOverride && viewMode === 'director' && onResetOverride && (
                         <button
@@ -888,7 +917,7 @@ export default function StudioVideoFeed({
                 <div className="feed-split-container">
                     <div className="split-pane pane-primary">
                         <div className="split-pane-header">
-                            <span>DISPLAY 1 ({activeDisplayId.toUpperCase()})</span>
+                            <span>SCREEN 1</span>
                         </div>
                         {frameResult && frameResult !== 'NO_SIGNAL' ? (
                             <img src={frameResult} className="split-frame-img" alt="Display 1" />
@@ -899,7 +928,7 @@ export default function StudioVideoFeed({
                     <div className="split-pane-divider" />
                     <div className="split-pane pane-secondary">
                         <div className="split-pane-header">
-                            <span>DISPLAY 2 ({(secondaryDisplayId || 'MON-1').toUpperCase()})</span>
+                            <span>SCREEN 2</span>
                         </div>
                         {secondaryFrameResult && secondaryFrameResult !== 'NO_SIGNAL' ? (
                             <img src={secondaryFrameResult} className="split-frame-img" alt="Display 2" />
@@ -921,7 +950,7 @@ export default function StudioVideoFeed({
                     title="Click to swap primary and secondary screens"
                 >
                     <div className="pip-header">
-                        <span>PiP: {(secondaryDisplayId || 'MON-1').toUpperCase()}</span>
+                        <span>PiP: {secondaryDisplayLabel.toUpperCase()}</span>
                         <span className="pip-swap-hint">⇄ SWAP</span>
                     </div>
                     {secondaryFrameResult && secondaryFrameResult !== 'NO_SIGNAL' ? (

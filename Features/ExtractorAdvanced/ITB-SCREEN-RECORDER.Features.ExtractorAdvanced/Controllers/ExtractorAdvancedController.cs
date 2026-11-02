@@ -123,20 +123,38 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 var distinctDisplays = chunks
                     .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
                     .OrderBy(g => g.Key)
-                    .Select((g, idx) => new DisplayMetadataDto
+                    .Select((g, idx) =>
                     {
-                        DisplayId = g.Key,
-                        IsPrimary = g.Key == "mon-0",
-                        X = idx * 1920,
-                        Y = 0,
-                        Width = 1920,
-                        Height = 1080
+                        var dSample = g.LastOrDefault();
+                        int dWidth = dSample?.Width > 0 ? dSample.Width : 1920;
+                        int dHeight = dSample?.Height > 0 ? dSample.Height : 1080;
+                        return new DisplayMetadataDto
+                        {
+                            DisplayId = g.Key,
+                            DisplayNumber = idx + 1,
+                            DisplayName = $"Screen {idx + 1}",
+                            IsPrimary = idx == 0 || g.Key == "mon-0",
+                            X = idx * dWidth,
+                            Y = 0,
+                            Width = dWidth,
+                            Height = dHeight
+                        };
                     })
                     .ToList();
 
                 if (distinctDisplays.Count == 0)
                 {
-                    distinctDisplays.Add(new DisplayMetadataDto { DisplayId = "mon-0", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 });
+                    distinctDisplays.Add(new DisplayMetadataDto
+                    {
+                        DisplayId = "mon-0",
+                        DisplayNumber = 1,
+                        DisplayName = "Screen 1",
+                        IsPrimary = true,
+                        X = 0,
+                        Y = 0,
+                        Width = 1920,
+                        Height = 1080
+                    });
                 }
 
                 var plan = await ComputeStationDirectorPlanAsync(stationId, lStart, lEnd, chunks, distinctDisplays);
@@ -222,6 +240,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     }
 
                     var timeList = timeSlices.Where(t => t >= startEpochMs && t <= endEpochMs).ToList();
+                    string lastActiveDisp = primaryKey;
+
                     for (int i = 0; i < timeList.Count - 1; i++)
                     {
                         long t0 = timeList[i];
@@ -246,14 +266,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                             }
                         }
 
-                        if (!string.IsNullOrEmpty(dominantDisp) && !string.Equals(dominantDisp, primaryKey, StringComparison.OrdinalIgnoreCase))
+                        if (!string.IsNullOrEmpty(dominantDisp) && !string.Equals(dominantDisp, lastActiveDisp, StringComparison.OrdinalIgnoreCase))
                         {
                             activityEvents.Add(new ActivityEventDto
                             {
                                 TimestampEpochMs = t0 + 1000,
-                                Type = ActivityEventType.MouseMove,
+                                Type = ActivityEventType.MouseClick,
                                 DisplayId = dominantDisp
                             });
+                            lastActiveDisp = dominantDisp;
                         }
                     }
                 }
@@ -352,7 +373,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                                 displayId = g.Key,
                                 displayIndex = idx,
                                 displayNumber = idx + 1,
-                                displayName = $"Display {idx + 1} ({g.Key})",
+                                displayName = $"Screen {idx + 1}",
                                 isPrimary = isPrimary,
                                 hasAudio = dHasAudio,
                                 x = idx * dWidth,
@@ -372,7 +393,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                             displayId = "mon-0",
                             displayIndex = 0,
                             displayNumber = 1,
-                            displayName = "Display 1 (mon-0)",
+                            displayName = "Screen 1",
                             isPrimary = true,
                             hasAudio = hasAudio,
                             x = 0,
@@ -687,7 +708,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                             {
                                 DisplayId = g.Key,
                                 DisplayNumber = idx + 1,
-                                DisplayName = $"Display {idx + 1} ({g.Key})",
+                                DisplayName = $"Screen {idx + 1}",
                                 IsPrimary = isPrimary,
                                 HasAudio = dHasAudio,
                                 X = idx * dWidth,
@@ -706,7 +727,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         {
                             DisplayId = "mon-0",
                             DisplayNumber = 1,
-                            DisplayName = "Display 1 (mon-0)",
+                            DisplayName = "Screen 1",
                             IsPrimary = true,
                             HasAudio = hasAudio,
                             X = 0,
