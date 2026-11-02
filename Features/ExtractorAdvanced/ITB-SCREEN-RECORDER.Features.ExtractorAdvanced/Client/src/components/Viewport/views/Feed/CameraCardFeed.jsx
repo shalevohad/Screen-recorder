@@ -22,7 +22,8 @@ export default function CameraCardFeed({
     isSpotlightActive,
     globalGaps = [],
     recordingSegments = {},
-    playbackSpeed = 1
+    playbackSpeed = 1,
+    activeAudioStationId = null
 }) {
     const stationName = station.hostname || station.name || '';
     const roundedEpochMs = Math.round(currentEpochMs);
@@ -57,23 +58,40 @@ export default function CameraCardFeed({
         return currentEpochMs >= s && currentEpochMs <= e;
     });
 
+    const isCurrentStationAudioActive = Boolean(
+        isSolo
+            ? !getAudioSettings().isMuted
+            : (activeAudioStationId && (station.id === activeAudioStationId || stationName === activeAudioStationId))
+    );
+
     const applyAudioToVideo = useCallback(() => {
         if (!videoRef.current) return;
         const audio = getAudioSettings();
-        videoRef.current.volume = audio.volume;
-        videoRef.current.muted = audio.isMuted;
-    }, []);
+        if (isSolo) {
+            videoRef.current.volume = audio.volume;
+            videoRef.current.muted = audio.isMuted;
+        } else {
+            const isActive = Boolean(activeAudioStationId && (station.id === activeAudioStationId || stationName === activeAudioStationId));
+            videoRef.current.muted = !isActive;
+            if (isActive) {
+                videoRef.current.volume = audio.volume;
+            }
+        }
+    }, [isSolo, activeAudioStationId, station.id, stationName]);
+
+    useEffect(() => {
+        applyAudioToVideo();
+    }, [applyAudioToVideo]);
 
     useEffect(() => {
         const handleAudioChange = (e) => {
             if (videoRef.current && e.detail) {
-                videoRef.current.volume = e.detail.volume;
-                videoRef.current.muted = e.detail.isMuted;
+                applyAudioToVideo();
             }
         };
         window.addEventListener('itb-audio-state-changed', handleAudioChange);
         return () => window.removeEventListener('itb-audio-state-changed', handleAudioChange);
-    }, []);
+    }, [applyAudioToVideo]);
 
     useEffect(() => {
         if (videoRef.current) {
@@ -85,7 +103,7 @@ export default function CameraCardFeed({
     useEffect(() => {
         if (isOffline || !roundedEpochMs || !stationName) return;
 
-        if (isPlaying && isSolo && isVideoReady) {
+        if (isPlaying && isVideoReady) {
             prevIsPlayingRef.current = true;
             return;
         }
@@ -145,7 +163,21 @@ export default function CameraCardFeed({
     }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady, activeDisplayId]);
 
     useEffect(() => {
-        if (!stationName || !isSolo) return;
+        const shouldStream = isSolo || isPlaying;
+        if (!stationName || !shouldStream) {
+            if (!isPlaying) {
+                if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
+                isSeekingRef.current = false;
+                setStreamSrc('');
+                setIsVideoReady(false);
+                if (videoRef.current) {
+                    videoRef.current.pause();
+                    videoRef.current.removeAttribute('src');
+                    videoRef.current.load();
+                }
+            }
+            return;
+        }
 
         let debounceTimer = null;
 
@@ -159,7 +191,7 @@ export default function CameraCardFeed({
 
                 setIsVideoReady(false);
                 setStreamSrc(url);
-            }, 100);
+            }, 80);
 
         } else if (!isPlaying) {
             if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
@@ -176,15 +208,17 @@ export default function CameraCardFeed({
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
         };
-    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
+    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId]);
 
-    // Handle user seek actions while playing in Solo mode on this card, rebinding stream offset
+    // Handle user seek actions while playing, rebinding stream offset when user seeks
     useEffect(() => {
-        if (!stationName || !isSolo) return;
+        const shouldStream = isSolo || isPlaying;
+        if (!stationName || !shouldStream) return;
 
         const currentHead = currentRelativeMsRef.current;
         const diff = Math.abs(currentHead - lastEmittedMsRef.current);
-        if (!isPlaying || diff < 15) {
+        // Only re-request video if user performed a significant scrub (> 800ms)
+        if (!isPlaying || diff < 800) {
             lastEmittedMsRef.current = currentHead;
             return;
         }
@@ -218,7 +252,24 @@ export default function CameraCardFeed({
                 clearTimeout(seekDebounceTimerRef.current);
             }
         };
-    }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment]);
+    }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId]);
+
+    // Anti-drift synchronization for Grid mode: gently aligns video.currentTime with master playhead epoch
+    useEffect(() => {
+        if (isSolo || !isPlaying || !videoRef.current || !isVideoReady || isSeekingRef.current) return;
+
+        const expectedVideoSec = (currentRelativeMsRef.current - streamStartOffsetMsRef.current) / 1000;
+        if (expectedVideoSec >= 0) {
+            const video = videoRef.current;
+            const currentSec = video.currentTime;
+            const drift = Math.abs(currentSec - expectedVideoSec);
+            if (drift > 0.35 && drift < 3.0) {
+                try {
+                    video.currentTime = expectedVideoSec;
+                } catch { }
+            }
+        }
+    }, [isSolo, isPlaying, currentEpochMs, isVideoReady]);
 
     // Monotonic 60 FPS requestAnimationFrame tick loop when playing card feed in Solo mode
     useEffect(() => {
@@ -346,7 +397,7 @@ export default function CameraCardFeed({
 
     return (
         <div className="camera-card-feed-root">
-            {isSolo && streamSrc && (
+            {(isSolo || isPlaying) && streamSrc && (
                 <video
                     ref={videoRef}
                     src={streamSrc}
@@ -365,7 +416,7 @@ export default function CameraCardFeed({
                     }}
                     playsInline
                     autoPlay
-                    muted={getAudioSettings().isMuted}
+                    muted={!isCurrentStationAudioActive}
                     onLoadedData={() => {
                         if (videoRef.current) {
                             videoRef.current.defaultPlaybackRate = playbackSpeed;
@@ -383,6 +434,7 @@ export default function CameraCardFeed({
                     onPlaying={() => {
                         isSeekingRef.current = false;
                         setIsVideoReady(true);
+                        applyAudioToVideo();
                         if (videoRef.current) {
                             videoRef.current.defaultPlaybackRate = playbackSpeed;
                             videoRef.current.playbackRate = playbackSpeed;
@@ -406,7 +458,7 @@ export default function CameraCardFeed({
                 style={{
                     position: 'absolute',
                     inset: 0,
-                    zIndex: (isSolo && isPlaying && isVideoReady && !isSpotlightActive) ? 0 : 2,
+                    zIndex: ((isSolo || isPlaying) && isVideoReady && !isSpotlightActive) ? 0 : 2,
                     pointerEvents: 'none'
                 }}
             >
@@ -426,7 +478,7 @@ export default function CameraCardFeed({
                 ) : null}
             </div>
 
-            {isSolo && isPlaying && isInRecordingSegment && !isVideoReady && !isSpotlightActive && (
+            {(isSolo || isPlaying) && isPlaying && isInRecordingSegment && !isVideoReady && !isSpotlightActive && (
                 <div className="tactical-feed-buffering-overlay">
                     <div className="buffering-glass-hud">
                         <div className="radar-dual-ring">

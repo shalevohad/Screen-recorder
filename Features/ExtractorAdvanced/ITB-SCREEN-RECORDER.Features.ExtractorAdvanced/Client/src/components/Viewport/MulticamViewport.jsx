@@ -6,6 +6,7 @@ import CameraCard from './views/Card/CameraCard.jsx';
 import StudioVideoFeed from '../Player/StudioVideoFeed.jsx';
 import KeystrokePlaybackOverlay from '../Player/KeystrokePlaybackOverlay.jsx';
 import { calculateOptimalGrid } from './utils/viewportLayoutCalculator.js';
+import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './MulticamViewport.scss';
 
 function computeOptimalPageCapacity(width, height, gap = 14) {
@@ -75,10 +76,84 @@ export default function MulticamViewport({
     isAutoDirectorEnabled = true,
     onToggleAutoDirector,
     isPipSwapped = false,
-    onTogglePipSwap
+    onTogglePipSwap,
+    onChangePlaybackSpeed
 }) {
+    const viewportRootRef = useRef(null);
     const resizeObserverRef = useRef(null);
     const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+    const [isGridFullscreen, setIsGridFullscreen] = useState(false);
+    const [activeAudioStationId, setActiveAudioStationId] = useState(() => timelineStations[0]?.id || null);
+    const [showHudControls, setShowHudControls] = useState(true);
+    const hudTimerRef = useRef(null);
+
+    useEffect(() => {
+        if (timelineStations.length > 0 && (!activeAudioStationId || !timelineStations.some(s => s.id === activeAudioStationId))) {
+            setActiveAudioStationId(timelineStations[0].id);
+        }
+    }, [timelineStations, activeAudioStationId]);
+
+    const handleToggleGridFullscreen = useCallback(() => {
+        setIsGridFullscreen(prev => {
+            const next = !prev;
+            if (next) {
+                setIsGridMatrixView(true);
+                if (onSelectActiveStation) onSelectActiveStation(null);
+
+                const rootEl = viewportRootRef.current;
+                if (rootEl && rootEl.requestFullscreen) {
+                    rootEl.requestFullscreen().catch(() => {});
+                }
+            } else {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            }
+            return next;
+        });
+    }, [onSelectActiveStation]);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            if (!document.fullscreenElement && isGridFullscreen) {
+                setIsGridFullscreen(false);
+            }
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, [isGridFullscreen]);
+
+    // Hotkey bindings: F/F11 for Fullscreen Grid, Esc to exit, Space for Play/Pause All
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+            if (e.key === 'f' || e.key === 'F') {
+                e.preventDefault();
+                handleToggleGridFullscreen();
+            } else if (e.key === 'Escape' && isGridFullscreen) {
+                e.preventDefault();
+                setIsGridFullscreen(false);
+                if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            } else if (e.code === 'Space' && (isGridFullscreen || isGridMatrixView)) {
+                e.preventDefault();
+                setIsPlaying && setIsPlaying(p => !p);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isGridFullscreen, isGridMatrixView, handleToggleGridFullscreen, setIsPlaying]);
+
+    const handleMouseMove = useCallback(() => {
+        if (!isGridFullscreen) return;
+        setShowHudControls(true);
+        if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
+        hudTimerRef.current = setTimeout(() => {
+            setShowHudControls(false);
+        }, 3200);
+    }, [isGridFullscreen]);
 
     const [isGridMatrixView, setIsGridMatrixView] = useState(() => {
         return timelineStations.length > 2 && compositionScope !== 'inter-station';
@@ -212,7 +287,11 @@ export default function MulticamViewport({
     const isInterStationActive = compositionScope === 'inter-station' && timelineStations.length >= 2 && !isGridMatrixView;
 
     return (
-        <div className={`multicam-viewport-root ${soloStationToRender && !isInterStationActive && !isGridMatrixView ? 'solo' : 'multicam'}`}>
+        <div
+            ref={viewportRootRef}
+            onMouseMove={handleMouseMove}
+            className={`multicam-viewport-root ${soloStationToRender && !isInterStationActive && !isGridMatrixView ? 'solo' : 'multicam'} ${isGridFullscreen ? 'fullscreen-grid-active' : ''}`}
+        >
             {/* Universal Studio Composition Engine Control Bar */}
             <div className="multicam-composition-mode-bar">
                 <div className="comp-mode-left">
@@ -316,12 +395,27 @@ export default function MulticamViewport({
                         <button
                             type="button"
                             className={`btn-grid-toggle ${isGridMatrixView ? 'active' : ''}`}
-                            onClick={() => setIsGridMatrixView(p => !p)}
+                            onClick={() => {
+                                setIsGridMatrixView(p => {
+                                    const next = !p;
+                                    if (next && onSelectActiveStation) onSelectActiveStation(null);
+                                    return next;
+                                });
+                            }}
                             title="Toggle between Master Composition and Multi-Station Matrix Grid"
                         >
                             {isGridMatrixView ? '📺 COMPOSITION CANVAS' : '🗖 STATION GRID MATRIX'}
                         </button>
                     )}
+
+                    <button
+                        type="button"
+                        className={`btn-grid-fullscreen-top ${isGridFullscreen ? 'active' : ''}`}
+                        onClick={handleToggleGridFullscreen}
+                        title="Fullscreen Multi-Station Grid (F)"
+                    >
+                        {isGridFullscreen ? '⤓ EXIT FULLSCREEN' : '⛶ FULLSCREEN GRID'}
+                    </button>
                 </div>
             </div>
 
@@ -572,54 +666,68 @@ export default function MulticamViewport({
             {/* View Mode 3: Station Grid Matrix */}
             {(isGridMatrixView || (!soloStationToRender && !isInterStationActive)) && (
                 <div className="multicam-matrix-content">
-                    {timelineStations.length > dynamicPageCapacity && (
-                        <div className="viewport-matrix-toolbar">
-                            <div className="mode-toggle-pill">
+                    <div className="viewport-matrix-toolbar">
+                        <div className="mode-toggle-pill">
+                            <button
+                                type="button"
+                                className={`btn-mode-toggle ${viewMode === 'paged' ? 'active' : ''}`}
+                                onClick={() => handleSetViewMode('paged')}
+                                title={`Optimized Layout: ${dynamicPageCapacity} feeds per page`}
+                            >
+                                PAGED ({dynamicPageCapacity})
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn-mode-toggle ${viewMode === 'wall' ? 'active' : ''}`}
+                                onClick={() => handleSetViewMode('wall')}
+                                title="Tactical Wall: All stations displayed simultaneously"
+                            >
+                                WALL ({timelineStations.length})
+                            </button>
+                        </div>
+
+                        {viewMode === 'paged' && totalPages > 1 && (
+                            <div className="paged-nav-pill">
                                 <button
                                     type="button"
-                                    className={`btn-mode-toggle ${viewMode === 'paged' ? 'active' : ''}`}
-                                    onClick={() => handleSetViewMode('paged')}
-                                    title={`Optimized Layout: ${dynamicPageCapacity} feeds per page`}
+                                    className="btn-page-arrow"
+                                    disabled={currentPage === 1}
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    title="Previous Feed Matrix"
                                 >
-                                    PAGED ({dynamicPageCapacity})
+                                    ◀
                                 </button>
+                                <span className="page-indicator-text">
+                                    {((currentPage - 1) * dynamicPageCapacity) + 1}–{Math.min(timelineStations.length, currentPage * dynamicPageCapacity)} OF {timelineStations.length}
+                                </span>
                                 <button
                                     type="button"
-                                    className={`btn-mode-toggle ${viewMode === 'wall' ? 'active' : ''}`}
-                                    onClick={() => handleSetViewMode('wall')}
-                                    title="Tactical Wall: All stations displayed simultaneously"
+                                    className="btn-page-arrow"
+                                    disabled={currentPage >= totalPages}
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    title="Next Feed Matrix"
                                 >
-                                    WALL ({timelineStations.length})
+                                    ▶
                                 </button>
                             </div>
+                        )}
 
-                            {viewMode === 'paged' && totalPages > 1 && (
-                                <div className="paged-nav-pill">
-                                    <button
-                                        type="button"
-                                        className="btn-page-arrow"
-                                        disabled={currentPage === 1}
-                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                        title="Previous Feed Matrix"
-                                    >
-                                        ◀
-                                    </button>
-                                    <span className="page-indicator-text">
-                                        {((currentPage - 1) * dynamicPageCapacity) + 1}–{Math.min(timelineStations.length, currentPage * dynamicPageCapacity)} OF {timelineStations.length}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        className="btn-page-arrow"
-                                        disabled={currentPage >= totalPages}
-                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                        title="Next Feed Matrix"
-                                    >
-                                        ▶
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                        <button
+                            type="button"
+                            className={`btn-fullscreen-grid ${isGridFullscreen ? 'active' : ''}`}
+                            onClick={handleToggleGridFullscreen}
+                            title="Fullscreen Multi-Station Grid (F)"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                {isGridFullscreen ? (
+                                    <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                                ) : (
+                                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                                )}
+                            </svg>
+                            <span>{isGridFullscreen ? 'EXIT' : 'FULLSCREEN'}</span>
+                        </button>
+                    </div>
 
                     <div className="multicam-tactical-grid" ref={setGridContainerRef} style={gridStyle}>
                         {visibleStations.map(st => (
@@ -646,9 +754,115 @@ export default function MulticamViewport({
                                     onSelectActiveStation={onSelectActiveStation}
                                     recordingSegments={recordingSegments}
                                     playbackSpeed={playbackSpeed}
+                                    activeAudioStationId={activeAudioStationId}
+                                    onSoloAudio={setActiveAudioStationId}
                                 />
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Fullscreen Grid Floating Tactical Transport Dock */}
+            {isGridFullscreen && (
+                <div
+                    className={`grid-fullscreen-floating-dock ${showHudControls ? 'visible' : 'hidden'}`}
+                    onMouseEnter={() => setShowHudControls(true)}
+                >
+                    <div className="dock-glass-panel">
+                        {/* Play/Pause Button */}
+                        <button
+                            type="button"
+                            className={`btn-dock-play ${isPlaying ? 'playing' : ''}`}
+                            onClick={() => setIsPlaying && setIsPlaying(p => !p)}
+                            title={isPlaying ? "Pause All Stations (Space)" : "Play All Stations Synchronously (Space)"}
+                        >
+                            {isPlaying ? (
+                                <>
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                                    </svg>
+                                    <span>PAUSE ALL</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5 3 19 12 5 21 5 3" />
+                                    </svg>
+                                    <span>PLAY ALL</span>
+                                </>
+                            )}
+                        </button>
+
+                        {/* Scrubber Range Slider */}
+                        <div className="dock-scrubber-wrapper">
+                            <input
+                                type="range"
+                                min={0}
+                                max={totalDurationMs}
+                                value={playheadMs}
+                                onChange={(e) => {
+                                    const newHead = Number(e.target.value);
+                                    setPlayheadMs && setPlayheadMs(newHead);
+                                }}
+                                className="dock-scrubber-slider"
+                                title="Scrub Playhead"
+                            />
+                        </div>
+
+                        {/* Playhead Clock Display */}
+                        <div className="dock-clock-badge">
+                            <span className="dot live" />
+                            <span className="clock-text">
+                                {formatTimelineClock(currentEpochMs, timeMode)}
+                            </span>
+                        </div>
+
+                        {/* Speed Pills */}
+                        <div className="dock-speed-pill">
+                            {[0.5, 1, 2, 4].map(spd => (
+                                <button
+                                    key={spd}
+                                    type="button"
+                                    className={`btn-dock-speed ${playbackSpeed === spd ? 'active' : ''}`}
+                                    onClick={() => onChangePlaybackSpeed && onChangePlaybackSpeed(spd)}
+                                >
+                                    {spd}x
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Rule 12 Audio Solo Selector */}
+                        <div className="dock-audio-selector">
+                            <span className="audio-icon">🔊</span>
+                            <select
+                                value={activeAudioStationId || ''}
+                                onChange={(e) => setActiveAudioStationId(e.target.value || null)}
+                                className="dock-audio-select"
+                                title="Rule 12 Audio Solo: Select unmuted workstation"
+                            >
+                                <option value="">🔇 MUTE ALL AUDIO</option>
+                                {timelineStations.map(st => (
+                                    <option key={st.id} value={st.id}>
+                                        {st.displayName || st.hostname} (SOLO AUDIO)
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Exit Fullscreen Button */}
+                        <button
+                            type="button"
+                            className="btn-dock-exit"
+                            onClick={handleToggleGridFullscreen}
+                            title="Exit Fullscreen Grid (Esc)"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                            </svg>
+                            <span>EXIT</span>
+                        </button>
                     </div>
                 </div>
             )}

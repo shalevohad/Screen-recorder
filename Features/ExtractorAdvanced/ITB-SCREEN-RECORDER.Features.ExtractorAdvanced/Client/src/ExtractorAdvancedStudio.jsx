@@ -216,7 +216,8 @@ export default function ExtractorAdvancedStudio() {
         initialPlayheadMs,
         initialIsPlaying: false,
         initialIsLooping: cached.isLooping !== undefined ? cached.isLooping : true,
-        initialPlaybackSpeed: cached.playbackSpeed || 1
+        initialPlaybackSpeed: cached.playbackSpeed || 1,
+        isGridMode: !activeStationId
     });
 
     const {
@@ -823,6 +824,7 @@ export default function ExtractorAdvancedStudio() {
                                     globalGaps={globalGaps}
                                     recordingSegments={recordingSegments}
                                     playbackSpeed={playbackSpeed}
+                                    onChangePlaybackSpeed={setPlaybackSpeed}
                                     keystrokeMode={keystrokeMode}
                                     keystrokes={activeStationKeystrokes}
                                     directorPlan={enrichedActiveStation?.directorPlan}

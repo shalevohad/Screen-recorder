@@ -33,6 +33,7 @@
 23. [ITB Standalone Player Architecture & Zero-Extract Ingestion Engine](#23-itb-standalone-player-architecture--zero-extract-ingestion-engine-2026-11-01)
 24. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals](#21-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
 25. [Universal Studio Composition Engine & Single Master MP4 Export Architecture](#22-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
+26. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture](#26-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
 
 ---
 
@@ -479,7 +480,8 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
 - **Hysteresis Smoothing**: Integrated a 3.5-second debounce buffer on audio presence telemetry to eliminate rapid green/grey flickering caused by network polling bursts.
 - **3-Tier Health States**:
   - ctive (Emerald): Real-time audio stream flowing smoothly.
-  - ault (Amber): Workstation audio hardware (speakers/mic) present and configured, but audio stream packets are stalled or absent.
+  - 
+ault (Amber): Workstation audio hardware (speakers/mic) present and configured, but audio stream packets are stalled or absent.
   - muted (Slate): Workstation has no audio devices or is operating in silent mode.
 
 ### 4. Storage Quota Clamping & Physical NetApp Enforcement
@@ -1126,6 +1128,49 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
   - Individual gap-filled, wall-clock aligned tracks are rendered in `tempStagingDir`.
   - FFmpeg applies hardware-accelerated video filters (NVENC -> Intel QSV -> libx264) with faststart metadata (`-movflags +faststart`) to produce a single master `.mp4` file.
   - Delivered directly through `/api/v1/extractor/jobs/{jobId}/download` with `video/mp4` MIME type.
+
+## 26. Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture (2026-11-02)
+
+### 1. Architectural Scope & Mission
+In accordance with operational requirements for high-density command-and-control (C2) monitoring in ExtractorAdvanced Studio, the platform features:
+1. **Fullscreen Multi-Station Grid View**: Seamless transition from standard workspace into an immersive 100vw x 100vh monitoring wall with dynamic auto-scaling cells and zero distortion.
+2. **Synchronous Multi-Video Playback Engine**: Real-time parallel video playback across all visible grid cards in lockstep synchronization with the master playhead epoch.
+3. **Exclusive Audio Solo Sink (Rule 12 Compliance)**: Strict enforcement that only one workstation plays audio in the grid at any given moment, with 1-click station audio switching and mute-all support.
+
+### 2. Multi-Video Synchronous Playback Pipeline (`CameraCardFeed.jsx` & `usePlaybackEngine.js`)
+- **Master Monotonic Clock & Slave Decoders**:
+  - In Grid Mode (`!isSolo`), the master timeline animation loop in `usePlaybackEngine.js` executes at 60fps, smoothly advancing `playheadMs` and broadcasting `currentEpochMs`.
+  - Individual workstation video elements act as precision slave decoders.
+  - Video streams are initialized on `/api/v1/extractor-advanced/stream?hostname=...&startEpoch=...&endEpoch=...&seekEpoch=...&displayId=...`.
+  - **Dynamic Anti-Drift Alignment**: Each card feed compares `video.currentTime` with expected elapsed seconds `(currentEpochMs - streamStartEpochMs) / 1000`. If decoder or network buffer jitter creates a drift $>350\text{ms}$, `video.currentTime` is gently realigned to avoid visual drift while avoiding stream teardown.
+  - **Coordinated Scrubbing & Seeking**: When the operator scrubs $>800\text{ms}$ on the timeline scrubber, all active grid feeds debounce and rebind their stream offsets in lockstep.
+- **Resource & Decoder Governance**:
+  - When paused, card feeds gracefully detach streaming pipelines and fall back to high-fidelity static frames via `frameStore`, releasing GPU decoders and network bandwidth.
+  - On play, streams spin up in parallel across visible grid cells with smooth opacity transitions.
+
+### 3. Fullscreen Grid View & Tactical Floating Transport Dock (`MulticamViewport.jsx`)
+- **Immersive 100vw x 100vh Tactical Canvas**:
+  - Activated via the `⛶ FULLSCREEN GRID` toolbar button, top composition bar toggle, or hotkeys (`F` / `F11`).
+  - Native browser `requestFullscreen()` with CSS fixed overlay fallback (`position: fixed; inset: 0; z-index: 999999; background: #070A10`).
+  - Top composition controls automatically retract to maximize monitor surface area for workstation feeds.
+- **Tactical Glassmorphic Floating Transport HUD**:
+  - Floating pill dock (`.grid-fullscreen-floating-dock`) with cyan glassmorphic styling (`rgba(10, 15, 29, 0.94)`, `backdrop-filter: blur(20px)`).
+  - **Master Play/Pause All (`▶ PLAY ALL` / `⏸ PAUSE ALL`)**: Toggles synchronous playback across all workstations with `[Space]` shortcut support.
+  - **Global Timeline Scrubber**: Allows smooth seeking across the full timeline scope.
+  - **Playhead Clock Display**: Live badge indicating wall-clock or UTC epoch (`[10:14:25 / 14:00:00]`).
+  - **Multi-Rate Playback Selector**: `0.5x`, `1x`, `2x`, `4x` with real-time rate propagation across all video elements.
+  - **Auto-Hide Inactivity Timer**: Smoothly dims after 3.2 seconds of mouse idle; instantly reappears on cursor motion.
+  - **Exit Fullscreen (`⤓ EXIT`)**: One-click or `[Esc]` return to normal studio workspace.
+
+### 4. Rule 12 Exclusive Audio Solo Governance
+- **Zero-Cacophony Invariant**:
+  - Playing 4–12 audio streams concurrently creates operational chaos.
+  - In Grid mode, all cards are strictly muted (`muted = true`) except for the designated `activeAudioStationId`.
+- **Operator Selection Interface**:
+  - Card Header Speaker Action: Each card header features an audio solo button with glowing emerald wave animations (`🔊 AUDIO ACTIVE`) when unmuted, or subdued mute icon (`🔇`).
+  - Floating Transport Dock Dropdown: Quick dropdown selector allowing instant audio assignment to any station or total silence (`🔇 MUTE ALL AUDIO`).
+
+---
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

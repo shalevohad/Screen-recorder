@@ -262,6 +262,56 @@
                 white-space: nowrap;
             }
         }
+
+        .btn-fullscreen-grid {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(6, 182, 212, 0.4);
+            color: #38BDF8;
+            font-family: var(--font-mono, monospace);
+            font-size: 9.5px;
+            font-weight: 800;
+            padding: 5px 12px;
+            border-radius: 9999px;
+            cursor: pointer;
+            backdrop-filter: blur(14px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            letter-spacing: 0.5px;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+            svg {
+                width: 12px;
+                height: 12px;
+            }
+
+            &:hover {
+                background: #06B6D4;
+                color: #070A10;
+                border-color: #06B6D4;
+                box-shadow: 0 0 16px rgba(6, 182, 212, 0.5);
+
+                svg {
+                    stroke: #070A10;
+                }
+            }
+
+            &.active {
+                background: rgba(244, 63, 94, 0.2);
+                border-color: #F43F5E;
+                color: #F43F5E;
+                box-shadow: 0 0 14px rgba(244, 63, 94, 0.35);
+
+                &:hover {
+                    background: #F43F5E;
+                    color: #FFFFFF;
+                    svg {
+                        stroke: #FFFFFF;
+                    }
+                }
+            }
+        }
     }
 
     .multicam-tactical-grid {
@@ -418,6 +468,10 @@
         }
 
         .comp-mode-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
             .btn-grid-toggle {
                 background: #1E293B;
                 border: 1px solid #334155;
@@ -438,6 +492,36 @@
                 &.active {
                     background: rgba(56, 189, 248, 0.15);
                     border-color: #38BDF8;
+                }
+            }
+
+            .btn-grid-fullscreen-top {
+                background: rgba(6, 182, 212, 0.12);
+                border: 1px solid rgba(6, 182, 212, 0.4);
+                color: #38BDF8;
+                font-size: 10px;
+                font-family: inherit;
+                font-weight: 800;
+                padding: 4px 10px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    background: #06B6D4;
+                    color: #070A10;
+                    border-color: #06B6D4;
+                }
+
+                &.active {
+                    background: rgba(244, 63, 94, 0.18);
+                    border-color: #F43F5E;
+                    color: #F43F5E;
+
+                    &:hover {
+                        background: #F43F5E;
+                        color: #FFFFFF;
+                    }
                 }
             }
         }
@@ -607,6 +691,254 @@
         min-height: 0;
         display: flex;
         flex-direction: column;
+    }
+
+    &.fullscreen-grid-active {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 999999 !important;
+        background: #070A10 !important;
+        margin: 0 !important;
+        padding: 16px 20px 84px 20px !important;
+        border-radius: 0 !important;
+        box-sizing: border-box !important;
+
+        .multicam-composition-mode-bar {
+            display: none !important;
+        }
+
+        .multicam-matrix-content {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100vw !important;
+            max-height: calc(100vh - 90px) !important;
+        }
+
+        .multicam-tactical-grid {
+            width: 100% !important;
+            height: 100% !important;
+            gap: 16px !important;
+        }
+    }
+
+    .grid-fullscreen-floating-dock {
+        position: fixed;
+        bottom: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000000;
+        pointer-events: auto;
+        transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+        &.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(-50%) translateY(20px);
+        }
+
+        &.visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .dock-glass-panel {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 8px 18px;
+            background: rgba(10, 15, 29, 0.94);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            border-radius: 9999px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(6, 182, 212, 0.25);
+
+            .btn-dock-play {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 14px;
+                border-radius: 9999px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+                font-weight: 800;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                background: rgba(6, 182, 212, 0.18);
+                border: 1px solid #06B6D4;
+                color: #38BDF8;
+
+                svg {
+                    width: 13px;
+                    height: 13px;
+                }
+
+                &:hover {
+                    background: #06B6D4;
+                    color: #070A10;
+                    box-shadow: 0 0 16px rgba(6, 182, 212, 0.6);
+                }
+
+                &.playing {
+                    background: rgba(16, 185, 129, 0.22);
+                    border-color: #10B981;
+                    color: #10B981;
+
+                    &:hover {
+                        background: #10B981;
+                        color: #070A10;
+                        box-shadow: 0 0 16px rgba(16, 185, 129, 0.6);
+                    }
+                }
+            }
+
+            .dock-scrubber-wrapper {
+                display: flex;
+                align-items: center;
+                width: 260px;
+
+                .dock-scrubber-slider {
+                    width: 100%;
+                    height: 6px;
+                    border-radius: 3px;
+                    appearance: none;
+                    background: #1E293B;
+                    outline: none;
+                    cursor: pointer;
+                    accent-color: #06B6D4;
+
+                    &::-webkit-slider-thumb {
+                        appearance: none;
+                        width: 14px;
+                        height: 14px;
+                        border-radius: 50%;
+                        background: #38BDF8;
+                        cursor: pointer;
+                        box-shadow: 0 0 10px #06B6D4;
+                        transition: transform 0.15s ease;
+                    }
+
+                    &::-webkit-slider-thumb:hover {
+                        transform: scale(1.25);
+                    }
+                }
+            }
+
+            .dock-clock-badge {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                background: #070A10;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 11px;
+                font-weight: 700;
+                color: #F8FAFC;
+                white-space: nowrap;
+
+                .dot.live {
+                    width: 5px;
+                    height: 5px;
+                    border-radius: 50%;
+                    background: #10B981;
+                    box-shadow: 0 0 6px #10B981;
+                }
+            }
+
+            .dock-speed-pill {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                background: #070A10;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                padding: 2px;
+
+                .btn-dock-speed {
+                    background: transparent;
+                    border: none;
+                    color: #94A3B8;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 10px;
+                    font-weight: 700;
+                    padding: 3px 7px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        color: #FFFFFF;
+                    }
+
+                    &.active {
+                        background: #06B6D4;
+                        color: #070A10;
+                        font-weight: 800;
+                    }
+                }
+            }
+
+            .dock-audio-selector {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                background: #070A10;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                padding: 3px 8px;
+
+                .audio-icon {
+                    font-size: 12px;
+                }
+
+                .dock-audio-select {
+                    background: transparent;
+                    border: none;
+                    color: #38BDF8;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 10.5px;
+                    font-weight: 700;
+                    outline: none;
+                    cursor: pointer;
+
+                    option {
+                        background: #0A0F1D;
+                        color: #F8FAFC;
+                    }
+                }
+            }
+
+            .btn-dock-exit {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                padding: 5px 12px;
+                background: rgba(244, 63, 94, 0.15);
+                border: 1px solid rgba(244, 63, 94, 0.45);
+                color: #F43F5E;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 10.5px;
+                font-weight: 800;
+                border-radius: 9999px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+
+                svg {
+                    width: 12px;
+                    height: 12px;
+                }
+
+                &:hover {
+                    background: #F43F5E;
+                    color: #FFFFFF;
+                    box-shadow: 0 0 14px rgba(244, 63, 94, 0.5);
+                }
+            }
+        }
     }
 
 }
