@@ -145,14 +145,16 @@ export default function MulticamViewport({
     const [showHudControls, setShowHudControls] = useState(true);
     const hudTimerRef = useRef(null);
 
-    // Selected feed key for editing on the canvas
-    const [selectedFeedKey, setSelectedFeedKey] = useState(null);
+    // Selected feed index on canvas
+    const [selectedFeedIndex, setSelectedFeedIndex] = useState(0);
 
-    // Drag & Resize State
-    const [transformState, setTransformState] = useState(null); // { mode: 'drag'|'resize', feedKey, ... }
-    const transformRef = useRef(null);
+    // Dynamic drag & resize state
+    const dragStateRef = useRef(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [isResizing, setIsResizing] = useState(false);
+    const [snapGuides, setSnapGuides] = useState({ vertical: null, horizontal: null });
 
-    // Rotation angle slider visibility
+    // Rotation slider display toggle
     const [showRotationControl, setShowRotationControl] = useState(false);
 
     // All available feeds extracted from selected timeline stations
@@ -189,7 +191,7 @@ export default function MulticamViewport({
     const cutStartEpochMs = useMemo(() => baseEpochMs + inPointMs, [baseEpochMs, inPointMs]);
     const cutEndEpochMs = useMemo(() => baseEpochMs + (outPointMs || totalDurationMs), [baseEpochMs, outPointMs, totalDurationMs]);
 
-    // Local Keyframes State (backed by canvasLayoutTimeline or initialized with all stations)
+    // Internal Keyframes Timeline State
     const [internalTimeline, setInternalTimeline] = useState(() => {
         if (canvasLayoutTimeline?.keyframes?.length > 0) {
             return canvasLayoutTimeline;
@@ -250,14 +252,12 @@ export default function MulticamViewport({
                 return nextTimeline;
             }
 
-            // Ensure every keyframe includes newly added feeds
             let hasChanged = false;
             const updatedKfs = currentKfs.map(kf => {
                 const existing = kf.layout?.placements || [];
                 const missing = availableFeeds.filter(f => !existing.some(p => p.stationId === f.stationId && p.displayId === f.displayId));
                 if (missing.length > 0) {
                     hasChanged = true;
-                    // Append missing feeds with auto packing
                     const allMerged = [...existing, ...missing];
                     return {
                         ...kf,
@@ -304,12 +304,12 @@ export default function MulticamViewport({
         });
     }, [safeActiveIdx, onUpdateCanvasLayoutTimeline]);
 
-    // Helper to apply preset layout to active keyframe
+    // Apply Preset Layouts to Active Keyframe
     const handleApplyPreset = useCallback((preset) => {
         let newPlacements = [];
 
         if (preset === '1x1') {
-            const target = availableFeeds.find(f => f.feedKey === selectedFeedKey) || availableFeeds[0];
+            const target = availableFeeds[selectedFeedIndex] || availableFeeds[0];
             if (target) {
                 newPlacements = [{
                     ...target,
@@ -373,7 +373,6 @@ export default function MulticamViewport({
                 };
             });
         } else if (preset === '1+3-pip') {
-            // Picture in picture: primary is full, others are bottom-right insets
             const main = availableFeeds[0];
             const insets = availableFeeds.slice(1, 4);
             newPlacements.push({
@@ -387,13 +386,13 @@ export default function MulticamViewport({
                 borderWidth: 0,
                 borderColor: SLOT_BORDER_COLORS[0]
             });
-            const insetW = 420;
-            const insetH = 236;
+            const insetW = 440;
+            const insetH = 248;
             insets.forEach((ins, idx) => {
                 newPlacements.push({
                     ...ins,
                     x: VIRTUAL_CANVAS_W - insetW - 24,
-                    y: VIRTUAL_CANVAS_H - ((idx + 1) * (insetH + 16)) - 12,
+                    y: VIRTUAL_CANVAS_H - ((idx + 1) * (insetH + 16)) - 16,
                     width: insetW,
                     height: insetH,
                     zIndex: idx + 1,
@@ -408,16 +407,15 @@ export default function MulticamViewport({
         }
 
         updateActivePlacements(newPlacements);
-    }, [availableFeeds, selectedFeedKey, updateActivePlacements]);
+    }, [availableFeeds, selectedFeedIndex, updateActivePlacements]);
 
     // Real-Time Playback & Scrubbing Interpolation
     const activeDisplayPlacements = useMemo(() => {
-        // If actively transforming or only 1 keyframe, use current active placements directly
-        if (transformState || keyframes.length <= 1) {
+        // While actively dragging or resizing, show current placements with 0 latency
+        if (isDragging || isResizing || keyframes.length <= 1) {
             return currentPlacements;
         }
 
-        // Find preceding and succeeding keyframes
         let kfA = keyframes[0];
         let kfB = null;
 
@@ -438,7 +436,6 @@ export default function MulticamViewport({
         const transDurMs = Math.max(100, (kfB.transitionDurationSec ?? 0.5) * 1000);
         const transStartEpoch = kfB.timestampEpochMs - transDurMs;
 
-        // Outside transition window: before window = kfA, after = kfB
         if (currentEpochMs < transStartEpoch) {
             return kfA.layout?.placements || currentPlacements;
         }
@@ -457,14 +454,13 @@ export default function MulticamViewport({
         const aPlacements = kfA.layout?.placements || [];
         const bPlacements = kfB.layout?.placements || [];
 
-        // Interpolate matching placements
         return bPlacements.map(pB => {
             const pA = aPlacements.find(x => x.stationId === pB.stationId && x.displayId === pB.displayId) || pB;
             const interpX = Math.round(pA.x + (pB.x - pA.x) * tEased);
             const interpY = Math.round(pA.y + (pB.y - pA.y) * tEased);
             const interpW = Math.round(pA.width + (pB.width - pA.width) * tEased);
             const interpH = Math.round(pA.height + (pB.height - pA.height) * tEased);
-            const interpRot = Number(( (pA.rotation || 0) + ((pB.rotation || 0) - (pA.rotation || 0)) * tEased ).toFixed(1));
+            const interpRot = Number(((pA.rotation || 0) + ((pB.rotation || 0) - (pA.rotation || 0)) * tEased).toFixed(1));
 
             let interpOpacity = 1;
             if (transType === 'fade') {
@@ -483,7 +479,7 @@ export default function MulticamViewport({
                 opacity: interpOpacity
             };
         });
-    }, [transformState, keyframes, currentEpochMs, currentPlacements]);
+    }, [isDragging, isResizing, keyframes, currentEpochMs, currentPlacements]);
 
     // Keep parent Studio informed of current canvas layout for WYSIWYG export
     useEffect(() => {
@@ -562,81 +558,100 @@ export default function MulticamViewport({
         });
     }, [currentKf?.layout, onUpdateCanvasLayoutTimeline]);
 
-    // ------------------------------------------
-    // DRAG, RESIZE & ROTATE INTERACTION ENGINE
-    // ------------------------------------------
-    const handleStartDragBox = (e, placement) => {
+    // -------------------------------------------------------------
+    // HIGH-PERFORMANCE 60FPS DIRECT DRAG & RESIZE ENGINE (MODAL PARITY)
+    // -------------------------------------------------------------
+    const handleMouseDownBox = (e, index) => {
+        if (e.button !== 0) return; // Left click only
         e.stopPropagation();
-        const fKey = `${placement.stationId}:${placement.displayId}`;
-        setSelectedFeedKey(fKey);
+        e.preventDefault();
+
+        setSelectedFeedIndex(index);
 
         if (!canvasFrameRef.current) return;
         const rect = canvasFrameRef.current.getBoundingClientRect();
+        const p = currentPlacements[index];
+        if (!p) return;
 
-        transformRef.current = {
+        const scaleX = VIRTUAL_CANVAS_W / rect.width;
+        const scaleY = VIRTUAL_CANVAS_H / rect.height;
+
+        dragStateRef.current = {
             mode: 'drag',
-            feedKey: fKey,
-            stationId: placement.stationId,
-            displayId: placement.displayId,
+            index,
             startX: e.clientX,
             startY: e.clientY,
-            initialX: placement.x,
-            initialY: placement.y,
-            initialW: placement.width,
-            initialH: placement.height,
-            scaleX: VIRTUAL_CANVAS_W / rect.width,
-            scaleY: VIRTUAL_CANVAS_H / rect.height
+            initialX: p.x,
+            initialY: p.y,
+            initialW: p.width,
+            initialH: p.height,
+            scaleX,
+            scaleY
         };
-        setTransformState(transformRef.current);
+
+        setIsDragging(true);
 
         const handleMouseMove = (moveEv) => {
-            if (!transformRef.current || transformRef.current.mode !== 'drag') return;
-            const t = transformRef.current;
-            const dx = (moveEv.clientX - t.startX) * t.scaleX;
-            const dy = (moveEv.clientY - t.startY) * t.scaleY;
+            if (!dragStateRef.current || dragStateRef.current.mode !== 'drag') return;
+            const ds = dragStateRef.current;
+            const dx = (moveEv.clientX - ds.startX) * ds.scaleX;
+            const dy = (moveEv.clientY - ds.startY) * ds.scaleY;
 
-            let newX = Math.round(t.initialX + dx);
-            let newY = Math.round(t.initialY + dy);
+            let newX = Math.round(ds.initialX + dx);
+            let newY = Math.round(ds.initialY + dy);
 
-            // Bounds clamping
-            newX = clamp(newX, 0, VIRTUAL_CANVAS_W - t.initialW);
-            newY = clamp(newY, 0, VIRTUAL_CANVAS_H - t.initialH);
+            newX = clamp(newX, 0, VIRTUAL_CANVAS_W - ds.initialW);
+            newY = clamp(newY, 0, VIRTUAL_CANVAS_H - ds.initialH);
 
-            // 16px magnetic snapping to canvas edges & center guides
-            if (Math.abs(newX) < 16) newX = 0;
-            if (Math.abs(newX + t.initialW - VIRTUAL_CANVAS_W) < 16) newX = VIRTUAL_CANVAS_W - t.initialW;
-            if (Math.abs(newX + t.initialW / 2 - VIRTUAL_CANVAS_W / 2) < 16) {
-                newX = Math.round((VIRTUAL_CANVAS_W - t.initialW) / 2);
+            let vGuide = null;
+            let hGuide = null;
+
+            // 18px Magnetic snap to center X (960) & canvas borders
+            if (Math.abs(newX + ds.initialW / 2 - VIRTUAL_CANVAS_W / 2) < 18) {
+                newX = Math.round((VIRTUAL_CANVAS_W - ds.initialW) / 2);
+                vGuide = 50;
+            } else if (Math.abs(newX) < 16) {
+                newX = 0;
+                vGuide = 0;
+            } else if (Math.abs(newX + ds.initialW - VIRTUAL_CANVAS_W) < 16) {
+                newX = VIRTUAL_CANVAS_W - ds.initialW;
+                vGuide = 100;
             }
 
-            if (Math.abs(newY) < 16) newY = 0;
-            if (Math.abs(newY + t.initialH - VIRTUAL_CANVAS_H) < 16) newY = VIRTUAL_CANVAS_H - t.initialH;
-            if (Math.abs(newY + t.initialH / 2 - VIRTUAL_CANVAS_H / 2) < 16) {
-                newY = Math.round((VIRTUAL_CANVAS_H - t.initialH) / 2);
+            // 18px Magnetic snap to center Y (540) & canvas borders
+            if (Math.abs(newY + ds.initialH / 2 - VIRTUAL_CANVAS_H / 2) < 18) {
+                newY = Math.round((VIRTUAL_CANVAS_H - ds.initialH) / 2);
+                hGuide = 50;
+            } else if (Math.abs(newY) < 16) {
+                newY = 0;
+                hGuide = 0;
+            } else if (Math.abs(newY + ds.initialH - VIRTUAL_CANVAS_H) < 16) {
+                newY = VIRTUAL_CANVAS_H - ds.initialH;
+                hGuide = 100;
             }
+
+            setSnapGuides({ vertical: vGuide, horizontal: hGuide });
 
             setInternalTimeline(prev => {
                 const nextKfs = [...(prev.keyframes || [])];
                 if (!nextKfs[safeActiveIdx]) return prev;
-                const nextPlacements = (nextKfs[safeActiveIdx].layout.placements || []).map(p => {
-                    if (p.stationId === t.stationId && p.displayId === t.displayId) {
-                        return { ...p, x: newX, y: newY };
-                    }
-                    return p;
-                });
+                const placements = [...(nextKfs[safeActiveIdx].layout.placements || [])];
+                if (!placements[ds.index]) return prev;
+                placements[ds.index] = { ...placements[ds.index], x: newX, y: newY };
                 nextKfs[safeActiveIdx] = {
                     ...nextKfs[safeActiveIdx],
-                    layout: { ...nextKfs[safeActiveIdx].layout, placements: nextPlacements }
+                    layout: { ...nextKfs[safeActiveIdx].layout, placements }
                 };
                 return { ...prev, keyframes: nextKfs };
             });
         };
 
         const handleMouseUp = () => {
+            setIsDragging(false);
+            setSnapGuides({ vertical: null, horizontal: null });
+            dragStateRef.current = null;
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
-            transformRef.current = null;
-            setTransformState(null);
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(internalTimeline);
         };
 
@@ -644,41 +659,46 @@ export default function MulticamViewport({
         window.addEventListener('mouseup', handleMouseUp);
     };
 
-    const handleStartResizeBox = (e, placement) => {
+    const handleMouseDownResize = (e, index) => {
+        if (e.button !== 0) return;
         e.stopPropagation();
         e.preventDefault();
-        const fKey = `${placement.stationId}:${placement.displayId}`;
-        setSelectedFeedKey(fKey);
+
+        setSelectedFeedIndex(index);
 
         if (!canvasFrameRef.current) return;
         const rect = canvasFrameRef.current.getBoundingClientRect();
+        const p = currentPlacements[index];
+        if (!p) return;
 
-        transformRef.current = {
+        const scaleX = VIRTUAL_CANVAS_W / rect.width;
+        const scaleY = VIRTUAL_CANVAS_H / rect.height;
+
+        dragStateRef.current = {
             mode: 'resize',
-            feedKey: fKey,
-            stationId: placement.stationId,
-            displayId: placement.displayId,
+            index,
             startX: e.clientX,
             startY: e.clientY,
-            initialX: placement.x,
-            initialY: placement.y,
-            initialW: placement.width,
-            initialH: placement.height,
-            scaleX: VIRTUAL_CANVAS_W / rect.width,
-            scaleY: VIRTUAL_CANVAS_H / rect.height
+            initialX: p.x,
+            initialY: p.y,
+            initialW: p.width,
+            initialH: p.height,
+            scaleX,
+            scaleY
         };
-        setTransformState(transformRef.current);
+
+        setIsResizing(true);
 
         const handleMouseMove = (moveEv) => {
-            if (!transformRef.current || transformRef.current.mode !== 'resize') return;
-            const t = transformRef.current;
-            const dx = (moveEv.clientX - t.startX) * t.scaleX;
-            const dy = (moveEv.clientY - t.startY) * t.scaleY;
+            if (!dragStateRef.current || dragStateRef.current.mode !== 'resize') return;
+            const ds = dragStateRef.current;
+            const dw = (moveEv.clientX - ds.startX) * ds.scaleX;
+            const dh = (moveEv.clientY - ds.startY) * ds.scaleY;
 
-            let newW = Math.max(240, Math.min(VIRTUAL_CANVAS_W - t.initialX, Math.round(t.initialW + dx)));
-            let newH = Math.max(135, Math.min(VIRTUAL_CANVAS_H - t.initialY, Math.round(t.initialH + dy)));
+            let newW = clamp(Math.round(ds.initialW + dw), 200, VIRTUAL_CANVAS_W - ds.initialX);
+            let newH = clamp(Math.round(ds.initialH + dh), 112, VIRTUAL_CANVAS_H - ds.initialY);
 
-            // Snap to 16:9 aspect ratio if Shift is held
+            // Shift key lock to 16:9
             if (moveEv.shiftKey) {
                 newH = Math.round(newW * (9 / 16));
             }
@@ -686,25 +706,22 @@ export default function MulticamViewport({
             setInternalTimeline(prev => {
                 const nextKfs = [...(prev.keyframes || [])];
                 if (!nextKfs[safeActiveIdx]) return prev;
-                const nextPlacements = (nextKfs[safeActiveIdx].layout.placements || []).map(p => {
-                    if (p.stationId === t.stationId && p.displayId === t.displayId) {
-                        return { ...p, width: newW, height: newH };
-                    }
-                    return p;
-                });
+                const placements = [...(nextKfs[safeActiveIdx].layout.placements || [])];
+                if (!placements[ds.index]) return prev;
+                placements[ds.index] = { ...placements[ds.index], width: newW, height: newH };
                 nextKfs[safeActiveIdx] = {
                     ...nextKfs[safeActiveIdx],
-                    layout: { ...nextKfs[safeActiveIdx].layout, placements: nextPlacements }
+                    layout: { ...nextKfs[safeActiveIdx].layout, placements }
                 };
                 return { ...prev, keyframes: nextKfs };
             });
         };
 
         const handleMouseUp = () => {
+            setIsResizing(false);
+            dragStateRef.current = null;
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
-            transformRef.current = null;
-            setTransformState(null);
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(internalTimeline);
         };
 
@@ -712,12 +729,10 @@ export default function MulticamViewport({
         window.addEventListener('mouseup', handleMouseUp);
     };
 
-    // Card Styling Updaters
+    // Styling Updaters for Selected Feed
     const handleUpdateSelectedStyle = (updates) => {
-        if (!selectedFeedKey) return;
-        const [stId, dId] = selectedFeedKey.split(':');
-        const next = currentPlacements.map(p => {
-            if (p.stationId === stId && p.displayId === dId) {
+        const next = currentPlacements.map((p, idx) => {
+            if (idx === selectedFeedIndex) {
                 return { ...p, ...updates };
             }
             return p;
@@ -726,19 +741,17 @@ export default function MulticamViewport({
     };
 
     const handleRotateStep = (degrees = 90) => {
-        if (!selectedFeedKey) return;
-        const [stId, dId] = selectedFeedKey.split(':');
-        const target = currentPlacements.find(p => p.stationId === stId && p.displayId === dId);
-        const curRot = target?.rotation || 0;
+        const target = currentPlacements[selectedFeedIndex];
+        if (!target) return;
+        const curRot = target.rotation || 0;
         const nextRot = (curRot + degrees) % 360;
         handleUpdateSelectedStyle({ rotation: nextRot });
     };
 
     const handleZIndexStep = (dir = 1) => {
-        if (!selectedFeedKey) return;
-        const [stId, dId] = selectedFeedKey.split(':');
-        const target = currentPlacements.find(p => p.stationId === stId && p.displayId === dId);
-        const curZ = target?.zIndex || 0;
+        const target = currentPlacements[selectedFeedIndex];
+        if (!target) return;
+        const curZ = target.zIndex || 0;
         handleUpdateSelectedStyle({ zIndex: Math.max(0, curZ + dir) });
     };
 
@@ -806,6 +819,7 @@ export default function MulticamViewport({
     if (timelineStations.length === 0 && !activeStation) return null;
 
     const isSoloMode = Boolean(activeStation);
+    const selectedPlacement = currentPlacements[selectedFeedIndex] || null;
 
     return (
         <div
@@ -813,11 +827,25 @@ export default function MulticamViewport({
             onMouseMove={handleMouseMove}
             className={`multicam-viewport-root ${isSoloMode ? 'solo' : 'canvas-grid'} ${isGridFullscreen ? 'fullscreen-grid-active' : ''}`}
         >
-            {/* Master Canvas Mode Bar: Presets, Layouts & Keyframes */}
+            {/* Global Transparent Drag Shield ensuring 100% mouse capture */}
+            {(isDragging || isResizing) && (
+                <div
+                    className="canvas-global-drag-shield"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 999999,
+                        cursor: isDragging ? 'grabbing' : 'nwse-resize',
+                        userSelect: 'none'
+                    }}
+                />
+            )}
+
+            {/* Master Canvas Mode Bar: Presets & Layouts */}
             <div className="multicam-composition-mode-bar">
                 <div className="comp-mode-left">
                     <span className="comp-icon">🎛️</span>
-                    <span className="comp-title">CANVAS COMPOSER:</span>
+                    <span className="comp-title">LIVE CANVAS COMPOSER:</span>
 
                     {/* Canvas Presets Toolbar */}
                     <div className="comp-pill-group layouts">
@@ -1118,7 +1146,6 @@ export default function MulticamViewport({
                     <div
                         ref={canvasFrameRef}
                         className="canvas-master-frame-16-9"
-                        onClick={() => setSelectedFeedKey(null)}
                     >
                         {/* 16:9 Master Frame Corner Accents */}
                         <div className="corner-accent top-left" />
@@ -1126,11 +1153,45 @@ export default function MulticamViewport({
                         <div className="corner-accent bottom-left" />
                         <div className="corner-accent bottom-right" />
 
-                        {/* Interactive Feed Placements */}
+                        {/* Visual Glowing Snap Guidelines */}
+                        {snapGuides.vertical !== null && (
+                            <div
+                                className="canvas-snap-guide-v"
+                                style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    bottom: 0,
+                                    left: `${snapGuides.vertical}%`,
+                                    width: '2px',
+                                    background: '#06B6D4',
+                                    boxShadow: '0 0 10px #06B6D4',
+                                    zIndex: 9999,
+                                    pointerEvents: 'none'
+                                }}
+                            />
+                        )}
+                        {snapGuides.horizontal !== null && (
+                            <div
+                                className="canvas-snap-guide-h"
+                                style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    right: 0,
+                                    top: `${snapGuides.horizontal}%`,
+                                    height: '2px',
+                                    background: '#06B6D4',
+                                    boxShadow: '0 0 10px #06B6D4',
+                                    zIndex: 9999,
+                                    pointerEvents: 'none'
+                                }}
+                            />
+                        )}
+
+                        {/* Interactive Feed Boxes on Canvas */}
                         {activeDisplayPlacements.map((p, sIdx) => {
-                            const fKey = `${p.stationId}:${p.displayId}`;
-                            const isSelected = selectedFeedKey === fKey;
-                            const isBeingTransformed = transformState?.feedKey === fKey;
+                            const isSelected = selectedFeedIndex === sIdx;
+                            const isThisDragging = isDragging && selectedFeedIndex === sIdx;
+                            const isThisResizing = isResizing && selectedFeedIndex === sIdx;
                             const st = timelineStations.find(s => s.id === p.stationId) || { id: p.stationId, displayName: p.label || p.stationId };
                             const bColor = p.borderColor || SLOT_BORDER_COLORS[sIdx % SLOT_BORDER_COLORS.length];
                             const bWidth = p.borderWidth !== undefined ? p.borderWidth : 2;
@@ -1144,40 +1205,40 @@ export default function MulticamViewport({
 
                             return (
                                 <div
-                                    key={fKey}
-                                    className={`canvas-feed-card-box ${isSelected ? 'is-selected' : ''} ${isBeingTransformed ? 'is-transforming' : ''}`}
+                                    key={`feed-${p.stationId}-${p.displayId}-${sIdx}`}
+                                    className={`canvas-feed-card-box ${isSelected ? 'is-selected' : ''} ${isThisDragging ? 'is-dragging' : ''} ${isThisResizing ? 'is-resizing' : ''}`}
                                     style={{
                                         position: 'absolute',
                                         left: `${leftPct}%`,
                                         top: `${topPct}%`,
                                         width: `${widthPct}%`,
                                         height: `${heightPct}%`,
-                                        zIndex: isSelected ? 50 : (p.zIndex || sIdx),
+                                        zIndex: isSelected ? 1000 : (p.zIndex || sIdx),
                                         transform: `rotate(${rot}deg)`,
                                         transformOrigin: 'center center',
                                         border: `${bWidth}px solid ${bColor}`,
                                         opacity: op,
-                                        boxShadow: isSelected ? `0 0 16px ${bColor}` : undefined,
-                                        transition: isBeingTransformed ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out, transform 0.15s ease-out'
+                                        boxShadow: isSelected ? `0 0 20px ${bColor}, inset 0 0 12px rgba(6, 182, 212, 0.2)` : undefined,
+                                        cursor: isThisDragging ? 'grabbing' : 'grab',
+                                        transition: (isThisDragging || isThisResizing) ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out, transform 0.15s ease-out'
                                     }}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedFeedKey(fKey);
-                                    }}
+                                    onMouseDown={(e) => handleMouseDownBox(e, sIdx)}
                                     onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
                                 >
-                                    {/* Drag Handle Top Header */}
-                                    <div
-                                        className="feed-drag-header"
-                                        onMouseDown={(e) => handleStartDragBox(e, p)}
-                                        title="Click and drag to reposition anywhere on the canvas"
-                                    >
-                                        <div className="header-drag-indicator">⋮⋮</div>
-                                        <span className="feed-title">{p.label || st.displayName || st.id}</span>
-                                        {rot !== 0 && <span className="rotation-badge">{rot}°</span>}
+                                    {/* Top Draggable Bar & Coordinates */}
+                                    <div className="box-header-badge">
+                                        <div className="badge-title">
+                                            <span className="dot-indicator" />
+                                            <span>{p.label || `${st.displayName || p.stationId} (${p.displayId})`}</span>
+                                        </div>
+                                        <div className="badge-coords">
+                                            {Math.round(p.width)}×{Math.round(p.height)} @ ({Math.round(p.x)},{Math.round(p.y)})
+                                            {rot !== 0 && <span className="badge-rot">📐{rot}°</span>}
+                                        </div>
+                                        <span className="badge-layer">L{p.zIndex || sIdx}</span>
                                     </div>
 
-                                    {/* Embedded CameraCard Feed */}
+                                    {/* Live Video Content Viewport */}
                                     <div className="feed-content-viewport">
                                         <CameraCard
                                             station={st}
@@ -1192,7 +1253,7 @@ export default function MulticamViewport({
                                             setPlayheadMs={setPlayheadMs}
                                             globalGaps={globalGaps}
                                             onOpenSpotlight={onOpenSpotlight}
-                                            onSelectActiveStation={onSelectActiveStation}
+                                            onSelectActiveStation={null}
                                             recordingSegments={recordingSegments}
                                             playbackSpeed={playbackSpeed}
                                             activeAudioStationId={activeAudioStationId}
@@ -1201,8 +1262,8 @@ export default function MulticamViewport({
                                             isAutoDirectorEnabled={isAutoDirectorEnabled}
                                             targetDisplayId={p.displayId}
                                             onSelectDisplayId={(dispId) => {
-                                                const next = currentPlacements.map(pl => {
-                                                    if (pl.stationId === p.stationId && pl.displayId === p.displayId) {
+                                                const next = currentPlacements.map((pl, idx) => {
+                                                    if (idx === sIdx) {
                                                         return { ...pl, displayId: dispId };
                                                     }
                                                     return pl;
@@ -1212,20 +1273,26 @@ export default function MulticamViewport({
                                             slotIndex={sIdx}
                                             borderColor={bColor}
                                         />
+
+                                        {/* Transparent Drag Surface overlay allowing instant drag over video */}
+                                        <div
+                                            className="card-drag-surface"
+                                            title="Click and drag anywhere to move this window on the canvas"
+                                        />
                                     </div>
 
-                                    {/* Corner Resize Handle */}
+                                    {/* Bottom-Right Corner Resize Handle */}
                                     <div
                                         className="resize-handle-br"
-                                        onMouseDown={(e) => handleStartResizeBox(e, p)}
-                                        title="Drag to resize width and height (hold Shift for 16:9 aspect ratio)"
+                                        onMouseDown={(e) => handleMouseDownResize(e, sIdx)}
+                                        title="Drag to resize dimensions (Hold Shift for 16:9 aspect lock)"
                                     >
                                         ↘
                                     </div>
 
                                     {/* Selected Floating Tactical Inspector */}
-                                    {isSelected && (
-                                        <div className="floating-feed-inspector" onClick={(e) => e.stopPropagation()}>
+                                    {isSelected && selectedPlacement && (
+                                        <div className="floating-feed-inspector" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
                                             {/* Border Color Palette */}
                                             <div className="inspector-group colors">
                                                 <span className="group-label">BORDER:</span>
@@ -1243,7 +1310,7 @@ export default function MulticamViewport({
 
                                             {/* Border Thickness */}
                                             <div className="inspector-group width">
-                                                <span className="group-label">SIZE:</span>
+                                                <span className="group-label">WIDTH:</span>
                                                 {BORDER_WIDTHS.map(w => (
                                                     <button
                                                         key={w}
@@ -1269,7 +1336,7 @@ export default function MulticamViewport({
                                                 <button
                                                     type="button"
                                                     className={`btn-action-tool ${showRotationControl ? 'active' : ''}`}
-                                                    onClick={() => setShowRotationControl(p => !p)}
+                                                    onClick={() => setShowRotationControl(prev => !prev)}
                                                     title="Toggle fine rotation slider"
                                                 >
                                                     📐 {rot}°
@@ -1315,6 +1382,16 @@ export default function MulticamViewport({
                                                 title="Maximize this feed to fill entire 16:9 canvas"
                                             >
                                                 ⛶ MAX
+                                            </button>
+
+                                            {/* Solo Focus Action */}
+                                            <button
+                                                type="button"
+                                                className="btn-action-tool"
+                                                onClick={() => onSelectActiveStation && onSelectActiveStation(st.id)}
+                                                title="Solo focus inspection"
+                                            >
+                                                🔍 SOLO
                                             </button>
                                         </div>
                                     )}
@@ -1391,7 +1468,6 @@ export default function MulticamViewport({
                             ))}
                         </div>
 
-                        {/* Rule 12 Audio Solo Selector */}
                         <div className="dock-audio-selector">
                             <span className="audio-icon">🔊</span>
                             <select

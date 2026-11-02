@@ -456,6 +456,28 @@
                 }
             }
 
+            /* Canvas Snap Guidelines */
+            .canvas-snap-guide-v,
+            .canvas-snap-guide-h {
+                position: absolute;
+                z-index: 9999;
+                pointer-events: none;
+                background: #06B6D4;
+                box-shadow: 0 0 10px #06B6D4, 0 0 4px #FFFFFF;
+            }
+
+            .canvas-snap-guide-v {
+                top: 0;
+                bottom: 0;
+                width: 2px;
+            }
+
+            .canvas-snap-guide-h {
+                left: 0;
+                right: 0;
+                height: 2px;
+            }
+
             /* Canvas Feed Box */
             .canvas-feed-card-box {
                 display: flex;
@@ -469,12 +491,15 @@
                 &.is-selected {
                     z-index: 60 !important;
 
+                    .box-header-badge,
                     .feed-drag-header {
                         background: rgba(6, 182, 212, 0.35);
                         color: #FFFFFF;
                     }
                 }
 
+                &.is-dragging,
+                &.is-resizing,
                 &.is-transforming {
                     cursor: grabbing !important;
                     user-select: none;
@@ -482,20 +507,50 @@
                     .feed-content-viewport {
                         pointer-events: none; // prevent video captures mouse during free transform
                     }
+
+                    .card-drag-surface {
+                        cursor: grabbing !important;
+                    }
                 }
 
+                .box-header-badge,
                 .feed-drag-header {
                     height: 22px;
-                    background: rgba(15, 23, 42, 0.85);
+                    background: rgba(15, 23, 42, 0.9);
                     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
                     display: flex;
                     align-items: center;
-                    padding: 0 6px;
+                    justify-content: space-between;
+                    padding: 0 8px;
                     gap: 6px;
                     cursor: grab;
                     flex-shrink: 0;
                     z-index: 10;
                     backdrop-filter: blur(4px);
+                    font-family: 'JetBrains Mono', 'Consolas', monospace;
+
+                    .badge-title,
+                    .feed-title {
+                        display: flex;
+                        align-items: center;
+                        gap: 5px;
+                        font-family: 'JetBrains Mono', 'Consolas', monospace;
+                        font-size: 9.5px;
+                        font-weight: 700;
+                        color: #E2E8F0;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+
+                        .dot-indicator {
+                            width: 6px;
+                            height: 6px;
+                            border-radius: 50%;
+                            background: #10B981;
+                            box-shadow: 0 0 6px #10B981;
+                            flex-shrink: 0;
+                        }
+                    }
 
                     .header-drag-indicator {
                         font-size: 11px;
@@ -503,15 +558,32 @@
                         letter-spacing: -1px;
                     }
 
-                    .feed-title {
-                        font-family: 'JetBrains Mono', 'Consolas', monospace;
-                        font-size: 9px;
-                        font-weight: 700;
-                        color: #E2E8F0;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
+                    .badge-coords {
+                        font-size: 8.5px;
+                        color: #06B6D4;
+                        font-weight: 600;
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
                         white-space: nowrap;
-                        flex: 1;
+
+                        .badge-rot {
+                            background: rgba(245, 158, 11, 0.2);
+                            color: #F59E0B;
+                            border: 1px solid rgba(245, 158, 11, 0.4);
+                            padding: 0 4px;
+                            border-radius: 2px;
+                            font-size: 8px;
+                        }
+                    }
+
+                    .badge-layer {
+                        font-size: 8px;
+                        font-weight: 800;
+                        color: #94A3B8;
+                        background: rgba(255, 255, 255, 0.06);
+                        padding: 1px 4px;
+                        border-radius: 2px;
                     }
 
                     .rotation-badge {
@@ -537,6 +609,15 @@
                     position: relative;
                     overflow: hidden;
                     background: #000000;
+
+                    .card-drag-surface {
+                        position: absolute;
+                        inset: 0;
+                        z-index: 5;
+                        cursor: grab;
+                        background: transparent;
+                        user-select: none;
+                    }
                 }
 
                 /* Resize Handle Bottom-Right */
