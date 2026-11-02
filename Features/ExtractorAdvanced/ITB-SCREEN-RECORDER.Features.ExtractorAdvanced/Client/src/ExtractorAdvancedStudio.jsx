@@ -291,14 +291,7 @@ export default function ExtractorAdvancedStudio() {
         return () => ac.abort();
     }, [activeStation, spotlightStation, isSpotlightOpen, timelineBaseEpochMs, totalTimelineDurationMs, keystrokeMode, showRulerKeystrokes]);
 
-    useEffect(() => {
-        if (selectedStationIds.length === 1) {
-            const singleId = selectedStationIds[0];
-            if (activeStationId !== singleId) {
-                setActiveStationId(singleId);
-            }
-        }
-    }, [selectedStationIds, activeStationId]);
+// Single station opens directly into Master Canvas Grid for WYSIWYG editing
 
     useEffect(() => {
         if (isLoadingStations) return;

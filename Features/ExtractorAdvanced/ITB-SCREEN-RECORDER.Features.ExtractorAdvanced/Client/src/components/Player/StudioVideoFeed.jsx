@@ -212,19 +212,58 @@ export default function StudioVideoFeed({
     }, [viewMode, activeDirectorSegment]);
 
     const [canvasFrames, setCanvasFrames] = useState({});
+    const canvasContainerRef = useRef(null);
+    const [canvasBoardSize, setCanvasBoardSize] = useState({ width: 0, height: 0 });
 
     const topologyBounds = useMemo(() => {
         return calculateTopologyBounds(stationDisplays);
     }, [stationDisplays]);
 
+    // Pixel-perfect responsive board sizing ensuring canvas NEVER collapses to 0x0
     useEffect(() => {
-        if (!hasMultipleDisplays || viewMode !== 'canvas') {
+        if (!hasMultipleDisplays || (viewMode !== 'canvas' && viewMode !== 'all-displays')) {
+            return;
+        }
+
+        const updateBoardSize = () => {
+            const el = canvasContainerRef.current;
+            if (!el) return;
+            const padX = 48;
+            const padY = 72;
+            const availW = Math.max(100, el.clientWidth - padX);
+            const availH = Math.max(100, el.clientHeight - padY);
+            const totalW = topologyBounds.totalWidth || 1920;
+            const totalH = topologyBounds.totalHeight || 1080;
+            const aspect = totalW / totalH;
+
+            let w = availW;
+            let h = w / aspect;
+            if (h > availH) {
+                h = availH;
+                w = h * aspect;
+            }
+            setCanvasBoardSize({ width: Math.round(w), height: Math.round(h) });
+        };
+
+        updateBoardSize();
+        const ro = new ResizeObserver(updateBoardSize);
+        if (canvasContainerRef.current) ro.observe(canvasContainerRef.current);
+        return () => ro.disconnect();
+    }, [hasMultipleDisplays, viewMode, topologyBounds]);
+
+    // Quantize playhead timestamp to 250ms to prevent endless abort thrashing during scrubbing/playback
+    const quantizedCanvasEpoch = useMemo(() => {
+        return Math.round((baseEpochMs + playheadMs) / 250) * 250;
+    }, [baseEpochMs, playheadMs]);
+
+    useEffect(() => {
+        if (!hasMultipleDisplays || (viewMode !== 'canvas' && viewMode !== 'all-displays')) {
             return;
         }
 
         let isMounted = true;
         const abortController = new AbortController();
-        const targetEpochMs = Math.round(baseEpochMs + playheadMs);
+        const targetEpochMs = quantizedCanvasEpoch;
 
         stationDisplays.forEach((d, i) => {
             const dId = (d.displayId ?? d.DisplayId ?? `mon-${i}`).toLowerCase();
@@ -251,7 +290,7 @@ export default function StudioVideoFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [hasMultipleDisplays, viewMode, stationDisplays, hostname, baseEpochMs, playheadMs]);
+    }, [hasMultipleDisplays, viewMode, stationDisplays, hostname, quantizedCanvasEpoch]);
 
     const prevDisplayIdRef = useRef(activeDisplayId);
 
@@ -974,12 +1013,16 @@ export default function StudioVideoFeed({
 
             {/* Virtual Desktop Canvas View: Real physical OS monitor arrangement */}
             {(viewMode === 'canvas' || viewMode === 'all-displays') && hasMultipleDisplays && (
-                <div className="feed-canvas-container">
+                <div className="feed-canvas-container" ref={canvasContainerRef}>
                     <div className="feed-canvas-grid-bg" />
                     <div
                         className="feed-canvas-board"
                         style={{
-                            aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`
+                            width: canvasBoardSize.width ? `${canvasBoardSize.width}px` : '92%',
+                            height: canvasBoardSize.height ? `${canvasBoardSize.height}px` : 'auto',
+                            aspectRatio: `${topologyBounds.totalWidth} / ${topologyBounds.totalHeight}`,
+                            maxWidth: '100%',
+                            maxHeight: '100%'
                         }}
                     >
                         {stationDisplays.map((d, index) => {
@@ -1036,7 +1079,10 @@ export default function StudioVideoFeed({
                                             alt={dispId}
                                         />
                                     ) : (
-                                        <div className="canvas-pane-placeholder">DECODE PENDING...</div>
+                                        <div className="canvas-pane-placeholder">
+                                            <div className="placeholder-radar-blip" />
+                                            <span>SYNCING {d.displayName || dispId.toUpperCase()}...</span>
+                                        </div>
                                     )}
                                 </div>
                             );

@@ -237,7 +237,7 @@ export default function MulticamViewport({
         const effectiveStations = orderedStations.length > 0 ? orderedStations : timelineStations;
 
         // Special case: Single station with 2+ monitors in 1x2 or 2x2 mode
-        if (effectiveStations.length === 1 && (canvasPreset === '1x2' || canvasPreset === '2x2')) {
+        if (effectiveStations.length === 1 && (canvasPreset === '1x2' || canvasPreset === '2x2' || canvasPreset === 'auto')) {
             const st = effectiveStations[0];
             const displays = st.displays || st.topology?.displays || [];
             if (displays.length > 1) {

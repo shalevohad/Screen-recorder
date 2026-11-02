@@ -1541,4 +1541,35 @@ To completely eliminate `libfontconfig` initialization:
    - Regression tests in `ExternalApiAndCustomCanvasTests.cs` (`ResolveSystemFontClause_ReturnsValidFontClause_WhenFontsExistOnSystem` and `ResolveSystemFontClause_BypassesFontconfig_AndRunsSuccessfullyInFfmpeg`) assert font resolution and verify FFmpeg execution with 0 error exit code and zero Fontconfig errors.
 
 ---
+## 34. Studio Canvas Dimension Stabilization & Frame Quantization (2026-11-02)
+
+### 1. Root Cause Analysis: Black Screen in Studio Canvas Mode
+When rendering multi-monitor workstations in Studio Canvas mode (`viewMode === 'canvas'`), the display rendered completely black due to three distinct compounding factors:
+1. **Container Dimension Collapse (0px by 0px)**:
+   - In `StudioVideoFeed.scss`, `.feed-canvas-board` was styled with `width: auto; height: auto; max-width: 100%; max-height: 100%`.
+   - Because all monitor pane children (`.canvas-display-pane`) use `position: absolute`, the flex child board had zero intrinsic content dimensions and collapsed to `0px x 0px` inside the centering flex container.
+   - The parent `.feed-canvas-container` had a solid black background (`#070A10`), rendering an entirely blank/black viewport.
+2. **Playhead Scrubbing / Playback Abort Thrashing**:
+   - In `StudioVideoFeed.jsx`, the frame extraction `useEffect` was keyed directly to `playheadMs`. During playback or rapid scrubbing, `playheadMs` updated every ~30ms, causing the cleanup function to trigger `abortController.abort()` on every frame request before any response could complete.
+   - As a result, `canvasFrames` remained empty `{}` indefinitely, leaving placeholders or un-rendered frames.
+3. **Premature Auto-Solo Lockout for Single Workstations**:
+   - In `ExtractorAdvancedStudio.jsx`, an effect forcibly set `activeStationId = singleId` whenever `selectedStationIds.length === 1`. This immediately locked single workstations (such as `OHAD-DESKTOP`) into Solo Focus mode instead of allowing them into the multi-slot Master Canvas Grid.
+4. **Stacked Monitor Coordinate Collisions**:
+   - In `VirtualTopologyCanvas.jsx`, when an agent reported multiple monitors sharing `(X=0, Y=0)` without explicit virtual desktop offsets, both monitors rendered stacked directly on top of each other at `left: 0%, top: 0%`.
+
+### 2. Resolution & Invariants Enforced
+1. **Dynamic Pixel-Sized Board (`ResizeObserver`)**:
+   - `StudioVideoFeed.jsx` mounts a `ResizeObserver` on `canvasContainerRef` and calculates pixel-perfect dimensions (`canvasBoardSize`) based on available container dimensions minus padding, scaling to match `topologyBounds.totalWidth / topologyBounds.totalHeight`.
+   - `.feed-canvas-board` now explicitly specifies `width: ${canvasBoardSize.width}px; height: ${canvasBoardSize.height}px`, completely preventing 0x0 flex collapse.
+2. **Frame Request Quantization (250ms Buckets)**:
+   - Playhead updates are quantized via `Math.round((baseEpochMs + playheadMs) / 250) * 250`.
+   - Rapid scrubbing or playback updates no longer thrash or abort in-flight thumbnail/frame requests, stabilizing frame rendering.
+3. **Tactical Skeleton Loading Beacon**:
+   - When a display frame is pending decode, `.canvas-pane-placeholder` renders an animated radar beacon pulse (`SYNCING {dispName}...`) with cyan accents instead of a dark blank screen.
+4. **Single-Station Multi-Monitor WYSIWYG Auto Layout**:
+   - When a single multi-monitor workstation is loaded, `MulticamViewport` automatically maps monitor 0 to Slot 0 and monitor 1 to Slot 1 in `1x2`, `2x2`, and `auto` presets. Single workstations enter directly into the Master Canvas Grid for WYSIWYG editing.
+5. **Normalized Horizontal Fallback Coordinates**:
+   - In `VirtualTopologyCanvas.jsx`, when all monitors report `(0, 0)`, coordinates dynamically fallback to horizontal concatenation (`cumulativeX += dWidth`), ensuring zero display occlusion.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
