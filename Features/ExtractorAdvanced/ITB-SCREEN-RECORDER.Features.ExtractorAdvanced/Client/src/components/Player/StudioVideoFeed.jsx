@@ -221,7 +221,7 @@ export default function StudioVideoFeed({
 
     // Pixel-perfect responsive board sizing ensuring canvas NEVER collapses to 0x0
     useEffect(() => {
-        if (!hasMultipleDisplays || (viewMode !== 'canvas' && viewMode !== 'all-displays')) {
+        if (!hasMultipleDisplays || (viewMode !== 'canvas' && viewMode !== 'all-displays') || isPlaying) {
             return;
         }
 
@@ -391,7 +391,7 @@ export default function StudioVideoFeed({
     useEffect(() => {
         if (!stationId || !hostname) return;
 
-        if (isPlaying && isVideoRendering) {
+        if (isPlaying) {
             prevIsPlayingRef.current = true;
             return;
         }
@@ -434,7 +434,7 @@ export default function StudioVideoFeed({
 
     // Fetch frame for Secondary Display (Split & PiP)
     useEffect(() => {
-        if (!hasMultipleDisplays || (viewMode !== 'split' && viewMode !== 'pip') || !secondaryDisplayId) {
+        if (!hasMultipleDisplays || (viewMode !== 'split' && viewMode !== 'pip') || !secondaryDisplayId || isPlaying) {
             setSecondaryFrameResult(null);
             return;
         }

@@ -249,6 +249,20 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public string BorderColor { get; set; } = "#06B6D4";
 
         /// <summary>
+        /// Optional shadow effect preset (e.g. "none", "deep", "glow-cyan", "glow-emerald", "glow-rose", "glow-amber").
+        /// </summary>
+        [JsonPropertyName("shadowEffect")]
+        [XmlElement("ShadowEffect")]
+        public string? ShadowEffect { get; set; } = "none";
+
+        /// <summary>
+        /// Optional corner rounding radius in pixels (e.g. 0, 4, 8, 12).
+        /// </summary>
+        [JsonPropertyName("borderRadius")]
+        [XmlElement("BorderRadius")]
+        public int BorderRadius { get; set; } = 0;
+
+        /// <summary>
         /// Optional tactical label burned onto the feed (e.g. "COMMANDER - WS-01").
         /// </summary>
         [JsonPropertyName("label")]

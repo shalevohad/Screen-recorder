@@ -131,7 +131,8 @@ export default function CameraCardFeed({
     useEffect(() => {
         if (isOffline || !roundedEpochMs || !stationName) return;
 
-        if (isPlaying && isVideoReady) {
+        // Never fetch static frames during active playback to prevent network saturation and frame thrashing
+        if (isPlaying) {
             prevIsPlayingRef.current = true;
             return;
         }

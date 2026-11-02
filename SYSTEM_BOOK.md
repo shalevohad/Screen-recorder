@@ -1602,9 +1602,15 @@ The Live Grid Master Canvas Composer unites workspace playback, freeform composi
      - `Dip to Black`: Symmetric luminance fade-out and fade-in.
    - **Live Real-Time Playback Interpolation**: Scrubbing or playing on the timeline dynamically computes intermediate feed positions and smoothly renders real-time motion on the live canvas.
    - **Dedicated Timeline Track (`CanvasKeyframeTrack`)**: Visual representation of layout keyframes directly on `TimelineBoard` with interactive seek, selection, and deletion.
-5. **Backend Export Parity & Rotation Support**:
-   - `CanvasPlacementDto.Rotation` added in `AdvanceJobInfo.cs`.
+5. **Backend Export Parity, Rotation & Shadow Support**:
+   - `CanvasPlacementDto.Rotation`, `ShadowEffect`, and `BorderRadius` added in `AdvanceJobInfo.cs`.
    - `AdvanceJobManager.cs` synthesizes FFmpeg `rotate` filter clauses (`rotate={radStr}:ow='rotw({radStr})':oh='roth({radStr})':c=none`) alongside `scale`, `pad`, and `drawbox` operations for both single layouts and multi-keyframe interval timelines.
+6. **Playback Network Stabilization & Live Feeds/Presets Parity**:
+   - **Zero-Thrash Stream Playback**: Suppresses all static frame requests (`if (isPlaying) return;`) across `CameraCardFeed.jsx` and `StudioVideoFeed.jsx` during active playback, guaranteeing zero network saturation and seamless continuous H.264 stream decode.
+   - **Feeds & Displays Inventory Palette (`＋ FEEDS PALETTE`)**: Collapsible tactical drawer displaying all stations and individual displays (Screen 1, Screen 2...) with 1-click `＋ ADD TO CANVAS` and `CLEAR CANVAS` for creating manual canvas layouts from scratch.
+   - **Layers Stacking Depth (`≡ LAYERS`)**: Direct visual layer hierarchy manager supporting `⏫ To Front`, `⬆️ Forward`, `⬇️ Backward`, `⏬ To Back`, and individual feed deletion.
+   - **Shadow & Glow Effects**: Floating inspector and canvas feed boxes support `Deep Cinema` shadow, tactical glows (`Cyan`, `Emerald`, `Rose`, `Amber`), and custom border widths.
+   - **Persistent Custom Presets & JSON Data**: Operators can name and save custom layouts to `localStorage` (`itb_canvas_saved_presets`), recall them instantly from the `📁 SAVED PRESETS` dropdown, or export/import JSON configurations across sessions.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

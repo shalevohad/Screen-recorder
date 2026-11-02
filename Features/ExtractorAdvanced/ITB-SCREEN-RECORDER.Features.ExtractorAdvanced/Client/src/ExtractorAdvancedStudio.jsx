@@ -371,15 +371,17 @@ export default function ExtractorAdvancedStudio() {
     }, [isLoadingStations, allStations]);
 
     const handleSelectActiveStation = useCallback((id) => {
-        if (selectedStationIds.length <= 1) return;
         if (id === null) {
             setIsPlaying(false);
             setPlaybackSpeed(1);
-        } else if (id !== activeStationId) {
+            setActiveStationId(null);
+            return;
+        }
+        if (id !== activeStationId) {
             setPlaybackSpeed(1);
         }
         setActiveStationId(id);
-    }, [activeStationId, selectedStationIds.length, setIsPlaying, setPlaybackSpeed]);
+    }, [activeStationId, setIsPlaying, setPlaybackSpeed]);
 
     const handleOpenSpotlightFullscreen = useCallback((id, targetDisplayId = null) => {
         if (id !== activeStationId) setPlaybackSpeed(1);
@@ -392,14 +394,10 @@ export default function ExtractorAdvancedStudio() {
     const handleCloseSpotlightFullscreen = useCallback(() => {
         setSpotlightStationId(null);
         setSpotlightInitialDisplayId(null);
-        if (selectedStationIds.length <= 1) {
-            if (selectedStationIds.length === 1) setActiveStationId(selectedStationIds[0]);
-            return;
-        }
         if (lastViewBeforeFullscreenRef.current === 'grid') {
             setActiveStationId(null);
         }
-    }, [selectedStationIds]);
+    }, []);
 
     // Master Audio Routing Management
     const effectiveAudioPlan = useMemo(() => {
@@ -737,9 +735,6 @@ export default function ExtractorAdvancedStudio() {
             } else if (rawActiveId && stationsToSelect.includes(rawActiveId)) {
                 setActiveStationId(rawActiveId);
                 setSpotlightStationId(null);
-            } else if (stationsToSelect.length === 1) {
-                setActiveStationId(stationsToSelect[0]);
-                setSpotlightStationId(null);
             } else {
                 setActiveStationId(null);
                 setSpotlightStationId(null);
@@ -911,6 +906,7 @@ export default function ExtractorAdvancedStudio() {
                                 <MulticamViewport
                                     activeStation={enrichedActiveStation}
                                     timelineStations={enrichedTimelineStations}
+                                    allStations={allStations}
                                     onSelectActiveStation={handleSelectActiveStation}
                                     onOpenSpotlight={handleOpenSpotlightFullscreen}
                                     onStationContextMenu={handleStationContextMenu}
@@ -1039,11 +1035,7 @@ export default function ExtractorAdvancedStudio() {
                         durationMs={timeRange.durationMs}
                         onApply={() => {
                             if (selectedStationIds.length > 0) {
-                                if (selectedStationIds.length === 1) {
-                                    setActiveStationId(selectedStationIds[0]);
-                                } else {
-                                    setActiveStationId(null);
-                                }
+                                setActiveStationId(null); // Always start in Master Canvas Grid
                                 setSpotlightStationId(null);
                                 setIsWorkspaceActive(true);
                                 setIsDrawerOpen(false);

@@ -1,20 +1,24 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.jsx
-// Universal Live Master Canvas Composer, Multi-Keyframe Timeline Engine & WYSIWYG Export
+// Master Live Canvas Composer & WYSIWYG 16:9 Export Preview Stage
+// Full Drag-and-Drop, Feeds Palette, Layers Stacking, Shadows, and Preset Save/Load Parity
 // ==========================================
-import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import CameraCard from './views/Card/CameraCard.jsx';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import StudioVideoFeed from '../Player/StudioVideoFeed.jsx';
+import CameraCard from './views/Card/CameraCard.jsx';
 import KeystrokePlaybackOverlay from '../Player/KeystrokePlaybackOverlay.jsx';
-import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './MulticamViewport.scss';
 
 const VIRTUAL_CANVAS_W = 1920;
 const VIRTUAL_CANVAS_H = 1080;
 
 const SLOT_BORDER_COLORS = [
-    '#06B6D4', '#10B981', '#F59E0B', '#F43F5E',
-    '#A855F7', '#EC4899', '#38BDF8', '#34D399', '#FFFFFF'
+    '#06B6D4', // Cyan
+    '#10B981', // Emerald
+    '#F59E0B', // Amber
+    '#F43F5E', // Rose
+    '#A855F7', // Purple
+    '#38BDF8'  // Sky
 ];
 
 const PALETTE_COLORS = [
@@ -24,6 +28,15 @@ const PALETTE_COLORS = [
 
 const BORDER_WIDTHS = [0, 2, 4, 6, 8];
 
+const SHADOW_PRESETS = [
+    { id: 'none', label: 'None' },
+    { id: 'deep', label: 'Deep Cinema' },
+    { id: 'glow-cyan', label: 'Cyan Glow' },
+    { id: 'glow-emerald', label: 'Emerald Glow' },
+    { id: 'glow-rose', label: 'Rose Glow' },
+    { id: 'glow-amber', label: 'Amber Glow' }
+];
+
 function clamp(val, min, max) {
     return Math.max(min, Math.min(max, val));
 }
@@ -32,9 +45,34 @@ function cubicEaseInOut(t) {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-/**
- * Packs all available feeds into optimal 16:9 layout coordinates on a 1920x1080 canvas.
- */
+function getShadowCss(shadowEffect, isSelected, bColor) {
+    let base;
+    switch (shadowEffect) {
+        case 'deep':
+            base = '0 18px 45px rgba(0, 0, 0, 0.9), 0 4px 12px rgba(0, 0, 0, 0.7)';
+            break;
+        case 'glow-cyan':
+            base = '0 0 24px rgba(6, 182, 212, 0.65), 0 10px 30px rgba(0, 0, 0, 0.8)';
+            break;
+        case 'glow-emerald':
+            base = '0 0 24px rgba(16, 185, 129, 0.65), 0 10px 30px rgba(0, 0, 0, 0.8)';
+            break;
+        case 'glow-rose':
+            base = '0 0 24px rgba(244, 63, 94, 0.65), 0 10px 30px rgba(0, 0, 0, 0.8)';
+            break;
+        case 'glow-amber':
+            base = '0 0 24px rgba(245, 158, 11, 0.65), 0 10px 30px rgba(0, 0, 0, 0.8)';
+            break;
+        default:
+            base = '0 6px 20px rgba(0, 0, 0, 0.5)';
+            break;
+    }
+    if (isSelected) {
+        return `${base}, 0 0 0 2px ${bColor || '#06B6D4'}, inset 0 0 16px rgba(6, 182, 212, 0.25)`;
+    }
+    return base;
+}
+
 function generateAutoPackPlacements(feeds) {
     const W = VIRTUAL_CANVAS_W;
     const H = VIRTUAL_CANVAS_H;
@@ -51,32 +89,34 @@ function generateAutoPackPlacements(feeds) {
             zIndex: 0,
             rotation: 0,
             borderWidth: 0,
-            borderColor: SLOT_BORDER_COLORS[0]
+            borderColor: SLOT_BORDER_COLORS[0],
+            shadowEffect: 'deep',
+            borderRadius: 0
         }];
     }
 
     if (count === 2) {
         const halfW = 960;
         return [
-            { ...feeds[0], x: 0, y: 0, width: halfW, height: H, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0] },
-            { ...feeds[1], x: halfW, y: 0, width: halfW, height: H, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1] }
+            { ...feeds[0], x: 0, y: 0, width: halfW, height: H, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+            { ...feeds[1], x: halfW, y: 0, width: halfW, height: H, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 }
         ];
     }
 
     if (count === 3) {
         return [
-            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0] },
-            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1] },
-            { ...feeds[2], x: 480, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2] }
+            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
+            { ...feeds[2], x: 480, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
         ];
     }
 
     if (count === 4) {
         return [
-            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0] },
-            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1] },
-            { ...feeds[2], x: 0, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2] },
-            { ...feeds[3], x: 960, y: 540, width: 960, height: 540, zIndex: 3, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[3] }
+            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
+            { ...feeds[2], x: 0, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 },
+            { ...feeds[3], x: 960, y: 540, width: 960, height: 540, zIndex: 3, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[3], shadowEffect: 'deep', borderRadius: 0 }
         ];
     }
 
@@ -97,7 +137,9 @@ function generateAutoPackPlacements(feeds) {
             zIndex: i,
             rotation: 0,
             borderWidth: 2,
-            borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
+            borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length],
+            shadowEffect: 'deep',
+            borderRadius: 0
         };
     });
 }
@@ -105,6 +147,7 @@ function generateAutoPackPlacements(feeds) {
 export default function MulticamViewport({
     activeStation,
     timelineStations = [],
+    allStations = [],
     onSelectActiveStation,
     onOpenSpotlight,
     onStationContextMenu,
@@ -121,87 +164,111 @@ export default function MulticamViewport({
     globalGaps = [],
     recordingSegments = {},
     playbackSpeed = 1,
-    keystrokeMode = 'BURN_IN',
+    onChangePlaybackSpeed: _onChangePlaybackSpeed,
+    keystrokeMode = 'BurnIn',
     keystrokes = [],
-    directorPlan,
+    directorPlan = null,
     onOverrideDisplay,
     onResetOverride,
     compositionLayout = 'canvas',
     onChangeCompositionLayout,
     isAutoDirectorEnabled = true,
     onToggleAutoDirector,
-    onChangePlaybackSpeed,
     onUpdateCanvasLayout,
-    canvasLayoutTimeline,
+    canvasLayoutTimeline = null,
     onUpdateCanvasLayoutTimeline,
     activeKfIndex = 0,
-    setActiveKfIndex
+    _setActiveKfIndex
 }) {
+    const currentEpochMs = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
+    const cutStartEpochMs = baseEpochMs + inPointMs;
+
+    // Audio solo state
+    const [activeAudioStationId, setActiveAudioStationId] = useState(() => {
+        return timelineStations[0]?.id || null;
+    });
+
+    // Side Panels: Feeds Palette, Layers Manager, Save/Load Presets, JSON Modal
+    const [showFeedsPalette, setShowFeedsPalette] = useState(false);
+    const [showLayersPanel, setShowLayersPanel] = useState(false);
+    const [showSavePresetModal, setShowSavePresetModal] = useState(false);
+    const [showPresetsMenu, setShowPresetsMenu] = useState(false);
+    const [showJsonModal, setShowJsonModal] = useState(false);
+    const [jsonModalText, setJsonModalText] = useState('');
+    const [presetNameInput, setPresetNameInput] = useState('');
+    const [feedSearchQuery, setFeedSearchQuery] = useState('');
+
+    // Saved Presets in localStorage
+    const [savedPresets, setSavedPresets] = useState(() => {
+        try {
+            const raw = localStorage.getItem('itb_canvas_saved_presets');
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const persistSavedPresets = (presets) => {
+        setSavedPresets(presets);
+        try {
+            localStorage.setItem('itb_canvas_saved_presets', JSON.stringify(presets));
+        } catch {}
+    };
+
+    // Fullscreen HUD state
+    const [isGridFullscreen, setIsGridFullscreen] = useState(false);
+    const [_showHudControls, setShowHudControls] = useState(false);
+    const hudTimerRef = useRef(null);
     const viewportRootRef = useRef(null);
     const canvasFrameRef = useRef(null);
 
-    const [isGridFullscreen, setIsGridFullscreen] = useState(false);
-    const [activeAudioStationId, setActiveAudioStationId] = useState(() => timelineStations[0]?.id || null);
-    const [showHudControls, setShowHudControls] = useState(true);
-    const hudTimerRef = useRef(null);
-
-    // Selected feed index on canvas
+    // Selection & Free Transform state
     const [selectedFeedIndex, setSelectedFeedIndex] = useState(0);
-
-    // Dynamic drag & resize state
-    const dragStateRef = useRef(null);
+    const [showRotationControl, setShowRotationControl] = useState(false);
+    const [showShadowControl, setShowShadowControl] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
     const [snapGuides, setSnapGuides] = useState({ vertical: null, horizontal: null });
 
-    // Rotation slider display toggle
-    const [showRotationControl, setShowRotationControl] = useState(false);
+    const dragStateRef = useRef(null);
 
-    // All available feeds extracted from selected timeline stations
+    // Enumerate all available workstation feeds across displays
     const availableFeeds = useMemo(() => {
+        const pool = (allStations && allStations.length > 0) ? allStations : timelineStations;
         const feeds = [];
-        timelineStations.forEach(st => {
+        pool.forEach(st => {
             const displays = (st.displays && st.displays.length > 0)
                 ? st.displays
                 : (st.topology && st.topology.displays && st.topology.displays.length > 0)
                     ? st.topology.displays
-                    : [{ displayId: 'mon-0', isPrimary: true }];
+                    : [{ displayId: 'mon-0', isPrimary: true, width: 1920, height: 1080 }];
 
-            displays.forEach((d, dIdx) => {
-                const dispId = (d.displayId || d.DisplayId || `mon-${dIdx}`).toLowerCase();
-                const dispName = d.displayName || d.DisplayName || (dispId === 'mon-0' ? 'Screen 1' : `Screen ${dIdx + 1}`);
-                const stationLabel = st.displayName || st.roleAlias || st.hostname || st.name;
+            displays.forEach((d, idx) => {
+                const dispId = (d.displayId || `mon-${idx}`).toLowerCase();
+                const dispNum = d.displayNumber || (idx + 1);
+                const dispTitle = d.displayName || `Screen ${dispNum}`;
                 feeds.push({
-                    feedKey: `${st.id}:${dispId}`,
                     stationId: st.id,
                     displayId: dispId,
-                    station: st,
-                    label: displays.length > 1 ? `${stationLabel} - ${dispName}` : stationLabel
+                    label: `${st.displayName || st.roleAlias || st.hostname || st.name} - ${dispTitle}`,
+                    stationName: st.displayName || st.roleAlias || st.hostname || st.name,
+                    stationHostname: st.hostname || st.id,
+                    isPrimary: Boolean(d.isPrimary),
+                    width: d.width || 1920,
+                    height: d.height || 1080
                 });
             });
         });
         return feeds;
-    }, [timelineStations]);
+    }, [allStations, timelineStations]);
 
-    // Current playhead epoch
-    const currentEpochMs = useMemo(() => {
-        return playheadEpochMs > 0 ? playheadEpochMs : Math.round(baseEpochMs + playheadMs);
-    }, [playheadEpochMs, baseEpochMs, playheadMs]);
-
-    const cutStartEpochMs = useMemo(() => baseEpochMs + inPointMs, [baseEpochMs, inPointMs]);
-    const cutEndEpochMs = useMemo(() => baseEpochMs + (outPointMs || totalDurationMs), [baseEpochMs, outPointMs, totalDurationMs]);
-
-    // Internal Keyframes Timeline State
+    // Timeline Keyframes Layout State
     const [internalTimeline, setInternalTimeline] = useState(() => {
         if (canvasLayoutTimeline?.keyframes?.length > 0) {
-            return canvasLayoutTimeline;
+            return JSON.parse(JSON.stringify(canvasLayoutTimeline));
         }
         return {
-            width: VIRTUAL_CANVAS_W,
-            height: VIRTUAL_CANVAS_H,
-            backgroundColor: '#070A10',
-            fps: 30.0,
-            preset: 'auto',
+            id: 'canvas-timeline-root',
             keyframes: [
                 {
                     timestampEpochMs: cutStartEpochMs,
@@ -219,78 +286,24 @@ export default function MulticamViewport({
         };
     });
 
-    // Synchronize available feeds with keyframes if stations changed
     useEffect(() => {
-        if (availableFeeds.length === 0) return;
+        if (canvasLayoutTimeline?.keyframes?.length > 0) {
+            setInternalTimeline(JSON.parse(JSON.stringify(canvasLayoutTimeline)));
+        }
+    }, [canvasLayoutTimeline]);
 
-        setInternalTimeline(prev => {
-            const currentKfs = prev?.keyframes || [];
-            if (currentKfs.length === 0) {
-                const initPlacements = generateAutoPackPlacements(availableFeeds);
-                const nextTimeline = {
-                    width: VIRTUAL_CANVAS_W,
-                    height: VIRTUAL_CANVAS_H,
-                    backgroundColor: '#070A10',
-                    fps: 30.0,
-                    preset: 'auto',
-                    keyframes: [
-                        {
-                            timestampEpochMs: cutStartEpochMs,
-                            transitionDurationSec: 0.5,
-                            transitionType: 'smooth',
-                            layout: {
-                                width: VIRTUAL_CANVAS_W,
-                                height: VIRTUAL_CANVAS_H,
-                                backgroundColor: '#070A10',
-                                fps: 30.0,
-                                placements: initPlacements
-                            }
-                        }
-                    ]
-                };
-                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-                return nextTimeline;
-            }
-
-            let hasChanged = false;
-            const updatedKfs = currentKfs.map(kf => {
-                const existing = kf.layout?.placements || [];
-                const missing = availableFeeds.filter(f => !existing.some(p => p.stationId === f.stationId && p.displayId === f.displayId));
-                if (missing.length > 0) {
-                    hasChanged = true;
-                    const allMerged = [...existing, ...missing];
-                    return {
-                        ...kf,
-                        layout: {
-                            ...kf.layout,
-                            placements: generateAutoPackPlacements(allMerged)
-                        }
-                    };
-                }
-                return kf;
-            });
-
-            if (hasChanged) {
-                const nextTimeline = { ...prev, keyframes: updatedKfs };
-                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-                return nextTimeline;
-            }
-            return prev;
-        });
-    }, [availableFeeds, cutStartEpochMs, onUpdateCanvasLayoutTimeline]);
-
-    // Active keyframes & selected keyframe reference
-    const keyframes = useMemo(() => internalTimeline.keyframes || [], [internalTimeline.keyframes]);
-    const safeActiveIdx = Math.max(0, Math.min(keyframes.length - 1, activeKfIndex));
+    const keyframes = internalTimeline.keyframes || [];
+    const safeActiveIdx = clamp(activeKfIndex || 0, 0, Math.max(0, keyframes.length - 1));
     const currentKf = keyframes[safeActiveIdx] || keyframes[0];
-    const currentPlacements = useMemo(() => currentKf?.layout?.placements || [], [currentKf?.layout?.placements]);
+    const currentPlacements = useMemo(() => {
+        return currentKf?.layout?.placements || [];
+    }, [currentKf]);
 
-    // Helper to update placements in the active keyframe
+    // Helper to update current placements on active keyframe
     const updateActivePlacements = useCallback((newPlacements) => {
         setInternalTimeline(prev => {
             const nextKfs = [...(prev.keyframes || [])];
             if (!nextKfs[safeActiveIdx]) return prev;
-
             nextKfs[safeActiveIdx] = {
                 ...nextKfs[safeActiveIdx],
                 layout: {
@@ -304,184 +317,7 @@ export default function MulticamViewport({
         });
     }, [safeActiveIdx, onUpdateCanvasLayoutTimeline]);
 
-    // Apply Preset Layouts to Active Keyframe
-    const handleApplyPreset = useCallback((preset) => {
-        let newPlacements = [];
-
-        if (preset === '1x1') {
-            const target = availableFeeds[selectedFeedIndex] || availableFeeds[0];
-            if (target) {
-                newPlacements = [{
-                    ...target,
-                    x: 0,
-                    y: 0,
-                    width: VIRTUAL_CANVAS_W,
-                    height: VIRTUAL_CANVAS_H,
-                    zIndex: 0,
-                    rotation: 0,
-                    borderWidth: 0,
-                    borderColor: SLOT_BORDER_COLORS[0]
-                }];
-            }
-        } else if (preset === '1x2') {
-            const halfW = 960;
-            newPlacements = availableFeeds.slice(0, 2).map((f, i) => ({
-                ...f,
-                x: i * halfW,
-                y: 0,
-                width: halfW,
-                height: VIRTUAL_CANVAS_H,
-                zIndex: i,
-                rotation: 0,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
-            }));
-        } else if (preset === '2x2') {
-            newPlacements = availableFeeds.slice(0, 4).map((f, i) => {
-                const col = i % 2;
-                const row = Math.floor(i / 2);
-                return {
-                    ...f,
-                    x: col * 960,
-                    y: row * 540,
-                    width: 960,
-                    height: 540,
-                    zIndex: i,
-                    rotation: 0,
-                    borderWidth: 2,
-                    borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
-                };
-            });
-        } else if (preset === '3-grid') {
-            newPlacements = availableFeeds.slice(0, 3).map((f, i) => {
-                const coords = [
-                    { x: 0, y: 0, w: 960, h: 540 },
-                    { x: 960, y: 0, w: 960, h: 540 },
-                    { x: 480, y: 540, w: 960, h: 540 }
-                ];
-                const c = coords[i] || coords[0];
-                return {
-                    ...f,
-                    x: c.x,
-                    y: c.y,
-                    width: c.w,
-                    height: c.h,
-                    zIndex: i,
-                    rotation: 0,
-                    borderWidth: 2,
-                    borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
-                };
-            });
-        } else if (preset === '1+3-pip') {
-            const main = availableFeeds[0];
-            const insets = availableFeeds.slice(1, 4);
-            newPlacements.push({
-                ...main,
-                x: 0,
-                y: 0,
-                width: VIRTUAL_CANVAS_W,
-                height: VIRTUAL_CANVAS_H,
-                zIndex: 0,
-                rotation: 0,
-                borderWidth: 0,
-                borderColor: SLOT_BORDER_COLORS[0]
-            });
-            const insetW = 440;
-            const insetH = 248;
-            insets.forEach((ins, idx) => {
-                newPlacements.push({
-                    ...ins,
-                    x: VIRTUAL_CANVAS_W - insetW - 24,
-                    y: VIRTUAL_CANVAS_H - ((idx + 1) * (insetH + 16)) - 16,
-                    width: insetW,
-                    height: insetH,
-                    zIndex: idx + 1,
-                    rotation: 0,
-                    borderWidth: 3,
-                    borderColor: SLOT_BORDER_COLORS[(idx + 1) % SLOT_BORDER_COLORS.length]
-                });
-            });
-        } else {
-            // 'auto': default pack all available feeds
-            newPlacements = generateAutoPackPlacements(availableFeeds);
-        }
-
-        updateActivePlacements(newPlacements);
-    }, [availableFeeds, selectedFeedIndex, updateActivePlacements]);
-
-    // Real-Time Playback & Scrubbing Interpolation
-    const activeDisplayPlacements = useMemo(() => {
-        // While actively dragging or resizing, show current placements with 0 latency
-        if (isDragging || isResizing || keyframes.length <= 1) {
-            return currentPlacements;
-        }
-
-        let kfA = keyframes[0];
-        let kfB = null;
-
-        for (let i = 0; i < keyframes.length; i++) {
-            if (keyframes[i].timestampEpochMs <= currentEpochMs) {
-                kfA = keyframes[i];
-            } else {
-                kfB = keyframes[i];
-                break;
-            }
-        }
-
-        if (!kfB) {
-            return kfA.layout?.placements || currentPlacements;
-        }
-
-        const transType = kfB.transitionType || 'smooth';
-        const transDurMs = Math.max(100, (kfB.transitionDurationSec ?? 0.5) * 1000);
-        const transStartEpoch = kfB.timestampEpochMs - transDurMs;
-
-        if (currentEpochMs < transStartEpoch) {
-            return kfA.layout?.placements || currentPlacements;
-        }
-        if (currentEpochMs >= kfB.timestampEpochMs) {
-            return kfB.layout?.placements || currentPlacements;
-        }
-
-        if (transType === 'cut') {
-            return kfA.layout?.placements || currentPlacements;
-        }
-
-        const rawRatio = (currentEpochMs - transStartEpoch) / transDurMs;
-        const ratio = clamp(rawRatio, 0, 1);
-        const tEased = transType === 'linear' ? ratio : cubicEaseInOut(ratio);
-
-        const aPlacements = kfA.layout?.placements || [];
-        const bPlacements = kfB.layout?.placements || [];
-
-        return bPlacements.map(pB => {
-            const pA = aPlacements.find(x => x.stationId === pB.stationId && x.displayId === pB.displayId) || pB;
-            const interpX = Math.round(pA.x + (pB.x - pA.x) * tEased);
-            const interpY = Math.round(pA.y + (pB.y - pA.y) * tEased);
-            const interpW = Math.round(pA.width + (pB.width - pA.width) * tEased);
-            const interpH = Math.round(pA.height + (pB.height - pA.height) * tEased);
-            const interpRot = Number(((pA.rotation || 0) + ((pB.rotation || 0) - (pA.rotation || 0)) * tEased).toFixed(1));
-
-            let interpOpacity = 1;
-            if (transType === 'fade') {
-                interpOpacity = Number(tEased.toFixed(2));
-            } else if (transType === 'dip') {
-                interpOpacity = ratio < 0.5 ? Number((1 - ratio * 2).toFixed(2)) : Number(((ratio - 0.5) * 2).toFixed(2));
-            }
-
-            return {
-                ...pB,
-                x: interpX,
-                y: interpY,
-                width: interpW,
-                height: interpH,
-                rotation: interpRot,
-                opacity: interpOpacity
-            };
-        });
-    }, [isDragging, isResizing, keyframes, currentEpochMs, currentPlacements]);
-
-    // Keep parent Studio informed of current canvas layout for WYSIWYG export
+    // Sync current canvas layout to parent Studio
     useEffect(() => {
         if (onUpdateCanvasLayout) {
             onUpdateCanvasLayout({
@@ -495,74 +331,270 @@ export default function MulticamViewport({
         }
     }, [currentPlacements, internalTimeline, onUpdateCanvasLayout]);
 
-    // Add Keyframe at Current Playhead
-    const handleAddKeyframeAtPlayhead = useCallback(() => {
-        const targetEpoch = clamp(currentEpochMs, cutStartEpochMs, cutEndEpochMs);
+    // -------------------------------------------------------------
+    // FEEDS PALETTE ACTIONS: ADD / REMOVE / CLEAR
+    // -------------------------------------------------------------
+    const handleAddFeedToCanvas = useCallback((f) => {
+        const maxZ = currentPlacements.length > 0 ? Math.max(...currentPlacements.map(p => p.zIndex || 0)) + 1 : 0;
+        const color = SLOT_BORDER_COLORS[currentPlacements.length % SLOT_BORDER_COLORS.length];
 
-        setInternalTimeline(prev => {
-            const currentKfs = [...(prev.keyframes || [])];
-            const existingIdx = currentKfs.findIndex(k => Math.abs(k.timestampEpochMs - targetEpoch) < 300);
-            if (existingIdx >= 0) {
-                if (setActiveKfIndex) setActiveKfIndex(existingIdx);
-                return prev;
-            }
+        const newPlacement = {
+            stationId: f.stationId,
+            displayId: f.displayId,
+            label: f.label,
+            x: 100 + (currentPlacements.length * 40) % 800,
+            y: 80 + (currentPlacements.length * 40) % 500,
+            width: 640,
+            height: 360,
+            zIndex: maxZ,
+            rotation: 0,
+            borderWidth: 2,
+            borderColor: color,
+            shadowEffect: 'deep',
+            borderRadius: 0
+        };
 
-            const activeLayout = currentKf?.layout || {
-                width: VIRTUAL_CANVAS_W,
-                height: VIRTUAL_CANVAS_H,
-                backgroundColor: '#070A10',
-                fps: 30.0,
-                placements: currentPlacements
-            };
+        const next = [...currentPlacements, newPlacement];
+        updateActivePlacements(next);
+        setSelectedFeedIndex(next.length - 1);
+    }, [currentPlacements, updateActivePlacements]);
 
-            const newKf = {
-                timestampEpochMs: targetEpoch,
-                transitionDurationSec: 0.5,
-                transitionType: 'smooth',
-                layout: JSON.parse(JSON.stringify(activeLayout))
-            };
+    const handleRemovePlacement = useCallback((idx) => {
+        const next = currentPlacements.filter((_, i) => i !== idx);
+        updateActivePlacements(next);
+        setSelectedFeedIndex(prev => Math.max(0, prev - 1));
+    }, [currentPlacements, updateActivePlacements]);
 
-            const nextKfs = [...currentKfs, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
-            const newIdx = nextKfs.findIndex(k => k.timestampEpochMs === targetEpoch);
-            if (setActiveKfIndex) setActiveKfIndex(newIdx >= 0 ? newIdx : 0);
-
-            const nextTimeline = { ...prev, keyframes: nextKfs };
-            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-            return nextTimeline;
-        });
-    }, [currentEpochMs, cutStartEpochMs, cutEndEpochMs, currentKf?.layout, currentPlacements, setActiveKfIndex, onUpdateCanvasLayoutTimeline]);
-
-    // Delete Active Keyframe
-    const handleDeleteActiveKeyframe = useCallback(() => {
-        if (keyframes.length <= 1) return;
-        setInternalTimeline(prev => {
-            const nextKfs = (prev.keyframes || []).filter((_, i) => i !== safeActiveIdx);
-            if (setActiveKfIndex) setActiveKfIndex(prevIdx => Math.max(0, prevIdx - 1));
-            const nextTimeline = { ...prev, keyframes: nextKfs };
-            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-            return nextTimeline;
-        });
-    }, [keyframes.length, safeActiveIdx, setActiveKfIndex, onUpdateCanvasLayoutTimeline]);
-
-    // Apply Active Layout to All Timeline Keyframes
-    const handleApplyLayoutToAll = useCallback(() => {
-        setInternalTimeline(prev => {
-            const activeLayoutCopy = JSON.parse(JSON.stringify(currentKf.layout));
-            const updatedKfs = (prev.keyframes || []).map(k => ({
-                ...k,
-                layout: activeLayoutCopy
-            }));
-            const nextTimeline = { ...prev, keyframes: updatedKfs };
-            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-            return nextTimeline;
-        });
-    }, [currentKf?.layout, onUpdateCanvasLayoutTimeline]);
+    const handleClearCanvas = useCallback(() => {
+        updateActivePlacements([]);
+        setSelectedFeedIndex(-1);
+    }, [updateActivePlacements]);
 
     // -------------------------------------------------------------
-    // HIGH-PERFORMANCE 60FPS DIRECT DRAG & RESIZE ENGINE (MODAL PARITY)
+    // LAYER STACKING ACTIONS ("מי לפני מי")
+    // -------------------------------------------------------------
+    const handleBringToFront = useCallback((idx = selectedFeedIndex) => {
+        if (idx < 0 || !currentPlacements[idx]) return;
+        const maxZ = Math.max(...currentPlacements.map(p => p.zIndex || 0), 0);
+        const next = [...currentPlacements];
+        next[idx] = { ...next[idx], zIndex: maxZ + 1 };
+        updateActivePlacements(next);
+    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+
+    const handleSendToBack = useCallback((idx = selectedFeedIndex) => {
+        if (idx < 0 || !currentPlacements[idx]) return;
+        const minZ = Math.min(...currentPlacements.map(p => p.zIndex || 0), 0);
+        const next = [...currentPlacements];
+        next[idx] = { ...next[idx], zIndex: Math.max(0, minZ - 1) };
+        updateActivePlacements(next);
+    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+
+    const handleBringForward = useCallback((idx = selectedFeedIndex) => {
+        if (idx < 0 || !currentPlacements[idx]) return;
+        const next = [...currentPlacements];
+        next[idx] = { ...next[idx], zIndex: (next[idx].zIndex || 0) + 1 };
+        updateActivePlacements(next);
+    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+
+    const handleSendBackward = useCallback((idx = selectedFeedIndex) => {
+        if (idx < 0 || !currentPlacements[idx]) return;
+        const next = [...currentPlacements];
+        next[idx] = { ...next[idx], zIndex: Math.max(0, (next[idx].zIndex || 0) - 1) };
+        updateActivePlacements(next);
+    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+
+    // -------------------------------------------------------------
+    // STYLE UPDATES: BORDER, SHADOW, ROTATION, ROUNDING
+    // -------------------------------------------------------------
+    const handleUpdateSelectedStyle = useCallback((styleProps) => {
+        if (selectedFeedIndex < 0 || !currentPlacements[selectedFeedIndex]) return;
+        const next = currentPlacements.map((p, idx) => {
+            if (idx === selectedFeedIndex) {
+                return { ...p, ...styleProps };
+            }
+            return p;
+        });
+        updateActivePlacements(next);
+    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+
+    const handleRotateStep = useCallback((stepDeg = 90) => {
+        const target = currentPlacements[selectedFeedIndex];
+        if (!target) return;
+        const currentRot = target.rotation || 0;
+        const nextRot = (currentRot + stepDeg) % 360;
+        handleUpdateSelectedStyle({ rotation: nextRot });
+    }, [selectedFeedIndex, currentPlacements, handleUpdateSelectedStyle]);
+
+    // -------------------------------------------------------------
+    // PRESET TEMPLATES
+    // -------------------------------------------------------------
+    const handleApplyPreset = useCallback((presetId) => {
+        let newPlacements = [];
+        const feeds = availableFeeds.length > 0 ? availableFeeds : currentPlacements;
+
+        switch (presetId) {
+            case 'auto':
+                newPlacements = generateAutoPackPlacements(feeds);
+                break;
+            case '1x1':
+                if (feeds.length > 0) {
+                    newPlacements = [{
+                        ...feeds[0],
+                        x: 0,
+                        y: 0,
+                        width: 1920,
+                        height: 1080,
+                        zIndex: 0,
+                        rotation: 0,
+                        borderWidth: 0,
+                        borderColor: SLOT_BORDER_COLORS[0],
+                        shadowEffect: 'none',
+                        borderRadius: 0
+                    }];
+                }
+                break;
+            case '1x2':
+                if (feeds.length >= 2) {
+                    newPlacements = [
+                        { ...feeds[0], x: 0, y: 0, width: 960, height: 1080, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+                        { ...feeds[1], x: 960, y: 0, width: 960, height: 1080, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 }
+                    ];
+                } else {
+                    newPlacements = generateAutoPackPlacements(feeds);
+                }
+                break;
+            case '2x2':
+                newPlacements = feeds.slice(0, 4).map((f, idx) => ({
+                    ...f,
+                    x: (idx % 2) * 960,
+                    y: Math.floor(idx / 2) * 540,
+                    width: 960,
+                    height: 540,
+                    zIndex: idx,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
+                    shadowEffect: 'deep',
+                    borderRadius: 0
+                }));
+                break;
+            case '1+3-pip':
+                if (feeds.length >= 2) {
+                    newPlacements = [
+                        { ...feeds[0], x: 0, y: 0, width: 1920, height: 1080, zIndex: 0, rotation: 0, borderWidth: 0, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'none', borderRadius: 0 }
+                    ];
+                    const insets = feeds.slice(1, 4);
+                    const insetW = 440;
+                    const insetH = 248;
+                    insets.forEach((f, idx) => {
+                        newPlacements.push({
+                            ...f,
+                            x: 1920 - insetW - 24,
+                            y: 24 + idx * (insetH + 16),
+                            width: insetW,
+                            height: insetH,
+                            zIndex: 10 + idx,
+                            rotation: 0,
+                            borderWidth: 3,
+                            borderColor: SLOT_BORDER_COLORS[(idx + 1) % SLOT_BORDER_COLORS.length],
+                            shadowEffect: 'glow-cyan',
+                            borderRadius: 6
+                        });
+                    });
+                }
+                break;
+            case 'hero-stacked':
+                if (feeds.length >= 3) {
+                    newPlacements = [
+                        { ...feeds[0], x: 0, y: 0, width: 1280, height: 1080, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+                        { ...feeds[1], x: 1280, y: 0, width: 640, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
+                        { ...feeds[2], x: 1280, y: 540, width: 640, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
+                    ];
+                }
+                break;
+            case '3-grid':
+                if (feeds.length >= 3) {
+                    newPlacements = [
+                        { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+                        { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
+                        { ...feeds[2], x: 480, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
+                    ];
+                }
+                break;
+            default:
+                break;
+        }
+
+        if (newPlacements.length > 0) {
+            updateActivePlacements(newPlacements);
+            setSelectedFeedIndex(0);
+        }
+    }, [availableFeeds, currentPlacements, updateActivePlacements]);
+
+    // -------------------------------------------------------------
+    // CUSTOM PRESETS: SAVE & LOAD ("לשמור אותו ולטעון אותו")
+    // -------------------------------------------------------------
+    const handleSaveCurrentPreset = useCallback(() => {
+        const name = presetNameInput.trim() || `Custom Layout ${savedPresets.length + 1}`;
+        const newPreset = {
+            id: `preset-${Date.now()}`,
+            name,
+            createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            dateStr: new Date().toLocaleDateString(),
+            placements: JSON.parse(JSON.stringify(currentPlacements)),
+            keyframes: JSON.parse(JSON.stringify(keyframes))
+        };
+        const next = [newPreset, ...savedPresets];
+        persistSavedPresets(next);
+        setPresetNameInput('');
+        setShowSavePresetModal(false);
+    }, [presetNameInput, savedPresets, currentPlacements, keyframes]);
+
+    const handleLoadSavedPreset = useCallback((preset) => {
+        if (!preset || !preset.placements) return;
+        updateActivePlacements(preset.placements);
+        setSelectedFeedIndex(0);
+        setShowPresetsMenu(false);
+    }, [updateActivePlacements]);
+
+    const handleDeleteSavedPreset = useCallback((presetId, e) => {
+        e?.stopPropagation();
+        const next = savedPresets.filter(p => p.id !== presetId);
+        persistSavedPresets(next);
+    }, [savedPresets]);
+
+    // JSON Import / Export
+    const handleOpenJsonModal = useCallback(() => {
+        setJsonModalText(JSON.stringify({ placements: currentPlacements, keyframes }, null, 2));
+        setShowJsonModal(true);
+    }, [currentPlacements, keyframes]);
+
+    const handleApplyJsonImport = useCallback(() => {
+        try {
+            const parsed = JSON.parse(jsonModalText);
+            if (parsed.placements && Array.isArray(parsed.placements)) {
+                updateActivePlacements(parsed.placements);
+                setSelectedFeedIndex(0);
+                setShowJsonModal(false);
+                return;
+            }
+            if (parsed.keyframes && Array.isArray(parsed.keyframes)) {
+                setInternalTimeline({ id: 'canvas-timeline-imported', keyframes: parsed.keyframes });
+                setSelectedFeedIndex(0);
+                setShowJsonModal(false);
+                return;
+            }
+            alert('Invalid JSON structure. Must contain "placements" array or "keyframes" array.');
+        } catch (err) {
+            alert(`JSON Parse Error: ${err.message}`);
+        }
+    }, [jsonModalText, updateActivePlacements]);
+
+    // -------------------------------------------------------------
+    // DIRECT DRAG & RESIZE ENGINE (MODAL PARITY)
     // -------------------------------------------------------------
     const handleMouseDownBox = (e, index) => {
-        if (e.button !== 0) return; // Left click only
+        if (e.button !== 0) return;
         e.stopPropagation();
         e.preventDefault();
 
@@ -573,9 +605,6 @@ export default function MulticamViewport({
         const p = currentPlacements[index];
         if (!p) return;
 
-        const scaleX = VIRTUAL_CANVAS_W / rect.width;
-        const scaleY = VIRTUAL_CANVAS_H / rect.height;
-
         dragStateRef.current = {
             mode: 'drag',
             index,
@@ -585,8 +614,8 @@ export default function MulticamViewport({
             initialY: p.y,
             initialW: p.width,
             initialH: p.height,
-            scaleX,
-            scaleY
+            scaleX: VIRTUAL_CANVAS_W / rect.width,
+            scaleY: VIRTUAL_CANVAS_H / rect.height
         };
 
         setIsDragging(true);
@@ -606,7 +635,6 @@ export default function MulticamViewport({
             let vGuide = null;
             let hGuide = null;
 
-            // 18px Magnetic snap to center X (960) & canvas borders
             if (Math.abs(newX + ds.initialW / 2 - VIRTUAL_CANVAS_W / 2) < 18) {
                 newX = Math.round((VIRTUAL_CANVAS_W - ds.initialW) / 2);
                 vGuide = 50;
@@ -618,7 +646,6 @@ export default function MulticamViewport({
                 vGuide = 100;
             }
 
-            // 18px Magnetic snap to center Y (540) & canvas borders
             if (Math.abs(newY + ds.initialH / 2 - VIRTUAL_CANVAS_H / 2) < 18) {
                 newY = Math.round((VIRTUAL_CANVAS_H - ds.initialH) / 2);
                 hGuide = 50;
@@ -652,7 +679,6 @@ export default function MulticamViewport({
             dragStateRef.current = null;
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
-            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(internalTimeline);
         };
 
         window.addEventListener('mousemove', handleMouseMove);
@@ -671,20 +697,15 @@ export default function MulticamViewport({
         const p = currentPlacements[index];
         if (!p) return;
 
-        const scaleX = VIRTUAL_CANVAS_W / rect.width;
-        const scaleY = VIRTUAL_CANVAS_H / rect.height;
-
         dragStateRef.current = {
             mode: 'resize',
             index,
             startX: e.clientX,
             startY: e.clientY,
-            initialX: p.x,
-            initialY: p.y,
             initialW: p.width,
             initialH: p.height,
-            scaleX,
-            scaleY
+            scaleX: VIRTUAL_CANVAS_W / rect.width,
+            scaleY: VIRTUAL_CANVAS_H / rect.height
         };
 
         setIsResizing(true);
@@ -693,15 +714,20 @@ export default function MulticamViewport({
             if (!dragStateRef.current || dragStateRef.current.mode !== 'resize') return;
             const ds = dragStateRef.current;
             const dw = (moveEv.clientX - ds.startX) * ds.scaleX;
-            const dh = (moveEv.clientY - ds.startY) * ds.scaleY;
+            let dh = (moveEv.clientY - ds.startY) * ds.scaleY;
 
-            let newW = clamp(Math.round(ds.initialW + dw), 200, VIRTUAL_CANVAS_W - ds.initialX);
-            let newH = clamp(Math.round(ds.initialH + dh), 112, VIRTUAL_CANVAS_H - ds.initialY);
+            let newW = Math.round(ds.initialW + dw);
+            let newH = Math.round(ds.initialH + dh);
 
-            // Shift key lock to 16:9
             if (moveEv.shiftKey) {
                 newH = Math.round(newW * (9 / 16));
             }
+
+            const pTarget = currentPlacements[ds.index];
+            if (!pTarget) return;
+
+            newW = clamp(newW, 200, VIRTUAL_CANVAS_W - pTarget.x);
+            newH = clamp(newH, 120, VIRTUAL_CANVAS_H - pTarget.y);
 
             setInternalTimeline(prev => {
                 const nextKfs = [...(prev.keyframes || [])];
@@ -722,37 +748,10 @@ export default function MulticamViewport({
             dragStateRef.current = null;
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
-            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(internalTimeline);
         };
 
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
-    };
-
-    // Styling Updaters for Selected Feed
-    const handleUpdateSelectedStyle = (updates) => {
-        const next = currentPlacements.map((p, idx) => {
-            if (idx === selectedFeedIndex) {
-                return { ...p, ...updates };
-            }
-            return p;
-        });
-        updateActivePlacements(next);
-    };
-
-    const handleRotateStep = (degrees = 90) => {
-        const target = currentPlacements[selectedFeedIndex];
-        if (!target) return;
-        const curRot = target.rotation || 0;
-        const nextRot = (curRot + degrees) % 360;
-        handleUpdateSelectedStyle({ rotation: nextRot });
-    };
-
-    const handleZIndexStep = (dir = 1) => {
-        const target = currentPlacements[selectedFeedIndex];
-        if (!target) return;
-        const curZ = target.zIndex || 0;
-        handleUpdateSelectedStyle({ zIndex: Math.max(0, curZ + dir) });
     };
 
     // Fullscreen handling
@@ -774,49 +773,71 @@ export default function MulticamViewport({
         });
     }, [onSelectActiveStation]);
 
-    useEffect(() => {
-        const handleFullscreenChange = () => {
-            if (!document.fullscreenElement && isGridFullscreen) {
-                setIsGridFullscreen(false);
+    // Interpolation for smooth playback transitions across keyframes
+    const activeDisplayPlacements = useMemo(() => {
+        if (isDragging || isResizing || keyframes.length <= 1) {
+            return currentPlacements;
+        }
+
+        let kfA = keyframes[0];
+        let kfB = keyframes[0];
+        for (let i = 0; i < keyframes.length; i++) {
+            if (keyframes[i].timestampEpochMs <= currentEpochMs) {
+                kfA = keyframes[i];
+                kfB = keyframes[i + 1] || keyframes[i];
             }
-        };
-        document.addEventListener('fullscreenchange', handleFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    }, [isGridFullscreen]);
+        }
 
-    // Hotkey: F for Fullscreen Grid, Space for Play/Pause All
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        if (kfA === kfB) {
+            return kfA.layout?.placements || currentPlacements;
+        }
 
-            if (e.key === 'f' || e.key === 'F') {
-                e.preventDefault();
-                handleToggleGridFullscreen();
-            } else if (e.key === 'Escape' && isGridFullscreen) {
-                e.preventDefault();
-                setIsGridFullscreen(false);
-                if (document.fullscreenElement) {
-                    document.exitFullscreen().catch(() => {});
-                }
-            } else if (e.code === 'Space') {
-                e.preventDefault();
-                setIsPlaying && setIsPlaying(p => !p);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isGridFullscreen, handleToggleGridFullscreen, setIsPlaying]);
+        const transDurMs = (kfB.transitionDurationSec || 0.5) * 1000;
+        const transType = kfB.transitionType || 'smooth';
+        const transStartEpoch = kfB.timestampEpochMs - transDurMs;
 
-    const handleMouseMove = useCallback(() => {
-        if (!isGridFullscreen) return;
-        setShowHudControls(true);
-        if (hudTimerRef.current) clearTimeout(hudTimerRef.current);
-        hudTimerRef.current = setTimeout(() => {
-            setShowHudControls(false);
-        }, 3200);
-    }, [isGridFullscreen]);
+        if (currentEpochMs < transStartEpoch) {
+            return kfA.layout?.placements || currentPlacements;
+        }
+        if (currentEpochMs >= kfB.timestampEpochMs) {
+            return kfB.layout?.placements || currentPlacements;
+        }
 
-    if (timelineStations.length === 0 && !activeStation) return null;
+        if (transType === 'cut') {
+            return kfA.layout?.placements || currentPlacements;
+        }
+
+        const rawRatio = (currentEpochMs - transStartEpoch) / transDurMs;
+        const ratio = clamp(rawRatio, 0, 1);
+        const tEased = transType === 'linear' ? ratio : cubicEaseInOut(ratio);
+
+        const aPlacements = kfA.layout?.placements || [];
+        const bPlacements = kfB.layout?.placements || [];
+
+        return bPlacements.map(pB => {
+            const pA = aPlacements.find(x => x.stationId === pB.stationId && x.displayId === pB.displayId) || pB;
+            const interpX = Math.round(pA.x + (pB.x - pA.x) * tEased);
+            const interpY = Math.round(pA.y + (pB.y - pA.y) * tEased);
+            const interpW = Math.round(pA.width + (pB.width - pA.width) * tEased);
+            const interpH = Math.round(pA.height + (pB.height - pA.height) * tEased);
+            const interpRot = Number(((pA.rotation || 0) + ((pB.rotation || 0) - (pA.rotation || 0)) * tEased).toFixed(1));
+
+            return {
+                ...pB,
+                x: interpX,
+                y: interpY,
+                width: interpW,
+                height: interpH,
+                rotation: interpRot
+            };
+        });
+    }, [isDragging, isResizing, keyframes, currentEpochMs, currentPlacements]);
+
+    // Sorted placements for rendering (lowest zIndex in back)
+    const sortedRenderPlacements = useMemo(() => {
+        return activeDisplayPlacements.map((p, originalIndex) => ({ ...p, originalIndex }))
+            .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+    }, [activeDisplayPlacements]);
 
     const isSoloMode = Boolean(activeStation);
     const selectedPlacement = currentPlacements[selectedFeedIndex] || null;
@@ -824,10 +845,9 @@ export default function MulticamViewport({
     return (
         <div
             ref={viewportRootRef}
-            onMouseMove={handleMouseMove}
             className={`multicam-viewport-root ${isSoloMode ? 'solo' : 'canvas-grid'} ${isGridFullscreen ? 'fullscreen-grid-active' : ''}`}
         >
-            {/* Global Transparent Drag Shield ensuring 100% mouse capture */}
+            {/* Global Transparent Drag Shield */}
             {(isDragging || isResizing) && (
                 <div
                     className="canvas-global-drag-shield"
@@ -841,11 +861,31 @@ export default function MulticamViewport({
                 />
             )}
 
-            {/* Master Canvas Mode Bar: Presets & Layouts */}
+            {/* Universal Master Composition Toolbar */}
             <div className="multicam-composition-mode-bar">
                 <div className="comp-mode-left">
                     <span className="comp-icon">🎛️</span>
                     <span className="comp-title">LIVE CANVAS COMPOSER:</span>
+
+                    {/* Feeds Palette Button */}
+                    <button
+                        type="button"
+                        className={`btn-comp-action ${showFeedsPalette ? 'active' : ''}`}
+                        onClick={() => setShowFeedsPalette(p => !p)}
+                        title="Open Station Feeds & Displays Inventory Palette"
+                    >
+                        ＋ FEEDS PALETTE
+                    </button>
+
+                    {/* Layers Panel Button */}
+                    <button
+                        type="button"
+                        className={`btn-comp-action ${showLayersPanel ? 'active' : ''}`}
+                        onClick={() => setShowLayersPanel(p => !p)}
+                        title="Open Canvas Stacking Layers Hierarchy Manager"
+                    >
+                        ≡ LAYERS ({currentPlacements.length})
+                    </button>
 
                     {/* Canvas Presets Toolbar */}
                     <div className="comp-pill-group layouts">
@@ -853,23 +893,23 @@ export default function MulticamViewport({
                             type="button"
                             className="btn-comp-tab"
                             onClick={() => handleApplyPreset('auto')}
-                            title="Auto-Pack: Neatly arrange all available stations & displays in 16:9"
+                            title="Auto-Pack: Neatly arrange all available stations & displays"
                         >
-                            ⊞ AUTO-PACK ALL ({availableFeeds.length})
+                            ⊞ AUTO-PACK ({availableFeeds.length})
                         </button>
                         <button
                             type="button"
                             className="btn-comp-tab"
                             onClick={() => handleApplyPreset('1x1')}
-                            title="Single Feed (1x1 Full Screen Master Frame)"
+                            title="Single Feed (1x1 Focus Frame)"
                         >
-                            ⊞ 1x1 FOCUS
+                            ⊞ 1x1
                         </button>
                         <button
                             type="button"
                             className="btn-comp-tab"
                             onClick={() => handleApplyPreset('1x2')}
-                            title="Side-by-Side Dual Feeds (1x2 Master Frame)"
+                            title="Side-by-Side Dual Feeds (1x2 Dual)"
                         >
                             ⊞ 1x2 DUAL
                         </button>
@@ -892,10 +932,18 @@ export default function MulticamViewport({
                         <button
                             type="button"
                             className="btn-comp-tab"
-                            onClick={() => handleApplyPreset('3-grid')}
-                            title="3 Feeds (Top Dual + Bottom Center)"
+                            onClick={() => handleApplyPreset('hero-stacked')}
+                            title="Hero Main + 2 Stacked Displays"
                         >
-                            ⊞ 3-GRID
+                            ⊞ HERO+2
+                        </button>
+                        <button
+                            type="button"
+                            className="btn-comp-tab clear"
+                            onClick={handleClearCanvas}
+                            title="Clear Canvas: Start fresh with an empty canvas"
+                        >
+                            🗑️ CLEAR
                         </button>
                     </div>
 
@@ -904,7 +952,7 @@ export default function MulticamViewport({
                         type="button"
                         className={`btn-director-toggle ${isAutoDirectorEnabled ? 'is-on' : 'is-off'}`}
                         onClick={onToggleAutoDirector}
-                        title={isAutoDirectorEnabled ? "Auto-Director is ON: follows active activity cuts across keyframes" : "Auto-Director is OFF"}
+                        title={isAutoDirectorEnabled ? 'Auto-Director is ON' : 'Auto-Director is OFF'}
                     >
                         <span className="dot" />
                         <span>AUTO-DIRECTOR: {isAutoDirectorEnabled ? 'ON' : 'OFF'}</span>
@@ -913,13 +961,79 @@ export default function MulticamViewport({
 
                 {/* Center WYSIWYG Badge */}
                 <div className="comp-mode-center">
-                    <div className="wysiwyg-export-badge" title="What You See Is What You Get: Exact Master Canvas Export Preview">
+                    <div className="wysiwyg-export-badge" title="Exact Master Canvas WYSIWYG Export Preview">
                         <span className="dot live" />
-                        <span className="badge-text">WYSIWYG LIVE CANVAS STUDIO</span>
+                        <span className="badge-text">WYSIWYG MASTER CANVAS STUDIO</span>
                     </div>
                 </div>
 
+                {/* Right Actions: Save, Presets Dropdown, JSON, Fullscreen */}
                 <div className="comp-mode-right">
+                    {/* Save Preset Button */}
+                    <button
+                        type="button"
+                        className="btn-comp-action save"
+                        onClick={() => setShowSavePresetModal(true)}
+                        title="Save current canvas placement layout for future edits"
+                    >
+                        💾 SAVE PRESET
+                    </button>
+
+                    {/* Saved Presets Dropdown */}
+                    <div className="saved-presets-dropdown-wrapper">
+                        <button
+                            type="button"
+                            className={`btn-comp-action ${showPresetsMenu ? 'active' : ''}`}
+                            onClick={() => setShowPresetsMenu(p => !p)}
+                            title="Load a saved custom layout preset"
+                        >
+                            📁 SAVED PRESETS ({savedPresets.length}) ▾
+                        </button>
+
+                        {showPresetsMenu && (
+                            <div className="saved-presets-menu-popover">
+                                <div className="popover-header">
+                                    <span>SAVED CANVAS PRESETS</span>
+                                    <button type="button" className="btn-close-pop" onClick={() => setShowPresetsMenu(false)}>✕</button>
+                                </div>
+                                <div className="presets-list-scroll">
+                                    {savedPresets.length === 0 ? (
+                                        <div className="empty-presets-hint">
+                                            No saved custom presets yet. Arrange your canvas and click "SAVE PRESET"!
+                                        </div>
+                                    ) : (
+                                        savedPresets.map(preset => (
+                                            <div key={preset.id} className="saved-preset-item" onClick={() => handleLoadSavedPreset(preset)}>
+                                                <div className="preset-item-info">
+                                                    <span className="preset-item-name">{preset.name}</span>
+                                                    <span className="preset-item-meta">{preset.placements?.length || 0} screens • {preset.dateStr}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="btn-del-preset"
+                                                    onClick={(e) => handleDeleteSavedPreset(preset.id, e)}
+                                                    title="Delete saved preset"
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* JSON Import / Export Button */}
+                    <button
+                        type="button"
+                        className="btn-comp-action"
+                        onClick={handleOpenJsonModal}
+                        title="View, copy, or paste layout JSON structure"
+                    >
+                        📋 JSON DATA
+                    </button>
+
                     {isSoloMode && (
                         <button
                             type="button"
@@ -942,125 +1056,7 @@ export default function MulticamViewport({
                 </div>
             </div>
 
-            {/* Layout Keyframes Strip Bar */}
-            {!isSoloMode && (
-                <div className="canvas-keyframes-strip-bar">
-                    <div className="strip-left">
-                        <span className="strip-label">❖ LAYOUT KEYFRAMES:</span>
-                        <div className="keyframe-pills-scroll">
-                            {keyframes.map((kf, kIdx) => {
-                                const isActive = kIdx === safeActiveIdx;
-                                const clockStr = formatTimelineClock(kf.timestampEpochMs, timeMode, { includeSeconds: true });
-                                return (
-                                    <button
-                                        key={`kf-pill-${kIdx}-${kf.timestampEpochMs}`}
-                                        type="button"
-                                        className={`btn-kf-pill ${isActive ? 'is-active' : ''}`}
-                                        onClick={() => {
-                                            if (setActiveKfIndex) setActiveKfIndex(kIdx);
-                                            if (setPlayheadMs) {
-                                                const targetMs = Math.max(0, kf.timestampEpochMs - baseEpochMs);
-                                                setPlayheadMs(targetMs);
-                                            }
-                                        }}
-                                        title={`Jump to Keyframe #${kIdx + 1} at ${clockStr}`}
-                                    >
-                                        <span className="kf-icon">❖</span>
-                                        <span className="kf-idx">KF {kIdx + 1}</span>
-                                        <span className="kf-time">{clockStr}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        <button
-                            type="button"
-                            className="btn-add-kf-pill"
-                            onClick={handleAddKeyframeAtPlayhead}
-                            title="Capture current layout as keyframe at playhead position (+)"
-                        >
-                            + ADD KEYFRAME
-                        </button>
-                    </div>
-
-                    <div className="strip-right">
-                        {currentKf && (
-                            <>
-                                <div className="transition-selector-group">
-                                    <span className="field-label">ANIMATION:</span>
-                                    <select
-                                        value={currentKf.transitionType || 'smooth'}
-                                        onChange={(e) => {
-                                            const newType = e.target.value;
-                                            setInternalTimeline(prev => {
-                                                const nextKfs = [...(prev.keyframes || [])];
-                                                if (!nextKfs[safeActiveIdx]) return prev;
-                                                nextKfs[safeActiveIdx] = { ...nextKfs[safeActiveIdx], transitionType: newType };
-                                                const nextTimeline = { ...prev, keyframes: nextKfs };
-                                                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-                                                return nextTimeline;
-                                            });
-                                        }}
-                                        className="select-transition"
-                                        title="Select transition animation to this keyframe"
-                                    >
-                                        <option value="smooth">Smooth Ease (Glide)</option>
-                                        <option value="linear">Linear Speed</option>
-                                        <option value="cut">Instant Cut</option>
-                                        <option value="fade">Crossfade Opacity</option>
-                                        <option value="dip">Millisecond Dip-to-Black</option>
-                                    </select>
-
-                                    <select
-                                        value={String(currentKf.transitionDurationSec ?? 0.5)}
-                                        onChange={(e) => {
-                                            const newDur = parseFloat(e.target.value);
-                                            setInternalTimeline(prev => {
-                                                const nextKfs = [...(prev.keyframes || [])];
-                                                if (!nextKfs[safeActiveIdx]) return prev;
-                                                nextKfs[safeActiveIdx] = { ...nextKfs[safeActiveIdx], transitionDurationSec: newDur };
-                                                const nextTimeline = { ...prev, keyframes: nextKfs };
-                                                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-                                                return nextTimeline;
-                                            });
-                                        }}
-                                        className="select-duration"
-                                        title="Transition duration in seconds"
-                                    >
-                                        <option value="0.25">0.25s</option>
-                                        <option value="0.5">0.5s</option>
-                                        <option value="1.0">1.0s</option>
-                                        <option value="1.5">1.5s</option>
-                                        <option value="2.0">2.0s</option>
-                                    </select>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    className="btn-strip-action"
-                                    onClick={handleApplyLayoutToAll}
-                                    title="Copy current canvas arrangement to all timeline keyframes"
-                                >
-                                    📋 APPLY TO ALL
-                                </button>
-
-                                {keyframes.length > 1 && (
-                                    <button
-                                        type="button"
-                                        className="btn-strip-delete"
-                                        onClick={handleDeleteActiveKeyframe}
-                                        title="Delete active keyframe"
-                                    >
-                                        🗑️
-                                    </button>
-                                )}
-                            </>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* View Mode A: Solo Workstation Inspection */}
+            {/* View Mode A: Solo Workstation Spotlight */}
             {isSoloMode && activeStation && (
                 <div
                     className="spotlight-workspace-viewport"
@@ -1143,11 +1139,100 @@ export default function MulticamViewport({
             {/* View Mode B: Interactive Live Master Canvas Stage (WYSIWYG 16:9 Frame) */}
             {!isSoloMode && (
                 <div className="canvas-stage-wrapper">
+                    {/* Collapsible Left Panel: Feeds & Displays Palette */}
+                    {showFeedsPalette && (
+                        <div className="canvas-side-drawer feeds-palette-drawer">
+                            <div className="drawer-header">
+                                <span>＋ FEEDS & DISPLAYS PALETTE</span>
+                                <button type="button" className="btn-close-drawer" onClick={() => setShowFeedsPalette(false)}>✕</button>
+                            </div>
+                            <div className="drawer-search">
+                                <input
+                                    type="text"
+                                    placeholder="Filter workstations..."
+                                    value={feedSearchQuery}
+                                    onChange={(e) => setFeedSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            <div className="drawer-list-scroll">
+                                {availableFeeds
+                                    .filter(f => !feedSearchQuery || f.label.toLowerCase().includes(feedSearchQuery.toLowerCase()))
+                                    .map((f, fIdx) => {
+                                        const countOnCanvas = currentPlacements.filter(p => p.stationId === f.stationId && p.displayId === f.displayId).length;
+                                        return (
+                                            <div key={`palette-feed-${f.stationId}-${f.displayId}-${fIdx}`} className="drawer-feed-item">
+                                                <div className="feed-item-header">
+                                                    <span className="feed-item-title">{f.label}</span>
+                                                    {f.isPrimary && <span className="primary-badge">PRIMARY</span>}
+                                                </div>
+                                                <div className="feed-item-details">
+                                                    <span>{f.width}×{f.height}</span>
+                                                    {countOnCanvas > 0 && (
+                                                        <span className="on-canvas-tag">{countOnCanvas} on canvas</span>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="btn-add-to-canvas"
+                                                    onClick={() => handleAddFeedToCanvas(f)}
+                                                >
+                                                    ＋ ADD TO CANVAS
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                            <div className="drawer-footer-actions">
+                                <button type="button" className="btn-drawer-action auto" onClick={() => handleApplyPreset('auto')}>
+                                    ⊞ ADD ALL FEEDS
+                                </button>
+                                <button type="button" className="btn-drawer-action clear" onClick={handleClearCanvas}>
+                                    🗑️ CLEAR CANVAS
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Collapsible Right Panel: Layers Stacking Hierarchy ("מי לפני מי") */}
+                    {showLayersPanel && (
+                        <div className="canvas-side-drawer layers-panel-drawer">
+                            <div className="drawer-header">
+                                <span>≡ LAYERS STACKING ORDER</span>
+                                <button type="button" className="btn-close-drawer" onClick={() => setShowLayersPanel(false)}>✕</button>
+                            </div>
+                            <div className="layers-list-scroll">
+                                {sortedRenderPlacements.slice().reverse().map((p) => {
+                                    const origIdx = p.originalIndex;
+                                    const isSel = origIdx === selectedFeedIndex;
+                                    return (
+                                        <div
+                                            key={`layer-row-${p.stationId}-${p.displayId}-${origIdx}`}
+                                            className={`layer-item-row ${isSel ? 'selected' : ''}`}
+                                            onClick={() => setSelectedFeedIndex(origIdx)}
+                                        >
+                                            <div className="layer-info-left">
+                                                <span className="layer-num-pill">L{p.zIndex || origIdx}</span>
+                                                <span className="layer-name">{p.label || `${p.stationId} (${p.displayId})`}</span>
+                                            </div>
+                                            <div className="layer-actions-right" onClick={(e) => e.stopPropagation()}>
+                                                <button type="button" onClick={() => handleBringForward(origIdx)} title="Bring Forward (L+1)">⬆️</button>
+                                                <button type="button" onClick={() => handleSendBackward(origIdx)} title="Send Backward (L-1)">⬇️</button>
+                                                <button type="button" onClick={() => handleBringToFront(origIdx)} title="Bring to Front (Top)">⏫</button>
+                                                <button type="button" onClick={() => handleSendToBack(origIdx)} title="Send to Back (Bottom)">⏬</button>
+                                                <button type="button" className="btn-del-layer" onClick={() => handleRemovePlacement(origIdx)} title="Remove feed from canvas">✕</button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 16:9 Canvas Stage Frame */}
                     <div
                         ref={canvasFrameRef}
                         className="canvas-master-frame-16-9"
                     >
-                        {/* 16:9 Master Frame Corner Accents */}
                         <div className="corner-accent top-left" />
                         <div className="corner-accent top-right" />
                         <div className="corner-accent bottom-left" />
@@ -1164,7 +1249,7 @@ export default function MulticamViewport({
                                     left: `${snapGuides.vertical}%`,
                                     width: '2px',
                                     background: '#06B6D4',
-                                    boxShadow: '0 0 10px #06B6D4',
+                                    boxShadow: '0 0 10px #06B6D4, 0 0 4px #FFFFFF',
                                     zIndex: 9999,
                                     pointerEvents: 'none'
                                 }}
@@ -1180,32 +1265,53 @@ export default function MulticamViewport({
                                     top: `${snapGuides.horizontal}%`,
                                     height: '2px',
                                     background: '#06B6D4',
-                                    boxShadow: '0 0 10px #06B6D4',
+                                    boxShadow: '0 0 10px #06B6D4, 0 0 4px #FFFFFF',
                                     zIndex: 9999,
                                     pointerEvents: 'none'
                                 }}
                             />
                         )}
 
+                        {/* Empty Canvas Interactive State */}
+                        {currentPlacements.length === 0 && (
+                            <div className="canvas-empty-state-guide">
+                                <div className="empty-icon">🎨</div>
+                                <h3>MANUAL CANVAS STUDIO</h3>
+                                <p>The canvas is currently empty. Open the Feeds Palette to add screens or apply a preset template.</p>
+                                <div className="empty-actions-row">
+                                    <button type="button" className="btn-empty-add" onClick={() => setShowFeedsPalette(true)}>
+                                        ＋ OPEN FEEDS PALETTE
+                                    </button>
+                                    <button type="button" className="btn-empty-preset" onClick={() => handleApplyPreset('auto')}>
+                                        ⊞ AUTO-PACK ALL SCREENS
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Interactive Feed Boxes on Canvas */}
-                        {activeDisplayPlacements.map((p, sIdx) => {
-                            const isSelected = selectedFeedIndex === sIdx;
-                            const isThisDragging = isDragging && selectedFeedIndex === sIdx;
-                            const isThisResizing = isResizing && selectedFeedIndex === sIdx;
-                            const st = timelineStations.find(s => s.id === p.stationId) || { id: p.stationId, displayName: p.label || p.stationId };
-                            const bColor = p.borderColor || SLOT_BORDER_COLORS[sIdx % SLOT_BORDER_COLORS.length];
+                        {sortedRenderPlacements.map((p) => {
+                            const origIdx = p.originalIndex;
+                            const isSelected = selectedFeedIndex === origIdx;
+                            const isThisDragging = isDragging && selectedFeedIndex === origIdx;
+                            const isThisResizing = isResizing && selectedFeedIndex === origIdx;
+                            const st = (allStations.length > 0 ? allStations : timelineStations).find(s => s.id === p.stationId) || { id: p.stationId, displayName: p.label || p.stationId };
+                            const bColor = p.borderColor || SLOT_BORDER_COLORS[origIdx % SLOT_BORDER_COLORS.length];
                             const bWidth = p.borderWidth !== undefined ? p.borderWidth : 2;
                             const rot = p.rotation || 0;
-                            const op = p.opacity !== undefined ? p.opacity : 1;
+                            const shadowEffect = p.shadowEffect || 'deep';
+                            const bRadius = p.borderRadius || 0;
 
                             const leftPct = (p.x / VIRTUAL_CANVAS_W) * 100;
                             const topPct = (p.y / VIRTUAL_CANVAS_H) * 100;
                             const widthPct = (p.width / VIRTUAL_CANVAS_W) * 100;
                             const heightPct = (p.height / VIRTUAL_CANVAS_H) * 100;
 
+                            const boxBoxShadow = getShadowCss(shadowEffect, isSelected, bColor);
+
                             return (
                                 <div
-                                    key={`feed-${p.stationId}-${p.displayId}-${sIdx}`}
+                                    key={`feed-${p.stationId}-${p.displayId}-${origIdx}`}
                                     className={`canvas-feed-card-box ${isSelected ? 'is-selected' : ''} ${isThisDragging ? 'is-dragging' : ''} ${isThisResizing ? 'is-resizing' : ''}`}
                                     style={{
                                         position: 'absolute',
@@ -1213,16 +1319,16 @@ export default function MulticamViewport({
                                         top: `${topPct}%`,
                                         width: `${widthPct}%`,
                                         height: `${heightPct}%`,
-                                        zIndex: isSelected ? 1000 : (p.zIndex || sIdx),
+                                        zIndex: isSelected ? 1000 : (p.zIndex || origIdx),
                                         transform: `rotate(${rot}deg)`,
                                         transformOrigin: 'center center',
                                         border: `${bWidth}px solid ${bColor}`,
-                                        opacity: op,
-                                        boxShadow: isSelected ? `0 0 20px ${bColor}, inset 0 0 12px rgba(6, 182, 212, 0.2)` : undefined,
+                                        borderRadius: `${bRadius}px`,
+                                        boxShadow: boxBoxShadow,
                                         cursor: isThisDragging ? 'grabbing' : 'grab',
                                         transition: (isThisDragging || isThisResizing) ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out, transform 0.15s ease-out'
                                     }}
-                                    onMouseDown={(e) => handleMouseDownBox(e, sIdx)}
+                                    onMouseDown={(e) => handleMouseDownBox(e, origIdx)}
                                     onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
                                 >
                                     {/* Top Draggable Bar & Coordinates */}
@@ -1235,7 +1341,7 @@ export default function MulticamViewport({
                                             {Math.round(p.width)}×{Math.round(p.height)} @ ({Math.round(p.x)},{Math.round(p.y)})
                                             {rot !== 0 && <span className="badge-rot">📐{rot}°</span>}
                                         </div>
-                                        <span className="badge-layer">L{p.zIndex || sIdx}</span>
+                                        <span className="badge-layer">L{p.zIndex || origIdx}</span>
                                     </div>
 
                                     {/* Live Video Content Viewport */}
@@ -1263,14 +1369,14 @@ export default function MulticamViewport({
                                             targetDisplayId={p.displayId}
                                             onSelectDisplayId={(dispId) => {
                                                 const next = currentPlacements.map((pl, idx) => {
-                                                    if (idx === sIdx) {
+                                                    if (idx === origIdx) {
                                                         return { ...pl, displayId: dispId };
                                                     }
                                                     return pl;
                                                 });
                                                 updateActivePlacements(next);
                                             }}
-                                            slotIndex={sIdx}
+                                            slotIndex={origIdx}
                                             borderColor={bColor}
                                         />
 
@@ -1284,7 +1390,7 @@ export default function MulticamViewport({
                                     {/* Bottom-Right Corner Resize Handle */}
                                     <div
                                         className="resize-handle-br"
-                                        onMouseDown={(e) => handleMouseDownResize(e, sIdx)}
+                                        onMouseDown={(e) => handleMouseDownResize(e, origIdx)}
                                         title="Drag to resize dimensions (Hold Shift for 16:9 aspect lock)"
                                     >
                                         ↘
@@ -1292,7 +1398,11 @@ export default function MulticamViewport({
 
                                     {/* Selected Floating Tactical Inspector */}
                                     {isSelected && selectedPlacement && (
-                                        <div className="floating-feed-inspector" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                                        <div
+                                            className="floating-feed-inspector"
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
                                             {/* Border Color Palette */}
                                             <div className="inspector-group colors">
                                                 <span className="group-label">BORDER:</span>
@@ -1323,6 +1433,43 @@ export default function MulticamViewport({
                                                 ))}
                                             </div>
 
+                                            {/* Shadow Effect Dropdown */}
+                                            <div className="inspector-group shadow">
+                                                <button
+                                                    type="button"
+                                                    className={`btn-action-tool ${showShadowControl ? 'active' : ''}`}
+                                                    onClick={() => setShowShadowControl(prev => !prev)}
+                                                    title="Select shadow or glow effect"
+                                                >
+                                                    🌑 SHADOW ▾
+                                                </button>
+                                                {showShadowControl && (
+                                                    <div className="shadow-dropdown-menu">
+                                                        {SHADOW_PRESETS.map(s => (
+                                                            <button
+                                                                key={s.id}
+                                                                type="button"
+                                                                className={`shadow-option-btn ${shadowEffect === s.id ? 'active' : ''}`}
+                                                                onClick={() => {
+                                                                    handleUpdateSelectedStyle({ shadowEffect: s.id });
+                                                                    setShowShadowControl(false);
+                                                                }}
+                                                            >
+                                                                {s.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Layer Stacking Order */}
+                                            <div className="inspector-group layers">
+                                                <button type="button" className="btn-action-tool" onClick={() => handleBringForward(origIdx)} title="Bring forward (+1)">⬆️</button>
+                                                <button type="button" className="btn-action-tool" onClick={() => handleSendBackward(origIdx)} title="Send backward (-1)">⬇️</button>
+                                                <button type="button" className="btn-action-tool" onClick={() => handleBringToFront(origIdx)} title="Bring to Front">⏫</button>
+                                                <button type="button" className="btn-action-tool" onClick={() => handleSendToBack(origIdx)} title="Send to Back">⏬</button>
+                                            </div>
+
                                             {/* Rotate 90 & Slider Toggle */}
                                             <div className="inspector-group rotate">
                                                 <button
@@ -1349,47 +1496,26 @@ export default function MulticamViewport({
                                                         value={rot}
                                                         onChange={(e) => handleUpdateSelectedStyle({ rotation: Number(e.target.value) })}
                                                         className="rotation-slider"
-                                                        title="Rotation Angle (-180° to +180°)"
                                                     />
                                                 )}
                                             </div>
 
-                                            {/* Layer Depth */}
-                                            <div className="inspector-group layer">
-                                                <button
-                                                    type="button"
-                                                    className="btn-action-tool"
-                                                    onClick={() => handleZIndexStep(1)}
-                                                    title="Bring Forward (Higher Layer)"
-                                                >
-                                                    ▲ LAYER
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="btn-action-tool"
-                                                    onClick={() => handleZIndexStep(-1)}
-                                                    title="Send Backward (Lower Layer)"
-                                                >
-                                                    ▼
-                                                </button>
-                                            </div>
+                                            {/* Delete Feed Button */}
+                                            <button
+                                                type="button"
+                                                className="btn-action-tool btn-del-feed"
+                                                onClick={() => handleRemovePlacement(origIdx)}
+                                                title="Remove this feed from canvas"
+                                            >
+                                                🗑️
+                                            </button>
 
-                                            {/* Maximize to full 16:9 */}
+                                            {/* Solo Inspection Shortcut */}
                                             <button
                                                 type="button"
                                                 className="btn-action-tool highlight"
-                                                onClick={() => handleApplyPreset('1x1')}
-                                                title="Maximize this feed to fill entire 16:9 canvas"
-                                            >
-                                                ⛶ MAX
-                                            </button>
-
-                                            {/* Solo Focus Action */}
-                                            <button
-                                                type="button"
-                                                className="btn-action-tool"
                                                 onClick={() => onSelectActiveStation && onSelectActiveStation(st.id)}
-                                                title="Solo focus inspection"
+                                                title="Inspect this workstation in Solo Viewport"
                                             >
                                                 🔍 SOLO
                                             </button>
@@ -1402,100 +1528,72 @@ export default function MulticamViewport({
                 </div>
             )}
 
-            {/* Fullscreen Grid Floating Tactical Transport Dock */}
-            {isGridFullscreen && (
-                <div
-                    className={`grid-fullscreen-floating-dock ${showHudControls ? 'visible' : 'hidden'}`}
-                    onMouseEnter={() => setShowHudControls(true)}
-                >
-                    <div className="dock-glass-panel">
-                        <button
-                            type="button"
-                            className={`btn-dock-play ${isPlaying ? 'playing' : ''}`}
-                            onClick={() => setIsPlaying && setIsPlaying(p => !p)}
-                            title={isPlaying ? "Pause All Stations (Space)" : "Play All Stations Synchronously (Space)"}
-                        >
-                            {isPlaying ? (
-                                <>
-                                    <svg viewBox="0 0 24 24" fill="currentColor">
-                                        <rect x="6" y="4" width="4" height="16" rx="1" />
-                                        <rect x="14" y="4" width="4" height="16" rx="1" />
-                                    </svg>
-                                    <span>PAUSE ALL</span>
-                                </>
-                            ) : (
-                                <>
-                                    <svg viewBox="0 0 24 24" fill="currentColor">
-                                        <polygon points="5 3 19 12 5 21 5 3" />
-                                    </svg>
-                                    <span>PLAY ALL</span>
-                                </>
-                            )}
-                        </button>
-
-                        <div className="dock-scrubber-wrapper">
+            {/* Save Preset Modal Dialog */}
+            {showSavePresetModal && (
+                <div className="canvas-modal-backdrop" onClick={() => setShowSavePresetModal(false)}>
+                    <div className="canvas-modal-card" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <span>💾 SAVE CANVAS LAYOUT PRESET</span>
+                            <button type="button" className="btn-close-modal" onClick={() => setShowSavePresetModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            <label className="input-label">Preset Name:</label>
                             <input
-                                type="range"
-                                min={0}
-                                max={totalDurationMs}
-                                value={playheadMs}
-                                onChange={(e) => {
-                                    const newHead = Number(e.target.value);
-                                    setPlayheadMs && setPlayheadMs(newHead);
+                                type="text"
+                                className="input-preset-name"
+                                placeholder="e.g. Command Dual Screen Setup, Tactical Quad"
+                                value={presetNameInput}
+                                onChange={(e) => setPresetNameInput(e.target.value)}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveCurrentPreset();
                                 }}
-                                className="dock-scrubber-slider"
-                                title="Scrub Playhead"
+                            />
+                            <p className="modal-hint">
+                                This saves the exact positions, dimensions, rotation, borders, and shadows of all {currentPlacements.length} screens so you can load them anytime in future editing sessions.
+                            </p>
+                        </div>
+                        <div className="modal-footer">
+                            <button type="button" className="btn-modal-cancel" onClick={() => setShowSavePresetModal(false)}>Cancel</button>
+                            <button type="button" className="btn-modal-confirm" onClick={handleSaveCurrentPreset}>Save Preset</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* JSON Import / Export Modal Dialog */}
+            {showJsonModal && (
+                <div className="canvas-modal-backdrop" onClick={() => setShowJsonModal(false)}>
+                    <div className="canvas-modal-card wide" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <span>📋 JSON LAYOUT DATA (IMPORT / EXPORT)</span>
+                            <button type="button" className="btn-close-modal" onClick={() => setShowJsonModal(false)}>✕</button>
+                        </div>
+                        <div className="modal-body">
+                            <p className="modal-hint">
+                                Copy this configuration to save elsewhere, or paste existing canvas JSON to apply immediately.
+                            </p>
+                            <textarea
+                                className="json-textarea"
+                                rows={14}
+                                value={jsonModalText}
+                                onChange={(e) => setJsonModalText(e.target.value)}
                             />
                         </div>
-
-                        <div className="dock-clock-badge">
-                            <span className="dot live" />
-                            <span className="clock-text">
-                                {formatTimelineClock(currentEpochMs, timeMode)}
-                            </span>
-                        </div>
-
-                        <div className="dock-speed-pill">
-                            {[0.5, 1, 2, 4].map(spd => (
-                                <button
-                                    key={spd}
-                                    type="button"
-                                    className={`btn-dock-speed ${playbackSpeed === spd ? 'active' : ''}`}
-                                    onClick={() => onChangePlaybackSpeed && onChangePlaybackSpeed(spd)}
-                                >
-                                    {spd}x
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="dock-audio-selector">
-                            <span className="audio-icon">🔊</span>
-                            <select
-                                value={activeAudioStationId || ''}
-                                onChange={(e) => setActiveAudioStationId(e.target.value || null)}
-                                className="dock-audio-select"
-                                title="Rule 12 Audio Solo: Select unmuted workstation"
+                        <div className="modal-footer">
+                            <button
+                                type="button"
+                                className="btn-modal-cancel"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(jsonModalText);
+                                    alert('JSON copied to clipboard!');
+                                }}
                             >
-                                <option value="">🔇 MUTE ALL AUDIO</option>
-                                {timelineStations.map(st => (
-                                    <option key={st.id} value={st.id}>
-                                        {st.displayName || st.hostname} (SOLO AUDIO)
-                                    </option>
-                                ))}
-                            </select>
+                                📋 Copy to Clipboard
+                            </button>
+                            <button type="button" className="btn-modal-cancel" onClick={() => setShowJsonModal(false)}>Close</button>
+                            <button type="button" className="btn-modal-confirm" onClick={handleApplyJsonImport}>Apply Layout</button>
                         </div>
-
-                        <button
-                            type="button"
-                            className="btn-dock-exit"
-                            onClick={handleToggleGridFullscreen}
-                            title="Exit Fullscreen Grid (Esc)"
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-                            </svg>
-                            <span>EXIT</span>
-                        </button>
                     </div>
                 </div>
             )}
