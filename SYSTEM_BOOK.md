@@ -30,7 +30,7 @@
 20. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination](#20-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
 21. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture](#21-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
 22. [Host GPU Hardware Detection & Architecture Diagnostics](#22-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
-23. [ITB Standalone Player Architecture & Zero-Extract Ingestion Engine](#23-itb-standalone-player-architecture--zero-extract-ingestion-engine-2026-11-01)
+23. [ITB Standalone Player Architecture (Retired / Converged into Studio)](#24-itb-standalone-player-architecture-retired--converged-into-studio)
 24. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals](#21-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
 25. [Universal Studio Composition Engine & Single Master MP4 Export Architecture](#22-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
 26. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture](#26-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
@@ -884,9 +884,11 @@ To guarantee 100% deterministic time representation regardless of host operating
   - `parseSafeEpoch` parses ISO date strings without timezone indicators via `dateTimeToEpochMs` instead of browser-local parsing.
 
 ---
-## 24. ITB Standalone Player Architecture & Zero-Extract Ingestion Engine (2026-11-01)
+## 24. ITB Standalone Player Architecture (Retired / Converged into Studio)
 
-### 1. Operational Mission & Problem Statement
+> ⚠️ **Historical Reference & Deprecation Notice**: In accordance with system architecture consolidation directives, the standalone desktop player (`Tools/ITB-SCREEN-RECORDER.Player`, `ITB-SCREEN-RECORDER.Player.Core`, `ITB-SCREEN-RECORDER.Player.CallerShowcase`) and their Windows/Linux installers have been completely removed and retired from the codebase. All multi-screen forensic replay, adaptive canvas layout, audio routing, and timeline investigation capabilities have converged entirely into **ExtractorAdvanced Studio** and the **Visual Canvas Composer** (see Chapters 22, 26, 27, and 28).
+
+### 1. Historical Architecture & Rationale for Studio Convergence
 Export archives (`*.tar` / `*.itbp`) contain multi-station, multi-monitor video streams (H.264/AAC MP4) bundled with a metadata manifest (`session.json`).
 - **Scale Problem**: Export archives routinely range between 10GB and 200GB+. Standard media players (including classic VLC) require users to manually decompress or extract the entire archive to disk before playback, demanding redundant storage pools and introducing 10–20 minute disk extraction bottlenecks.
 - **Standalone Player Goal**: Provide a dedicated, air-gapped, VLC-grade desktop player (`ITB-PLAYER`) that streams and synchronizes multi-monitor feeds directly from the exported `.tar` container in <200ms with zero prior extraction, rendering gaps, subtitles, and telemetry HUD overlays.

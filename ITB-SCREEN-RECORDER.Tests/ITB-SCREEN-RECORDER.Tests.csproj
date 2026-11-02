@@ -28,7 +28,6 @@
     <ProjectReference Include="..\ITB-SCREEN-RECORDER.AgentService\ITB-SCREEN-RECORDER.AgentService.csproj" />
     <ProjectReference Include="..\Features\Extractor\ITB-SCREEN-RECORDER.Features.Extractor\ITB-SCREEN-RECORDER.Features.Extractor.csproj" />
     <ProjectReference Include="..\Features\ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced\ITB-SCREEN-RECORDER.Features.ExtractorAdvanced.csproj" />
-    <ProjectReference Include="..\Tools\ITB-SCREEN-RECORDER.Player.Core\ITB-SCREEN-RECORDER.Player.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
