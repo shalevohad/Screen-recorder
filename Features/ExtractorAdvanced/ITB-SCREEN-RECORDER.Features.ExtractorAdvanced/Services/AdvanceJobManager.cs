@@ -32,6 +32,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly AdvancedExtractorService _advancedExtractorService;
         private readonly IStorageScannerService _storageScanner;
         private readonly IAdvanceJobRepository _advanceRepository;
+        private readonly IFfmpegBinaryResolver _binaryResolver;
         private readonly ILogger<AdvanceJobManager> _advLogger;
 
         public AdvanceJobManager(
@@ -40,6 +41,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             IStorageScannerService storageScanner,
             IExportJobRepository exportJobRepository,
             IAdvanceJobRepository advanceRepository,
+            IFfmpegBinaryResolver binaryResolver,
             IOptions<ExtractorOptions> options,
             ILogger<ExportJobManager> baseLogger,
             ILogger<AdvanceJobManager> advLogger)
@@ -48,6 +50,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
             _advanceRepository = advanceRepository;
+            _binaryResolver = binaryResolver;
             _advLogger = advLogger;
 
             _ = LoadAndRecoverAdvanceJobsAsync();
@@ -159,7 +162,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 stationSummary += $"_and_{request.StationIds.Count - 2}_more";
             }
 
-            string fileName = $"RECORDINGS_EXPORT_{stationSummary}_{startUtc:yyyyMMdd_HHmm}_to_{endUtc:HHmm}.tar";
+            string fileName = $"RECORDINGS_EXPORT_{stationSummary}_{startUtc:yyyyMMdd_HHmm}_to_{endUtc:HHmm}.mp4";
             double durationMinutes = (endUtc - startUtc).TotalMinutes;
             long estimatedSize = (long)(request.StationIds.Count * durationMinutes * 15.0 * 1024.0 * 1024.0);
             if (estimatedSize < 5 * 1024 * 1024) estimatedSize = 15 * 1024 * 1024;
@@ -179,12 +182,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 FileSizeBytes = estimatedSize,
                 EstimatedSecondsRemaining = Math.Max(10, (int)(durationMinutes * request.StationIds.Count * 2)),
                 CreatedAtUtc = DateTime.UtcNow,
-                // Assign keystroke presentation mode selected by user in the UI directly to the job descriptor
-                KeystrokeMode = request.KeystrokeMode,
+                // Enforce keystroke burn-in or none
+                KeystrokeMode = request.KeystrokeMode == ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.KeystrokeExportMode.None 
+                    ? ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.KeystrokeExportMode.None 
+                    : ITB_SCREEN_RECORDER.Core.Contracts.Keystroke.KeystrokeExportMode.BurnIn,
+                CompositionScope = request.CompositionScope ?? "intra-station",
                 LayoutMode = request.LayoutMode ?? "director",
                 TargetDisplayId = request.TargetDisplayId,
                 IsPipSwapped = request.IsPipSwapped,
-                DirectorSegments = request.DirectorSegments
+                IsAutoDirectorEnabled = request.IsAutoDirectorEnabled,
+                DirectorSegments = request.DirectorSegments,
+                AudioRoutingSegments = request.AudioRoutingSegments
             };
 
             _jobs[job.JobId] = job;
@@ -221,7 +229,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             string tempStagingDir = Path.Combine(Path.GetTempPath(), $"staging_{job.JobId}");
             Directory.CreateDirectory(tempStagingDir);
 
-            string finalTarPath = Path.Combine(_exportDirectory, job.FileName);
+
 
             try
             {
@@ -248,12 +256,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 var plan = _advancedExtractorService.BuildSynchronizationPlan(job.StationIds, startUtc, endUtc, allStationChunks);
 
-                // Transfer selected keystroke mode and layout configuration from job descriptor to the SynchronizationPlan passed to TrackCutter
                 plan.KeystrokeMode = job.KeystrokeMode;
+                plan.CompositionScope = job.CompositionScope ?? "intra-station";
                 plan.LayoutMode = job.LayoutMode ?? "director";
                 plan.TargetDisplayId = job.TargetDisplayId;
                 plan.IsPipSwapped = job.IsPipSwapped;
+                plan.IsAutoDirectorEnabled = job.IsAutoDirectorEnabled;
                 plan.DirectorSegments = job.DirectorSegments;
+                plan.AudioRoutingSegments = job.AudioRoutingSegments;
 
                 double originalDurationSec = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
                 double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);
@@ -463,69 +473,35 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     });
                 }
 
-                job.StatusMessage = "Bundling synchronized archive (Tar)...";
-                job.ProgressPercent = 85;
+                string finalMp4Path = Path.Combine(_exportDirectory, job.FileName);
+
+                job.StatusMessage = "Composing master MP4 video & routing audio...";
+                job.ProgressPercent = 88;
                 job.EstimatedSecondsRemaining = 2;
                 _ = _advanceRepository.UpsertJobAsync(job);
 
-                await using (var tarStream = new FileStream(finalTarPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                await using (var tarWriter = new TarWriter(tarStream, TarEntryFormat.Pax, leaveOpen: false))
+                var trackDescriptors = new List<(string StationId, string DisplayId, string FilePath, bool HasAudio)>();
+                for (int k = 0; k < renderTasks.Count; k++)
                 {
-                    for (int k = 0; k < generatedTrackPaths.Count; k++)
+                    if (k < generatedTrackPaths.Count && File.Exists(generatedTrackPaths[k]))
                     {
-                        var trackFile = generatedTrackPaths[k];
-                        if (File.Exists(trackFile))
-                        {
-                            await tarWriter.WriteEntryAsync(trackFile, $"recordings/{Path.GetFileName(trackFile)}");
-                        }
-                        job.ProgressPercent = (int)Math.Round(85.0 + (((k + 1.0) / generatedTrackPaths.Count) * 12.0), 0);
+                        trackDescriptors.Add((renderTasks[k].StationId, renderTasks[k].DisplayId, generatedTrackPaths[k], true));
                     }
-
-                    var sessionManifestObj = new
-                    {
-                        sessionId = job.JobId,
-                        rangeStartUtc = startUtc,
-                        rangeEndUtc = endUtc,
-                        keystrokeMode = job.KeystrokeMode.ToString(),
-                        originalDurationSeconds = originalDurationSec,
-                        exportedDurationSeconds = exportedDurationSec,
-                        removedGlobalGaps = plan.RemovedGlobalGaps.Select(g => new
-                        {
-                            gapIndex = g.GapIndex,
-                            startUtc = g.StartUtc,
-                            endUtc = g.EndUtc,
-                            skippedDurationSeconds = g.SkippedDurationSeconds,
-                            timelineOffsetSeconds = g.TimelineOffsetSeconds
-                        }),
-                        stationGaps = plan.StationGaps.Select(g => new
-                        {
-                            stationId = g.StationId,
-                            startUtc = g.StartUtc,
-                            endUtc = g.EndUtc,
-                            durationSeconds = g.DurationSeconds,
-                            bridgeType = "NoSignal"
-                        }),
-                        tracks = sessionTracks,
-                        directorSegments = renderTasks.FirstOrDefault(t => t.DisplayId == "director").Plan?.DirectorSegments
-                    };
-
-                    byte[] manifestBytes = JsonSerializer.SerializeToUtf8Bytes(sessionManifestObj, new JsonSerializerOptions { WriteIndented = true });
-                    await using var manifestMs = new MemoryStream(manifestBytes);
-                    var manifestEntry = new PaxTarEntry(TarEntryType.RegularFile, "session.json") { DataStream = manifestMs };
-                    await tarWriter.WriteEntryAsync(manifestEntry);
                 }
 
-                var fi = new FileInfo(finalTarPath);
-                job.OutputFilePath = finalTarPath;
+                await ComposeMasterMp4Async(finalMp4Path, trackDescriptors, job, exportedDurationSec, startUtc, CancellationToken.None);
+
+                var fi = new FileInfo(finalMp4Path);
+                job.OutputFilePath = finalMp4Path;
                 job.FileSizeBytes = fi.Exists ? fi.Length : job.FileSizeBytes;
                 job.ProgressPercent = 100;
                 job.EstimatedSecondsRemaining = 0;
                 job.Status = "Completed";
-                job.StatusMessage = "Ready for download";
+                job.StatusMessage = "Master MP4 ready for download";
                 job.CompletedAtUtc = DateTime.UtcNow;
 
                 _ = _advanceRepository.UpsertJobAsync(job);
-                _advLogger.LogInformation("[AdvanceJobManager] Archive ready: {Path} ({Size} bytes)", finalTarPath, job.FileSizeBytes);
+                _advLogger.LogInformation("[AdvanceJobManager] Master MP4 ready: {Path} ({Size} bytes)", finalMp4Path, job.FileSizeBytes);
             }
             catch (Exception ex)
             {
@@ -544,6 +520,262 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 {
                     try { Directory.Delete(tempStagingDir, true); } catch { }
                 }
+            }
+        }
+
+        private async Task ComposeMasterMp4Async(
+            string finalMp4Path,
+            List<(string StationId, string DisplayId, string FilePath, bool HasAudio)> tracks,
+            AdvancedModels.AdvanceJobInfo job,
+            double exportedDurationSec,
+            DateTime startUtc,
+            CancellationToken ct)
+        {
+            if (tracks.Count == 0)
+            {
+                throw new InvalidOperationException("No tracks were rendered for composition.");
+            }
+
+            if (tracks.Count == 1)
+            {
+                if (File.Exists(finalMp4Path)) File.Delete(finalMp4Path);
+                File.Move(tracks[0].FilePath, finalMp4Path);
+                return;
+            }
+
+            string ffmpegPath = _binaryResolver.ResolveFfmpeg();
+            var inputArgsBuilder = new System.Text.StringBuilder();
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                inputArgsBuilder.Append($"-i \"{tracks[i].FilePath.Replace('\\', '/')}\" ");
+            }
+
+            string mode = (job.LayoutMode ?? "director").Trim().ToLowerInvariant();
+            string filterComplex;
+            string durationStr = exportedDurationSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+            if (mode == "split" && tracks.Count >= 2)
+            {
+                string leftIn = !job.IsPipSwapped ? "[0:v]" : "[1:v]";
+                string rightIn = !job.IsPipSwapped ? "[1:v]" : "[0:v]";
+                filterComplex = $"{leftIn}scale=960:1080:force_original_aspect_ratio=decrease,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[left]; " +
+                                $"{rightIn}scale=960:1080:force_original_aspect_ratio=decrease,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[right]; " +
+                                $"[left][right]hstack=inputs=2,drawbox=x=959:y=0:w=2:h=1080:color=0x1E293B@0.8:t=fill[vbase];";
+            }
+            else if (mode == "pip" && tracks.Count >= 2)
+            {
+                string mainIn = !job.IsPipSwapped ? "[0:v]" : "[1:v]";
+                string insetIn = !job.IsPipSwapped ? "[1:v]" : "[0:v]";
+                filterComplex = $"{mainIn}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black[main]; " +
+                                $"{insetIn}scale=576:324:force_original_aspect_ratio=decrease,pad=576:324:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x06B6D4@0.9:t=2[inset]; " +
+                                $"[main][inset]overlay=W-w-24:H-h-24[vbase];";
+            }
+            else if (mode == "canvas" || mode == "grid")
+            {
+                if (tracks.Count == 2)
+                {
+                    string d0 = !job.IsPipSwapped ? "[0:v]" : "[1:v]";
+                    string d1 = !job.IsPipSwapped ? "[1:v]" : "[0:v]";
+                    filterComplex = $"{d0}scale=936:526:force_original_aspect_ratio=decrease,pad=936:526:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x06B6D4@0.85:t=2[c0]; " +
+                                    $"{d1}scale=936:526:force_original_aspect_ratio=decrease,pad=936:526:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x10B981@0.85:t=2[c1]; " +
+                                    $"color=c=0x070A10:s=1920x1080:d={durationStr}[bg]; " +
+                                    $"[bg][c0]overlay=16:277[tmp]; [tmp][c1]overlay=968:277[vbase];";
+                }
+                else
+                {
+                    var sb = new System.Text.StringBuilder();
+                    string[] borderColors = { "0x06B6D4", "0x10B981", "0xF59E0B", "0x8B5CF6" };
+                    int maxItems = Math.Min(tracks.Count, 4);
+                    for (int i = 0; i < maxItems; i++)
+                    {
+                        string bc = borderColors[i % borderColors.Length];
+                        sb.Append($"[{i}:v]scale=936:516:force_original_aspect_ratio=decrease,pad=936:516:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color={bc}@0.85:t=2[c{i}]; ");
+                    }
+                    sb.Append($"color=c=0x070A10:s=1920x1080:d={durationStr}[bg]; ");
+                    if (maxItems == 3)
+                    {
+                        sb.Append("[bg][c0]overlay=16:16[t1]; [t1][c1]overlay=968:16[t2]; [t2][c2]overlay=492:548[vbase];");
+                    }
+                    else
+                    {
+                        sb.Append("[bg][c0]overlay=16:16[t1]; [t1][c1]overlay=968:16[t2]; [t2][c2]overlay=16:548[t3]; [t3][c3]overlay=968:548[vbase];");
+                    }
+                    filterComplex = sb.ToString();
+                }
+            }
+            else
+            {
+                var dirSegments = job.DirectorSegments;
+                if (dirSegments != null && dirSegments.Count > 0)
+                {
+                    long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                    var segFilterOps = new List<string>();
+                    var concatInputLabels = new List<string>();
+
+                    for (int i = 0; i < dirSegments.Count; i++)
+                    {
+                        var seg = dirSegments[i];
+                        double segStartSec = Math.Max(0, (seg.StartEpochMs - cutStartEpochMs) / 1000.0);
+                        double segEndSec = Math.Min(exportedDurationSec, (seg.EndEpochMs - cutStartEpochMs) / 1000.0);
+                        double segDur = segEndSec - segStartSec;
+                        if (segDur <= 0.05) continue;
+
+                        int inIdx = 0;
+                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                        {
+                            if (string.Equals(tracks[tIdx].StationId, seg.TargetDisplayId, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(tracks[tIdx].DisplayId, seg.TargetDisplayId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                inIdx = tIdx;
+                                break;
+                            }
+                        }
+
+                        string segOutLabel = $"[v_seg_{i}]";
+                        string startStr = segStartSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                        string endStr = segEndSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                        string durStr = segDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+                        var segFilters = new List<string>
+                        {
+                            $"trim=start={startStr}:end={endStr}",
+                            "setpts=PTS-STARTPTS",
+                            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black"
+                        };
+
+                        if (i > 0 && dirSegments.Count > 1)
+                        {
+                            segFilters.Add("fade=type=in:start_time=0:duration=0.15");
+                        }
+                        if (i < dirSegments.Count - 1 && dirSegments.Count > 1)
+                        {
+                            double outStart = Math.Max(0, segDur - 0.15);
+                            segFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}:duration=0.15");
+                        }
+
+                        segFilterOps.Add($"[{inIdx}:v]{string.Join(",", segFilters)}{segOutLabel}");
+                        concatInputLabels.Add(segOutLabel);
+                    }
+
+                    if (concatInputLabels.Count > 1)
+                    {
+                        filterComplex = $"{string.Join("; ", segFilterOps)}; {string.Join("", concatInputLabels)}concat=n={concatInputLabels.Count}:v=1:a=0[vbase];";
+                    }
+                    else if (concatInputLabels.Count == 1)
+                    {
+                        filterComplex = $"{segFilterOps[0]}; {concatInputLabels[0]}null[vbase];";
+                    }
+                    else
+                    {
+                        filterComplex = "[0:v]null[vbase];";
+                    }
+                }
+                else
+                {
+                    filterComplex = "[0:v]null[vbase];";
+                }
+            }
+
+            // Audio Routing Filtergraph
+            string audioMapOption = "";
+            bool anyTrackHasAudio = tracks.Any(t => t.HasAudio);
+
+            if (job.AudioRoutingSegments != null && job.AudioRoutingSegments.Count > 0 && anyTrackHasAudio)
+            {
+                long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                var audioSegFilterOps = new List<string>();
+                var audioConcatLabels = new List<string>();
+
+                for (int i = 0; i < job.AudioRoutingSegments.Count; i++)
+                {
+                    var aSeg = job.AudioRoutingSegments[i];
+                    double aStartSec = Math.Max(0, (aSeg.StartEpochMs - cutStartEpochMs) / 1000.0);
+                    double aEndSec = Math.Min(exportedDurationSec, (aSeg.EndEpochMs - cutStartEpochMs) / 1000.0);
+                    double aDur = aEndSec - aStartSec;
+                    if (aDur <= 0.05) continue;
+
+                    int inIdx = 0;
+                    for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                    {
+                        if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            inIdx = tIdx;
+                            break;
+                        }
+                    }
+
+                    string aLabel = $"[a_seg_{i}]";
+                    string startA = aStartSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                    string endA = aEndSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+                    if (tracks[inIdx].HasAudio)
+                    {
+                        audioSegFilterOps.Add($"[{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS{aLabel}");
+                    }
+                    else
+                    {
+                        string durA = aDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                        audioSegFilterOps.Add($"anullsrc=r=48000:cl=stereo:d={durA}{aLabel}");
+                    }
+                    audioConcatLabels.Add(aLabel);
+                }
+
+                if (audioConcatLabels.Count > 1)
+                {
+                    filterComplex += $" {string.Join("; ", audioSegFilterOps)}; {string.Join("", audioConcatLabels)}concat=n={audioConcatLabels.Count}:v=0:a=1[outa];";
+                    audioMapOption = "-map \"[outa]\" -c:a aac -b:a 192k";
+                }
+                else if (audioConcatLabels.Count == 1)
+                {
+                    filterComplex += $" {audioSegFilterOps[0]};";
+                    audioMapOption = $"-map \"{audioConcatLabels[0]}\" -c:a aac -b:a 192k";
+                }
+                else
+                {
+                    audioMapOption = tracks[0].HasAudio ? "-map 0:a? -c:a aac -b:a 192k" : "";
+                }
+            }
+            else if (tracks[0].HasAudio)
+            {
+                audioMapOption = "-map 0:a? -c:a aac -b:a 192k";
+            }
+
+            filterComplex += " [vbase]format=yuv420p[outv]";
+
+            string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs();
+            string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+            string arguments = $"-nostdin -v error " +
+                               $"{inputArgsBuilder} " +
+                               $"-filter_complex \"{filterComplex}\" " +
+                               $"-map \"[outv]\" {audioMapOption} " +
+                               $"{encArgs} " +
+                               $"-metadata creation_time=\"{creationUtcIso}\" " +
+                               $"-movflags +faststart " +
+                               $"-y \"{finalMp4Path.Replace('\\', '/')}\"";
+
+            _advLogger.LogInformation("[AdvanceJobManager] Running master MP4 composition: {Args}", arguments);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = arguments,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+            ExtractorGarbageCollectorService.TrackProcess(process.Id);
+
+            var stderrTask = process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0)
+            {
+                string stderr = await stderrTask;
+                throw new InvalidOperationException($"FFmpeg master composition failed with exit code {process.ExitCode}: {stderr}");
             }
         }
     }

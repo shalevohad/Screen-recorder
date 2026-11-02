@@ -21,14 +21,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public string CutMode { get; set; } = "SynchronizedMultiTrack";
 
         public double EstimatedSecondsRemaining { get; set; }
-        public double SpeedMBps { get; set; }
+        public new double SpeedMBps { get; set; }
 
-        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
 
+        public string CompositionScope { get; set; } = "intra-station";
         public string LayoutMode { get; set; } = "director";
         public string? TargetDisplayId { get; set; }
         public bool IsPipSwapped { get; set; } = false;
+        public bool IsAutoDirectorEnabled { get; set; } = true;
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+        public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
     }
 
     public class AdvanceCutRequestDto
@@ -43,7 +46,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public long OutEpochMs { get; set; }
 
         [JsonPropertyName("keystrokeMode")]
-        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.Caption;
+        public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
+
+        [JsonPropertyName("compositionScope")]
+        public string CompositionScope { get; set; } = "intra-station";
 
         [JsonPropertyName("layoutMode")]
         public string LayoutMode { get; set; } = "director";
@@ -54,8 +60,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         [JsonPropertyName("isPipSwapped")]
         public bool IsPipSwapped { get; set; } = false;
 
+        [JsonPropertyName("isAutoDirectorEnabled")]
+        public bool IsAutoDirectorEnabled { get; set; } = true;
+
         [JsonPropertyName("directorSegments")]
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+
+        [JsonPropertyName("audioRoutingSegments")]
+        public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
     }
 
     public class SessionManifest

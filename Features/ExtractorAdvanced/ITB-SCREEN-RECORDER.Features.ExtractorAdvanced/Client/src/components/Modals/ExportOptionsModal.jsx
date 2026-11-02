@@ -1,14 +1,17 @@
-﻿import React, { useState } from 'react';
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Modals/ExportOptionsModal.jsx
+// ==========================================
+import React, { useState } from 'react';
 import './ExportOptionsModal.scss';
 
 export default function ExportOptionsModal({
     isOpen,
     onClose,
     onConfirm,
-    title = 'EXPORT CONFIRMATION',
-    summaryText = ''
+    compositionSummary = {},
+    title = 'MASTER MP4 EXPORT CONFIRMATION'
 }) {
-    const [mode, setMode] = useState('Caption');
+    const [keystrokeMode, setKeystrokeMode] = useState('BurnIn');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!isOpen) return null;
@@ -16,12 +19,17 @@ export default function ExportOptionsModal({
     const handleConfirm = async () => {
         setIsSubmitting(true);
         try {
-            await onConfirm(mode);
+            await onConfirm(keystrokeMode);
             onClose();
         } finally {
             setIsSubmitting(false);
         }
     };
+
+    const scopeLabel = compositionSummary.scope === 'inter-station' ? 'INTER-STATION' : 'INTRA-STATION';
+    const layoutLabel = (compositionSummary.layout || 'DIRECTOR').toUpperCase();
+    const stationsCount = compositionSummary.stationsCount || 1;
+    const audioRoutingCount = compositionSummary.audioSegmentsCount || 1;
 
     return (
         <div className="itb-export-modal-backdrop" onClick={onClose}>
@@ -35,55 +43,74 @@ export default function ExportOptionsModal({
                 </div>
 
                 <div className="modal-body">
-                    {summaryText && <div className="summary-banner">{summaryText}</div>}
+                    {/* Master MP4 Format Banner */}
+                    <div className="summary-banner master-mp4-badge">
+                        <div className="banner-icon">🎬</div>
+                        <div className="banner-details">
+                            <div className="banner-title">UNIVERSAL MASTER MP4 OUTPUT</div>
+                            <div className="banner-desc">
+                                Slices, aligns, and composes all active channels into a <strong>single standalone MP4 file</strong>. Plays seamlessly in VLC, browsers, and forensic viewers with zero external player dependencies.
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Composition & Audio Routing Summary */}
+                    <div className="composition-summary-card">
+                        <div className="summary-row">
+                            <span className="label">VISUAL COMPOSITION:</span>
+                            <span className="value highlight">
+                                [{scopeLabel}] {layoutLabel} {compositionSummary.isPipSwapped ? '(SWAPPED)' : ''}
+                            </span>
+                        </div>
+                        <div className="summary-row">
+                            <span className="label">ACTIVE STATIONS:</span>
+                            <span className="value">{stationsCount} WORKSTATION{stationsCount > 1 ? 'S' : ''}</span>
+                        </div>
+                        <div className="summary-row">
+                            <span className="label">AUDIO MASTER MIX:</span>
+                            <span className="value">
+                                {audioRoutingCount > 1 ? `DYNAMIC ROUTING (${audioRoutingCount} SEGMENTS)` : 'PRIMARY CHANNEL AUDIO'}
+                            </span>
+                        </div>
+                        {compositionSummary.isAutoDirectorEnabled && (
+                            <div className="summary-row">
+                                <span className="label">AUTO-DIRECTOR:</span>
+                                <span className="value enabled">ENABLED (SEAMLESS 150ms DIP-TO-BLACK TRANSITIONS)</span>
+                            </div>
+                        )}
+                    </div>
 
                     <div className="options-title">SELECT KEYSTROKE PRESENTATION</div>
 
                     <div className="modes-grid">
-                        <label className={`mode-card ${mode === 'Caption' ? 'active' : ''}`}>
-                            <input
-                                type="radio"
-                                name="keystrokeMode"
-                                value="Caption"
-                                checked={mode === 'Caption'}
-                                onChange={() => setMode('Caption')}
-                            />
-                            <div className="mode-content">
-                                <div className="mode-name">SOFT CAPTIONS (RECOMMENDED)</div>
-                                <div className="mode-desc">
-                                    Embeds a soft subtitle track (mov_text). Toggable in VLC/Players, keeps video pristine and clean.
-                                </div>
-                            </div>
-                        </label>
-
-                        <label className={`mode-card ${mode === 'BurnIn' ? 'active' : ''}`}>
+                        <label className={`mode-card ${keystrokeMode === 'BurnIn' ? 'active' : ''}`}>
                             <input
                                 type="radio"
                                 name="keystrokeMode"
                                 value="BurnIn"
-                                checked={mode === 'BurnIn'}
-                                onChange={() => setMode('BurnIn')}
+                                checked={keystrokeMode === 'BurnIn'}
+                                onChange={() => setKeystrokeMode('BurnIn')}
                             />
                             <div className="mode-content">
-                                <div className="mode-name">HARD BURN-IN</div>
+                                <div className="mode-name">HARD BURN-IN (IN-PLACE ON VIDEO)</div>
                                 <div className="mode-desc">
-                                    Permanently bakes keystrokes directly onto the video pixels for unalterable court evidence.
+                                    Permanently bakes keystrokes directly onto the video pixels at the exact coordinate position of each screen for unalterable forensic evidence.
                                 </div>
                             </div>
                         </label>
 
-                        <label className={`mode-card ${mode === 'None' ? 'active' : ''}`}>
+                        <label className={`mode-card ${keystrokeMode === 'None' ? 'active' : ''}`}>
                             <input
                                 type="radio"
                                 name="keystrokeMode"
                                 value="None"
-                                checked={mode === 'None'}
-                                onChange={() => setMode('None')}
+                                checked={keystrokeMode === 'None'}
+                                onChange={() => setKeystrokeMode('None')}
                             />
                             <div className="mode-content">
-                                <div className="mode-name">NONE (CLEAN VIDEO)</div>
+                                <div className="mode-name">NONE (CLEAN MASTER VIDEO)</div>
                                 <div className="mode-desc">
-                                    Export video without any keystroke overlays or subtitle tracks.
+                                    Export master video cleanly without any on-screen keystroke overlays.
                                 </div>
                             </div>
                         </label>
@@ -95,7 +122,7 @@ export default function ExportOptionsModal({
                         CANCEL
                     </button>
                     <button type="button" className="btn-confirm" onClick={handleConfirm} disabled={isSubmitting}>
-                        {isSubmitting ? 'PREPARING...' : 'CONFIRM & EXPORT'}
+                        {isSubmitting ? 'ENQUEUING MASTER EXPORT...' : 'CONFIRM & EXPORT MASTER MP4'}
                     </button>
                 </div>
             </div>

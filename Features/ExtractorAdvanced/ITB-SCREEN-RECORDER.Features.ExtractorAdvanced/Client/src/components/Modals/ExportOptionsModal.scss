@@ -9,7 +9,7 @@
     z-index: 10000;
 
     .itb-export-modal-card {
-        width: 490px;
+        width: 520px;
         background: #090e1a;
         border: 1px solid rgba(0, 240, 255, 0.25);
         border-radius: 8px;
@@ -76,6 +76,80 @@
                 border: 1px solid rgba(255, 255, 255, 0.06);
                 border-radius: 4px;
                 color: #94a3b8;
+
+                &.master-mp4-badge {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 10px;
+                    background: rgba(6, 182, 212, 0.08);
+                    border: 1px solid rgba(6, 182, 212, 0.35);
+                    color: #e2e8f0;
+                    padding: 10px 12px;
+
+                    .banner-icon {
+                        font-size: 18px;
+                        flex-shrink: 0;
+                    }
+
+                    .banner-details {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 3px;
+
+                        .banner-title {
+                            font-size: 11px;
+                            font-weight: 800;
+                            color: #06B6D4;
+                            letter-spacing: 0.5px;
+                        }
+
+                        .banner-desc {
+                            font-size: 10px;
+                            color: #94A3B8;
+                            line-height: 1.4;
+
+                            strong {
+                                color: #38BDF8;
+                            }
+                        }
+                    }
+                }
+            }
+
+            .composition-summary-card {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                padding: 10px 12px;
+                background: #0B111E;
+                border: 1px solid #1E293B;
+                border-radius: 6px;
+                font-family: 'JetBrains Mono', 'Consolas', monospace;
+                font-size: 10px;
+
+                .summary-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+
+                    .label {
+                        color: #64748B;
+                        font-weight: 600;
+                    }
+
+                    .value {
+                        color: #E2E8F0;
+                        font-weight: 700;
+
+                        &.highlight {
+                            color: #06B6D4;
+                        }
+
+                        &.enabled {
+                            color: #10B981;
+                        }
+                    }
+                }
             }
 
             .options-title {

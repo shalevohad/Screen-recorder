@@ -60,9 +60,31 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public bool IsPipSwapped { get; set; } = false;
 
         /// <summary>
+        /// Composition scope: "intra-station" (monitors of a station) or "inter-station" (between stations) or "canvas".
+        /// </summary>
+        public string CompositionScope { get; set; } = "intra-station";
+
+        /// <summary>
+        /// Whether Auto-Director switching is enabled (if false, stays locked to selected layout).
+        /// </summary>
+        public bool IsAutoDirectorEnabled { get; set; } = true;
+
+        /// <summary>
         /// Director segments defining display switching schedule across timeline.
         /// </summary>
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+
+        /// <summary>
+        /// Dynamic audio routing segments across the timeline defining which station provides audio for each interval.
+        /// </summary>
+        public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
+    }
+
+    public class AudioRoutingSegmentDto
+    {
+        public long StartEpochMs { get; set; }
+        public long EndEpochMs { get; set; }
+        public string SourceStationId { get; set; } = string.Empty;
     }
 
     /// <summary>

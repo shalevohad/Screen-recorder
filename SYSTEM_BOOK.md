@@ -31,6 +31,8 @@
 21. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture](#21-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
 22. [Host GPU Hardware Detection & Architecture Diagnostics](#22-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
 23. [ITB Standalone Player Architecture & Zero-Extract Ingestion Engine](#23-itb-standalone-player-architecture--zero-extract-ingestion-engine-2026-11-01)
+24. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals](#21-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
+25. [Universal Studio Composition Engine & Single Master MP4 Export Architecture](#22-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
 
 ---
 
@@ -1079,6 +1081,51 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
   - The track header features a live orientation badge with active time boundaries: `⚡ AUTO: 🖥 DISPLAY 2 (mon-1) [10:14:00 - 10:18:30]`.
 - **Persistent Minimap HUD & Player Pill**:
   - `PersistentMinimapHud.jsx` and `StudioVideoFeed.jsx` render real-time time range badges, giving operators immediate visual clarity on which display is currently selected and for what exact time span.
+
+---
+
+## 22. Universal Studio Composition Engine & Single Master MP4 Export Architecture (2026-11-02)
+
+### 1. Executive Strategic Pivot: Standalone Player Discontinuation & Studio Convergence
+- **Single Operational Platform**: In accordance with executive steering directives, the standalone desktop player (`Tools/ITB-SCREEN-RECORDER.Player`) has been officially retired. All forensic playback, multi-monitor display switching, PiP/split composition, and timeline investigation capabilities have been completely absorbed into the web-based **ExtractorAdvanced Studio** (`Features/ExtractorAdvanced/Client`).
+- **Zero-Dependency Universal Replay**: Rather than requiring operators or third-party forensic authorities to install and maintain specialized desktop player clients, the platform now exports a **single, standalone, universally playable `.mp4` video file** (`RECORDINGS_EXPORT_{stations}_{time}.mp4`). All multi-station or multi-monitor feeds, active director cuts, audio channel routing, and keystroke forensic evidence are rendered directly into the master container.
+
+### 2. Universal Studio Composition Engine: Inter-Station & Intra-Station Matrix
+- **Dual-Scope Composition Architecture**:
+  - **Inter-Station Composition**: Allows operators to compose video across separate workstations in the fleet:
+    - **Split Screen**: Side-by-side 960x1080 display with 2px tactical divider for concurrent station investigation.
+    - **Picture-in-Picture (PiP)**: Full 1080p hero station with 28% inset station in the bottom-right corner with tactical cyan border.
+    - **Virtual Canvas / Station Grid**: Multi-station layout arranging up to 4 stations in an ergonomic 2x2 grid on a 1920x1080 tactical dark canvas (`#070A10`).
+    - **Director Cut**: Dynamically cuts between stations based on active interaction telemetry or manual director segments.
+  - **Intra-Station Composition**: Composes across multiple physical monitors (`mon-0`, `mon-1`, `mon-2`) of a single workstation in Split, PiP, Virtual Canvas, or Auto-Director mode.
+- **Dynamic Orientation Controls**:
+  - `⇄ SWAP`: Instant single-click transposition between Left/Right in Split Screen or Main/Inset in Picture-in-Picture.
+  - `🎬 AUTO-DIRECTOR: ON / OFF`: Toggles automated screen switching. When OFF, the composition layout remains locked to the operator's manual layout selection.
+
+### 3. Master Audio Routing Timeline Track (`AudioRoutingTrack.jsx`)
+- **Dedicated Timeline Audio Track**:
+  - Rendered prominently across the timeline board with real-time waveform animation, indicating the active audio source workstation for every temporal slice: `🎙️ AUDIO ROUTING (MASTER MIX)`.
+  - Color-coded segments display workstation name, display badge, and active interval boundaries: `[🎙️ WS-01: 10:14:00 - 10:18:30]`.
+- **Interactive Routing Operations**:
+  - **Split at Playhead (`✂️`)**: Slices the audio routing track at the current playhead position to reassign audio channels during critical forensic moments.
+  - **Tactical Station Selector Menu**: Clicking or right-clicking any segment opens a context menu allowing the operator to route audio from any active workstation or select **Mute Interval (`🔇 MUTE`)**.
+  - **Follow Visual Feed (`🎯`)**: Automatically synchronizes audio routing segments to whichever workstation or screen is currently in active visual focus.
+- **Unified Master Audio Synthesis**:
+  - During export, `AdvanceJobManager.ComposeMasterMp4Async` constructs an FFmpeg audio filtergraph that trims audio from each designated workstation (`[{inIdx}:a]atrim=...[a_seg]`) or synthesizes silence (`anullsrc`) during muted intervals, and concatenates them seamlessly into a single master audio stream (`[outa]`).
+
+### 4. Hard In-Place Keystroke Burn-In Invariant
+- **Permanent Courtroom-Admissible Evidence**:
+  - Soft subtitle tracks (`mov_text` / `.srt`) have been eliminated from the master export pipeline.
+  - Keystroke forensic presentation is strictly binary:
+    1. **Hard Burn-In (`KeystrokeExportMode.BurnIn`)**: Permanently bakes ASS keycaps directly onto the video pixels at the exact coordinate surface `(X, Y)` of each individual screen before composition.
+    2. **None (`KeystrokeExportMode.None`)**: Clean video output without on-screen keystrokes.
+
+### 5. Single Master MP4 Export Pipeline (`AdvanceJobManager.cs`)
+- **Direct MP4 Rendering**:
+  - The legacy `.tar` pax archive packing loop has been replaced with `ComposeMasterMp4Async`.
+  - Individual gap-filled, wall-clock aligned tracks are rendered in `tempStagingDir`.
+  - FFmpeg applies hardware-accelerated video filters (NVENC -> Intel QSV -> libx264) with faststart metadata (`-movflags +faststart`) to produce a single master `.mp4` file.
+  - Delivered directly through `/api/v1/extractor/jobs/{jobId}/download` with `video/mp4` MIME type.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

@@ -48,7 +48,7 @@ export default function MulticamViewport({
     timelineStations = [],
     onSelectActiveStation,
     onOpenSpotlight,
-    onStationContextMenu, // Context menu event callback: (stationId, mouseEvent) => void
+    onStationContextMenu,
     baseEpochMs = 0,
     playheadMs = 0,
     playheadEpochMs = 0,
@@ -66,10 +66,23 @@ export default function MulticamViewport({
     keystrokes = [],
     directorPlan,
     onOverrideDisplay,
-    onResetOverride
+    onResetOverride,
+    // Universal Studio Composition Engine Props
+    compositionScope = 'intra-station',
+    onChangeCompositionScope,
+    compositionLayout = 'director',
+    onChangeCompositionLayout,
+    isAutoDirectorEnabled = true,
+    onToggleAutoDirector,
+    isPipSwapped = false,
+    onTogglePipSwap
 }) {
     const resizeObserverRef = useRef(null);
     const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+
+    const [isGridMatrixView, setIsGridMatrixView] = useState(() => {
+        return timelineStations.length > 2 && compositionScope !== 'inter-station';
+    });
 
     const [viewMode, setViewMode] = useState(() => {
         try {
@@ -192,9 +205,295 @@ export default function MulticamViewport({
     const isSingleStationMode = timelineStations.length === 1;
     const soloStationToRender = activeStation || (isSingleStationMode ? timelineStations[0] : null);
 
-    if (soloStationToRender) {
-        return (
-            <div className="multicam-viewport-root solo">
+    // Inter-station target stations
+    const station0 = !isPipSwapped ? timelineStations[0] : (timelineStations[1] || timelineStations[0]);
+    const station1 = !isPipSwapped ? (timelineStations[1] || timelineStations[0]) : timelineStations[0];
+
+    const isInterStationActive = compositionScope === 'inter-station' && timelineStations.length >= 2 && !isGridMatrixView;
+
+    return (
+        <div className={`multicam-viewport-root ${soloStationToRender && !isInterStationActive && !isGridMatrixView ? 'solo' : 'multicam'}`}>
+            {/* Universal Studio Composition Engine Control Bar */}
+            <div className="multicam-composition-mode-bar">
+                <div className="comp-mode-left">
+                    <span className="comp-icon">🎛️</span>
+                    <span className="comp-title">COMPOSITION:</span>
+
+                    <div className="comp-pill-group">
+                        <button
+                            type="button"
+                            className={`btn-comp-tab ${compositionScope === 'inter-station' ? 'active' : ''}`}
+                            onClick={() => {
+                                onChangeCompositionScope?.('inter-station');
+                                setIsGridMatrixView(false);
+                            }}
+                            disabled={timelineStations.length < 2}
+                            title={timelineStations.length < 2 ? "Select at least 2 workstations to enable inter-station composition" : "Compose across multiple workstations"}
+                        >
+                            🌐 INTER-STATION ({timelineStations.length})
+                        </button>
+                        <button
+                            type="button"
+                            className={`btn-comp-tab ${compositionScope === 'intra-station' ? 'active' : ''}`}
+                            onClick={() => onChangeCompositionScope?.('intra-station')}
+                            title="Compose between displays of focused workstation"
+                        >
+                            🖥️ INTRA-STATION
+                        </button>
+                    </div>
+
+                    <div className="comp-pill-group layouts">
+                        <button
+                            type="button"
+                            className={`btn-comp-tab ${compositionLayout === 'split' ? 'active' : ''}`}
+                            onClick={() => {
+                                onChangeCompositionLayout?.('split');
+                                setIsGridMatrixView(false);
+                            }}
+                            title="Side-by-Side Split View"
+                        >
+                            ⊞ SPLIT
+                        </button>
+                        <button
+                            type="button"
+                            className={`btn-comp-tab ${compositionLayout === 'pip' ? 'active' : ''}`}
+                            onClick={() => {
+                                onChangeCompositionLayout?.('pip');
+                                setIsGridMatrixView(false);
+                            }}
+                            title="Picture-in-Picture View"
+                        >
+                            ⧉ PIP
+                        </button>
+                        <button
+                            type="button"
+                            className={`btn-comp-tab ${compositionLayout === 'canvas' ? 'active' : ''}`}
+                            onClick={() => {
+                                onChangeCompositionLayout?.('canvas');
+                                setIsGridMatrixView(false);
+                            }}
+                            title="Virtual Canvas View"
+                        >
+                            ▦ CANVAS
+                        </button>
+                        <button
+                            type="button"
+                            className={`btn-comp-tab ${compositionLayout === 'director' ? 'active' : ''}`}
+                            onClick={() => {
+                                onChangeCompositionLayout?.('director');
+                                setIsGridMatrixView(false);
+                            }}
+                            title="Auto-Director Cut View"
+                        >
+                            🎬 DIRECTOR CUT
+                        </button>
+                    </div>
+
+                    {(compositionLayout === 'split' || compositionLayout === 'pip') && (
+                        <button
+                            type="button"
+                            className={`btn-comp-swap ${isPipSwapped ? 'swapped' : ''}`}
+                            onClick={onTogglePipSwap}
+                            title="Swap Primary/Secondary or Main/Inset"
+                        >
+                            ⇄ SWAP {isPipSwapped ? '(SWAPPED)' : ''}
+                        </button>
+                    )}
+
+                    <button
+                        type="button"
+                        className={`btn-director-toggle ${isAutoDirectorEnabled ? 'is-on' : 'is-off'}`}
+                        onClick={onToggleAutoDirector}
+                        title={isAutoDirectorEnabled ? "Auto-Director is ON: follows active activity cuts" : "Auto-Director is OFF: composition layout is static"}
+                    >
+                        <span className="dot" />
+                        <span>AUTO-DIRECTOR: {isAutoDirectorEnabled ? 'ON' : 'OFF'}</span>
+                    </button>
+                </div>
+
+                <div className="comp-mode-right">
+                    {timelineStations.length > 1 && (
+                        <button
+                            type="button"
+                            className={`btn-grid-toggle ${isGridMatrixView ? 'active' : ''}`}
+                            onClick={() => setIsGridMatrixView(p => !p)}
+                            title="Toggle between Master Composition and Multi-Station Matrix Grid"
+                        >
+                            {isGridMatrixView ? '📺 COMPOSITION CANVAS' : '🗖 STATION GRID MATRIX'}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* View Mode 1: Inter-Station Composition */}
+            {isInterStationActive && station0 && station1 && (
+                <div className="interstation-viewport-container">
+                    {compositionLayout === 'split' ? (
+                        <div className="interstation-split-grid">
+                            <div className="split-pane left">
+                                <div className="pane-banner">
+                                    <span className="dot live" />
+                                    <span className="pane-label">LEFT FEED: {station0.displayName || station0.hostname}</span>
+                                </div>
+                                <div className="pane-content">
+                                    <StudioVideoFeed
+                                        station={station0}
+                                        baseEpochMs={baseEpochMs}
+                                        totalDurationMs={totalDurationMs}
+                                        playheadMs={playheadMs}
+                                        setPlayheadMs={setPlayheadMs}
+                                        isPlaying={isPlaying}
+                                        setIsPlaying={setIsPlaying}
+                                        playbackSpeed={playbackSpeed}
+                                        timeMode={timeMode}
+                                        inPointMs={inPointMs}
+                                        outPointMs={outPointMs}
+                                        isLooping={true}
+                                        recordingSegments={recordingSegments}
+                                        globalGaps={globalGaps}
+                                        showWatermark={false}
+                                    />
+                                    <KeystrokePlaybackOverlay
+                                        currentEpochMs={currentEpochMs}
+                                        keystrokes={keystrokes}
+                                        keystrokeMode={keystrokeMode}
+                                    />
+                                </div>
+                            </div>
+                            <div className="split-divider-line" />
+                            <div className="split-pane right">
+                                <div className="pane-banner">
+                                    <span className="dot live" />
+                                    <span className="pane-label">RIGHT FEED: {station1.displayName || station1.hostname}</span>
+                                </div>
+                                <div className="pane-content">
+                                    <StudioVideoFeed
+                                        station={station1}
+                                        baseEpochMs={baseEpochMs}
+                                        totalDurationMs={totalDurationMs}
+                                        playheadMs={playheadMs}
+                                        setPlayheadMs={setPlayheadMs}
+                                        isPlaying={isPlaying}
+                                        setIsPlaying={setIsPlaying}
+                                        playbackSpeed={playbackSpeed}
+                                        timeMode={timeMode}
+                                        inPointMs={inPointMs}
+                                        outPointMs={outPointMs}
+                                        isLooping={true}
+                                        recordingSegments={recordingSegments}
+                                        globalGaps={globalGaps}
+                                        showWatermark={false}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    ) : compositionLayout === 'pip' ? (
+                        <div className="interstation-pip-container">
+                            <div className="pip-hero-viewport">
+                                <StudioVideoFeed
+                                    station={station0}
+                                    baseEpochMs={baseEpochMs}
+                                    totalDurationMs={totalDurationMs}
+                                    playheadMs={playheadMs}
+                                    setPlayheadMs={setPlayheadMs}
+                                    isPlaying={isPlaying}
+                                    setIsPlaying={setIsPlaying}
+                                    playbackSpeed={playbackSpeed}
+                                    timeMode={timeMode}
+                                    inPointMs={inPointMs}
+                                    outPointMs={outPointMs}
+                                    isLooping={true}
+                                    recordingSegments={recordingSegments}
+                                    globalGaps={globalGaps}
+                                    showWatermark={false}
+                                />
+                                <KeystrokePlaybackOverlay
+                                    currentEpochMs={currentEpochMs}
+                                    keystrokes={keystrokes}
+                                    keystrokeMode={keystrokeMode}
+                                />
+                            </div>
+                            <div className="pip-floating-inset">
+                                <div className="inset-banner">
+                                    <span className="dot" />
+                                    <span className="inset-name">{station1.displayName || station1.hostname}</span>
+                                </div>
+                                <div className="inset-video-wrapper">
+                                    <StudioVideoFeed
+                                        station={station1}
+                                        baseEpochMs={baseEpochMs}
+                                        totalDurationMs={totalDurationMs}
+                                        playheadMs={playheadMs}
+                                        setPlayheadMs={setPlayheadMs}
+                                        isPlaying={isPlaying}
+                                        setIsPlaying={setIsPlaying}
+                                        playbackSpeed={playbackSpeed}
+                                        timeMode={timeMode}
+                                        inPointMs={inPointMs}
+                                        outPointMs={outPointMs}
+                                        isLooping={true}
+                                        recordingSegments={recordingSegments}
+                                        globalGaps={globalGaps}
+                                        showWatermark={false}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        /* Canvas or Director View for Inter-Station */
+                        <div className="interstation-canvas-container">
+                            <div className="canvas-station-card">
+                                <div className="canvas-badge">{station0.displayName || station0.hostname}</div>
+                                <StudioVideoFeed
+                                    station={station0}
+                                    baseEpochMs={baseEpochMs}
+                                    totalDurationMs={totalDurationMs}
+                                    playheadMs={playheadMs}
+                                    setPlayheadMs={setPlayheadMs}
+                                    isPlaying={isPlaying}
+                                    setIsPlaying={setIsPlaying}
+                                    playbackSpeed={playbackSpeed}
+                                    timeMode={timeMode}
+                                    inPointMs={inPointMs}
+                                    outPointMs={outPointMs}
+                                    isLooping={true}
+                                    recordingSegments={recordingSegments}
+                                    globalGaps={globalGaps}
+                                    showWatermark={false}
+                                />
+                                <KeystrokePlaybackOverlay
+                                    currentEpochMs={currentEpochMs}
+                                    keystrokes={keystrokes}
+                                    keystrokeMode={keystrokeMode}
+                                />
+                            </div>
+                            <div className="canvas-station-card">
+                                <div className="canvas-badge">{station1.displayName || station1.hostname}</div>
+                                <StudioVideoFeed
+                                    station={station1}
+                                    baseEpochMs={baseEpochMs}
+                                    totalDurationMs={totalDurationMs}
+                                    playheadMs={playheadMs}
+                                    setPlayheadMs={setPlayheadMs}
+                                    isPlaying={isPlaying}
+                                    setIsPlaying={setIsPlaying}
+                                    playbackSpeed={playbackSpeed}
+                                    timeMode={timeMode}
+                                    inPointMs={inPointMs}
+                                    outPointMs={outPointMs}
+                                    isLooping={true}
+                                    recordingSegments={recordingSegments}
+                                    globalGaps={globalGaps}
+                                    showWatermark={false}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* View Mode 2: Single Station / Intra-Station Composition */}
+            {!isInterStationActive && !isGridMatrixView && soloStationToRender && (
                 <div
                     className="spotlight-workspace-viewport"
                     onClick={() => onOpenSpotlight && onOpenSpotlight(soloStationToRender.id)}
@@ -251,10 +550,12 @@ export default function MulticamViewport({
                             directorPlan={directorPlan || soloStationToRender?.directorPlan}
                             onOverrideDisplay={onOverrideDisplay}
                             onResetOverride={onResetOverride}
+                            viewMode={compositionLayout}
+                            isPipSwapped={isPipSwapped}
                         />
 
                         <KeystrokePlaybackOverlay
-                            currentEpochMs={playheadEpochMs > 0 ? playheadEpochMs : Math.round(baseEpochMs + playheadMs)}
+                            currentEpochMs={currentEpochMs}
                             keystrokes={keystrokes}
                             keystrokeMode={keystrokeMode}
                         />
@@ -266,107 +567,91 @@ export default function MulticamViewport({
                         </div>
                     </div>
                 </div>
-            </div>
-        );
-    }
-
-    const showControls = timelineStations.length > dynamicPageCapacity;
-    const startIndex = (currentPage - 1) * dynamicPageCapacity + 1;
-    const endIndex = Math.min(timelineStations.length, currentPage * dynamicPageCapacity);
-
-    return (
-        <div className="multicam-viewport-root multicam">
-            {showControls && (
-                <div className="viewport-matrix-toolbar">
-                    <div className="mode-toggle-pill">
-                        <button
-                            type="button"
-                            className={`btn-mode-toggle ${viewMode === 'paged' ? 'active' : ''}`}
-                            onClick={() => handleSetViewMode('paged')}
-                            title={`Optimized Layout: ${dynamicPageCapacity} feeds per page without empty space`}
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                                <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                                <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                                <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                                <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                            </svg>
-                            <span>PAGED ({dynamicPageCapacity})</span>
-                        </button>
-                        <button
-                            type="button"
-                            className={`btn-mode-toggle ${viewMode === 'wall' ? 'active' : ''}`}
-                            onClick={() => handleSetViewMode('wall')}
-                            title="Tactical Wall: All stations displayed simultaneously"
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
-                                <rect x="2" y="2" width="20" height="20" rx="2" />
-                                <line x1="2" y1="8" x2="22" y2="8" />
-                                <line x1="2" y1="16" x2="22" y2="16" />
-                                <line x1="8" y1="2" x2="8" y2="22" />
-                                <line x1="16" y1="2" x2="16" y2="22" />
-                            </svg>
-                            <span>WALL ({timelineStations.length})</span>
-                        </button>
-                    </div>
-
-                    {viewMode === 'paged' && totalPages > 1 && (
-                        <div className="paged-nav-pill">
-                            <button
-                                type="button"
-                                className="btn-page-arrow"
-                                disabled={currentPage === 1}
-                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                title="Previous Feed Matrix"
-                            >
-                                ◀
-                            </button>
-                            <span className="page-indicator-text">
-                                {startIndex}–{endIndex} OF {timelineStations.length}
-                            </span>
-                            <button
-                                type="button"
-                                className="btn-page-arrow"
-                                disabled={currentPage >= totalPages}
-                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                title="Next Feed Matrix"
-                            >
-                                ▶
-                            </button>
-                        </div>
-                    )}
-                </div>
             )}
 
-            <div className="multicam-tactical-grid" ref={setGridContainerRef} style={gridStyle}>
-                {visibleStations.map(st => (
-                    <div
-                        key={st.id}
-                        className="multicam-card-cell-wrapper"
-                        onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
-                        style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >
-                        <CameraCard
-                            station={st}
-                            isSolo={false}
-                            currentEpochMs={currentEpochMs}
-                            timeMode={timeMode}
-                            isPlaying={isPlaying}
-                            setIsPlaying={setIsPlaying}
-                            baseEpochMs={baseEpochMs}
-                            totalDurationMs={totalDurationMs}
-                            outPointMs={outPointMs}
-                            setPlayheadMs={setPlayheadMs}
-                            isSpotlightActive={isSpotlightActive}
-                            globalGaps={globalGaps}
-                            onOpenSpotlight={onOpenSpotlight}
-                            onSelectActiveStation={onSelectActiveStation}
-                            recordingSegments={recordingSegments}
-                            playbackSpeed={playbackSpeed}
-                        />
+            {/* View Mode 3: Station Grid Matrix */}
+            {(isGridMatrixView || (!soloStationToRender && !isInterStationActive)) && (
+                <div className="multicam-matrix-content">
+                    {timelineStations.length > dynamicPageCapacity && (
+                        <div className="viewport-matrix-toolbar">
+                            <div className="mode-toggle-pill">
+                                <button
+                                    type="button"
+                                    className={`btn-mode-toggle ${viewMode === 'paged' ? 'active' : ''}`}
+                                    onClick={() => handleSetViewMode('paged')}
+                                    title={`Optimized Layout: ${dynamicPageCapacity} feeds per page`}
+                                >
+                                    PAGED ({dynamicPageCapacity})
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`btn-mode-toggle ${viewMode === 'wall' ? 'active' : ''}`}
+                                    onClick={() => handleSetViewMode('wall')}
+                                    title="Tactical Wall: All stations displayed simultaneously"
+                                >
+                                    WALL ({timelineStations.length})
+                                </button>
+                            </div>
+
+                            {viewMode === 'paged' && totalPages > 1 && (
+                                <div className="paged-nav-pill">
+                                    <button
+                                        type="button"
+                                        className="btn-page-arrow"
+                                        disabled={currentPage === 1}
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        title="Previous Feed Matrix"
+                                    >
+                                        ◀
+                                    </button>
+                                    <span className="page-indicator-text">
+                                        {((currentPage - 1) * dynamicPageCapacity) + 1}–{Math.min(timelineStations.length, currentPage * dynamicPageCapacity)} OF {timelineStations.length}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="btn-page-arrow"
+                                        disabled={currentPage >= totalPages}
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        title="Next Feed Matrix"
+                                    >
+                                        ▶
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="multicam-tactical-grid" ref={setGridContainerRef} style={gridStyle}>
+                        {visibleStations.map(st => (
+                            <div
+                                key={st.id}
+                                className="multicam-card-cell-wrapper"
+                                onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
+                                style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <CameraCard
+                                    station={st}
+                                    isSolo={false}
+                                    currentEpochMs={currentEpochMs}
+                                    timeMode={timeMode}
+                                    isPlaying={isPlaying}
+                                    setIsPlaying={setIsPlaying}
+                                    baseEpochMs={baseEpochMs}
+                                    totalDurationMs={totalDurationMs}
+                                    outPointMs={outPointMs}
+                                    setPlayheadMs={setPlayheadMs}
+                                    isSpotlightActive={isSpotlightActive}
+                                    globalGaps={globalGaps}
+                                    onOpenSpotlight={onOpenSpotlight}
+                                    onSelectActiveStation={onSelectActiveStation}
+                                    recordingSegments={recordingSegments}
+                                    playbackSpeed={playbackSpeed}
+                                />
+                            </div>
+                        ))}
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
         </div>
     );
 }

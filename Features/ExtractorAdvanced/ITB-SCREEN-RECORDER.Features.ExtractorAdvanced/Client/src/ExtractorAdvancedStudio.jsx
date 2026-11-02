@@ -13,6 +13,7 @@ import SoloSpotlightModal from './components/Modals/SoloSpotlightModal.jsx';
 import ShortcutsHelpModal from './components/Modals/ShortcutsHelpModal.jsx';
 import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
 import StationContextMenu from './components/Modals/StationContextMenu.jsx';
+import ExportOptionsModal from './components/Modals/ExportOptionsModal.jsx';
 
 import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
@@ -91,6 +92,30 @@ export default function ExtractorAdvancedStudio() {
     const [noStationsAlert, setNoStationsAlert] = useState(false);
 
     const [stationContextMenu, setStationContextMenu] = useState(null);
+
+    // Universal Studio Composition Engine State
+    const [compositionScope, setCompositionScope] = useState(() => {
+        return cached.compositionScope || (cached.selectedStationIds?.length > 1 ? 'inter-station' : 'intra-station');
+    });
+    const [compositionLayout, setCompositionLayout] = useState(() => {
+        return cached.compositionLayout || 'director';
+    });
+    const [isAutoDirectorEnabled, setIsAutoDirectorEnabled] = useState(() => {
+        return typeof cached.isAutoDirectorEnabled === 'boolean' ? cached.isAutoDirectorEnabled : true;
+    });
+    const [isPipSwapped, setIsPipSwapped] = useState(() => {
+        return Boolean(cached.isPipSwapped);
+    });
+
+    // Audio Routing Track State
+    const [audioRoutingPlan, setAudioRoutingPlan] = useState(() => {
+        return cached.audioRoutingPlan || null;
+    });
+    const [isAutoFollowAudio, setIsAutoFollowAudio] = useState(() => {
+        return typeof cached.isAutoFollowAudio === 'boolean' ? cached.isAutoFollowAudio : true;
+    });
+
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
@@ -311,6 +336,67 @@ export default function ExtractorAdvancedStudio() {
         }
     }, [selectedStationIds]);
 
+    // Master Audio Routing Management
+    const effectiveAudioPlan = useMemo(() => {
+        if (audioRoutingPlan?.segments && audioRoutingPlan.segments.length > 0) {
+            return audioRoutingPlan;
+        }
+        const defaultStationId = selectedStationIds[0] || activeStationId || 'mon-0';
+        return {
+            segments: [
+                {
+                    startEpochMs: timelineBaseEpochMs,
+                    endEpochMs: timelineBaseEpochMs + totalTimelineDurationMs,
+                    sourceStationId: defaultStationId
+                }
+            ]
+        };
+    }, [audioRoutingPlan, selectedStationIds, activeStationId, timelineBaseEpochMs, totalTimelineDurationMs]);
+
+    const handleSplitAudioSegment = useCallback((splitEpochMs) => {
+        setAudioRoutingPlan(prev => {
+            const plan = prev || effectiveAudioPlan;
+            const segments = [...(plan.segments || [])];
+            const segIdx = segments.findIndex(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                return splitEpochMs > s + 500 && splitEpochMs < e - 500;
+            });
+            if (segIdx === -1) return prev;
+
+            const targetSeg = segments[segIdx];
+            const s = targetSeg.startEpochMs ?? targetSeg.StartEpochMs ?? 0;
+            const e = targetSeg.endEpochMs ?? targetSeg.EndEpochMs ?? 0;
+            const stId = targetSeg.sourceStationId ?? targetSeg.SourceStationId ?? selectedStationIds[0];
+
+            const seg1 = { startEpochMs: s, endEpochMs: splitEpochMs, sourceStationId: stId };
+            const seg2 = { startEpochMs: splitEpochMs, endEpochMs: e, sourceStationId: stId };
+
+            segments.splice(segIdx, 1, seg1, seg2);
+            return { ...plan, segments };
+        });
+    }, [effectiveAudioPlan, selectedStationIds]);
+
+    const handleChangeAudioSegmentStation = useCallback((segmentEpochMs, newStationId) => {
+        setAudioRoutingPlan(prev => {
+            const plan = prev || effectiveAudioPlan;
+            const segments = (plan.segments || []).map(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                if (segmentEpochMs >= s && segmentEpochMs <= e) {
+                    return { ...seg, sourceStationId: newStationId };
+                }
+                return seg;
+            });
+            return { ...plan, segments };
+        });
+        setIsAutoFollowAudio(false);
+    }, [effectiveAudioPlan]);
+
+    const handleFollowVisualFeed = useCallback(() => {
+        setIsAutoFollowAudio(prev => !prev);
+    }, []);
+
     // Multi-Monitor Auto-Director State & Manual Overrides
     const [stationDirectorPlans, setStationDirectorPlans] = useState({});
 
@@ -474,7 +560,13 @@ export default function ExtractorAdvancedStudio() {
             isLooping,
             playbackSpeed,
             keystrokeMode,
-            showRulerKeystrokes
+            showRulerKeystrokes,
+            compositionScope,
+            compositionLayout,
+            isAutoDirectorEnabled,
+            isPipSwapped,
+            audioRoutingPlan: effectiveAudioPlan,
+            isAutoFollowAudio
         });
     }, [
         timeRange,
@@ -579,15 +671,21 @@ export default function ExtractorAdvancedStudio() {
         setPlayheadMs(newBuf);
     }, []);
 
-    const handleExecuteExport = useCallback(async () => {
+    const handleExecuteExport = useCallback(() => {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return alert('No active stations selected in timeline.');
+        setIsExportModalOpen(true);
+    }, [timelineStations]);
 
-        let resolvedMode;
-        const normMode = (keystrokeMode || 'NONE').toUpperCase().replace('-', '_');
-        if (normMode === 'NONE' || normMode === 'OFF') resolvedMode = 'None';
-        else if (normMode === 'CAPTION') resolvedMode = 'Caption';
-        else resolvedMode = 'BurnIn';
+    const handleConfirmMasterExport = useCallback(async (chosenKeystrokeMode) => {
+        const targetStationIds = timelineStations.map(s => s.id);
+        if (targetStationIds.length === 0) return;
+
+        let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
+
+        const directorSegs = ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1))
+            ? (enrichedActiveStation?.directorPlan?.segments || [])
+            : [];
 
         try {
             const response = await fetch('/api/v1/extractor-advanced/cut', {
@@ -598,9 +696,12 @@ export default function ExtractorAdvancedStudio() {
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
                     keystrokeMode: resolvedMode,
-                    layoutMode: ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1)) ? 'director' : 'mon-0',
-                    isPipSwapped: false,
-                    directorSegments: ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1)) ? (enrichedActiveStation?.directorPlan?.segments || []) : []
+                    compositionScope: compositionScope,
+                    layoutMode: compositionLayout,
+                    isPipSwapped: isPipSwapped,
+                    isAutoDirectorEnabled: isAutoDirectorEnabled,
+                    directorSegments: directorSegs,
+                    audioRoutingSegments: effectiveAudioPlan.segments || []
                 })
             });
 
@@ -608,9 +709,9 @@ export default function ExtractorAdvancedStudio() {
             window.dispatchEvent(new CustomEvent('open-export-monitor'));
         } catch (error) {
             console.error('[Studio] Export failed:', error);
-            alert('Failed to launch background export job.');
+            alert('Failed to launch background master MP4 export job.');
         }
-    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, keystrokeMode]);
+    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, compositionLayout, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
 
     const handleResetStudioSession = useCallback(() => {
         clearStudioSessionCache();
@@ -727,6 +828,14 @@ export default function ExtractorAdvancedStudio() {
                                     directorPlan={enrichedActiveStation?.directorPlan}
                                     onOverrideDisplay={handleChangeDirectorSegmentDisplay}
                                     onResetOverride={handleResetDirectorSegmentToAuto}
+                                    compositionScope={compositionScope}
+                                    onChangeCompositionScope={setCompositionScope}
+                                    compositionLayout={compositionLayout}
+                                    onChangeCompositionLayout={setCompositionLayout}
+                                    isAutoDirectorEnabled={isAutoDirectorEnabled}
+                                    onToggleAutoDirector={() => setIsAutoDirectorEnabled(p => !p)}
+                                    isPipSwapped={isPipSwapped}
+                                    onTogglePipSwap={() => setIsPipSwapped(p => !p)}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}
@@ -785,6 +894,11 @@ export default function ExtractorAdvancedStudio() {
                                     onSplitDirectorSegment={handleSplitDirectorSegment}
                                     onChangeDirectorSegmentDisplay={handleChangeDirectorSegmentDisplay}
                                     onResetDirectorSegmentToAuto={handleResetDirectorSegmentToAuto}
+                                    audioRoutingPlan={effectiveAudioPlan}
+                                    onSplitAudioSegment={handleSplitAudioSegment}
+                                    onChangeAudioSegmentStation={handleChangeAudioSegmentStation}
+                                    onFollowVisualFeed={handleFollowVisualFeed}
+                                    isAutoFollowAudio={isAutoFollowAudio}
                                 />
                             </div>
                         </div>
@@ -912,6 +1026,20 @@ export default function ExtractorAdvancedStudio() {
                 onClose={() => setStationContextMenu(null)}
                 onDeselect={handleDeselectStation}
                 onFocusSolo={handleSelectActiveStation}
+            />
+
+            <ExportOptionsModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onConfirm={handleConfirmMasterExport}
+                compositionSummary={{
+                    scope: compositionScope,
+                    layout: compositionLayout,
+                    isPipSwapped,
+                    isAutoDirectorEnabled,
+                    stationsCount: timelineStations.length,
+                    audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1
+                }}
             />
 
             <ExportJobMonitor />

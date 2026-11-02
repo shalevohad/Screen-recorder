@@ -82,7 +82,10 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
             _jobManager.RegisterDownload(jobId);
 
             var stream = new FileStream(job.OutputFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return File(stream, "application/x-tar", job.FileName, enableRangeProcessing: true);
+            string contentType = job.FileName?.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) == true
+                ? "video/mp4"
+                : "application/x-tar";
+            return File(stream, contentType, job.FileName, enableRangeProcessing: true);
         }
 
         [HttpPost("jobs/{jobId}/bookmark")]

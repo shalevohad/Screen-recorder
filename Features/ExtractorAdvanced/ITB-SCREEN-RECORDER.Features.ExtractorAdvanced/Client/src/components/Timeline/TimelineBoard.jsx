@@ -9,6 +9,7 @@ import TimelineMinimap from './header/TimelineMinimap.jsx';
 import TimelineHeaderActions from './header/TimelineHeaderActions.jsx';
 import TimelineTrack from './tracks/TimelineTrack.jsx';
 import DirectorTrack from './tracks/DirectorTrack.jsx';
+import AudioRoutingTrack from './tracks/AudioRoutingTrack.jsx';
 import Playhead from './overlays/Playhead.jsx';
 import TimelineContextMenu from './overlays/TimelineContextMenu.jsx';
 import TimelineVerticalExportBtn from './export/TimelineVerticalExportBtn.jsx';
@@ -53,7 +54,12 @@ export default function TimelineBoard({
     onToggleRulerKeystrokes,
     onSplitDirectorSegment,
     onChangeDirectorSegmentDisplay,
-    onResetDirectorSegmentToAuto
+    onResetDirectorSegmentToAuto,
+    audioRoutingPlan,
+    onSplitAudioSegment,
+    onChangeAudioSegmentStation,
+    onFollowVisualFeed,
+    isAutoFollowAudio
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [trackBankIndex, setTrackBankIndex] = useState(0);
@@ -259,6 +265,21 @@ export default function TimelineBoard({
                 onMouseLeave={() => !draggingTarget && setHoverMs(null)}
             >
                 <div className="tracks-scroll-area">
+                    {stations.length > 0 && (
+                        <AudioRoutingTrack
+                            audioPlan={audioRoutingPlan}
+                            stations={stations}
+                            viewportStartMs={viewportStartMs}
+                            viewportDurationMs={viewportDurationMs}
+                            baseEpochMs={baseEpochMs}
+                            playheadMs={playheadMs}
+                            onSplitSegment={onSplitAudioSegment}
+                            onChangeSegmentStation={onChangeAudioSegmentStation}
+                            onFollowVisualFeed={onFollowVisualFeed}
+                            isAutoFollow={isAutoFollowAudio}
+                            timeMode={timeMode}
+                        />
+                    )}
                     {stations.length > 0 ? (
                         currentBankStations.map(station => (
                             <React.Fragment key={station.id}>
