@@ -34,6 +34,8 @@
 24. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals](#21-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
 25. [Universal Studio Composition Engine & Single Master MP4 Export Architecture](#22-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
 26. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture](#26-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
+27. [External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API](#27-external-forensic-inspection-custom-canvas-layout--master-remote-mp4-export-api-2026-11-02)
+28. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis](#28-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
 
 ---
 
@@ -1379,6 +1381,163 @@ When `LayoutMode = "custom"` or `CanvasLayout` is supplied in `AdvanceCutRequest
   - `StudioVideoFeed.jsx`: Split view pane headers render `SCREEN 1` and `SCREEN 2`. PiP inset header renders `PiP: SCREEN 2`. Multicam Punch buttons render `SCREEN 1`, `SCREEN 2`. Orientation banner renders `⚡ AUTO-DIRECTOR: SCREEN 1` (or active screen).
   - `PersistentMinimapHud.jsx`: Radar overlay displays active orientation as `SCREEN 1` / `SCREEN 2` with numeric nodes `1`, `2`.
   - `SoloSpotlightModal.jsx`: Export cut action button displays `EXPORT CUT (SCREEN 1)` or `EXPORT CUT (SCREEN 2)`.
+
+---
+
+## 28. Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis (2026-11-02)
+
+### 1. Architectural Mission & Operational Scope
+In mission-critical command centers, forensic incident replay requires more than fixed split or PiP matrices: operators and automated directing agents require full visual authority to compose arbitrary multi-workstation and multi-monitor layouts, position and size feeds dynamically on a master 16:9 canvas, and sequence layout transitions over time.
+
+To realize this capability, ExtractorAdvanced introduces:
+1. **Interactive Visual Canvas Composer (`CanvasComposerModal.jsx`, `CanvasComposerModal.scss`)**: A rich tactical NOC interface allowing operators to drag, resize, layer, and style feeds on a responsive 16:9 canvas (simulating 1920×1080 master output).
+2. **Layer Stacking Depth Engine (Z-Index / "מי מעל מי")**: Complete stacking order control with Bring Forward, Send Backward, Bring to Front, and Send to Back capabilities, custom border widths, and tactical highlight colors (`#06B6D4`, `#10B981`, `#F43F5E`, `#F59E0B`).
+3. **Multi-Keyframe Layout Timeline (`CanvasLayoutTimelineDto`)**: Temporal keyframing allowing layouts to be applied globally across the entire cut, or modified dynamically at specific playhead timepoints with smooth animations (`smooth` fade/cross-reveal), instantaneous cuts (`cut`), or dips to black (`dip`).
+4. **Universal Data Model (JSON & XML)**: Native JSON and XML serialization enabling external C2 systems and API clients to query, import, and submit custom timeline keyframes programmatically.
+5. **Dynamic FFmpeg Master MP4 Multi-Interval Synthesis (`AdvanceJobManager.cs`)**: Automatic backend rendering that partitions the export duration into discrete keyframe intervals, renders per-interval composites with aspect-ratio scaling and tactical burn-in labels, applies transition filters, and concatenates intervals into a single standalone MP4 with synchronized master audio.
+
+---
+
+### 2. Interactive Canvas Composer & Studio Integration
+- **Studio Entry Points**:
+  - `TopScopeBar.jsx`: Prominent `🎨 CANVAS COMPOSER` button styled with tactical glowing gradient in the studio top bar.
+  - `MulticamViewport.jsx`: Integrated `🎨 CANVAS` tab in the layout selector bar, allowing immediate switching and composition.
+- **Left Panel (Presets & Feeds Inventory)**:
+  - **Quick Presets**: 50/50 Split (Horizontal / Vertical), PiP Inset (Top-Right / Bottom-Right), Quad 2×2 Matrix, and 1 Hero + 2 Stacked.
+  - **Feeds Inventory**: Enumerates all workstations in the timeline with assigned operational roles (e.g. `COMMANDER (WS-01)`), and displays all monitors strictly starting from **1** (`Screen 1`, `Screen 2`). Clicking `+ Add` inserts the feed onto the canvas with an automatically incremented Z-Index.
+- **Center Workspace (Interactive Canvas Stage & Keyframe Strip)**:
+  - **16:9 Stage**: Renders positioned feeds with real-time coordinate readouts, center guides, and selection halos.
+  - **Drag & Resize Engine**: Mouse-driven box translation with edge boundaries and center snapping. Bottom-right corner resize handle dynamically updates width and height while maintaining hardware-even pixel bounds.
+  - **Keyframe Controls**:
+    - `🌐 Apply to Entire Timeline (Global)`: Sets a single master layout governing the entire export duration.
+    - `⏱️ Add Keyframe at Playhead`: Inserts a keyframe at the current playhead timestamp (`playheadEpochMs`).
+    - **Transition Selector**: Configures incoming transition behavior: `smooth` (fade in/cross-reveal), `cut` (instant cut), or `dip` (dip-to-black), with a configurable duration slider (0.1s – 2.0s).
+    - **Keyframe Track Bar**: Visual strip displaying keyframe chips with relative timestamp offsets (`+15.0s (🌊)`), allowing instant selection, inspection, or deletion.
+- **Right Panel (Layer Depth & Property Inspector)**:
+  - Live inspection of selected feed: Station ID, Display Name (`Screen 1`, `Screen 2`), Burn-In Label, Position `(X, Y)` and Size `(W, H)`.
+  - **Z-Index Stacking Actions**: `Bring Forward`, `Send Backward`, `To Front`, `To Back`.
+  - **Tactical Borders**: Width selector (0px, 2px, 4px, 6px) and color palette picker.
+  - **Layer Stack Hierarchy**: Reversed visual stack displaying all canvas items ordered from top layer to base layer.
+
+---
+
+### 3. Universal JSON & XML Specification
+External C2 systems, forensic APIs, and the UI communicate layout timelines using standardized JSON and XML models:
+
+#### JSON Schema (`CanvasLayoutTimelineDto`):
+```json
+{
+  "keyframes": [
+    {
+      "timestampEpochMs": 1700000000000,
+      "transitionType": "smooth",
+      "transitionDurationSec": 0.5,
+      "layout": {
+        "width": 1920,
+        "height": 1080,
+        "backgroundColor": "#070A10",
+        "fps": 30.0,
+        "placements": [
+          {
+            "stationId": "WS-01",
+            "displayId": "mon-0",
+            "x": 0, "y": 0, "width": 960, "height": 1080,
+            "zIndex": 0,
+            "borderWidth": 2, "borderColor": "#06B6D4",
+            "label": "COMMANDER - Screen 1"
+          },
+          {
+            "stationId": "WS-02",
+            "displayId": "mon-0",
+            "x": 960, "y": 0, "width": 960, "height": 1080,
+            "zIndex": 1,
+            "borderWidth": 2, "borderColor": "#10B981",
+            "label": "RADAR SPECIALIST - Screen 1"
+          }
+        ]
+      }
+    },
+    {
+      "timestampEpochMs": 1700000015000,
+      "transitionType": "dip",
+      "transitionDurationSec": 0.3,
+      "layout": {
+        "width": 1920,
+        "height": 1080,
+        "backgroundColor": "#070A10",
+        "fps": 30.0,
+        "placements": [
+          {
+            "stationId": "WS-01",
+            "displayId": "mon-0",
+            "x": 0, "y": 0, "width": 1920, "height": 1080,
+            "zIndex": 0,
+            "label": "COMMANDER - FULLSCREEN"
+          },
+          {
+            "stationId": "WS-02",
+            "displayId": "mon-0",
+            "x": 1380, "y": 40, "width": 500, "height": 281,
+            "zIndex": 10,
+            "borderWidth": 3, "borderColor": "#06B6D4",
+            "label": "RADAR PIP"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+#### XML Schema (`<CanvasLayoutTimeline>`):
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<CanvasLayoutTimeline>
+  <Keyframe timestampEpochMs="1700000000000" transitionDurationSec="0.5" transitionType="smooth">
+    <Layout>
+      <Width>1920</Width>
+      <Height>1080</Height>
+      <BackgroundColor>#070A10</BackgroundColor>
+      <Fps>30</Fps>
+      <Placement>
+        <StationId>WS-01</StationId>
+        <DisplayId>mon-0</DisplayId>
+        <X>0</X>
+        <Y>0</Y>
+        <Width>960</Width>
+        <Height>1080</Height>
+        <ZIndex>0</ZIndex>
+        <BorderWidth>2</BorderWidth>
+        <BorderColor>#06B6D4</BorderColor>
+        <Label>COMMANDER - Screen 1</Label>
+      </Placement>
+    </Layout>
+  </Keyframe>
+</CanvasLayoutTimeline>
+```
+
+---
+
+### 4. Automated Multi-Interval FFmpeg Master MP4 Synthesis
+In `AdvanceJobManager.cs`:
+1. **Station Aggregation & Temporal Role Resolution**:
+   - Gathers distinct station IDs across all placements across all keyframes.
+   - For each keyframe timestamp, resolves operational roles (e.g. "Commander") using `IStationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(kfEpoch, kfEpoch + 1000)`. If roles changed historically, each interval binds to the station that held that role at that time.
+2. **Timeline Partitioning**:
+   - Keyframes are sorted by `TimestampEpochMs`.
+   - The export window $[T_{in}, T_{out}]$ is sliced into continuous intervals $[t_j, t_{j+1}]$ with durations $D_j$.
+3. **Per-Interval Filtergraph Construction**:
+   - Interval Base: `color=c={bgHex}:s={W}x{H}:d={D_j}[bg_int_j];`
+   - Feed Processing: Each placement trims its input track with `trim=start={t_j}:end={t_{j+1}},setpts=PTS-STARTPTS`, scales with aspect preservation, pads, applies tactical borders (`drawbox`), and burns labels (`drawtext`).
+   - Daisy-Chain Stacking: Overlaid in `ZIndex` ascending order:
+     `[bg_int_j][p_j_0]overlay=x:y[t_j_0]; [t_j_0][p_j_1]overlay=x:y... -> [raw_int_j]`
+   - Transition Filtering:
+     - For incoming `smooth` or `dip` transitions ($j > 0$): applies `fade=type=in:start_time=0:duration={transDur}`.
+     - For outgoing `dip` transitions ($j < M - 1$): applies `fade=type=out:start_time={D_j - nextTransDur}:duration={nextTransDur}`.
+4. **Seamless Interval Concatenation**:
+   - Visual streams are concatenated: `[v_int_0][v_int_1]...concat=n=M:v=1:a=0[vbase]`.
+   - Combined with synchronized master audio routing (`[outa]`), faststart streaming flags (`-movflags +faststart`), and hardware encoding (NVENC / Intel QSV / libx264).
+   - Produces a single, perfectly synchronized, standalone MP4 playable in any video player.
 
 ---
 

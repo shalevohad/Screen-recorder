@@ -178,6 +178,40 @@
             }
         }
 
+        .btn-canvas-composer {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(16, 185, 129, 0.15) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.45);
+            color: #38bdf8;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 10.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
+
+            svg {
+                width: 14px;
+                height: 14px;
+                stroke: #38bdf8;
+            }
+
+            &:hover {
+                background: linear-gradient(135deg, #06b6d4 0%, #10b981 100%);
+                border-color: #38bdf8;
+                color: #090d14;
+                box-shadow: 0 4px 14px rgba(6, 182, 212, 0.5);
+
+                svg {
+                    stroke: #090d14;
+                }
+            }
+        }
+
         .btn-bookmarks-prominent {
             display: flex;
             align-items: center;

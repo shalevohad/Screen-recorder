@@ -14,6 +14,7 @@ import ShortcutsHelpModal from './components/Modals/ShortcutsHelpModal.jsx';
 import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
 import StationContextMenu from './components/Modals/StationContextMenu.jsx';
 import ExportOptionsModal from './components/Modals/ExportOptionsModal.jsx';
+import CanvasComposerModal from './components/Modals/CanvasComposerModal.jsx';
 
 import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
@@ -116,6 +117,7 @@ export default function ExtractorAdvancedStudio() {
     });
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isCanvasComposerOpen, setIsCanvasComposerOpen] = useState(false);
 
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
@@ -714,6 +716,36 @@ export default function ExtractorAdvancedStudio() {
         }
     }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, compositionLayout, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
 
+    const handleConfirmCanvasExport = useCallback(async ({ canvasLayoutTimeline, keystrokeMode: chosenKeystrokeMode }) => {
+        const targetStationIds = timelineStations.map(s => s.id);
+        if (targetStationIds.length === 0) return;
+
+        let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
+
+        try {
+            const response = await fetch('/api/v1/extractor-advanced/cut', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    stationIds: targetStationIds,
+                    inEpochMs: timelineBaseEpochMs + inPointMs,
+                    outEpochMs: timelineBaseEpochMs + outPointMs,
+                    keystrokeMode: resolvedMode,
+                    compositionScope: compositionScope,
+                    layoutMode: 'canvas',
+                    canvasLayoutTimeline: canvasLayoutTimeline,
+                    audioRoutingSegments: effectiveAudioPlan?.segments || []
+                })
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            window.dispatchEvent(new CustomEvent('open-export-monitor'));
+        } catch (error) {
+            console.error('[Studio] Canvas export failed:', error);
+            alert('Failed to launch canvas master MP4 export job.');
+        }
+    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, effectiveAudioPlan]);
+
     const handleResetStudioSession = useCallback(() => {
         clearStudioSessionCache();
         try {
@@ -755,6 +787,7 @@ export default function ExtractorAdvancedStudio() {
                     onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
                     onOpenHelpModal={() => setIsHelpModalOpen(true)}
+                    onOpenCanvasComposer={() => setIsCanvasComposerOpen(true)}
                     onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
                     isInitialSetup={isInitialSetup}
                     selectedCount={selectedStationIds.length}
@@ -834,6 +867,7 @@ export default function ExtractorAdvancedStudio() {
                                     onChangeCompositionScope={setCompositionScope}
                                     compositionLayout={compositionLayout}
                                     onChangeCompositionLayout={setCompositionLayout}
+                                    onOpenCanvasComposer={() => setIsCanvasComposerOpen(true)}
                                     isAutoDirectorEnabled={isAutoDirectorEnabled}
                                     onToggleAutoDirector={() => setIsAutoDirectorEnabled(p => !p)}
                                     isPipSwapped={isPipSwapped}
@@ -1042,6 +1076,18 @@ export default function ExtractorAdvancedStudio() {
                     stationsCount: timelineStations.length,
                     audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1
                 }}
+            />
+
+            <CanvasComposerModal
+                isOpen={isCanvasComposerOpen}
+                onClose={() => setIsCanvasComposerOpen(false)}
+                onConfirmExport={handleConfirmCanvasExport}
+                timelineStations={enrichedTimelineStations}
+                timelineBaseEpochMs={timelineBaseEpochMs}
+                inPointMs={inPointMs}
+                outPointMs={outPointMs}
+                playheadMs={playheadMs}
+                playheadEpochMs={currentPlayheadEpochMs}
             />
 
             <ExportJobMonitor />

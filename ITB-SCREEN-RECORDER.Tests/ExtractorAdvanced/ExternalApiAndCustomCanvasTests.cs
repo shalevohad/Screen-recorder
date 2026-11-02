@@ -469,4 +469,166 @@ public class ExternalApiAndCustomCanvasTests
         bool matched = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services.AdvanceJobManager.MatchesDisplay(target, trackDisplayId, displayIndex);
         Assert.Equal(expectedMatch, matched);
     }
+
+    [Fact]
+    public void CanvasLayoutTimelineDto_JsonSerialization_PreservesKeyframesAndTransitions()
+    {
+        var timeline = new CanvasLayoutTimelineDto
+        {
+            Keyframes = new List<CanvasLayoutKeyframeDto>
+            {
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = 1700000000000,
+                    TransitionType = "smooth",
+                    TransitionDurationSec = 0.5,
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        Width = 1920,
+                        Height = 1080,
+                        Placements = new List<CanvasPlacementDto>
+                        {
+                            new CanvasPlacementDto { StationId = "WS-01", DisplayId = "mon-0", X = 0, Y = 0, Width = 960, Height = 1080, ZIndex = 0 },
+                            new CanvasPlacementDto { StationId = "WS-02", DisplayId = "mon-0", X = 960, Y = 0, Width = 960, Height = 1080, ZIndex = 1 }
+                        }
+                    }
+                },
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = 1700000015000,
+                    TransitionType = "dip",
+                    TransitionDurationSec = 0.3,
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        Width = 1920,
+                        Height = 1080,
+                        Placements = new List<CanvasPlacementDto>
+                        {
+                            new CanvasPlacementDto { StationId = "WS-01", DisplayId = "mon-0", X = 0, Y = 0, Width = 1920, Height = 1080, ZIndex = 0 },
+                            new CanvasPlacementDto { StationId = "WS-02", DisplayId = "mon-0", X = 1380, Y = 40, Width = 500, Height = 281, ZIndex = 10, BorderWidth = 2, BorderColor = "#06B6D4" }
+                        }
+                    }
+                }
+            }
+        };
+
+        string json = JsonSerializer.Serialize(timeline);
+        var deserialized = JsonSerializer.Deserialize<CanvasLayoutTimelineDto>(json);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(2, deserialized.Keyframes.Count);
+
+        Assert.Equal(1700000000000, deserialized.Keyframes[0].TimestampEpochMs);
+        Assert.Equal("smooth", deserialized.Keyframes[0].TransitionType);
+        Assert.Equal(0.5, deserialized.Keyframes[0].TransitionDurationSec);
+        Assert.Equal(2, deserialized.Keyframes[0].Layout.Placements.Count);
+
+        Assert.Equal(1700000015000, deserialized.Keyframes[1].TimestampEpochMs);
+        Assert.Equal("dip", deserialized.Keyframes[1].TransitionType);
+        Assert.Equal(0.3, deserialized.Keyframes[1].TransitionDurationSec);
+        Assert.Equal(2, deserialized.Keyframes[1].Layout.Placements.Count);
+        Assert.Equal(10, deserialized.Keyframes[1].Layout.Placements[1].ZIndex);
+        Assert.Equal("#06B6D4", deserialized.Keyframes[1].Layout.Placements[1].BorderColor);
+    }
+
+    [Fact]
+    public void CanvasLayoutTimelineDto_XmlSerialization_PreservesKeyframesAndTransitions()
+    {
+        var timeline = new CanvasLayoutTimelineDto
+        {
+            Keyframes = new List<CanvasLayoutKeyframeDto>
+            {
+                new CanvasLayoutKeyframeDto
+                {
+                    TimestampEpochMs = 1700000000000,
+                    TransitionType = "cut",
+                    TransitionDurationSec = 0.0,
+                    Layout = new CustomCanvasLayoutDto
+                    {
+                        Width = 1920,
+                        Height = 1080,
+                        BackgroundColor = "#070A10",
+                        Placements = new List<CanvasPlacementDto>
+                        {
+                            new CanvasPlacementDto { StationId = "WS-ALPHA", DisplayId = "mon-0", X = 0, Y = 0, Width = 1920, Height = 1080, ZIndex = 0, Label = "Commander Screen 1" }
+                        }
+                    }
+                }
+            }
+        };
+
+        var serializer = new XmlSerializer(typeof(CanvasLayoutTimelineDto));
+        using var stringWriter = new StringWriter();
+        serializer.Serialize(stringWriter, timeline);
+        string xml = stringWriter.ToString();
+
+        Assert.Contains("CanvasLayoutTimeline", xml);
+        Assert.Contains("timestampEpochMs=\"1700000000000\"", xml);
+        Assert.Contains("transitionType=\"cut\"", xml);
+        Assert.Contains("<StationId>WS-ALPHA</StationId>", xml);
+        Assert.Contains("<Label>Commander Screen 1</Label>", xml);
+
+        using var stringReader = new StringReader(xml);
+        var deserialized = (CanvasLayoutTimelineDto)serializer.Deserialize(stringReader)!;
+
+        Assert.NotNull(deserialized);
+        Assert.Single(deserialized.Keyframes);
+        Assert.Equal(1700000000000, deserialized.Keyframes[0].TimestampEpochMs);
+        Assert.Equal("cut", deserialized.Keyframes[0].TransitionType);
+        Assert.Single(deserialized.Keyframes[0].Layout.Placements);
+        Assert.Equal("WS-ALPHA", deserialized.Keyframes[0].Layout.Placements[0].StationId);
+        Assert.Equal("Commander Screen 1", deserialized.Keyframes[0].Layout.Placements[0].Label);
+    }
+
+    [Fact]
+    public void CanvasLayoutTimeline_IntervalCalculation_CorrectlyPartitionsExportDuration()
+    {
+        long inEpochMs = 1700000000000;
+        long outEpochMs = 1700000030000; // 30 seconds cut
+        double exportedDurationSec = (outEpochMs - inEpochMs) / 1000.0; // 30.0s
+
+        var keyframes = new List<CanvasLayoutKeyframeDto>
+        {
+            new CanvasLayoutKeyframeDto { TimestampEpochMs = inEpochMs, TransitionType = "cut" },
+            new CanvasLayoutKeyframeDto { TimestampEpochMs = inEpochMs + 10000, TransitionType = "smooth", TransitionDurationSec = 0.5 },
+            new CanvasLayoutKeyframeDto { TimestampEpochMs = inEpochMs + 25000, TransitionType = "dip", TransitionDurationSec = 0.3 }
+        };
+
+        var sortedKeyframes = keyframes.OrderBy(k => k.TimestampEpochMs).ToList();
+        var intervals = new List<(double StartSec, double EndSec, string TransType, double TransDur)>();
+
+        for (int k = 0; k < sortedKeyframes.Count; k++)
+        {
+            var currentKf = sortedKeyframes[k];
+            double kfStartSec = (k == 0) ? 0.0 : Math.Max(0, (currentKf.TimestampEpochMs - inEpochMs) / 1000.0);
+            double kfEndSec = (k < sortedKeyframes.Count - 1)
+                ? Math.Max(0, (sortedKeyframes[k + 1].TimestampEpochMs - inEpochMs) / 1000.0)
+                : exportedDurationSec;
+
+            intervals.Add((kfStartSec, kfEndSec, currentKf.TransitionType, currentKf.TransitionDurationSec));
+        }
+
+        Assert.Equal(3, intervals.Count);
+
+        // Interval 0: [0, 10s]
+        Assert.Equal(0.0, intervals[0].StartSec);
+        Assert.Equal(10.0, intervals[0].EndSec);
+        Assert.Equal(10.0, intervals[0].EndSec - intervals[0].StartSec);
+
+        // Interval 1: [10s, 25s]
+        Assert.Equal(10.0, intervals[1].StartSec);
+        Assert.Equal(25.0, intervals[1].EndSec);
+        Assert.Equal(15.0, intervals[1].EndSec - intervals[1].StartSec);
+        Assert.Equal("smooth", intervals[1].TransType);
+
+        // Interval 2: [25s, 30s]
+        Assert.Equal(25.0, intervals[2].StartSec);
+        Assert.Equal(30.0, intervals[2].EndSec);
+        Assert.Equal(5.0, intervals[2].EndSec - intervals[2].StartSec);
+        Assert.Equal("dip", intervals[2].TransType);
+
+        // Total partitioned duration must equal exportedDurationSec
+        double totalSum = intervals.Sum(i => i.EndSec - i.StartSec);
+        Assert.Equal(exportedDurationSec, totalSum);
+    }
 }

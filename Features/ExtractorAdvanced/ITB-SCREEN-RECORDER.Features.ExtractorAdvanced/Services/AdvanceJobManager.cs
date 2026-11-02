@@ -218,6 +218,54 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 catch { }
             }
 
+            if (request.CanvasLayoutTimeline != null && request.CanvasLayoutTimeline.Keyframes.Count > 0)
+            {
+                if (request.StationIds == null)
+                {
+                    request.StationIds = new List<string>();
+                }
+
+                var timelineStations = request.CanvasLayoutTimeline.Keyframes
+                    .SelectMany(k => k.Layout.Placements.Select(p => p.StationId))
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (var st in timelineStations)
+                {
+                    if (!request.StationIds.Contains(st, StringComparer.OrdinalIgnoreCase))
+                        request.StationIds.Add(st);
+                }
+
+                // Resolve temporal role aliases for each keyframe timestamp
+                if (_stationRoleProvider != null)
+                {
+                    foreach (var kf in request.CanvasLayoutTimeline.Keyframes)
+                    {
+                        long kfEpoch = kf.TimestampEpochMs > 0 ? kf.TimestampEpochMs : request.InEpochMs;
+                        try
+                        {
+                            var roleMap = _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(kfEpoch, kfEpoch + 1000).GetAwaiter().GetResult();
+                            var aliasToHost = roleMap.ToDictionary(kvp => kvp.Value, kvp => kvp.Key, StringComparer.OrdinalIgnoreCase);
+
+                            foreach (var p in kf.Layout.Placements)
+                            {
+                                if (aliasToHost.TryGetValue(p.StationId, out var resolvedHost))
+                                {
+                                    if (string.IsNullOrWhiteSpace(p.Label)) p.Label = p.StationId;
+                                    p.StationId = resolvedHost;
+                                }
+                                else if (string.IsNullOrWhiteSpace(p.Label) && roleMap.TryGetValue(p.StationId, out var roleName))
+                                {
+                                    p.Label = roleName;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+
             if (request.StationIds == null || request.StationIds.Count == 0)
                 throw new ArgumentException("At least one station must be selected for timeline export.");
 
@@ -265,7 +313,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 DirectorSegments = request.DirectorSegments,
                 AudioRoutingSegments = request.AudioRoutingSegments,
                 AudioSourceStation = request.AudioSourceStation,
-                CanvasLayout = request.CanvasLayout
+                CanvasLayout = request.CanvasLayout,
+                CanvasLayoutTimeline = request.CanvasLayoutTimeline
             };
 
             _jobs[job.JobId] = job;
@@ -354,9 +403,19 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 // Prepare discrete render items (handling single composite or all individual monitors per station)
                 var renderTasks = new List<(string StationId, string DisplayId, bool IsPrimary, int Width, int Height, int X, int Y, List<RecordingChunkMetadata> Chunks, SynchronizationPlan Plan)>();
 
-                if (job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0)
+                var allPlacements = new List<AdvancedModels.CanvasPlacementDto>();
+                if (job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 0)
                 {
-                    var distinctPlacements = job.CanvasLayout.Placements
+                    allPlacements = job.CanvasLayoutTimeline.Keyframes.SelectMany(k => k.Layout.Placements).ToList();
+                }
+                else if (job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0)
+                {
+                    allPlacements = job.CanvasLayout.Placements;
+                }
+
+                if (allPlacements.Count > 0)
+                {
+                    var distinctPlacements = allPlacements
                         .GroupBy(p => $"{p.StationId}|{(!string.IsNullOrEmpty(p.DisplayId) ? p.DisplayId : "mon-0")}".ToLowerInvariant())
                         .Select(g => g.First())
                         .ToList();
@@ -652,7 +711,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 throw new InvalidOperationException("No tracks were rendered for composition.");
             }
 
-            if (job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0)
+            if ((job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0) ||
+                (job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 0))
             {
                 await ComposeCustomCanvasMasterMp4Async(finalMp4Path, tracks, job, exportedDurationSec, startUtc, ct);
                 return;
@@ -909,15 +969,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             DateTime startUtc,
             CancellationToken ct)
         {
-            var layout = job.CanvasLayout!;
-            int canvasW = layout.Width > 0 ? layout.Width : 1920;
-            int canvasH = layout.Height > 0 ? layout.Height : 1080;
-            canvasW -= (canvasW % 2);
-            canvasH -= (canvasH % 2);
-
-            string bgHex = NormalizeHexColor(layout.BackgroundColor, "0x070A10");
-            string durationStr = exportedDurationSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-
             string ffmpegPath = _binaryResolver.ResolveFfmpeg();
             var inputArgsBuilder = new System.Text.StringBuilder();
             for (int i = 0; i < tracks.Count; i++)
@@ -926,84 +977,260 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
 
             var filterBuilder = new System.Text.StringBuilder();
+            bool isTimeline = job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 1;
 
-            // 1. Order placements by ZIndex ascending (layer 0 first, layer 1 on top, etc.)
-            var sortedPlacements = layout.Placements.OrderBy(p => p.ZIndex).ToList();
-            var placementLabels = new List<string>();
-
-            for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
+            if (isTimeline)
             {
-                var p = sortedPlacements[pIdx];
+                // Multi-Keyframe Canvas Timeline Synthesis
+                var sortedKeyframes = job.CanvasLayoutTimeline!.Keyframes.OrderBy(k => k.TimestampEpochMs).ToList();
+                long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
 
-                // Find matching track index
-                int inIdx = 0;
-                for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                var intervals = new List<(double StartSec, double EndSec, AdvancedModels.CustomCanvasLayoutDto Layout, string TransType, double TransDur)>();
+
+                for (int k = 0; k < sortedKeyframes.Count; k++)
                 {
-                    if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
-                        (string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase) ||
-                         string.IsNullOrEmpty(p.DisplayId) ||
-                         tracks[tIdx].DisplayId == "mon-0"))
+                    var currentKf = sortedKeyframes[k];
+                    double kfStartSec = (k == 0) ? 0.0 : Math.Max(0, (currentKf.TimestampEpochMs - cutStartEpochMs) / 1000.0);
+                    double kfEndSec = (k < sortedKeyframes.Count - 1)
+                        ? Math.Max(0, (sortedKeyframes[k + 1].TimestampEpochMs - cutStartEpochMs) / 1000.0)
+                        : exportedDurationSec;
+
+                    kfStartSec = Math.Min(kfStartSec, exportedDurationSec);
+                    kfEndSec = Math.Min(kfEndSec, exportedDurationSec);
+
+                    if (kfEndSec - kfStartSec > 0.04)
                     {
-                        inIdx = tIdx;
-                        break;
+                        intervals.Add((kfStartSec, kfEndSec, currentKf.Layout, currentKf.TransitionType ?? "smooth", Math.Max(0.1, currentKf.TransitionDurationSec)));
                     }
                 }
 
-                // Calculate geometry
-                int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * canvasW) : (int)Math.Round(p.Width);
-                int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * canvasH) : (int)Math.Round(p.Height);
-                if (targetW <= 0) targetW = canvasW;
-                if (targetH <= 0) targetH = canvasH;
-                targetW -= (targetW % 2);
-                targetH -= (targetH % 2);
-
-                string pLabel = $"[p_{pIdx}]";
-                var ops = new List<string>
+                if (intervals.Count == 0 && sortedKeyframes.Count > 0)
                 {
-                    $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease",
-                    $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
-                };
-
-                if (p.BorderWidth > 0)
-                {
-                    string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
-                    ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={p.BorderWidth}");
+                    intervals.Add((0.0, exportedDurationSec, sortedKeyframes[0].Layout, "cut", 0.0));
                 }
 
-                if (!string.IsNullOrWhiteSpace(p.Label))
+                for (int intIdx = 0; intIdx < intervals.Count; intIdx++)
                 {
-                    string safeLabel = p.Label.Replace(":", "\\:").Replace("'", "\\'");
-                    ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize=13:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                    var (intStartSec, intEndSec, intLayout, transType, transDur) = intervals[intIdx];
+                    double intDur = intEndSec - intStartSec;
+                    string intDurStr = intDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                    int cW = intLayout.Width > 0 ? intLayout.Width : 1920;
+                    int cH = intLayout.Height > 0 ? intLayout.Height : 1080;
+                    cW -= (cW % 2);
+                    cH -= (cH % 2);
+                    string intBgHex = NormalizeHexColor(intLayout.BackgroundColor, "0x070A10");
+
+                    string bgIntLabel = $"[bg_int_{intIdx}]";
+                    filterBuilder.Append($"color=c={intBgHex}:s={cW}x{cH}:d={intDurStr}{bgIntLabel}; ");
+
+                    var iSortedPlacements = intLayout.Placements.OrderBy(p => p.ZIndex).ToList();
+                    var iPlacementLabels = new List<string>();
+
+                    for (int pIdx = 0; pIdx < iSortedPlacements.Count; pIdx++)
+                    {
+                        var p = iSortedPlacements[pIdx];
+                        int inIdx = 0;
+                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                        {
+                            if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
+                                (string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase) ||
+                                 string.IsNullOrEmpty(p.DisplayId) ||
+                                 tracks[tIdx].DisplayId == "mon-0"))
+                            {
+                                inIdx = tIdx;
+                                break;
+                            }
+                        }
+
+                        int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * cW) : (int)Math.Round(p.Width);
+                        int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * cH) : (int)Math.Round(p.Height);
+                        if (targetW <= 0) targetW = cW;
+                        if (targetH <= 0) targetH = cH;
+                        targetW -= (targetW % 2);
+                        targetH -= (targetH % 2);
+
+                        string pLabel = $"[p_{intIdx}_{pIdx}]";
+                        string startStr = intStartSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                        string endStr = intEndSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+                        var ops = new List<string>
+                        {
+                            $"trim=start={startStr}:end={endStr}",
+                            "setpts=PTS-STARTPTS",
+                            $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease",
+                            $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
+                        };
+
+                        if (p.BorderWidth > 0)
+                        {
+                            string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
+                            ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={p.BorderWidth}");
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(p.Label))
+                        {
+                            string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
+                            ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize=13:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                        }
+
+                        filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
+                        iPlacementLabels.Add(pLabel);
+                    }
+
+                    string curSurface = bgIntLabel;
+                    for (int pIdx = 0; pIdx < iSortedPlacements.Count; pIdx++)
+                    {
+                        var p = iSortedPlacements[pIdx];
+                        string pLabel = iPlacementLabels[pIdx];
+                        string nxtSurface = (pIdx == iSortedPlacements.Count - 1) ? $"[raw_int_{intIdx}]" : $"[t_{intIdx}_{pIdx}]";
+
+                        int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * cW) : (int)Math.Round(p.X);
+                        int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * cH) : (int)Math.Round(p.Y);
+
+                        filterBuilder.Append($"{curSurface}{pLabel}overlay={targetX}:{targetY}{nxtSurface}; ");
+                        curSurface = nxtSurface;
+                    }
+
+                    // Transitions: fade in from black / smooth reveal
+                    string outIntLabel = $"[v_int_{intIdx}]";
+                    var transFilters = new List<string>();
+
+                    if (intIdx > 0)
+                    {
+                        double effTransDur = Math.Min(transDur, intDur / 2.0);
+                        string effDurStr = effTransDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                        if (string.Equals(transType, "smooth", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(transType, "fade", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(transType, "dip", StringComparison.OrdinalIgnoreCase))
+                        {
+                            transFilters.Add($"fade=type=in:start_time=0:duration={effDurStr}");
+                        }
+                    }
+
+                    if (intIdx < intervals.Count - 1)
+                    {
+                        var nextKf = intervals[intIdx + 1];
+                        if (string.Equals(nextKf.TransType, "dip", StringComparison.OrdinalIgnoreCase))
+                        {
+                            double effNextDur = Math.Min(nextKf.TransDur, intDur / 2.0);
+                            double outStart = Math.Max(0, intDur - effNextDur);
+                            transFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}:duration={effNextDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}");
+                        }
+                    }
+
+                    if (transFilters.Count > 0)
+                    {
+                        filterBuilder.Append($"[raw_int_{intIdx}]{string.Join(",", transFilters)}{outIntLabel}; ");
+                    }
+                    else
+                    {
+                        filterBuilder.Append($"[raw_int_{intIdx}]null{outIntLabel}; ");
+                    }
                 }
 
-                filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
-                placementLabels.Add(pLabel);
+                var concatLabels = Enumerable.Range(0, intervals.Count).Select(i => $"[v_int_{i}]").ToList();
+                if (concatLabels.Count > 1)
+                {
+                    filterBuilder.Append($"{string.Join("", concatLabels)}concat=n={concatLabels.Count}:v=1:a=0[vbase]; ");
+                }
+                else
+                {
+                    filterBuilder.Append($"{concatLabels[0]}null[vbase]; ");
+                }
             }
-
-            // 2. Base Canvas Background
-            filterBuilder.Append($"color=c={bgHex}:s={canvasW}x{canvasH}:d={durationStr}[bg]; ");
-
-            // 3. Daisy-chain overlays
-            string currentSurface = "[bg]";
-            for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
+            else
             {
-                var p = sortedPlacements[pIdx];
-                string pLabel = placementLabels[pIdx];
-                string nextSurface = (pIdx == sortedPlacements.Count - 1) ? "[vbase]" : $"[t_{pIdx}]";
+                // Single Static Canvas Layout
+                var layout = (job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count == 1)
+                    ? job.CanvasLayoutTimeline.Keyframes[0].Layout
+                    : (job.CanvasLayout ?? new AdvancedModels.CustomCanvasLayoutDto());
 
-                int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * canvasW) : (int)Math.Round(p.X);
-                int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * canvasH) : (int)Math.Round(p.Y);
+                int canvasW = layout.Width > 0 ? layout.Width : 1920;
+                int canvasH = layout.Height > 0 ? layout.Height : 1080;
+                canvasW -= (canvasW % 2);
+                canvasH -= (canvasH % 2);
 
-                string enableClause = "";
-                if (p.StartOffsetMs.HasValue || p.EndOffsetMs.HasValue)
+                string bgHex = NormalizeHexColor(layout.BackgroundColor, "0x070A10");
+                string durationStr = exportedDurationSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+                // 1. Order placements by ZIndex ascending (layer 0 first, layer 1 on top, etc.)
+                var sortedPlacements = layout.Placements.OrderBy(p => p.ZIndex).ToList();
+                var placementLabels = new List<string>();
+
+                for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
                 {
-                    double startSec = Math.Max(0, (p.StartOffsetMs ?? 0) / 1000.0);
-                    double endSec = Math.Min(exportedDurationSec, (p.EndOffsetMs ?? (exportedDurationSec * 1000)) / 1000.0);
-                    enableClause = $":enable='between(t,{startSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)},{endSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)})'";
+                    var p = sortedPlacements[pIdx];
+
+                    // Find matching track index
+                    int inIdx = 0;
+                    for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                    {
+                        if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
+                            (string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase) ||
+                             string.IsNullOrEmpty(p.DisplayId) ||
+                             tracks[tIdx].DisplayId == "mon-0"))
+                        {
+                            inIdx = tIdx;
+                            break;
+                        }
+                    }
+
+                    // Calculate geometry
+                    int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * canvasW) : (int)Math.Round(p.Width);
+                    int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * canvasH) : (int)Math.Round(p.Height);
+                    if (targetW <= 0) targetW = canvasW;
+                    if (targetH <= 0) targetH = canvasH;
+                    targetW -= (targetW % 2);
+                    targetH -= (targetH % 2);
+
+                    string pLabel = $"[p_{pIdx}]";
+                    var ops = new List<string>
+                    {
+                        $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease",
+                        $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
+                    };
+
+                    if (p.BorderWidth > 0)
+                    {
+                        string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
+                        ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={p.BorderWidth}");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(p.Label))
+                    {
+                        string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
+                        ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize=13:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                    }
+
+                    filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
+                    placementLabels.Add(pLabel);
                 }
 
-                filterBuilder.Append($"{currentSurface}{pLabel}overlay={targetX}:{targetY}{enableClause}{nextSurface}; ");
-                currentSurface = nextSurface;
+                // 2. Base Canvas Background
+                filterBuilder.Append($"color=c={bgHex}:s={canvasW}x{canvasH}:d={durationStr}[bg]; ");
+
+                // 3. Daisy-chain overlays
+                string currentSurface = "[bg]";
+                for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
+                {
+                    var p = sortedPlacements[pIdx];
+                    string pLabel = placementLabels[pIdx];
+                    string nextSurface = (pIdx == sortedPlacements.Count - 1) ? "[vbase]" : $"[t_{pIdx}]";
+
+                    int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * canvasW) : (int)Math.Round(p.X);
+                    int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * canvasH) : (int)Math.Round(p.Y);
+
+                    string enableClause = "";
+                    if (p.StartOffsetMs.HasValue || p.EndOffsetMs.HasValue)
+                    {
+                        double startSec = Math.Max(0, (p.StartOffsetMs ?? 0) / 1000.0);
+                        double endSec = Math.Min(exportedDurationSec, (p.EndOffsetMs ?? (exportedDurationSec * 1000)) / 1000.0);
+                        enableClause = $":enable='between(t,{startSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)},{endSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)})'";
+                    }
+
+                    filterBuilder.Append($"{currentSurface}{pLabel}overlay={targetX}:{targetY}{enableClause}{nextSurface}; ");
+                    currentSurface = nextSurface;
+                }
             }
 
             // 4. Audio Routing

@@ -11,7 +11,8 @@ using System.Threading.Tasks;
 using System.Linq;
 
 using System.Xml.Serialization;
-using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
@@ -39,6 +40,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
         public string? AudioSourceStation { get; set; }
         public CustomCanvasLayoutDto? CanvasLayout { get; set; }
+        public CanvasLayoutTimelineDto? CanvasLayoutTimeline { get; set; }
     }
 
     public class AdvanceCutRequestDto
@@ -87,26 +89,66 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("canvasLayout")]
         public CustomCanvasLayoutDto? CanvasLayout { get; set; }
+
+        [JsonPropertyName("canvasLayoutTimeline")]
+        public CanvasLayoutTimelineDto? CanvasLayoutTimeline { get; set; }
+    }
+
+    /// <summary>
+    /// Represents a dynamic, time-keyframed canvas layout timeline where layouts and placements can transition
+    /// between keyframe timestamps either smoothly (animated) or via cuts/dips.
+    /// </summary>
+    [XmlRoot("CanvasLayoutTimeline")]
+    public class CanvasLayoutTimelineDto
+    {
+        [JsonPropertyName("keyframes")]
+        [XmlElement("Keyframe")]
+        public List<CanvasLayoutKeyframeDto> Keyframes { get; set; } = new();
+    }
+
+    public class CanvasLayoutKeyframeDto
+    {
+        [JsonPropertyName("timestampEpochMs")]
+        [XmlAttribute("timestampEpochMs")]
+        public long TimestampEpochMs { get; set; }
+
+        [JsonPropertyName("transitionDurationSec")]
+        [XmlAttribute("transitionDurationSec")]
+        public double TransitionDurationSec { get; set; } = 0.5;
+
+        [JsonPropertyName("transitionType")]
+        [XmlAttribute("transitionType")]
+        public string TransitionType { get; set; } = "smooth"; // "smooth", "cut", "dip"
+
+        [JsonPropertyName("layout")]
+        [XmlElement("Layout")]
+        public CustomCanvasLayoutDto Layout { get; set; } = new();
     }
 
     /// <summary>
     /// Custom Canvas Layout definition for absolute positioning, sizing, and layering of feeds.
     /// </summary>
+    [XmlRoot("CustomCanvasLayout")]
     public class CustomCanvasLayoutDto
     {
         [JsonPropertyName("width")]
+        [XmlElement("Width")]
         public int Width { get; set; } = 1920;
 
         [JsonPropertyName("height")]
+        [XmlElement("Height")]
         public int Height { get; set; } = 1080;
 
         [JsonPropertyName("backgroundColor")]
+        [XmlElement("BackgroundColor")]
         public string BackgroundColor { get; set; } = "#070A10";
 
         [JsonPropertyName("fps")]
+        [XmlElement("Fps")]
         public double Fps { get; set; } = 30.0;
 
         [JsonPropertyName("placements")]
+        [XmlElement("Placement")]
         public List<CanvasPlacementDto> Placements { get; set; } = new();
     }
 
@@ -119,36 +161,42 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         /// Workstation identifier (accepts physical hostname or role alias, e.g. "Commander" or "WS-ALPHA").
         /// </summary>
         [JsonPropertyName("stationId")]
+        [XmlElement("StationId")]
         public string StationId { get; set; } = string.Empty;
 
         /// <summary>
         /// Target display on the station (e.g. "mon-0", "mon-1", or "director"). Defaults to "mon-0".
         /// </summary>
         [JsonPropertyName("displayId")]
+        [XmlElement("DisplayId")]
         public string DisplayId { get; set; } = "mon-0";
 
         /// <summary>
         /// X position on canvas (pixels or normalized 0.0-1.0).
         /// </summary>
         [JsonPropertyName("x")]
+        [XmlElement("X")]
         public double X { get; set; } = 0;
 
         /// <summary>
         /// Y position on canvas (pixels or normalized 0.0-1.0).
         /// </summary>
         [JsonPropertyName("y")]
+        [XmlElement("Y")]
         public double Y { get; set; } = 0;
 
         /// <summary>
         /// Width on canvas (pixels or normalized 0.0-1.0).
         /// </summary>
         [JsonPropertyName("width")]
+        [XmlElement("Width")]
         public double Width { get; set; } = 1920;
 
         /// <summary>
         /// Height on canvas (pixels or normalized 0.0-1.0).
         /// </summary>
         [JsonPropertyName("height")]
+        [XmlElement("Height")]
         public double Height { get; set; } = 1080;
 
         /// <summary>
@@ -156,36 +204,42 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         /// Lower values are placed first (e.g. background); higher values overlay on top (e.g. PiP inset has zIndex=1).
         /// </summary>
         [JsonPropertyName("zIndex")]
+        [XmlElement("ZIndex")]
         public int ZIndex { get; set; } = 0;
 
         /// <summary>
         /// Optional border thickness in pixels around this feed (e.g. 2 for tactical border, 0 for borderless).
         /// </summary>
         [JsonPropertyName("borderWidth")]
+        [XmlElement("BorderWidth")]
         public int BorderWidth { get; set; } = 0;
 
         /// <summary>
         /// Hex border color (e.g. "#06B6D4" cyan, "#10B981" emerald, "#F43F5E" rose).
         /// </summary>
         [JsonPropertyName("borderColor")]
+        [XmlElement("BorderColor")]
         public string BorderColor { get; set; } = "#06B6D4";
 
         /// <summary>
         /// Optional tactical label burned onto the feed (e.g. "COMMANDER - WS-01").
         /// </summary>
         [JsonPropertyName("label")]
+        [XmlElement("Label")]
         public string? Label { get; set; }
 
         /// <summary>
         /// Optional temporal start offset in milliseconds within the exported duration.
         /// </summary>
         [JsonPropertyName("startOffsetMs")]
+        [XmlElement("StartOffsetMs")]
         public double? StartOffsetMs { get; set; }
 
         /// <summary>
         /// Optional temporal end offset in milliseconds within the exported duration.
         /// </summary>
         [JsonPropertyName("endOffsetMs")]
+        [XmlElement("EndOffsetMs")]
         public double? EndOffsetMs { get; set; }
     }
 

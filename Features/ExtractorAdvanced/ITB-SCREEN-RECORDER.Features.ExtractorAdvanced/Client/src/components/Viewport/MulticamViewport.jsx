@@ -77,7 +77,8 @@ export default function MulticamViewport({
     onToggleAutoDirector,
     isPipSwapped = false,
     onTogglePipSwap,
-    onChangePlaybackSpeed
+    onChangePlaybackSpeed,
+    onOpenCanvasComposer
 }) {
     const viewportRootRef = useRef(null);
     const resizeObserverRef = useRef(null);
@@ -350,10 +351,11 @@ export default function MulticamViewport({
                             onClick={() => {
                                 onChangeCompositionLayout?.('canvas');
                                 setIsGridMatrixView(false);
+                                onOpenCanvasComposer?.();
                             }}
-                            title="Virtual Canvas View"
+                            title="Virtual Canvas View & Visual Composer"
                         >
-                            ▦ CANVAS
+                            🎨 CANVAS
                         </button>
                         <button
                             type="button"
