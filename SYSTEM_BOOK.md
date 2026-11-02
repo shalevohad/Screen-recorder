@@ -1,8 +1,8 @@
 # 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
-> **Last Updated**: 2026-10-28  
-> **Current Version**: v1.0.46  
+> **Last Updated**: 2026-11-02  
+> **Current Version**: v1.0.50  
 > **Governing Rules**: Consult [RULES.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/RULES.md) for behavioral invariants and strict system constraints.
 
 ---
@@ -27,15 +27,17 @@
 17. [Tactical C2 Bulk Recording Iconography & Ergonomic Inversion](#17-tactical-c2-bulk-recording-iconography--ergonomic-inversion-2026-10-28)
 18. [Multi-Monitor Mouse Pointer & Interaction Isolation Engine](#18-multi-monitor-mouse-pointer--interaction-isolation-engine-2026-10-28)
 19. [Zero-Black-Screen Persistent Player, Multi-Station Audio Listening & Studio Forensic Canvas Layout](#19-zero-black-screen-persistent-player-multi-station-audio-listening--studio-forensic-canvas-layout-2026-10-28)
-20. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination](#20-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
-21. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture](#21-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
-22. [Host GPU Hardware Detection & Architecture Diagnostics](#22-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
-23. [ITB Standalone Player Architecture (Retired / Converged into Studio)](#24-itb-standalone-player-architecture-retired--converged-into-studio)
-24. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals](#21-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
-25. [Universal Studio Composition Engine & Single Master MP4 Export Architecture](#22-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
-26. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture](#26-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
-27. [External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API](#27-external-forensic-inspection-custom-canvas-layout--master-remote-mp4-export-api-2026-11-02)
-28. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis](#28-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
+20. [Cross-Platform CI/CD Architecture & Pipeline Hardening](#20-cross-platform-cicd-architecture--pipeline-hardening-2026-10-29)
+21. [Multi-Monitor Canvas Layout Normalization, Viewport Collision Prevention & Iconography Hardening](#21-multi-monitor-canvas-layout-normalization-viewport-collision-prevention--iconography-hardening-2026-10-29)
+22. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination](#22-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
+23. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture](#23-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
+24. [Host GPU Hardware Detection & Architecture Diagnostics](#24-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
+25. [Server-Calibrated Time Engine & Playhead Synchronization Architecture](#25-server-calibrated-time-engine--playhead-synchronization-architecture-2026-11-02)
+26. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals](#26-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
+27. [Universal Studio Composition Engine & Single Master MP4 Export Architecture](#27-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
+28. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture](#28-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
+29. [External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API](#29-external-forensic-inspection-custom-canvas-layout--master-remote-mp4-export-api-2026-11-02)
+30. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis](#30-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
 
 ---
 
@@ -118,9 +120,11 @@ c:\Devlopers\ITB-SCREEN-RECORDER\
 ├── ITB-SCREEN-RECORDER.AgentWorker\       # Interactive Session 1+ screen/audio/keystroke capture worker
 ├── Features\
 │   ├── Extractor\                        # Core multi-camera track cutter and video export engine
-│   └── ExtractorAdvanced\                # Forensic LiveTail DVR viewer and multi-station timeline
+│   └── ExtractorAdvanced\                # Forensic LiveTail DVR viewer, Studio canvas, and multi-station timeline
+├── Tools\
+│   └── ITB-SCREEN-RECORDER.Diagnostics\  # Enterprise forensic log diagnostic & RCA utility
 ├── Installers\                           # WiX Toolset v4 installer definitions (.msi) & Linux packaging
-└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (315+ unit, integration & sync tests)
+└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (387+ unit, integration & sync tests)
 ```
 
 ---
@@ -737,7 +741,7 @@ ault (Amber): Workstation audio hardware (speakers/mic) present and configured, 
   - Preserves 100% offline, self-contained air-gapped compliance (zero external web fonts or CDN downloads).
 
 ---
-## 20. Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination (2026-11-01)
+## 22. Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination (2026-11-01)
 
 ### 1. Operational Problem: Acoustic Bleed & Delayed Intercom Loopback
 In multi-station recording environments (control rooms, dispatch consoles, operations centers):
@@ -789,7 +793,7 @@ In multi-station recording environments (control rooms, dispatch consoles, opera
 
 ---
 
-## 21. Graceful Central Server Self-Restart & Online Port Re-Binding Architecture (2026-11-01)
+## 23. Graceful Central Server Self-Restart & Online Port Re-Binding Architecture (2026-11-01)
 
 ### 1. Operational Problem: Kestrel Dynamic Port Re-Binding
 In enterprise operational deployments, operators may reconfigure the central server port (e.g. from default `:5090` to `:8080`, `:443` for standard HTTPS, or `:80` for standard HTTP) directly via the C2 Settings Dashboard (`SystemNetworkTab`).
@@ -827,7 +831,7 @@ In enterprise operational deployments, operators may reconfigure the central ser
   - Once the server resumes listening on the new port, Agent discovery reconnects and drains buffered chunks without a single lost frame.
 
 ---
-## 22. Host GPU Hardware Detection & Architecture Diagnostics (2026-11-01)
+## 24. Host GPU Hardware Detection & Architecture Diagnostics (2026-11-01)
 
 ### 1. Host Hardware GPU Enumeration (HardwareProbe.cs)
 - **Lightweight System Registry & Kernel Probing**:
@@ -849,7 +853,7 @@ In enterprise operational deployments, operators may reconfigure the central ser
 - Detected GPU models and driver versions are surfaced directly in the C2 Dashboard System Overview pipeline header as interactive badges (🖥️ HOST GPU: <Model> (v<Driver>)), providing immediate hardware visibility to NOC operators.
 
 ---
-## 23. Server-Calibrated Time Engine & Playhead Synchronization Architecture (2026-11-02)
+## 25. Server-Calibrated Time Engine & Playhead Synchronization Architecture (2026-11-02)
 
 ### 1. Operational Problem: Client Host Timezone Drift & Playhead Desynchronization
 In air-gapped operational environments, client workstations accessing the Forensic Studio (`ExtractorAdvancedStudio`) or NOC Dashboard may run with divergent local OS timezones, uncalibrated system clocks, or UTC/GMT settings.
@@ -884,180 +888,7 @@ To guarantee 100% deterministic time representation regardless of host operating
   - `parseSafeEpoch` parses ISO date strings without timezone indicators via `dateTimeToEpochMs` instead of browser-local parsing.
 
 ---
-## 24. ITB Standalone Player Architecture (Retired / Converged into Studio)
-
-> ⚠️ **Historical Reference & Deprecation Notice**: In accordance with system architecture consolidation directives, the standalone desktop player (`Tools/ITB-SCREEN-RECORDER.Player`, `ITB-SCREEN-RECORDER.Player.Core`, `ITB-SCREEN-RECORDER.Player.CallerShowcase`) and their Windows/Linux installers have been completely removed and retired from the codebase. All multi-screen forensic replay, adaptive canvas layout, audio routing, and timeline investigation capabilities have converged entirely into **ExtractorAdvanced Studio** and the **Visual Canvas Composer** (see Chapters 22, 26, 27, and 28).
-
-### 1. Historical Architecture & Rationale for Studio Convergence
-Export archives (`*.tar` / `*.itbp`) contain multi-station, multi-monitor video streams (H.264/AAC MP4) bundled with a metadata manifest (`session.json`).
-- **Scale Problem**: Export archives routinely range between 10GB and 200GB+. Standard media players (including classic VLC) require users to manually decompress or extract the entire archive to disk before playback, demanding redundant storage pools and introducing 10–20 minute disk extraction bottlenecks.
-- **Standalone Player Goal**: Provide a dedicated, air-gapped, VLC-grade desktop player (`ITB-PLAYER`) that streams and synchronizes multi-monitor feeds directly from the exported `.tar` container in <200ms with zero prior extraction, rendering gaps, subtitles, and telemetry HUD overlays.
-
-### 2. Zero-Extract Contiguous Block Streaming Engine
-- **POSIX/Pax TAR Direct Block Indexing**:
-  - Uncompressed TAR containers store files contiguously with 512-byte headers.
-  - Upon file selection (`.tar` or `.itbp`), `TarVirtualFileSystem` scans headers sequentially in under 50ms, compiling an in-memory byte-offset index `(StartByteOffset, LengthBytes)` for each embedded media file and `session.json`.
-  - Zero disk extraction or file duplication is performed.
-- **In-Process Loopback HTTP 206 Range Server**:
-  - A lightweight, ephemeral in-process loopback HTTP server (bound to `127.0.0.1:{ephemeralPort}`) serves individual tracks at `http://127.0.0.1:{port}/stream/{trackIndex}`.
-  - When media player decoders request byte chunks (`Range: bytes=start-end`), the loopback server opens the `.tar` archive using non-locking `FileShare.ReadWrite` streams, seeks directly to `TarOffset + HttpRangeStart`, and streams raw MP4 bytes.
-  - Enables instant random-access seeking, rapid scrub buffering, and sub-millisecond timeline jumping across files of arbitrary size.
-
-### 3. LibVLC-Grade Multi-Stream Hardware Playback Core
-- Built on `LibVLCSharp` (.NET 8) backed by native `libvlc.dll`, guaranteeing complete codec independence and GPU hardware decoding acceleration (Direct3D 11 / NVDEC / QSV).
-- **Master Playback Clock**: Coordinates playback rate, unified play/pause, scrub synchronization, and frame-stepping (`.` / `,`) across up to 8+ simultaneous 1080p/4K 60fps monitor streams.
-- **Drift Auto-Correction**: Secondary video streams continuously calibrate their presentation timestamps (PTS) against the master clock, realigning automatically if decoder lag exceeds 50ms.
-
-### 4. Multi-View Layouts & Tactical Multi-Display Navigation
-- **Discrete Multi-Display Packaging (`all-displays`)**:
-  - Export engine (`AdvanceJobManager.cs` & `ExtractorService.cs`) slices discrete synchronized MP4 video files for every screen of every station (`recordings/{stationId}_{displayId}.mp4`).
-  - `session.json` registers physical display geometry (`width`, `height`, `x`, `y`, `displayId`, `isPrimary`).
-  - Secondary displays automatically borrow synchronized audio streams from `mon-0` when discrete microphone/loopback audio is anchored to the primary adapter.
-- **Station-to-Display Operational Hierarchy**:
-  - Top tactical tab bar partitions the fleet cleanly: `[ ⊞ ALL STATIONS | 🖥 STATION-01 (2 Screens) | 🖥 STATION-02 ... ]`.
-  - When an individual station is selected, displays are governed by `StationGroupViewModel` and normalized by `StationTopologyCalculator`.
-- **Virtual Desktop Topology Canvas (`PlayerViewMode.Canvas`)**:
-  - Reconstructs the exact physical OS monitor bounds and arrangement inside a scalable Viewbox Canvas.
-  - Monitors render at proportional pixel coordinates (`Canvas.Left`, `Canvas.Top`, `Width`, `Height`) with glowing tactical cyan borders, resolution badges (`1920×1080`), and click-to-focus zoom.
-- **Split Screen Mode (`PlayerViewMode.Split`)**:
-  - Displays all monitors of the active station side-by-side in equal aspect-ratio panes.
-- **Solo Zoom & Interactive Minimap Radar HUD (`PlayerViewMode.Solo`)**:
-  - 100% viewport focus on a single display with breadcrumb return (`⊞ BACK TO CANVAS`).
-  - Floating bottom-right Minimap HUD displays remaining station monitors with instant 1-click display hopping.
-- **General Canvas Fullscreen Presentation**:
-  - Pressing `F` or `F11` or clicking `⛶ FULLSCREEN` toggles borderless fullscreen presentation of the entire Virtual Desktop Canvas.
-- **Tactical Keyboard Hotkeys**:
-  - `Space`: Master Play / Pause
-  - `Left` / `Right`: High-precision scrub step (-5s / +5s)
-  - `1` .. `9`: Quick-switch display (or station in All Stations view)
-  - `0` or `C`: Return to Virtual Desktop Topology Canvas
-  - `S`: Switch to Split Screen
-  - `F` or `F11`: Toggle Fullscreen Canvas
-  - `Esc`: Exit Fullscreen or return from Solo mode back to Canvas
-
-### 5. Multi-Station Audio Mixer Engine & Delayed Echo Neutralization
-- **Concurrent Multi-Station Audio Playback**: Unlike live NOC monitoring where audio is strictly soloed, replay enables operators to listen to multiple workstations simultaneously (e.g. Operator and Intercom/Supervisor) to reconstruct synchronized spoken communications.
-- **Per-Channel Channel Strips**: Each video feed features independent Volume (0–100%), individual Mute (`[M]`), instant Solo (`[S]`), live stereo VU meters, and spatial stereo panning (`L / C / R`) to separate distinct stations between Left and Right earcups in operator headphones.
-- **Discrete Dual-Channel Source Routing**:
-  - Ingests the 2-channel audio tracks recorded by the Agent (Channel 0 = System Loopback, Channel 1 = Physical Microphone).
-  - Includes mode selection: `[🎧 BOTH | 🎤 MIC ONLY | 🔊 SYS ONLY | ⮂ STEREO SPLIT]`.
-  - When listening to multiple stations, selecting **🎤 MIC ONLY** completely cuts delayed intercom and speaker bleed from the other workstations.
-- **Dynamic Voice Activity Cross-Ducking (Auto-Duck)**: Analyzes real-time leading voice envelopes; when Station A speaks, the delayed copy arriving over Station B's intercom/speakers is automatically ducked by -16dB, preventing unintelligible hollow double playback.
-- **Master Audio Bus**: Global volume control, master mute hotkey (`M`), and integrated peak limiting to prevent clipping distortion when multiple active audio feeds overlap.
-
-### 6. Timeline, Gap Visualizer & Keystroke Audit HUD
-- **Dual Time Projection**: Displays both elapsed playback time (`00:14:22 / 01:00:00`) and true wall-clock UTC (`2026-11-01 10:14:22 UTC`) derived from `rangeStartUtc`.
-- **Gap Scrubber Markers**:
-  - `removedGlobalGaps`: Visual orange hatched intervals on the seekbar indicate periods where fleet capture was paused or trimmed.
-  - `stationGaps`: Grey markers represent station-specific dropouts bridged with synthetic "No Signal" test patterns.
-  - Scrubber supports toggleable "Auto-Skip Gaps" playback mode.
-- **Keystroke & Telemetry Captions HUD**:
-  - Decodes embedded MP4 subtitle tracks (`mov_text` titled "Keystroke Audit") and external SRT/JSON event sidecars.
-  - Searchable Keystroke Audit Drawer: Operators can search for typed keywords, hotkeys, or process names, and click any event to seek all synchronized video feeds directly to that precise millisecond.
-
-### 7. Standalone Tool Topology & Air-Gapped Installer Kits
-- **Autonomous Desktop Utility Taxonomy (Tools/)**:
-  - The Player is architected strictly as an autonomous, air-gapped desktop tool (Tools/ITB-SCREEN-RECORDER.Player and Tools/ITB-SCREEN-RECORDER.Player.Core), completely independent of the C2 Server and Web Dashboard runtime.
-  - Users execute the tool locally on analytical workstations to inspect exported packages without active network connectivity or server dependencies.
-- **Windows Enterprise Installer (Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer)**:
-  - Engineered using **WiX Toolset v5** producing a standalone .msi (ITB-Player-Setup-1.0.x.msi).
-  - Automatically registers Start Menu and Desktop shortcuts.
-  - **OS Shell File Association**: Maps .itbp (ITB Screen Recording Package) directly to the player executable, and injects an Explorer context menu verb for .tar files: Open with ITB Player.
-- **Linux Self-Extracting Deployment Kit (Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer)**:
-  - Produces an autonomous .run self-extracting bundle (ITB-Player-Setup-1.0.x.run).
-  - Deploys binaries to /opt/itb-player/ with /usr/local/bin/itb-player CLI symlink.
-  - Installs XDG desktop entry (/usr/share/applications/itb-player.desktop) and registers shared MIME type application/x-itb-package for .itbp and .tar with system desktop databases.
-
-### 8. Centralized Enterprise Branding Architecture (SSOT in Core)
-To eliminate asset duplication and graphic drift across multiple applications and installers, all canonical brand assets reside centrally in `ITB-SCREEN-RECORDER.Core/Assets/Branding/`:
-- `app.ico` / `favicon.ico`: High-density multi-resolution Windows and browser application icon.
-- `LogoDark.png` & `Logo.png`: Primary tactical dark and light vector-rendered enterprise logos.
-- `LogoDark2.png`: Extended horizontal tactical badge.
-- `itb-player.png`: 256x256 application launcher icon for Linux desktop environments.
-- **Build-Time Propagation**:
-  - `Tools/ITB-SCREEN-RECORDER.Player`: Automatically syncs icons and logos into `Assets/` via the `SyncBrandingFromCore` MSBuild target prior to compilation.
-  - `Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer`: WiX embeds `$(var.PublishDir)\app.ico` for desktop shortcuts and the Windows Add/Remove Programs panel (`ARPPRODUCTICON`).
-  - `Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer`: Packaging pipeline pulls `itb-player.png` directly from Core during `.run` archive creation.
-  - `ITB-SCREEN-RECORDER.Server`: Pre-compilation target `SyncBrandingToClientApp` synchronizes logos and favicons to `ClientApp/public/`.
-
-### 9. Encrypted Duplex IPC & Automated Multi-Station Replay Architecture
-Enables external dispatch systems, CAD, C2, and investigation applications to programmatically control and monitor ITB Player with zero network attack surface and zero eavesdropping risk:
-
-1. **Security & Cryptographic Invariants**:
-   - **Wire Protocol**: Custom binary framing (`ITBS` Magic, 64-bit Monotonic Sequence Number, 96-bit Nonce, 128-bit Authentication Tag, 32-bit Payload Length, Ciphertext).
-   - **Authenticated Encryption**: 100% of messages encrypted via **AES-256-GCM**.
-   - **Anti-Tampering**: Modifying any bit in transit triggers `CryptographicException: Authentication tag verification failed`, dropping the connection and dispatching an alert.
-   - **Anti-Replay**: Sequence numbers bound as Associated Authenticated Data (AAD); frames with `Seq <= LastSeenSeq` are immediately discarded.
-   - **Zero Command-Line Exposure**: 256-bit ephemeral session keys are piped directly through the child process kernel `stdin` pipe (`Process.Start` with `RedirectStandardInput = true`).
-   - **Process Isolation**: Named Pipes configured with restricted Windows ACLs for `Current User SID` only.
-
-2. **Automated Replay Pipeline (`ServerReplayOrchestrator`)**:
-   - Autonomous Multicast Discovery: Listens on `239.210.1.5:5098` (or custom endpoint) to find active ITB Central Servers.
-   - Remote Slicing Job: Triggers `POST /api/v1/extractor/jobs` with workstation list, UTC time bounds, keystroke mode, and layout.
-   - Progress Telemetry: Streams percent complete through encrypted IPC (`EXTRACTING_MEDIA`, `DOWNLOADING_PACKAGE`).
-   - Direct Jump: Seeks playback clock directly to target UTC playhead ($T_C$) upon load, unmuting the designated solo station.
-
-3. **Caller SDK Client (`PlayerSecureLauncher`)**:
-   - Generates ephemeral cryptographic keys and restricted pipes.
-   - Launches `itb-player.exe` with `--pipe <name>`.
-   - Exposes strongly typed async control methods (`PlayAsync`, `PauseAsync`, `SeekAsync`, `SetPlaybackRateAsync`, `SetAudioStationAsync`, `GetStatusAsync`, `CloseAsync`).
-   - Exposes lifecycle and error events (`OnEventReceived`, `OnHeartbeatReceived`, `OnErrorReceived`, `OnStateChanged`).
-
-4. **Dynamic C2 Caller Showcase Tool (`Tools/ITB-SCREEN-RECORDER.Player.CallerShowcase`)**:
-   - Tactical Dark WPF application (`itb-player-caller-showcase.exe`) packaged directly alongside `ITB-SCREEN-RECORDER.Diagnostics` into the installation bundle (`Tools\CallerShowcase`).
-   - Installs Start Menu and desktop shortcuts for immediate tactical testing and integration verification.
-   - **Dynamic Network Discovery**: Scans local LAN via UDP Multicast (`239.210.1.5:5098`) for active ITB recording servers and queries recorded workstation inventories dynamically via REST (`/api/v1/extractor/recorded-hosts`).
-   - **Tactical C2 Remote Deck**:
-     - Interactive multi-station selection, time presets (15m, 30m, 1h, 4h, custom UTC), audio solo picker, and keystrokes burn-in mode.
-     - Ephemeral AES-256-GCM duplex IPC launch via `PlayerSecureLauncher` with anti-replay counters and zero-disk key injection via private kernel `stdin`.
-     - Live UTC playhead telemetry clock, interactive seek scrubber slider, real-time transport controls (`[PLAY/PAUSE]`, `[SEEK]`, `[RATE 0.25x-4x]`, `[AUDIO SWITCH]`, `[STOP/CLOSE]`).
-     - Live scrolling wire event monitor displaying bidirectional encrypted telemetry packets in real-time.
-
-5. **Distribution Packaging & Tools Integration**:
-   - **Windows WiX MSI (`Installers/Windows/ITB-SCREEN-RECORDER.Player.Installer`)**:
-     - Publishes self-contained binaries for `ITB-SCREEN-RECORDER.Player` (root), `ITB-SCREEN-RECORDER.Diagnostics` (`Tools\Diagnostics`), and `ITB-SCREEN-RECORDER.Player.CallerShowcase` (`Tools\CallerShowcase`).
-     - Generates Start Menu shortcuts: `ITB Player`, `ITB Diagnostics`, and `ITB Player Caller Showcase`.
-   - **Linux Self-Extracting `.run` (`Installers/Linux/ITB-SCREEN-RECORDER.Player.Linux.Installer`)**:
-     - Deploys headless player core and diagnostics to `/opt/itb-player/tools/` with symlinks in `/usr/local/bin/`.
-
----
-
-## 20. Multi-Display Forensic Player Suite: PiP, Adaptive Split, Presentation Director & Single Master Export (2026-11-02)
-
-### 1. Dual-Track Synchronized Export with Auto-Director Cut Parity
-- **All-Displays + Auto-Director Bundle**:
-  - When exporting workstations with multi-monitor configurations in `all-displays` layout mode, [`AdvanceJobManager.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Services/AdvanceJobManager.cs) and [`ExtractorService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/ExtractorService.cs) generate both discrete screen tracks (`mon-0`, `mon-1`, etc.) **and** the synchronized Auto-Director cut video (`{stationId}_director_{timestamp}.mp4`).
-  - Recorded tracks are registered within `session.json` under `sessionTracks` with `displayId: "director"`, `isDirectorCut: true`, and physical pixel bounds, allowing replay clients to seamlessly toggle between raw monitor feeds and automated focus cuts.
-
-### 2. Standalone Forensic Player Multi-Screen Ergonomics & Transport Reliability
-- **Tactile High-Visibility Transport Controls**:
-  - Resolved WPF binding issue where `BooleanToVisibilityConverter` incorrectly collapsed the Play button string. The Play/Pause control binds directly to `PlayPauseButtonText` (`▶ PLAY` / `⏸ PAUSE`) with instant high-contrast visual state updates.
-- **Picture-in-Picture (PiP) Mode**:
-  - The Hero monitor or workstation feed occupies 100% of the viewport (scaled with letterboxed 16:9 native aspect ratio to prevent stretching).
-  - An interactive floating PiP inset (380x220, 2px tactical cyan border `#06B6D4` with ambient drop shadow) displays the secondary screen in the bottom-right corner.
-  - Supports 1-click feed swapping (`⇄ SWAP` button, clicking anywhere on the PiP surface, or pressing `X`), automatically maintaining audio focus on the active Hero display.
-- **Adaptive Full-Viewport Split Mode**:
-  - Dynamically calculates rows and columns (`SplitRows`, `SplitColumns`: 1x1, 1x2, 2x2, 2x3, 3x3) based on the number of active feeds in `ActiveSplitFeeds`.
-  - Maximizes screen real estate across monitors and stations while preserving the native 16:9 aspect ratio (`Stretch="Uniform"` with dark slate borders).
-  - Provides tactical quick-action shortcuts directly on each card: `[⊞ PiP]` and `[🖥 SOLO]`.
-
-### 3. Presentation Director Plan (`*.itblayout`) & Automated Replay
-- **Director Plan Persistence ([`PresentationDirectorPlan.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Tools/ITB-SCREEN-RECORDER.Player.Core/Presentation/PresentationDirectorPlan.cs))**:
-  - Serializes operator layout preferences, active Hero/PiP monitors, and timed switching cues (`PresentationCue` with `OffsetSeconds`, `Action`, `LayoutMode`, `TargetHostname`, `TargetDisplayId`).
-  - Operators can record director cues interactively (`[⏺ REC]` or `R` hotkey) during live playback, save the plan (`[💾 SAVE]` to `.itblayout` / `.json`), and reload it (`[📂 LOAD]`) for courtroom, investigative, or training debriefings.
-- **Autonomous Playback Switching**:
-  - When `IsDirectorMode` is active (`[🎬 DIRECTOR]` or `D` hotkey), the master playback clock automatically evaluates switching cues at runtime, executing view and monitor transitions down to the millisecond with live tactical HUD notifications.
-
-### 4. Single Master Video Export Pipeline ([`MasterVideoExportService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Tools/ITB-SCREEN-RECORDER.Player.Core/Presentation/MasterVideoExportService.cs))
-- **Consolidated Master MP4 Generation**:
-  - Allows exporting the recorded presentation into a single, universal `master_presentation.mp4` compatible with VLC, Windows Media Player, and web browsers.
-  - Automatically discovers local FFmpeg binaries across executing directories and system PATH.
-  - Extracts the required track streams from the `.tar`/`.itbp` container into isolated temporary storage (`ITB_MasterExport_*`) without decompressing the entire archive.
-  - Compiles an `ffconcat` script stitching the exact time slices between director switching cues and encodes the video (`libx264 veryfast`, `aac 192k`, `-movflags +faststart`) with real-time stderr progress parsing reported to the player UI.
-
----
-
-## 21. Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals (2026-11-02)
+## 26. Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals (2026-11-02)
 
 ### 1. Active Screen Focus Detection & Telemetry Coordinate Capture
 - **Global Coordinate Tracking**:
@@ -1074,23 +905,23 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
   - Each director segment is trimmed from its corresponding input stream (`[0:v]`, `[1:v]`) with a 150ms fade-out and 150ms fade-in (300ms symmetrical Dip-to-Black transition), concatenated via `concat=n=...:v=1:a=0[vbase]`.
   - Preserves 100% full native resolution without letterbox distortion, and retains continuous, drift-free audio synchronization mapped from input 0.
 
-### 3. Package Manifest Integration (`session.json`) & Forensic Player Auto-Replay
-- **Metadata Persistence in Archives**:
-  - `AdvanceJobManager.cs` and `ExtractorService.cs` embed `directorSegments` into `session.json` inside exported `.tar` and `.itbp` packages.
-  - `PlayerPackageManifest.cs` deserializes `directorSegments`, and `MainViewModel.cs` automatically compiles them into interactive `DirectorCues` with exact timeline offset seconds.
+### 3. Package Manifest Integration (`session.json`) & Forensic Studio Parity
+- **Metadata Persistence in Archives & Studio**:
+  - `AdvanceJobManager.cs` and `ExtractorService.cs` embed `directorSegments` into `session.json` inside exported packages and studio playback models.
+  - ExtractorAdvanced Studio reads `directorSegments` to visualize historical director cuts on the timeline and synchronize multi-camera previews.
 - **Dynamic Playhead Status Badge**:
-  - During playback in Director Mode, `DirectorStatusMessage` dynamically updates with the active screen and time interval: `🎬 AUTO-DIRECTOR: 🖥 DISPLAY 2 (mon-1) [00:01:23 - 00:03:45]`.
+  - During playback in Director Mode, `DirectorTrack.jsx` and `StudioVideoFeed.jsx` dynamically update with the active screen and time interval using the 1-based display standard: `⚡ AUTO-DIRECTOR: SCREEN 1 [10:14:00 - 10:18:30]`.
 
 ### 4. Advanced Extractor Studio Timeline & HUD Enhancements
 - **Timeline Segment Visualization (`DirectorTrack.jsx`)**:
-  - Each segment renders a screen badge (`🖥️ MON-0`, `🖥️ MON-1`), start and end time interval `[10:14:00 - 10:18:30]`, and duration `(04m 30s)`.
-  - The track header features a live orientation badge with active time boundaries: `⚡ AUTO: 🖥 DISPLAY 2 (mon-1) [10:14:00 - 10:18:30]`.
-- **Persistent Minimap HUD & Player Pill**:
+  - Each segment renders a clean 1-based screen badge (`SCREEN 1`, `SCREEN 2`), start and end time interval `[10:14:00 - 10:18:30]`, and duration `(04m 30s)`.
+  - The track header features a live orientation badge with active time boundaries: `⚡ AUTO: SCREEN 1 [10:14:00 - 10:18:30]` or `✋ OVERRIDE: SCREEN 2`.
+- **Persistent Minimap HUD & Multi-Screen Indicators**:
   - `PersistentMinimapHud.jsx` and `StudioVideoFeed.jsx` render real-time time range badges, giving operators immediate visual clarity on which display is currently selected and for what exact time span.
 
 ---
 
-## 22. Universal Studio Composition Engine & Single Master MP4 Export Architecture (2026-11-02)
+## 27. Universal Studio Composition Engine & Single Master MP4 Export Architecture (2026-11-02)
 
 ### 1. Executive Strategic Pivot: Standalone Player Discontinuation & Studio Convergence
 - **Single Operational Platform**: In accordance with executive steering directives, the standalone desktop player (`Tools/ITB-SCREEN-RECORDER.Player`) has been officially retired. All forensic playback, multi-monitor display switching, PiP/split composition, and timeline investigation capabilities have been completely absorbed into the web-based **ExtractorAdvanced Studio** (`Features/ExtractorAdvanced/Client`).
@@ -1133,7 +964,7 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
   - FFmpeg applies hardware-accelerated video filters (NVENC -> Intel QSV -> libx264) with faststart metadata (`-movflags +faststart`) to produce a single master `.mp4` file.
   - Delivered directly through `/api/v1/extractor/jobs/{jobId}/download` with `video/mp4` MIME type.
 
-## 26. Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture (2026-11-02)
+## 28. Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture (2026-11-02)
 
 ### 1. Architectural Scope & Mission
 In accordance with operational requirements for high-density command-and-control (C2) monitoring in ExtractorAdvanced Studio, the platform features:
@@ -1178,7 +1009,7 @@ In accordance with operational requirements for high-density command-and-control
 
 
 
-## 27. External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API (2026-11-02)
+## 29. External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API (2026-11-02)
 
 ### 1. Architectural Mission & Integration Scope
 In enterprise and tactical military C2 deployments, external command systems, automated analysis suites, and forensic audit platforms require the capability to programmatically interrogate the server's recording state and request customized multi-station video compilations via an automated REST/XML API.
@@ -1386,7 +1217,7 @@ When `LayoutMode = "custom"` or `CanvasLayout` is supplied in `AdvanceCutRequest
 
 ---
 
-## 28. Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis (2026-11-02)
+## 30. Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis (2026-11-02)
 
 ### 1. Architectural Mission & Operational Scope
 In mission-critical command centers, forensic incident replay requires more than fixed split or PiP matrices: operators and automated directing agents require full visual authority to compose arbitrary multi-workstation and multi-monitor layouts, position and size feeds dynamically on a master 16:9 canvas, and sequence layout transitions over time.
