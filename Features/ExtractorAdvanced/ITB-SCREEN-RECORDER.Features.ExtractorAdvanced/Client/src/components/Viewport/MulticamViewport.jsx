@@ -592,7 +592,7 @@ export default function MulticamViewport({
             {!isInterStationActive && !isGridMatrixView && soloStationToRender && (
                 <div
                     className="spotlight-workspace-viewport"
-                    onClick={() => onOpenSpotlight && onOpenSpotlight(soloStationToRender.id)}
+                    onClick={() => onOpenSpotlight && onOpenSpotlight(soloStationToRender.id, compositionLayout)}
                     onContextMenu={(e) => {
                         e.preventDefault();
                         if (!isSingleStationMode && onSelectActiveStation) {
@@ -616,7 +616,7 @@ export default function MulticamViewport({
                             className="btn-fullscreen-trigger"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onOpenSpotlight && onOpenSpotlight(soloStationToRender.id);
+                                onOpenSpotlight && onOpenSpotlight(soloStationToRender.id, compositionLayout);
                             }}
                             title="Expand to Fullscreen"
                         >
@@ -647,6 +647,12 @@ export default function MulticamViewport({
                             onOverrideDisplay={onOverrideDisplay}
                             onResetOverride={onResetOverride}
                             viewMode={compositionLayout}
+                            onViewModeChange={(newMode) => {
+                                onChangeCompositionLayout && onChangeCompositionLayout(newMode);
+                            }}
+                            onOpenFullscreen={(targetDispId) => {
+                                onOpenSpotlight && onOpenSpotlight(soloStationToRender.id, targetDispId);
+                            }}
                             isPipSwapped={isPipSwapped}
                         />
 

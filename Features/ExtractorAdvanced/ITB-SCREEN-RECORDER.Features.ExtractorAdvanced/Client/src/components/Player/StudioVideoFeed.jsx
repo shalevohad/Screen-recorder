@@ -49,6 +49,7 @@ export default function StudioVideoFeed({
     onResetOverride,
     viewMode: propViewMode,
     onViewModeChange,
+    onOpenFullscreen,
     isPipSwapped: propIsPipSwapped,
     onPipSwapChange,
     className = ''
@@ -129,12 +130,22 @@ export default function StudioVideoFeed({
     const hasMultipleDisplays = stationDisplays.length > 1;
 
     // View Mode state: 'director' | 'split' | 'pip' | 'mon-0' | 'mon-1' ...
-    const [localViewMode, setLocalViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
+    const [localViewMode, setLocalViewMode] = useState(() => {
+        if (!hasMultipleDisplays) return 'mon-0';
+        try {
+            const saved = localStorage.getItem('itb_solo_viewmode');
+            if (saved) return saved;
+        } catch {}
+        return 'canvas';
+    });
     const rawViewMode = propViewMode !== undefined ? propViewMode : localViewMode;
     const viewMode = hasMultipleDisplays ? rawViewMode : 'mon-0';
     const setViewMode = useCallback((val) => {
         const next = typeof val === 'function' ? val(viewMode) : val;
         setLocalViewMode(next);
+        try {
+            localStorage.setItem('itb_solo_viewmode', next);
+        } catch {}
         if (onViewModeChange) onViewModeChange(next);
     }, [viewMode, onViewModeChange]);
 
@@ -989,9 +1000,13 @@ export default function StudioVideoFeed({
                                     }}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        setViewMode(dispId);
+                                        if (onOpenFullscreen) {
+                                            onOpenFullscreen(dispId);
+                                        } else {
+                                            setViewMode(dispId);
+                                        }
                                     }}
-                                    title={`Click to focus Display ${index + 1} (${d.width || 1920}x${d.height || 1080})`}
+                                    title={`Display ${index + 1} (${d.width || 1920}x${d.height || 1080}) • Click to enter Fullscreen`}
                                 >
                                     <div className="canvas-pane-header">
                                         <span className="pane-index-pill">
@@ -999,6 +1014,19 @@ export default function StudioVideoFeed({
                                         </span>
                                         <span className="pane-title">{d.displayName || d.DisplayName || dispId.toUpperCase()}</span>
                                         <span className="pane-res">{d.width || 1920}x{d.height || 1080}</span>
+                                        {onOpenFullscreen && (
+                                            <button
+                                                type="button"
+                                                className="canvas-pane-fullscreen-btn"
+                                                onClick={(ev) => {
+                                                    ev.stopPropagation();
+                                                    onOpenFullscreen(dispId);
+                                                }}
+                                                title={`Open Display ${index + 1} in Fullscreen`}
+                                            >
+                                                ⛶
+                                            </button>
+                                        )}
                                     </div>
 
                                     {frame && frame !== 'NO_SIGNAL' ? (

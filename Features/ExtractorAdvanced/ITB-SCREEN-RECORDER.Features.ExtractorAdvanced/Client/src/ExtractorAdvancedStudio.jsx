@@ -89,6 +89,7 @@ export default function ExtractorAdvancedStudio() {
     const [selectedStationIds, setSelectedStationIds] = useState(cached.selectedStationIds || []);
     const [activeStationId, setActiveStationId] = useState(cached.activeStationId || null);
     const [spotlightStationId, setSpotlightStationId] = useState(null);
+    const [spotlightInitialDisplayId, setSpotlightInitialDisplayId] = useState(null);
     const [globalGaps, setGlobalGaps] = useState([]);
     const [noStationsAlert, setNoStationsAlert] = useState(false);
 
@@ -98,9 +99,23 @@ export default function ExtractorAdvancedStudio() {
     const [compositionScope, setCompositionScope] = useState(() => {
         return cached.compositionScope || (cached.selectedStationIds?.length > 1 ? 'inter-station' : 'intra-station');
     });
-    const [compositionLayout, setCompositionLayout] = useState(() => {
-        return cached.compositionLayout || 'director';
+    // Solo mode: defaults automatically to 'canvas' while remembering the operator's last layout choice
+    const [compositionLayout, setCompositionLayoutState] = useState(() => {
+        try {
+            const saved = localStorage.getItem('itb_composition_layout');
+            if (saved) return saved;
+        } catch {}
+        return cached.compositionLayout || 'canvas';
     });
+    const setCompositionLayout = useCallback((layout) => {
+        setCompositionLayoutState(prev => {
+            const next = typeof layout === 'function' ? layout(prev) : layout;
+            try {
+                localStorage.setItem('itb_composition_layout', next);
+            } catch {}
+            return next;
+        });
+    }, []);
     const [isAutoDirectorEnabled, setIsAutoDirectorEnabled] = useState(() => {
         return typeof cached.isAutoDirectorEnabled === 'boolean' ? cached.isAutoDirectorEnabled : true;
     });
@@ -324,15 +339,17 @@ export default function ExtractorAdvancedStudio() {
         setActiveStationId(id);
     }, [activeStationId, selectedStationIds.length, setIsPlaying, setPlaybackSpeed]);
 
-    const handleOpenSpotlightFullscreen = useCallback((id) => {
+    const handleOpenSpotlightFullscreen = useCallback((id, targetDisplayId = null) => {
         if (id !== activeStationId) setPlaybackSpeed(1);
         lastViewBeforeFullscreenRef.current = (selectedStationIds.length <= 1 || activeStationId) ? 'spotlight' : 'grid';
         setActiveStationId(id);
         setSpotlightStationId(id);
+        setSpotlightInitialDisplayId(targetDisplayId || null);
     }, [activeStationId, selectedStationIds.length, setPlaybackSpeed]);
 
     const handleCloseSpotlightFullscreen = useCallback(() => {
         setSpotlightStationId(null);
+        setSpotlightInitialDisplayId(null);
         if (selectedStationIds.length <= 1) {
             if (selectedStationIds.length === 1) setActiveStationId(selectedStationIds[0]);
             return;
@@ -1054,6 +1071,7 @@ export default function ExtractorAdvancedStudio() {
             <SoloSpotlightModal
                 isOpen={isSpotlightOpen}
                 station={enrichedSpotlightStation}
+                initialDisplayId={spotlightInitialDisplayId}
                 allStations={enrichedTimelineStations}
                 onSelectStation={(newId) => {
                     if (newId !== spotlightStationId) setPlaybackSpeed(1);

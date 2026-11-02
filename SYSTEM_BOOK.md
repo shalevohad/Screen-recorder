@@ -956,6 +956,11 @@ To guarantee 100% deterministic time representation regardless of host operating
     - **Virtual Canvas / Station Grid**: Multi-station layout arranging up to 4 stations in an ergonomic 2x2 grid on a 1920x1080 tactical dark canvas (`#070A10`).
     - **Director Cut**: Dynamically cuts between stations based on active interaction telemetry or manual director segments.
   - **Intra-Station Composition**: Composes across multiple physical monitors (`mon-0`, `mon-1`, `mon-2`) of a single workstation in Split, PiP, Virtual Canvas, or Auto-Director mode.
+- **Solo Mode Canvas Default & Memory Invariant**:
+  - When entering Solo focus mode (focusing a workstation from the grid), the composition layout defaults **automatically to Virtual Canvas (`viewMode = 'canvas'`)**, displaying all physical displays arranged proportionally according to real OS virtual desktop bounds.
+  - The engine persists the operator's last chosen layout (e.g. Canvas, Split, PiP, Director, or single screen) in `localStorage`, restoring it automatically on subsequent Solo sessions.
+- **Fullscreen Target Screen Inheritance Invariant**:
+  - When entering Fullscreen mode (Cinema Spotlight or Theater Modal), the system directly selects and focuses whichever specific physical monitor was clicked to trigger the transition (`initialDisplayId`). Clicking Display 2 in Canvas enters Fullscreen showing Display 2, while clicking the generic Fullscreen button or canvas background enters Fullscreen in Canvas mode.
 - **Dynamic Orientation Controls**:
   - `⇄ SWAP`: Instant single-click transposition between Left/Right in Split Screen or Main/Inset in Picture-in-Picture.
   - `🎬 AUTO-DIRECTOR: ON / OFF`: Toggles automated screen switching. When OFF, the composition layout remains locked to the operator's manual layout selection.

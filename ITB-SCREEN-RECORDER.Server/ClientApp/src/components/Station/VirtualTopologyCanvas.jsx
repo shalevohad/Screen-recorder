@@ -7,6 +7,7 @@ export default function VirtualTopologyCanvas({
     station,
     activeDisplayId = 'canvas',
     onSelectDisplay,
+    onDisplayClick,
     isMuted = true,
     volume = 1,
     webrtcBaseUrl = '/api/v1/whep',
@@ -101,12 +102,15 @@ export default function VirtualTopologyCanvas({
                             pointerEvents: isHiddenSolo ? 'none' : 'auto',
                             zIndex: isThisSolo ? 10 : 2
                         }}
-                        onClick={() => {
-                            if (!isSoloMode && isInteractive && onSelectDisplay) {
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (onDisplayClick) {
+                                onDisplayClick(d.DisplayId);
+                            } else if (!isSoloMode && isInteractive && onSelectDisplay) {
                                 onSelectDisplay(d.DisplayId);
                             }
                         }}
-                        title={!isSoloMode && isInteractive ? `Switch to ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})` : undefined}
+                        title={onDisplayClick ? `Click to open ${d.DisplayName || d.DisplayId} in Fullscreen` : (!isSoloMode && isInteractive ? `Switch to ${d.DisplayName || d.DisplayId} (${d.Width}x${d.Height})` : undefined)}
                     >
                         {streamPath && (
                             <WebRTCPlayer

@@ -37,6 +37,7 @@ const formatCutDurationSMPTE = (durationMs, fps = 30) => {
 export default function SoloSpotlightModal({
     isOpen,
     station,
+    initialDisplayId = null,
     allStations = [],
     onSelectStation,
     onClose,
@@ -102,8 +103,50 @@ export default function SoloSpotlightModal({
     const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [activeGaps, setActiveGaps] = useState(globalGaps);
     const hasMultipleDisplays = Boolean((station?.displays?.length > 1) || (station?.topology?.displays?.length > 1));
-    const [viewMode, setViewMode] = useState(hasMultipleDisplays ? 'director' : 'mon-0');
+
+    // Fullscreen / Solo viewMode determination:
+    // 1. If entered Fullscreen with an explicit screen clicked (initialDisplayId), select that screen!
+    // 2. Otherwise default automatically to 'canvas', while restoring the operator's last remembered layout choice.
+    const [viewMode, setViewModeState] = useState(() => {
+        if (!hasMultipleDisplays) return 'mon-0';
+        if (initialDisplayId) return initialDisplayId;
+        try {
+            const remembered = localStorage.getItem('itb_spotlight_viewmode');
+            if (remembered) return remembered;
+        } catch {}
+        return 'canvas';
+    });
+
+    const setViewMode = useCallback((val) => {
+        setViewModeState(prev => {
+            const next = typeof val === 'function' ? val(prev) : val;
+            try {
+                localStorage.setItem('itb_spotlight_viewmode', next);
+            } catch {}
+            return next;
+        });
+    }, []);
+
     const [isPipSwapped, setIsPipSwapped] = useState(false);
+
+    // Sync initialDisplayId and remembered layout when modal opens or station switches
+    useEffect(() => {
+        if (!isOpen) return;
+        if (!hasMultipleDisplays) {
+            setViewModeState('mon-0');
+            return;
+        }
+        if (initialDisplayId) {
+            setViewModeState(initialDisplayId);
+        } else {
+            try {
+                const remembered = localStorage.getItem('itb_spotlight_viewmode');
+                setViewModeState(remembered || 'canvas');
+            } catch {
+                setViewModeState('canvas');
+            }
+        }
+    }, [isOpen, initialDisplayId, hasMultipleDisplays, station?.id]);
 
     const bottomIslandRef = useRef(null);
 

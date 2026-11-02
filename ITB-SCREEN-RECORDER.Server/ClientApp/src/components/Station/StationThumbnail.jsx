@@ -30,7 +30,14 @@ export default function StationThumbnail(props) {
     } = props;
 
     const [recordingSeconds, setRecordingSeconds] = useState(0);
-    const [activeDisplayId, setActiveDisplayId] = useState('canvas');
+    // Solo layout: defaults to 'canvas' automatically while remembering operator selection
+    const [activeDisplayId, setActiveDisplayId] = useState(() => {
+        try {
+            const saved = localStorage.getItem(`itb_disp_${hostname}`);
+            if (saved) return saved;
+        } catch {}
+        return 'canvas';
+    });
 
     const { hasPermission } = useAuth();
     const { activeAudioStationIds, isListeningStation, audioVolume, isGlobalMuted, toggleAudioSolo, registerStationStream } = useAudioSolo();
@@ -140,10 +147,11 @@ export default function StationThumbnail(props) {
         return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     };
 
-    const triggerFullscreenModal = (e) => {
+    const triggerFullscreenModal = (e, targetDisplayId = null) => {
         e?.stopPropagation?.();
         if (!isLive) return;
-        onOpenFullscreen?.({ ...props, initialDisplayId: activeDisplayId });
+        const dispId = targetDisplayId || activeDisplayId || 'canvas';
+        onOpenFullscreen?.({ ...props, initialDisplayId: dispId });
     };
 
     const handleViewportClick = (e) => {
@@ -189,7 +197,10 @@ export default function StationThumbnail(props) {
 
     const handleSelectDisplay = useCallback((dispId) => {
         setActiveDisplayId(dispId);
-    }, []);
+        try {
+            localStorage.setItem(`itb_disp_${hostname}`, dispId);
+        } catch {}
+    }, [hostname]);
 
     const operationalTitle = props.roleAlias || props.displayName || props.RoleAlias || hostname;
     const hasAlias = Boolean(props.roleAlias || (props.displayName && props.displayName.toLowerCase() !== hostname.toLowerCase()));
@@ -302,11 +313,12 @@ export default function StationThumbnail(props) {
                 title={isLive ? "Click video to open Fullscreen Theater" : "Click screen to open Station Inspector"}
             >
                 {isLive ? (
-                    <div className={`webrtc-container ${!isRecording ? 'is-not-recording' : ''}`} style={{ pointerEvents: 'none' }}>
+                    <div className={`webrtc-container ${!isRecording ? 'is-not-recording' : ''}`}>
                         <VirtualTopologyCanvas
                             station={props}
                             activeDisplayId={activeDisplayId}
                             onSelectDisplay={handleSelectDisplay}
+                            onDisplayClick={(dispId) => triggerFullscreenModal(null, dispId)}
                             isMuted={!isListeningThisStation}
                             volume={audioVolume}
                             webrtcBaseUrl={props.webrtcBaseUrl || '/api/v1/whep'}
