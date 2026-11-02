@@ -10,6 +10,7 @@ import TimelineHeaderActions from './header/TimelineHeaderActions.jsx';
 import TimelineTrack from './tracks/TimelineTrack.jsx';
 import DirectorTrack from './tracks/DirectorTrack.jsx';
 import AudioRoutingTrack from './tracks/AudioRoutingTrack.jsx';
+import CanvasKeyframeTrack from './tracks/CanvasKeyframeTrack.jsx';
 import Playhead from './overlays/Playhead.jsx';
 import TimelineContextMenu from './overlays/TimelineContextMenu.jsx';
 import TimelineVerticalExportBtn from './export/TimelineVerticalExportBtn.jsx';
@@ -59,7 +60,12 @@ export default function TimelineBoard({
     onSplitAudioSegment,
     onChangeAudioSegmentStation,
     onFollowVisualFeed,
-    isAutoFollowAudio
+    isAutoFollowAudio,
+    canvasLayoutTimeline,
+    activeKfIndex = 0,
+    onSelectKeyframe,
+    onAddKeyframeAtEpoch,
+    onDeleteKeyframe
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [trackBankIndex, setTrackBankIndex] = useState(0);
@@ -265,6 +271,20 @@ export default function TimelineBoard({
                 onMouseLeave={() => !draggingTarget && setHoverMs(null)}
             >
                 <div className="tracks-scroll-area">
+                    {canvasLayoutTimeline?.keyframes?.length > 0 && (
+                        <CanvasKeyframeTrack
+                            canvasLayoutTimeline={canvasLayoutTimeline}
+                            activeKfIndex={activeKfIndex}
+                            onSelectKeyframe={onSelectKeyframe}
+                            onAddKeyframeAtEpoch={onAddKeyframeAtEpoch}
+                            onDeleteKeyframe={onDeleteKeyframe}
+                            viewportStartMs={viewportStartMs}
+                            viewportDurationMs={viewportDurationMs}
+                            baseEpochMs={baseEpochMs}
+                            playheadMs={playheadMs}
+                            timeMode={timeMode}
+                        />
+                    )}
                     {stations.length > 0 && (
                         <AudioRoutingTrack
                             audioPlan={audioRoutingPlan}

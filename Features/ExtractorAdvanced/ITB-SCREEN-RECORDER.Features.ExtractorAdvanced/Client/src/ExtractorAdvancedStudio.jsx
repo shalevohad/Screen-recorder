@@ -14,7 +14,6 @@ import ShortcutsHelpModal from './components/Modals/ShortcutsHelpModal.jsx';
 import ExportJobMonitor from './components/ExportMonitor/ExportJobMonitor.jsx';
 import StationContextMenu from './components/Modals/StationContextMenu.jsx';
 import ExportOptionsModal from './components/Modals/ExportOptionsModal.jsx';
-import CanvasComposerModal from './components/Modals/CanvasComposerModal.jsx';
 
 import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
@@ -132,11 +131,60 @@ export default function ExtractorAdvancedStudio() {
     });
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-    const [isCanvasComposerOpen, setIsCanvasComposerOpen] = useState(false);
     const [currentCanvasLayout, setCurrentCanvasLayout] = useState(null);
     const [canvasLayoutTimeline, setCanvasLayoutTimeline] = useState(() => {
         return cached.canvasLayoutTimeline || null;
     });
+    const [activeKfIndex, setActiveKfIndex] = useState(0);
+
+    const handleAddKeyframeAtEpoch = useCallback((targetEpoch) => {
+        setCanvasLayoutTimeline(prev => {
+            const currentKfs = [...(prev?.keyframes || [])];
+            const existingIdx = currentKfs.findIndex(k => Math.abs(k.timestampEpochMs - targetEpoch) < 300);
+            if (existingIdx >= 0) {
+                setActiveKfIndex(existingIdx);
+                return prev;
+            }
+
+            const activeKf = currentKfs[activeKfIndex] || currentKfs[0];
+            const activeLayout = activeKf?.layout || currentCanvasLayout || {
+                width: 1920,
+                height: 1080,
+                backgroundColor: '#070A10',
+                fps: 30.0,
+                placements: []
+            };
+
+            const newKf = {
+                timestampEpochMs: targetEpoch,
+                transitionDurationSec: 0.5,
+                transitionType: 'smooth',
+                layout: JSON.parse(JSON.stringify(activeLayout))
+            };
+
+            const nextKfs = [...currentKfs, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+            const newIdx = nextKfs.findIndex(k => k.timestampEpochMs === targetEpoch);
+            setActiveKfIndex(newIdx >= 0 ? newIdx : 0);
+
+            return {
+                ...(prev || {}),
+                width: 1920,
+                height: 1080,
+                backgroundColor: '#070A10',
+                fps: 30.0,
+                keyframes: nextKfs
+            };
+        });
+    }, [activeKfIndex, currentCanvasLayout]);
+
+    const handleDeleteKeyframe = useCallback((idxToDelete) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length <= 1) return prev;
+            const nextKfs = prev.keyframes.filter((_, i) => i !== idxToDelete);
+            setActiveKfIndex(prevIdx => Math.max(0, prevIdx - 1));
+            return { ...prev, keyframes: nextKfs };
+        });
+    }, []);
 
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
@@ -768,38 +816,8 @@ export default function ExtractorAdvancedStudio() {
         }
     }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, currentCanvasLayout, canvasLayoutTimeline, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
 
-    const handleConfirmCanvasExport = useCallback(async ({ canvasLayoutTimeline, keystrokeMode: chosenKeystrokeMode, resolution: chosenResolution }) => {
-        const targetStationIds = timelineStations.map(s => s.id);
-        if (targetStationIds.length === 0) return;
+    
 
-        let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
-        const targetResolution = chosenResolution || canvasLayoutTimeline?.resolution || 'FHD';
-
-        try {
-            const response = await fetch('/api/v1/extractor-advanced/cut', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    stationIds: targetStationIds,
-                    inEpochMs: timelineBaseEpochMs + inPointMs,
-                    outEpochMs: timelineBaseEpochMs + outPointMs,
-                    keystrokeMode: resolvedMode,
-                    resolution: targetResolution,
-                    videoQuality: targetResolution,
-                    compositionScope: compositionScope,
-                    layoutMode: 'canvas',
-                    canvasLayoutTimeline: canvasLayoutTimeline,
-                    audioRoutingSegments: effectiveAudioPlan?.segments || []
-                })
-            });
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            window.dispatchEvent(new CustomEvent('open-export-monitor'));
-        } catch (error) {
-            console.error('[Studio] Canvas export failed:', error);
-            alert('Failed to launch canvas master MP4 export job.');
-        }
-    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, effectiveAudioPlan]);
 
     const handleResetStudioSession = useCallback(() => {
         clearStudioSessionCache();
@@ -842,7 +860,6 @@ export default function ExtractorAdvancedStudio() {
                     onOpenRangeModal={() => setIsRangeModalOpen(true)}
                     onOpenBookmarksModal={() => setIsBookmarksModalOpen(true)}
                     onOpenHelpModal={() => setIsHelpModalOpen(true)}
-                    onOpenCanvasComposer={() => setIsCanvasComposerOpen(true)}
                     onToggleDrawer={() => setIsDrawerOpen(!isDrawerOpen)}
                     isInitialSetup={isInitialSetup}
                     selectedCount={selectedStationIds.length}
@@ -922,12 +939,15 @@ export default function ExtractorAdvancedStudio() {
                                     onChangeCompositionScope={setCompositionScope}
                                     compositionLayout={compositionLayout}
                                     onChangeCompositionLayout={setCompositionLayout}
-                                    onOpenCanvasComposer={() => setIsCanvasComposerOpen(true)}
                                     isAutoDirectorEnabled={isAutoDirectorEnabled}
                                     onToggleAutoDirector={() => setIsAutoDirectorEnabled(p => !p)}
                                     isPipSwapped={isPipSwapped}
                                     onTogglePipSwap={() => setIsPipSwapped(p => !p)}
                                     onUpdateCanvasLayout={setCurrentCanvasLayout}
+                                    canvasLayoutTimeline={canvasLayoutTimeline}
+                                    onUpdateCanvasLayoutTimeline={setCanvasLayoutTimeline}
+                                    activeKfIndex={activeKfIndex}
+                                    setActiveKfIndex={setActiveKfIndex}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}
@@ -991,6 +1011,14 @@ export default function ExtractorAdvancedStudio() {
                                     onChangeAudioSegmentStation={handleChangeAudioSegmentStation}
                                     onFollowVisualFeed={handleFollowVisualFeed}
                                     isAutoFollowAudio={isAutoFollowAudio}
+                                    canvasLayoutTimeline={canvasLayoutTimeline}
+                                    activeKfIndex={activeKfIndex}
+                                    onSelectKeyframe={(idx, epoch) => {
+                                        setActiveKfIndex(idx);
+                                        setPlayheadMs(Math.max(0, epoch - timelineBaseEpochMs));
+                                    }}
+                                    onAddKeyframeAtEpoch={handleAddKeyframeAtEpoch}
+                                    onDeleteKeyframe={handleDeleteKeyframe}
                                 />
                             </div>
                         </div>
@@ -1136,19 +1164,7 @@ export default function ExtractorAdvancedStudio() {
                 }}
             />
 
-            <CanvasComposerModal
-                isOpen={isCanvasComposerOpen}
-                onClose={() => setIsCanvasComposerOpen(false)}
-                onConfirmExport={handleConfirmCanvasExport}
-                timelineStations={enrichedTimelineStations}
-                timelineBaseEpochMs={timelineBaseEpochMs}
-                inPointMs={inPointMs}
-                outPointMs={outPointMs}
-                playheadMs={playheadMs}
-                playheadEpochMs={currentPlayheadEpochMs}
-                initialTimeline={canvasLayoutTimeline}
-                onSaveTimeline={setCanvasLayoutTimeline}
-            />
+
 
             <ExportJobMonitor />
         </div>

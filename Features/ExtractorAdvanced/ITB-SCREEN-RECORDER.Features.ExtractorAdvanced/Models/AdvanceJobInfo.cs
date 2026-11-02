@@ -228,6 +228,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public int ZIndex { get; set; } = 0;
 
         /// <summary>
+        /// Optional rotation in degrees (e.g. 0, 90, 180, 270).
+        /// </summary>
+        [JsonPropertyName("rotation")]
+        [XmlElement("Rotation")]
+        public double Rotation { get; set; } = 0;
+
+        /// <summary>
         /// Optional border thickness in pixels around this feed (e.g. 2 for tactical border, 0 for borderless).
         /// </summary>
         [JsonPropertyName("borderWidth")]

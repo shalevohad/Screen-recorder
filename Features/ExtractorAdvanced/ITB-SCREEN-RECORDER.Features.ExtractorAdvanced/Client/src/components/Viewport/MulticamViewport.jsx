@@ -1,6 +1,6 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/MulticamViewport.jsx
-// Universal Master Canvas Grid Engine & WYSIWYG Export Preview
+// Universal Live Master Canvas Composer, Multi-Keyframe Timeline Engine & WYSIWYG Export
 // ==========================================
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import CameraCard from './views/Card/CameraCard.jsx';
@@ -9,134 +9,97 @@ import KeystrokePlaybackOverlay from '../Player/KeystrokePlaybackOverlay.jsx';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import './MulticamViewport.scss';
 
-const SLOT_BORDER_COLORS = ['#06B6D4', '#10B981', '#F59E0B', '#F43F5E', '#A855F7', '#EC4899', '#38BDF8', '#34D399'];
+const VIRTUAL_CANVAS_W = 1920;
+const VIRTUAL_CANVAS_H = 1080;
+
+const SLOT_BORDER_COLORS = [
+    '#06B6D4', '#10B981', '#F59E0B', '#F43F5E',
+    '#A855F7', '#EC4899', '#38BDF8', '#34D399', '#FFFFFF'
+];
+
+const PALETTE_COLORS = [
+    '#06B6D4', '#10B981', '#F59E0B', '#F43F5E',
+    '#A855F7', '#38BDF8', '#FFFFFF', 'transparent'
+];
+
+const BORDER_WIDTHS = [0, 2, 4, 6, 8];
+
+function clamp(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+}
+
+function cubicEaseInOut(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 /**
- * Computes exact pixel-perfect 1920x1080 master canvas placements matching FFmpeg backend export.
+ * Packs all available feeds into optimal 16:9 layout coordinates on a 1920x1080 canvas.
  */
-function getCanvasPlacementsForExport(preset, slots) {
-    const W = 1920;
-    const H = 1080;
-    const count = slots.length;
+function generateAutoPackPlacements(feeds) {
+    const W = VIRTUAL_CANVAS_W;
+    const H = VIRTUAL_CANVAS_H;
+    const count = feeds.length;
     if (count === 0) return [];
 
-    let effectivePreset = preset;
-    if (effectivePreset === 'auto') {
-        if (count === 1) effectivePreset = '1x1';
-        else if (count === 2) effectivePreset = '1x2';
-        else if (count === 3) effectivePreset = '3-grid';
-        else if (count <= 4) effectivePreset = '2x2';
-        else effectivePreset = 'grid';
+    if (count === 1) {
+        return [{
+            ...feeds[0],
+            x: 0,
+            y: 0,
+            width: W,
+            height: H,
+            zIndex: 0,
+            rotation: 0,
+            borderWidth: 0,
+            borderColor: SLOT_BORDER_COLORS[0]
+        }];
     }
 
-    const placements = [];
-
-    if (effectivePreset === '1x1') {
-        const s = slots[0];
-        if (s && s.station) {
-            placements.push({
-                stationId: s.station.id,
-                displayId: (s.displayId && s.displayId !== 'auto') ? s.displayId : 'director',
-                x: 0,
-                y: 0,
-                width: W,
-                height: H,
-                zIndex: 0,
-                borderWidth: 0,
-                borderColor: SLOT_BORDER_COLORS[0],
-                label: s.station.displayName || s.station.roleAlias || s.station.hostname || s.station.name
-            });
-        }
-    } else if (effectivePreset === '1x2') {
-        const halfW = Math.floor(W / 2);
-        for (let i = 0; i < Math.min(2, slots.length); i++) {
-            const s = slots[i];
-            if (!s || !s.station) continue;
-            placements.push({
-                stationId: s.station.id,
-                displayId: (s.displayId && s.displayId !== 'auto') ? s.displayId : 'director',
-                x: i * halfW,
-                y: 0,
-                width: halfW,
-                height: H,
-                zIndex: i,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length],
-                label: s.station.displayName || s.station.roleAlias || s.station.hostname || s.station.name
-            });
-        }
-    } else if (effectivePreset === '3-grid') {
-        const halfW = Math.floor(W / 2);
-        const halfH = Math.floor(H / 2);
-        const coords = [
-            { x: 0, y: 0, w: halfW, h: halfH },
-            { x: halfW, y: 0, w: halfW, h: halfH },
-            { x: Math.floor(halfW / 2), y: halfH, w: halfW, h: halfH }
+    if (count === 2) {
+        const halfW = 960;
+        return [
+            { ...feeds[0], x: 0, y: 0, width: halfW, height: H, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0] },
+            { ...feeds[1], x: halfW, y: 0, width: halfW, height: H, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1] }
         ];
-        for (let i = 0; i < Math.min(3, slots.length); i++) {
-            const s = slots[i];
-            if (!s || !s.station) continue;
-            const c = coords[i];
-            placements.push({
-                stationId: s.station.id,
-                displayId: (s.displayId && s.displayId !== 'auto') ? s.displayId : 'director',
-                x: c.x,
-                y: c.y,
-                width: c.w,
-                height: c.h,
-                zIndex: i,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length],
-                label: s.station.displayName || s.station.roleAlias || s.station.hostname || s.station.name
-            });
-        }
-    } else if (effectivePreset === '2x2') {
-        const halfW = Math.floor(W / 2);
-        const halfH = Math.floor(H / 2);
-        for (let i = 0; i < Math.min(4, slots.length); i++) {
-            const s = slots[i];
-            if (!s || !s.station) continue;
-            const col = i % 2;
-            const row = Math.floor(i / 2);
-            placements.push({
-                stationId: s.station.id,
-                displayId: (s.displayId && s.displayId !== 'auto') ? s.displayId : 'director',
-                x: col * halfW,
-                y: row * halfH,
-                width: halfW,
-                height: halfH,
-                zIndex: i,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length],
-                label: s.station.displayName || s.station.roleAlias || s.station.hostname || s.station.name
-            });
-        }
-    } else {
-        const cols = count <= 6 ? 3 : Math.ceil(Math.sqrt(count));
-        const rows = Math.ceil(count / cols);
-        const cellW = Math.floor(W / cols);
-        const cellH = Math.floor(H / rows);
-        for (let i = 0; i < count; i++) {
-            const s = slots[i];
-            if (!s || !s.station) continue;
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            placements.push({
-                stationId: s.station.id,
-                displayId: (s.displayId && s.displayId !== 'auto') ? s.displayId : 'director',
-                x: col * cellW,
-                y: row * cellH,
-                width: cellW,
-                height: cellH,
-                zIndex: i,
-                borderWidth: 2,
-                borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length],
-                label: s.station.displayName || s.station.roleAlias || s.station.hostname || s.station.name
-            });
-        }
     }
 
-    return placements;
+    if (count === 3) {
+        return [
+            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0] },
+            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1] },
+            { ...feeds[2], x: 480, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2] }
+        ];
+    }
+
+    if (count === 4) {
+        return [
+            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0] },
+            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1] },
+            { ...feeds[2], x: 0, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2] },
+            { ...feeds[3], x: 960, y: 540, width: 960, height: 540, zIndex: 3, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[3] }
+        ];
+    }
+
+    const cols = count <= 6 ? 3 : count <= 8 ? 4 : Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+    const cellW = Math.floor(W / cols);
+    const cellH = Math.floor(H / rows);
+
+    return feeds.map((f, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        return {
+            ...f,
+            x: col * cellW,
+            y: row * cellH,
+            width: cellW,
+            height: cellH,
+            zIndex: i,
+            rotation: 0,
+            borderWidth: 2,
+            borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
+        };
+    });
 }
 
 export default function MulticamViewport({
@@ -152,7 +115,7 @@ export default function MulticamViewport({
     isPlaying = false,
     setIsPlaying,
     totalDurationMs,
-    inPointMs,
+    inPointMs = 0,
     outPointMs,
     setPlayheadMs,
     globalGaps = [],
@@ -168,175 +131,618 @@ export default function MulticamViewport({
     isAutoDirectorEnabled = true,
     onToggleAutoDirector,
     onChangePlaybackSpeed,
-    _onOpenCanvasComposer,
-    onUpdateCanvasLayout
+    onUpdateCanvasLayout,
+    canvasLayoutTimeline,
+    onUpdateCanvasLayoutTimeline,
+    activeKfIndex = 0,
+    setActiveKfIndex
 }) {
     const viewportRootRef = useRef(null);
+    const canvasFrameRef = useRef(null);
+
     const [isGridFullscreen, setIsGridFullscreen] = useState(false);
     const [activeAudioStationId, setActiveAudioStationId] = useState(() => timelineStations[0]?.id || null);
     const [showHudControls, setShowHudControls] = useState(true);
     const hudTimerRef = useRef(null);
 
-    // Canvas Layout Preset: '1x1' | '1x2' | '3-grid' | '2x2' | 'auto'
-    const [canvasPreset, setCanvasPreset] = useState(() => {
-        try {
-            return localStorage.getItem('itb_canvas_preset') || 'auto';
-        } catch {
-            return 'auto';
-        }
-    });
+    // Selected feed key for editing on the canvas
+    const [selectedFeedKey, setSelectedFeedKey] = useState(null);
 
-    const handleSelectCanvasPreset = useCallback((preset) => {
-        setCanvasPreset(preset);
-        try {
-            localStorage.setItem('itb_canvas_preset', preset);
-        } catch { }
-    }, []);
+    // Drag & Resize State
+    const [transformState, setTransformState] = useState(null); // { mode: 'drag'|'resize', feedKey, ... }
+    const transformRef = useRef(null);
 
-    // Slot display and order management
-    const [slotOrder, setSlotOrder] = useState([]);
-    const [slotDisplayMap, setSlotDisplayMap] = useState({});
-    const [draggedSlotIdx, setDraggedSlotIdx] = useState(null);
-    const [dragOverSlotIdx, setDragOverSlotIdx] = useState(null);
+    // Rotation angle slider visibility
+    const [showRotationControl, setShowRotationControl] = useState(false);
 
-    // Synchronize slot order with timeline stations
-    useEffect(() => {
-        if (timelineStations.length === 0) {
-            setSlotOrder([]);
-            return;
-        }
+    // All available feeds extracted from selected timeline stations
+    const availableFeeds = useMemo(() => {
+        const feeds = [];
+        timelineStations.forEach(st => {
+            const displays = (st.displays && st.displays.length > 0)
+                ? st.displays
+                : (st.topology && st.topology.displays && st.topology.displays.length > 0)
+                    ? st.topology.displays
+                    : [{ displayId: 'mon-0', isPrimary: true }];
 
-        setSlotOrder(prev => {
-            const validPrev = prev.filter(id => timelineStations.some(s => s.id === id));
-            const missing = timelineStations.filter(s => !validPrev.includes(s.id)).map(s => s.id);
-            return [...validPrev, ...missing];
+            displays.forEach((d, dIdx) => {
+                const dispId = (d.displayId || d.DisplayId || `mon-${dIdx}`).toLowerCase();
+                const dispName = d.displayName || d.DisplayName || (dispId === 'mon-0' ? 'Screen 1' : `Screen ${dIdx + 1}`);
+                const stationLabel = st.displayName || st.roleAlias || st.hostname || st.name;
+                feeds.push({
+                    feedKey: `${st.id}:${dispId}`,
+                    stationId: st.id,
+                    displayId: dispId,
+                    station: st,
+                    label: displays.length > 1 ? `${stationLabel} - ${dispName}` : stationLabel
+                });
+            });
         });
+        return feeds;
     }, [timelineStations]);
-
-    // Active audio station maintenance
-    useEffect(() => {
-        if (timelineStations.length > 0 && (!activeAudioStationId || !timelineStations.some(s => s.id === activeAudioStationId))) {
-            setActiveAudioStationId(timelineStations[0].id);
-        }
-    }, [timelineStations, activeAudioStationId]);
 
     // Current playhead epoch
     const currentEpochMs = useMemo(() => {
         return playheadEpochMs > 0 ? playheadEpochMs : Math.round(baseEpochMs + playheadMs);
     }, [playheadEpochMs, baseEpochMs, playheadMs]);
 
-    // Build the resolved slot objects for the active preset
-    const slots = useMemo(() => {
-        if (timelineStations.length === 0) return [];
+    const cutStartEpochMs = useMemo(() => baseEpochMs + inPointMs, [baseEpochMs, inPointMs]);
+    const cutEndEpochMs = useMemo(() => baseEpochMs + (outPointMs || totalDurationMs), [baseEpochMs, outPointMs, totalDurationMs]);
 
-        const orderedStations = slotOrder
-            .map(id => timelineStations.find(s => s.id === id))
-            .filter(Boolean);
-
-        // Fallback if orderedStations is empty
-        const effectiveStations = orderedStations.length > 0 ? orderedStations : timelineStations;
-
-        // Special case: Single station with 2+ monitors in 1x2 or 2x2 mode
-        if (effectiveStations.length === 1 && (canvasPreset === '1x2' || canvasPreset === '2x2' || canvasPreset === 'auto')) {
-            const st = effectiveStations[0];
-            const displays = st.displays || st.topology?.displays || [];
-            if (displays.length > 1) {
-                return [
-                    {
-                        key: `${st.id}-disp-0`,
-                        station: st,
-                        displayId: slotDisplayMap[0] || 'mon-0',
-                        slotIndex: 0
-                    },
-                    {
-                        key: `${st.id}-disp-1`,
-                        station: st,
-                        displayId: slotDisplayMap[1] || 'mon-1',
-                        slotIndex: 1
+    // Local Keyframes State (backed by canvasLayoutTimeline or initialized with all stations)
+    const [internalTimeline, setInternalTimeline] = useState(() => {
+        if (canvasLayoutTimeline?.keyframes?.length > 0) {
+            return canvasLayoutTimeline;
+        }
+        return {
+            width: VIRTUAL_CANVAS_W,
+            height: VIRTUAL_CANVAS_H,
+            backgroundColor: '#070A10',
+            fps: 30.0,
+            preset: 'auto',
+            keyframes: [
+                {
+                    timestampEpochMs: cutStartEpochMs,
+                    transitionDurationSec: 0.5,
+                    transitionType: 'smooth',
+                    layout: {
+                        width: VIRTUAL_CANVAS_W,
+                        height: VIRTUAL_CANVAS_H,
+                        backgroundColor: '#070A10',
+                        fps: 30.0,
+                        placements: generateAutoPackPlacements(availableFeeds)
                     }
+                }
+            ]
+        };
+    });
+
+    // Synchronize available feeds with keyframes if stations changed
+    useEffect(() => {
+        if (availableFeeds.length === 0) return;
+
+        setInternalTimeline(prev => {
+            const currentKfs = prev?.keyframes || [];
+            if (currentKfs.length === 0) {
+                const initPlacements = generateAutoPackPlacements(availableFeeds);
+                const nextTimeline = {
+                    width: VIRTUAL_CANVAS_W,
+                    height: VIRTUAL_CANVAS_H,
+                    backgroundColor: '#070A10',
+                    fps: 30.0,
+                    preset: 'auto',
+                    keyframes: [
+                        {
+                            timestampEpochMs: cutStartEpochMs,
+                            transitionDurationSec: 0.5,
+                            transitionType: 'smooth',
+                            layout: {
+                                width: VIRTUAL_CANVAS_W,
+                                height: VIRTUAL_CANVAS_H,
+                                backgroundColor: '#070A10',
+                                fps: 30.0,
+                                placements: initPlacements
+                            }
+                        }
+                    ]
+                };
+                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+                return nextTimeline;
+            }
+
+            // Ensure every keyframe includes newly added feeds
+            let hasChanged = false;
+            const updatedKfs = currentKfs.map(kf => {
+                const existing = kf.layout?.placements || [];
+                const missing = availableFeeds.filter(f => !existing.some(p => p.stationId === f.stationId && p.displayId === f.displayId));
+                if (missing.length > 0) {
+                    hasChanged = true;
+                    // Append missing feeds with auto packing
+                    const allMerged = [...existing, ...missing];
+                    return {
+                        ...kf,
+                        layout: {
+                            ...kf.layout,
+                            placements: generateAutoPackPlacements(allMerged)
+                        }
+                    };
+                }
+                return kf;
+            });
+
+            if (hasChanged) {
+                const nextTimeline = { ...prev, keyframes: updatedKfs };
+                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+                return nextTimeline;
+            }
+            return prev;
+        });
+    }, [availableFeeds, cutStartEpochMs, onUpdateCanvasLayoutTimeline]);
+
+    // Active keyframes & selected keyframe reference
+    const keyframes = useMemo(() => internalTimeline.keyframes || [], [internalTimeline.keyframes]);
+    const safeActiveIdx = Math.max(0, Math.min(keyframes.length - 1, activeKfIndex));
+    const currentKf = keyframes[safeActiveIdx] || keyframes[0];
+    const currentPlacements = useMemo(() => currentKf?.layout?.placements || [], [currentKf?.layout?.placements]);
+
+    // Helper to update placements in the active keyframe
+    const updateActivePlacements = useCallback((newPlacements) => {
+        setInternalTimeline(prev => {
+            const nextKfs = [...(prev.keyframes || [])];
+            if (!nextKfs[safeActiveIdx]) return prev;
+
+            nextKfs[safeActiveIdx] = {
+                ...nextKfs[safeActiveIdx],
+                layout: {
+                    ...nextKfs[safeActiveIdx].layout,
+                    placements: newPlacements
+                }
+            };
+            const nextTimeline = { ...prev, keyframes: nextKfs };
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            return nextTimeline;
+        });
+    }, [safeActiveIdx, onUpdateCanvasLayoutTimeline]);
+
+    // Helper to apply preset layout to active keyframe
+    const handleApplyPreset = useCallback((preset) => {
+        let newPlacements = [];
+
+        if (preset === '1x1') {
+            const target = availableFeeds.find(f => f.feedKey === selectedFeedKey) || availableFeeds[0];
+            if (target) {
+                newPlacements = [{
+                    ...target,
+                    x: 0,
+                    y: 0,
+                    width: VIRTUAL_CANVAS_W,
+                    height: VIRTUAL_CANVAS_H,
+                    zIndex: 0,
+                    rotation: 0,
+                    borderWidth: 0,
+                    borderColor: SLOT_BORDER_COLORS[0]
+                }];
+            }
+        } else if (preset === '1x2') {
+            const halfW = 960;
+            newPlacements = availableFeeds.slice(0, 2).map((f, i) => ({
+                ...f,
+                x: i * halfW,
+                y: 0,
+                width: halfW,
+                height: VIRTUAL_CANVAS_H,
+                zIndex: i,
+                rotation: 0,
+                borderWidth: 2,
+                borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
+            }));
+        } else if (preset === '2x2') {
+            newPlacements = availableFeeds.slice(0, 4).map((f, i) => {
+                const col = i % 2;
+                const row = Math.floor(i / 2);
+                return {
+                    ...f,
+                    x: col * 960,
+                    y: row * 540,
+                    width: 960,
+                    height: 540,
+                    zIndex: i,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
+                };
+            });
+        } else if (preset === '3-grid') {
+            newPlacements = availableFeeds.slice(0, 3).map((f, i) => {
+                const coords = [
+                    { x: 0, y: 0, w: 960, h: 540 },
+                    { x: 960, y: 0, w: 960, h: 540 },
+                    { x: 480, y: 540, w: 960, h: 540 }
                 ];
+                const c = coords[i] || coords[0];
+                return {
+                    ...f,
+                    x: c.x,
+                    y: c.y,
+                    width: c.w,
+                    height: c.h,
+                    zIndex: i,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: SLOT_BORDER_COLORS[i % SLOT_BORDER_COLORS.length]
+                };
+            });
+        } else if (preset === '1+3-pip') {
+            // Picture in picture: primary is full, others are bottom-right insets
+            const main = availableFeeds[0];
+            const insets = availableFeeds.slice(1, 4);
+            newPlacements.push({
+                ...main,
+                x: 0,
+                y: 0,
+                width: VIRTUAL_CANVAS_W,
+                height: VIRTUAL_CANVAS_H,
+                zIndex: 0,
+                rotation: 0,
+                borderWidth: 0,
+                borderColor: SLOT_BORDER_COLORS[0]
+            });
+            const insetW = 420;
+            const insetH = 236;
+            insets.forEach((ins, idx) => {
+                newPlacements.push({
+                    ...ins,
+                    x: VIRTUAL_CANVAS_W - insetW - 24,
+                    y: VIRTUAL_CANVAS_H - ((idx + 1) * (insetH + 16)) - 12,
+                    width: insetW,
+                    height: insetH,
+                    zIndex: idx + 1,
+                    rotation: 0,
+                    borderWidth: 3,
+                    borderColor: SLOT_BORDER_COLORS[(idx + 1) % SLOT_BORDER_COLORS.length]
+                });
+            });
+        } else {
+            // 'auto': default pack all available feeds
+            newPlacements = generateAutoPackPlacements(availableFeeds);
+        }
+
+        updateActivePlacements(newPlacements);
+    }, [availableFeeds, selectedFeedKey, updateActivePlacements]);
+
+    // Real-Time Playback & Scrubbing Interpolation
+    const activeDisplayPlacements = useMemo(() => {
+        // If actively transforming or only 1 keyframe, use current active placements directly
+        if (transformState || keyframes.length <= 1) {
+            return currentPlacements;
+        }
+
+        // Find preceding and succeeding keyframes
+        let kfA = keyframes[0];
+        let kfB = null;
+
+        for (let i = 0; i < keyframes.length; i++) {
+            if (keyframes[i].timestampEpochMs <= currentEpochMs) {
+                kfA = keyframes[i];
+            } else {
+                kfB = keyframes[i];
+                break;
             }
         }
 
-        // Determine capacity based on preset
-        let maxSlots = effectiveStations.length;
-        if (canvasPreset === '1x1') maxSlots = 1;
-        else if (canvasPreset === '1x2') maxSlots = Math.min(2, effectiveStations.length);
-        else if (canvasPreset === '3-grid') maxSlots = Math.min(3, effectiveStations.length);
-        else if (canvasPreset === '2x2') maxSlots = Math.min(4, effectiveStations.length);
+        if (!kfB) {
+            return kfA.layout?.placements || currentPlacements;
+        }
 
-        return effectiveStations.slice(0, maxSlots).map((st, idx) => ({
-            key: `${st.id}-${idx}`,
-            station: st,
-            displayId: slotDisplayMap[idx] || 'auto',
-            slotIndex: idx
-        }));
-    }, [timelineStations, slotOrder, canvasPreset, slotDisplayMap]);
+        const transType = kfB.transitionType || 'smooth';
+        const transDurMs = Math.max(100, (kfB.transitionDurationSec ?? 0.5) * 1000);
+        const transStartEpoch = kfB.timestampEpochMs - transDurMs;
 
-    // Compute master export placements matching exact visible slots
-    const computedPlacements = useMemo(() => {
-        return getCanvasPlacementsForExport(canvasPreset, slots);
-    }, [canvasPreset, slots]);
+        // Outside transition window: before window = kfA, after = kfB
+        if (currentEpochMs < transStartEpoch) {
+            return kfA.layout?.placements || currentPlacements;
+        }
+        if (currentEpochMs >= kfB.timestampEpochMs) {
+            return kfB.layout?.placements || currentPlacements;
+        }
 
-    // Notify parent studio of current canvas layout for WYSIWYG export
+        if (transType === 'cut') {
+            return kfA.layout?.placements || currentPlacements;
+        }
+
+        const rawRatio = (currentEpochMs - transStartEpoch) / transDurMs;
+        const ratio = clamp(rawRatio, 0, 1);
+        const tEased = transType === 'linear' ? ratio : cubicEaseInOut(ratio);
+
+        const aPlacements = kfA.layout?.placements || [];
+        const bPlacements = kfB.layout?.placements || [];
+
+        // Interpolate matching placements
+        return bPlacements.map(pB => {
+            const pA = aPlacements.find(x => x.stationId === pB.stationId && x.displayId === pB.displayId) || pB;
+            const interpX = Math.round(pA.x + (pB.x - pA.x) * tEased);
+            const interpY = Math.round(pA.y + (pB.y - pA.y) * tEased);
+            const interpW = Math.round(pA.width + (pB.width - pA.width) * tEased);
+            const interpH = Math.round(pA.height + (pB.height - pA.height) * tEased);
+            const interpRot = Number(( (pA.rotation || 0) + ((pB.rotation || 0) - (pA.rotation || 0)) * tEased ).toFixed(1));
+
+            let interpOpacity = 1;
+            if (transType === 'fade') {
+                interpOpacity = Number(tEased.toFixed(2));
+            } else if (transType === 'dip') {
+                interpOpacity = ratio < 0.5 ? Number((1 - ratio * 2).toFixed(2)) : Number(((ratio - 0.5) * 2).toFixed(2));
+            }
+
+            return {
+                ...pB,
+                x: interpX,
+                y: interpY,
+                width: interpW,
+                height: interpH,
+                rotation: interpRot,
+                opacity: interpOpacity
+            };
+        });
+    }, [transformState, keyframes, currentEpochMs, currentPlacements]);
+
+    // Keep parent Studio informed of current canvas layout for WYSIWYG export
     useEffect(() => {
         if (onUpdateCanvasLayout) {
             onUpdateCanvasLayout({
-                width: 1920,
-                height: 1080,
+                width: VIRTUAL_CANVAS_W,
+                height: VIRTUAL_CANVAS_H,
                 backgroundColor: '#070A10',
                 fps: 30.0,
-                preset: canvasPreset,
-                placements: computedPlacements
+                placements: currentPlacements,
+                timeline: internalTimeline
             });
         }
-    }, [computedPlacements, canvasPreset, onUpdateCanvasLayout]);
+    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout]);
 
-    // Slot swapping actions
-    const handleSwapSlots = useCallback((idx1, idx2) => {
-        if (idx1 === idx2 || idx1 < 0 || idx2 < 0) return;
-        setSlotOrder(prev => {
-            const next = [...prev];
-            if (idx1 >= next.length || idx2 >= next.length) return prev;
-            const temp = next[idx1];
-            next[idx1] = next[idx2];
-            next[idx2] = temp;
-            return next;
+    // Add Keyframe at Current Playhead
+    const handleAddKeyframeAtPlayhead = useCallback(() => {
+        const targetEpoch = clamp(currentEpochMs, cutStartEpochMs, cutEndEpochMs);
+
+        setInternalTimeline(prev => {
+            const currentKfs = [...(prev.keyframes || [])];
+            const existingIdx = currentKfs.findIndex(k => Math.abs(k.timestampEpochMs - targetEpoch) < 300);
+            if (existingIdx >= 0) {
+                if (setActiveKfIndex) setActiveKfIndex(existingIdx);
+                return prev;
+            }
+
+            const activeLayout = currentKf?.layout || {
+                width: VIRTUAL_CANVAS_W,
+                height: VIRTUAL_CANVAS_H,
+                backgroundColor: '#070A10',
+                fps: 30.0,
+                placements: currentPlacements
+            };
+
+            const newKf = {
+                timestampEpochMs: targetEpoch,
+                transitionDurationSec: 0.5,
+                transitionType: 'smooth',
+                layout: JSON.parse(JSON.stringify(activeLayout))
+            };
+
+            const nextKfs = [...currentKfs, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+            const newIdx = nextKfs.findIndex(k => k.timestampEpochMs === targetEpoch);
+            if (setActiveKfIndex) setActiveKfIndex(newIdx >= 0 ? newIdx : 0);
+
+            const nextTimeline = { ...prev, keyframes: nextKfs };
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            return nextTimeline;
         });
-    }, []);
+    }, [currentEpochMs, cutStartEpochMs, cutEndEpochMs, currentKf?.layout, currentPlacements, setActiveKfIndex, onUpdateCanvasLayoutTimeline]);
 
-    const handleSelectDisplayForSlot = useCallback((slotIdx, dispId) => {
-        setSlotDisplayMap(prev => ({
-            ...prev,
-            [slotIdx]: dispId
-        }));
-    }, []);
+    // Delete Active Keyframe
+    const handleDeleteActiveKeyframe = useCallback(() => {
+        if (keyframes.length <= 1) return;
+        setInternalTimeline(prev => {
+            const nextKfs = (prev.keyframes || []).filter((_, i) => i !== safeActiveIdx);
+            if (setActiveKfIndex) setActiveKfIndex(prevIdx => Math.max(0, prevIdx - 1));
+            const nextTimeline = { ...prev, keyframes: nextKfs };
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            return nextTimeline;
+        });
+    }, [keyframes.length, safeActiveIdx, setActiveKfIndex, onUpdateCanvasLayoutTimeline]);
 
-    // Drag-and-drop slot reordering
-    const handleDragStart = useCallback((e, slotIdx) => {
-        setDraggedSlotIdx(slotIdx);
-        e.dataTransfer.setData('text/plain', String(slotIdx));
-        e.dataTransfer.effectAllowed = 'move';
-    }, []);
+    // Apply Active Layout to All Timeline Keyframes
+    const handleApplyLayoutToAll = useCallback(() => {
+        setInternalTimeline(prev => {
+            const activeLayoutCopy = JSON.parse(JSON.stringify(currentKf.layout));
+            const updatedKfs = (prev.keyframes || []).map(k => ({
+                ...k,
+                layout: activeLayoutCopy
+            }));
+            const nextTimeline = { ...prev, keyframes: updatedKfs };
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            return nextTimeline;
+        });
+    }, [currentKf?.layout, onUpdateCanvasLayoutTimeline]);
 
-    const handleDragOver = useCallback((e, slotIdx) => {
+    // ------------------------------------------
+    // DRAG, RESIZE & ROTATE INTERACTION ENGINE
+    // ------------------------------------------
+    const handleStartDragBox = (e, placement) => {
+        e.stopPropagation();
+        const fKey = `${placement.stationId}:${placement.displayId}`;
+        setSelectedFeedKey(fKey);
+
+        if (!canvasFrameRef.current) return;
+        const rect = canvasFrameRef.current.getBoundingClientRect();
+
+        transformRef.current = {
+            mode: 'drag',
+            feedKey: fKey,
+            stationId: placement.stationId,
+            displayId: placement.displayId,
+            startX: e.clientX,
+            startY: e.clientY,
+            initialX: placement.x,
+            initialY: placement.y,
+            initialW: placement.width,
+            initialH: placement.height,
+            scaleX: VIRTUAL_CANVAS_W / rect.width,
+            scaleY: VIRTUAL_CANVAS_H / rect.height
+        };
+        setTransformState(transformRef.current);
+
+        const handleMouseMove = (moveEv) => {
+            if (!transformRef.current || transformRef.current.mode !== 'drag') return;
+            const t = transformRef.current;
+            const dx = (moveEv.clientX - t.startX) * t.scaleX;
+            const dy = (moveEv.clientY - t.startY) * t.scaleY;
+
+            let newX = Math.round(t.initialX + dx);
+            let newY = Math.round(t.initialY + dy);
+
+            // Bounds clamping
+            newX = clamp(newX, 0, VIRTUAL_CANVAS_W - t.initialW);
+            newY = clamp(newY, 0, VIRTUAL_CANVAS_H - t.initialH);
+
+            // 16px magnetic snapping to canvas edges & center guides
+            if (Math.abs(newX) < 16) newX = 0;
+            if (Math.abs(newX + t.initialW - VIRTUAL_CANVAS_W) < 16) newX = VIRTUAL_CANVAS_W - t.initialW;
+            if (Math.abs(newX + t.initialW / 2 - VIRTUAL_CANVAS_W / 2) < 16) {
+                newX = Math.round((VIRTUAL_CANVAS_W - t.initialW) / 2);
+            }
+
+            if (Math.abs(newY) < 16) newY = 0;
+            if (Math.abs(newY + t.initialH - VIRTUAL_CANVAS_H) < 16) newY = VIRTUAL_CANVAS_H - t.initialH;
+            if (Math.abs(newY + t.initialH / 2 - VIRTUAL_CANVAS_H / 2) < 16) {
+                newY = Math.round((VIRTUAL_CANVAS_H - t.initialH) / 2);
+            }
+
+            setInternalTimeline(prev => {
+                const nextKfs = [...(prev.keyframes || [])];
+                if (!nextKfs[safeActiveIdx]) return prev;
+                const nextPlacements = (nextKfs[safeActiveIdx].layout.placements || []).map(p => {
+                    if (p.stationId === t.stationId && p.displayId === t.displayId) {
+                        return { ...p, x: newX, y: newY };
+                    }
+                    return p;
+                });
+                nextKfs[safeActiveIdx] = {
+                    ...nextKfs[safeActiveIdx],
+                    layout: { ...nextKfs[safeActiveIdx].layout, placements: nextPlacements }
+                };
+                return { ...prev, keyframes: nextKfs };
+            });
+        };
+
+        const handleMouseUp = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            transformRef.current = null;
+            setTransformState(null);
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(internalTimeline);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
+
+    const handleStartResizeBox = (e, placement) => {
+        e.stopPropagation();
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        if (dragOverSlotIdx !== slotIdx) {
-            setDragOverSlotIdx(slotIdx);
-        }
-    }, [dragOverSlotIdx]);
+        const fKey = `${placement.stationId}:${placement.displayId}`;
+        setSelectedFeedKey(fKey);
 
-    const handleDrop = useCallback((e, targetSlotIdx) => {
-        e.preventDefault();
-        setDragOverSlotIdx(null);
-        if (draggedSlotIdx !== null && draggedSlotIdx !== targetSlotIdx) {
-            handleSwapSlots(draggedSlotIdx, targetSlotIdx);
-        }
-        setDraggedSlotIdx(null);
-    }, [draggedSlotIdx, handleSwapSlots]);
+        if (!canvasFrameRef.current) return;
+        const rect = canvasFrameRef.current.getBoundingClientRect();
 
-    // Fullscreen toggles
+        transformRef.current = {
+            mode: 'resize',
+            feedKey: fKey,
+            stationId: placement.stationId,
+            displayId: placement.displayId,
+            startX: e.clientX,
+            startY: e.clientY,
+            initialX: placement.x,
+            initialY: placement.y,
+            initialW: placement.width,
+            initialH: placement.height,
+            scaleX: VIRTUAL_CANVAS_W / rect.width,
+            scaleY: VIRTUAL_CANVAS_H / rect.height
+        };
+        setTransformState(transformRef.current);
+
+        const handleMouseMove = (moveEv) => {
+            if (!transformRef.current || transformRef.current.mode !== 'resize') return;
+            const t = transformRef.current;
+            const dx = (moveEv.clientX - t.startX) * t.scaleX;
+            const dy = (moveEv.clientY - t.startY) * t.scaleY;
+
+            let newW = Math.max(240, Math.min(VIRTUAL_CANVAS_W - t.initialX, Math.round(t.initialW + dx)));
+            let newH = Math.max(135, Math.min(VIRTUAL_CANVAS_H - t.initialY, Math.round(t.initialH + dy)));
+
+            // Snap to 16:9 aspect ratio if Shift is held
+            if (moveEv.shiftKey) {
+                newH = Math.round(newW * (9 / 16));
+            }
+
+            setInternalTimeline(prev => {
+                const nextKfs = [...(prev.keyframes || [])];
+                if (!nextKfs[safeActiveIdx]) return prev;
+                const nextPlacements = (nextKfs[safeActiveIdx].layout.placements || []).map(p => {
+                    if (p.stationId === t.stationId && p.displayId === t.displayId) {
+                        return { ...p, width: newW, height: newH };
+                    }
+                    return p;
+                });
+                nextKfs[safeActiveIdx] = {
+                    ...nextKfs[safeActiveIdx],
+                    layout: { ...nextKfs[safeActiveIdx].layout, placements: nextPlacements }
+                };
+                return { ...prev, keyframes: nextKfs };
+            });
+        };
+
+        const handleMouseUp = () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            transformRef.current = null;
+            setTransformState(null);
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(internalTimeline);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+    };
+
+    // Card Styling Updaters
+    const handleUpdateSelectedStyle = (updates) => {
+        if (!selectedFeedKey) return;
+        const [stId, dId] = selectedFeedKey.split(':');
+        const next = currentPlacements.map(p => {
+            if (p.stationId === stId && p.displayId === dId) {
+                return { ...p, ...updates };
+            }
+            return p;
+        });
+        updateActivePlacements(next);
+    };
+
+    const handleRotateStep = (degrees = 90) => {
+        if (!selectedFeedKey) return;
+        const [stId, dId] = selectedFeedKey.split(':');
+        const target = currentPlacements.find(p => p.stationId === stId && p.displayId === dId);
+        const curRot = target?.rotation || 0;
+        const nextRot = (curRot + degrees) % 360;
+        handleUpdateSelectedStyle({ rotation: nextRot });
+    };
+
+    const handleZIndexStep = (dir = 1) => {
+        if (!selectedFeedKey) return;
+        const [stId, dId] = selectedFeedKey.split(':');
+        const target = currentPlacements.find(p => p.stationId === stId && p.displayId === dId);
+        const curZ = target?.zIndex || 0;
+        handleUpdateSelectedStyle({ zIndex: Math.max(0, curZ + dir) });
+    };
+
+    // Fullscreen handling
     const handleToggleGridFullscreen = useCallback(() => {
         setIsGridFullscreen(prev => {
             const next = !prev;
@@ -365,7 +771,7 @@ export default function MulticamViewport({
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, [isGridFullscreen]);
 
-    // Hotkey bindings: F for Fullscreen Grid, Space for Play/Pause All
+    // Hotkey: F for Fullscreen Grid, Space for Play/Pause All
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -407,74 +813,70 @@ export default function MulticamViewport({
             onMouseMove={handleMouseMove}
             className={`multicam-viewport-root ${isSoloMode ? 'solo' : 'canvas-grid'} ${isGridFullscreen ? 'fullscreen-grid-active' : ''}`}
         >
-            {/* Universal Master Canvas Grid Control Bar */}
+            {/* Master Canvas Mode Bar: Presets, Layouts & Keyframes */}
             <div className="multicam-composition-mode-bar">
                 <div className="comp-mode-left">
                     <span className="comp-icon">🎛️</span>
-                    <span className="comp-title">MASTER CANVAS:</span>
+                    <span className="comp-title">CANVAS COMPOSER:</span>
 
                     {/* Canvas Presets Toolbar */}
                     <div className="comp-pill-group layouts">
                         <button
                             type="button"
-                            className={`btn-comp-tab ${canvasPreset === '1x1' ? 'active' : ''}`}
-                            onClick={() => handleSelectCanvasPreset('1x1')}
-                            title="Single Feed (1x1 Full Screen Master Frame)"
+                            className="btn-comp-tab"
+                            onClick={() => handleApplyPreset('auto')}
+                            title="Auto-Pack: Neatly arrange all available stations & displays in 16:9"
                         >
-                            ⊞ 1x1
+                            ⊞ AUTO-PACK ALL ({availableFeeds.length})
                         </button>
                         <button
                             type="button"
-                            className={`btn-comp-tab ${canvasPreset === '1x2' ? 'active' : ''}`}
-                            onClick={() => handleSelectCanvasPreset('1x2')}
+                            className="btn-comp-tab"
+                            onClick={() => handleApplyPreset('1x1')}
+                            title="Single Feed (1x1 Full Screen Master Frame)"
+                        >
+                            ⊞ 1x1 FOCUS
+                        </button>
+                        <button
+                            type="button"
+                            className="btn-comp-tab"
+                            onClick={() => handleApplyPreset('1x2')}
                             title="Side-by-Side Dual Feeds (1x2 Master Frame)"
                         >
                             ⊞ 1x2 DUAL
                         </button>
                         <button
                             type="button"
-                            className={`btn-comp-tab ${canvasPreset === '3-grid' ? 'active' : ''}`}
-                            onClick={() => handleSelectCanvasPreset('3-grid')}
-                            title="3 Feeds (Top Dual + Bottom Center)"
-                        >
-                            ⊞ 3-GRID
-                        </button>
-                        <button
-                            type="button"
-                            className={`btn-comp-tab ${canvasPreset === '2x2' ? 'active' : ''}`}
-                            onClick={() => handleSelectCanvasPreset('2x2')}
+                            className="btn-comp-tab"
+                            onClick={() => handleApplyPreset('2x2')}
                             title="2x2 Quad Feeds Master Frame"
                         >
                             ⊞ 2x2 QUAD
                         </button>
                         <button
                             type="button"
-                            className={`btn-comp-tab ${canvasPreset === 'auto' ? 'active' : ''}`}
-                            onClick={() => handleSelectCanvasPreset('auto')}
-                            title="Auto Layout (Fits available feeds optimally in 16:9)"
+                            className="btn-comp-tab"
+                            onClick={() => handleApplyPreset('1+3-pip')}
+                            title="Picture-in-Picture: 1 Full Master + 3 Insets"
                         >
-                            ⊞ AUTO-GRID
+                            ⊞ 1+3 PIP
                         </button>
-                    </div>
-
-                    {/* Quick Swap First Two Slots */}
-                    {slots.length >= 2 && (
                         <button
                             type="button"
-                            className="btn-comp-swap"
-                            onClick={() => handleSwapSlots(0, 1)}
-                            title="Quick Swap Primary & Secondary Feeds (⇄)"
+                            className="btn-comp-tab"
+                            onClick={() => handleApplyPreset('3-grid')}
+                            title="3 Feeds (Top Dual + Bottom Center)"
                         >
-                            ⇄ SWAP FEEDS
+                            ⊞ 3-GRID
                         </button>
-                    )}
+                    </div>
 
                     {/* Auto-Director Toggle */}
                     <button
                         type="button"
                         className={`btn-director-toggle ${isAutoDirectorEnabled ? 'is-on' : 'is-off'}`}
                         onClick={onToggleAutoDirector}
-                        title={isAutoDirectorEnabled ? "Auto-Director is ON: follows active activity cuts across keyframes" : "Auto-Director is OFF: manual monitor pinning"}
+                        title={isAutoDirectorEnabled ? "Auto-Director is ON: follows active activity cuts across keyframes" : "Auto-Director is OFF"}
                     >
                         <span className="dot" />
                         <span>AUTO-DIRECTOR: {isAutoDirectorEnabled ? 'ON' : 'OFF'}</span>
@@ -483,9 +885,9 @@ export default function MulticamViewport({
 
                 {/* Center WYSIWYG Badge */}
                 <div className="comp-mode-center">
-                    <div className="wysiwyg-export-badge" title="What You See Is What You Get: Exactly how the Master MP4 will render">
+                    <div className="wysiwyg-export-badge" title="What You See Is What You Get: Exact Master Canvas Export Preview">
                         <span className="dot live" />
-                        <span className="badge-text">WYSIWYG 16:9 MASTER PREVIEW</span>
+                        <span className="badge-text">WYSIWYG LIVE CANVAS STUDIO</span>
                     </div>
                 </div>
 
@@ -511,6 +913,124 @@ export default function MulticamViewport({
                     </button>
                 </div>
             </div>
+
+            {/* Layout Keyframes Strip Bar */}
+            {!isSoloMode && (
+                <div className="canvas-keyframes-strip-bar">
+                    <div className="strip-left">
+                        <span className="strip-label">❖ LAYOUT KEYFRAMES:</span>
+                        <div className="keyframe-pills-scroll">
+                            {keyframes.map((kf, kIdx) => {
+                                const isActive = kIdx === safeActiveIdx;
+                                const clockStr = formatTimelineClock(kf.timestampEpochMs, timeMode, { includeSeconds: true });
+                                return (
+                                    <button
+                                        key={`kf-pill-${kIdx}-${kf.timestampEpochMs}`}
+                                        type="button"
+                                        className={`btn-kf-pill ${isActive ? 'is-active' : ''}`}
+                                        onClick={() => {
+                                            if (setActiveKfIndex) setActiveKfIndex(kIdx);
+                                            if (setPlayheadMs) {
+                                                const targetMs = Math.max(0, kf.timestampEpochMs - baseEpochMs);
+                                                setPlayheadMs(targetMs);
+                                            }
+                                        }}
+                                        title={`Jump to Keyframe #${kIdx + 1} at ${clockStr}`}
+                                    >
+                                        <span className="kf-icon">❖</span>
+                                        <span className="kf-idx">KF {kIdx + 1}</span>
+                                        <span className="kf-time">{clockStr}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <button
+                            type="button"
+                            className="btn-add-kf-pill"
+                            onClick={handleAddKeyframeAtPlayhead}
+                            title="Capture current layout as keyframe at playhead position (+)"
+                        >
+                            + ADD KEYFRAME
+                        </button>
+                    </div>
+
+                    <div className="strip-right">
+                        {currentKf && (
+                            <>
+                                <div className="transition-selector-group">
+                                    <span className="field-label">ANIMATION:</span>
+                                    <select
+                                        value={currentKf.transitionType || 'smooth'}
+                                        onChange={(e) => {
+                                            const newType = e.target.value;
+                                            setInternalTimeline(prev => {
+                                                const nextKfs = [...(prev.keyframes || [])];
+                                                if (!nextKfs[safeActiveIdx]) return prev;
+                                                nextKfs[safeActiveIdx] = { ...nextKfs[safeActiveIdx], transitionType: newType };
+                                                const nextTimeline = { ...prev, keyframes: nextKfs };
+                                                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+                                                return nextTimeline;
+                                            });
+                                        }}
+                                        className="select-transition"
+                                        title="Select transition animation to this keyframe"
+                                    >
+                                        <option value="smooth">Smooth Ease (Glide)</option>
+                                        <option value="linear">Linear Speed</option>
+                                        <option value="cut">Instant Cut</option>
+                                        <option value="fade">Crossfade Opacity</option>
+                                        <option value="dip">Millisecond Dip-to-Black</option>
+                                    </select>
+
+                                    <select
+                                        value={String(currentKf.transitionDurationSec ?? 0.5)}
+                                        onChange={(e) => {
+                                            const newDur = parseFloat(e.target.value);
+                                            setInternalTimeline(prev => {
+                                                const nextKfs = [...(prev.keyframes || [])];
+                                                if (!nextKfs[safeActiveIdx]) return prev;
+                                                nextKfs[safeActiveIdx] = { ...nextKfs[safeActiveIdx], transitionDurationSec: newDur };
+                                                const nextTimeline = { ...prev, keyframes: nextKfs };
+                                                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+                                                return nextTimeline;
+                                            });
+                                        }}
+                                        className="select-duration"
+                                        title="Transition duration in seconds"
+                                    >
+                                        <option value="0.25">0.25s</option>
+                                        <option value="0.5">0.5s</option>
+                                        <option value="1.0">1.0s</option>
+                                        <option value="1.5">1.5s</option>
+                                        <option value="2.0">2.0s</option>
+                                    </select>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    className="btn-strip-action"
+                                    onClick={handleApplyLayoutToAll}
+                                    title="Copy current canvas arrangement to all timeline keyframes"
+                                >
+                                    📋 APPLY TO ALL
+                                </button>
+
+                                {keyframes.length > 1 && (
+                                    <button
+                                        type="button"
+                                        className="btn-strip-delete"
+                                        onClick={handleDeleteActiveKeyframe}
+                                        title="Delete active keyframe"
+                                    >
+                                        🗑️
+                                    </button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* View Mode A: Solo Workstation Inspection */}
             {isSoloMode && activeStation && (
@@ -592,35 +1112,75 @@ export default function MulticamViewport({
                 </div>
             )}
 
-            {/* View Mode B: Master Canvas Grid (WYSIWYG 16:9 Frame) */}
+            {/* View Mode B: Interactive Live Master Canvas Stage (WYSIWYG 16:9 Frame) */}
             {!isSoloMode && (
                 <div className="canvas-stage-wrapper">
-                    <div className={`canvas-master-frame-16-9 preset-${canvasPreset}`}>
+                    <div
+                        ref={canvasFrameRef}
+                        className="canvas-master-frame-16-9"
+                        onClick={() => setSelectedFeedKey(null)}
+                    >
                         {/* 16:9 Master Frame Corner Accents */}
                         <div className="corner-accent top-left" />
                         <div className="corner-accent top-right" />
                         <div className="corner-accent bottom-left" />
                         <div className="corner-accent bottom-right" />
 
-                        {/* Slots Matrix */}
-                        <div className="canvas-slots-container">
-                            {slots.map((slot, sIdx) => {
-                                const isBeingDragged = draggedSlotIdx === sIdx;
-                                const isDragTarget = dragOverSlotIdx === sIdx;
-                                const borderColor = SLOT_BORDER_COLORS[sIdx % SLOT_BORDER_COLORS.length];
+                        {/* Interactive Feed Placements */}
+                        {activeDisplayPlacements.map((p, sIdx) => {
+                            const fKey = `${p.stationId}:${p.displayId}`;
+                            const isSelected = selectedFeedKey === fKey;
+                            const isBeingTransformed = transformState?.feedKey === fKey;
+                            const st = timelineStations.find(s => s.id === p.stationId) || { id: p.stationId, displayName: p.label || p.stationId };
+                            const bColor = p.borderColor || SLOT_BORDER_COLORS[sIdx % SLOT_BORDER_COLORS.length];
+                            const bWidth = p.borderWidth !== undefined ? p.borderWidth : 2;
+                            const rot = p.rotation || 0;
+                            const op = p.opacity !== undefined ? p.opacity : 1;
 
-                                return (
+                            const leftPct = (p.x / VIRTUAL_CANVAS_W) * 100;
+                            const topPct = (p.y / VIRTUAL_CANVAS_H) * 100;
+                            const widthPct = (p.width / VIRTUAL_CANVAS_W) * 100;
+                            const heightPct = (p.height / VIRTUAL_CANVAS_H) * 100;
+
+                            return (
+                                <div
+                                    key={fKey}
+                                    className={`canvas-feed-card-box ${isSelected ? 'is-selected' : ''} ${isBeingTransformed ? 'is-transforming' : ''}`}
+                                    style={{
+                                        position: 'absolute',
+                                        left: `${leftPct}%`,
+                                        top: `${topPct}%`,
+                                        width: `${widthPct}%`,
+                                        height: `${heightPct}%`,
+                                        zIndex: isSelected ? 50 : (p.zIndex || sIdx),
+                                        transform: `rotate(${rot}deg)`,
+                                        transformOrigin: 'center center',
+                                        border: `${bWidth}px solid ${bColor}`,
+                                        opacity: op,
+                                        boxShadow: isSelected ? `0 0 16px ${bColor}` : undefined,
+                                        transition: isBeingTransformed ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out, transform 0.15s ease-out'
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedFeedKey(fKey);
+                                    }}
+                                    onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
+                                >
+                                    {/* Drag Handle Top Header */}
                                     <div
-                                        key={slot.key}
-                                        className={`canvas-slot-card-container ${isBeingDragged ? 'is-dragging' : ''} ${isDragTarget ? 'is-drag-over' : ''}`}
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, sIdx)}
-                                        onDragOver={(e) => handleDragOver(e, sIdx)}
-                                        onDrop={(e) => handleDrop(e, sIdx)}
-                                        onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, slot.station)}
+                                        className="feed-drag-header"
+                                        onMouseDown={(e) => handleStartDragBox(e, p)}
+                                        title="Click and drag to reposition anywhere on the canvas"
                                     >
+                                        <div className="header-drag-indicator">⋮⋮</div>
+                                        <span className="feed-title">{p.label || st.displayName || st.id}</span>
+                                        {rot !== 0 && <span className="rotation-badge">{rot}°</span>}
+                                    </div>
+
+                                    {/* Embedded CameraCard Feed */}
+                                    <div className="feed-content-viewport">
                                         <CameraCard
-                                            station={slot.station}
+                                            station={st}
                                             isSolo={false}
                                             currentEpochMs={currentEpochMs}
                                             timeMode={timeMode}
@@ -637,18 +1197,130 @@ export default function MulticamViewport({
                                             playbackSpeed={playbackSpeed}
                                             activeAudioStationId={activeAudioStationId}
                                             onSoloAudio={setActiveAudioStationId}
-                                            directorPlan={directorPlan || slot.station?.directorPlan}
+                                            directorPlan={directorPlan || st?.directorPlan}
                                             isAutoDirectorEnabled={isAutoDirectorEnabled}
-                                            targetDisplayId={slot.displayId}
-                                            onSelectDisplayId={(dispId) => handleSelectDisplayForSlot(sIdx, dispId)}
+                                            targetDisplayId={p.displayId}
+                                            onSelectDisplayId={(dispId) => {
+                                                const next = currentPlacements.map(pl => {
+                                                    if (pl.stationId === p.stationId && pl.displayId === p.displayId) {
+                                                        return { ...pl, displayId: dispId };
+                                                    }
+                                                    return pl;
+                                                });
+                                                updateActivePlacements(next);
+                                            }}
                                             slotIndex={sIdx}
-                                            borderColor={borderColor}
-                                            onSwapWithNext={slots.length > 1 ? () => handleSwapSlots(sIdx, (sIdx + 1) % slots.length) : null}
+                                            borderColor={bColor}
                                         />
                                     </div>
-                                );
-                            })}
-                        </div>
+
+                                    {/* Corner Resize Handle */}
+                                    <div
+                                        className="resize-handle-br"
+                                        onMouseDown={(e) => handleStartResizeBox(e, p)}
+                                        title="Drag to resize width and height (hold Shift for 16:9 aspect ratio)"
+                                    >
+                                        ↘
+                                    </div>
+
+                                    {/* Selected Floating Tactical Inspector */}
+                                    {isSelected && (
+                                        <div className="floating-feed-inspector" onClick={(e) => e.stopPropagation()}>
+                                            {/* Border Color Palette */}
+                                            <div className="inspector-group colors">
+                                                <span className="group-label">BORDER:</span>
+                                                {PALETTE_COLORS.map(c => (
+                                                    <button
+                                                        key={c}
+                                                        type="button"
+                                                        className={`btn-color-dot ${bColor === c ? 'is-active' : ''}`}
+                                                        style={{ backgroundColor: c === 'transparent' ? '#1E293B' : c }}
+                                                        onClick={() => handleUpdateSelectedStyle({ borderColor: c })}
+                                                        title={c === 'transparent' ? 'No Border Color' : `Border Color: ${c}`}
+                                                    />
+                                                ))}
+                                            </div>
+
+                                            {/* Border Thickness */}
+                                            <div className="inspector-group width">
+                                                <span className="group-label">SIZE:</span>
+                                                {BORDER_WIDTHS.map(w => (
+                                                    <button
+                                                        key={w}
+                                                        type="button"
+                                                        className={`btn-width-pill ${bWidth === w ? 'is-active' : ''}`}
+                                                        onClick={() => handleUpdateSelectedStyle({ borderWidth: w })}
+                                                    >
+                                                        {w === 0 ? 'NONE' : `${w}PX`}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {/* Rotate 90 & Slider Toggle */}
+                                            <div className="inspector-group rotate">
+                                                <button
+                                                    type="button"
+                                                    className="btn-action-tool"
+                                                    onClick={() => handleRotateStep(90)}
+                                                    title="Rotate 90 degrees clockwise (↺)"
+                                                >
+                                                    ↺ 90°
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={`btn-action-tool ${showRotationControl ? 'active' : ''}`}
+                                                    onClick={() => setShowRotationControl(p => !p)}
+                                                    title="Toggle fine rotation slider"
+                                                >
+                                                    📐 {rot}°
+                                                </button>
+                                                {showRotationControl && (
+                                                    <input
+                                                        type="range"
+                                                        min="-180"
+                                                        max="180"
+                                                        value={rot}
+                                                        onChange={(e) => handleUpdateSelectedStyle({ rotation: Number(e.target.value) })}
+                                                        className="rotation-slider"
+                                                        title="Rotation Angle (-180° to +180°)"
+                                                    />
+                                                )}
+                                            </div>
+
+                                            {/* Layer Depth */}
+                                            <div className="inspector-group layer">
+                                                <button
+                                                    type="button"
+                                                    className="btn-action-tool"
+                                                    onClick={() => handleZIndexStep(1)}
+                                                    title="Bring Forward (Higher Layer)"
+                                                >
+                                                    ▲ LAYER
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn-action-tool"
+                                                    onClick={() => handleZIndexStep(-1)}
+                                                    title="Send Backward (Lower Layer)"
+                                                >
+                                                    ▼
+                                                </button>
+                                            </div>
+
+                                            {/* Maximize to full 16:9 */}
+                                            <button
+                                                type="button"
+                                                className="btn-action-tool highlight"
+                                                onClick={() => handleApplyPreset('1x1')}
+                                                title="Maximize this feed to fill entire 16:9 canvas"
+                                            >
+                                                ⛶ MAX
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -660,7 +1332,6 @@ export default function MulticamViewport({
                     onMouseEnter={() => setShowHudControls(true)}
                 >
                     <div className="dock-glass-panel">
-                        {/* Play/Pause Button */}
                         <button
                             type="button"
                             className={`btn-dock-play ${isPlaying ? 'playing' : ''}`}
@@ -685,7 +1356,6 @@ export default function MulticamViewport({
                             )}
                         </button>
 
-                        {/* Scrubber Range Slider */}
                         <div className="dock-scrubber-wrapper">
                             <input
                                 type="range"
@@ -701,7 +1371,6 @@ export default function MulticamViewport({
                             />
                         </div>
 
-                        {/* Playhead Clock Display */}
                         <div className="dock-clock-badge">
                             <span className="dot live" />
                             <span className="clock-text">
@@ -709,7 +1378,6 @@ export default function MulticamViewport({
                             </span>
                         </div>
 
-                        {/* Speed Pills */}
                         <div className="dock-speed-pill">
                             {[0.5, 1, 2, 4].map(spd => (
                                 <button
@@ -741,7 +1409,6 @@ export default function MulticamViewport({
                             </select>
                         </div>
 
-                        {/* Exit Fullscreen Button */}
                         <button
                             type="button"
                             className="btn-dock-exit"

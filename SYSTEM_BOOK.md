@@ -1572,4 +1572,34 @@ When rendering multi-monitor workstations in Studio Canvas mode (`viewMode === '
    - In `VirtualTopologyCanvas.jsx`, when all monitors report `(0, 0)`, coordinates dynamically fallback to horizontal concatenation (`cumulativeX += dWidth`), ensuring zero display occlusion.
 
 ---
+## 35. Live Grid Master Canvas Composer, Free Transform Engine & Timeline Keyframe Animation (2026-11-02)
+
+### 1. Operational Scope & Architectural Motivation
+Previously, the Canvas Composer existed as a detached secondary modal dialog accessible via a toolbar button, separating composition from the active studio workspace. Furthermore, grid layouts were restricted to rigid slot structures without continuous multi-station presentation, free spatial transformation, or keyframed timeline animation.
+
+The Live Grid Master Canvas Composer unites workspace playback, freeform composition, keyframe timeline animation, and high-definition WYSIWYG export directly into the central studio viewport:
+1. **Unified Grid Composer**:
+   - The detached side modal has been eliminated. The primary workspace grid (`MulticamViewport`) natively functions as the Live Canvas Composer.
+2. **Default High-Density Presentation**:
+   - By default, all available stations and displays are packed onto the virtual 16:9 canvas (`1920x1080` coordinate space) in an optimal aspect-ratio fitted layout, ensuring full operational coverage.
+3. **Freeform Direct Manipulation**:
+   - **Positioning (Move)**: Direct drag-and-drop repositioning with magnetic snapping (16px threshold) to canvas borders and vertical/horizontal centerlines.
+   - **Scaling (Resize)**: Corner drag handles (`↘`) for interactive resizing with optional 16:9 aspect constraint.
+   - **Rotation**: Integrated 90° stepping (`↺ 90°`) and continuous angle adjustment (-180° to +180°) rendered via CSS transforms (`rotate(θ deg)`).
+   - **Border & Layer Styling**: Floating tactical inspector providing real-time palette selection (`#06B6D4` Cyan, `#10B981` Emerald, `#F59E0B` Amber, `#F43F5E` Rose, `#A855F7` Purple, `#38BDF8` Sky, `#FFFFFF` White, `transparent`), border thickness (0px, 2px, 4px, 6px, 8px), and Z-Index stacking order.
+4. **Timeline Keyframe Animation & Interpolation Engine**:
+   - **Keyframe Capture**: Keyframes can be added at the current playhead timestamp with a single click, recording current placements and spatial transforms.
+   - **Transition Types**: Operators can configure transitions between keyframes:
+     - `Smooth Ease`: Cubic bezier ease-in-out interpolation of X, Y, Width, Height, and Rotation.
+     - `Linear`: Constant velocity transformation.
+     - `Instant Cut`: Discrete layout switch at keyframe timestamp.
+     - `Crossfade`: Smooth opacity crossfade.
+     - `Dip to Black`: Symmetric luminance fade-out and fade-in.
+   - **Live Real-Time Playback Interpolation**: Scrubbing or playing on the timeline dynamically computes intermediate feed positions and smoothly renders real-time motion on the live canvas.
+   - **Dedicated Timeline Track (`CanvasKeyframeTrack`)**: Visual representation of layout keyframes directly on `TimelineBoard` with interactive seek, selection, and deletion.
+5. **Backend Export Parity & Rotation Support**:
+   - `CanvasPlacementDto.Rotation` added in `AdvanceJobInfo.cs`.
+   - `AdvanceJobManager.cs` synthesizes FFmpeg `rotate` filter clauses (`rotate={radStr}:ow='rotw({radStr})':oh='roth({radStr})':c=none`) alongside `scale`, `pad`, and `drawbox` operations for both single layouts and multi-keyframe interval timelines.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

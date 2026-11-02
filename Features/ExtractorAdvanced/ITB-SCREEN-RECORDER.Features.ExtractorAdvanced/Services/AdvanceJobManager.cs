@@ -1395,6 +1395,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
                         };
 
+                        if (Math.Abs(p.Rotation) > 0.01)
+                        {
+                            double rad = (p.Rotation * Math.PI) / 180.0;
+                            string radStr = rad.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture);
+                            ops.Add($"rotate={radStr}:ow='rotw({radStr})':oh='roth({radStr})':c=none");
+                        }
+
                         if (p.BorderWidth > 0)
                         {
                             string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
@@ -1554,6 +1561,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease",
                         $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
                     };
+
+                    if (Math.Abs(p.Rotation) > 0.01)
+                    {
+                        double rad = (p.Rotation * Math.PI) / 180.0;
+                        string radStr = rad.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture);
+                        ops.Add($"rotate={radStr}:ow='rotw({radStr})':oh='roth({radStr})':c=none");
+                    }
 
                     if (p.BorderWidth > 0)
                     {

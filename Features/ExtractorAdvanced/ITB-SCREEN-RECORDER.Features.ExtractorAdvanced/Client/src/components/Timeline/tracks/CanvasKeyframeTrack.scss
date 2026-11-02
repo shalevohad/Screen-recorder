@@ -1,0 +1,158 @@
+// ==========================================
+// File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/CanvasKeyframeTrack.scss
+// ==========================================
+.canvas-keyframe-track-row {
+    display: flex;
+    align-items: stretch;
+    height: 40px;
+    background: #090e17;
+    border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+    position: relative;
+    user-select: none;
+
+    .track-header-cell {
+        width: 220px;
+        min-width: 220px;
+        max-width: 220px;
+        background: #0c1424;
+        border-right: 1px solid rgba(6, 182, 212, 0.25);
+        padding: 4px 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+        z-index: 2;
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+
+            .track-icon {
+                font-size: 13px;
+            }
+
+            .track-title {
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                color: #e2e8f0;
+                font-family: monospace;
+            }
+
+            .kf-count-pill {
+                font-size: 9px;
+                font-weight: 700;
+                padding: 1px 5px;
+                border-radius: 3px;
+                background: rgba(6, 182, 212, 0.15);
+                color: #06b6d4;
+                border: 1px solid rgba(6, 182, 212, 0.3);
+            }
+        }
+
+        .header-sub {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+
+            .active-trans-badge {
+                font-size: 9px;
+                font-family: monospace;
+                color: #94a3b8;
+                text-transform: uppercase;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .btn-add-kf-track {
+                background: rgba(6, 182, 212, 0.18);
+                border: 1px solid #06b6d4;
+                color: #06b6d4;
+                font-size: 9px;
+                font-weight: 700;
+                border-radius: 3px;
+                padding: 1px 6px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+
+                &:hover {
+                    background: #06b6d4;
+                    color: #070a10;
+                }
+            }
+        }
+    }
+
+    .track-surface {
+        flex: 1;
+        position: relative;
+        background: #070b12;
+        overflow: hidden;
+        cursor: crosshair;
+
+        .track-grid-lines {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 40px 100%;
+            pointer-events: none;
+        }
+
+        .kf-marker-diamond {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            z-index: 5;
+            transition: transform 0.15s ease;
+
+            .diamond-shape {
+                font-size: 16px;
+                line-height: 1;
+                color: #06b6d4;
+                filter: drop-shadow(0 0 4px rgba(6, 182, 212, 0.6));
+                transition: all 0.15s ease;
+            }
+
+            .diamond-label {
+                font-size: 8px;
+                font-weight: 800;
+                font-family: monospace;
+                color: #cbd5e1;
+                background: rgba(15, 23, 42, 0.9);
+                padding: 0 3px;
+                border-radius: 2px;
+                margin-top: -2px;
+                border: 1px solid rgba(6, 182, 212, 0.4);
+                white-space: nowrap;
+            }
+
+            &:hover {
+                transform: translate(-50%, -50%) scale(1.25);
+                z-index: 10;
+
+                .diamond-shape {
+                    color: #38bdf8;
+                    filter: drop-shadow(0 0 8px #38bdf8);
+                }
+            }
+
+            &.is-active {
+                .diamond-shape {
+                    color: #10b981;
+                    filter: drop-shadow(0 0 10px #10b981);
+                }
+                .diamond-label {
+                    color: #10b981;
+                    border-color: #10b981;
+                }
+            }
+        }
+    }
+}
