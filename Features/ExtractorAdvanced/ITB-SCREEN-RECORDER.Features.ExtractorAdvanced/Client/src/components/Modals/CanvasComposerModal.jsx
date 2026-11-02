@@ -34,8 +34,6 @@ export default function CanvasComposerModal({
     initialTimeline = null,
     onSaveTimeline = null
 }) {
-    if (!isOpen) return null;
-
     const cutStartEpochMs = timelineBaseEpochMs + inPointMs;
     const cutEndEpochMs = timelineBaseEpochMs + outPointMs;
     const totalCutDurMs = Math.max(1000, outPointMs - inPointMs);
@@ -149,6 +147,15 @@ export default function CanvasComposerModal({
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [keystrokeMode, setKeystrokeMode] = useState('BurnIn');
     const [resolution, setResolution] = useState(initialTimeline?.resolution || 'FHD');
+
+    useEffect(() => {
+        if (isOpen && initialTimeline?.keyframes?.length > 0) {
+            setKeyframes(JSON.parse(JSON.stringify(initialTimeline.keyframes)));
+            if (initialTimeline.resolution) {
+                setResolution(initialTimeline.resolution);
+            }
+        }
+    }, [isOpen, initialTimeline]);
     const [isXmlJsonModalOpen, setIsXmlJsonModalOpen] = useState(false);
     const [dataModalTab, setDataModalTab] = useState('json'); // 'json' | 'xml'
     const [dataText, setDataText] = useState('');
@@ -626,6 +633,8 @@ export default function CanvasComposerModal({
         return currentPlacements.map((p, originalIndex) => ({ ...p, originalIndex }))
             .sort((a, b) => a.zIndex - b.zIndex);
     }, [currentPlacements]);
+
+    if (!isOpen) return null;
 
     return (
         <div className="itb-canvas-composer-backdrop" onClick={handleClose}>

@@ -118,6 +118,9 @@ export default function ExtractorAdvancedStudio() {
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isCanvasComposerOpen, setIsCanvasComposerOpen] = useState(false);
+    const [canvasLayoutTimeline, setCanvasLayoutTimeline] = useState(() => {
+        return cached.canvasLayoutTimeline || null;
+    });
 
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
@@ -569,7 +572,8 @@ export default function ExtractorAdvancedStudio() {
             isAutoDirectorEnabled,
             isPipSwapped,
             audioRoutingPlan: effectiveAudioPlan,
-            isAutoFollowAudio
+            isAutoFollowAudio,
+            canvasLayoutTimeline
         });
     }, [
         timeRange,
@@ -586,7 +590,14 @@ export default function ExtractorAdvancedStudio() {
         playbackSpeed,
         timelineBaseEpochMs,
         keystrokeMode,
-        showRulerKeystrokes
+        showRulerKeystrokes,
+        compositionScope,
+        compositionLayout,
+        isAutoDirectorEnabled,
+        isPipSwapped,
+        effectiveAudioPlan,
+        isAutoFollowAudio,
+        canvasLayoutTimeline
     ]);
 
     const handleLoadBookmark = useCallback((bm) => {
@@ -1081,7 +1092,7 @@ export default function ExtractorAdvancedStudio() {
                     isAutoDirectorEnabled,
                     stationsCount: timelineStations.length,
                     audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1,
-                    resolution: canvasTimeline?.resolution || 'FHD'
+                    resolution: canvasLayoutTimeline?.resolution || 'FHD'
                 }}
             />
 

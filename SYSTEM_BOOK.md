@@ -125,7 +125,7 @@ c:\Devlopers\ITB-SCREEN-RECORDER\
 ├── Tools\
 │   └── ITB-SCREEN-RECORDER.Diagnostics\  # Enterprise forensic log diagnostic & RCA utility
 ├── Installers\                           # WiX Toolset v4 installer definitions (.msi) & Linux packaging
-└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (387+ unit, integration & sync tests)
+└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (427+ unit, integration, sync & frontend integrity tests)
 ```
 
 ---
@@ -411,12 +411,24 @@ dotnet build ITB-Screen-Recorder.sln --no-restore -nodeReuse:false
 dotnet test ITB-SCREEN-RECORDER.Tests/ITB-SCREEN-RECORDER.Tests.csproj --no-restore -nodeReuse:false
 ```
 
-### 3. Frontend Development & Linting
+### 3. Frontend Development, Linting & Integrity Testing
 ```bash
 cd ITB-SCREEN-RECORDER.Server/ClientApp
 npm install
 npm run lint      # Must return 0 errors and 0 warnings
 npm run build     # Compiles production bundle to wwwroot
+```
+
+- **ExtractorAdvanced Studio (Forensic Replay & Visual Canvas Composer)**:
+```bash
+cd Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client
+npm install
+npm run lint      # Enforces 0 undefined variables, hook rules and syntax checks
+npm run build     # Runs ESLint gating followed by Vite production widget bundling
+```
+
+- **Automated Frontend Integrity Verification**:
+Covered by `FrontendBundleIntegrityTests.cs` inside `ITB-SCREEN-RECORDER.Tests`, verifying widget bundle presence, non-empty compiled artifacts, absence of undefined identifiers, and zero ESLint errors during `dotnet test`.
 ```
 
 ### 4. Running the Complete System Locally for Debugging

@@ -40,7 +40,8 @@ export default [
                 URLSearchParams: 'readonly',
                 AbortController: 'readonly',
                 CustomEvent: 'readonly',
-                ResizeObserver: 'readonly'
+                ResizeObserver: 'readonly',
+                DOMParser: 'readonly'
             },
             parserOptions: {
                 ecmaFeatures: { jsx: true },

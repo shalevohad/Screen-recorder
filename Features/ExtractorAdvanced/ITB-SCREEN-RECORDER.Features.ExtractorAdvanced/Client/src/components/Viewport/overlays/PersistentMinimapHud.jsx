@@ -40,7 +40,7 @@ export default function PersistentMinimapHud({
     const activeIndex = displays.indexOf(activeDisplay);
     const rawLabel = activeDisplay ? (activeDisplay.displayName ?? activeDisplay.DisplayName ?? '') : '';
     const cleanLabel = rawLabel.replace(/\s*\(mon-\d+\)/i, '').trim();
-    const activeLabel = (cleanLabel || SCREEN ).toUpperCase();
+    const activeLabel = (cleanLabel || 'SCREEN').toUpperCase();
 
     return (
         <aside 
