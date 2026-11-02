@@ -1172,5 +1172,161 @@ In accordance with operational requirements for high-density command-and-control
 
 ---
 
+
+
+## 27. External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API (2026-11-02)
+
+### 1. Architectural Mission & Integration Scope
+In enterprise and tactical military C2 deployments, external command systems, automated analysis suites, and forensic audit platforms require the capability to programmatically interrogate the server's recording state and request customized multi-station video compilations via an automated REST/XML API.
+To achieve this, the server exposes:
+1. **Forensic Inspection API (`/api/v1/extractor-advanced/inspect` & `/api/v1/extractor/inspect`)**: A comprehensive discovery endpoint allowing external consumers to interrogate workstation availability, functional role mappings, audio presence, keystroke activity, and display hardware parameters across arbitrary time ranges.
+2. **Custom Canvas Layout Engine (`CustomCanvasLayoutDto`)**: A parametric composition engine supporting arbitrary placement coordinates `(x, y)`, sizing `(width, height)`, and stacking layer depth (`zIndex`), allowing external clients to define custom hero/PiP/split configurations with tactical borders and burn-in labels.
+3. **Automated Master MP4 Export Pipeline**: Asynchronous background rendering with hardware acceleration (NVENC -> Intel QSV -> libx264) producing a unified, single `.mp4` video with faststart streaming metadata and coordinated master audio routing.
+4. **Dual Content-Type Serialization**: Native interoperability supporting both standard JSON (`application/json`) and enterprise XML (`application/xml`, `text/xml`) requests and responses.
+
+### 2. Forensic Inspection API (`ExtractorAdvancedController.cs`)
+- **Route Mapping**:
+  - `GET /api/v1/extractor-advanced/inspect`
+  - `POST /api/v1/extractor-advanced/inspect`
+  - `GET /api/v1/extractor/inspect` (alias for backward compatibility)
+  - `POST /api/v1/extractor/inspect`
+- **Request Parameters (`ForensicInspectionRequestDto`)**:
+  - `startEpoch` / `endEpoch`: Time range as Unix epoch milliseconds or seconds.
+  - `startTime` / `endTime`: ISO 8601 formatted timestamps (e.g. `2026-11-02T10:00:00Z`).
+  - `stations` / `stationIds`: Optional filter for specific hostnames or tactical role names.
+- **Inspection Intelligence Returned (`ForensicInspectionResultDto`)**:
+  - `TimeRange`: Validated start/end epoch milliseconds, UTC datetimes, and total duration.
+  - `TotalStationsFound` & `ActiveRecordingStationsCount`: Total stations identified vs. those with active recording chunks.
+  - `StationsWithAudioCount` & `StationsWithKeystrokesCount`: Forensic telemetry availability counters.
+  - `RoleToStationMap` & `StationToRoleMap`: Complete bidirectional mapping between operational roles (e.g. "Commander", "Radar Specialist") and physical workstation hostnames (e.g. "WS-ALPHA", "WS-BRAVO").
+  - `Stations` (List of `StationInspectionDto`):
+    - `StationId`, `Hostname`, `RoleAlias`, `DisplayName`, `IsOnline`.
+    - `HasRecordings`, `HasAudio`, `HasKeystrokes`, `KeystrokeCount`, `RecordingsCount`.
+    - `Displays` (`StationDisplayInspectionDto`): Screen identifier (`mon-0`, `mon-1`), display number, width, height, framerate, resolution (`1080p`), primary flag, and bounds coordinates `(x, y)`.
+    - `RecordingSegments` (`TimelineSegmentInspectionDto`): Discrete chunk coverage intervals with millisecond start/end epochs and audio presence flags.
+
+### 3. Custom Canvas Layout & Stacking Depth Specification
+External clients define output video geometry via `CustomCanvasLayoutDto` and `CanvasPlacementDto`:
+- **Canvas Properties**:
+  - `Width` (int, default `1920`): Output video horizontal resolution.
+  - `Height` (int, default `1080`): Output video vertical resolution.
+  - `BackgroundColor` (string, default `"#070A10"`): Canvas canvas fill color.
+  - `Fps` (double, default `30.0`): Target video framerate.
+- **Feed Placement Definition (`CanvasPlacementDto`)**:
+  - `StationId`: Physical workstation hostname (`WS-01`) OR operational role alias (`Commander`). The server automatically resolves role aliases to physical hostnames via `IStationRoleProvider`.
+  - `DisplayId`: Target monitor (`mon-0`, `mon-1`, or `director`). Defaults to `mon-0`.
+  - `X`, `Y`: Canvas origin coordinates (supports absolute pixels or normalized `0.0 - 1.0` floats).
+  - `Width`, `Height`: Dimension on canvas (absolute pixels or normalized `0.0 - 1.0` floats).
+  - `ZIndex` (int): Stacking depth layer ("what is in front of what"). Placements are ordered by `ZIndex` ascending; items with `ZIndex = 0` are placed on the base canvas (hero feed), and items with `ZIndex = 1` or higher overlay on top (e.g. PiP inset).
+  - `BorderWidth` & `BorderColor`: Optional tactical border (e.g. `2px #06B6D4` cyan, `#10B981` emerald, `#F43F5E` rose).
+  - `Label`: Optional tactical burn-in caption rendered directly on the feed.
+  - `StartOffsetMs` & `EndOffsetMs`: Optional millisecond time window during which this placement is visible (enabling timed PiP appearance/disappearance).
+
+### 4. Custom Canvas Master MP4 Synthesis (`AdvanceJobManager.cs`)
+When `LayoutMode = "custom"` or `CanvasLayout` is supplied in `AdvanceCutRequestDto`:
+1. **Role Resolution**: Hostnames and role aliases across `StationIds`, `CanvasLayout.Placements`, and `AudioSourceStation` are resolved using `IStationRoleProvider.GetAllStationRoleAliasesAsync()`.
+2. **Individual Track Rendering**: Slices each unique workstation track with gap-filling, wall-clock synchronization, and hard keystroke burn-in (`KeystrokeExportMode.BurnIn`).
+3. **FFmpeg Filtergraph Assembly (`ComposeCustomCanvasMasterMp4Async`)**:
+   - Canvas Base: `color=c={bg}:s={w}x{h}:r={fps}[bg]`
+   - Feed Scaling & Bordering: Feeds are scaled with aspect preservation, boxed, padded, and bordered per `CanvasPlacementDto`.
+   - Stacking Chain: Overlays are sequentially daisy-chained ordered by `ZIndex` ascending:
+     `[bg][feed_0]overlay=x=...:y=...[ol_0]; [ol_0][feed_1]overlay=x=...:y=...:enable='between(t,...)'[ol_1]...`
+4. **Master Audio Synthesis**: Audio is pulled from the designated `AudioSourceStation` (or mapped audio routing track), with mute intervals generating synchronized silence (`anullsrc`).
+5. **Output**: Renders directly to master `.mp4` with faststart metadata (`-movflags +faststart`).
+
+### 5. API Usage Example (JSON & XML)
+
+#### JSON Export Request (`POST /api/v1/extractor-advanced/export`):
+```json
+{
+  "stationIds": ["Commander", "RadarOperator"],
+  "startTime": "2026-11-02T10:00:00Z",
+  "endTime": "2026-11-02T10:15:00Z",
+  "layoutMode": "custom",
+  "audioSourceStation": "Commander",
+  "keystrokeMode": 2,
+  "canvasLayout": {
+    "width": 1920,
+    "height": 1080,
+    "backgroundColor": "#070A10",
+    "placements": [
+      {
+        "stationId": "Commander",
+        "displayId": "mon-0",
+        "x": 0, "y": 0, "width": 1920, "height": 1080,
+        "zIndex": 0,
+        "label": "COMMANDER - PRIMARY FEED"
+      },
+      {
+        "stationId": "RadarOperator",
+        "displayId": "mon-0",
+        "x": 1380, "y": 720, "width": 500, "height": 320,
+        "zIndex": 1,
+        "borderWidth": 2,
+        "borderColor": "#06B6D4",
+        "label": "RADAR OPERATOR (PIP)"
+      }
+    ]
+  }
+}
+```
+
+#### XML Export Request (`POST /api/v1/extractor/export`):
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<AdvanceCutRequestDto xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <StationIds>
+    <string>Commander</string>
+    <string>RadarOperator</string>
+  </StationIds>
+  <StartTime>2026-11-02T10:00:00Z</StartTime>
+  <EndTime>2026-11-02T10:15:00Z</EndTime>
+  <LayoutMode>custom</LayoutMode>
+  <AudioSourceStation>Commander</AudioSourceStation>
+  <KeystrokeMode>BurnIn</KeystrokeMode>
+  <CanvasLayout>
+    <Width>1920</Width>
+    <Height>1080</Height>
+    <BackgroundColor>#070A10</BackgroundColor>
+    <Placements>
+      <CanvasPlacementDto>
+        <StationId>Commander</StationId>
+        <DisplayId>mon-0</DisplayId>
+        <X>0</X>
+        <Y>0</Y>
+        <Width>1920</Width>
+        <Height>1080</Height>
+        <ZIndex>0</ZIndex>
+        <Label>COMMANDER</Label>
+      </CanvasPlacementDto>
+      <CanvasPlacementDto>
+        <StationId>RadarOperator</StationId>
+        <DisplayId>mon-0</DisplayId>
+        <X>1380</X>
+        <Y>720</Y>
+        <Width>500</Width>
+        <Height>320</Height>
+        <ZIndex>1</ZIndex>
+        <BorderWidth>2</BorderWidth>
+        <BorderColor>#06B6D4</BorderColor>
+        <Label>RADAR OPERATOR</Label>
+      </CanvasPlacementDto>
+    </Placements>
+  </CanvasLayout>
+</AdvanceCutRequestDto>
+```
+
+#### Response (HTTP 202 Accepted):
+```json
+{
+  "jobId": "f78a2e1c-5d39-440a-912b-312984bcde21",
+  "statusUrl": "/api/v1/extractor-advanced/jobs/f78a2e1c-5d39-440a-912b-312984bcde21",
+  "downloadUrl": "/api/v1/extractor/jobs/f78a2e1c-5d39-440a-912b-312984bcde21/download"
+}
+```
+
+---
+
+
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

@@ -7,6 +7,10 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+
+using System.Linq;
+
+using System.Xml.Serialization;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
@@ -32,6 +36,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public bool IsAutoDirectorEnabled { get; set; } = true;
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
         public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
+        public string? AudioSourceStation { get; set; }
+        public CustomCanvasLayoutDto? CanvasLayout { get; set; }
     }
 
     public class AdvanceCutRequestDto
@@ -68,6 +74,324 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("audioRoutingSegments")]
         public List<AudioRoutingSegmentDto>? AudioRoutingSegments { get; set; }
+
+        [JsonPropertyName("audioSourceStation")]
+        public string? AudioSourceStation { get; set; }
+
+        [JsonPropertyName("startTime")]
+        public string? StartTime { get; set; }
+
+        [JsonPropertyName("endTime")]
+        public string? EndTime { get; set; }
+
+        [JsonPropertyName("canvasLayout")]
+        public CustomCanvasLayoutDto? CanvasLayout { get; set; }
+    }
+
+    /// <summary>
+    /// Custom Canvas Layout definition for absolute positioning, sizing, and layering of feeds.
+    /// </summary>
+    public class CustomCanvasLayoutDto
+    {
+        [JsonPropertyName("width")]
+        public int Width { get; set; } = 1920;
+
+        [JsonPropertyName("height")]
+        public int Height { get; set; } = 1080;
+
+        [JsonPropertyName("backgroundColor")]
+        public string BackgroundColor { get; set; } = "#070A10";
+
+        [JsonPropertyName("fps")]
+        public double Fps { get; set; } = 30.0;
+
+        [JsonPropertyName("placements")]
+        public List<CanvasPlacementDto> Placements { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Represents a single workstation / display placement on the output video canvas.
+    /// </summary>
+    public class CanvasPlacementDto
+    {
+        /// <summary>
+        /// Workstation identifier (accepts physical hostname or role alias, e.g. "Commander" or "WS-ALPHA").
+        /// </summary>
+        [JsonPropertyName("stationId")]
+        public string StationId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Target display on the station (e.g. "mon-0", "mon-1", or "director"). Defaults to "mon-0".
+        /// </summary>
+        [JsonPropertyName("displayId")]
+        public string DisplayId { get; set; } = "mon-0";
+
+        /// <summary>
+        /// X position on canvas (pixels or normalized 0.0-1.0).
+        /// </summary>
+        [JsonPropertyName("x")]
+        public double X { get; set; } = 0;
+
+        /// <summary>
+        /// Y position on canvas (pixels or normalized 0.0-1.0).
+        /// </summary>
+        [JsonPropertyName("y")]
+        public double Y { get; set; } = 0;
+
+        /// <summary>
+        /// Width on canvas (pixels or normalized 0.0-1.0).
+        /// </summary>
+        [JsonPropertyName("width")]
+        public double Width { get; set; } = 1920;
+
+        /// <summary>
+        /// Height on canvas (pixels or normalized 0.0-1.0).
+        /// </summary>
+        [JsonPropertyName("height")]
+        public double Height { get; set; } = 1080;
+
+        /// <summary>
+        /// Stacking order layer / depth ("what is in front of what").
+        /// Lower values are placed first (e.g. background); higher values overlay on top (e.g. PiP inset has zIndex=1).
+        /// </summary>
+        [JsonPropertyName("zIndex")]
+        public int ZIndex { get; set; } = 0;
+
+        /// <summary>
+        /// Optional border thickness in pixels around this feed (e.g. 2 for tactical border, 0 for borderless).
+        /// </summary>
+        [JsonPropertyName("borderWidth")]
+        public int BorderWidth { get; set; } = 0;
+
+        /// <summary>
+        /// Hex border color (e.g. "#06B6D4" cyan, "#10B981" emerald, "#F43F5E" rose).
+        /// </summary>
+        [JsonPropertyName("borderColor")]
+        public string BorderColor { get; set; } = "#06B6D4";
+
+        /// <summary>
+        /// Optional tactical label burned onto the feed (e.g. "COMMANDER - WS-01").
+        /// </summary>
+        [JsonPropertyName("label")]
+        public string? Label { get; set; }
+
+        /// <summary>
+        /// Optional temporal start offset in milliseconds within the exported duration.
+        /// </summary>
+        [JsonPropertyName("startOffsetMs")]
+        public double? StartOffsetMs { get; set; }
+
+        /// <summary>
+        /// Optional temporal end offset in milliseconds within the exported duration.
+        /// </summary>
+        [JsonPropertyName("endOffsetMs")]
+        public double? EndOffsetMs { get; set; }
+    }
+
+    /// <summary>
+    /// Request parameters for querying/inspecting server recording capabilities over a time range.
+    /// </summary>
+    public class ForensicInspectionRequestDto
+    {
+        [JsonPropertyName("startEpoch")]
+        public double? StartEpoch { get; set; }
+
+        [JsonPropertyName("endEpoch")]
+        public double? EndEpoch { get; set; }
+
+        [JsonPropertyName("startTime")]
+        public string? StartTime { get; set; }
+
+        [JsonPropertyName("endTime")]
+        public string? EndTime { get; set; }
+
+        [JsonPropertyName("stations")]
+        public string? Stations { get; set; }
+
+        [JsonPropertyName("stationIds")]
+        public List<string>? StationIds { get; set; }
+    }
+
+    /// <summary>
+    /// Complete forensic inspection report returned to external systems before exporting.
+    /// </summary>
+        public class RoleMappingEntryDto
+    {
+        [XmlAttribute("role")]
+        [JsonPropertyName("role")]
+        public string Role { get; set; } = string.Empty;
+
+        [XmlAttribute("stationId")]
+        [JsonPropertyName("stationId")]
+        public string StationId { get; set; } = string.Empty;
+    }
+
+
+    public class ForensicInspectionResultDto
+    {
+        [JsonPropertyName("timeRange")]
+        public ForensicTimeRangeDto TimeRange { get; set; } = new();
+
+        [JsonPropertyName("stations")]
+        public List<StationInspectionDto> Stations { get; set; } = new();
+
+        [XmlIgnore]
+        [JsonPropertyName("roleToStationMap")]
+        public Dictionary<string, string> RoleToStationMap { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        [XmlIgnore]
+        [JsonPropertyName("stationToRoleMap")]
+        public Dictionary<string, string> StationToRoleMap { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        [XmlElement("RoleMapping")]
+        [JsonIgnore]
+        public RoleMappingEntryDto[] RoleMappingsXml
+        {
+            get => RoleToStationMap.Select(kv => new RoleMappingEntryDto { Role = kv.Key, StationId = kv.Value }).ToArray();
+            set
+            {
+                if (value != null)
+                {
+                    foreach (var item in value)
+                    {
+                        if (!string.IsNullOrEmpty(item.Role) && !string.IsNullOrEmpty(item.StationId))
+                        {
+                            RoleToStationMap[item.Role] = item.StationId;
+                            StationToRoleMap[item.StationId] = item.Role;
+                        }
+                    }
+                }
+            }
+        }
+
+        [JsonPropertyName("totalStationsFound")]
+        public int TotalStationsFound { get; set; }
+
+        [JsonPropertyName("activeRecordingStationsCount")]
+        public int ActiveRecordingStationsCount { get; set; }
+
+        [JsonPropertyName("stationsWithAudioCount")]
+        public int StationsWithAudioCount { get; set; }
+
+        [JsonPropertyName("stationsWithKeystrokesCount")]
+        public int StationsWithKeystrokesCount { get; set; }
+    }
+
+    public class ForensicTimeRangeDto
+    {
+        [JsonPropertyName("startEpochMs")]
+        public long StartEpochMs { get; set; }
+
+        [JsonPropertyName("endEpochMs")]
+        public long EndEpochMs { get; set; }
+
+        [JsonPropertyName("startUtc")]
+        public DateTime StartUtc { get; set; }
+
+        [JsonPropertyName("endUtc")]
+        public DateTime EndUtc { get; set; }
+
+        [JsonPropertyName("durationSeconds")]
+        public double DurationSeconds { get; set; }
+    }
+
+    public class StationDisplayInspectionDto
+    {
+        [JsonPropertyName("displayId")]
+        public string DisplayId { get; set; } = "mon-0";
+
+        [JsonPropertyName("displayNumber")]
+        public int DisplayNumber { get; set; } = 1;
+
+        [JsonPropertyName("displayName")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [JsonPropertyName("isPrimary")]
+        public bool IsPrimary { get; set; } = true;
+
+        [JsonPropertyName("hasAudio")]
+        public bool HasAudio { get; set; }
+
+        [JsonPropertyName("width")]
+        public int Width { get; set; } = 1920;
+
+        [JsonPropertyName("height")]
+        public int Height { get; set; } = 1080;
+
+        [JsonPropertyName("fps")]
+        public double Fps { get; set; } = 30.0;
+
+        [JsonPropertyName("resolution")]
+        public string Resolution { get; set; } = "1080p";
+
+        [JsonPropertyName("x")]
+        public int X { get; set; }
+
+        [JsonPropertyName("y")]
+        public int Y { get; set; }
+    }
+
+    public class StationInspectionDto
+    {
+        [JsonPropertyName("stationId")]
+        public string StationId { get; set; } = string.Empty;
+
+        [JsonPropertyName("hostname")]
+        public string Hostname { get; set; } = string.Empty;
+
+        [JsonPropertyName("roleAlias")]
+        public string? RoleAlias { get; set; }
+
+        [JsonPropertyName("displayName")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [JsonPropertyName("isOnline")]
+        public bool IsOnline { get; set; } = true;
+
+        [JsonPropertyName("hasRecordings")]
+        public bool HasRecordings { get; set; }
+
+        [JsonPropertyName("hasAudio")]
+        public bool HasAudio { get; set; }
+
+        [JsonPropertyName("hasKeystrokes")]
+        public bool HasKeystrokes { get; set; }
+
+        [JsonPropertyName("keystrokeCount")]
+        public int KeystrokeCount { get; set; }
+
+        [JsonPropertyName("recordingsCount")]
+        public int RecordingsCount { get; set; }
+
+        [JsonPropertyName("displays")]
+        public List<StationDisplayInspectionDto> Displays { get; set; } = new();
+
+        [JsonPropertyName("recordingSegments")]
+        public List<TimelineSegmentInspectionDto> RecordingSegments { get; set; } = new();
+    }
+
+    public class TimelineSegmentInspectionDto
+    {
+        [JsonPropertyName("displayId")]
+        public string DisplayId { get; set; } = "mon-0";
+
+        [JsonPropertyName("startEpochMs")]
+        public long StartEpochMs { get; set; }
+
+        [JsonPropertyName("endEpochMs")]
+        public long EndEpochMs { get; set; }
+
+        [JsonPropertyName("startUtc")]
+        public DateTime StartUtc { get; set; }
+
+        [JsonPropertyName("endUtc")]
+        public DateTime EndUtc { get; set; }
+
+        [JsonPropertyName("durationSeconds")]
+        public double DurationSeconds { get; set; }
+
+        [JsonPropertyName("hasAudio")]
+        public bool HasAudio { get; set; }
     }
 
     public class SessionManifest

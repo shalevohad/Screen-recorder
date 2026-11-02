@@ -265,6 +265,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 });
 
                 var mvcBuilder = builder.Services.AddControllers()
+                    .AddXmlSerializerFormatters()
                     .AddJsonOptions(options =>
                     {
                         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());

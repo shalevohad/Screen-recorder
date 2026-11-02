@@ -524,19 +524,308 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             }
         }
 
+        /// <summary>
+        /// Forensic Inspection & Capability Discovery Endpoint for External Systems and Orchestrators.
+        /// Discovers all available workstations, role-to-hostname mappings, display topologies,
+        /// and media stream presence (recordings, audio, keystroke subtitles) within a given temporal window.
+        /// </summary>
+        [HttpGet("inspect")]
+        [HttpPost("inspect")]
+        [HttpGet("/api/v1/extractor/inspect")]
+        [HttpPost("/api/v1/extractor/inspect")]
+        public async Task<IActionResult> InspectTimelineScope(
+            [FromQuery] double? startEpoch = null,
+            [FromQuery] double? endEpoch = null,
+            [FromQuery] string? startTime = null,
+            [FromQuery] string? endTime = null,
+            [FromQuery] string? stations = null,
+            [FromBody] ForensicInspectionRequestDto? requestBody = null,
+            CancellationToken ct = default)
+        {
+            try
+            {
+                double? rawStart = requestBody?.StartEpoch ?? startEpoch;
+                double? rawEnd = requestBody?.EndEpoch ?? endEpoch;
+                string? strStart = requestBody?.StartTime ?? startTime;
+                string? strEnd = requestBody?.EndTime ?? endTime;
+
+                long lStart = 0;
+                long lEnd = 0;
+
+                const long SecondsThreshold = 100_000_000_000L;
+
+                if (rawStart.HasValue && rawStart.Value > 0)
+                {
+                    lStart = (long)Math.Round(rawStart.Value);
+                    if (lStart < SecondsThreshold) lStart *= 1000;
+                }
+                else if (!string.IsNullOrWhiteSpace(strStart) && DateTimeOffset.TryParse(strStart, out var sDto))
+                {
+                    lStart = sDto.ToUnixTimeMilliseconds();
+                }
+
+                if (rawEnd.HasValue && rawEnd.Value > 0)
+                {
+                    lEnd = (long)Math.Round(rawEnd.Value);
+                    if (lEnd < SecondsThreshold) lEnd *= 1000;
+                }
+                else if (!string.IsNullOrWhiteSpace(strEnd) && DateTimeOffset.TryParse(strEnd, out var eDto))
+                {
+                    lEnd = eDto.ToUnixTimeMilliseconds();
+                }
+
+                DateTime startUtc = lStart > 0
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime
+                    : DateTime.UtcNow.AddDays(-7);
+
+                DateTime endUtc = lEnd > 0
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime
+                    : DateTime.UtcNow;
+
+                if (lStart <= 0) lStart = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                if (lEnd <= 0) lEnd = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+
+                if (endUtc <= startUtc)
+                {
+                    return BadRequest(new { message = "End time must be strictly greater than start time." });
+                }
+
+                var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
+                if (availableHosts.Count == 0)
+                {
+                    availableHosts = await _storageScanner.GetAvailableHostsAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
+                }
+
+                var aliases = _stationRoleProvider != null
+                    ? await _stationRoleProvider.GetAllStationRoleAliasesAsync()
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                var roleToStation = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var stationToRole = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var kvp in aliases)
+                {
+                    stationToRole[kvp.Key] = kvp.Value;
+                    roleToStation[kvp.Value] = kvp.Key;
+                }
+
+                var requestedFilter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (requestBody?.StationIds != null && requestBody.StationIds.Count > 0)
+                {
+                    foreach (var s in requestBody.StationIds)
+                    {
+                        if (roleToStation.TryGetValue(s, out var host)) requestedFilter.Add(host);
+                        else requestedFilter.Add(s);
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(stations))
+                {
+                    var split = stations.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var s in split)
+                    {
+                        if (roleToStation.TryGetValue(s, out var host)) requestedFilter.Add(host);
+                        else requestedFilter.Add(s);
+                    }
+                }
+
+                var targetHosts = requestedFilter.Count > 0
+                    ? availableHosts.Where(h => requestedFilter.Contains(h)).ToList()
+                    : availableHosts.ToList();
+
+                foreach (var req in requestedFilter)
+                {
+                    if (!targetHosts.Contains(req, StringComparer.OrdinalIgnoreCase))
+                    {
+                        targetHosts.Add(req);
+                    }
+                }
+
+                var stationInspectionList = new ConcurrentBag<StationInspectionDto>();
+
+                await Parallel.ForEachAsync(targetHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
+                {
+                    var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
+                    var sample = chunks.LastOrDefault() ?? await _storageScanner.GetStationSampleChunkAsync(host);
+
+                    int width = sample?.Width ?? 1920;
+                    int height = sample?.Height ?? 1080;
+                    double fps = sample?.Fps ?? 30.0;
+                    bool hasAudio = chunks.Any(c => c.HasAudio) || (sample?.HasAudio ?? false);
+                    bool hasRecordings = chunks.Count > 0;
+
+                    aliases.TryGetValue(host, out string? roleAlias);
+                    string effectiveDisplayName = !string.IsNullOrWhiteSpace(roleAlias) ? roleAlias : host;
+
+                    var keystrokes = await _keystrokeRepository.GetKeystrokesForWindowAsync(host, lStart, lEnd);
+                    bool hasKeystrokes = keystrokes != null && keystrokes.Count > 0;
+                    int keystrokeCount = keystrokes?.Count ?? 0;
+
+                    var distinctDisplays = chunks
+                        .GroupBy(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant())
+                        .OrderBy(g => g.Key)
+                        .Select((g, idx) =>
+                        {
+                            var dSample = g.LastOrDefault();
+                            int dWidth = dSample?.Width ?? width;
+                            int dHeight = dSample?.Height ?? height;
+                            double dFps = dSample?.Fps ?? fps;
+                            bool dHasAudio = g.Any(c => c.HasAudio);
+                            bool isPrimary = g.Key == "mon-0" || (dSample?.IsPrimary ?? false);
+                            return new StationDisplayInspectionDto
+                            {
+                                DisplayId = g.Key,
+                                DisplayNumber = idx + 1,
+                                DisplayName = $"Display {idx + 1} ({g.Key})",
+                                IsPrimary = isPrimary,
+                                HasAudio = dHasAudio,
+                                X = idx * dWidth,
+                                Y = 0,
+                                Width = dWidth,
+                                Height = dHeight,
+                                Fps = dFps,
+                                Resolution = FormatResolution(dWidth, dHeight)
+                            };
+                        })
+                        .ToList();
+
+                    if (distinctDisplays.Count == 0)
+                    {
+                        distinctDisplays.Add(new StationDisplayInspectionDto
+                        {
+                            DisplayId = "mon-0",
+                            DisplayNumber = 1,
+                            DisplayName = "Display 1 (mon-0)",
+                            IsPrimary = true,
+                            HasAudio = hasAudio,
+                            X = 0,
+                            Y = 0,
+                            Width = width,
+                            Height = height,
+                            Fps = fps,
+                            Resolution = FormatResolution(width, height)
+                        });
+                    }
+
+                    var segments = chunks
+                        .OrderBy(c => c.StartUtc)
+                        .Select(c => new TimelineSegmentInspectionDto
+                        {
+                            DisplayId = string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId,
+                            StartEpochMs = new DateTimeOffset(c.StartUtc).ToUnixTimeMilliseconds(),
+                            EndEpochMs = new DateTimeOffset(c.EndUtc).ToUnixTimeMilliseconds(),
+                            StartUtc = c.StartUtc,
+                            EndUtc = c.EndUtc,
+                            DurationSeconds = c.Duration.TotalSeconds,
+                            HasAudio = c.HasAudio
+                        })
+                        .ToList();
+
+                    stationInspectionList.Add(new StationInspectionDto
+                    {
+                        StationId = host,
+                        Hostname = host,
+                        RoleAlias = roleAlias,
+                        DisplayName = effectiveDisplayName,
+                        IsOnline = true,
+                        HasRecordings = hasRecordings,
+                        HasAudio = hasAudio,
+                        HasKeystrokes = hasKeystrokes,
+                        KeystrokeCount = keystrokeCount,
+                        RecordingsCount = chunks.Count,
+                        Displays = distinctDisplays,
+                        RecordingSegments = segments
+                    });
+                });
+
+                var stationsOrdered = stationInspectionList.OrderBy(s => s.DisplayName).ToList();
+
+                var result = new ForensicInspectionResultDto
+                {
+                    TimeRange = new ForensicTimeRangeDto
+                    {
+                        StartEpochMs = lStart,
+                        EndEpochMs = lEnd,
+                        StartUtc = startUtc,
+                        EndUtc = endUtc,
+                        DurationSeconds = (endUtc - startUtc).TotalSeconds
+                    },
+                    Stations = stationsOrdered,
+                    RoleToStationMap = roleToStation,
+                    StationToRoleMap = stationToRole,
+                    TotalStationsFound = stationsOrdered.Count,
+                    ActiveRecordingStationsCount = stationsOrdered.Count(s => s.HasRecordings),
+                    StationsWithAudioCount = stationsOrdered.Count(s => s.HasAudio),
+                    StationsWithKeystrokesCount = stationsOrdered.Count(s => s.HasKeystrokes)
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[API:Inspect] Error executing timeline scope inspection");
+                return StatusCode(500, new { message = "Error inspecting timeline scope", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// External & Internal Master Video Export Endpoint.
+        /// Supports standard compositions (Split, PiP, Grid, Auto-Director) or Custom Canvas Layouts
+        /// with absolute positioning, depth z-ordering, custom dimensions, and audio routing.
+        /// </summary>
         [HttpPost("cut")]
+        [HttpPost("export")]
+        [HttpPost("/api/v1/extractor/cut")]
+        [HttpPost("/api/v1/extractor/export")]
+        [Consumes("application/json", "application/xml", "text/xml")]
         public IActionResult EnqueueAdvanceCutJob([FromBody] AdvanceCutRequestDto request)
         {
             try
             {
                 var job = _jobManager.EnqueueAdvanceCutJob(request);
-                return Accepted(new { jobId = job.JobId, fileName = job.FileName, status = job.Status });
+                return Accepted(new
+                {
+                    jobId = job.JobId,
+                    fileName = job.FileName,
+                    status = job.Status,
+                    statusUrl = $"/api/v1/extractor/jobs/{job.JobId}",
+                    downloadUrl = $"/api/v1/extractor/jobs/{job.JobId}/download"
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[API:Cut] Error enqueuing advance cut job");
-                return StatusCode(500, new { message = "Failed to start extraction job." });
+                return StatusCode(500, new { message = "Failed to start extraction job.", error = ex.Message });
             }
+        }
+
+        /// <summary>
+        /// Query the current progress, status, ETA, and download URL of an export job.
+        /// </summary>
+        [HttpGet("jobs/{jobId}")]
+        [HttpGet("/api/v1/extractor/jobs/{jobId}/status")]
+        public IActionResult GetJobStatus(string jobId)
+        {
+            var job = _jobManager.GetJob(jobId);
+            if (job == null) return NotFound(new { message = $"Job {jobId} not found." });
+
+            var advJob = job as AdvanceJobInfo;
+            double estimatedSec = advJob != null ? advJob.EstimatedSecondsRemaining : job.EtaSeconds;
+
+            return Ok(new
+            {
+                jobId = job.JobId,
+                fileName = job.FileName,
+                status = job.Status,
+                statusMessage = job.StatusMessage,
+                progressPercent = job.ProgressPercent,
+                speedMBps = job.SpeedMBps,
+                fileSizeBytes = job.FileSizeBytes,
+                estimatedSecondsRemaining = estimatedSec,
+                createdAtUtc = job.CreatedAtUtc,
+                completedAtUtc = job.CompletedAtUtc,
+                errorMessage = job.ErrorMessage,
+                downloadUrl = job.Status == "Completed" ? $"/api/v1/extractor/jobs/{job.JobId}/download" : null
+            });
         }
 
         [HttpGet("stream-metadata")]

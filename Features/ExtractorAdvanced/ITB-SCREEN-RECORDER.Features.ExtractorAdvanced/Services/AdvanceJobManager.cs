@@ -35,6 +35,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly IFfmpegBinaryResolver _binaryResolver;
         private readonly ILogger<AdvanceJobManager> _advLogger;
 
+        private readonly ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? _stationRoleProvider;
+
         public AdvanceJobManager(
             IExtractorService extractorService,
             AdvancedExtractorService advancedExtractorService,
@@ -44,7 +46,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             IFfmpegBinaryResolver binaryResolver,
             IOptions<ExtractorOptions> options,
             ILogger<ExportJobManager> baseLogger,
-            ILogger<AdvanceJobManager> advLogger)
+            ILogger<AdvanceJobManager> advLogger,
+            ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? stationRoleProvider = null)
             : base(extractorService, exportJobRepository, options, baseLogger)
         {
             _advancedExtractorService = advancedExtractorService;
@@ -52,6 +55,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _advanceRepository = advanceRepository;
             _binaryResolver = binaryResolver;
             _advLogger = advLogger;
+            _stationRoleProvider = stationRoleProvider;
 
             _ = LoadAndRecoverAdvanceJobsAsync();
         }
@@ -147,6 +151,62 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
         public AdvancedModels.AdvanceJobInfo EnqueueAdvanceCutJob(AdvancedModels.AdvanceCutRequestDto request)
         {
+            // Parse ISO time strings if epoch ms not supplied directly
+            if (request.InEpochMs <= 0 && !string.IsNullOrWhiteSpace(request.StartTime))
+            {
+                if (DateTimeOffset.TryParse(request.StartTime, out var sDto))
+                    request.InEpochMs = sDto.ToUnixTimeMilliseconds();
+            }
+            if (request.OutEpochMs <= 0 && !string.IsNullOrWhiteSpace(request.EndTime))
+            {
+                if (DateTimeOffset.TryParse(request.EndTime, out var eDto))
+                    request.OutEpochMs = eDto.ToUnixTimeMilliseconds();
+            }
+
+            // If stationIds omitted but canvasLayout placements specified, derive stationIds from placements
+            if ((request.StationIds == null || request.StationIds.Count == 0) && request.CanvasLayout?.Placements?.Count > 0)
+            {
+                request.StationIds = request.CanvasLayout.Placements
+                    .Select(p => p.StationId)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            // Resolve role aliases to physical hostnames across all parameters
+            if (_stationRoleProvider != null)
+            {
+                try
+                {
+                    var aliases = _stationRoleProvider.GetAllStationRoleAliasesAsync().GetAwaiter().GetResult();
+                    var resolvedIds = new List<string>();
+                    foreach (var s in request.StationIds ?? new List<string>())
+                    {
+                        var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(s, StringComparison.OrdinalIgnoreCase));
+                        string resolved = !string.IsNullOrEmpty(match.Key) ? match.Key : s;
+                        if (!resolvedIds.Contains(resolved, StringComparer.OrdinalIgnoreCase))
+                            resolvedIds.Add(resolved);
+                    }
+                    request.StationIds = resolvedIds;
+
+                    if (request.CanvasLayout?.Placements != null)
+                    {
+                        foreach (var p in request.CanvasLayout.Placements)
+                        {
+                            var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(p.StationId, StringComparison.OrdinalIgnoreCase));
+                            if (!string.IsNullOrEmpty(match.Key)) p.StationId = match.Key;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(request.AudioSourceStation))
+                    {
+                        var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(request.AudioSourceStation, StringComparison.OrdinalIgnoreCase));
+                        if (!string.IsNullOrEmpty(match.Key)) request.AudioSourceStation = match.Key;
+                    }
+                }
+                catch { }
+            }
+
             if (request.StationIds == null || request.StationIds.Count == 0)
                 throw new ArgumentException("At least one station must be selected for timeline export.");
 
@@ -192,7 +252,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 IsPipSwapped = request.IsPipSwapped,
                 IsAutoDirectorEnabled = request.IsAutoDirectorEnabled,
                 DirectorSegments = request.DirectorSegments,
-                AudioRoutingSegments = request.AudioRoutingSegments
+                AudioRoutingSegments = request.AudioRoutingSegments,
+                AudioSourceStation = request.AudioSourceStation,
+                CanvasLayout = request.CanvasLayout
             };
 
             _jobs[job.JobId] = job;
@@ -281,7 +343,45 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 // Prepare discrete render items (handling single composite or all individual monitors per station)
                 var renderTasks = new List<(string StationId, string DisplayId, bool IsPrimary, int Width, int Height, int X, int Y, List<RecordingChunkMetadata> Chunks, SynchronizationPlan Plan)>();
 
-                for (int sIdx = 0; sIdx < job.StationIds.Count; sIdx++)
+                if (job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0)
+                {
+                    var distinctPlacements = job.CanvasLayout.Placements
+                        .GroupBy(p => $"{p.StationId}|{(!string.IsNullOrEmpty(p.DisplayId) ? p.DisplayId : "mon-0")}".ToLowerInvariant())
+                        .Select(g => g.First())
+                        .ToList();
+
+                    foreach (var p in distinctPlacements)
+                    {
+                        string sId = p.StationId;
+                        string targetDisp = !string.IsNullOrEmpty(p.DisplayId) ? p.DisplayId : "mon-0";
+
+                        allStationChunks.TryGetValue(sId, out var sChunks);
+                        sChunks ??= new List<RecordingChunkMetadata>();
+
+                        var dispChunks = sChunks.Where(c => string.Equals(c.DisplayId, targetDisp, StringComparison.OrdinalIgnoreCase)).ToList();
+                        if (dispChunks.Count == 0) dispChunks = sChunks;
+
+                        var repChunk = dispChunks.FirstOrDefault() ?? sChunks.FirstOrDefault();
+                        int w = repChunk?.Width > 0 ? repChunk.Width : 1920;
+                        int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
+                        bool isPrimary = string.Equals(targetDisp, "mon-0", StringComparison.OrdinalIgnoreCase);
+
+                        var feedPlan = new SynchronizationPlan
+                        {
+                            ActiveSegments = plan.ActiveSegments,
+                            KeystrokeMode = plan.KeystrokeMode,
+                            LayoutMode = "custom",
+                            TargetDisplayId = targetDisp,
+                            RemovedGlobalGaps = plan.RemovedGlobalGaps,
+                            StationGaps = plan.StationGaps
+                        };
+
+                        renderTasks.Add((sId, targetDisp, isPrimary, w, h, 0, 0, dispChunks, feedPlan));
+                    }
+                }
+                else
+                {
+                    for (int sIdx = 0; sIdx < job.StationIds.Count; sIdx++)
                 {
                     string sId = job.StationIds[sIdx];
                     var sChunks = allStationChunks.TryGetValue(sId, out var chunksList) ? chunksList : new List<RecordingChunkMetadata>();
@@ -391,6 +491,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                         renderTasks.Add((sId, dispKey, isPrimary, w, h, 0, 0, sChunks, plan));
                     }
+                }
                 }
 
                 bool isMultiStation = renderTasks.Count > 1;
@@ -534,6 +635,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (tracks.Count == 0)
             {
                 throw new InvalidOperationException("No tracks were rendered for composition.");
+            }
+
+            if (job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0)
+            {
+                await ComposeCustomCanvasMasterMp4Async(finalMp4Path, tracks, job, exportedDurationSec, startUtc, ct);
+                return;
             }
 
             if (tracks.Count == 1)
@@ -777,6 +884,237 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 string stderr = await stderrTask;
                 throw new InvalidOperationException($"FFmpeg master composition failed with exit code {process.ExitCode}: {stderr}");
             }
+        }
+
+        private async Task ComposeCustomCanvasMasterMp4Async(
+            string finalMp4Path,
+            List<(string StationId, string DisplayId, string FilePath, bool HasAudio)> tracks,
+            AdvancedModels.AdvanceJobInfo job,
+            double exportedDurationSec,
+            DateTime startUtc,
+            CancellationToken ct)
+        {
+            var layout = job.CanvasLayout!;
+            int canvasW = layout.Width > 0 ? layout.Width : 1920;
+            int canvasH = layout.Height > 0 ? layout.Height : 1080;
+            canvasW -= (canvasW % 2);
+            canvasH -= (canvasH % 2);
+
+            string bgHex = NormalizeHexColor(layout.BackgroundColor, "0x070A10");
+            string durationStr = exportedDurationSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+            string ffmpegPath = _binaryResolver.ResolveFfmpeg();
+            var inputArgsBuilder = new System.Text.StringBuilder();
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                inputArgsBuilder.Append($"-i \"{tracks[i].FilePath.Replace('\\', '/')}\" ");
+            }
+
+            var filterBuilder = new System.Text.StringBuilder();
+
+            // 1. Order placements by ZIndex ascending (layer 0 first, layer 1 on top, etc.)
+            var sortedPlacements = layout.Placements.OrderBy(p => p.ZIndex).ToList();
+            var placementLabels = new List<string>();
+
+            for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
+            {
+                var p = sortedPlacements[pIdx];
+
+                // Find matching track index
+                int inIdx = 0;
+                for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                {
+                    if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
+                        (string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase) ||
+                         string.IsNullOrEmpty(p.DisplayId) ||
+                         tracks[tIdx].DisplayId == "mon-0"))
+                    {
+                        inIdx = tIdx;
+                        break;
+                    }
+                }
+
+                // Calculate geometry
+                int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * canvasW) : (int)Math.Round(p.Width);
+                int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * canvasH) : (int)Math.Round(p.Height);
+                if (targetW <= 0) targetW = canvasW;
+                if (targetH <= 0) targetH = canvasH;
+                targetW -= (targetW % 2);
+                targetH -= (targetH % 2);
+
+                string pLabel = $"[p_{pIdx}]";
+                var ops = new List<string>
+                {
+                    $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease",
+                    $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
+                };
+
+                if (p.BorderWidth > 0)
+                {
+                    string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
+                    ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={p.BorderWidth}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(p.Label))
+                {
+                    string safeLabel = p.Label.Replace(":", "\\:").Replace("'", "\\'");
+                    ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize=13:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                }
+
+                filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
+                placementLabels.Add(pLabel);
+            }
+
+            // 2. Base Canvas Background
+            filterBuilder.Append($"color=c={bgHex}:s={canvasW}x{canvasH}:d={durationStr}[bg]; ");
+
+            // 3. Daisy-chain overlays
+            string currentSurface = "[bg]";
+            for (int pIdx = 0; pIdx < sortedPlacements.Count; pIdx++)
+            {
+                var p = sortedPlacements[pIdx];
+                string pLabel = placementLabels[pIdx];
+                string nextSurface = (pIdx == sortedPlacements.Count - 1) ? "[vbase]" : $"[t_{pIdx}]";
+
+                int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * canvasW) : (int)Math.Round(p.X);
+                int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * canvasH) : (int)Math.Round(p.Y);
+
+                string enableClause = "";
+                if (p.StartOffsetMs.HasValue || p.EndOffsetMs.HasValue)
+                {
+                    double startSec = Math.Max(0, (p.StartOffsetMs ?? 0) / 1000.0);
+                    double endSec = Math.Min(exportedDurationSec, (p.EndOffsetMs ?? (exportedDurationSec * 1000)) / 1000.0);
+                    enableClause = $":enable='between(t,{startSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)},{endSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)})'";
+                }
+
+                filterBuilder.Append($"{currentSurface}{pLabel}overlay={targetX}:{targetY}{enableClause}{nextSurface}; ");
+                currentSurface = nextSurface;
+            }
+
+            // 4. Audio Routing
+            string audioMapOption = "";
+            if (!string.IsNullOrEmpty(job.AudioSourceStation))
+            {
+                if (string.Equals(job.AudioSourceStation, "mute", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(job.AudioSourceStation, "none", StringComparison.OrdinalIgnoreCase))
+                {
+                    audioMapOption = "";
+                }
+                else
+                {
+                    int audioIdx = tracks.FindIndex(t => string.Equals(t.StationId, job.AudioSourceStation, StringComparison.OrdinalIgnoreCase));
+                    if (audioIdx >= 0 && tracks[audioIdx].HasAudio)
+                    {
+                        audioMapOption = $"-map {audioIdx}:a? -c:a aac -b:a 192k";
+                    }
+                }
+            }
+            else if (job.AudioRoutingSegments != null && job.AudioRoutingSegments.Count > 0 && tracks.Any(t => t.HasAudio))
+            {
+                long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                var audioSegFilterOps = new List<string>();
+                var audioConcatLabels = new List<string>();
+
+                for (int i = 0; i < job.AudioRoutingSegments.Count; i++)
+                {
+                    var aSeg = job.AudioRoutingSegments[i];
+                    double aStartSec = Math.Max(0, (aSeg.StartEpochMs - cutStartEpochMs) / 1000.0);
+                    double aEndSec = Math.Min(exportedDurationSec, (aSeg.EndEpochMs - cutStartEpochMs) / 1000.0);
+                    double aDur = aEndSec - aStartSec;
+                    if (aDur <= 0.05) continue;
+
+                    int inIdx = 0;
+                    for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                    {
+                        if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            inIdx = tIdx;
+                            break;
+                        }
+                    }
+
+                    string aLabel = $"[a_seg_{i}]";
+                    string startA = aStartSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                    string endA = aEndSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+                    if (tracks[inIdx].HasAudio)
+                    {
+                        audioSegFilterOps.Add($"[{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS{aLabel}");
+                    }
+                    else
+                    {
+                        string durA = aDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                        audioSegFilterOps.Add($"anullsrc=r=48000:cl=stereo:d={durA}{aLabel}");
+                    }
+                    audioConcatLabels.Add(aLabel);
+                }
+
+                if (audioConcatLabels.Count > 1)
+                {
+                    filterBuilder.Append($" {string.Join("; ", audioSegFilterOps)}; {string.Join("", audioConcatLabels)}concat=n={audioConcatLabels.Count}:v=0:a=1[outa];");
+                    audioMapOption = "-map \"[outa]\" -c:a aac -b:a 192k";
+                }
+                else if (audioConcatLabels.Count == 1)
+                {
+                    filterBuilder.Append($" {audioSegFilterOps[0]};");
+                    audioMapOption = $"-map \"{audioConcatLabels[0]}\" -c:a aac -b:a 192k";
+                }
+                else
+                {
+                    audioMapOption = tracks[0].HasAudio ? "-map 0:a? -c:a aac -b:a 192k" : "";
+                }
+            }
+            else if (tracks[0].HasAudio)
+            {
+                audioMapOption = "-map 0:a? -c:a aac -b:a 192k";
+            }
+
+            filterBuilder.Append(" [vbase]format=yuv420p[outv]");
+
+            string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs();
+            string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+            string arguments = $"-nostdin -v error " +
+                               $"{inputArgsBuilder} " +
+                               $"-filter_complex \"{filterBuilder}\" " +
+                               $"-map \"[outv]\" {audioMapOption} " +
+                               $"{encArgs} " +
+                               $"-metadata creation_time=\"{creationUtcIso}\" " +
+                               $"-movflags +faststart " +
+                               $"-y \"{finalMp4Path.Replace('\\', '/')}\"";
+
+            _advLogger.LogInformation("[AdvanceJobManager] Running custom canvas MP4 composition: {Args}", arguments);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = arguments,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+            ExtractorGarbageCollectorService.TrackProcess(process.Id);
+
+            var stderrTask = process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0)
+            {
+                string stderr = await stderrTask;
+                throw new InvalidOperationException($"FFmpeg custom canvas composition failed with exit code {process.ExitCode}: {stderr}");
+            }
+        }
+
+        private static string NormalizeHexColor(string? hex, string defaultHex)
+        {
+            if (string.IsNullOrWhiteSpace(hex)) return defaultHex;
+            hex = hex.Trim();
+            if (hex.StartsWith("#")) hex = "0x" + hex.Substring(1);
+            if (!hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = "0x" + hex;
+            return hex;
         }
     }
 }
