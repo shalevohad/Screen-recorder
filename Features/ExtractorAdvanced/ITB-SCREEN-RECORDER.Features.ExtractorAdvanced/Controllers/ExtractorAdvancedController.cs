@@ -311,11 +311,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     : DateTime.UtcNow;
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
-                if (availableHosts.Count == 0)
-                {
-                    // Fallback to wider retention window (30 days) so stations with archives are never omitted
-                    availableHosts = await _storageScanner.GetAvailableHostsAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
-                }
 
                 long scopeStartMs = lStart ?? new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
                 long scopeEndMs = lEnd ?? new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
@@ -333,17 +328,16 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 await Parallel.ForEachAsync(availableHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
-                    var sample = chunks.LastOrDefault();
+                    if (chunks.Count == 0)
+                    {
+                        // Station has zero recordings in the requested time interval
+                        return;
+                    }
 
+                    var sample = chunks.LastOrDefault();
                     if (sample == null)
                     {
-                        // Check if the host has any recordings overall using fast SQLite indexed lookup
-                        sample = await _storageScanner.GetStationSampleChunkAsync(host);
-                        if (sample == null)
-                        {
-                            // Station has zero recordings on disk or in database
-                            return;
-                        }
+                        return;
                     }
 
                     int width = sample?.Width ?? 1920;
@@ -620,10 +614,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 }
 
                 var availableHosts = await _storageScanner.GetAvailableHostsAsync(startUtc, endUtc);
-                if (availableHosts.Count == 0)
-                {
-                    availableHosts = await _storageScanner.GetAvailableHostsAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
-                }
 
                 var aliases = _stationRoleProvider != null
                     ? await _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(lStart, lEnd)
@@ -678,7 +668,16 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 await Parallel.ForEachAsync(targetHosts, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, async (host, token) =>
                 {
                     var chunks = await _storageScanner.GetChunksForStationAsync(host, startUtc, endUtc);
-                    var sample = chunks.LastOrDefault() ?? await _storageScanner.GetStationSampleChunkAsync(host);
+                    if (chunks.Count == 0)
+                    {
+                        // No recordings in the requested interval
+                        return;
+                    }
+                    var sample = chunks.LastOrDefault();
+                    if (sample == null)
+                    {
+                        return;
+                    }
 
                     int width = sample?.Width ?? 1920;
                     int height = sample?.Height ?? 1080;

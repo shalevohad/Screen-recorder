@@ -41,7 +41,12 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
                     const data = await res.json();
                     const rawList = Array.isArray(data) ? data : (data.stations || data.items || []);
 
-                    const normalized = rawList.map(item => ({
+                    const normalized = rawList
+                        .filter(item => {
+                            const count = item.recordingsCount || (item.segments ? item.segments.length : 0);
+                            return count > 0;
+                        })
+                        .map(item => ({
                         id: String(item.id || item.stationId || item.agentId || item.hostname),
                         hostname: item.hostname || 'Station',
                         roleAlias: item.roleAlias || null,

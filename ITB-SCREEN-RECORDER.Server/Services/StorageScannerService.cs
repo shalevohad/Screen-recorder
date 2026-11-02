@@ -101,8 +101,8 @@ public class StorageScannerService : IStorageScannerService
             SELECT DISTINCT station_id 
             FROM recording_chunks 
             WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs
-            UNION
-            SELECT hostname FROM station_overrides
+
+
             ORDER BY 1 ASC;
         ";
 

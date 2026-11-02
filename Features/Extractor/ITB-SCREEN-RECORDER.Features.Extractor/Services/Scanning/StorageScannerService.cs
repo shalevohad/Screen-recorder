@@ -144,11 +144,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                 const string sql = @"
                     SELECT DISTINCT station_id 
                     FROM recording_chunks 
-                    WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs
-                    UNION
-                    SELECT station_id FROM recording_chunks
-                    UNION
-                    SELECT station_id FROM station_nodes;";
+                    WHERE end_epoch_ms >= @startMs AND start_epoch_ms <= @endMs;";
+
+
+
+
 
                 var dbHosts = await conn.QueryAsync<string>(sql, new { startMs, endMs });
                 foreach (var h in dbHosts.Where(s => !string.IsNullOrWhiteSpace(s)))

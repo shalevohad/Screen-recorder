@@ -227,8 +227,23 @@ export default function StationDrawer({
         return map;
     }, [allStations, recordingSegments, baseEpochMs, durationMs, isSegmentsSyncing, isLoadingStations, isLoadingSegments]);
 
+    const activeStationsWithRecordings = useMemo(() => {
+        return allStations.filter(st => {
+            const meta = stationMetaMap.get(st.id);
+            const hasSegments = (recordingSegments && recordingSegments[st.id] && recordingSegments[st.id].length > 0) ||
+                                (st.segments && st.segments.length > 0);
+            const hasCoverage = meta && (meta.coveragePct > 0 || meta.totalRecordedMs > 0);
+            const hasInitialCount = typeof st.recordingsCount === 'number' && st.recordingsCount > 0;
+
+            if (meta && !meta.isLoading) {
+                return hasCoverage || hasSegments;
+            }
+            return hasInitialCount || hasSegments;
+        });
+    }, [allStations, stationMetaMap, recordingSegments]);
+
     const filteredStations = useMemo(() => {
-        return allStations
+        return activeStationsWithRecordings
             .filter(st => {
                 if (activeTab.id !== 'all' && !activeTabStationIds.includes(st.id)) return false;
                 const matchesSearch = (st.displayName || st.hostname || st.name || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -244,7 +259,7 @@ export default function StationDrawer({
                 return true;
             })
             .sort((a, b) => sortAlpha ? (a.displayName || a.hostname || '').localeCompare(b.displayName || b.hostname || '') : 0);
-    }, [allStations, activeTab, activeTabStationIds, searchTerm, filterMode, selectedStationIds, sortAlpha, stationMetaMap]);
+    }, [activeStationsWithRecordings, activeTab, activeTabStationIds, searchTerm, filterMode, selectedStationIds, sortAlpha, stationMetaMap]);
 
     const effectiveViewMode = useMemo(() => {
         if (manualViewMode !== null) return manualViewMode;
@@ -404,8 +419,8 @@ export default function StationDrawer({
                                     <div className="sync-text-group">
                                         <span className="sync-title">
                                             {isSegmentsSyncing
-                                                ? `ANALYZING TIMELINE ARCHIVES • ${loadedStationsCount} OF ${allStations.length} STATIONS SYNCED (${Math.min(100, Math.round((loadedStationsCount / allStations.length) * 100))}%)`
-                                                : `ALL WORKSTATION ARCHIVES SYNCED • ${allStations.length} STATIONS READY`}
+                                                ? `ANALYZING TIMELINE ARCHIVES • ${loadedStationsCount} OF ${activeStationsWithRecordings.length} STATIONS SYNCED (${activeStationsWithRecordings.length > 0 ? Math.min(100, Math.round((loadedStationsCount / activeStationsWithRecordings.length) * 100)) : 100}%)`
+                                                : `ALL WORKSTATION ARCHIVES SYNCED • ${activeStationsWithRecordings.length} STATIONS READY`}
                                         </span>
                                         <span className="sync-subtitle">
                                             {isSegmentsSyncing
@@ -437,7 +452,7 @@ export default function StationDrawer({
                                 setManualViewMode(null);
                             }}
                             isLoadingTabs={isLoadingTabs}
-                            allStations={allStations}
+                            allStations={activeStationsWithRecordings}
                             selectedStationIds={selectedStationIds}
                             filterMode={filterMode}
                             onFilterModeChange={setFilterMode}
