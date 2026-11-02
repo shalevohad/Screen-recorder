@@ -1283,6 +1283,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             var (targetWidth, targetHeight, targetBitrateKbps) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
             var filterBuilder = new System.Text.StringBuilder();
+            string? fontClause = ResolveSystemFontClause();
             bool isTimeline = job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 1;
 
             if (isTimeline)
@@ -1401,11 +1402,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={scaledBorder}");
                         }
 
-                        if (!string.IsNullOrWhiteSpace(p.Label))
+                        if (!string.IsNullOrWhiteSpace(p.Label) && !string.IsNullOrEmpty(fontClause))
                         {
                             string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
                             int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
-                            ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                            ops.Add($"drawtext={fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
                         }
 
                         filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
@@ -1561,11 +1562,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={scaledBorder}");
                     }
 
-                    if (!string.IsNullOrWhiteSpace(p.Label))
+                    if (!string.IsNullOrWhiteSpace(p.Label) && !string.IsNullOrEmpty(fontClause))
                     {
                         string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
                         int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
-                        ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                        ops.Add($"drawtext={fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
                     }
 
                     filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
@@ -1725,6 +1726,53 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (hex.StartsWith("#")) hex = "0x" + hex.Substring(1);
             if (!hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = "0x" + hex;
             return hex;
+        }
+
+        public static string? ResolveSystemFontClause()
+        {
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    string fontsDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                    string[] winCandidates = {
+                        Path.Combine(fontsDir, "arial.ttf"),
+                        Path.Combine(fontsDir, "segoeui.ttf"),
+                        Path.Combine(fontsDir, "tahoma.ttf"),
+                        Path.Combine(fontsDir, "consola.ttf"),
+                        "C:/Windows/Fonts/arial.ttf"
+                    };
+                    foreach (var font in winCandidates)
+                    {
+                        if (File.Exists(font))
+                        {
+                            string normalized = font.Replace("\\", "/").Replace(":", "\\:");
+                            return $"fontfile='{normalized}':";
+                        }
+                    }
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    string[] linuxCandidates = {
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                        "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
+                    };
+                    foreach (var font in linuxCandidates)
+                    {
+                        if (File.Exists(font))
+                        {
+                            return $"fontfile='{font}':";
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return null;
         }
 
         public static string ResolveTargetDisplayKey(string? targetDisplayId, IEnumerable<string> availableDisplays)

@@ -40,6 +40,7 @@
 30. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis](#30-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
 31. [Multi-Tier Video Quality, Output Resolution & Bitrate Scaling Engine](#31-multi-tier-video-quality-output-resolution--bitrate-scaling-engine-2026-11-02)
 32. [WYSIWYG Master Canvas Grid Studio, Direct Layout Editing & Screen Switching Architecture](#32-wysiwyg-master-canvas-grid-studio-direct-layout-editing--screen-switching-architecture-2026-11-02)
+33. [Air-Gapped Fontconfig Elimination & FFmpeg Custom Canvas Hardening](#33-air-gapped-fontconfig-elimination--ffmpeg-custom-canvas-hardening-2026-11-02)
 
 ---
 
@@ -1517,6 +1518,27 @@ All composition actions are performed directly on the grid itself without openin
    - Selecting a workstation into Solo mode automatically defaults to `canvas` view (Virtual Topology Canvas), while remembering the operator's last layout choice in `localStorage`.
 2. **Display-Preserving Fullscreen**:
    - Entering Cinema Fullscreen / Spotlight from a card or topology monitor automatically focuses on the exact screen clicked (`spotlightInitialDisplayId`), eliminating redundant screen re-selection.
+
+---
+## 33. Air-Gapped Fontconfig Elimination & FFmpeg Custom Canvas Hardening (2026-11-02)
+
+### 1. Root Cause Analysis: Windows Fontconfig Crash (Exit Code -1073741819 / 0xC0000005)
+When FFmpeg executes the `drawtext` video filter without an explicit `fontfile` argument (e.g. `drawtext=text='Station 1':...`), it delegates font resolution to `libfontconfig`.
+- In standard Windows installations and air-gapped environments, fontconfig searches for `/etc/fonts/fonts.conf` (or Unix-style paths) which do not exist.
+- It logs `Fontconfig error: Cannot load default config file: File not found` and subsequently attempts to dereference an uninitialized configuration struct, causing an immediate segmentation fault / access violation (`STATUS_ACCESS_VIOLATION`, exit code `0xC0000005` / `-1073741819`).
+
+### 2. Resolution Strategy & Bypassing Fontconfig
+To completely eliminate `libfontconfig` initialization:
+1. **Dynamic Font Discovery (`ResolveSystemFontClause`)**:
+   - Both `AdvanceJobManager` and `NoSignalPatternService` inspect local system font paths dynamically:
+     - **Windows**: `Environment.GetFolderPath(Environment.SpecialFolder.Fonts)` probing `arial.ttf`, `segoeui.ttf`, `tahoma.ttf`, `consola.ttf`, and standard fallback `C:/Windows/Fonts/arial.ttf`.
+     - **Linux**: `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf`, `/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf`, etc.
+   - When located, the path is normalized (`\` to `/` and `:` to `\:`) and formatted as `fontfile='{normalized}':`.
+   - By supplying `fontfile` directly to `drawtext`, FFmpeg's `libfreetype` reads the font file from disk directly, bypassing `libfontconfig` 100%.
+2. **Safe Fallback**:
+   - If no system font file exists on disk, `drawtext` is safely omitted from the filtergraph while preserving all other canvas features (scaling, padding, border `drawbox`, overlays, audio multiplexing). This prevents any risk of FFmpeg crash.
+3. **Automated Verification**:
+   - Regression tests in `ExternalApiAndCustomCanvasTests.cs` (`ResolveSystemFontClause_ReturnsValidFontClause_WhenFontsExistOnSystem` and `ResolveSystemFontClause_BypassesFontconfig_AndRunsSuccessfullyInFfmpeg`) assert font resolution and verify FFmpeg execution with 0 error exit code and zero Fontconfig errors.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

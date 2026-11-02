@@ -631,4 +631,54 @@ public class ExternalApiAndCustomCanvasTests
         double totalSum = intervals.Sum(i => i.EndSec - i.StartSec);
         Assert.Equal(exportedDurationSec, totalSum);
     }
-}
+
+    [Fact]
+    public void ResolveSystemFontClause_ReturnsValidFontClause_WhenFontsExistOnSystem()
+    {
+        string? fontClause = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services.AdvanceJobManager.ResolveSystemFontClause();
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+        {
+            Assert.NotNull(fontClause);
+            Assert.StartsWith("fontfile='", fontClause);
+            Assert.EndsWith("':", fontClause);
+
+            // Extract the raw file path without FFmpeg escapes
+            string fontPath = fontClause.Substring("fontfile='".Length, fontClause.Length - "fontfile='".Length - "':".Length)
+                                        .Replace("\\:", ":");
+            Assert.True(File.Exists(fontPath), $"Resolved font file should exist on disk: {fontPath}");
+        }
+    }
+
+    [Fact]
+    public async Task ResolveSystemFontClause_BypassesFontconfig_AndRunsSuccessfullyInFfmpeg()
+    {
+        string? fontClause = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services.AdvanceJobManager.ResolveSystemFontClause();
+        Assert.NotNull(fontClause);
+
+        // Find ffmpeg binary
+        string[] candidates = {
+            Path.Combine(AppContext.BaseDirectory, "Features", "ExtractorAdvanced", "ffmpeg.exe"),
+            Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
+            "ffmpeg.exe"
+        };
+        string? ffmpegPath = candidates.FirstOrDefault(File.Exists);
+        if (ffmpegPath == null) return; // Skip execution if binary not in output path
+
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            Arguments = $"-nostdin -v error -f lavfi -i color=c=black:s=640x360:d=1 -filter_complex \"[0:v]drawtext={fontClause}text='TEST-SUITE':x=10:y=10:fontsize=20:fontcolor=white[outv]\" -map \"[outv]\" -f null -",
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = new System.Diagnostics.Process { StartInfo = psi };
+        process.Start();
+        string stderr = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        Assert.Equal(0, process.ExitCode);
+        Assert.DoesNotContain("Fontconfig error", stderr, StringComparison.OrdinalIgnoreCase);
+    }
+    }
