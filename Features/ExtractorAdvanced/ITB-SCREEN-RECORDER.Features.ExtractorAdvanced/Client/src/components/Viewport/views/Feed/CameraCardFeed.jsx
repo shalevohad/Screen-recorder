@@ -1,7 +1,7 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Feed/CameraCardFeed.jsx
 // ==========================================
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { frameStore } from '../../../../utils/frameStore.js';
 import { getAudioSettings } from '../../../../utils/studioSessionStore.js';
 import NoSignalHero from '../../overlays/NoSignalHero.jsx';
@@ -23,7 +23,10 @@ export default function CameraCardFeed({
     globalGaps = [],
     recordingSegments = {},
     playbackSpeed = 1,
-    activeAudioStationId = null
+    activeAudioStationId = null,
+    directorPlan = null,
+    isAutoDirectorEnabled = true,
+    targetDisplayId = 'auto'
 }) {
     const stationName = station.hostname || station.name || '';
     const roundedEpochMs = Math.round(currentEpochMs);
@@ -49,7 +52,32 @@ export default function CameraCardFeed({
     currentRelativeMsRef.current = currentEpochMs - baseEpochMs;
 
     const stationDisplays = station?.displays || station?.topology?.displays || [];
-    const [activeDisplayId, setActiveDisplayId] = useState('mon-0');
+    const [manualDisplayId, setManualDisplayId] = useState(null);
+
+    useEffect(() => {
+        setManualDisplayId(null);
+    }, [targetDisplayId]);
+
+    const activeDirectorSegment = useMemo(() => {
+        const plan = directorPlan || station?.directorPlan;
+        if (!plan || !plan.segments || plan.segments.length === 0) return null;
+        return plan.segments.find(s => {
+            const start = s.startEpochMs ?? s.StartEpochMs ?? 0;
+            const end = s.endEpochMs ?? s.EndEpochMs ?? 0;
+            return currentEpochMs >= start && currentEpochMs <= end;
+        }) || plan.segments[0];
+    }, [directorPlan, station?.directorPlan, currentEpochMs]);
+
+    const activeDisplayId = useMemo(() => {
+        if (manualDisplayId) return manualDisplayId.toLowerCase();
+        if (targetDisplayId && targetDisplayId !== 'auto' && targetDisplayId !== 'director') {
+            return targetDisplayId.toLowerCase();
+        }
+        if (stationDisplays.length > 1 && isAutoDirectorEnabled !== false && activeDirectorSegment) {
+            return (activeDirectorSegment.targetDisplayId || activeDirectorSegment.TargetDisplayId || 'mon-0').toLowerCase();
+        }
+        return (stationDisplays[0]?.displayId || 'mon-0').toLowerCase();
+    }, [manualDisplayId, targetDisplayId, stationDisplays, isAutoDirectorEnabled, activeDirectorSegment]);
 
     const stationSegments = recordingSegments[station?.id] || recordingSegments[stationName] || station?.segments || [];
     const isInRecordingSegment = stationSegments.length === 0 || stationSegments.some(seg => {
@@ -502,7 +530,7 @@ export default function CameraCardFeed({
             <PersistentMinimapHud
                 displays={stationDisplays}
                 activeDisplayId={activeDisplayId}
-                onSelectDisplay={(newDispId) => setActiveDisplayId(newDispId)}
+                onSelectDisplay={(newDispId) => setManualDisplayId(newDispId)}
             />
         </div>
     );

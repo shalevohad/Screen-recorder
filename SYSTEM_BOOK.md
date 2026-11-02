@@ -39,6 +39,7 @@
 29. [External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API](#29-external-forensic-inspection-custom-canvas-layout--master-remote-mp4-export-api-2026-11-02)
 30. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis](#30-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
 31. [Multi-Tier Video Quality, Output Resolution & Bitrate Scaling Engine](#31-multi-tier-video-quality-output-resolution--bitrate-scaling-engine-2026-11-02)
+32. [WYSIWYG Master Canvas Grid Studio, Direct Layout Editing & Screen Switching Architecture](#32-wysiwyg-master-canvas-grid-studio-direct-layout-editing--screen-switching-architecture-2026-11-02)
 
 ---
 
@@ -1476,6 +1477,46 @@ Where 128 kbps accounts for the synchronized AAC stereo audio master mix.
    - Dynamic canvas badge displays real-time target dimensions (`3840x2160 4K UHD`, `1920x1080 FHD`, etc.).
    - Persists selected resolution across keyframe editing, timeline saves, and master composition requests.
 
+
+---
+## 32. WYSIWYG Master Canvas Grid Studio, Direct Layout Editing & Screen Switching Architecture (2026-11-02)
+
+### 1. Unified Master Canvas Grid Concept & Elimination of Obsolete Modes
+Prior iterations presented a conceptual disconnect between the multi-station matrix grid and canvas export composition, featuring detached modals and obsolete layout modes (`SPLIT`, `PIP`, `INTER-STATION`, `INTRA-STATION`). In accordance with core directives:
+- **The Viewport Grid IS the Canvas Stage**: The studio multicam viewport is housed in a fixed 16:9 Master Video Frame (`aspect-ratio: 16 / 9`, background `#070A10`), representing the exact 1920x1080 master MP4 export canvas.
+- **Pure Canvas Presets**: Obsolete split/pip tabs are replaced by standardized canvas presets:
+  - `⊞ 1x1`: Single full-frame feed.
+  - `⊞ 1x2 DUAL`: 2 equal columns side by side (Slot 0 left, Slot 1 right).
+  - `⊞ 3-GRID`: 3 feeds (Slot 0 top-left, Slot 1 top-right, Slot 2 bottom-center).
+  - `⊞ 2x2 QUAD`: 4 feeds in a 2x2 quad matrix.
+  - `⊞ AUTO-GRID`: Optimal 16:9 placement based on active feed count.
+
+### 2. Direct Layout & Feed Composition on the Grid
+All composition actions are performed directly on the grid itself without opening detached dialogs:
+1. **Interactive Slot Reordering**:
+   - **HTML5 Drag & Drop**: Operators can drag any slot card and drop it onto another to instantly swap their canvas positions (`handleSwapSlots`).
+   - **Quick Swap Actions**: Toolbar button `⇄ SWAP FEEDS` (swaps slots 0 and 1) and per-card `⇄` quick-swap button.
+2. **Per-Slot Screen Picker Pills**:
+   - For multi-monitor workstations, each card topbar presents instant screen picker pills: `[ ⚡ Auto | 🖥 1 | 🖥 2 ]`.
+   - `⚡ Auto` enables the Auto-Director, smoothly following keyframe cuts across monitors.
+   - `🖥 1` / `🖥 2` locks the slot to that specific physical screen.
+3. **Single Workstation Multi-Screen Composition**:
+   - When a single multi-display workstation is selected in `1x2` or `2x2` preset, Slot 0 automatically binds to Screen 1 and Slot 1 to Screen 2, allowing side-by-side multi-screen review and export.
+
+### 3. WYSIWYG Export Parity & Backend Pipeline Integration
+1. **Live Preview Fidelity**:
+   - Scrubbing and synchronous playback in the Studio Viewport displays the exact active monitors, slot assignments, and Auto-Director screen cuts that will be rendered by FFmpeg.
+2. **Direct Layout Dispatch**:
+   - `MulticamViewport` calculates pixel-perfect 1920x1080 placement geometry (`getCanvasPlacementsForExport`) and broadcasts it to `ExtractorAdvancedStudio`.
+   - On clicking `EXPORT`, the master export dialog takes the visible `canvasLayout` directly (`layoutMode: 'canvas'`), guaranteeing that the exported MP4 video is 100% WYSIWYG identical to the preview.
+3. **Automatic Dwell-Time Compliance**:
+   - In accordance with `SystemConfig.AutoDirector.MinDwellSeconds` (default 10s, configurable in system settings), Auto-Director cuts guarantee stable, non-jarring screen dwell times in both the preview player and the master MP4.
+
+### 4. Solo Focus & Fullscreen Display Transitions
+1. **Solo Focus Mode**:
+   - Selecting a workstation into Solo mode automatically defaults to `canvas` view (Virtual Topology Canvas), while remembering the operator's last layout choice in `localStorage`.
+2. **Display-Preserving Fullscreen**:
+   - Entering Cinema Fullscreen / Spotlight from a card or topology monitor automatically focuses on the exact screen clicked (`spotlightInitialDisplayId`), eliminating redundant screen re-selection.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

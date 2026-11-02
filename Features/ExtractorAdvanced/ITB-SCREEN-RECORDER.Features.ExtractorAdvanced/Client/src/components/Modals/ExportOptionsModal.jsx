@@ -27,7 +27,6 @@ export default function ExportOptionsModal({
         }
     };
 
-    const scopeLabel = compositionSummary.scope === 'inter-station' ? 'INTER-STATION' : 'INTRA-STATION';
     const layoutLabel = (compositionSummary.layout || 'DIRECTOR').toUpperCase();
     const stationsCount = compositionSummary.stationsCount || 1;
     const audioRoutingCount = compositionSummary.audioSegmentsCount || 1;
@@ -93,7 +92,7 @@ export default function ExportOptionsModal({
                         <div className="summary-row">
                             <span className="label">VISUAL COMPOSITION:</span>
                             <span className="value highlight">
-                                [{scopeLabel}] {layoutLabel} {compositionSummary.isPipSwapped ? '(SWAPPED)' : ''}
+                                MASTER CANVAS [{layoutLabel}] (WYSIWYG 16:9)
                             </span>
                         </div>
                         <div className="summary-row">

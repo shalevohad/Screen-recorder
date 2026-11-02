@@ -133,6 +133,7 @@ export default function ExtractorAdvancedStudio() {
 
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isCanvasComposerOpen, setIsCanvasComposerOpen] = useState(false);
+    const [currentCanvasLayout, setCurrentCanvasLayout] = useState(null);
     const [canvasLayoutTimeline, setCanvasLayoutTimeline] = useState(() => {
         return cached.canvasLayoutTimeline || null;
     });
@@ -756,7 +757,9 @@ export default function ExtractorAdvancedStudio() {
                     resolution: targetResolution,
                     videoQuality: targetResolution,
                     compositionScope: compositionScope,
-                    layoutMode: compositionLayout,
+                    layoutMode: 'canvas',
+                    canvasLayout: currentCanvasLayout,
+                    canvasLayoutTimeline: canvasLayoutTimeline,
                     isPipSwapped: isPipSwapped,
                     isAutoDirectorEnabled: isAutoDirectorEnabled,
                     directorSegments: directorSegs,
@@ -770,7 +773,7 @@ export default function ExtractorAdvancedStudio() {
             console.error('[Studio] Export failed:', error);
             alert('Failed to launch background master MP4 export job.');
         }
-    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, compositionLayout, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
+    }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, currentCanvasLayout, canvasLayoutTimeline, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
 
     const handleConfirmCanvasExport = useCallback(async ({ canvasLayoutTimeline, keystrokeMode: chosenKeystrokeMode, resolution: chosenResolution }) => {
         const targetStationIds = timelineStations.map(s => s.id);
@@ -931,6 +934,7 @@ export default function ExtractorAdvancedStudio() {
                                     onToggleAutoDirector={() => setIsAutoDirectorEnabled(p => !p)}
                                     isPipSwapped={isPipSwapped}
                                     onTogglePipSwap={() => setIsPipSwapped(p => !p)}
+                                    onUpdateCanvasLayout={setCurrentCanvasLayout}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}
@@ -1130,7 +1134,7 @@ export default function ExtractorAdvancedStudio() {
                 onConfirm={handleConfirmMasterExport}
                 compositionSummary={{
                     scope: compositionScope,
-                    layout: compositionLayout,
+                    layout: currentCanvasLayout?.preset || compositionLayout,
                     isPipSwapped,
                     isAutoDirectorEnabled,
                     stationsCount: timelineStations.length,

@@ -22,10 +22,16 @@ export default function CameraCard({
     onOpenSpotlight,
     onSelectActiveStation,
     recordingSegments = {},
-    // Playback rate inherited from parent viewport (e.g. 1x, 2x, 4x)
     playbackSpeed = 1,
     activeAudioStationId = null,
-    onSoloAudio
+    onSoloAudio,
+    directorPlan = null,
+    isAutoDirectorEnabled = true,
+    targetDisplayId = 'auto',
+    onSelectDisplayId = null,
+    _slotIndex = 0,
+    borderColor = null,
+    onSwapWithNext = null
 }) {
     const isAudioActive = Boolean(
         activeAudioStationId && (station.id === activeAudioStationId || (station.hostname && station.hostname === activeAudioStationId))
@@ -33,9 +39,13 @@ export default function CameraCard({
     const isOffline = (station.hostname || station.name || '').includes('Offline');
     const statusClass = isOffline ? 'offline' : 'live';
 
+    const stationDisplays = station?.displays || station?.topology?.displays || [];
+    const hasMultipleDisplays = stationDisplays.length > 1;
+
     const handleCardClick = () => {
         if (isSolo) {
-            if (onOpenSpotlight) onOpenSpotlight(station.id);
+            const dispToOpen = (targetDisplayId && targetDisplayId !== 'auto' && targetDisplayId !== 'director') ? targetDisplayId : null;
+            if (onOpenSpotlight) onOpenSpotlight(station.id, dispToOpen);
         } else {
             if (onSelectActiveStation) onSelectActiveStation(station.id);
         }
@@ -56,6 +66,7 @@ export default function CameraCard({
                 onClick={handleCardClick}
                 onContextMenu={handleCardContextMenu}
                 className={`camera-card ${statusClass} ${isSolo ? 'is-solo-card' : ''}`}
+                style={borderColor ? { borderColor } : undefined}
             >
                 <div className="card-topbar">
                     <div className="station-meta">
@@ -68,7 +79,51 @@ export default function CameraCard({
                         )}
                     </div>
 
+                    {hasMultipleDisplays && (
+                        <div className="card-display-picker-group" onClick={(e) => e.stopPropagation()}>
+                            <button
+                                type="button"
+                                className={`btn-disp-pill ${(!targetDisplayId || targetDisplayId === 'auto' || targetDisplayId === 'director') ? 'active' : ''}`}
+                                onClick={() => onSelectDisplayId?.('auto')}
+                                title="Auto-Director: Automatically follows active monitor cuts"
+                            >
+                                ⚡ Auto
+                            </button>
+                            {stationDisplays.map((disp, dIdx) => {
+                                const dId = (disp.displayId || `mon-${dIdx}`).toLowerCase();
+                                const isActive = targetDisplayId?.toLowerCase() === dId;
+                                return (
+                                    <button
+                                        key={dId}
+                                        type="button"
+                                        className={`btn-disp-pill ${isActive ? 'active' : ''}`}
+                                        onClick={() => onSelectDisplayId?.(dId)}
+                                        title={`Lock Slot to Monitor ${dIdx + 1} (${disp.width || 1920}x${disp.height || 1080})`}
+                                    >
+                                        🖥 {dIdx + 1}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+
                     <div className="card-header-actions">
+                        {onSwapWithNext && (
+                            <button
+                                type="button"
+                                className="btn-card-action swap-action"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSwapWithNext();
+                                }}
+                                title="Swap Slot Position (⇄)"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13">
+                                    <path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4" />
+                                </svg>
+                            </button>
+                        )}
+
                         {onSoloAudio && (
                             <button
                                 type="button"
@@ -100,7 +155,8 @@ export default function CameraCard({
                                 className="btn-card-action"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    onOpenSpotlight(station.id);
+                                    const dispToOpen = (targetDisplayId && targetDisplayId !== 'auto' && targetDisplayId !== 'director') ? targetDisplayId : null;
+                                    onOpenSpotlight(station.id, dispToOpen);
                                 }}
                                 title="Cinema Fullscreen Inspection"
                             >
@@ -145,6 +201,9 @@ export default function CameraCard({
                         recordingSegments={recordingSegments}
                         playbackSpeed={playbackSpeed}
                         activeAudioStationId={activeAudioStationId}
+                        directorPlan={directorPlan}
+                        isAutoDirectorEnabled={isAutoDirectorEnabled}
+                        targetDisplayId={targetDisplayId}
                     />
 
                     {isSolo && !isPlaying && (
