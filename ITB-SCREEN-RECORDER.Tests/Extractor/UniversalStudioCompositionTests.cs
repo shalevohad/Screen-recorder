@@ -1,3 +1,4 @@
+using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services;
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -151,5 +152,143 @@ public class UniversalStudioCompositionTests
         bool shouldUseDirector = screenCountForStation <= 1 && availableDisps.Count > 1;
         Assert.False(shouldUseDirector);
         Assert.Equal(2, screenCountForStation);
+    }
+
+    [Theory]
+    [InlineData("HD", 1280, 720, 2500)]
+    [InlineData("720p", 1280, 720, 2500)]
+    [InlineData("720", 1280, 720, 2500)]
+    [InlineData("1280x720", 1280, 720, 2500)]
+    [InlineData("FHD", 1920, 1080, 6000)]
+    [InlineData("1080p", 1920, 1080, 6000)]
+    [InlineData("1080", 1920, 1080, 6000)]
+    [InlineData("1920x1080", 1920, 1080, 6000)]
+    [InlineData("FullHD", 1920, 1080, 6000)]
+    [InlineData("2K", 2560, 1440, 12000)]
+    [InlineData("1440p", 2560, 1440, 12000)]
+    [InlineData("2560x1440", 2560, 1440, 12000)]
+    [InlineData("QHD", 2560, 1440, 12000)]
+    [InlineData("4K", 3840, 2160, 24000)]
+    [InlineData("2160p", 3840, 2160, 24000)]
+    [InlineData("3840x2160", 3840, 2160, 24000)]
+    [InlineData("UHD", 3840, 2160, 24000)]
+    [InlineData(null, 1920, 1080, 6000)]
+    [InlineData("", 1920, 1080, 6000)]
+    [InlineData("invalid_quality", 1920, 1080, 6000)]
+    public void ParseQualityResolution_MapsAllAliasesCorrectly(string? input, int expectedW, int expectedH, int expectedBitrate)
+    {
+        var (w, h, bitrate) = AdvanceJobManager.ParseQualityResolution(input);
+        Assert.Equal(expectedW, w);
+        Assert.Equal(expectedH, h);
+        Assert.Equal(expectedBitrate, bitrate);
+    }
+
+    [Theory]
+    [InlineData("HD", "HD")]
+    [InlineData("720p", "HD")]
+    [InlineData("FHD", "FHD")]
+    [InlineData("1080p", "FHD")]
+    [InlineData("2K", "2K")]
+    [InlineData("1440p", "2K")]
+    [InlineData("4K", "4K")]
+    [InlineData("2160p", "4K")]
+    [InlineData(null, "FHD")]
+    [InlineData("unknown", "FHD")]
+    public void NormalizeQualityName_ResolvesStandardTier(string? input, string expectedCanonical)
+    {
+        string canonical = AdvanceJobManager.NormalizeQualityName(input);
+        Assert.Equal(expectedCanonical, canonical);
+    }
+
+    [Fact]
+    public void QualityScaling_Scales4KCoordinates_Proportionally()
+    {
+        int refW = 1920;
+        int refH = 1080;
+        var (targetW, targetH, _) = AdvanceJobManager.ParseQualityResolution("4K");
+        Assert.Equal(3840, targetW);
+        Assert.Equal(2160, targetH);
+
+        double scaleX = (double)targetW / refW;
+        double scaleY = (double)targetH / refH;
+
+        Assert.Equal(2.0, scaleX);
+        Assert.Equal(2.0, scaleY);
+
+        // Window originally at (960, 0, 960, 1080)
+        int scaledX = (int)Math.Round(960 * scaleX);
+        int scaledY = (int)Math.Round(0 * scaleY);
+        int scaledW = (int)Math.Round(960 * scaleX);
+        int scaledH = (int)Math.Round(1080 * scaleY);
+
+        Assert.Equal(1920, scaledX);
+        Assert.Equal(0, scaledY);
+        Assert.Equal(1920, scaledW);
+        Assert.Equal(2160, scaledH);
+
+        // Scaled font and border
+        int scaledFont = Math.Max(10, (int)Math.Round(13 * scaleX));
+        int scaledBorder = Math.Max(1, (int)Math.Round(2 * scaleX));
+
+        Assert.Equal(26, scaledFont);
+        Assert.Equal(4, scaledBorder);
+    }
+
+    [Fact]
+    public void QualityScaling_Scales720pCoordinates_Proportionally()
+    {
+        int refW = 1920;
+        int refH = 1080;
+        var (targetW, targetH, _) = AdvanceJobManager.ParseQualityResolution("HD");
+        Assert.Equal(1280, targetW);
+        Assert.Equal(720, targetH);
+
+        double scaleX = (double)targetW / refW;
+        double scaleY = (double)targetH / refH;
+
+        int scaledX = (int)Math.Round(960 * scaleX);
+        int scaledW = (int)Math.Round(960 * scaleX);
+        int scaledH = (int)Math.Round(1080 * scaleY);
+
+        Assert.Equal(640, scaledX);
+        Assert.Equal(640, scaledW);
+        Assert.Equal(720, scaledH);
+
+        int scaledFont = Math.Max(10, (int)Math.Round(13 * scaleX));
+        int scaledBorder = Math.Max(1, (int)Math.Round(2 * scaleX));
+
+        Assert.Equal(10, scaledFont); // Clamped minimum
+        Assert.Equal(1, scaledBorder);
+    }
+
+    [Fact]
+    public void QualityFileSizes_ScaleMonotonicallyWithResolutionTiers()
+    {
+        double durationSeconds = 60.0; // 1 minute
+
+        var (_, _, hdBitrate) = AdvanceJobManager.ParseQualityResolution("HD");
+        var (_, _, fhdBitrate) = AdvanceJobManager.ParseQualityResolution("FHD");
+        var (_, _, qhdBitrate) = AdvanceJobManager.ParseQualityResolution("2K");
+        var (_, _, uhdBitrate) = AdvanceJobManager.ParseQualityResolution("4K");
+
+        long hdSize = (long)(((hdBitrate + 128) * 1000.0 / 8.0) * durationSeconds);
+        long fhdSize = (long)(((fhdBitrate + 128) * 1000.0 / 8.0) * durationSeconds);
+        long qhdSize = (long)(((qhdBitrate + 128) * 1000.0 / 8.0) * durationSeconds);
+        long uhdSize = (long)(((uhdBitrate + 128) * 1000.0 / 8.0) * durationSeconds);
+
+        Assert.True(hdSize < fhdSize);
+        Assert.True(fhdSize < qhdSize);
+        Assert.True(qhdSize < uhdSize);
+
+        // Decimal MB: HD ~19.7 MB, FHD ~45.9 MB, 2K ~90.9 MB, 4K ~180.9 MB
+        double hdMb = hdSize / 1_000_000.0;
+        double fhdMb = fhdSize / 1_000_000.0;
+        double qhdMb = qhdSize / 1_000_000.0;
+        double uhdMb = uhdSize / 1_000_000.0;
+
+        Assert.InRange(hdMb, 18.0, 22.0);
+        Assert.InRange(fhdMb, 44.0, 48.0);
+        Assert.InRange(qhdMb, 88.0, 93.0);
+        Assert.InRange(uhdMb, 178.0, 184.0);
     }
 }

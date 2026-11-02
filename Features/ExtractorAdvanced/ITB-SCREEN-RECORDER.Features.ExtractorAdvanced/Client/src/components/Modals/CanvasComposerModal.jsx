@@ -148,6 +148,7 @@ export default function CanvasComposerModal({
     const [activeKfIndex, setActiveKfIndex] = useState(0);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [keystrokeMode, setKeystrokeMode] = useState('BurnIn');
+    const [resolution, setResolution] = useState(initialTimeline?.resolution || 'FHD');
     const [isXmlJsonModalOpen, setIsXmlJsonModalOpen] = useState(false);
     const [dataModalTab, setDataModalTab] = useState('json'); // 'json' | 'xml'
     const [dataText, setDataText] = useState('');
@@ -606,15 +607,16 @@ export default function CanvasComposerModal({
     // SUBMIT & EXECUTE MASTER EXPORT
     // ------------------------------------------
     const handleClose = () => {
-        onSaveTimeline?.({ keyframes });
+        onSaveTimeline?.({ keyframes, resolution });
         onClose();
     };
 
     const handleExecuteMasterExport = () => {
-        onSaveTimeline?.({ keyframes });
+        onSaveTimeline?.({ keyframes, resolution });
         onConfirmExport({
-            canvasLayoutTimeline: { keyframes },
-            keystrokeMode
+            canvasLayoutTimeline: { keyframes, resolution },
+            keystrokeMode,
+            resolution
         });
         onClose();
     };
@@ -634,7 +636,28 @@ export default function CanvasComposerModal({
                     <div className="header-left">
                         <span className="composer-icon">🎨</span>
                         <h2>VISUAL CANVAS COMPOSER & EXPORT STUDIO</h2>
-                        <span className="canvas-badge">1920×1080 MASTER CANVAS</span>
+                        <div className="resolution-selector-pills">
+                            {[
+                                { id: 'HD', label: '720p HD', desc: '1280×720' },
+                                { id: 'FHD', label: '1080p FHD', desc: '1920×1080' },
+                                { id: '2K', label: '2K QHD', desc: '2560×1440' },
+                                { id: '4K', label: '4K UHD', desc: '3840×2160' }
+                            ].map(tier => (
+                                <button
+                                    key={tier.id}
+                                    type="button"
+                                    className={`pill-btn ${resolution === tier.id ? 'active' : ''}`}
+                                    onClick={() => setResolution(tier.id)}
+                                    title={`${tier.label} (${tier.desc})`}
+                                >
+                                    <span className="pill-dot" />
+                                    {tier.label}
+                                </button>
+                            ))}
+                        </div>
+                        <span className="canvas-badge">
+                            {resolution === '4K' ? '3840×2160 4K UHD' : resolution === '2K' ? '2560×1440 2K QHD' : resolution === 'HD' ? '1280×720 HD' : '1920×1080 FHD'}
+                        </span>
                     </div>
                     <div className="header-right">
                         <button type="button" className="btn-close" onClick={onClose}>✕</button>
@@ -1107,6 +1130,12 @@ export default function CanvasComposerModal({
                                 <option value="BurnIn">Burn-In (Coordinates)</option>
                                 <option value="None">None (Clean Video)</option>
                             </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '14px', fontSize: '11px', color: '#94a3b8' }}>
+                            <span>Target:</span>
+                            <span style={{ color: '#06b6d4', fontWeight: 'bold' }}>
+                                {resolution === '4K' ? '4K UHD (3840×2160)' : resolution === '2K' ? '2K QHD (2560×1440)' : resolution === 'HD' ? 'HD (1280×720)' : 'FHD (1920×1080)'}
+                            </span>
                         </div>
                     </div>
 

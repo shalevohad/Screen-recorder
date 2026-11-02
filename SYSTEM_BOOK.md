@@ -38,6 +38,7 @@
 28. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture](#28-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
 29. [External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API](#29-external-forensic-inspection-custom-canvas-layout--master-remote-mp4-export-api-2026-11-02)
 30. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis](#30-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
+31. [Multi-Tier Video Quality, Output Resolution & Bitrate Scaling Engine](#31-multi-tier-video-quality-output-resolution--bitrate-scaling-engine-2026-11-02)
 
 ---
 
@@ -1375,6 +1376,78 @@ In `AdvanceJobManager.cs`:
    - Produces a single, perfectly synchronized, standalone MP4 playable in any video player.
 
 ---
+
+
+
+## 31. Multi-Tier Video Quality, Output Resolution & Bitrate Scaling Engine (2026-11-02)
+
+### 1. Architectural Mission
+To support diverse operational workflows—ranging from rapid, lightweight forensic exports over constrained links to ultra-high-density forensic reviews on large command wall displays—the export pipeline features an end-to-end **Video Quality & Resolution Scaling Engine**.
+
+The engine dynamically translates operator or API quality selections into proportional canvas geometry, scaled typography, border strokes, hardware encoder rate-control parameters, and monotonically estimated export file sizes.
+
+---
+
+### 2. Standardized Quality & Resolution Profiles
+
+The platform standardizes on four deterministic quality tiers:
+
+| Tier Identifier | Aliases | Target Resolution | Target Bitrate | Est. Output File Size | Operational Profile |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`HD`** | `720p`, `720`, `1280x720` | **1280 x 720** | **2,500 kbps** | **~19.7 MB / min** | Compact payload, rapid rendering; optimized for low-bandwidth networks or preliminary triage. |
+| **`FHD`** *(Default)* | `1080p`, `1080`, `1920x1080`, `FullHD` | **1920 x 1080** | **6,000 kbps** | **~45.9 MB / min** | Standard high-fidelity NOC master output; optimal balance of visual clarity and storage efficiency. |
+| **`2K`** | `1440p`, `1440`, `2560x1440`, `QHD` | **2560 x 1440** | **12,000 kbps** | **~90.9 MB / min** | High pixel density; preserves fine font readability, terminal telemetry, and complex multi-window splits. |
+| **`4K`** | `2160p`, `2160`, `3840x2160`, `UHD` | **3840 x 2160** | **24,000 kbps** | **~180.9 MB / min** | Maximum forensic fidelity; uncompromised clarity for massive multi-monitor canvases on video walls. |
+
+---
+
+### 3. Proportional Geometry & Typography Scaling Math
+
+When canvas layouts designed in the default 1080p virtual editor (1920 x 1080) are exported at alternative resolutions, coordinates and visual elements scale proportionally without distortion:
+
+1. **Scale Factors**:
+   - `scaleX = targetWidth / referenceWidth`
+   - `scaleY = targetHeight / referenceHeight`
+2. **Placement Dimensions & Positioning**:
+   - For normalized placements (`0 < w <= 1.0`):
+     - `TargetW = round(w * targetWidth)`, `TargetX = round(x * targetWidth)`
+   - For absolute pixel placements (`w > 1.0`):
+     - `TargetW = round(w * scaleX)`, `TargetX = round(x * scaleX)`
+   - Even-pixel clamping: all dimensions and coordinates are aligned to multiples of 2 for strict H.264 / `yuv420p` encoder compliance (`w -= w % 2`, `x -= x % 2`).
+3. **Burn-In Label Font Size**:
+   - `ScaledFontSize = max(10, round(13 * scaleX))` (10px on 720p, 13px on 1080p, 17px on 2K, 26px on 4K)
+4. **Tactical Placement Borders**:
+   - `ScaledBorderWidth = max(1, round(baseBorder * scaleX))`
+
+---
+
+### 4. Hardware Encoder Rate-Control Integration
+
+`FfmpegBinaryResolver` injects dynamic bitrate limits into NVIDIA NVENC, Intel QuickSync QSV, and CPU libx264 software encoders:
+- Appends or overrides `-b:v {targetBitrateKbps}k -maxrate {targetBitrateKbps}k -bufsize {targetBitrateKbps}k`.
+- Maintains CBR/VBR rate control ensuring predictable output bitrates matching the chosen tier.
+
+---
+
+### 5. Multi-Tier File Size Estimation Formula
+
+For an active export duration $D$ (in seconds), `EstimateCutJobAsync` and `EnqueueAdvanceCutJob` calculate estimated file size in bytes:
+- `EstimatedBytes = max(5 MB, (((targetBitrateKbps + 128) * 1000) / 8) * D)`
+Where 128 kbps accounts for the synchronized AAC stereo audio master mix.
+
+---
+
+### 6. User Interface Integration
+
+1. **Export Options Confirmation Modal (`ExportOptionsModal.jsx`)**:
+   - Features a dedicated **2x2 Tactical Quality Grid** allowing one-click selection between HD, FHD, 2K, and 4K.
+   - Each card displays real-time badges, pixel dimensions, bitrate metrics, and operational descriptions.
+   - Selected resolution is dynamically reflected in the composition summary header and the confirm action button (`CONFIRM & EXPORT MASTER MP4 (FHD 1080p)`).
+2. **Visual Canvas Composer Studio (`CanvasComposerModal.jsx`)**:
+   - Header contains responsive resolution pills: `[ 720p HD | 1080p FHD | 2K QHD | 4K UHD ]`.
+   - Dynamic canvas badge displays real-time target dimensions (`3840x2160 4K UHD`, `1920x1080 FHD`, etc.).
+   - Persists selected resolution across keyframe editing, timeline saves, and master composition requests.
+
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

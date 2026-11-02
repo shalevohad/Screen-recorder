@@ -680,11 +680,12 @@ export default function ExtractorAdvancedStudio() {
         setIsExportModalOpen(true);
     }, [timelineStations]);
 
-    const handleConfirmMasterExport = useCallback(async (chosenKeystrokeMode) => {
+    const handleConfirmMasterExport = useCallback(async (chosenKeystrokeMode, chosenResolution) => {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return;
 
         let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
+        const targetResolution = chosenResolution || 'FHD';
 
         const directorSegs = ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1))
             ? (enrichedActiveStation?.directorPlan?.segments || [])
@@ -699,6 +700,8 @@ export default function ExtractorAdvancedStudio() {
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
                     keystrokeMode: resolvedMode,
+                    resolution: targetResolution,
+                    videoQuality: targetResolution,
                     compositionScope: compositionScope,
                     layoutMode: compositionLayout,
                     isPipSwapped: isPipSwapped,
@@ -716,11 +719,12 @@ export default function ExtractorAdvancedStudio() {
         }
     }, [timelineStations, timelineBaseEpochMs, inPointMs, outPointMs, compositionScope, compositionLayout, isPipSwapped, isAutoDirectorEnabled, enrichedActiveStation, effectiveAudioPlan]);
 
-    const handleConfirmCanvasExport = useCallback(async ({ canvasLayoutTimeline, keystrokeMode: chosenKeystrokeMode }) => {
+    const handleConfirmCanvasExport = useCallback(async ({ canvasLayoutTimeline, keystrokeMode: chosenKeystrokeMode, resolution: chosenResolution }) => {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return;
 
         let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
+        const targetResolution = chosenResolution || canvasLayoutTimeline?.resolution || 'FHD';
 
         try {
             const response = await fetch('/api/v1/extractor-advanced/cut', {
@@ -731,6 +735,8 @@ export default function ExtractorAdvancedStudio() {
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
                     keystrokeMode: resolvedMode,
+                    resolution: targetResolution,
+                    videoQuality: targetResolution,
                     compositionScope: compositionScope,
                     layoutMode: 'canvas',
                     canvasLayoutTimeline: canvasLayoutTimeline,
@@ -1074,7 +1080,8 @@ export default function ExtractorAdvancedStudio() {
                     isPipSwapped,
                     isAutoDirectorEnabled,
                     stationsCount: timelineStations.length,
-                    audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1
+                    audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1,
+                    resolution: canvasTimeline?.resolution || 'FHD'
                 }}
             />
 

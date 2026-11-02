@@ -31,6 +31,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
 
+        public string Resolution { get; set; } = "FHD";
+        public string? VideoQuality { get; set; }
+
         public string CompositionScope { get; set; } = "intra-station";
         public string LayoutMode { get; set; } = "director";
         public string? TargetDisplayId { get; set; }
@@ -56,6 +59,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("keystrokeMode")]
         public KeystrokeExportMode KeystrokeMode { get; set; } = KeystrokeExportMode.BurnIn;
+
+        [JsonPropertyName("resolution")]
+        public string? Resolution { get; set; }
+
+        [JsonPropertyName("videoQuality")]
+        public string? VideoQuality { get; set; }
 
         [JsonPropertyName("compositionScope")]
         public string CompositionScope { get; set; } = "intra-station";
@@ -104,6 +113,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
     [XmlRoot("CanvasLayoutTimeline")]
     public class CanvasLayoutTimelineDto
     {
+        [JsonPropertyName("resolution")]
+        [XmlElement("Resolution")]
+        public string? Resolution { get; set; }
+
         [JsonPropertyName("keyframes")]
         [XmlElement("Keyframe")]
         public List<CanvasLayoutKeyframeDto> Keyframes { get; set; } = new();
@@ -134,6 +147,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
     [XmlRoot("CustomCanvasLayout")]
     public class CustomCanvasLayoutDto
     {
+        [JsonPropertyName("resolution")]
+        [XmlElement("Resolution")]
+        public string? Resolution { get; set; }
+
         [JsonPropertyName("width")]
         [XmlElement("Width")]
         public int Width { get; set; } = 1920;

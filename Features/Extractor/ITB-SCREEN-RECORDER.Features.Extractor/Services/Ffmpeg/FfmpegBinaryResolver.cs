@@ -107,7 +107,12 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
 
             if (bitrateKbps.HasValue && bitrateKbps.Value > 0)
             {
-                return $"{baseArgs} -maxrate {bitrateKbps.Value}k -bufsize {bitrateKbps.Value}k";
+                var rx = new System.Text.RegularExpressions.Regex(@"-maxrate \d+k -bufsize \d+k");
+                if (rx.IsMatch(baseArgs))
+                {
+                    return rx.Replace(baseArgs, $"-b:v {bitrateKbps.Value}k -maxrate {bitrateKbps.Value}k -bufsize {bitrateKbps.Value}k");
+                }
+                return $"{baseArgs} -b:v {bitrateKbps.Value}k -maxrate {bitrateKbps.Value}k -bufsize {bitrateKbps.Value}k";
             }
             return baseArgs;
         }

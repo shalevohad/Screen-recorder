@@ -85,6 +85,38 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
         }
 
+                public static (int Width, int Height, int BitrateKbps) ParseQualityResolution(string? qualityOrResolution)
+        {
+            if (string.IsNullOrWhiteSpace(qualityOrResolution))
+            {
+                return (1920, 1080, 6000);
+            }
+
+            string normalized = qualityOrResolution.Trim().ToUpperInvariant();
+            return normalized switch
+            {
+                "HD" or "720P" or "720" or "1280X720" => (1280, 720, 2500),
+                "FHD" or "1080P" or "1080" or "1920X1080" or "FULLHD" => (1920, 1080, 6000),
+                "2K" or "1440P" or "1440" or "2560X1440" or "QHD" => (2560, 1440, 12000),
+                "4K" or "2160P" or "2160" or "3840X2160" or "UHD" => (3840, 2160, 24000),
+                _ => (1920, 1080, 6000)
+            };
+        }
+
+        public static string NormalizeQualityName(string? qualityOrResolution)
+        {
+            if (string.IsNullOrWhiteSpace(qualityOrResolution)) return "FHD";
+            string normalized = qualityOrResolution.Trim().ToUpperInvariant();
+            return normalized switch
+            {
+                "HD" or "720P" or "720" or "1280X720" => "HD",
+                "FHD" or "1080P" or "1080" or "1920X1080" or "FULLHD" => "FHD",
+                "2K" or "1440P" or "1440" or "2560X1440" or "QHD" => "2K",
+                "4K" or "2160P" or "2160" or "3840X2160" or "UHD" => "4K",
+                _ => "FHD"
+            };
+        }
+
         public async Task<object> EstimateCutJobAsync(AdvancedModels.AdvanceCutRequestDto request)
         {
             DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(request.InEpochMs).UtcDateTime;
@@ -110,18 +142,24 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             var plan = _advancedExtractorService.BuildSynchronizationPlan(request.StationIds, startUtc, endUtc, allStationChunks);
             plan.KeystrokeMode = request.KeystrokeMode;
 
+            string qualityName = NormalizeQualityName(request.Resolution ?? request.VideoQuality ?? request.CanvasLayout?.Resolution ?? request.CanvasLayoutTimeline?.Resolution);
+            var (targetW, targetH, targetBitrateKbps) = ParseQualityResolution(qualityName);
+
             double originalSeconds = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
             double activeFraction = Math.Clamp(plan.TotalActiveSeconds / originalSeconds, 0.05, 1.0);
 
-            long estimatedBytes = (long)(totalRawBytes * activeFraction);
-            if (estimatedBytes < 5 * 1024 * 1024)
-            {
-                estimatedBytes = (long)(request.StationIds.Count * (plan.TotalActiveSeconds / 60.0) * 15.0 * 1024.0 * 1024.0);
-            }
+            // Calculate estimated file size for single master canvas MP4 based on target resolution/bitrate
+            long estimatedBytes = (long)(((targetBitrateKbps + 128) * 1000.0 / 8.0) * plan.TotalActiveSeconds);
+            if (estimatedBytes < 5 * 1024 * 1024) estimatedBytes = 5 * 1024 * 1024;
 
             return new
             {
-                estimatedFileSizeBytes = Math.Max(5 * 1024 * 1024, estimatedBytes),
+                estimatedFileSizeBytes = estimatedBytes,
+                resolution = qualityName,
+                videoQuality = qualityName,
+                width = targetW,
+                height = targetH,
+                targetBitrateKbps = targetBitrateKbps,
                 activeDurationSeconds = Math.Round(plan.TotalActiveSeconds, 1),
                 skippedDurationSeconds = Math.Round(plan.RemovedGlobalGaps.Sum(g => g.SkippedDurationSeconds), 1),
                 removedGlobalGapsCount = plan.RemovedGlobalGaps.Count,
@@ -284,9 +322,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 fileName = $"{exportTimeUtc:yyyy-MM-dd_HH-mm-ss-fff}.mp4";
             }
-            double durationMinutes = (endUtc - startUtc).TotalMinutes;
-            long estimatedSize = (long)(request.StationIds.Count * durationMinutes * 15.0 * 1024.0 * 1024.0);
-            if (estimatedSize < 5 * 1024 * 1024) estimatedSize = 15 * 1024 * 1024;
+            string qualityName = NormalizeQualityName(request.Resolution ?? request.VideoQuality ?? request.CanvasLayout?.Resolution ?? request.CanvasLayoutTimeline?.Resolution);
+            var (targetW, targetH, targetBitrateKbps) = ParseQualityResolution(qualityName);
+
+            double durationSeconds = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
+            double durationMinutes = durationSeconds / 60.0;
+            long estimatedSize = (long)(((targetBitrateKbps + 128) * 1000.0 / 8.0) * durationSeconds);
+            if (estimatedSize < 5 * 1024 * 1024) estimatedSize = 5 * 1024 * 1024;
 
             var job = new AdvancedModels.AdvanceJobInfo
             {
@@ -301,6 +343,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 ProgressPercent = 0,
                 SpeedMBps = 0,
                 FileSizeBytes = estimatedSize,
+                Resolution = qualityName,
+                VideoQuality = qualityName,
                 EstimatedSecondsRemaining = Math.Max(10, (int)(durationMinutes * request.StationIds.Count * 2)),
                 CreatedAtUtc = DateTime.UtcNow,
                 // Enforce keystroke burn-in or none
@@ -343,15 +387,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             return toggled;
         }
 
-                private AdvancedModels.CustomCanvasLayoutDto GenerateDefaultGridLayout(
+        private AdvancedModels.CustomCanvasLayoutDto GenerateDefaultGridLayout(
             List<string> stationIds,
             Dictionary<string, List<RecordingChunkMetadata>> allStationChunks,
-            IReadOnlyDictionary<string, string>? roleMap = null)
+            IReadOnlyDictionary<string, string>? roleMap = null,
+            int targetWidth = 1920,
+            int targetHeight = 1080)
         {
             var layout = new AdvancedModels.CustomCanvasLayoutDto
             {
-                Width = 1920,
-                Height = 1080,
+                Resolution = targetWidth >= 3840 ? "4K" : targetWidth >= 2560 ? "2K" : targetWidth <= 1280 ? "HD" : "FHD",
+                Width = targetWidth,
+                Height = targetHeight,
                 BackgroundColor = "#070A10",
                 Fps = 30.0,
                 Placements = new List<AdvancedModels.CanvasPlacementDto>()
@@ -378,8 +425,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     DisplayId = "director",
                     X = 0,
                     Y = 0,
-                    Width = 1920,
-                    Height = 1080,
+                    Width = targetWidth,
+                    Height = targetHeight,
                     ZIndex = 0,
                     BorderWidth = 0,
                     BorderColor = borderColors[0],
@@ -388,6 +435,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
             else if (count == 2)
             {
+                int halfW = targetWidth / 2;
                 for (int i = 0; i < 2; i++)
                 {
                     string sId = stationIds[i];
@@ -395,10 +443,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     {
                         StationId = sId,
                         DisplayId = "director",
-                        X = i * 960,
+                        X = i * halfW,
                         Y = 0,
-                        Width = 960,
-                        Height = 1080,
+                        Width = halfW,
+                        Height = targetHeight,
                         ZIndex = i,
                         BorderWidth = 2,
                         BorderColor = borderColors[i % borderColors.Length],
@@ -408,16 +456,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
             else if (count <= 4)
             {
+                int halfW = targetWidth / 2;
+                int halfH = targetHeight / 2;
                 for (int i = 0; i < count; i++)
                 {
                     string sId = stationIds[i];
                     int col = i % 2;
                     int row = i / 2;
-                    int x = col * 960;
-                    int y = row * 540;
+                    int x = col * halfW;
+                    int y = row * halfH;
                     if (count == 3 && i == 2)
                     {
-                        x = 480;
+                        x = halfW / 2;
                     }
 
                     layout.Placements.Add(new AdvancedModels.CanvasPlacementDto
@@ -426,8 +476,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         DisplayId = "director",
                         X = x,
                         Y = y,
-                        Width = 960,
-                        Height = 540,
+                        Width = halfW,
+                        Height = halfH,
                         ZIndex = i,
                         BorderWidth = 2,
                         BorderColor = borderColors[i % borderColors.Length],
@@ -437,6 +487,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
             else if (count <= 6)
             {
+                int thirdW = targetWidth / 3;
+                int halfH = targetHeight / 2;
                 for (int i = 0; i < count; i++)
                 {
                     string sId = stationIds[i];
@@ -446,10 +498,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     {
                         StationId = sId,
                         DisplayId = "director",
-                        X = col * 640,
-                        Y = row * 540,
-                        Width = 640,
-                        Height = 540,
+                        X = col * thirdW,
+                        Y = row * halfH,
+                        Width = thirdW,
+                        Height = halfH,
                         ZIndex = i,
                         BorderWidth = 2,
                         BorderColor = borderColors[i % borderColors.Length],
@@ -459,6 +511,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
             else
             {
+                int thirdW = targetWidth / 3;
+                int thirdH = targetHeight / 3;
                 for (int i = 0; i < Math.Min(count, 9); i++)
                 {
                     string sId = stationIds[i];
@@ -468,10 +522,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     {
                         StationId = sId,
                         DisplayId = "director",
-                        X = col * 640,
-                        Y = row * 360,
-                        Width = 640,
-                        Height = 360,
+                        X = col * thirdW,
+                        Y = row * thirdH,
+                        Width = thirdW,
+                        Height = thirdH,
                         ZIndex = i,
                         BorderWidth = 2,
                         BorderColor = borderColors[i % borderColors.Length],
@@ -532,9 +586,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 double originalDurationSec = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
                 double exportedDurationSec = Math.Max(1.0, plan.TotalActiveSeconds);
 
-                if (rawBytes > 0)
+                var (qualityW, qualityH, qualityBitrate) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
+                if (exportedDurationSec > 0)
                 {
-                    job.FileSizeBytes = Math.Max(5 * 1024 * 1024, (long)(rawBytes * (exportedDurationSec / originalDurationSec)));
+                    job.FileSizeBytes = Math.Max(5 * 1024 * 1024, (long)(((qualityBitrate + 128) * 1000.0 / 8.0) * exportedDurationSec));
                 }
 
                 var generatedTrackPaths = new List<string>();
@@ -547,10 +602,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     (job.CanvasLayout == null || job.CanvasLayout.Placements.Count == 0))
                 {
                     var roleMap = await _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(job.InEpochMs, job.OutEpochMs);
-                    var defaultGrid = GenerateDefaultGridLayout(job.StationIds, allStationChunks, roleMap);
+                    var defaultGrid = GenerateDefaultGridLayout(job.StationIds, allStationChunks, roleMap, qualityW, qualityH);
                     job.CanvasLayout = defaultGrid;
                     job.CanvasLayoutTimeline = new AdvancedModels.CanvasLayoutTimelineDto
                     {
+                        Resolution = job.Resolution,
                         Keyframes = new List<AdvancedModels.CanvasLayoutKeyframeDto>
                         {
                             new AdvancedModels.CanvasLayoutKeyframeDto
@@ -1164,7 +1220,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             filterComplex += " [vbase]format=yuv420p[outv]";
 
-            string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs();
+            var (_, _, masterBitrateKbps) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
+            string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: masterBitrateKbps);
             string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
             string arguments = $"-nostdin -v error " +
@@ -1216,6 +1273,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 inputArgsBuilder.Append($"-i \"{tracks[i].FilePath.Replace('\\', '/')}\" ");
             }
 
+            var (targetWidth, targetHeight, targetBitrateKbps) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
             var filterBuilder = new System.Text.StringBuilder();
             bool isTimeline = job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 1;
 
@@ -1254,10 +1312,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     var (intStartSec, intEndSec, intLayout, transType, transDur) = intervals[intIdx];
                     double intDur = intEndSec - intStartSec;
                     string intDurStr = intDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-                    int cW = intLayout.Width > 0 ? intLayout.Width : 1920;
-                    int cH = intLayout.Height > 0 ? intLayout.Height : 1080;
+                    int refW = intLayout.Width > 0 ? intLayout.Width : 1920;
+                    int refH = intLayout.Height > 0 ? intLayout.Height : 1080;
+                    int cW = targetWidth;
+                    int cH = targetHeight;
                     cW -= (cW % 2);
                     cH -= (cH % 2);
+                    double scaleX = (double)cW / refW;
+                    double scaleY = (double)cH / refH;
                     string intBgHex = NormalizeHexColor(intLayout.BackgroundColor, "0x070A10");
 
                     string bgIntLabel = $"[bg_int_{intIdx}]";
@@ -1305,8 +1367,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         }
                         if (inIdx < 0) inIdx = 0;
 
-                        int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * cW) : (int)Math.Round(p.Width);
-                        int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * cH) : (int)Math.Round(p.Height);
+                        int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * cW) : (int)Math.Round(p.Width * scaleX);
+                        int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * cH) : (int)Math.Round(p.Height * scaleY);
                         if (targetW <= 0) targetW = cW;
                         if (targetH <= 0) targetH = cH;
                         targetW -= (targetW % 2);
@@ -1327,13 +1389,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         if (p.BorderWidth > 0)
                         {
                             string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
-                            ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={p.BorderWidth}");
+                            int scaledBorder = Math.Max(1, (int)Math.Round(p.BorderWidth * scaleX));
+                            ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={scaledBorder}");
                         }
 
                         if (!string.IsNullOrWhiteSpace(p.Label))
                         {
                             string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
-                            ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize=13:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                            int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
+                            ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
                         }
 
                         filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
@@ -1347,8 +1411,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         string pLabel = iPlacementLabels[pIdx];
                         string nxtSurface = (pIdx == iSortedPlacements.Count - 1) ? $"[raw_int_{intIdx}]" : $"[t_{intIdx}_{pIdx}]";
 
-                        int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * cW) : (int)Math.Round(p.X);
-                        int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * cH) : (int)Math.Round(p.Y);
+                        int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * cW) : (int)Math.Round(p.X * scaleX);
+                        int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * cH) : (int)Math.Round(p.Y * scaleY);
+                        targetX -= (targetX % 2);
+                        targetY -= (targetY % 2);
 
                         filterBuilder.Append($"{curSurface}{pLabel}overlay={targetX}:{targetY}{nxtSurface}; ");
                         curSurface = nxtSurface;
@@ -1408,10 +1474,14 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     ? job.CanvasLayoutTimeline.Keyframes[0].Layout
                     : (job.CanvasLayout ?? new AdvancedModels.CustomCanvasLayoutDto());
 
-                int canvasW = layout.Width > 0 ? layout.Width : 1920;
-                int canvasH = layout.Height > 0 ? layout.Height : 1080;
+                int refW = layout.Width > 0 ? layout.Width : 1920;
+                int refH = layout.Height > 0 ? layout.Height : 1080;
+                int canvasW = targetWidth;
+                int canvasH = targetHeight;
                 canvasW -= (canvasW % 2);
                 canvasH -= (canvasH % 2);
+                double scaleX = (double)canvasW / refW;
+                double scaleY = (double)canvasH / refH;
 
                 string bgHex = NormalizeHexColor(layout.BackgroundColor, "0x070A10");
                 string durationStr = exportedDurationSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
@@ -1462,8 +1532,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     if (inIdx < 0) inIdx = 0;
 
                     // Calculate geometry
-                    int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * canvasW) : (int)Math.Round(p.Width);
-                    int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * canvasH) : (int)Math.Round(p.Height);
+                    int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * canvasW) : (int)Math.Round(p.Width * scaleX);
+                    int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * canvasH) : (int)Math.Round(p.Height * scaleY);
                     if (targetW <= 0) targetW = canvasW;
                     if (targetH <= 0) targetH = canvasH;
                     targetW -= (targetW % 2);
@@ -1479,13 +1549,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     if (p.BorderWidth > 0)
                     {
                         string bColor = NormalizeHexColor(p.BorderColor, "0x06B6D4");
-                        ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={p.BorderWidth}");
+                        int scaledBorder = Math.Max(1, (int)Math.Round(p.BorderWidth * scaleX));
+                        ops.Add($"drawbox=x=0:y=0:w=iw:h=ih:color={bColor}@0.85:t={scaledBorder}");
                     }
 
                     if (!string.IsNullOrWhiteSpace(p.Label))
                     {
                         string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
-                        ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize=13:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                        int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
+                        ops.Add($"drawtext=text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
                     }
 
                     filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
@@ -1503,8 +1575,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     string pLabel = placementLabels[pIdx];
                     string nextSurface = (pIdx == sortedPlacements.Count - 1) ? "[vbase]" : $"[t_{pIdx}]";
 
-                    int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * canvasW) : (int)Math.Round(p.X);
-                    int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * canvasH) : (int)Math.Round(p.Y);
+                    int targetX = p.X < 1.0 && p.X >= 0 && p.Width <= 1.0 ? (int)Math.Round(p.X * canvasW) : (int)Math.Round(p.X * scaleX);
+                    int targetY = p.Y < 1.0 && p.Y >= 0 && p.Height <= 1.0 ? (int)Math.Round(p.Y * canvasH) : (int)Math.Round(p.Y * scaleY);
+                    targetX -= (targetX % 2);
+                    targetY -= (targetY % 2);
 
                     string enableClause = "";
                     if (p.StartOffsetMs.HasValue || p.EndOffsetMs.HasValue)
@@ -1599,7 +1673,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             filterBuilder.Append(" [vbase]format=yuv420p[outv]");
 
-            string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs();
+            string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: targetBitrateKbps);
             string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
             string arguments = $"-nostdin -v error " +
