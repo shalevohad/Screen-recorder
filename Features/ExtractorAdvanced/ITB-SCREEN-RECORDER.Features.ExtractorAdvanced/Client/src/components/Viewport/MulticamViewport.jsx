@@ -88,6 +88,31 @@ export default function MulticamViewport({
     const [showHudControls, setShowHudControls] = useState(true);
     const hudTimerRef = useRef(null);
 
+    const [isGridMatrixView, setIsGridMatrixView] = useState(() => {
+        return timelineStations.length > 2 && compositionScope !== 'inter-station';
+    });
+
+    const [viewMode, setViewMode] = useState(() => {
+        try {
+            return localStorage.getItem('itb_multicam_view_mode') || 'paged';
+        } catch {
+            return 'paged';
+        }
+    });
+
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const handleSetViewMode = useCallback((mode) => {
+        setViewMode(mode);
+        try {
+            localStorage.setItem('itb_multicam_view_mode', mode);
+        } catch { }
+    }, []);
+
+    const [isSpotlightActive, setIsSpotlightActive] = useState(() => {
+        return typeof document !== 'undefined' && document.body.classList.contains('itb-spotlight-active');
+    });
+
     useEffect(() => {
         if (timelineStations.length > 0 && (!activeAudioStationId || !timelineStations.some(s => s.id === activeAudioStationId))) {
             setActiveAudioStationId(timelineStations[0].id);
@@ -155,31 +180,6 @@ export default function MulticamViewport({
             setShowHudControls(false);
         }, 3200);
     }, [isGridFullscreen]);
-
-    const [isGridMatrixView, setIsGridMatrixView] = useState(() => {
-        return timelineStations.length > 2 && compositionScope !== 'inter-station';
-    });
-
-    const [viewMode, setViewMode] = useState(() => {
-        try {
-            return localStorage.getItem('itb_multicam_view_mode') || 'paged';
-        } catch {
-            return 'paged';
-        }
-    });
-
-    const [currentPage, setCurrentPage] = useState(1);
-
-    const handleSetViewMode = useCallback((mode) => {
-        setViewMode(mode);
-        try {
-            localStorage.setItem('itb_multicam_view_mode', mode);
-        } catch { }
-    }, []);
-
-    const [isSpotlightActive, setIsSpotlightActive] = useState(() => {
-        return typeof document !== 'undefined' && document.body.classList.contains('itb-spotlight-active');
-    });
 
     useEffect(() => {
         const handleSpotlightChange = (e) => setIsSpotlightActive(!!e.detail?.isOpen);

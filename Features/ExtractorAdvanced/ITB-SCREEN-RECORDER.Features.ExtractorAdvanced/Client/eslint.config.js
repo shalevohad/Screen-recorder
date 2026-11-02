@@ -51,6 +51,7 @@ export default [
             // Standard core React Hooks rules
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'warn',
+            'no-use-before-define': ['error', { functions: false, classes: true, variables: true, allowNamedExports: false }],
 
             // Disable React Compiler rules that are incompatible with custom stores and effects
             'react-hooks/set-state-in-effect': 'off',

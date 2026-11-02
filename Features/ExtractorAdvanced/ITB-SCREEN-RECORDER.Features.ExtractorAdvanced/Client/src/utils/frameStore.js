@@ -48,6 +48,33 @@ function processQueue() {
  * 
  * @param {{ key: string, hostname: string, epochMs: number, displayId: string, signal: AbortSignal, resolve: (val: any) => void }} task
  */
+/**
+ * Stores a frame value and notifies subscribers.
+ * 
+ * @param {string} hostname
+ * @param {number} rawEpochMs
+ * @param {string} value
+ * @param {string} [displayId='mon-0']
+ */
+function setFrame(hostname, rawEpochMs, value, displayId = 'mon-0') {
+    const epochMs = quantize(rawEpochMs);
+    const disp = displayId || 'mon-0';
+    const key = `${hostname}_${disp}_${epochMs}`;
+
+    // LRU eviction if cache exceeds capacity
+    if (frameCache.size >= MAX_CACHE_SIZE) {
+        const oldestKey = frameCache.keys().next().value;
+        const oldestVal = frameCache.get(oldestKey);
+        if (oldestVal && oldestVal.startsWith('blob:')) {
+            URL.revokeObjectURL(oldestVal);
+        }
+        frameCache.delete(oldestKey);
+    }
+
+    frameCache.set(key, value);
+    listeners.forEach(listener => listener(hostname, epochMs, value, disp));
+}
+
 async function executeTask(task) {
     const { key, hostname, epochMs, displayId, signal, resolve } = task;
     try {
@@ -61,17 +88,17 @@ async function executeTask(task) {
         if (res.status === 200) {
             const blob = await res.blob();
             const blobUrl = URL.createObjectURL(blob);
-            frameStore.set(hostname, epochMs, blobUrl, displayId);
+            setFrame(hostname, epochMs, blobUrl, displayId);
             resolve(blobUrl);
         } else if (res.status === 204) {
-            frameStore.set(hostname, epochMs, 'NO_SIGNAL', displayId);
+            setFrame(hostname, epochMs, 'NO_SIGNAL', displayId);
             resolve('NO_SIGNAL');
         } else {
             resolve(null);
         }
     } catch (err) {
         if (err.name !== 'AbortError') {
-            frameStore.set(hostname, epochMs, 'NO_SIGNAL', displayId);
+            setFrame(hostname, epochMs, 'NO_SIGNAL', displayId);
             resolve('NO_SIGNAL');
         } else {
             resolve(null);
@@ -113,24 +140,7 @@ export const frameStore = {
      * @param {string} value
      * @param {string} [displayId='mon-0']
      */
-    set(hostname, rawEpochMs, value, displayId = 'mon-0') {
-        const epochMs = quantize(rawEpochMs);
-        const disp = displayId || 'mon-0';
-        const key = `${hostname}_${disp}_${epochMs}`;
-
-        // LRU eviction if cache exceeds capacity
-        if (frameCache.size >= MAX_CACHE_SIZE) {
-            const oldestKey = frameCache.keys().next().value;
-            const oldestVal = frameCache.get(oldestKey);
-            if (oldestVal && oldestVal.startsWith('blob:')) {
-                URL.revokeObjectURL(oldestVal);
-            }
-            frameCache.delete(oldestKey);
-        }
-
-        frameCache.set(key, value);
-        listeners.forEach(listener => listener(hostname, epochMs, value, disp));
-    },
+    set: setFrame,
 
     /**
      * Clears all cached frames, releases blob URLs, and flushes queues.
