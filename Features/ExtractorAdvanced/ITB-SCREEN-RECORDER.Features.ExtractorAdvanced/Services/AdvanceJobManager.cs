@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
@@ -36,6 +37,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
         private readonly ILogger<AdvanceJobManager> _advLogger;
 
         private readonly ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? _stationRoleProvider;
+        private readonly IOptionsMonitor<SystemConfig>? _systemConfig;
 
         public AdvanceJobManager(
             IExtractorService extractorService,
@@ -47,7 +49,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             IOptions<ExtractorOptions> options,
             ILogger<ExportJobManager> baseLogger,
             ILogger<AdvanceJobManager> advLogger,
-            ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? stationRoleProvider = null)
+            ITB_SCREEN_RECORDER.Core.Contracts.Network.IStationRoleProvider? stationRoleProvider = null,
+            IOptionsMonitor<SystemConfig>? systemConfig = null)
             : base(extractorService, exportJobRepository, options, baseLogger)
         {
             _advancedExtractorService = advancedExtractorService;
@@ -56,6 +59,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             _binaryResolver = binaryResolver;
             _advLogger = advLogger;
             _stationRoleProvider = stationRoleProvider;
+            _systemConfig = systemConfig;
 
             _ = LoadAndRecoverAdvanceJobsAsync();
         }
@@ -720,7 +724,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                     Height = 1080
                                 }).ToList()
                             };
-                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>());
+                            long dirMinDwellMs = (_systemConfig?.CurrentValue?.AutoDirector?.MinDwellSeconds ?? 10) * 1000L;
+                            if (dirMinDwellMs <= 0) dirMinDwellMs = 10000;
+                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>(), minDwellMs: dirMinDwellMs);
                             dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
                             {
                                 StartEpochMs = s.StartEpochMs,
@@ -825,7 +831,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                         Height = 1080
                                     }).ToList()
                                 };
-                                var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>());
+                                long dirMinDwellMs = (_systemConfig?.CurrentValue?.AutoDirector?.MinDwellSeconds ?? 10) * 1000L;
+                            if (dirMinDwellMs <= 0) dirMinDwellMs = 10000;
+                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>(), minDwellMs: dirMinDwellMs);
                                 dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
                                 {
                                     StartEpochMs = s.StartEpochMs,

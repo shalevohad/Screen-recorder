@@ -95,6 +95,7 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                         DefaultVideoBitrate = config.DefaultVideoBitrate,
                         DefaultTargetFps = config.DefaultTargetFps,
                         Discovery = config.Discovery,
+                        AutoDirector = config.AutoDirector ?? new AutoDirectorSettings(),
                         Security = new SecuritySettings
                         {
                             AllowedAdAdminGroup = config.Security.AllowedAdAdminGroup,
@@ -205,6 +206,13 @@ namespace ITB_SCREEN_RECORDER.Server.Controllers
                             config.Discovery.BroadcastAddress = updatedConfig.Discovery.BroadcastAddress;
                         config.Discovery.EnableBroadcastFallback = updatedConfig.Discovery.EnableBroadcastFallback;
                         config.Discovery.NetworkInterfaceName = updatedConfig.Discovery.NetworkInterfaceName;
+                    }
+
+                    if (updatedConfig.AutoDirector != null)
+                    {
+                        config.AutoDirector ??= new AutoDirectorSettings();
+                        if (updatedConfig.AutoDirector.MinDwellSeconds > 0)
+                            config.AutoDirector.MinDwellSeconds = updatedConfig.AutoDirector.MinDwellSeconds;
                     }
                 });
 

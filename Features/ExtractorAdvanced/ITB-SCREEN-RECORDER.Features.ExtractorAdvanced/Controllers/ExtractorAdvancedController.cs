@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using ITB_SCREEN_RECORDER.Core.Configuration;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
@@ -33,6 +35,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         private readonly IKeystrokeRepository _keystrokeRepository;
         private readonly IStationRoleProvider? _stationRoleProvider;
         private readonly ILogger<ExtractorAdvancedController> _logger;
+        private readonly IOptionsMonitor<SystemConfig>? _systemConfig;
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
@@ -40,7 +43,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             IAdvanceJobManager jobManager,
             IKeystrokeRepository keystrokeRepository,
             ILogger<ExtractorAdvancedController> logger,
-            IStationRoleProvider? stationRoleProvider = null)
+            IStationRoleProvider? stationRoleProvider = null,
+            IOptionsMonitor<SystemConfig>? systemConfig = null)
         {
             _advancedExtractorService = advancedExtractorService;
             _storageScanner = storageScanner;
@@ -48,6 +52,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             _keystrokeRepository = keystrokeRepository;
             _logger = logger;
             _stationRoleProvider = stationRoleProvider;
+            _systemConfig = systemConfig;
         }
 
         [HttpGet("keystrokes")]
@@ -175,6 +180,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             List<DisplayMetadataDto> displays)
         {
             var activityEvents = new List<ActivityEventDto>();
+            long minDwellMs = (_systemConfig?.CurrentValue?.AutoDirector?.MinDwellSeconds ?? 10) * 1000L;
+            if (minDwellMs <= 0) minDwellMs = 10000;
 
             if (displays.Count > 1)
             {
@@ -246,7 +253,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     {
                         long t0 = timeList[i];
                         long t1 = timeList[i + 1];
-                        if (t1 - t0 < 10000) continue;
+                        if (t1 - t0 < minDwellMs) continue;
 
                         DateTime sliceMidUtc = DateTimeOffset.FromUnixTimeMilliseconds((t0 + t1) / 2).UtcDateTime;
                         string? dominantDisp = null;
@@ -287,7 +294,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             };
 
             var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
-            return analyzer.AnalyzeFocus(stationId, startEpochMs, endEpochMs, topology, activityEvents, minDwellMs: 10000);
+            return analyzer.AnalyzeFocus(stationId, startEpochMs, endEpochMs, topology, activityEvents, minDwellMs: minDwellMs);
         }
 
         [HttpGet("stations")]

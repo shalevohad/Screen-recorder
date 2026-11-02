@@ -59,6 +59,11 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
 
         [Required]
         public DiscoverySettings Discovery { get; set; } = new DiscoverySettings();
+
+        /// <summary>
+        /// Settings for the automated multi-monitor focus director and forensic replay cuts.
+        /// </summary>
+        public AutoDirectorSettings AutoDirector { get; set; } = new AutoDirectorSettings();
     }
 
     public class DiscoverySettings
@@ -192,5 +197,15 @@ namespace ITB_SCREEN_RECORDER.Core.Configuration
     {
         public string? VideoBitrate { get; set; }
         public int? TargetFps { get; set; }
+    }
+
+    public class AutoDirectorSettings
+    {
+        /// <summary>
+        /// Minimum duration in seconds that the Auto-Director camera remains focused on an active screen before allowing a cut to another screen.
+        /// Default is 10 seconds. Range: 1 to 120 seconds.
+        /// </summary>
+        [Range(1, 120, ErrorMessage = "MinDwellSeconds must be between 1 and 120 seconds.")]
+        public int MinDwellSeconds { get; set; } = 10;
     }
 }

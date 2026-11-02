@@ -926,9 +926,12 @@ To guarantee 100% deterministic time representation regardless of host operating
   - During playback in Director Mode, `DirectorTrack.jsx` and `StudioVideoFeed.jsx` dynamically update with the active screen and time interval using the 1-based display standard: `⚡ AUTO-DIRECTOR: SCREEN 1 [10:14:00 - 10:18:30]`.
 
 ### 4. Advanced Extractor Studio Timeline & HUD Enhancements
-- **10-Second Minimum Screen Dwell Time Invariant**:
-  - `ActivityFocusAnalyzer.cs` and `ExtractorAdvancedController.cs` enforce a strict minimum screen dwell threshold (`minDwellMs = 10000`, 10 seconds).
-  - Rapid interactions across monitors are smoothed out to eliminate visual fatigue: the camera remains locked on the current screen for at least 10 seconds before any automated transition can occur. Trailing micro-segments under 10 seconds are absorbed backward into the preceding segment.
+- **Configurable Auto-Director Minimum Screen Dwell Time (`SystemConfig.AutoDirector.MinDwellSeconds`)**:
+  - `ActivityFocusAnalyzer.cs`, `ExtractorAdvancedController.cs`, and `AdvanceJobManager.cs` enforce a configurable minimum screen dwell threshold (`minDwellMs = config.AutoDirector.MinDwellSeconds * 1000`, default 10 seconds, range 1–120s).
+  - Rapid interactions across monitors are smoothed out to eliminate visual fatigue: the camera remains locked on the current screen for at least the configured dwell duration before any automated transition can occur. Trailing micro-segments under this duration are absorbed backward into the preceding segment.
+  - **Central Administration in System Settings**: Accessible directly via the C2 System Settings UI (`System & Network` tab -> `AUTO-DIRECTOR & REPLAY STUDIO ENGINE`), featuring an ergonomic tactical range slider, direct numeric input, preset ticks (3s, 5s, 10s, 15s, 30s, 60s), and bilingual guidance notes. Changes persist to SQLite and configuration files on disk (`appsettings.Windows.json` / `appsettings.Linux.json`) and apply dynamically to future director plan analyses and export cuts without server restarts.
+
+
 - **Minimalist Timeline Segment Visualization (`DirectorTrack.jsx`)**:
   - Segments are rendered with high visual minimalism: displaying only the screen number (`🖥 1` / `🖥 2` or `1` / `2`), color-coded per physical display (Cyan for Screen 1, Purple for Screen 2, Emerald for Screen 3, Blue for Screen 4).
   - Overlap Prevention in Zoom-Out: Exact floating-point percentages without artificial minimum widths ensure contiguous, non-overlapping segment layout even across multi-hour zoom scales. Text is automatically suppressed when segment pixel width is insufficient.

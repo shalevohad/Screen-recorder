@@ -119,6 +119,26 @@ public class SystemConfigTests
     }
 
     [Fact]
+    public void AutoDirector_DefaultValues_AreValid()
+    {
+        var settings = new AutoDirectorSettings();
+        Assert.Equal(10, settings.MinDwellSeconds);
+
+        var errors = ValidateModel(settings);
+        Assert.Empty(errors);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(121)]
+    public void AutoDirector_MinDwellSeconds_OutOfRange_FailsValidation(int seconds)
+    {
+        var settings = new AutoDirectorSettings { MinDwellSeconds = seconds };
+        var errors = ValidateModel(settings);
+        Assert.Contains(errors, e => e.MemberNames.Contains(nameof(AutoDirectorSettings.MinDwellSeconds)));
+    }
+
+    [Fact]
     public void BufferLimits_CalculationsAreConsistent()
     {
         Assert.Equal(4096L, BufferLimits.MaxBufferFileSizeMb);

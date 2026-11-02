@@ -3,12 +3,22 @@
 // ==========================================
 import React from 'react';
 
-export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField }) {
+export default function SystemNetworkTab({ form, updateField, updateDashboardField, updateMediaMtxField, updateDiscoveryField, updateAutoDirectorField }) {
     if (!form) return null;
 
     const dashboard = form.dashboard || {};
     const mediaMtx = form.mediaMtx || {};
     const discovery = form.discovery || {};
+    const autoDirector = form.autoDirector || {};
+
+    const dwellTicks = [
+        { val: 3, label: '3s' },
+        { val: 5, label: '5s' },
+        { val: 10, label: '10s' },
+        { val: 15, label: '15s' },
+        { val: 30, label: '30s' },
+        { val: 60, label: '60s' }
+    ];
 
     const timezones = [
         { val: 'Asia/Jerusalem', label: 'Asia/Jerusalem (Israel Standard Time)' },
@@ -309,6 +319,64 @@ export default function SystemNetworkTab({ form, updateField, updateDashboardFie
                         />
                         <span>Enable Subnet Broadcast Fallback (Auto-fallback when multicast packets are blocked by network switches)</span>
                     </label>
+                </div>
+            </div>
+            <div className="security-subpanel">
+                <div className="subpanel-header">
+                    <h4>AUTO-DIRECTOR & REPLAY STUDIO ENGINE</h4>
+                    <span className="subpanel-desc">Configure automated multi-monitor focus tracking, camera dwell hysteresis, and transition pacing for forensic replay and video export.</span>
+                </div>
+
+                <div className="settings-fields-row">
+                    <div className="settings-field" style={{ flex: '1 1 100%' }}>
+                        <span>Auto-Director Minimum Screen Dwell Time (Seconds)</span>
+                        <div className="range-with-input">
+                            <div className="slider-input-inline-row">
+                                <input
+                                    type="range"
+                                    min={1}
+                                    max={60}
+                                    step={1}
+                                    value={Math.max(1, Math.min(60, Number(autoDirector.minDwellSeconds) || 10))}
+                                    onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
+                                    className="tactical-range-slider"
+                                />
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={120}
+                                    step={1}
+                                    value={autoDirector.minDwellSeconds || 10}
+                                    onChange={e => updateAutoDirectorField?.('minDwellSeconds', Number(e.target.value))}
+                                    required
+                                />
+                            </div>
+
+                            <div className="slider-ticks-track">
+                                {dwellTicks.map((tick) => {
+                                    const THUMB_RADIUS = 12;
+                                    const pct = ((tick.val - 1) / (60 - 1)) * 100;
+                                    const isCurrent = Number(autoDirector.minDwellSeconds || 10) === tick.val;
+                                    return (
+                                        <button
+                                            key={tick.val}
+                                            type="button"
+                                            className={`tick-anchor ${isCurrent ? 'is-active' : ''}`}
+                                            style={{ left: `calc(${THUMB_RADIUS}px + (100% - ${THUMB_RADIUS * 2}px) * ${pct / 100})` }}
+                                            onClick={() => updateAutoDirectorField?.('minDwellSeconds', tick.val)}
+                                            title={`Set ${tick.label}`}
+                                        >
+                                            <span className="tick-pip"></span>
+                                            <span className="tick-text">{tick.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <span className="field-note" style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '6px' }}>
+                            זמן שהייה מינימלי במסך לפני מעבר לבמאי האוטומטי (ברירת מחדל: 10 שניות). מונע מעברים מהירים ותכופים שמעייפים את העין בסרטוני שחזור וייצוא.
+                        </span>
+                    </div>
                 </div>
             </div>
         </fieldset>
