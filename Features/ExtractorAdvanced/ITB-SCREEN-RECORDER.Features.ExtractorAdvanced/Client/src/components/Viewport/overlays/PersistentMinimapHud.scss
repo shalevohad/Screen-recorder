@@ -76,6 +76,13 @@
                 border-radius: 50%;
                 animation: hud-dot-pulse 1.8s infinite ease-in-out;
             }
+
+            .hud-time-range {
+                font-size: 0.58rem;
+                color: rgba(226, 232, 240, 0.88);
+                margin-left: 3px;
+                letter-spacing: 0.02em;
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/DirectorTrack.jsx
 // ==========================================
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import './DirectorTrack.scss';
 
 export default function DirectorTrack({
@@ -14,7 +15,8 @@ export default function DirectorTrack({
     onSplitSegment,
     onChangeSegmentDisplay,
     onResetSegmentToAuto,
-    availableDisplays = []
+    availableDisplays = [],
+    timeMode = 'LOCAL'
 }) {
     const segments = directorPlan?.segments || [];
     const containerRef = useRef(null);
@@ -36,6 +38,18 @@ export default function DirectorTrack({
 
     const activeDisplayId = (currentActiveSegment?.targetDisplayId ?? currentActiveSegment?.TargetDisplayId ?? 'mon-0').toUpperCase();
     const isActiveOverride = Boolean(currentActiveSegment?.isManualOverride ?? currentActiveSegment?.IsManualOverride);
+
+    const activeStartClock = useMemo(() => {
+        if (!currentActiveSegment) return '';
+        const s = currentActiveSegment.startEpochMs ?? currentActiveSegment.StartEpochMs ?? 0;
+        return formatTimelineClock(s, timeMode, { includeSeconds: true });
+    }, [currentActiveSegment, timeMode]);
+
+    const activeEndClock = useMemo(() => {
+        if (!currentActiveSegment) return '';
+        const e = currentActiveSegment.endEpochMs ?? currentActiveSegment.EndEpochMs ?? 0;
+        return formatTimelineClock(e, timeMode, { includeSeconds: true });
+    }, [currentActiveSegment, timeMode]);
 
     // Filter segments visible in viewport
     const visibleSegments = useMemo(() => {
@@ -91,11 +105,16 @@ export default function DirectorTrack({
                 <span className="director-title">DIRECTOR FOCUS</span>
                 <span 
                     className={`director-active-badge ${isActiveOverride ? 'is-override' : 'is-auto'}`}
-                    title={`Current orientation at playhead: ${activeDisplayId} (${isActiveOverride ? 'Manual Override' : 'Auto-Director'})`}
+                    title={`Current orientation at playhead: ${activeDisplayId} (${isActiveOverride ? 'Manual Override' : 'Auto-Director'}) [${activeStartClock} - ${activeEndClock}]`}
                 >
                     <span className="badge-pulse" />
                     {isActiveOverride ? '✋ OVERRIDE: ' : '⚡ AUTO: '}
                     {activeDisplayId}
+                    {activeStartClock && (
+                        <span className="active-interval-time">
+                            [{activeStartClock} - {activeEndClock}]
+                        </span>
+                    )}
                 </span>
 
                 {isActiveOverride && onResetSegmentToAuto && (
@@ -174,6 +193,16 @@ export default function DirectorTrack({
                             <span className="segment-badge-label">
                                 {targetDisplay}
                             </span>
+                            {widthPct >= 5 && (
+                                <span className="segment-badge-time">
+                                    [{formatTimelineClock(s, timeMode, { includeSeconds: true })} - {formatTimelineClock(e, timeMode, { includeSeconds: true })}]
+                                </span>
+                            )}
+                            {widthPct >= 9 && (
+                                <span className="segment-badge-duration">
+                                    ({Math.floor(Math.round((e - s) / 1000) / 60) > 0 ? `${Math.floor(Math.round((e - s) / 1000) / 60)}m ` : ''}{Math.round((e - s) / 1000) % 60}s)
+                                </span>
+                            )}
                             {isAtPlayhead && (
                                 <span className="playhead-indicator-dot" />
                             )}

@@ -4,6 +4,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import NoSignalHero from '../Viewport/overlays/NoSignalHero.jsx';
 import PersistentMinimapHud from '../Viewport/overlays/PersistentMinimapHud.jsx';
+import { formatTimelineClock } from '../../utils/timeFormat.js';
 import { frameStore } from '../../utils/frameStore.js';
 import { getAudioSettings } from '../../utils/studioSessionStore.js';
 import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout.js';
@@ -1009,12 +1010,25 @@ export default function StudioVideoFeed({
                 </div>
             )}
 
+            {/* Auto-Director Active Focus Live Pill Banner */}
+            {viewMode === 'director' && activeDirectorSegment && (
+                <div className="director-live-hud-pill">
+                    <span className="director-live-icon">🎬</span>
+                    <span className="director-live-title">AUTO-DIRECTOR:</span>
+                    <span className="director-live-display">🖥️ {activeDisplayId.toUpperCase()}</span>
+                    <span className="director-live-time">
+                        [{formatTimelineClock(activeDirectorSegment.startEpochMs ?? activeDirectorSegment.StartEpochMs ?? 0, _timeMode, { includeSeconds: true })} - {formatTimelineClock(activeDirectorSegment.endEpochMs ?? activeDirectorSegment.EndEpochMs ?? 0, _timeMode, { includeSeconds: true })}]
+                    </span>
+                </div>
+            )}
+
             {/* Persistent Topology Minimap HUD (Clickable to switch displays, hidden in Canvas mode) */}
             {hasMultipleDisplays && viewMode !== 'canvas' && (
                 <PersistentMinimapHud
                     displays={stationDisplays}
                     activeDisplayId={activeDisplayId}
                     mode={isCurrentManualOverride ? 'MANUAL' : 'AUTO'}
+                    activeTimeRange={activeDirectorSegment ? `${formatTimelineClock(activeDirectorSegment.startEpochMs ?? activeDirectorSegment.StartEpochMs ?? 0, _timeMode, { includeSeconds: true })} - ${formatTimelineClock(activeDirectorSegment.endEpochMs ?? activeDirectorSegment.EndEpochMs ?? 0, _timeMode, { includeSeconds: true })}` : ''}
                     onSelectDisplay={(dispId) => {
                         if (onOverrideDisplay) {
                             onOverrideDisplay(stationId, baseEpochMs + playheadMs, dispId);

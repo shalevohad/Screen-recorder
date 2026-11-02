@@ -949,6 +949,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             Stations.Clear();
             Keystrokes.Clear();
             ActiveSplitFeeds.Clear();
+            DirectorCues.Clear();
+
+            if (manifest.DirectorSegments != null && manifest.DirectorSegments.Count > 0)
+            {
+                long baseEpochMs = new DateTimeOffset(manifest.RangeStartUtc).ToUnixTimeMilliseconds();
+                foreach (var seg in manifest.DirectorSegments)
+                {
+                    double offsetSec = Math.Max(0, (seg.StartEpochMs - baseEpochMs) / 1000.0);
+                    DirectorCues.Add(new PresentationCue
+                    {
+                        OffsetSeconds = offsetSec,
+                        Action = "SwitchDisplay",
+                        TargetDisplayId = seg.TargetDisplayId,
+                        LayoutMode = ViewMode.ToString(),
+                        Description = $"Auto-Director switch to {seg.TargetDisplayId}"
+                    });
+                }
+                IsDirectorMode = true;
+                DirectorStatusMessage = $"🎬 Auto-Director Plan loaded ({DirectorCues.Count} segments).";
+            }
 
             int trackIdx = 0;
             foreach (var track in manifest.Tracks)
@@ -1079,10 +1099,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 var activeCue = DirectorCues.Where(c => c.OffsetSeconds <= sec)
                                             .OrderByDescending(c => c.OffsetSeconds)
                                             .FirstOrDefault();
-                if (activeCue != null && _lastExecutedCue != activeCue)
+                if (activeCue != null)
                 {
-                    _lastExecutedCue = activeCue;
-                    ApplyDirectorCue(activeCue);
+                    if (_lastExecutedCue != activeCue)
+                    {
+                        _lastExecutedCue = activeCue;
+                        ApplyDirectorCue(activeCue);
+                    }
+
+                    var nextCue = DirectorCues.Where(c => c.OffsetSeconds > sec)
+                                              .OrderBy(c => c.OffsetSeconds)
+                                              .FirstOrDefault();
+                    string startStr = FormatSeconds(activeCue.OffsetSeconds);
+                    string endStr = nextCue != null ? FormatSeconds(nextCue.OffsetSeconds) : FormatSeconds(TotalDurationSeconds);
+                    string dispName = activeCue.TargetDisplayId.ToUpperInvariant();
+                    DirectorStatusMessage = $"🎬 AUTO-DIRECTOR: 🖥 {dispName} [{startStr} - {endStr}]";
                 }
             }
 

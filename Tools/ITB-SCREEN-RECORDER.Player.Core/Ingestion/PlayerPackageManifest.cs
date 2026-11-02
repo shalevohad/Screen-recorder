@@ -38,6 +38,24 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
 
         [JsonPropertyName("tracks")]
         public List<PlayerTrackInfo> Tracks { get; set; } = new();
+
+        [JsonPropertyName("directorSegments")]
+        public List<PlayerDirectorSegment>? DirectorSegments { get; set; }
+    }
+
+    public sealed class PlayerDirectorSegment
+    {
+        [JsonPropertyName("startEpochMs")]
+        public long StartEpochMs { get; set; }
+
+        [JsonPropertyName("endEpochMs")]
+        public long EndEpochMs { get; set; }
+
+        [JsonPropertyName("targetDisplayId")]
+        public string TargetDisplayId { get; set; } = "mon-0";
+
+        [JsonPropertyName("isManualOverride")]
+        public bool IsManualOverride { get; set; }
     }
 
     public sealed class PlayerAudioConfiguration

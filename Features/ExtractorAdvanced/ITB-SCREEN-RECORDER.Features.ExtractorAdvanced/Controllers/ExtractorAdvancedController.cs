@@ -117,14 +117,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
 
             try
             {
-                var keystrokes = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, lStart, lEnd);
-                var activityEvents = keystrokes.Select(k => new ActivityEventDto
-                {
-                    TimestampEpochMs = k.EpochMs,
-                    Type = ActivityEventType.Keystroke,
-                    KeyName = k.KeyCombination
-                }).ToList();
-
                 DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime;
                 DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
                 var chunks = await _storageScanner.GetChunksForStationAsync(stationId, startUtc, endUtc);
@@ -147,14 +139,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     distinctDisplays.Add(new DisplayMetadataDto { DisplayId = "mon-0", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 });
                 }
 
-                var topology = new StationDisplayTopologyDto
-                {
-                    Hostname = stationId,
-                    Displays = distinctDisplays
-                };
-
-                var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
-                var plan = analyzer.AnalyzeFocus(stationId, lStart, lEnd, topology, activityEvents);
+                var plan = await ComputeStationDirectorPlanAsync(stationId, lStart, lEnd, chunks, distinctDisplays);
                 return Ok(plan);
             }
             catch (Exception ex)
@@ -162,6 +147,126 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 _logger.LogError(ex, "[API:DirectorPlan] Error analyzing director plan for station {StationId}", stationId);
                 return StatusCode(500, "Error analyzing director plan.");
             }
+        }
+
+        private async Task<StationDirectorPlanDto> ComputeStationDirectorPlanAsync(
+            string stationId,
+            long startEpochMs,
+            long endEpochMs,
+            IReadOnlyList<RecordingChunkMetadata> chunks,
+            List<DisplayMetadataDto> displays)
+        {
+            var activityEvents = new List<ActivityEventDto>();
+
+            if (displays.Count > 1)
+            {
+                var keystrokes = await _keystrokeRepository.GetKeystrokesForWindowAsync(stationId, startEpochMs, endEpochMs);
+                var chunksByDisp = chunks
+                    .GroupBy(c => (string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId).ToLowerInvariant())
+                    .ToDictionary(g => g.Key, g => g.OrderBy(c => c.StartUtc).ToList());
+
+                foreach (var k in keystrokes)
+                {
+                    string? assignedDisp = k.DisplayId;
+
+                    // Correlate with chunk encoding bitrate if coordinate telemetry is not populated
+                    if (string.IsNullOrEmpty(assignedDisp) && k.X == 0 && k.Y == 0)
+                    {
+                        var kUtc = DateTimeOffset.FromUnixTimeMilliseconds(k.EpochMs).UtcDateTime;
+                        double bestBitrate = 0;
+                        string? bestDisp = null;
+
+                        foreach (var kvp in chunksByDisp)
+                        {
+                            var ch = kvp.Value.FirstOrDefault(c => c.StartUtc <= kUtc && kUtc <= c.EndUtc);
+                            if (ch != null && ch.Duration.TotalMilliseconds > 0)
+                            {
+                                double br = (ch.FileSizeBytes * 8.0) / (ch.Duration.TotalMilliseconds / 1000.0);
+                                if (br > bestBitrate)
+                                {
+                                    bestBitrate = br;
+                                    bestDisp = kvp.Key;
+                                }
+                            }
+                        }
+
+                        if (bestDisp != null)
+                        {
+                            assignedDisp = bestDisp;
+                        }
+                    }
+
+                    activityEvents.Add(new ActivityEventDto
+                    {
+                        TimestampEpochMs = k.EpochMs,
+                        Type = k.KeyCombination.StartsWith("[Click:", StringComparison.OrdinalIgnoreCase) || k.KeyCombination.EndsWith("Click]", StringComparison.OrdinalIgnoreCase)
+                            ? ActivityEventType.MouseClick
+                            : ActivityEventType.Keystroke,
+                        KeyName = k.KeyCombination,
+                        X = k.X,
+                        Y = k.Y,
+                        DisplayId = assignedDisp
+                    });
+                }
+
+                // If no keystroke events, infer activity transitions from chunk bitrate differences across displays
+                if (activityEvents.Count == 0 && chunksByDisp.Count > 1)
+                {
+                    var primaryKey = displays.FirstOrDefault(d => d.IsPrimary)?.DisplayId ?? "mon-0";
+                    var allChunks = chunks.OrderBy(c => c.StartUtc).ToList();
+                    var timeSlices = new SortedSet<long>();
+                    foreach (var ch in allChunks)
+                    {
+                        timeSlices.Add(new DateTimeOffset(ch.StartUtc).ToUnixTimeMilliseconds());
+                        timeSlices.Add(new DateTimeOffset(ch.EndUtc).ToUnixTimeMilliseconds());
+                    }
+
+                    var timeList = timeSlices.Where(t => t >= startEpochMs && t <= endEpochMs).ToList();
+                    for (int i = 0; i < timeList.Count - 1; i++)
+                    {
+                        long t0 = timeList[i];
+                        long t1 = timeList[i + 1];
+                        if (t1 - t0 < 3000) continue;
+
+                        DateTime sliceMidUtc = DateTimeOffset.FromUnixTimeMilliseconds((t0 + t1) / 2).UtcDateTime;
+                        string? dominantDisp = null;
+                        double maxBr = 0;
+
+                        foreach (var kvp in chunksByDisp)
+                        {
+                            var ch = kvp.Value.FirstOrDefault(c => c.StartUtc <= sliceMidUtc && sliceMidUtc <= c.EndUtc);
+                            if (ch != null && ch.Duration.TotalMilliseconds > 0)
+                            {
+                                double br = (ch.FileSizeBytes * 8.0) / (ch.Duration.TotalMilliseconds / 1000.0);
+                                if (br > maxBr)
+                                {
+                                    maxBr = br;
+                                    dominantDisp = kvp.Key;
+                                }
+                            }
+                        }
+
+                        if (!string.IsNullOrEmpty(dominantDisp) && !string.Equals(dominantDisp, primaryKey, StringComparison.OrdinalIgnoreCase))
+                        {
+                            activityEvents.Add(new ActivityEventDto
+                            {
+                                TimestampEpochMs = t0 + 1000,
+                                Type = ActivityEventType.MouseMove,
+                                DisplayId = dominantDisp
+                            });
+                        }
+                    }
+                }
+            }
+
+            var topology = new StationDisplayTopologyDto
+            {
+                Hostname = stationId,
+                Displays = displays
+            };
+
+            var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
+            return analyzer.AnalyzeFocus(stationId, startEpochMs, endEpochMs, topology, activityEvents);
         }
 
         [HttpGet("stations")]
@@ -297,23 +402,22 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         segments = Array.Empty<object>(),
                         displays = distinctDisplays,
                         displayTopology = displayTopology,
-                        directorPlan = distinctDisplays.Count > 1 ? new
-                        {
-                            stationId = host,
-                            timelineStartEpochMs = lStart ?? 0,
-                            timelineEndEpochMs = lEnd ?? (lStart.HasValue ? lStart.Value + 3600000 : 3600000),
-                            segments = new[]
-                            {
-                                new
+                        directorPlan = distinctDisplays.Count > 1
+                            ? ComputeStationDirectorPlanAsync(
+                                host,
+                                lStart ?? 0,
+                                lEnd ?? (lStart.HasValue ? lStart.Value + 3600000 : 3600000),
+                                chunks,
+                                distinctDisplays.Select(d => new DisplayMetadataDto
                                 {
-                                    startEpochMs = lStart ?? 0,
-                                    endEpochMs = lEnd ?? (lStart.HasValue ? lStart.Value + 3600000 : 3600000),
-                                    targetDisplayId = "mon-0",
-                                    isManualOverride = false,
-                                    triggerReason = "Default"
-                                }
-                            }
-                        } : null,
+                                    DisplayId = d.displayId,
+                                    IsPrimary = d.isPrimary,
+                                    X = d.x,
+                                    Y = d.y,
+                                    Width = d.width,
+                                    Height = d.height
+                                }).ToList()).GetAwaiter().GetResult()
+                            : null,
                         hasAudio = hasAudio,
                         audioCodec = "AAC",
                         audioChannels = 2,

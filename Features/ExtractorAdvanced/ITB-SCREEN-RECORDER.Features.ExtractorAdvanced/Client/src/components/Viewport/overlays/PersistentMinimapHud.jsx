@@ -9,7 +9,8 @@ export default function PersistentMinimapHud({
     activeDisplayId = 'mon-0',
     onSelectDisplay,
     isTransitioning = false,
-    mode = 'AUTO' // 'AUTO' or 'MANUAL'
+    mode = 'AUTO', // 'AUTO' or 'MANUAL'
+    activeTimeRange = ''
 }) {
     // Calculate real physical topology bounds
     const bounds = useMemo(() => {
@@ -48,6 +49,7 @@ export default function PersistentMinimapHud({
                 <span className={`hud-badge ${mode.toLowerCase()}`}>
                     <span className="hud-pulse" />
                     {mode === 'MANUAL' ? '✋ OVERRIDE' : '⚡ AUTO'} : {activeLabel}
+                    {activeTimeRange && <span className="hud-time-range"> [{activeTimeRange}]</span>}
                 </span>
             </div>
 

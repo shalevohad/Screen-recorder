@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ITB_SCREEN_RECORDER.Features.Extractor.Data.Repositories;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
+using ITB_SCREEN_RECORDER.Core.Contracts.Topology;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 using ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
 using AdvancedModels = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models;
@@ -328,13 +329,42 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             var rep0 = displayGroups.First().FirstOrDefault();
                             int dirW = rep0?.Width > 0 ? rep0.Width : 1920;
                             int dirH = rep0?.Height > 0 ? rep0.Height : 1080;
+                            var dirSegments = plan.DirectorSegments;
+                            if ((dirSegments == null || dirSegments.Count == 0) && displayGroups.Count > 1)
+                            {
+                                var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
+                                long sMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                                long eMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+                                var topo = new StationDisplayTopologyDto
+                                {
+                                    Hostname = sId,
+                                    Displays = displayGroups.Select((g, idx) => new DisplayMetadataDto
+                                    {
+                                        DisplayId = g.Key,
+                                        IsPrimary = g.Key == "mon-0",
+                                        X = idx * 1920,
+                                        Y = 0,
+                                        Width = 1920,
+                                        Height = 1080
+                                    }).ToList()
+                                };
+                                var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>());
+                                dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
+                                {
+                                    StartEpochMs = s.StartEpochMs,
+                                    EndEpochMs = s.EndEpochMs,
+                                    TargetDisplayId = s.TargetDisplayId,
+                                    IsManualOverride = s.IsManualOverride
+                                }).ToList();
+                            }
+
                             var directorPlan = new SynchronizationPlan
                             {
                                 ActiveSegments = plan.ActiveSegments,
                                 KeystrokeMode = plan.KeystrokeMode,
                                 LayoutMode = "director",
                                 TargetDisplayId = "director",
-                                DirectorSegments = plan.DirectorSegments,
+                                DirectorSegments = dirSegments,
                                 RemovedGlobalGaps = plan.RemovedGlobalGaps,
                                 StationGaps = plan.StationGaps
                             };
@@ -475,7 +505,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             durationSeconds = g.DurationSeconds,
                             bridgeType = "NoSignal"
                         }),
-                        tracks = sessionTracks
+                        tracks = sessionTracks,
+                        directorSegments = renderTasks.FirstOrDefault(t => t.DisplayId == "director").Plan?.DirectorSegments
                     };
 
                     byte[] manifestBytes = JsonSerializer.SerializeToUtf8Bytes(sessionManifestObj, new JsonSerializerOptions { WriteIndented = true });

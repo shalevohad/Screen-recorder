@@ -70,7 +70,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
 
             foreach (var evt in validEvents)
             {
-                string targetDisplay = ResolveDisplayForCoordinates(evt.X, evt.Y, displays, primaryDisplayId);
+                string targetDisplay = ResolveDisplayForCoordinates(evt, displays, primaryDisplayId);
 
                 if (string.Equals(targetDisplay, currentDisplayId, StringComparison.OrdinalIgnoreCase))
                 {
@@ -156,6 +156,21 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             }
 
             return plan;
+        }
+
+        private static string ResolveDisplayForCoordinates(
+            ActivityEventDto evt,
+            IReadOnlyList<DisplayMetadataDto> displays, 
+            string fallbackDisplayId)
+        {
+            if (!string.IsNullOrWhiteSpace(evt.DisplayId))
+            {
+                var matched = displays.FirstOrDefault(d => 
+                    string.Equals(d.DisplayId, evt.DisplayId, StringComparison.OrdinalIgnoreCase));
+                if (matched != null) return matched.DisplayId;
+            }
+
+            return ResolveDisplayForCoordinates(evt.X, evt.Y, displays, fallbackDisplayId);
         }
 
         private static string ResolveDisplayForCoordinates(

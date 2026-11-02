@@ -376,19 +376,28 @@ export default function ExtractorAdvancedStudio() {
 
     const handleResetDirectorSegmentToAuto = useCallback((stId, segmentEpochMs) => {
         if (!stId) return;
+        const targetStation = allStations.find(s => s.id === stId);
+        const autoPlan = targetStation?.directorPlan;
+        const autoSeg = autoPlan?.segments?.find(s => {
+            const start = s.startEpochMs ?? s.StartEpochMs ?? 0;
+            const end = s.endEpochMs ?? s.EndEpochMs ?? 0;
+            return segmentEpochMs >= start && segmentEpochMs <= end;
+        });
+        const autoDisplay = autoSeg ? (autoSeg.targetDisplayId ?? autoSeg.TargetDisplayId ?? 'mon-0') : 'mon-0';
+
         setStationDirectorPlans(prev => {
             const plan = prev[stId] || getStationPlan(stId);
             const segments = (plan.segments || []).map(seg => {
                 const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
                 const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
                 if (segmentEpochMs >= s && segmentEpochMs <= e) {
-                    return { ...seg, targetDisplayId: 'mon-0', isManualOverride: false };
+                    return { ...seg, targetDisplayId: autoDisplay, isManualOverride: false };
                 }
                 return seg;
             });
             return { ...prev, [stId]: { ...plan, segments } };
         });
-    }, [getStationPlan]);
+    }, [allStations, getStationPlan]);
 
     const enrichedTimelineStations = useMemo(() => {
         return timelineStations.map(st => ({

@@ -72,13 +72,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 layoutMode = requestedDisplay;
             }
-            else if (!string.IsNullOrEmpty(plan.TargetDisplayId))
+            else if (!string.IsNullOrEmpty(plan.TargetDisplayId) && !string.Equals(plan.TargetDisplayId, "director", StringComparison.OrdinalIgnoreCase))
             {
                 layoutMode = plan.TargetDisplayId.Trim().ToLowerInvariant();
             }
 
             bool hasMultipleDisplays = chunksByDisplay.Count > 1;
-            bool isMultiDisplayLayout = hasMultipleDisplays && (layoutMode == "split" || layoutMode == "pip" || layoutMode == "canvas");
+            bool isMultiDisplayLayout = hasMultipleDisplays && (layoutMode == "split" || layoutMode == "pip" || layoutMode == "canvas" || layoutMode == "director");
 
             var probeCache = new Dictionary<string, ProbedStationMetadata>(StringComparer.OrdinalIgnoreCase);
 
@@ -311,6 +311,69 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                       $"{rightIn}scale=936:526:force_original_aspect_ratio=decrease,pad=936:526:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x10B981@0.85:t=2[d1]; " +
                                       $"color=c=0x070A10:s=1920x1080:d={maxDuration.ToString("0.00", CultureInfo.InvariantCulture)}[bg]; " +
                                       $"[bg][d0]overlay=16:277[tmp]; [tmp][d1]overlay=968:277[vbase];";
+                    }
+                    else if (layoutMode == "director")
+                    {
+                        // Auto-Director Cut: dynamically switches between monitors according to plan.DirectorSegments with seamless millisecond dip-to-black transitions
+                        var dirSegments = plan.DirectorSegments;
+                        if (dirSegments != null && dirSegments.Count > 0)
+                        {
+                            long cutStartEpochMs = new DateTimeOffset(cutStartUtc).ToUnixTimeMilliseconds();
+                            var segFilterOps = new List<string>();
+                            var concatInputLabels = new List<string>();
+
+                            for (int i = 0; i < dirSegments.Count; i++)
+                            {
+                                var seg = dirSegments[i];
+                                double segStartSec = Math.Max(0, (seg.StartEpochMs - cutStartEpochMs) / 1000.0);
+                                double segEndSec = Math.Min(maxDuration, (seg.EndEpochMs - cutStartEpochMs) / 1000.0);
+                                double segDur = segEndSec - segStartSec;
+                                if (segDur <= 0.05) continue;
+
+                                int inIdx = string.Equals(seg.TargetDisplayId, secondaryKey, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                                string segOutLabel = $"[v_seg_{i}]";
+
+                                string startStr = segStartSec.ToString("0.00", CultureInfo.InvariantCulture);
+                                string endStr = segEndSec.ToString("0.00", CultureInfo.InvariantCulture);
+                                string durStr = segDur.ToString("0.00", CultureInfo.InvariantCulture);
+
+                                var segFilters = new List<string>
+                                {
+                                    $"trim=start={startStr}:end={endStr}",
+                                    "setpts=PTS-STARTPTS"
+                                };
+
+                                if (i > 0 && dirSegments.Count > 1)
+                                {
+                                    segFilters.Add("fade=type=in:start_time=0:duration=0.15");
+                                }
+                                if (i < dirSegments.Count - 1 && dirSegments.Count > 1)
+                                {
+                                    double outStart = Math.Max(0, segDur - 0.15);
+                                    segFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", CultureInfo.InvariantCulture)}:duration=0.15");
+                                }
+
+                                segFilterOps.Add($"[{inIdx}:v]{string.Join(",", segFilters)}{segOutLabel}");
+                                concatInputLabels.Add(segOutLabel);
+                            }
+
+                            if (concatInputLabels.Count > 1)
+                            {
+                                filterGraph = $"{string.Join("; ", segFilterOps)}; {string.Join("", concatInputLabels)}concat=n={concatInputLabels.Count}:v=1:a=0[vbase];";
+                            }
+                            else if (concatInputLabels.Count == 1)
+                            {
+                                filterGraph = $"{segFilterOps[0]}; {concatInputLabels[0]}null[vbase];";
+                            }
+                            else
+                            {
+                                filterGraph = "[0:v]copy[vbase];";
+                            }
+                        }
+                        else
+                        {
+                            filterGraph = "[0:v]copy[vbase];";
+                        }
                     }
                     else
                     {

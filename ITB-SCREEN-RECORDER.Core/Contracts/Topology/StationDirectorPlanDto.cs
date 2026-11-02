@@ -27,6 +27,7 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Topology
         public ActivityEventType Type { get; set; }
         public string? Button { get; set; } // "Left", "Right", "Middle"
         public string? KeyName { get; set; }
+        public string? DisplayId { get; set; }
     }
 
     public class StationDirectorSegmentDto

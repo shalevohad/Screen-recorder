@@ -181,8 +181,8 @@ public sealed class CatalogRepository : ICatalogRepository
         using var tx = db.BeginTransaction();
 
         const string sql = @"
-            INSERT INTO keystroke_events (station_id, epoch_ms, key_combination, timestamp_utc)
-            VALUES (@StationId, @EpochMs, @KeyCombination, @TimestampUtc);
+            INSERT INTO keystroke_events (station_id, epoch_ms, key_combination, timestamp_utc, x, y, display_id)
+            VALUES (@StationId, @EpochMs, @KeyCombination, @TimestampUtc, @X, @Y, @DisplayId);
         ";
 
         var records = events.Select(e => new
@@ -190,7 +190,10 @@ public sealed class CatalogRepository : ICatalogRepository
             StationId = stationId,
             e.EpochMs,
             e.KeyCombination,
-            TimestampUtc = e.TimestampUtc.ToString("o")
+            TimestampUtc = e.TimestampUtc.ToString("o"),
+            e.X,
+            e.Y,
+            e.DisplayId
         });
 
         await db.ExecuteAsync(sql, records, tx);
@@ -201,7 +204,8 @@ public sealed class CatalogRepository : ICatalogRepository
     {
         using var db = _factory.CreateConnection();
         const string sql = @"
-            SELECT epoch_ms AS EpochMs, key_combination AS KeyCombination, timestamp_utc AS TimestampUtc
+            SELECT epoch_ms AS EpochMs, key_combination AS KeyCombination, timestamp_utc AS TimestampUtc,
+                   x AS X, y AS Y, display_id AS DisplayId
             FROM keystroke_events INDEXED BY idx_keystrokes_station_epoch
             WHERE station_id = @stationId
               AND epoch_ms >= @fromEpochMs

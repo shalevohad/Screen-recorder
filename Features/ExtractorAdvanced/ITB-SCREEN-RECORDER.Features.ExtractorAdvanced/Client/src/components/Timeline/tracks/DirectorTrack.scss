@@ -71,6 +71,13 @@
                 background: currentColor;
                 animation: directorPulse 1.4s infinite ease-in-out;
             }
+
+            .active-interval-time {
+                font-size: 0.58rem;
+                color: rgba(226, 232, 240, 0.88);
+                margin-left: 4px;
+                letter-spacing: 0.02em;
+            }
         }
 
         .director-revert-btn {
@@ -177,6 +184,20 @@
 
             .segment-badge-label {
                 letter-spacing: 0.05em;
+            }
+
+            .segment-badge-time {
+                font-size: 0.6rem;
+                color: rgba(226, 232, 240, 0.9);
+                margin-left: 4px;
+                letter-spacing: 0.02em;
+                font-weight: 500;
+            }
+
+            .segment-badge-duration {
+                font-size: 0.55rem;
+                color: rgba(148, 163, 184, 0.85);
+                margin-left: 2px;
             }
 
             .playhead-indicator-dot {

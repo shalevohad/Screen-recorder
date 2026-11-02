@@ -1048,4 +1048,37 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
   - Compiles an `ffconcat` script stitching the exact time slices between director switching cues and encodes the video (`libx264 veryfast`, `aac 192k`, `-movflags +faststart`) with real-time stderr progress parsing reported to the player UI.
 
 ---
+
+## 21. Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals (2026-11-02)
+
+### 1. Active Screen Focus Detection & Telemetry Coordinate Capture
+- **Global Coordinate Tracking**:
+  - `WindowsKeyboardCaptureProvider.cs` and `WindowsMouseOverlay.cs` invoke Win32 `GetCursorPos` and `GetForegroundWindow` / `GetWindowRect` to capture precise virtual desktop coordinates `(X, Y)` at interaction time.
+  - Telemetry DTOs (`KeystrokeEventDto`, `ActivityEventDto`) and SQLite schema (`keystroke_events`) are augmented with `x`, `y`, and `display_id` columns.
+- **Intelligent Video Bitrate Activity Heuristic**:
+  - In `ExtractorAdvancedController.cs`, `ComputeStationDirectorPlanAsync` analyzes per-monitor chunk bitrates (`FileSizeBytes / Duration.TotalMilliseconds`) across the timeline.
+  - When workstations operate without active typing or with legacy coordinates, the engine correlates encoding bandwidth deltas between primary and secondary displays, seamlessly detecting when user interaction migrates to secondary monitors.
+  - Multi-monitor station queries (`/api/v1/extractor-advanced/stations`) automatically return dynamic, activity-based director plans rather than static primary-monitor defaults.
+
+### 2. Multi-Display Dip-to-Black Video Slicing Engine (`SynchronizedTrackCutter.cs`)
+- **Mathematical Zero-Drift Multi-Monitor Slicing**:
+  - When rendering tracks in `layoutMode == "director"`, `SynchronizedTrackCutter` builds FFmpeg manifests across all relevant displays (`mon-0`, `mon-1`, etc.).
+  - Each director segment is trimmed from its corresponding input stream (`[0:v]`, `[1:v]`) with a 150ms fade-out and 150ms fade-in (300ms symmetrical Dip-to-Black transition), concatenated via `concat=n=...:v=1:a=0[vbase]`.
+  - Preserves 100% full native resolution without letterbox distortion, and retains continuous, drift-free audio synchronization mapped from input 0.
+
+### 3. Package Manifest Integration (`session.json`) & Forensic Player Auto-Replay
+- **Metadata Persistence in Archives**:
+  - `AdvanceJobManager.cs` and `ExtractorService.cs` embed `directorSegments` into `session.json` inside exported `.tar` and `.itbp` packages.
+  - `PlayerPackageManifest.cs` deserializes `directorSegments`, and `MainViewModel.cs` automatically compiles them into interactive `DirectorCues` with exact timeline offset seconds.
+- **Dynamic Playhead Status Badge**:
+  - During playback in Director Mode, `DirectorStatusMessage` dynamically updates with the active screen and time interval: `🎬 AUTO-DIRECTOR: 🖥 DISPLAY 2 (mon-1) [00:01:23 - 00:03:45]`.
+
+### 4. Advanced Extractor Studio Timeline & HUD Enhancements
+- **Timeline Segment Visualization (`DirectorTrack.jsx`)**:
+  - Each segment renders a screen badge (`🖥️ MON-0`, `🖥️ MON-1`), start and end time interval `[10:14:00 - 10:18:30]`, and duration `(04m 30s)`.
+  - The track header features a live orientation badge with active time boundaries: `⚡ AUTO: 🖥 DISPLAY 2 (mon-1) [10:14:00 - 10:18:30]`.
+- **Persistent Minimap HUD & Player Pill**:
+  - `PersistentMinimapHud.jsx` and `StudioVideoFeed.jsx` render real-time time range badges, giving operators immediate visual clarity on which display is currently selected and for what exact time span.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

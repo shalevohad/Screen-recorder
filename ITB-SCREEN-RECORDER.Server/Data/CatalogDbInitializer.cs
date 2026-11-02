@@ -195,6 +195,10 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             db.EnsureColumn("recording_chunks", "is_primary", "INTEGER NOT NULL DEFAULT 1");
             db.EnsureColumn("recording_chunks", "display_bounds", "TEXT");
 
+            db.EnsureColumn("keystroke_events", "x", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("keystroke_events", "y", "INTEGER NOT NULL DEFAULT 0");
+            db.EnsureColumn("keystroke_events", "display_id", "TEXT");
+
             db.Execute(@"
                 CREATE INDEX IF NOT EXISTS idx_chunks_station_window_covering 
                 ON recording_chunks (station_id, start_epoch_ms, end_epoch_ms, is_finalized, file_path, file_size_bytes, fps, width, height, has_audio, display_id);

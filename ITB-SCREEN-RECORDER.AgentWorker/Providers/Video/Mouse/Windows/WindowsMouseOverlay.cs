@@ -132,6 +132,7 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
         private static extern uint GetCurrentThreadId();
         #endregion
 
+        public static event Action<int, int, string>? MouseInteractionOccurred;
         private LowLevelMouseProc? _hookProc;
         private IntPtr _hookId = IntPtr.Zero;
         private Thread? _hookThread;
@@ -215,14 +216,17 @@ namespace ITBRecorderAgent.Providers.Video.Mouse.Windows
                     if (msg == WM_LBUTTONDOWN)
                     {
                         MouseVisualRasterizer.EnqueueEvent(hs.pt.x, hs.pt.y, MouseInteractionType.LeftClick);
+                        MouseInteractionOccurred?.Invoke(hs.pt.x, hs.pt.y, "LeftClick");
                     }
                     else if (msg == WM_RBUTTONDOWN)
                     {
                         MouseVisualRasterizer.EnqueueEvent(hs.pt.x, hs.pt.y, MouseInteractionType.RightClick);
+                        MouseInteractionOccurred?.Invoke(hs.pt.x, hs.pt.y, "RightClick");
                     }
                     else if (msg == WM_MBUTTONDOWN)
                     {
                         MouseVisualRasterizer.EnqueueEvent(hs.pt.x, hs.pt.y, MouseInteractionType.MiddleClick);
+                        MouseInteractionOccurred?.Invoke(hs.pt.x, hs.pt.y, "MiddleClick");
                     }
                     else if (msg == WM_MOUSEWHEEL)
                     {

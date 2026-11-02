@@ -90,6 +90,9 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds);
 
             _keyboardCapture.KeystrokeCaptured += OnKeystrokeCaptured;
+#if WINDOWS
+            ITBRecorderAgent.Providers.Video.Mouse.Windows.WindowsMouseOverlay.MouseInteractionOccurred += OnMouseInteractionOccurred;
+#endif
             _keyboardCapture.Start();
 
             WireIpcEvents();
@@ -101,6 +104,21 @@ namespace ITB_SCREEN_RECORDER.AgentWorker
                 _sessionStartTimeUtc = DateTime.UtcNow;
                 if (_permission.CurrentCount == 0) _permission.Release();
             }
+        }
+
+        private void OnMouseInteractionOccurred(int x, int y, string button)
+        {
+            if (!_isStreaming || !_isRecording) return;
+            long epochMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long)_serverUtcOffset.TotalMilliseconds;
+            var k = new KeystrokeEventDto
+            {
+                EpochMs = epochMs,
+                KeyCombination = $"[{button}]",
+                TimestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).UtcDateTime,
+                X = x,
+                Y = y
+            };
+            OnKeystrokeCaptured(k);
         }
 
         private void OnKeystrokeCaptured(KeystrokeEventDto k)

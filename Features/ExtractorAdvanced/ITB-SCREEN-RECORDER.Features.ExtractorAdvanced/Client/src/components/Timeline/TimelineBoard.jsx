@@ -289,6 +289,7 @@ export default function TimelineBoard({
                                         viewportDurationMs={viewportDurationMs}
                                         baseEpochMs={baseEpochMs}
                                         playheadMs={playheadMs}
+                                        timeMode={timeMode}
                                         availableDisplays={station.displays || station.topology?.displays || []}
                                         onSplitSegment={onSplitDirectorSegment}
                                         onChangeSegmentDisplay={onChangeDirectorSegmentDisplay}

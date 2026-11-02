@@ -139,5 +139,80 @@ namespace ITB_SCREEN_RECORDER.Tests.Extractor
             Assert.Equal("mon-1", plan.Segments[1].TargetDisplayId);
             Assert.Equal(DirectorTriggerReason.CursorActivity, plan.Segments[1].TriggerReason);
         }
+
+        [Fact]
+        public void MultiDisplay_ExplicitDisplayIdOnEvent_TriggersSwitchDirectly()
+        {
+            var topology = new StationDisplayTopologyDto
+            {
+                Hostname = "WS-01",
+                Displays = new List<DisplayMetadataDto>
+                {
+                    new() { DisplayId = "mon-0", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 },
+                    new() { DisplayId = "mon-1", IsPrimary = false, X = 1920, Y = 0, Width = 1920, Height = 1080 }
+                }
+            };
+
+            // Event has X=0, Y=0 but explicit DisplayId="mon-1"
+            var events = new List<ActivityEventDto>
+            {
+                new()
+                {
+                    TimestampEpochMs = 6000,
+                    X = 0,
+                    Y = 0,
+                    DisplayId = "mon-1",
+                    Type = ActivityEventType.Keystroke,
+                    KeyName = "A"
+                }
+            };
+
+            var plan = _analyzer.AnalyzeFocus("WS-01", 0, 12000, topology, events, preRollLeadInMs: 1000, minDwellMs: 2000);
+
+            Assert.Equal(2, plan.Segments.Count);
+            Assert.Equal("mon-0", plan.Segments[0].TargetDisplayId);
+            Assert.Equal(5000, plan.Segments[0].EndEpochMs); // 6000 - 1000ms pre-roll
+            Assert.Equal("mon-1", plan.Segments[1].TargetDisplayId);
+            Assert.Equal(5000, plan.Segments[1].StartEpochMs);
+            Assert.Equal(12000, plan.Segments[1].EndEpochMs);
+        }
+
+        [Fact]
+        public void MultiDisplay_AlternatingKeystrokesAcrossDisplays_BuildsContiguousSegmentsWithExactTimestamps()
+        {
+            var topology = new StationDisplayTopologyDto
+            {
+                Hostname = "WS-01",
+                Displays = new List<DisplayMetadataDto>
+                {
+                    new() { DisplayId = "mon-0", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 },
+                    new() { DisplayId = "mon-1", IsPrimary = false, X = 1920, Y = 0, Width = 1920, Height = 1080 }
+                }
+            };
+
+            var events = new List<ActivityEventDto>
+            {
+                new() { TimestampEpochMs = 4000, DisplayId = "mon-1", Type = ActivityEventType.Keystroke },
+                new() { TimestampEpochMs = 9000, DisplayId = "mon-0", Type = ActivityEventType.Keystroke }
+            };
+
+            var plan = _analyzer.AnalyzeFocus("WS-01", 0, 15000, topology, events, preRollLeadInMs: 1000, minDwellMs: 2000);
+
+            Assert.Equal(3, plan.Segments.Count);
+            // Seg 0: mon-0 from 0 to 3000
+            Assert.Equal("mon-0", plan.Segments[0].TargetDisplayId);
+            Assert.Equal(0, plan.Segments[0].StartEpochMs);
+            Assert.Equal(3000, plan.Segments[0].EndEpochMs);
+
+            // Seg 1: mon-1 from 3000 to 8000
+            Assert.Equal("mon-1", plan.Segments[1].TargetDisplayId);
+            Assert.Equal(3000, plan.Segments[1].StartEpochMs);
+            Assert.Equal(8000, plan.Segments[1].EndEpochMs);
+
+            // Seg 2: mon-0 from 8000 to 15000
+            Assert.Equal("mon-0", plan.Segments[2].TargetDisplayId);
+            Assert.Equal(8000, plan.Segments[2].StartEpochMs);
+            Assert.Equal(15000, plan.Segments[2].EndEpochMs);
+        }
     }
 }

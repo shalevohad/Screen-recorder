@@ -63,6 +63,15 @@ namespace ITB_SCREEN_RECORDER.Core.Contracts.Keystroke
 
         [JsonPropertyName("timestampUtc")]
         public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
+
+        [JsonPropertyName("x")]
+        public int X { get; set; } = 0;
+
+        [JsonPropertyName("y")]
+        public int Y { get; set; } = 0;
+
+        [JsonPropertyName("displayId")]
+        public string? DisplayId { get; set; }
     }
 
     /// <summary>
