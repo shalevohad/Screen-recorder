@@ -10,6 +10,7 @@ using Microsoft.Win32;
 using ITB_SCREEN_RECORDER.Player.Core.Audio;
 using ITB_SCREEN_RECORDER.Player.Core.Ingestion;
 using ITB_SCREEN_RECORDER.Player.Core.Ipc;
+using ITB_SCREEN_RECORDER.Player.Core.Presentation;
 using ITB_SCREEN_RECORDER.Player.Core.Streaming;
 using ITB_SCREEN_RECORDER.Player.Core.Synchronization;
 using ITB_SCREEN_RECORDER.Player.Core.Keystrokes;
@@ -21,6 +22,7 @@ public enum PlayerViewMode
 {
     Canvas,
     Split,
+    Pip,
     Solo,
     AllGrid
 }
@@ -49,7 +51,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private double _totalDurationSeconds;
     private bool _isPlaying;
     private double _playbackRate = 1.0;
-    private bool _isPipMode;
     private bool _isAudioMixerVisible;
     private bool _isKeystrokeDrawerVisible;
     private string _keystrokeSearchQuery = string.Empty;
@@ -58,7 +59,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     private StationGroupViewModel? _selectedStation;
     private PlayerViewMode _viewMode = PlayerViewMode.Canvas;
     private VideoTrackViewModel? _activeSoloDisplay;
+    private VideoTrackViewModel? _activeHeroFeed;
+    private VideoTrackViewModel? _activePipFeed;
     private bool _isCanvasFullscreen;
+
+    private bool _isDirectorMode;
+    private bool _isDirectorRecording;
+    private string _directorStatusMessage = "Ready";
+    private PresentationCue? _lastExecutedCue;
+
+    private bool _isExportingMasterVideo;
+    private double _masterExportProgress;
+    private string _masterExportStatus = string.Empty;
 
     private bool _isLoading;
     private bool _isLoadingIndeterminate = true;
@@ -143,10 +155,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             if (SetProperty(ref _isPlaying, value))
             {
+                OnPropertyChanged(nameof(PlayPauseButtonText));
                 PlaybackStateChanged?.Invoke(value);
             }
         }
     }
+
+    public string PlayPauseButtonText => IsPlaying ? "⏸ PAUSE" : "▶ PLAY";
 
     public double PlaybackRate
     {
@@ -159,12 +174,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 PlaybackRateChanged?.Invoke(value);
             }
         }
-    }
-
-    public bool IsPipMode
-    {
-        get => _isPipMode;
-        set => SetProperty(ref _isPipMode, value);
     }
 
     public bool IsAudioMixerVisible
@@ -231,14 +240,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 OnPropertyChanged(nameof(IsCanvasMode));
                 OnPropertyChanged(nameof(IsSplitMode));
+                OnPropertyChanged(nameof(IsPipMode));
                 OnPropertyChanged(nameof(IsSoloMode));
                 OnPropertyChanged(nameof(IsAllGridMode));
+
+                if (value == PlayerViewMode.Pip)
+                {
+                    if (ActiveHeroFeed == null) ActiveHeroFeed = FocusedTrack ?? Tracks.FirstOrDefault();
+                    if (ActivePipFeed == null) ActivePipFeed = Tracks.FirstOrDefault(t => t != ActiveHeroFeed) ?? ActiveHeroFeed;
+                }
+                else if (value == PlayerViewMode.Split)
+                {
+                    if (ActiveSplitFeeds.Count == 0)
+                    {
+                        ResetSplitFeeds();
+                    }
+                }
             }
         }
     }
 
     public bool IsCanvasMode => ViewMode == PlayerViewMode.Canvas;
     public bool IsSplitMode => ViewMode == PlayerViewMode.Split;
+    public bool IsPipMode => ViewMode == PlayerViewMode.Pip;
     public bool IsSoloMode => ViewMode == PlayerViewMode.Solo;
     public bool IsAllGridMode => ViewMode == PlayerViewMode.AllGrid;
 
@@ -248,10 +272,109 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         set => SetProperty(ref _activeSoloDisplay, value);
     }
 
+    public VideoTrackViewModel? ActiveHeroFeed
+    {
+        get => _activeHeroFeed;
+        set
+        {
+            if (SetProperty(ref _activeHeroFeed, value))
+            {
+                if (IsDirectorRecording && value != null)
+                {
+                    RecordDirectorCue("SetPipHero", value.Hostname, value.DisplayId);
+                }
+            }
+        }
+    }
+
+    public VideoTrackViewModel? ActivePipFeed
+    {
+        get => _activePipFeed;
+        set => SetProperty(ref _activePipFeed, value);
+    }
+
+    public ObservableCollection<VideoTrackViewModel> ActiveSplitFeeds { get; } = new();
+
+    public int SplitRows
+    {
+        get
+        {
+            int count = ActiveSplitFeeds.Count;
+            if (count <= 1) return 1;
+            if (count <= 2) return 1;
+            if (count <= 4) return 2;
+            if (count <= 6) return 2;
+            return 3;
+        }
+    }
+
+    public int SplitColumns
+    {
+        get
+        {
+            int count = ActiveSplitFeeds.Count;
+            if (count <= 1) return 1;
+            if (count <= 2) return 2;
+            if (count <= 4) return 2;
+            if (count <= 6) return 3;
+            return 3;
+        }
+    }
+
     public bool IsCanvasFullscreen
     {
         get => _isCanvasFullscreen;
         set => SetProperty(ref _isCanvasFullscreen, value);
+    }
+
+    public ObservableCollection<PresentationCue> DirectorCues { get; } = new();
+
+    public bool IsDirectorMode
+    {
+        get => _isDirectorMode;
+        set
+        {
+            if (SetProperty(ref _isDirectorMode, value))
+            {
+                DirectorStatusMessage = value ? "🎬 Auto-Director Replay ACTIVE" : "Manual Director Mode";
+            }
+        }
+    }
+
+    public bool IsDirectorRecording
+    {
+        get => _isDirectorRecording;
+        set
+        {
+            if (SetProperty(ref _isDirectorRecording, value))
+            {
+                DirectorStatusMessage = value ? "⏺ Recording Director Cues..." : "Director Cue Recording STOPPED";
+            }
+        }
+    }
+
+    public string DirectorStatusMessage
+    {
+        get => _directorStatusMessage;
+        set => SetProperty(ref _directorStatusMessage, value);
+    }
+
+    public bool IsExportingMasterVideo
+    {
+        get => _isExportingMasterVideo;
+        set => SetProperty(ref _isExportingMasterVideo, value);
+    }
+
+    public double MasterExportProgress
+    {
+        get => _masterExportProgress;
+        set => SetProperty(ref _masterExportProgress, value);
+    }
+
+    public string MasterExportStatus
+    {
+        get => _masterExportStatus;
+        set => SetProperty(ref _masterExportStatus, value);
     }
 
     public ObservableCollection<StationGroupViewModel> Stations { get; } = new();
@@ -268,9 +391,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand ToggleAudioMixerCommand { get; }
     public ICommand ToggleKeystrokeDrawerCommand { get; }
     public ICommand SeekToKeystrokeCommand { get; }
-    public ICommand FocusTrackCommand { get; }
-    public ICommand CancelLoadingCommand { get; }
-
     public ICommand SelectStationCommand { get; }
     public ICommand SelectAllStationsCommand { get; }
     public ICommand SetViewModeCommand { get; }
@@ -278,6 +398,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ICommand SelectMonitorByIndexCommand { get; }
     public ICommand ToggleFullscreenCanvasCommand { get; }
     public ICommand ReturnToCanvasCommand { get; }
+
+    public ICommand SwapPipCommand { get; }
+    public ICommand SetPipHeroCommand { get; }
+    public ICommand ToggleSplitFeedCommand { get; }
+    public ICommand ResetSplitFeedsCommand { get; }
+
+    public ICommand ToggleDirectorModeCommand { get; }
+    public ICommand ToggleDirectorRecordingCommand { get; }
+    public ICommand AddDirectorCueCommand { get; }
+    public ICommand ClearDirectorCuesCommand { get; }
+    public ICommand SavePresentationPlanCommand { get; }
+    public ICommand LoadPresentationPlanCommand { get; }
+    public ICommand ExportMasterVideoCommand { get; }
 
     public bool IsLoading
     {
@@ -305,20 +438,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public MainViewModel()
     {
-        OpenFileCommand = new RelayCommand(ExecuteOpenFile);
-        PlayPauseCommand = new RelayCommand(ExecutePlayPause);
-        StopCommand = new RelayCommand(ExecuteStop);
-        CancelLoadingCommand = new RelayCommand(() => _loadingCts?.Cancel());
-        StepForwardCommand = new RelayCommand(() =>
-        {
-            _clock?.StepFrame(1, 30.0);
-            if (_clock != null) SeekRequested?.Invoke(_clock.CurrentTime);
-        });
-        StepBackwardCommand = new RelayCommand(() =>
-        {
-            _clock?.StepFrame(-1, 30.0);
-            if (_clock != null) SeekRequested?.Invoke(_clock.CurrentTime);
-        });
+        OpenFileCommand = new RelayCommand(_ => ExecuteOpenFile());
+        PlayPauseCommand = new RelayCommand(_ => ExecutePlayPause());
+        StopCommand = new RelayCommand(_ => ExecuteStop());
+        StepForwardCommand = new RelayCommand(_ => _clock?.StepFrame(1));
+        StepBackwardCommand = new RelayCommand(_ => _clock?.StepFrame(-1));
+
         SetRateCommand = new RelayCommand(param =>
         {
             if (param != null && double.TryParse(param.ToString(), out double rate))
@@ -326,39 +451,41 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 PlaybackRate = rate;
             }
         });
-        ToggleLayoutCommand = new RelayCommand(() => IsPipMode = !IsPipMode);
-        ToggleAudioMixerCommand = new RelayCommand(() => IsAudioMixerVisible = !IsAudioMixerVisible);
-        ToggleKeystrokeDrawerCommand = new RelayCommand(() => IsKeystrokeDrawerVisible = !IsKeystrokeDrawerVisible);
+
+        ToggleLayoutCommand = new RelayCommand(_ =>
+        {
+            ViewMode = ViewMode switch
+            {
+                PlayerViewMode.Canvas => PlayerViewMode.Split,
+                PlayerViewMode.Split => PlayerViewMode.Pip,
+                PlayerViewMode.Pip => PlayerViewMode.Solo,
+                PlayerViewMode.Solo => PlayerViewMode.AllGrid,
+                _ => PlayerViewMode.Canvas
+            };
+        });
+
+        ToggleAudioMixerCommand = new RelayCommand(_ => IsAudioMixerVisible = !IsAudioMixerVisible);
+        ToggleKeystrokeDrawerCommand = new RelayCommand(_ => IsKeystrokeDrawerVisible = !IsKeystrokeDrawerVisible);
+
         SeekToKeystrokeCommand = new RelayCommand(param =>
         {
-            if (param is KeystrokeItemViewModel item && _clock != null)
+            if (param is KeystrokeItemViewModel kItem && _clock != null)
             {
-                _clock.Seek(item.StartTime);
-                SeekRequested?.Invoke(item.StartTime);
-            }
-        });
-        FocusTrackCommand = new RelayCommand(param =>
-        {
-            if (param is VideoTrackViewModel track)
-            {
-                FocusedTrack = track;
+                var offset = kItem.StartTime;
+                _clock.Seek(offset);
+                SeekRequested?.Invoke(offset);
             }
         });
 
         SelectStationCommand = new RelayCommand(param =>
         {
-            if (param is StationGroupViewModel station)
+            if (param is StationGroupViewModel st)
             {
-                SelectStation(station);
-            }
-            else if (param is string hostname)
-            {
-                var st = Stations.FirstOrDefault(s => string.Equals(s.Hostname, hostname, StringComparison.OrdinalIgnoreCase));
-                if (st != null) SelectStation(st);
+                SelectStation(st);
             }
         });
 
-        SelectAllStationsCommand = new RelayCommand(() =>
+        SelectAllStationsCommand = new RelayCommand(_ =>
         {
             SelectedStation = null;
             ViewMode = PlayerViewMode.AllGrid;
@@ -395,15 +522,32 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             }
         });
 
-        ToggleFullscreenCanvasCommand = new RelayCommand(() =>
+        ToggleFullscreenCanvasCommand = new RelayCommand(_ =>
         {
             IsCanvasFullscreen = !IsCanvasFullscreen;
         });
 
-        ReturnToCanvasCommand = new RelayCommand(() =>
+        ReturnToCanvasCommand = new RelayCommand(_ =>
         {
             ReturnToCanvas();
         });
+
+        SwapPipCommand = new RelayCommand(_ => SwapPip());
+        SetPipHeroCommand = new RelayCommand(p => SetPipHero(p as VideoTrackViewModel));
+        ToggleSplitFeedCommand = new RelayCommand(p => ToggleSplitFeed(p as VideoTrackViewModel));
+        ResetSplitFeedsCommand = new RelayCommand(_ => ResetSplitFeeds());
+
+        ToggleDirectorModeCommand = new RelayCommand(_ => IsDirectorMode = !IsDirectorMode);
+        ToggleDirectorRecordingCommand = new RelayCommand(_ => IsDirectorRecording = !IsDirectorRecording);
+        AddDirectorCueCommand = new RelayCommand(_ => RecordDirectorCue("ManualCue"));
+        ClearDirectorCuesCommand = new RelayCommand(_ =>
+        {
+            DirectorCues.Clear();
+            DirectorStatusMessage = "Director cues cleared.";
+        });
+        SavePresentationPlanCommand = new RelayCommand(_ => SavePresentationPlan());
+        LoadPresentationPlanCommand = new RelayCommand(_ => LoadPresentationPlan());
+        ExportMasterVideoCommand = new RelayCommand(_ => _ = ExportMasterVideoAsync());
     }
 
     public void SelectStation(StationGroupViewModel? station)
@@ -425,6 +569,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             ViewMode = PlayerViewMode.Solo;
             ActiveSoloDisplay = station.PrimaryDisplay;
         }
+
+        ResetSplitFeeds();
     }
 
     public void SelectDisplay(VideoTrackViewModel display)
@@ -447,25 +593,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         ActiveSoloDisplay = display;
         ViewMode = PlayerViewMode.Solo;
+
+        if (IsDirectorRecording)
+        {
+            RecordDirectorCue("FocusDisplay", display.Hostname, display.DisplayId);
+        }
     }
 
     public void SelectMonitorByIndex(int index1Based)
     {
-        if (SelectedStation != null && SelectedStation.Displays.Count > 0)
+        if (SelectedStation == null || SelectedStation.Displays.Count == 0) return;
+
+        int zeroIdx = index1Based - 1;
+        if (zeroIdx >= 0 && zeroIdx < SelectedStation.Displays.Count)
         {
-            int idx0 = index1Based - 1;
-            if (idx0 >= 0 && idx0 < SelectedStation.Displays.Count)
-            {
-                SelectDisplay(SelectedStation.Displays[idx0]);
-            }
-        }
-        else if (SelectedStation == null && Stations.Count > 0)
-        {
-            int sIdx = index1Based - 1;
-            if (sIdx >= 0 && sIdx < Stations.Count)
-            {
-                SelectStation(Stations[sIdx]);
-            }
+            SelectDisplay(SelectedStation.Displays[zeroIdx]);
         }
     }
 
@@ -479,14 +621,272 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
         {
             ViewMode = PlayerViewMode.AllGrid;
         }
+
+        if (IsDirectorRecording)
+        {
+            RecordDirectorCue("ReturnToCanvas");
+        }
+    }
+
+    public void SwapPip()
+    {
+        var temp = ActiveHeroFeed;
+        ActiveHeroFeed = ActivePipFeed;
+        ActivePipFeed = temp;
+
+        if (IsDirectorRecording)
+        {
+            RecordDirectorCue("SwapPip", ActiveHeroFeed?.Hostname ?? "", ActiveHeroFeed?.DisplayId ?? "");
+        }
+    }
+
+    public void SetPipHero(VideoTrackViewModel? feed)
+    {
+        if (feed == null) return;
+        if (ActiveHeroFeed != feed)
+        {
+            ActivePipFeed = ActiveHeroFeed;
+            ActiveHeroFeed = feed;
+        }
+        ViewMode = PlayerViewMode.Pip;
+    }
+
+    public void ToggleSplitFeed(VideoTrackViewModel? feed)
+    {
+        if (feed == null) return;
+        if (ActiveSplitFeeds.Contains(feed))
+        {
+            if (ActiveSplitFeeds.Count > 1) ActiveSplitFeeds.Remove(feed);
+        }
+        else
+        {
+            ActiveSplitFeeds.Add(feed);
+        }
+        OnPropertyChanged(nameof(SplitRows));
+        OnPropertyChanged(nameof(SplitColumns));
+    }
+
+    public void ResetSplitFeeds()
+    {
+        ActiveSplitFeeds.Clear();
+        if (SelectedStation != null && SelectedStation.Displays.Count > 0)
+        {
+            foreach (var d in SelectedStation.Displays) ActiveSplitFeeds.Add(d);
+        }
+        else
+        {
+            foreach (var st in Stations)
+            {
+                if (st.PrimaryDisplay != null) ActiveSplitFeeds.Add(st.PrimaryDisplay);
+            }
+        }
+        OnPropertyChanged(nameof(SplitRows));
+        OnPropertyChanged(nameof(SplitColumns));
+    }
+
+    public void RecordDirectorCue(string action, string hostname = "", string displayId = "")
+    {
+        if (!IsDirectorRecording) return;
+        double currentSec = CurrentTimelineSeconds;
+        int targetIdx = FocusedTrack?.TrackIndex ?? 0;
+        int? secIdx = ActivePipFeed?.TrackIndex;
+
+        var cue = new PresentationCue
+        {
+            OffsetSeconds = Math.Round(currentSec, 2),
+            Action = action,
+            LayoutMode = ViewMode.ToString(),
+            TargetTrackIndex = targetIdx,
+            TargetHostname = string.IsNullOrEmpty(hostname) ? (FocusedTrack?.Hostname ?? "") : hostname,
+            TargetDisplayId = string.IsNullOrEmpty(displayId) ? (FocusedTrack?.DisplayId ?? "mon-0") : displayId,
+            SecondaryTrackIndex = secIdx,
+            Description = $"{action} to {hostname} ({displayId})"
+        };
+
+        DirectorCues.Add(cue);
+        DirectorStatusMessage = $"Recorded cue @ {FormatSeconds(currentSec)} ({action})";
+    }
+
+    private void ApplyDirectorCue(PresentationCue cue)
+    {
+        if (!string.IsNullOrEmpty(cue.LayoutMode) && Enum.TryParse<PlayerViewMode>(cue.LayoutMode, true, out var mode))
+        {
+            ViewMode = mode;
+        }
+
+        if (cue.TargetTrackIndex >= 0 && cue.TargetTrackIndex < Tracks.Count)
+        {
+            var targetTrack = Tracks[cue.TargetTrackIndex];
+            if (ViewMode == PlayerViewMode.Solo)
+            {
+                SelectDisplay(targetTrack);
+            }
+            else if (ViewMode == PlayerViewMode.Pip)
+            {
+                ActiveHeroFeed = targetTrack;
+                if (cue.SecondaryTrackIndex.HasValue && cue.SecondaryTrackIndex.Value >= 0 && cue.SecondaryTrackIndex.Value < Tracks.Count)
+                {
+                    ActivePipFeed = Tracks[cue.SecondaryTrackIndex.Value];
+                }
+            }
+        }
+        else if (!string.IsNullOrEmpty(cue.TargetHostname))
+        {
+            var st = Stations.FirstOrDefault(s => string.Equals(s.Hostname, cue.TargetHostname, StringComparison.OrdinalIgnoreCase));
+            if (st != null)
+            {
+                var disp = st.Displays.FirstOrDefault(d => string.Equals(d.DisplayId, cue.TargetDisplayId, StringComparison.OrdinalIgnoreCase)) ?? st.PrimaryDisplay;
+                if (disp != null)
+                {
+                    if (ViewMode == PlayerViewMode.Solo) SelectDisplay(disp);
+                    else if (ViewMode == PlayerViewMode.Pip) ActiveHeroFeed = disp;
+                }
+            }
+        }
+
+        DirectorStatusMessage = $"🎬 CUE @ {FormatSeconds(cue.OffsetSeconds)}: {cue.Action} ({cue.TargetHostname} {cue.TargetDisplayId})";
+    }
+
+    public void SavePresentationPlan()
+    {
+        var sfd = new SaveFileDialog
+        {
+            Title = "Save Presentation Director Plan",
+            Filter = "Director Presentation Plan (*.itblayout)|*.itblayout|JSON Files (*.json)|*.json",
+            FileName = $"presentation_{SessionId}_{DateTime.Now:yyyyMMdd_HHmmss}.itblayout"
+        };
+
+        if (sfd.ShowDialog() == true)
+        {
+            var plan = new PresentationDirectorPlan
+            {
+                Title = $"Director Plan - {SessionId}",
+                CreatedUtc = DateTime.UtcNow,
+                InitialLayoutMode = ViewMode.ToString(),
+                InitialHeroTrackIndex = ActiveHeroFeed?.TrackIndex ?? 0,
+                InitialPipTrackIndex = ActivePipFeed?.TrackIndex ?? 1,
+                InitialSplitTrackIndices = ActiveSplitFeeds.Select(f => f.TrackIndex).ToList(),
+                Cues = DirectorCues.ToList()
+            };
+
+            plan.SaveToFile(sfd.FileName);
+            DirectorStatusMessage = $"Plan saved to: {Path.GetFileName(sfd.FileName)}";
+        }
+    }
+
+    public void LoadPresentationPlan()
+    {
+        var ofd = new OpenFileDialog
+        {
+            Title = "Open Presentation Director Plan",
+            Filter = "Director Presentation Plan (*.itblayout;*.json)|*.itblayout;*.json|All Files (*.*)|*.*"
+        };
+
+        if (ofd.ShowDialog() == true)
+        {
+            try
+            {
+                var plan = PresentationDirectorPlan.LoadFromFile(ofd.FileName);
+                DirectorCues.Clear();
+                foreach (var cue in plan.Cues)
+                {
+                    DirectorCues.Add(cue);
+                }
+
+                if (Enum.TryParse<PlayerViewMode>(plan.InitialLayoutMode, true, out var initialMode))
+                {
+                    ViewMode = initialMode;
+                }
+
+                if (plan.InitialHeroTrackIndex >= 0 && plan.InitialHeroTrackIndex < Tracks.Count)
+                {
+                    ActiveHeroFeed = Tracks[plan.InitialHeroTrackIndex];
+                }
+
+                if (plan.InitialPipTrackIndex >= 0 && plan.InitialPipTrackIndex < Tracks.Count)
+                {
+                    ActivePipFeed = Tracks[plan.InitialPipTrackIndex];
+                }
+
+                IsDirectorMode = true;
+                DirectorStatusMessage = $"Plan loaded ({DirectorCues.Count} cues). Director Mode ACTIVE.";
+            }
+            catch (Exception ex)
+            {
+                DirectorStatusMessage = $"Failed loading plan: {ex.Message}";
+            }
+        }
+    }
+
+    public async Task ExportMasterVideoAsync()
+    {
+        if (_tarFs == null || !IsPackageLoaded)
+        {
+            MessageBox.Show("Please load an ITB session archive before exporting master video.", "No Session Loaded", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var sfd = new SaveFileDialog
+        {
+            Title = "Export Master Presentation Video",
+            Filter = "MP4 Video (*.mp4)|*.mp4",
+            FileName = $"master_presentation_{SessionId}_{DateTime.Now:yyyyMMdd_HHmmss}.mp4"
+        };
+
+        if (sfd.ShowDialog() != true) return;
+
+        IsExportingMasterVideo = true;
+        MasterExportProgress = 0;
+        MasterExportStatus = "Initializing Master Presentation Export...";
+
+        try
+        {
+            var plan = new PresentationDirectorPlan
+            {
+                Title = $"Master Export - {SessionId}",
+                CreatedUtc = DateTime.UtcNow,
+                InitialLayoutMode = ViewMode.ToString(),
+                InitialHeroTrackIndex = ActiveHeroFeed?.TrackIndex ?? (FocusedTrack?.TrackIndex ?? 0),
+                InitialPipTrackIndex = ActivePipFeed?.TrackIndex ?? 1,
+                InitialSplitTrackIndices = ActiveSplitFeeds.Select(f => f.TrackIndex).ToList(),
+                Cues = DirectorCues.ToList()
+            };
+
+            var exporter = new MasterVideoExportService();
+            var progress = new Progress<(double ProgressPercent, string StatusMessage)>(p =>
+            {
+                MasterExportProgress = p.ProgressPercent;
+                MasterExportStatus = p.StatusMessage;
+            });
+
+            await Task.Run(() => exporter.ExportMasterVideoAsync(_tarFs, plan, sfd.FileName, progress, CancellationToken.None)).ConfigureAwait(true);
+
+            MasterExportStatus = "Export successful!";
+            MessageBox.Show($"Master presentation video successfully generated at:\n{sfd.FileName}", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MasterExportStatus = $"Export failed: {ex.Message}";
+            MessageBox.Show($"Master video export failed:\n{ex.Message}", "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsExportingMasterVideo = false;
+        }
+    }
+
+    private static string FormatSeconds(double totalSec)
+    {
+        var ts = TimeSpan.FromSeconds(Math.Max(0, totalSec));
+        return $"{ts:hh\\:mm\\:ss}";
     }
 
     private void ExecuteOpenFile()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Open ITB Package",
-            Filter = "ITB Package (*.tar;*.itbp)|*.tar;*.itbp|All Files (*.*)|*.*"
+            Title = "Open ITB Replay Package",
+            Filter = "ITB Replay Packages (*.tar;*.itbp)|*.tar;*.itbp|All Files (*.*)|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -548,6 +948,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             Tracks.Clear();
             Stations.Clear();
             Keystrokes.Clear();
+            ActiveSplitFeeds.Clear();
 
             int trackIdx = 0;
             foreach (var track in manifest.Tracks)
@@ -562,6 +963,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     int.TryParse(cleaned, out monIdx);
                 }
 
+                bool isDirCut = track.IsDirectorCut || string.Equals(track.DisplayId, "director", StringComparison.OrdinalIgnoreCase);
+
                 var vm = new VideoTrackViewModel
                 {
                     TrackIndex = trackIdx,
@@ -569,6 +972,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                     DisplayId = string.IsNullOrEmpty(track.DisplayId) ? $"mon-{monIdx}" : track.DisplayId,
                     MonitorIndex = monIdx,
                     IsPrimary = track.IsPrimary,
+                    IsDirectorCut = isDirCut,
                     Width = track.Width > 0 ? track.Width : 1920,
                     Height = track.Height > 0 ? track.Height : 1080,
                     X = track.X,
@@ -589,7 +993,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 {
                     Hostname = g.Key
                 };
-                foreach (var t in g.OrderBy(x => x.MonitorIndex))
+                foreach (var t in g.OrderBy(x => x.IsDirectorCut ? 1 : 0).ThenBy(x => x.MonitorIndex))
                 {
                     stVm.Displays.Add(t);
                 }
@@ -610,6 +1014,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             {
                 ViewMode = PlayerViewMode.AllGrid;
             }
+
+            // Setup default PiP & Split feeds
+            ActiveHeroFeed = FocusedTrack ?? Tracks.FirstOrDefault();
+            ActivePipFeed = Tracks.FirstOrDefault(t => t != ActiveHeroFeed) ?? ActiveHeroFeed;
+            ResetSplitFeeds();
         };
 
         if (Application.Current?.Dispatcher != null)
@@ -662,6 +1071,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(CurrentTimelineSeconds));
 
             UpdateTimelineDisplay(time);
+
+            // Auto-Director playback: evaluate presentation cues
+            if (IsDirectorMode && DirectorCues.Count > 0)
+            {
+                double sec = time.TotalSeconds;
+                var activeCue = DirectorCues.Where(c => c.OffsetSeconds <= sec)
+                                            .OrderByDescending(c => c.OffsetSeconds)
+                                            .FirstOrDefault();
+                if (activeCue != null && _lastExecutedCue != activeCue)
+                {
+                    _lastExecutedCue = activeCue;
+                    ApplyDirectorCue(activeCue);
+                }
+            }
 
             // Update subtitles & gap status per track
             if (_keystrokeIndexer != null)

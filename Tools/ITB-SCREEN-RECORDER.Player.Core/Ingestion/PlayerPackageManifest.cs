@@ -124,6 +124,9 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
         [JsonPropertyName("isPrimary")]
         public bool IsPrimary { get; set; } = true;
 
+        [JsonPropertyName("isDirectorCut")]
+        public bool IsDirectorCut { get; set; } = false;
+
         [JsonPropertyName("width")]
         public int Width { get; set; } = 1920;
 

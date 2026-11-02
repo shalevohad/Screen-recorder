@@ -110,6 +110,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         public string? AudioChannelMapping { get; set; } = "0:Loopback,1:Microphone";
         public string DisplayId { get; set; } = "mon-0";
         public bool IsPrimary { get; set; } = true;
+        public bool IsDirectorCut { get; set; } = false;
         public int Width { get; set; } = 1920;
         public int Height { get; set; } = 1080;
         public int X { get; set; } = 0;

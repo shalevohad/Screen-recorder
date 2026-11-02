@@ -260,6 +260,29 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
             }
         }
 
+        public async Task ExtractEntryToFileAsync(string entryName, string destinationFilePath, CancellationToken ct = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(entryName);
+            ArgumentException.ThrowIfNullOrWhiteSpace(destinationFilePath);
+
+            var dir = Path.GetDirectoryName(destinationFilePath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            await using var inStream = OpenReadStream(entryName);
+            await using var outStream = new FileStream(
+                destinationFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 65536,
+                useAsync: true);
+
+            await inStream.CopyToAsync(outStream, ct).ConfigureAwait(false);
+        }
+
         public void Dispose()
         {
             if (!_isDisposed)

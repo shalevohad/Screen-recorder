@@ -20,6 +20,7 @@ public sealed class VideoTrackViewModel : ViewModelBase
     private double _canvasWidth = 1920;
     private double _canvasHeight = 1080;
     private bool _isSelectedInCanvas;
+    private bool _isDirectorCut;
 
     public int TrackIndex { get; set; }
     public string Hostname { get; set; } = string.Empty;
@@ -33,8 +34,27 @@ public sealed class VideoTrackViewModel : ViewModelBase
     public int X { get; set; } = 0;
     public int Y { get; set; } = 0;
 
-    public string DisplayName => $"{Hostname} (Mon {MonitorIndex + 1}){(IsPrimary ? " [Primary]" : "")}";
-    public string DisplayTitle => $"🖥 DISPLAY {MonitorIndex + 1}{(IsPrimary ? " [PRIMARY]" : "")}";
+    public bool IsDirectorCut
+    {
+        get => _isDirectorCut;
+        set
+        {
+            if (SetProperty(ref _isDirectorCut, value))
+            {
+                OnPropertyChanged(nameof(DisplayName));
+                OnPropertyChanged(nameof(DisplayTitle));
+            }
+        }
+    }
+
+    public string DisplayName => IsDirectorCut
+        ? $"{Hostname} [Auto-Director]"
+        : $"{Hostname} (Mon {MonitorIndex + 1}){(IsPrimary ? " [Primary]" : "")}";
+
+    public string DisplayTitle => IsDirectorCut
+        ? "🎬 AUTO-DIRECTOR CUT"
+        : $"🖥 DISPLAY {MonitorIndex + 1}{(IsPrimary ? " [PRIMARY]" : "")}";
+
     public string ResolutionLabel => $"{Width}×{Height}";
 
     public double CanvasLeft

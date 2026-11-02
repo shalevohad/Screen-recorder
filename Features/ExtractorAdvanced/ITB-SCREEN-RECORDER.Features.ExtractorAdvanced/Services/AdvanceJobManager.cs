@@ -323,6 +323,22 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                 renderTasks.Add((sId, dispKey, isPrimary, w, h, x, y, sChunks, dispPlan));
                                 dispIndex++;
                             }
+
+                            // Also include the Auto-Director Cut track alongside all discrete monitors
+                            var rep0 = displayGroups.First().FirstOrDefault();
+                            int dirW = rep0?.Width > 0 ? rep0.Width : 1920;
+                            int dirH = rep0?.Height > 0 ? rep0.Height : 1080;
+                            var directorPlan = new SynchronizationPlan
+                            {
+                                ActiveSegments = plan.ActiveSegments,
+                                KeystrokeMode = plan.KeystrokeMode,
+                                LayoutMode = "director",
+                                TargetDisplayId = "director",
+                                DirectorSegments = plan.DirectorSegments,
+                                RemovedGlobalGaps = plan.RemovedGlobalGaps,
+                                StationGaps = plan.StationGaps
+                            };
+                            renderTasks.Add((sId, "director", false, dirW, dirH, 0, 0, sChunks, directorPlan));
                         }
                     }
                     else
@@ -403,6 +419,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         hostname = task.StationId,
                         displayId = task.DisplayId,
                         isPrimary = task.IsPrimary,
+                        isDirectorCut = string.Equals(task.DisplayId, "director", StringComparison.OrdinalIgnoreCase),
                         width = task.Width,
                         height = task.Height,
                         x = task.X,

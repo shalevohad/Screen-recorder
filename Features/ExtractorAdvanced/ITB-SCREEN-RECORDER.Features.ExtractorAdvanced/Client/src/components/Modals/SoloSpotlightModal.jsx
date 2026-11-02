@@ -576,7 +576,7 @@ export default function SoloSpotlightModal({
                                 <polyline points="7 10 12 15 17 10" />
                                 <line x1="12" y1="15" x2="12" y2="3" />
                             </svg>
-                            <span>{viewMode === 'all-displays' ? 'EXPORT ALL SCREENS' : `EXPORT CUT (${viewMode.toUpperCase()})`}</span>
+                            <span>{viewMode === 'all-displays' ? 'EXPORT ALL SCREENS & DIRECTOR' : `EXPORT CUT (${viewMode.toUpperCase()})`}</span>
                         </button>
                     </div>
 

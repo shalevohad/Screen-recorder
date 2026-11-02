@@ -31,6 +31,10 @@ public sealed class StationGroupViewModel : ViewModelBase
 
     public VideoTrackViewModel? PrimaryDisplay => Displays.FirstOrDefault(d => d.IsPrimary) ?? Displays.FirstOrDefault();
 
+    public bool HasDirectorCut => Displays.Any(d => d.IsDirectorCut);
+
+    public VideoTrackViewModel? DirectorCutDisplay => Displays.FirstOrDefault(d => d.IsDirectorCut);
+
     public double BoundingWidth
     {
         get => _boundingWidth;
@@ -93,5 +97,7 @@ public sealed class StationGroupViewModel : ViewModelBase
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(HasMultipleDisplays));
         OnPropertyChanged(nameof(DisplayCount));
+        OnPropertyChanged(nameof(HasDirectorCut));
+        OnPropertyChanged(nameof(DirectorCutDisplay));
     }
 }

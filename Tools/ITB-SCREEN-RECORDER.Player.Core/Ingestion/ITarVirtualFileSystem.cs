@@ -22,5 +22,6 @@ namespace ITB_SCREEN_RECORDER.Player.Core.Ingestion
         Stream OpenReadStream(TarBlockEntry entry);
         Stream OpenReadStream(string entryName);
         Stream OpenSubStream(long startOffset, long length);
+        Task ExtractEntryToFileAsync(string entryName, string destinationFilePath, CancellationToken ct = default);
     }
 }

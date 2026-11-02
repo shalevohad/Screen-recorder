@@ -224,6 +224,29 @@ public partial class MainWindow : Window
             ViewModel.SetViewModeCommand.Execute("Split");
             e.Handled = true;
         }
+        else if (e.Key == Key.P)
+        {
+            ViewModel.SetViewModeCommand.Execute("Pip");
+            e.Handled = true;
+        }
+        else if (e.Key == Key.X)
+        {
+            if (ViewModel.IsPipMode)
+            {
+                ViewModel.SwapPipCommand.Execute(null);
+                e.Handled = true;
+            }
+        }
+        else if (e.Key == Key.D)
+        {
+            ViewModel.ToggleDirectorModeCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.R)
+        {
+            ViewModel.ToggleDirectorRecordingCommand.Execute(null);
+            e.Handled = true;
+        }
         else if (e.Key >= Key.D1 && e.Key <= Key.D9)
         {
             int digit = e.Key - Key.D1 + 1;

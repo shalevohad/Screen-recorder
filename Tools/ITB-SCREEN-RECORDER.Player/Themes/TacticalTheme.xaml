@@ -67,6 +67,14 @@
         <Setter Property="Foreground" Value="#FFFFFF" />
     </Style>
 
+    <!-- Secondary Tactical Button Style -->
+    <Style x:Key="TacticalSecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource TacticalButtonStyle}">
+        <Setter Property="Background" Value="#0F172A" />
+        <Setter Property="BorderBrush" Value="#1E293B" />
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        <Setter Property="Padding" Value="8,4" />
+    </Style>
+
     <!-- Slider Style for Timeline & Volume -->
     <Style x:Key="TacticalSliderStyle" TargetType="Slider">
         <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}" />

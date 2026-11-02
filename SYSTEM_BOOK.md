@@ -1013,4 +1013,39 @@ Enables external dispatch systems, CAD, C2, and investigation applications to pr
      - Deploys headless player core and diagnostics to `/opt/itb-player/tools/` with symlinks in `/usr/local/bin/`.
 
 ---
+
+## 20. Multi-Display Forensic Player Suite: PiP, Adaptive Split, Presentation Director & Single Master Export (2026-11-02)
+
+### 1. Dual-Track Synchronized Export with Auto-Director Cut Parity
+- **All-Displays + Auto-Director Bundle**:
+  - When exporting workstations with multi-monitor configurations in `all-displays` layout mode, [`AdvanceJobManager.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Services/AdvanceJobManager.cs) and [`ExtractorService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/ExtractorService.cs) generate both discrete screen tracks (`mon-0`, `mon-1`, etc.) **and** the synchronized Auto-Director cut video (`{stationId}_director_{timestamp}.mp4`).
+  - Recorded tracks are registered within `session.json` under `sessionTracks` with `displayId: "director"`, `isDirectorCut: true`, and physical pixel bounds, allowing replay clients to seamlessly toggle between raw monitor feeds and automated focus cuts.
+
+### 2. Standalone Forensic Player Multi-Screen Ergonomics & Transport Reliability
+- **Tactile High-Visibility Transport Controls**:
+  - Resolved WPF binding issue where `BooleanToVisibilityConverter` incorrectly collapsed the Play button string. The Play/Pause control binds directly to `PlayPauseButtonText` (`▶ PLAY` / `⏸ PAUSE`) with instant high-contrast visual state updates.
+- **Picture-in-Picture (PiP) Mode**:
+  - The Hero monitor or workstation feed occupies 100% of the viewport (scaled with letterboxed 16:9 native aspect ratio to prevent stretching).
+  - An interactive floating PiP inset (380x220, 2px tactical cyan border `#06B6D4` with ambient drop shadow) displays the secondary screen in the bottom-right corner.
+  - Supports 1-click feed swapping (`⇄ SWAP` button, clicking anywhere on the PiP surface, or pressing `X`), automatically maintaining audio focus on the active Hero display.
+- **Adaptive Full-Viewport Split Mode**:
+  - Dynamically calculates rows and columns (`SplitRows`, `SplitColumns`: 1x1, 1x2, 2x2, 2x3, 3x3) based on the number of active feeds in `ActiveSplitFeeds`.
+  - Maximizes screen real estate across monitors and stations while preserving the native 16:9 aspect ratio (`Stretch="Uniform"` with dark slate borders).
+  - Provides tactical quick-action shortcuts directly on each card: `[⊞ PiP]` and `[🖥 SOLO]`.
+
+### 3. Presentation Director Plan (`*.itblayout`) & Automated Replay
+- **Director Plan Persistence ([`PresentationDirectorPlan.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Tools/ITB-SCREEN-RECORDER.Player.Core/Presentation/PresentationDirectorPlan.cs))**:
+  - Serializes operator layout preferences, active Hero/PiP monitors, and timed switching cues (`PresentationCue` with `OffsetSeconds`, `Action`, `LayoutMode`, `TargetHostname`, `TargetDisplayId`).
+  - Operators can record director cues interactively (`[⏺ REC]` or `R` hotkey) during live playback, save the plan (`[💾 SAVE]` to `.itblayout` / `.json`), and reload it (`[📂 LOAD]`) for courtroom, investigative, or training debriefings.
+- **Autonomous Playback Switching**:
+  - When `IsDirectorMode` is active (`[🎬 DIRECTOR]` or `D` hotkey), the master playback clock automatically evaluates switching cues at runtime, executing view and monitor transitions down to the millisecond with live tactical HUD notifications.
+
+### 4. Single Master Video Export Pipeline ([`MasterVideoExportService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Tools/ITB-SCREEN-RECORDER.Player.Core/Presentation/MasterVideoExportService.cs))
+- **Consolidated Master MP4 Generation**:
+  - Allows exporting the recorded presentation into a single, universal `master_presentation.mp4` compatible with VLC, Windows Media Player, and web browsers.
+  - Automatically discovers local FFmpeg binaries across executing directories and system PATH.
+  - Extracts the required track streams from the `.tar`/`.itbp` container into isolated temporary storage (`ITB_MasterExport_*`) without decompressing the entire archive.
+  - Compiles an `ffconcat` script stitching the exact time slices between director switching cues and encodes the video (`libx264 veryfast`, `aac 192k`, `-movflags +faststart`) with real-time stderr progress parsing reported to the player UI.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

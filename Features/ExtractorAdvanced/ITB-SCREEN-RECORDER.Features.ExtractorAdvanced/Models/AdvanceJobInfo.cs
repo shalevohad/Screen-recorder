@@ -73,6 +73,13 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public double StartOffsetMs { get; set; } = 0;
         public double DurationMs { get; set; }
         public bool HasAudio { get; set; } = true;
+        public string DisplayId { get; set; } = "mon-0";
+        public bool IsPrimary { get; set; } = true;
+        public bool IsDirectorCut { get; set; } = false;
+        public int Width { get; set; } = 1920;
+        public int Height { get; set; } = 1080;
+        public int X { get; set; } = 0;
+        public int Y { get; set; } = 0;
     }
 
     public static class DummyVideoGeneratorExtensions
