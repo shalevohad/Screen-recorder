@@ -1582,8 +1582,13 @@ The Live Grid Master Canvas Composer unites workspace playback, freeform composi
    - The detached side modal has been eliminated. The primary workspace grid (`MulticamViewport`) natively functions as the Live Canvas Composer.
 2. **Default High-Density Presentation**:
    - By default, all available stations and displays are packed onto the virtual 16:9 canvas (`1920x1080` coordinate space) in an optimal aspect-ratio fitted layout, ensuring full operational coverage.
-3. **Freeform Direct Manipulation**:
-   - **Positioning (Move)**: Direct drag-and-drop repositioning with magnetic snapping (16px threshold) to canvas borders and vertical/horizontal centerlines.
+3. **Freeform Direct Manipulation & 60fps Modal Parity**:
+   - **Full-Surface Drag (`card-drag-surface`)**: The entire window area (not just a 22px title bar) responds immediately to mouse down, enabling fluid, effortless dragging matching `CanvasComposerModal`.
+   - **Solo Mode Decoupling**: In the Live Canvas Composer grid, `<CameraCard>` operates with `onSelectActiveStation={null}` to prevent click hijacking and accidental mode switching. Solo mode remains accessible via the dedicated `🔍 SOLO` tool in the floating inspector.
+   - **Global Drag Shield (`canvas-global-drag-shield`)**: When dragging or resizing begins, a transparent fullscreen shield (`fixed, inset 0, z-index 999999`) captures all mouse events, guaranteeing pointer events are never lost over nested video elements or window bounds.
+   - **Zero-Latency 60fps Tracking**: CSS transitions are suppressed (`transition: none !important`) during drag and resize gestures for instantaneous response.
+   - **Magnetic Snap Guidelines**: Renders glowing cyan guidelines (`canvas-snap-guide-v`, `canvas-snap-guide-h`) with 16–18px magnetic snapping to 50% centerlines and 0%/100% canvas borders.
+   - **HUD Coordinate Badge**: Live display of dimensions and coordinates (`W×H @ (X,Y)`), layer, and rotation angle directly in the card header.
    - **Scaling (Resize)**: Corner drag handles (`↘`) for interactive resizing with optional 16:9 aspect constraint.
    - **Rotation**: Integrated 90° stepping (`↺ 90°`) and continuous angle adjustment (-180° to +180°) rendered via CSS transforms (`rotate(θ deg)`).
    - **Border & Layer Styling**: Floating tactical inspector providing real-time palette selection (`#06B6D4` Cyan, `#10B981` Emerald, `#F59E0B` Amber, `#F43F5E` Rose, `#A855F7` Purple, `#38BDF8` Sky, `#FFFFFF` White, `transparent`), border thickness (0px, 2px, 4px, 6px, 8px), and Z-Index stacking order.
