@@ -36,7 +36,15 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             ");
 
             db.Execute(@"
-                CREATE TABLE IF NOT EXISTS station_nodes (
+                                CREATE TABLE IF NOT EXISTS station_role_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    station_id TEXT NOT NULL COLLATE NOCASE,
+                    role_alias TEXT NOT NULL,
+                    assigned_at_utc INTEGER NOT NULL,
+                    released_at_utc INTEGER
+                );
+
+CREATE TABLE IF NOT EXISTS station_nodes (
                     station_id TEXT PRIMARY KEY,
                     display_name TEXT NOT NULL,
                     ip_address TEXT,
@@ -221,11 +229,19 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
                 CREATE INDEX IF NOT EXISTS idx_users_username
                 ON users (username ASC);
 
-                CREATE INDEX IF NOT EXISTS idx_station_nodes_role_alias
+                                CREATE INDEX IF NOT EXISTS idx_role_history_station_time 
+                ON station_role_history (station_id COLLATE NOCASE, assigned_at_utc, released_at_utc);
+
+                CREATE INDEX IF NOT EXISTS idx_role_history_alias_time 
+                ON station_role_history (role_alias COLLATE NOCASE, assigned_at_utc, released_at_utc);
+
+CREATE INDEX IF NOT EXISTS idx_station_nodes_role_alias
                 ON station_nodes (role_alias);
             ");
 
             SeedSecurityDefaults(db);
+
+            SeedRoleHistoryDefaults(db);
         }
         catch (Exception ex)
         {
@@ -233,6 +249,17 @@ public sealed class CatalogDbInitializer : IFeatureDbInitializer
             while (root.InnerException != null) root = root.InnerException;
             throw new InvalidOperationException($"[SystemCatalog] Database init/migration failure: {root.Message}", ex);
         }
+    }
+
+    private static void SeedRoleHistoryDefaults(System.Data.IDbConnection db)
+    {
+        db.Execute(@"
+            INSERT INTO station_role_history (station_id, role_alias, assigned_at_utc, released_at_utc)
+            SELECT station_id, role_alias, 0, NULL
+            FROM station_nodes
+            WHERE role_alias IS NOT NULL AND role_alias != ''
+              AND NOT EXISTS (SELECT 1 FROM station_role_history LIMIT 1);
+        ");
     }
 
     private static void SeedSecurityDefaults(System.Data.IDbConnection db)

@@ -173,12 +173,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     .ToList();
             }
 
-            // Resolve role aliases to physical hostnames across all parameters
+            // Resolve role aliases to physical hostnames across all parameters for the specified time range
             if (_stationRoleProvider != null)
             {
                 try
                 {
-                    var aliases = _stationRoleProvider.GetAllStationRoleAliasesAsync().GetAwaiter().GetResult();
+                    var aliases = _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(request.InEpochMs, request.OutEpochMs).GetAwaiter().GetResult();
                     var resolvedIds = new List<string>();
                     foreach (var s in request.StationIds ?? new List<string>())
                     {
@@ -194,7 +194,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         foreach (var p in request.CanvasLayout.Placements)
                         {
                             var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(p.StationId, StringComparison.OrdinalIgnoreCase));
-                            if (!string.IsNullOrEmpty(match.Key)) p.StationId = match.Key;
+                            if (!string.IsNullOrEmpty(match.Key))
+                            {
+                                if (string.IsNullOrWhiteSpace(p.Label)) p.Label = p.StationId;
+                                p.StationId = match.Key;
+                            }
+                            else if (string.IsNullOrWhiteSpace(p.Label))
+                            {
+                                if (aliases.TryGetValue(p.StationId, out var roleName))
+                                {
+                                    p.Label = roleName;
+                                }
+                            }
                         }
                     }
 

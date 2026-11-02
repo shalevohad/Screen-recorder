@@ -9,9 +9,9 @@ using ITB_SCREEN_RECORDER.Server.Services.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
-public record UpdateRoleAliasRequest(string? RoleAlias);
-public record SwapRoleAliasesRequest(string StationA, string StationB);
-public record ApplyMappingRequest(List<StationRoleMappingEntry> Mappings);
+public record UpdateRoleAliasRequest(string? RoleAlias, long? EffectiveFromEpochMs = null);
+public record SwapRoleAliasesRequest(string StationA, string StationB, long? EffectiveFromEpochMs = null);
+public record ApplyMappingRequest(List<StationRoleMappingEntry> Mappings, long? EffectiveFromEpochMs = null);
 public record StationRoleMappingEntry(string Hostname, string? RoleAlias);
 
 [ApiController]
@@ -33,6 +33,17 @@ public class StationRolesController : ControllerBase
         return Ok(mappings);
     }
 
+    [HttpGet("history")]
+    [AuthorizePermission(PermissionKeys.StationsView)]
+    public async Task<IActionResult> GetRoleHistory(
+        [FromQuery] long? startEpoch,
+        [FromQuery] long? endEpoch,
+        [FromQuery] string? stationId)
+    {
+        var history = await _stationRolesService.GetRoleHistoryAsync(startEpoch, endEpoch, stationId);
+        return Ok(history);
+    }
+
     [HttpPost("{hostname}")]
     [AuthorizePermission(PermissionKeys.StationsManage)]
     public async Task<IActionResult> SetRoleAlias(string hostname, [FromBody] UpdateRoleAliasRequest request)
@@ -41,7 +52,7 @@ public class StationRolesController : ControllerBase
 
         try
         {
-            await _stationRolesService.SetRoleAliasAsync(hostname.Trim(), request?.RoleAlias?.Trim());
+            await _stationRolesService.SetRoleAliasAsync(hostname.Trim(), request?.RoleAlias?.Trim(), request?.EffectiveFromEpochMs);
             return Ok(new { Hostname = hostname, RoleAlias = request?.RoleAlias?.Trim(), Success = true });
         }
         catch (InvalidOperationException ex)
@@ -61,7 +72,7 @@ public class StationRolesController : ControllerBase
 
         try
         {
-            await _stationRolesService.SwapRoleAliasesAsync(request.StationA.Trim(), request.StationB.Trim());
+            await _stationRolesService.SwapRoleAliasesAsync(request.StationA.Trim(), request.StationB.Trim(), request.EffectiveFromEpochMs);
             return Ok(new { Success = true, StationA = request.StationA.Trim(), StationB = request.StationB.Trim() });
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)

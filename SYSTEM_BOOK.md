@@ -1325,6 +1325,36 @@ When `LayoutMode = "custom"` or `CanvasLayout` is supplied in `AdvanceCutRequest
 }
 ```
 
+### 6. Temporal & Historical Station Role Assignment Architecture
+- **Operational Reality & Shift Swapping Invariant**:
+  - In dynamic military operations and command centers, operational roles ("Commander", "Radar North", "Interception Controller") are assigned to workstations dynamically.
+  - Workstations may change roles or swap stations between operational shifts (הצלבת עמדות).
+  - A role assignment is strictly valid **only for the duration it was actively assigned**, and must never retroactively alter the identity of past recordings or corrupt future logs.
+- **Dedicated Temporal Persistence (`station_role_history` Table)**:
+  - Managed by `CatalogDbInitializer.cs` and `CatalogRepository.cs`:
+    ```sql
+    CREATE TABLE IF NOT EXISTS station_role_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        station_id TEXT NOT NULL COLLATE NOCASE,
+        role_alias TEXT NOT NULL,
+        assigned_at_utc INTEGER NOT NULL,
+        released_at_utc INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_role_history_station_time 
+    ON station_role_history (station_id COLLATE NOCASE, assigned_at_utc, released_at_utc);
+    CREATE INDEX IF NOT EXISTS idx_role_history_alias_time 
+    ON station_role_history (role_alias COLLATE NOCASE, assigned_at_utc, released_at_utc);
+    ```
+  - Automatic migration seeds existing `station_nodes.role_alias` records from `assigned_at_utc = 0` to maintain continuous backward compatibility.
+- **Time-Bounded Resolution Pipeline (`IStationRoleProvider`)**:
+  - `GetStationRoleAliasesAtEpochAsync(long epochMs)`: Resolves the exact role held by each workstation at a specific timestamp.
+  - `GetStationRoleAliasesForTimeRangeAsync(long startEpochMs, long endEpochMs)`: Resolves role-to-hostname mappings active during the requested time window.
+  - `GetStationRoleHistoryAsync(...)`: Exposes complete assignment timelines (`StationRoleIntervalDto`) with `assignedUtc`, `releasedUtc`, and `isActive` state flags.
+- **Seamless Impact across the Platform**:
+  - **ExtractorAdvanced Studio**: When an operator navigates to a past incident on the timeline scrubber, `/api/v1/extractor-advanced/stations` automatically tags cards and tracks with the role each workstation held **at that historical time**, preventing operator confusion when viewing previous shifts.
+  - **Forensic Inspection API (`/inspect`)**: Returns bidirectional `RoleToStationMap` and `StationToRoleMap` along with `RoleHistory` corresponding specifically to the inspected time window.
+  - **Master MP4 Export Pipeline**: When external systems request a cut for "Commander" at a given time window, `AdvanceJobManager` resolves the role alias to the physical machine that actually operated as Commander **during that historical time range**, completely preventing accidental extraction of stations that only assumed the role at a later date.
+
 ---
 
 

@@ -356,4 +356,50 @@ public class ExternalApiAndCustomCanvasTests
         Assert.Equal("WS-01", Resolve("WS-01"));
         Assert.Equal("WS-03", Resolve("WS-03")); // Unknown remains unchanged
     }
+
+    [Fact]
+    public async Task RoleAliasResolution_ResolvesHistoricStationBasedOnEpochWindow()
+    {
+        var mockRoleProvider = new Mock<IStationRoleProvider>();
+
+        long shift1Start = 1700000000000;
+        long shift1End = 1700003600000;
+
+        long shift2Start = 1700003600000;
+        long shift2End = 1700007200000;
+
+        // Shift 1: WS-ALPHA was Commander
+        var shift1Roles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "WS-ALPHA", "Commander" },
+            { "WS-BRAVO", "Radar" }
+        };
+
+        // Shift 2: WS-BRAVO became Commander, WS-ALPHA became Observer
+        var shift2Roles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "WS-BRAVO", "Commander" },
+            { "WS-ALPHA", "Observer" }
+        };
+
+        mockRoleProvider
+            .Setup(p => p.GetStationRoleAliasesForTimeRangeAsync(shift1Start, shift1End))
+            .ReturnsAsync(shift1Roles);
+
+        mockRoleProvider
+            .Setup(p => p.GetStationRoleAliasesForTimeRangeAsync(shift2Start, shift2End))
+            .ReturnsAsync(shift2Roles);
+
+        // When cutting Shift 1: "Commander" MUST resolve to WS-ALPHA
+        var rolesShift1 = await mockRoleProvider.Object.GetStationRoleAliasesForTimeRangeAsync(shift1Start, shift1End);
+        var map1 = rolesShift1.ToDictionary(kvp => kvp.Value, kvp => kvp.Key, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("WS-ALPHA", map1["Commander"]);
+        Assert.Equal("WS-BRAVO", map1["Radar"]);
+
+        // When cutting Shift 2: "Commander" MUST resolve to WS-BRAVO (not WS-ALPHA!)
+        var rolesShift2 = await mockRoleProvider.Object.GetStationRoleAliasesForTimeRangeAsync(shift2Start, shift2End);
+        var map2 = rolesShift2.ToDictionary(kvp => kvp.Value, kvp => kvp.Key, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("WS-BRAVO", map2["Commander"]);
+        Assert.Equal("WS-ALPHA", map2["Observer"]);
+    }
 }

@@ -11,7 +11,8 @@ using System.Threading.Tasks;
 using System.Linq;
 
 using System.Xml.Serialization;
-using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Features.Extractor.Models;
 using ITB_SCREEN_RECORDER.Features.Extractor.Services;
 
@@ -264,6 +265,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
             }
         }
 
+                [JsonPropertyName("roleHistory")]
+        [XmlElement("RoleHistoryInterval")]
+        public List<StationRoleIntervalDto> RoleHistory { get; set; } = new();
+
         [JsonPropertyName("totalStationsFound")]
         public int TotalStationsFound { get; set; }
 
@@ -362,6 +367,10 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("recordingsCount")]
         public int RecordingsCount { get; set; }
+
+                [JsonPropertyName("roleHistory")]
+        [XmlElement("RoleHistoryInterval")]
+        public List<StationRoleIntervalDto>? RoleHistory { get; set; }
 
         [JsonPropertyName("displays")]
         public List<StationDisplayInspectionDto> Displays { get; set; } = new();

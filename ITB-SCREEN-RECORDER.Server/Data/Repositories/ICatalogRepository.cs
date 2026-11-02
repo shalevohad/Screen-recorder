@@ -54,11 +54,14 @@ public interface ICatalogRepository : IKeystrokeRepository, IStationRoleProvider
     Task UpsertOverrideAsync(string hostname, string? videoBitrate, int? targetFps);
     Task<bool> DeleteOverrideAsync(string hostname);
 
-    // Station Roles (Inherits GetAllStationRoleAliasesAsync from IStationRoleProvider)
+    // Station Roles (Inherits IStationRoleProvider)
     Task<HashSet<string>> GetAllKnownStationHostnamesAsync();
     Task SetStationRoleAliasAsync(string hostname, string? roleAlias);
+    Task SetStationRoleAliasAsync(string hostname, string? roleAlias, long? effectiveFromEpochMs);
     Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings);
+    Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings, long? effectiveFromEpochMs);
     Task SwapStationRoleAliasesAsync(string stationA, string stationB);
+    Task SwapStationRoleAliasesAsync(string stationA, string stationB, long? effectiveFromEpochMs);
 
     // Security & Policies
     Task<SecurityPolicyStateDto> GetSecurityPolicyAsync();

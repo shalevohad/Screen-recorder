@@ -201,6 +201,75 @@ public class CatalogRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task StationRoles_TemporalHistory_TracksAssignmentTimelineCorrectly()
+    {
+        long t1 = 1700000000000; // 10:00
+        long t2 = 1700003600000; // 11:00
+
+        // At T1: WS-01 becomes "Commander"
+        await _repository.SetStationRoleAliasAsync("WS-01", "Commander", t1);
+
+        // At T2: WS-02 becomes "Commander" (taking the role from WS-01)
+        await _repository.SetStationRoleAliasAsync("WS-02", "Commander", t2);
+
+        // 1. Query at T1 + 30 min (10:30): Commander MUST be WS-01
+        var rolesAt1030 = await _repository.GetStationRoleAliasesAtEpochAsync(t1 + 1800000);
+        Assert.True(rolesAt1030.ContainsKey("WS-01"));
+        Assert.Equal("Commander", rolesAt1030["WS-01"]);
+        Assert.False(rolesAt1030.ContainsKey("WS-02"));
+
+        // 2. Query at T2 + 30 min (11:30): Commander MUST be WS-02
+        var rolesAt1130 = await _repository.GetStationRoleAliasesAtEpochAsync(t2 + 1800000);
+        Assert.True(rolesAt1130.ContainsKey("WS-02"));
+        Assert.Equal("Commander", rolesAt1130["WS-02"]);
+        Assert.False(rolesAt1130.ContainsKey("WS-01"));
+
+        // 3. Query time range [10:00, 10:50]: Commander MUST resolve to WS-01
+        var rolesRange10 = await _repository.GetStationRoleAliasesForTimeRangeAsync(t1, t1 + 3000000);
+        Assert.Equal("Commander", rolesRange10["WS-01"]);
+
+        // 4. Query time range [11:10, 12:00]: Commander MUST resolve to WS-02
+        var rolesRange11 = await _repository.GetStationRoleAliasesForTimeRangeAsync(t2 + 600000, t2 + 3600000);
+        Assert.Equal("Commander", rolesRange11["WS-02"]);
+
+        // 5. Query history intervals
+        var history = await _repository.GetStationRoleHistoryAsync();
+        Assert.True(history.Count >= 2);
+        var ws01Hist = history.FirstOrDefault(h => h.StationId == "WS-01" && h.RoleAlias == "Commander");
+        Assert.NotNull(ws01Hist);
+        Assert.Equal(t1, ws01Hist.AssignedAtUtcMs);
+        Assert.Equal(t2, ws01Hist.ReleasedAtUtcMs);
+
+        var ws02Hist = history.FirstOrDefault(h => h.StationId == "WS-02" && h.RoleAlias == "Commander");
+        Assert.NotNull(ws02Hist);
+        Assert.Equal(t2, ws02Hist.AssignedAtUtcMs);
+        Assert.Null(ws02Hist.ReleasedAtUtcMs);
+    }
+
+    [Fact]
+    public async Task StationRoles_SwapWithTimestamp_MaintainsHistoricRolesBeforeAndAfter()
+    {
+        long t1 = 1700000000000;
+        long t2 = 1700007200000;
+
+        await _repository.SetStationRoleAliasAsync("station-alpha", "Radar", t1);
+        await _repository.SetStationRoleAliasAsync("station-beta", "Sonar", t1);
+
+        // Swap roles at t2
+        await _repository.SwapStationRoleAliasesAsync("station-alpha", "station-beta", t2);
+
+        // Before swap (t1 + 1000)
+        var rolesBefore = await _repository.GetStationRoleAliasesAtEpochAsync(t1 + 1000);
+        Assert.Equal("Radar", rolesBefore["station-alpha"]);
+        Assert.Equal("Sonar", rolesBefore["station-beta"]);
+
+        // After swap (t2 + 1000)
+        var rolesAfter = await _repository.GetStationRoleAliasesAtEpochAsync(t2 + 1000);
+        Assert.Equal("Sonar", rolesAfter["station-alpha"]);
+        Assert.Equal("Radar", rolesAfter["station-beta"]);
+    }
+
+    [Fact]
     public async Task SystemConfigurations_SetAndGet_PersistsValue()
     {
         await _repository.SetConfigurationAsync("ThemePreference", "{\"mode\":\"tactical_dark\"}");

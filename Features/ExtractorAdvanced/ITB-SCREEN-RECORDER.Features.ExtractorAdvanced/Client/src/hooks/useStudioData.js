@@ -45,6 +45,7 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
                         id: String(item.id || item.stationId || item.agentId || item.hostname),
                         hostname: item.hostname || 'Station',
                         roleAlias: item.roleAlias || null,
+                        roleHistory: item.roleHistory || [],
                         displayName: item.displayName || item.roleAlias || item.hostname || 'Station',
                         isOnline: item.isOnline !== undefined ? item.isOnline : true,
                         recordingsCount: item.recordingsCount || 0,
@@ -80,6 +81,7 @@ export function useStudioData(timelineBaseEpochMs, totalTimelineDurationMs, time
                             const isIdentical =
                                 prevItem.isOnline === nextItem.isOnline &&
                                 prevItem.displayName === nextItem.displayName &&
+                                prevItem.roleAlias === nextItem.roleAlias &&
                                 prevItem.feedSpec === nextItem.feedSpec &&
                                 prevItem.recordingsCount === nextItem.recordingsCount &&
                                 prevItem.fps === nextItem.fps;

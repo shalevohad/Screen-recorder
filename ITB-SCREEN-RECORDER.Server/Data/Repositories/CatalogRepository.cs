@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using Dapper;
 using ITB_SCREEN_RECORDER.Core.Contracts.Keystroke;
 using ITB_SCREEN_RECORDER.Core.Contracts.Storage;
+
+using ITB_SCREEN_RECORDER.Core.Contracts.Network;
 using ITB_SCREEN_RECORDER.Server.Data;
 using ITB_SCREEN_RECORDER.Server.Models.Security;
 
@@ -350,6 +352,73 @@ public sealed class CatalogRepository : ICatalogRepository
         return rows.ToDictionary(r => r.StationId, r => r.RoleAlias, StringComparer.OrdinalIgnoreCase);
     }
 
+    public async Task<Dictionary<string, string>> GetStationRoleAliasesAtEpochAsync(long epochMs)
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = @"
+            SELECT station_id, role_alias 
+            FROM station_role_history 
+            WHERE assigned_at_utc <= @epochMs 
+              AND (released_at_utc IS NULL OR released_at_utc > @epochMs)
+            ORDER BY assigned_at_utc DESC;
+        ";
+        var rows = await db.QueryAsync<(string StationId, string RoleAlias)>(sql, new { epochMs });
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in rows)
+        {
+            if (!result.ContainsKey(r.StationId))
+            {
+                result[r.StationId] = r.RoleAlias;
+            }
+        }
+        if (result.Count == 0)
+        {
+            return await GetAllStationRoleAliasesAsync();
+        }
+        return result;
+    }
+
+    public async Task<Dictionary<string, string>> GetStationRoleAliasesForTimeRangeAsync(long startEpochMs, long endEpochMs)
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = @"
+            SELECT station_id, role_alias 
+            FROM station_role_history 
+            WHERE assigned_at_utc <= @endEpochMs 
+              AND (released_at_utc IS NULL OR released_at_utc >= @startEpochMs)
+            ORDER BY assigned_at_utc DESC;
+        ";
+        var rows = await db.QueryAsync<(string StationId, string RoleAlias)>(sql, new { startEpochMs, endEpochMs });
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in rows)
+        {
+            if (!result.ContainsKey(r.StationId))
+            {
+                result[r.StationId] = r.RoleAlias;
+            }
+        }
+        if (result.Count == 0)
+        {
+            return await GetAllStationRoleAliasesAsync();
+        }
+        return result;
+    }
+
+    public async Task<List<StationRoleIntervalDto>> GetStationRoleHistoryAsync(long? startEpochMs = null, long? endEpochMs = null, string? stationId = null)
+    {
+        using var db = _factory.CreateConnection();
+        const string sql = @"
+            SELECT station_id AS StationId, role_alias AS RoleAlias, assigned_at_utc AS AssignedAtUtcMs, released_at_utc AS ReleasedAtUtcMs
+            FROM station_role_history
+            WHERE (@stationId IS NULL OR station_id = @stationId COLLATE NOCASE)
+              AND (@startEpochMs IS NULL OR released_at_utc IS NULL OR released_at_utc >= @startEpochMs)
+              AND (@endEpochMs IS NULL OR assigned_at_utc <= @endEpochMs)
+            ORDER BY assigned_at_utc ASC;
+        ";
+        var rows = await db.QueryAsync<StationRoleIntervalDto>(sql, new { startEpochMs, endEpochMs, stationId });
+        return rows.ToList();
+    }
+
     public async Task<HashSet<string>> GetAllKnownStationHostnamesAsync()
     {
         using var db = _factory.CreateConnection();
@@ -364,35 +433,118 @@ public sealed class CatalogRepository : ICatalogRepository
         return new HashSet<string>(rows.Where(s => !string.IsNullOrWhiteSpace(s)), StringComparer.OrdinalIgnoreCase);
     }
 
-    public async Task SetStationRoleAliasAsync(string hostname, string? roleAlias)
+        public Task SetStationRoleAliasAsync(string hostname, string? roleAlias)
+        => SetStationRoleAliasAsync(hostname, roleAlias, null);
+
+    public async Task SetStationRoleAliasAsync(string hostname, string? roleAlias, long? effectiveFromEpochMs)
     {
+        long now = effectiveFromEpochMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         using var db = _factory.CreateConnection();
-        const string sql = @"
+        using var tx = db.BeginTransaction();
+
+        // 1. Release active history for this station
+        const string closeHostSql = @"
+            UPDATE station_role_history 
+            SET released_at_utc = @now 
+            WHERE station_id = @hostname COLLATE NOCASE 
+              AND released_at_utc IS NULL 
+              AND assigned_at_utc <= @now;
+        ";
+        await db.ExecuteAsync(closeHostSql, new { hostname, now }, tx);
+
+        if (!string.IsNullOrWhiteSpace(roleAlias))
+        {
+            // 2. Since role aliases must be unique per station at any given time, release other station holding this alias
+            const string closeRoleSql = @"
+                UPDATE station_role_history 
+                SET released_at_utc = @now 
+                WHERE role_alias = @roleAlias COLLATE NOCASE 
+                  AND station_id != @hostname COLLATE NOCASE 
+                  AND released_at_utc IS NULL 
+                  AND assigned_at_utc <= @now;
+            ";
+            await db.ExecuteAsync(closeRoleSql, new { roleAlias, hostname, now }, tx);
+
+            // 3. Insert new history interval
+            const string insertHistSql = @"
+                INSERT INTO station_role_history (station_id, role_alias, assigned_at_utc, released_at_utc)
+                VALUES (@hostname, @roleAlias, @now, NULL);
+            ";
+            await db.ExecuteAsync(insertHistSql, new { hostname, roleAlias, now }, tx);
+        }
+
+        // 4. Update station_nodes snapshot
+        const string updateNodeSql = @"
             INSERT INTO station_nodes (station_id, display_name, role_alias, is_active, last_heartbeat_utc)
             VALUES (@hostname, @hostname, @roleAlias, 1, @now)
             ON CONFLICT(station_id) DO UPDATE SET
                 role_alias = excluded.role_alias;
         ";
-        await db.ExecuteAsync(sql, new { hostname, roleAlias, now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
-    }
+        await db.ExecuteAsync(updateNodeSql, new { hostname, roleAlias, now }, tx);
 
-    public async Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings)
-    {
-        using var db = _factory.CreateConnection();
-        using var tx = db.BeginTransaction();
-        const string sql = @"
-            INSERT INTO station_nodes (station_id, display_name, role_alias, is_active, last_heartbeat_utc)
-            VALUES (@Hostname, @Hostname, @RoleAlias, 1, @now)
-            ON CONFLICT(station_id) DO UPDATE SET
-                role_alias = excluded.role_alias;
-        ";
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        await db.ExecuteAsync(sql, mappings.Select(m => new { m.Hostname, m.RoleAlias, now }), tx);
         tx.Commit();
     }
 
-    public async Task SwapStationRoleAliasesAsync(string stationA, string stationB)
+        public Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings)
+        => BulkUpdateStationRoleAliasesAsync(mappings, null);
+
+    public async Task BulkUpdateStationRoleAliasesAsync(IEnumerable<(string Hostname, string? RoleAlias)> mappings, long? effectiveFromEpochMs)
     {
+        long now = effectiveFromEpochMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        using var db = _factory.CreateConnection();
+        using var tx = db.BeginTransaction();
+
+        foreach (var m in mappings)
+        {
+            string hostname = m.Hostname;
+            string? roleAlias = m.RoleAlias;
+
+            const string closeHostSql = @"
+                UPDATE station_role_history 
+                SET released_at_utc = @now 
+                WHERE station_id = @hostname COLLATE NOCASE 
+                  AND released_at_utc IS NULL 
+                  AND assigned_at_utc <= @now;
+            ";
+            await db.ExecuteAsync(closeHostSql, new { hostname, now }, tx);
+
+            if (!string.IsNullOrWhiteSpace(roleAlias))
+            {
+                const string closeRoleSql = @"
+                    UPDATE station_role_history 
+                    SET released_at_utc = @now 
+                    WHERE role_alias = @roleAlias COLLATE NOCASE 
+                      AND station_id != @hostname COLLATE NOCASE 
+                      AND released_at_utc IS NULL 
+                      AND assigned_at_utc <= @now;
+                ";
+                await db.ExecuteAsync(closeRoleSql, new { roleAlias, hostname, now }, tx);
+
+                const string insertHistSql = @"
+                    INSERT INTO station_role_history (station_id, role_alias, assigned_at_utc, released_at_utc)
+                    VALUES (@hostname, @roleAlias, @now, NULL);
+                ";
+                await db.ExecuteAsync(insertHistSql, new { hostname, roleAlias, now }, tx);
+            }
+
+            const string updateNodeSql = @"
+                INSERT INTO station_nodes (station_id, display_name, role_alias, is_active, last_heartbeat_utc)
+                VALUES (@hostname, @hostname, @roleAlias, 1, @now)
+                ON CONFLICT(station_id) DO UPDATE SET
+                    role_alias = excluded.role_alias;
+            ";
+            await db.ExecuteAsync(updateNodeSql, new { hostname, roleAlias, now }, tx);
+        }
+
+        tx.Commit();
+    }
+
+        public Task SwapStationRoleAliasesAsync(string stationA, string stationB)
+        => SwapStationRoleAliasesAsync(stationA, stationB, null);
+
+    public async Task SwapStationRoleAliasesAsync(string stationA, string stationB, long? effectiveFromEpochMs)
+    {
+        long now = effectiveFromEpochMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         using var db = _factory.CreateConnection();
         using var tx = db.BeginTransaction();
 
@@ -402,15 +554,34 @@ public sealed class CatalogRepository : ICatalogRepository
         string? aliasA = rows.FirstOrDefault(r => string.Equals(r.StationId, stationA, StringComparison.OrdinalIgnoreCase)).RoleAlias;
         string? aliasB = rows.FirstOrDefault(r => string.Equals(r.StationId, stationB, StringComparison.OrdinalIgnoreCase)).RoleAlias;
 
+        const string closeSql = @"
+            UPDATE station_role_history 
+            SET released_at_utc = @now 
+            WHERE station_id IN (@stationA, @stationB) COLLATE NOCASE 
+              AND released_at_utc IS NULL 
+              AND assigned_at_utc <= @now;
+        ";
+        await db.ExecuteAsync(closeSql, new { stationA, stationB, now }, tx);
+
+        const string insertHistSql = @"
+            INSERT INTO station_role_history (station_id, role_alias, assigned_at_utc, released_at_utc)
+            VALUES (@station, @alias, @now, NULL);
+        ";
+        if (!string.IsNullOrWhiteSpace(aliasB))
+        {
+            await db.ExecuteAsync(insertHistSql, new { station = stationA, alias = aliasB, now }, tx);
+        }
+        if (!string.IsNullOrWhiteSpace(aliasA))
+        {
+            await db.ExecuteAsync(insertHistSql, new { station = stationB, alias = aliasA, now }, tx);
+        }
+
         const string updateSql = @"
             INSERT INTO station_nodes (station_id, display_name, role_alias, is_active, last_heartbeat_utc)
             VALUES (@hostname, @hostname, @roleAlias, 1, @now)
             ON CONFLICT(station_id) DO UPDATE SET
                 role_alias = excluded.role_alias;
         ";
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        // Swap: stationA receives aliasB, stationB receives aliasA
         await db.ExecuteAsync(updateSql, new { hostname = stationA, roleAlias = aliasB, now }, tx);
         await db.ExecuteAsync(updateSql, new { hostname = stationB, roleAlias = aliasA, now }, tx);
 

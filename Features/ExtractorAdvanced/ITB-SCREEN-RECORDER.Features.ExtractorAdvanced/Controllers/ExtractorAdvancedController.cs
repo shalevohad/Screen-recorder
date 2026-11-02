@@ -65,23 +65,23 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 stationId = stationId.Substring(5);
             }
 
-            // Resolve station role alias if stationId was passed as a role alias instead of physical hostname
-            if (_stationRoleProvider != null)
-            {
-                var aliases = await _stationRoleProvider.GetAllStationRoleAliasesAsync();
-                var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(stationId, StringComparison.OrdinalIgnoreCase));
-                if (!string.IsNullOrEmpty(match.Key))
-                {
-                    stationId = match.Key;
-                }
-            }
-
             long lStart = (long)Math.Round(startEpoch);
             long lEnd = (long)Math.Round(endEpoch);
 
             const long SecondsThreshold = 100_000_000_000L;
             if (lStart > 0 && lStart < SecondsThreshold) lStart *= 1000;
             if (lEnd > 0 && lEnd < SecondsThreshold) lEnd *= 1000;
+
+            // Resolve station role alias if stationId was passed as a role alias instead of physical hostname
+            if (_stationRoleProvider != null)
+            {
+                var aliases = await _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(lStart, lEnd);
+                var match = aliases.FirstOrDefault(kvp => kvp.Value.Equals(stationId, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(match.Key))
+                {
+                    stationId = match.Key;
+                }
+            }
 
             if (lEnd <= lStart) return BadRequest("Invalid epoch window.");
 
@@ -296,9 +296,16 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     availableHosts = await _storageScanner.GetAvailableHostsAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow.AddDays(1));
                 }
 
+                long scopeStartMs = lStart ?? new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                long scopeEndMs = lEnd ?? new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+
                 var aliases = _stationRoleProvider != null
-                    ? await _stationRoleProvider.GetAllStationRoleAliasesAsync()
+                    ? await _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(scopeStartMs, scopeEndMs)
                     : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                var allRoleHistory = _stationRoleProvider != null
+                    ? await _stationRoleProvider.GetStationRoleHistoryAsync(scopeStartMs, scopeEndMs)
+                    : new List<ITB_SCREEN_RECORDER.Core.Contracts.Network.StationRoleIntervalDto>();
 
                 var stationDtos = new ConcurrentBag<object>();
 
@@ -396,6 +403,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         id = host,
                         hostname = host,
                         roleAlias = roleAlias,
+                        roleHistory = allRoleHistory.Where(h => string.Equals(h.StationId, host, StringComparison.OrdinalIgnoreCase)).ToList(),
                         displayName = effectiveDisplayName,
                         isOnline = true,
                         recordingsCount = chunks.Count,
@@ -597,8 +605,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 }
 
                 var aliases = _stationRoleProvider != null
-                    ? await _stationRoleProvider.GetAllStationRoleAliasesAsync()
+                    ? await _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(lStart, lEnd)
                     : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                var allRoleHistory = _stationRoleProvider != null
+                    ? await _stationRoleProvider.GetStationRoleHistoryAsync(lStart, lEnd)
+                    : new List<ITB_SCREEN_RECORDER.Core.Contracts.Network.StationRoleIntervalDto>();
 
                 var roleToStation = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 var stationToRole = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -725,6 +737,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                         StationId = host,
                         Hostname = host,
                         RoleAlias = roleAlias,
+                        RoleHistory = allRoleHistory.Where(h => string.Equals(h.StationId, host, StringComparison.OrdinalIgnoreCase)).ToList(),
                         DisplayName = effectiveDisplayName,
                         IsOnline = true,
                         HasRecordings = hasRecordings,
@@ -752,6 +765,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     Stations = stationsOrdered,
                     RoleToStationMap = roleToStation,
                     StationToRoleMap = stationToRole,
+                    RoleHistory = allRoleHistory,
                     TotalStationsFound = stationsOrdered.Count,
                     ActiveRecordingStationsCount = stationsOrdered.Count(s => s.HasRecordings),
                     StationsWithAudioCount = stationsOrdered.Count(s => s.HasAudio),
