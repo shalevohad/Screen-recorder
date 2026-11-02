@@ -1088,6 +1088,8 @@ export default function ExtractorAdvancedStudio() {
                 outPointMs={outPointMs}
                 playheadMs={playheadMs}
                 playheadEpochMs={currentPlayheadEpochMs}
+                initialTimeline={canvasLayoutTimeline}
+                onSaveTimeline={setCanvasLayoutTimeline}
             />
 
             <ExportJobMonitor />

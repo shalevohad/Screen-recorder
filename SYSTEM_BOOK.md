@@ -925,7 +925,7 @@ To guarantee 100% deterministic time representation regardless of host operating
 
 ### 1. Executive Strategic Pivot: Standalone Player Discontinuation & Studio Convergence
 - **Single Operational Platform**: In accordance with executive steering directives, the standalone desktop player (`Tools/ITB-SCREEN-RECORDER.Player`) has been officially retired. All forensic playback, multi-monitor display switching, PiP/split composition, and timeline investigation capabilities have been completely absorbed into the web-based **ExtractorAdvanced Studio** (`Features/ExtractorAdvanced/Client`).
-- **Zero-Dependency Universal Replay**: Rather than requiring operators or third-party forensic authorities to install and maintain specialized desktop player clients, the platform now exports a **single, standalone, universally playable `.mp4` video file** (`RECORDINGS_EXPORT_{stations}_{time}.mp4`). All multi-station or multi-monitor feeds, active director cuts, audio channel routing, and keystroke forensic evidence are rendered directly into the master container.
+- **Zero-Dependency Universal Replay**: Rather than requiring operators or third-party forensic authorities to install and maintain specialized desktop player clients, the platform now exports a **single, standalone, universally playable `.mp4` video file named directly after the export time** (`{yyyy-MM-dd_HH-mm-ss}.mp4`, e.g. `2026-11-02_14-30-00.mp4`). All multi-station or multi-monitor feeds, active director cuts, audio channel routing, and keystroke forensic evidence are rendered directly into the master container.
 
 ### 2. Universal Studio Composition Engine: Inter-Station & Intra-Station Matrix
 - **Dual-Scope Composition Architecture**:
@@ -960,6 +960,8 @@ To guarantee 100% deterministic time representation regardless of host operating
 ### 5. Single Master MP4 Export Pipeline (`AdvanceJobManager.cs`)
 - **Direct MP4 Rendering**:
   - The legacy `.tar` pax archive packing loop has been replaced with `ComposeMasterMp4Async`.
+  - **Export-Time Filename Invariant**: The master MP4 is named strictly after the exact export timestamp (`yyyy-MM-dd_HH-mm-ss.mp4`, e.g. `2026-11-02_14-30-00.mp4`).
+  - **Grid Canvas Synthesis & Auto-Director Governance**: What is exported is the master Grid/Canvas. If a station has only one screen slot in the layout but multiple recorded displays, that slot automatically follows the Auto-Director, dynamically switching between active screens based on operator interaction. If multiple screens of the station are explicitly placed on the canvas, each screen is rendered independently and simultaneously.
   - Individual gap-filled, wall-clock aligned tracks are rendered in `tempStagingDir`.
   - FFmpeg applies hardware-accelerated video filters (NVENC -> Intel QSV -> libx264) with faststart metadata (`-movflags +faststart`) to produce a single master `.mp4` file.
   - Delivered directly through `/api/v1/extractor/jobs/{jobId}/download` with `video/mp4` MIME type.

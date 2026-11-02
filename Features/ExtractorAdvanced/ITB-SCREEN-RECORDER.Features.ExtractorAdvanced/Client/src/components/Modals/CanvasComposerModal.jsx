@@ -30,7 +30,9 @@ export default function CanvasComposerModal({
     inPointMs = 0,
     outPointMs = 0,
     playheadMs = 0,
-    playheadEpochMs = 0
+    playheadEpochMs = 0,
+    initialTimeline = null,
+    onSaveTimeline = null
 }) {
     if (!isOpen) return null;
 
@@ -123,20 +125,25 @@ export default function CanvasComposerModal({
     }, [timelineStations]);
 
     // Keyframes State
-    const [keyframes, setKeyframes] = useState(() => [
-        {
-            timestampEpochMs: cutStartEpochMs,
-            transitionDurationSec: 0.5,
-            transitionType: 'smooth',
-            layout: {
-                width: 1920,
-                height: 1080,
-                backgroundColor: '#070A10',
-                fps: 30.0,
-                placements: generateDefaultPlacements()
-            }
+    const [keyframes, setKeyframes] = useState(() => {
+        if (initialTimeline && initialTimeline.keyframes && initialTimeline.keyframes.length > 0) {
+            return JSON.parse(JSON.stringify(initialTimeline.keyframes));
         }
-    ]);
+        return [
+            {
+                timestampEpochMs: cutStartEpochMs,
+                transitionDurationSec: 0.5,
+                transitionType: 'smooth',
+                layout: {
+                    width: 1920,
+                    height: 1080,
+                    backgroundColor: '#070A10',
+                    fps: 30.0,
+                    placements: generateDefaultPlacements()
+                }
+            }
+        ];
+    });
 
     const [activeKfIndex, setActiveKfIndex] = useState(0);
     const [selectedIndex, setSelectedIndex] = useState(0);
@@ -598,7 +605,13 @@ export default function CanvasComposerModal({
     // ------------------------------------------
     // SUBMIT & EXECUTE MASTER EXPORT
     // ------------------------------------------
+    const handleClose = () => {
+        onSaveTimeline?.({ keyframes });
+        onClose();
+    };
+
     const handleExecuteMasterExport = () => {
+        onSaveTimeline?.({ keyframes });
         onConfirmExport({
             canvasLayoutTimeline: { keyframes },
             keystrokeMode
@@ -613,7 +626,7 @@ export default function CanvasComposerModal({
     }, [currentPlacements]);
 
     return (
-        <div className="itb-canvas-composer-backdrop" onClick={onClose}>
+        <div className="itb-canvas-composer-backdrop" onClick={handleClose}>
             <div className="itb-canvas-composer-card" onClick={(e) => e.stopPropagation()}>
 
                 {/* MODAL HEADER */}

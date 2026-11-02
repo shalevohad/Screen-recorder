@@ -92,6 +92,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("canvasLayoutTimeline")]
         public CanvasLayoutTimelineDto? CanvasLayoutTimeline { get; set; }
+
+        [JsonPropertyName("fileName")]
+        public string? FileName { get; set; }
     }
 
     /// <summary>

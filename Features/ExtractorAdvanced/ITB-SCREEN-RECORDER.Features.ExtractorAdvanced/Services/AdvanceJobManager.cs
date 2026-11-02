@@ -275,13 +275,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(request.InEpochMs).UtcDateTime;
             DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(request.OutEpochMs).UtcDateTime;
 
-            string stationSummary = string.Join("_", request.StationIds.Take(2));
-            if (request.StationIds.Count > 2)
-            {
-                stationSummary += $"_and_{request.StationIds.Count - 2}_more";
-            }
+            DateTime exportTimeUtc = DateTime.UtcNow;
+            string fileName = !string.IsNullOrWhiteSpace(request.FileName)
+                ? (request.FileName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ? request.FileName : $"{request.FileName}.mp4")
+                : $"{exportTimeUtc:yyyy-MM-dd_HH-mm-ss}.mp4";
 
-            string fileName = $"RECORDINGS_EXPORT_{stationSummary}_{startUtc:yyyyMMdd_HHmm}_to_{endUtc:HHmm}.mp4";
+            if (File.Exists(Path.Combine(_exportDirectory, fileName)))
+            {
+                fileName = $"{exportTimeUtc:yyyy-MM-dd_HH-mm-ss-fff}.mp4";
+            }
             double durationMinutes = (endUtc - startUtc).TotalMinutes;
             long estimatedSize = (long)(request.StationIds.Count * durationMinutes * 15.0 * 1024.0 * 1024.0);
             if (estimatedSize < 5 * 1024 * 1024) estimatedSize = 15 * 1024 * 1024;
@@ -339,6 +341,146 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 _ = _advanceRepository.UpsertJobAsync(advJob);
             }
             return toggled;
+        }
+
+                private AdvancedModels.CustomCanvasLayoutDto GenerateDefaultGridLayout(
+            List<string> stationIds,
+            Dictionary<string, List<RecordingChunkMetadata>> allStationChunks,
+            IReadOnlyDictionary<string, string>? roleMap = null)
+        {
+            var layout = new AdvancedModels.CustomCanvasLayoutDto
+            {
+                Width = 1920,
+                Height = 1080,
+                BackgroundColor = "#070A10",
+                Fps = 30.0,
+                Placements = new List<AdvancedModels.CanvasPlacementDto>()
+            };
+
+            int count = stationIds.Count;
+            if (count == 0) return layout;
+
+            string[] borderColors = { "#06B6D4", "#10B981", "#F59E0B", "#F43F5E", "#8B5CF6", "#EC4899" };
+
+            string GetLabel(string sId)
+            {
+                if (roleMap != null && roleMap.TryGetValue(sId, out var role) && !string.IsNullOrWhiteSpace(role))
+                    return role;
+                return sId;
+            }
+
+            if (count == 1)
+            {
+                string sId = stationIds[0];
+                layout.Placements.Add(new AdvancedModels.CanvasPlacementDto
+                {
+                    StationId = sId,
+                    DisplayId = "director",
+                    X = 0,
+                    Y = 0,
+                    Width = 1920,
+                    Height = 1080,
+                    ZIndex = 0,
+                    BorderWidth = 0,
+                    BorderColor = borderColors[0],
+                    Label = GetLabel(sId)
+                });
+            }
+            else if (count == 2)
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    string sId = stationIds[i];
+                    layout.Placements.Add(new AdvancedModels.CanvasPlacementDto
+                    {
+                        StationId = sId,
+                        DisplayId = "director",
+                        X = i * 960,
+                        Y = 0,
+                        Width = 960,
+                        Height = 1080,
+                        ZIndex = i,
+                        BorderWidth = 2,
+                        BorderColor = borderColors[i % borderColors.Length],
+                        Label = GetLabel(sId)
+                    });
+                }
+            }
+            else if (count <= 4)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    string sId = stationIds[i];
+                    int col = i % 2;
+                    int row = i / 2;
+                    int x = col * 960;
+                    int y = row * 540;
+                    if (count == 3 && i == 2)
+                    {
+                        x = 480;
+                    }
+
+                    layout.Placements.Add(new AdvancedModels.CanvasPlacementDto
+                    {
+                        StationId = sId,
+                        DisplayId = "director",
+                        X = x,
+                        Y = y,
+                        Width = 960,
+                        Height = 540,
+                        ZIndex = i,
+                        BorderWidth = 2,
+                        BorderColor = borderColors[i % borderColors.Length],
+                        Label = GetLabel(sId)
+                    });
+                }
+            }
+            else if (count <= 6)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    string sId = stationIds[i];
+                    int col = i % 3;
+                    int row = i / 3;
+                    layout.Placements.Add(new AdvancedModels.CanvasPlacementDto
+                    {
+                        StationId = sId,
+                        DisplayId = "director",
+                        X = col * 640,
+                        Y = row * 540,
+                        Width = 640,
+                        Height = 540,
+                        ZIndex = i,
+                        BorderWidth = 2,
+                        BorderColor = borderColors[i % borderColors.Length],
+                        Label = GetLabel(sId)
+                    });
+                }
+            }
+            else
+            {
+                for (int i = 0; i < Math.Min(count, 9); i++)
+                {
+                    string sId = stationIds[i];
+                    int col = i % 3;
+                    int row = i / 3;
+                    layout.Placements.Add(new AdvancedModels.CanvasPlacementDto
+                    {
+                        StationId = sId,
+                        DisplayId = "director",
+                        X = col * 640,
+                        Y = row * 360,
+                        Width = 640,
+                        Height = 360,
+                        ZIndex = i,
+                        BorderWidth = 2,
+                        BorderColor = borderColors[i % borderColors.Length],
+                        Label = GetLabel(sId)
+                    });
+                }
+            }
+
+            return layout;
         }
 
         private async Task ProcessSynchronizedExportAsync(AdvancedModels.AdvanceJobInfo job, DateTime startUtc, DateTime endUtc)
@@ -400,6 +542,28 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 bool isAllDisplaysMode = string.Equals(job.LayoutMode, "all-displays", StringComparison.OrdinalIgnoreCase);
 
+                // If no custom canvas layout or keyframe timeline is provided, synthesize the default Grid Canvas Layout
+                if ((job.CanvasLayoutTimeline == null || job.CanvasLayoutTimeline.Keyframes.Count == 0) &&
+                    (job.CanvasLayout == null || job.CanvasLayout.Placements.Count == 0))
+                {
+                    var roleMap = await _stationRoleProvider.GetStationRoleAliasesForTimeRangeAsync(job.InEpochMs, job.OutEpochMs);
+                    var defaultGrid = GenerateDefaultGridLayout(job.StationIds, allStationChunks, roleMap);
+                    job.CanvasLayout = defaultGrid;
+                    job.CanvasLayoutTimeline = new AdvancedModels.CanvasLayoutTimelineDto
+                    {
+                        Keyframes = new List<AdvancedModels.CanvasLayoutKeyframeDto>
+                        {
+                            new AdvancedModels.CanvasLayoutKeyframeDto
+                            {
+                                TimestampEpochMs = job.InEpochMs,
+                                TransitionDurationSec = 0.5,
+                                TransitionType = "smooth",
+                                Layout = defaultGrid
+                            }
+                        }
+                    };
+                }
+
                 // Prepare discrete render items (handling single composite or all individual monitors per station)
                 var renderTasks = new List<(string StationId, string DisplayId, bool IsPrimary, int Width, int Height, int X, int Y, List<RecordingChunkMetadata> Chunks, SynchronizationPlan Plan)>();
 
@@ -411,6 +575,46 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 else if (job.CanvasLayout != null && job.CanvasLayout.Placements.Count > 0)
                 {
                     allPlacements = job.CanvasLayout.Placements;
+                }
+
+                // Enforce Auto-Director when a station has <= 1 display in the layout and multiple recorded displays
+                var distinctStationIds = allPlacements.Select(p => p.StationId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                foreach (var sId in distinctStationIds)
+                {
+                    allStationChunks.TryGetValue(sId, out var sChunks);
+                    sChunks ??= new List<RecordingChunkMetadata>();
+                    var availableDisps = sChunks.Select(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant()).Distinct().ToList();
+
+                    int screenCountForStation = allPlacements
+                        .Where(x => string.Equals(x.StationId, sId, StringComparison.OrdinalIgnoreCase))
+                        .Select(x => !string.IsNullOrEmpty(x.DisplayId) ? x.DisplayId.ToLowerInvariant() : "mon-0")
+                        .Distinct()
+                        .Count();
+
+                    if (screenCountForStation <= 1 && availableDisps.Count > 1)
+                    {
+                        foreach (var p in allPlacements.Where(x => string.Equals(x.StationId, sId, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            p.DisplayId = "director";
+                        }
+                        if (job.CanvasLayout != null)
+                        {
+                            foreach (var p in job.CanvasLayout.Placements.Where(x => string.Equals(x.StationId, sId, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                p.DisplayId = "director";
+                            }
+                        }
+                        if (job.CanvasLayoutTimeline != null)
+                        {
+                            foreach (var kf in job.CanvasLayoutTimeline.Keyframes)
+                            {
+                                foreach (var p in kf.Layout.Placements.Where(x => string.Equals(x.StationId, sId, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    p.DisplayId = "director";
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (allPlacements.Count > 0)
@@ -427,22 +631,58 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         sChunks ??= new List<RecordingChunkMetadata>();
 
                         var availableDisps = sChunks.Select(c => string.IsNullOrEmpty(c.DisplayId) ? "mon-0" : c.DisplayId.ToLowerInvariant()).Distinct().OrderBy(d => d).ToList();
-                        string targetDisp = ResolveTargetDisplayKey(p.DisplayId, availableDisps);
+                        bool isDirector = string.Equals(p.DisplayId, "director", StringComparison.OrdinalIgnoreCase);
+                        string targetDisp = isDirector ? "director" : ResolveTargetDisplayKey(p.DisplayId, availableDisps);
 
-                        var dispChunks = sChunks.Where(c => string.Equals(c.DisplayId, targetDisp, StringComparison.OrdinalIgnoreCase)).ToList();
+                        var dispChunks = isDirector
+                            ? sChunks
+                            : sChunks.Where(c => string.Equals(c.DisplayId, targetDisp, StringComparison.OrdinalIgnoreCase)).ToList();
+
                         if (dispChunks.Count == 0) dispChunks = sChunks;
 
                         var repChunk = dispChunks.FirstOrDefault() ?? sChunks.FirstOrDefault();
                         int w = repChunk?.Width > 0 ? repChunk.Width : 1920;
                         int h = repChunk?.Height > 0 ? repChunk.Height : 1080;
-                        bool isPrimary = string.Equals(targetDisp, "mon-0", StringComparison.OrdinalIgnoreCase);
+                        bool isPrimary = string.Equals(targetDisp, "mon-0", StringComparison.OrdinalIgnoreCase) || isDirector;
+
+                        var dirSegments = plan.DirectorSegments;
+                        if (isDirector && (dirSegments == null || dirSegments.Count == 0) && availableDisps.Count > 1)
+                        {
+                            var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
+                            long sMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+                            long eMs = new DateTimeOffset(endUtc).ToUnixTimeMilliseconds();
+                            var topo = new StationDisplayTopologyDto
+                            {
+                                Hostname = sId,
+                                Displays = availableDisps.Select((d, idx) => new DisplayMetadataDto
+                                {
+                                    DisplayId = d,
+                                    IsPrimary = d == "mon-0",
+                                    X = idx * 1920,
+                                    Y = 0,
+                                    Width = 1920,
+                                    Height = 1080
+                                }).ToList()
+                            };
+                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>());
+                            dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
+                            {
+                                StartEpochMs = s.StartEpochMs,
+                                EndEpochMs = s.EndEpochMs,
+                                TargetDisplayId = s.TargetDisplayId,
+                                TargetDisplayNumber = s.TargetDisplayNumber,
+                                TargetDisplayName = s.TargetDisplayName,
+                                IsManualOverride = s.IsManualOverride
+                            }).ToList();
+                        }
 
                         var feedPlan = new SynchronizationPlan
                         {
                             ActiveSegments = plan.ActiveSegments,
                             KeystrokeMode = plan.KeystrokeMode,
-                            LayoutMode = "custom",
+                            LayoutMode = isDirector ? "director" : "custom",
                             TargetDisplayId = targetDisp,
+                            DirectorSegments = isDirector ? dirSegments : null,
                             RemovedGlobalGaps = plan.RemovedGlobalGaps,
                             StationGaps = plan.StationGaps
                         };
@@ -1029,18 +1269,41 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     for (int pIdx = 0; pIdx < iSortedPlacements.Count; pIdx++)
                     {
                         var p = iSortedPlacements[pIdx];
-                        int inIdx = 0;
+                        int inIdx = -1;
                         for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
                         {
                             if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
-                                (string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase) ||
-                                 string.IsNullOrEmpty(p.DisplayId) ||
-                                 tracks[tIdx].DisplayId == "mon-0"))
+                                string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase))
                             {
                                 inIdx = tIdx;
                                 break;
                             }
                         }
+                        if (inIdx < 0)
+                        {
+                            for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                            {
+                                if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
+                                    (string.Equals(tracks[tIdx].DisplayId, "director", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(tracks[tIdx].DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    inIdx = tIdx;
+                                    break;
+                                }
+                            }
+                        }
+                        if (inIdx < 0)
+                        {
+                            for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                            {
+                                if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    inIdx = tIdx;
+                                    break;
+                                }
+                            }
+                        }
+                        if (inIdx < 0) inIdx = 0;
 
                         int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * cW) : (int)Math.Round(p.Width);
                         int targetH = p.Height <= 1.0 && p.Height > 0 ? (int)Math.Round(p.Height * cH) : (int)Math.Round(p.Height);
@@ -1162,18 +1425,41 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     var p = sortedPlacements[pIdx];
 
                     // Find matching track index
-                    int inIdx = 0;
+                    int inIdx = -1;
                     for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
                     {
                         if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
-                            (string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase) ||
-                             string.IsNullOrEmpty(p.DisplayId) ||
-                             tracks[tIdx].DisplayId == "mon-0"))
+                            string.Equals(tracks[tIdx].DisplayId, p.DisplayId, StringComparison.OrdinalIgnoreCase))
                         {
                             inIdx = tIdx;
                             break;
                         }
                     }
+                    if (inIdx < 0)
+                    {
+                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                        {
+                            if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase) &&
+                                (string.Equals(tracks[tIdx].DisplayId, "director", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(tracks[tIdx].DisplayId, "mon-0", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                inIdx = tIdx;
+                                break;
+                            }
+                        }
+                    }
+                    if (inIdx < 0)
+                    {
+                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                        {
+                            if (string.Equals(tracks[tIdx].StationId, p.StationId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                inIdx = tIdx;
+                                break;
+                            }
+                        }
+                    }
+                    if (inIdx < 0) inIdx = 0;
 
                     // Calculate geometry
                     int targetW = p.Width <= 1.0 && p.Width > 0 ? (int)Math.Round(p.Width * canvasW) : (int)Math.Round(p.Width);

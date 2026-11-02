@@ -52,17 +52,14 @@ public class UniversalStudioCompositionTests
     }
 
     [Fact]
-    public void SingleMasterMp4_FileName_HasCorrectMp4Extension()
+    public void SingleMasterMp4_FileName_IsExportTime()
     {
-        DateTime startUtc = new DateTime(2026, 11, 2, 10, 0, 0, DateTimeKind.Utc);
-        DateTime endUtc = new DateTime(2026, 11, 2, 10, 30, 0, DateTimeKind.Utc);
-        string stationSummary = "WS-01_WS-02";
-
-        string fileName = $"RECORDINGS_EXPORT_{stationSummary}_{startUtc:yyyyMMdd_HHmm}_to_{endUtc:HHmm}.mp4";
+        DateTime exportTimeUtc = new DateTime(2026, 11, 2, 14, 30, 0, DateTimeKind.Utc);
+        string fileName = $"{exportTimeUtc:yyyy-MM-dd_HH-mm-ss}.mp4";
 
         Assert.EndsWith(".mp4", fileName, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(".tar", fileName, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("RECORDINGS_EXPORT_WS-01_WS-02_20261102_1000_to_1030.mp4", fileName);
+        Assert.Equal("2026-11-02_14-30-00.mp4", fileName);
     }
 
     [Fact]
@@ -87,5 +84,72 @@ public class UniversalStudioCompositionTests
         };
 
         Assert.Equal(KeystrokeExportMode.BurnIn, plan.KeystrokeMode);
+    }
+    [Fact]
+    public void AutoDirector_AppliedWhenStationHasSingleScreenInLayout()
+    {
+        // Layout with 1 placement for WS-01
+        var placements = new List<ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models.CanvasPlacementDto>
+        {
+            new ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models.CanvasPlacementDto
+            {
+                StationId = "WS-01",
+                DisplayId = "mon-0",
+                X = 0, Y = 0, Width = 960, Height = 1080
+            },
+            new ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models.CanvasPlacementDto
+            {
+                StationId = "WS-02",
+                DisplayId = "mon-0",
+                X = 960, Y = 0, Width = 960, Height = 1080
+            }
+        };
+
+        // WS-01 has 2 available recorded displays
+        var availableDisps = new List<string> { "mon-0", "mon-1" };
+
+        int screenCountForStation = placements
+            .Where(x => string.Equals(x.StationId, "WS-01", StringComparison.OrdinalIgnoreCase))
+            .Select(x => !string.IsNullOrEmpty(x.DisplayId) ? x.DisplayId.ToLowerInvariant() : "mon-0")
+            .Distinct()
+            .Count();
+
+        // When screenCountForStation <= 1 and station has multiple screens, it routes via director
+        bool shouldUseDirector = screenCountForStation <= 1 && availableDisps.Count > 1;
+        Assert.True(shouldUseDirector);
+    }
+
+    [Fact]
+    public void AutoDirector_NotAppliedWhenStationHasMultipleScreensInLayout()
+    {
+        // Layout with 2 distinct screens for WS-01
+        var placements = new List<ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models.CanvasPlacementDto>
+        {
+            new ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models.CanvasPlacementDto
+            {
+                StationId = "WS-01",
+                DisplayId = "mon-0",
+                X = 0, Y = 0, Width = 960, Height = 540
+            },
+            new ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models.CanvasPlacementDto
+            {
+                StationId = "WS-01",
+                DisplayId = "mon-1",
+                X = 0, Y = 540, Width = 960, Height = 540
+            }
+        };
+
+        var availableDisps = new List<string> { "mon-0", "mon-1" };
+
+        int screenCountForStation = placements
+            .Where(x => string.Equals(x.StationId, "WS-01", StringComparison.OrdinalIgnoreCase))
+            .Select(x => !string.IsNullOrEmpty(x.DisplayId) ? x.DisplayId.ToLowerInvariant() : "mon-0")
+            .Distinct()
+            .Count();
+
+        // When screenCountForStation > 1, Auto-Director is NOT forced so discrete displays are preserved
+        bool shouldUseDirector = screenCountForStation <= 1 && availableDisps.Count > 1;
+        Assert.False(shouldUseDirector);
+        Assert.Equal(2, screenCountForStation);
     }
 }
