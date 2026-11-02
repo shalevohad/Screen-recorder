@@ -836,7 +836,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         /// <summary>
         /// Query the current progress, status, ETA, and download URL of an export job.
         /// </summary>
-        [HttpGet("jobs/{jobId}")]
+        [HttpGet("jobs/{jobId}/status")]
         [HttpGet("/api/v1/extractor/jobs/{jobId}/status")]
         public IActionResult GetJobStatus(string jobId)
         {

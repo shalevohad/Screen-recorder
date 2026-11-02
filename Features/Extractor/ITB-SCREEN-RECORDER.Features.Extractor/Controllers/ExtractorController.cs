@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -105,7 +105,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
             return NoContent();
         }
 
-        [HttpPost("export")]
+        [HttpPost("export-tar")]
+        [HttpPost("export/tar")]
         [Produces("application/x-tar")]
         public virtual async Task ExportArchive([FromBody] ExtractionRequestDto request)
         {

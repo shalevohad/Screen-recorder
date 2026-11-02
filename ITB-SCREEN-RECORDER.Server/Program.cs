@@ -278,6 +278,7 @@ namespace ITB_SCREEN_RECORDER.Server
                 builder.Services.AddSwaggerGen(options =>
                 {
                     options.CustomSchemaIds(type => type.FullName ?? type.Name);
+                    options.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
                     options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
                     {
                         Title = "ITB Screen Recorder API",
