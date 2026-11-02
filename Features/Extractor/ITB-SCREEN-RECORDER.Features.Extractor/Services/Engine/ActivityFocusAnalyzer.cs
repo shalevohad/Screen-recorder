@@ -19,7 +19,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             StationDisplayTopologyDto? topology,
             IReadOnlyList<ActivityEventDto> events,
             long preRollLeadInMs = 1000,
-            long minDwellMs = 2000)
+            long minDwellMs = 10000)
         {
             var plan = new StationDirectorPlanDto
             {
@@ -83,6 +83,13 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
                     continue;
                 }
 
+                // Minimum dwell time enforcement: Must remain on current display for at least minDwellMs (default 10s)
+                // before any cut or transition can take place ("לחייב לפחות 10 שניות במסך אחרת אין צורך לעבור")
+                if (evt.TimestampEpochMs - currentSegmentStart < minDwellMs)
+                {
+                    continue;
+                }
+
                 bool shouldSwitch = false;
                 DirectorTriggerReason switchReason = DirectorTriggerReason.Default;
 
@@ -120,7 +127,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
                     // Transition initiates 1.0 second prior to the interaction timestamp T (T - 1000ms),
                     // but never earlier than the current segment start + minimum dwell time.
                     long idealCutTime = evt.TimestampEpochMs - preRollLeadInMs;
-                    long earliestCutTime = currentSegmentStart + (minDwellMs / 2);
+                    long earliestCutTime = currentSegmentStart + minDwellMs;
                     long cutTime = Math.Max(earliestCutTime, idealCutTime);
 
                     // Clamp cutTime to ensure positive progress and within timeline
@@ -167,7 +174,56 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
                 });
             }
 
+            // Enforce minimum 10 seconds per screen (eliminate jittery switches)
+            ConsolidateShortSegments(plan, minDwellMs);
+
             return plan;
+        }
+
+        private static void ConsolidateShortSegments(StationDirectorPlanDto plan, long minDwellMs)
+        {
+            if (plan.Segments.Count <= 1) return;
+
+            bool changed = true;
+            while (changed && plan.Segments.Count > 1)
+            {
+                changed = false;
+                for (int i = 0; i < plan.Segments.Count; i++)
+                {
+                    var seg = plan.Segments[i];
+                    long dur = seg.EndEpochMs - seg.StartEpochMs;
+
+                    if (dur < minDwellMs)
+                    {
+                        if (i > 0)
+                        {
+                            // Absorb short segment into preceding segment to preserve screen continuity
+                            plan.Segments[i - 1].EndEpochMs = seg.EndEpochMs;
+                            plan.Segments.RemoveAt(i);
+                            changed = true;
+                            break;
+                        }
+                        else if (plan.Segments.Count > 1)
+                        {
+                            // First segment too short: absorb into following segment
+                            plan.Segments[1].StartEpochMs = seg.StartEpochMs;
+                            plan.Segments.RemoveAt(0);
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Merge any contiguous segments that now share the same TargetDisplayId
+            for (int i = plan.Segments.Count - 1; i > 0; i--)
+            {
+                if (string.Equals(plan.Segments[i].TargetDisplayId, plan.Segments[i - 1].TargetDisplayId, StringComparison.OrdinalIgnoreCase))
+                {
+                    plan.Segments[i - 1].EndEpochMs = plan.Segments[i].EndEpochMs;
+                    plan.Segments.RemoveAt(i);
+                }
+            }
         }
 
         private static string ResolveDisplayForCoordinates(

@@ -12,6 +12,6 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             StationDisplayTopologyDto? topology,
             IReadOnlyList<ActivityEventDto> events,
             long preRollLeadInMs = 1000,
-            long minDwellMs = 2000);
+            long minDwellMs = 10000);
     }
 }

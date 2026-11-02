@@ -420,10 +420,10 @@ public class ExternalApiAndCustomCanvasTests
 
         var events = new List<ActivityEventDto>
         {
-            new ActivityEventDto { TimestampEpochMs = 1700000005000, Type = ActivityEventType.MouseClick, DisplayId = "mon-1" }
+            new ActivityEventDto { TimestampEpochMs = 1700000015000, Type = ActivityEventType.MouseClick, DisplayId = "mon-1" }
         };
 
-        var plan = analyzer.AnalyzeFocus("WS-COMMAND", 1700000000000, 1700000010000, topology, events);
+        var plan = analyzer.AnalyzeFocus("WS-COMMAND", 1700000000000, 1700000030000, topology, events);
 
         Assert.NotEmpty(plan.Segments);
         // First segment (mon-0) must be numbered starting at 1

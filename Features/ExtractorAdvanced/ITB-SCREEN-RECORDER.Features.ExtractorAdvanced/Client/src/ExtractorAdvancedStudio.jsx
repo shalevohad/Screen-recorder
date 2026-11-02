@@ -454,14 +454,24 @@ export default function ExtractorAdvancedStudio() {
         if (!stId) return;
         setStationDirectorPlans(prev => {
             const plan = prev[stId] || getStationPlan(stId);
-            const segments = (plan.segments || []).map(seg => {
+            const segments = [...(plan.segments || [])];
+            // Match specific segment: prioritize strict containment (midpoint) to avoid adjacent boundary collisions
+            let segIdx = segments.findIndex(seg => {
                 const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
                 const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
-                if (segmentEpochMs >= s && segmentEpochMs <= e) {
-                    return { ...seg, targetDisplayId: newDisplayId, isManualOverride: true };
-                }
-                return seg;
+                return segmentEpochMs > s && segmentEpochMs < e;
             });
+            if (segIdx === -1) {
+                segIdx = segments.findIndex(seg => {
+                    const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                    const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                    return segmentEpochMs >= s && segmentEpochMs <= e;
+                });
+            }
+            if (segIdx === -1) return prev;
+
+            const targetSeg = segments[segIdx];
+            segments[segIdx] = { ...targetSeg, targetDisplayId: newDisplayId, isManualOverride: true };
             return { ...prev, [stId]: { ...plan, segments } };
         });
     }, [getStationPlan]);
@@ -470,23 +480,38 @@ export default function ExtractorAdvancedStudio() {
         if (!stId) return;
         const targetStation = allStations.find(s => s.id === stId);
         const autoPlan = targetStation?.directorPlan;
-        const autoSeg = autoPlan?.segments?.find(s => {
-            const start = s.startEpochMs ?? s.StartEpochMs ?? 0;
-            const end = s.endEpochMs ?? s.EndEpochMs ?? 0;
-            return segmentEpochMs >= start && segmentEpochMs <= end;
-        });
-        const autoDisplay = autoSeg ? (autoSeg.targetDisplayId ?? autoSeg.TargetDisplayId ?? 'mon-0') : 'mon-0';
 
         setStationDirectorPlans(prev => {
             const plan = prev[stId] || getStationPlan(stId);
-            const segments = (plan.segments || []).map(seg => {
+            const segments = [...(plan.segments || [])];
+
+            let segIdx = segments.findIndex(seg => {
                 const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
                 const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
-                if (segmentEpochMs >= s && segmentEpochMs <= e) {
-                    return { ...seg, targetDisplayId: autoDisplay, isManualOverride: false };
-                }
-                return seg;
+                return segmentEpochMs > s && segmentEpochMs < e;
             });
+            if (segIdx === -1) {
+                segIdx = segments.findIndex(seg => {
+                    const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                    const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                    return segmentEpochMs >= s && segmentEpochMs <= e;
+                });
+            }
+            if (segIdx === -1) return prev;
+
+            const targetSeg = segments[segIdx];
+            const s = targetSeg.startEpochMs ?? targetSeg.StartEpochMs ?? 0;
+            const e = targetSeg.endEpochMs ?? targetSeg.EndEpochMs ?? 0;
+            const mid = (s + e) / 2;
+
+            const autoSeg = autoPlan?.segments?.find(as => {
+                const start = as.startEpochMs ?? as.StartEpochMs ?? 0;
+                const end = as.endEpochMs ?? as.EndEpochMs ?? 0;
+                return mid >= start && mid <= end;
+            });
+            const autoDisplay = autoSeg ? (autoSeg.targetDisplayId ?? autoSeg.TargetDisplayId ?? 'mon-0') : 'mon-0';
+
+            segments[segIdx] = { ...targetSeg, targetDisplayId: autoDisplay, isManualOverride: false };
             return { ...prev, [stId]: { ...plan, segments } };
         });
     }, [allStations, getStationPlan]);

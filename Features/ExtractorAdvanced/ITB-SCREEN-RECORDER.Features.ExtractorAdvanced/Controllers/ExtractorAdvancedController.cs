@@ -246,7 +246,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                     {
                         long t0 = timeList[i];
                         long t1 = timeList[i + 1];
-                        if (t1 - t0 < 3000) continue;
+                        if (t1 - t0 < 10000) continue;
 
                         DateTime sliceMidUtc = DateTimeOffset.FromUnixTimeMilliseconds((t0 + t1) / 2).UtcDateTime;
                         string? dominantDisp = null;
@@ -287,7 +287,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             };
 
             var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
-            return analyzer.AnalyzeFocus(stationId, startEpochMs, endEpochMs, topology, activityEvents);
+            return analyzer.AnalyzeFocus(stationId, startEpochMs, endEpochMs, topology, activityEvents, minDwellMs: 10000);
         }
 
         [HttpGet("stations")]

@@ -4,33 +4,34 @@
 .director-track-container {
     display: flex;
     align-items: center;
-    height: 30px;
+    height: 26px;
     width: 100%;
-    background: rgba(15, 23, 42, 0.92);
+    background: rgba(15, 23, 42, 0.95);
     border-top: 1px dashed rgba(56, 189, 248, 0.25);
     border-bottom: 1px solid rgba(30, 41, 59, 0.95);
     position: relative;
     user-select: none;
 
     .director-track-label {
-        width: 250px;
-        min-width: 250px;
+        width: 180px;
+        min-width: 180px;
         height: 100%;
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 0 10px;
+        padding: 0 8px;
         background: rgba(10, 15, 29, 0.98);
         border-right: 1px solid rgba(56, 189, 248, 0.25);
         z-index: 5;
 
         .director-icon {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
+            line-height: 1;
         }
 
         .director-title {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.65rem;
+            font-size: 0.62rem;
             font-weight: 700;
             color: #38bdf8;
             letter-spacing: 0.08em;
@@ -40,13 +41,13 @@
         .director-active-badge {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 2px 6px;
-            border-radius: 4px;
+            gap: 3px;
+            padding: 1px 5px;
+            border-radius: 3px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.62rem;
+            font-size: 0.6rem;
             font-weight: 800;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
             white-space: nowrap;
             margin-left: auto;
@@ -61,60 +62,34 @@
                 background: rgba(245, 158, 11, 0.22);
                 color: #fbbf24;
                 border: 1px solid rgba(245, 158, 11, 0.7);
-                box-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
+                box-shadow: 0 0 6px rgba(245, 158, 11, 0.35);
             }
 
             .badge-pulse {
-                width: 5px;
-                height: 5px;
+                width: 4px;
+                height: 4px;
                 border-radius: 50%;
                 background: currentColor;
                 animation: directorPulse 1.4s infinite ease-in-out;
-            }
-
-            .active-interval-time {
-                font-size: 0.58rem;
-                color: rgba(226, 232, 240, 0.88);
-                margin-left: 4px;
-                letter-spacing: 0.02em;
             }
         }
 
         .director-revert-btn {
             background: rgba(245, 158, 11, 0.18);
             border: 1px solid rgba(245, 158, 11, 0.6);
-            color: #FBBF24;
-            padding: 2px 6px;
+            color: #fbbf24;
+            padding: 1px 5px;
             border-radius: 3px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.6rem;
+            font-size: 0.58rem;
             font-weight: 800;
             cursor: pointer;
             transition: all 0.15s ease;
             white-space: nowrap;
 
             &:hover {
-                background: #F59E0B;
-                color: #0F172A;
-            }
-        }
-
-        .director-split-btn {
-            background: rgba(30, 41, 59, 0.7);
-            border: 1px solid rgba(148, 163, 184, 0.25);
-            color: #cbd5e1;
-            padding: 2px 5px;
-            border-radius: 3px;
-            font-size: 0.7rem;
-            cursor: pointer;
-            transition: all 0.15s ease;
-            line-height: 1;
-
-            &:hover {
-                background: rgba(56, 189, 248, 0.3);
-                border-color: #38bdf8;
-                color: #ffffff;
-                transform: scale(1.08);
+                background: #f59e0b;
+                color: #0f172a;
             }
         }
     }
@@ -124,174 +99,163 @@
         height: 100%;
         position: relative;
         overflow: hidden;
-        background: rgba(15, 23, 42, 0.5);
+        background: rgba(11, 17, 32, 0.7);
 
         .director-segment-block {
             position: absolute;
-            top: 3px;
-            bottom: 3px;
+            top: 2px;
+            bottom: 2px;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 4px;
-            border-radius: 4px;
+            border-radius: 2px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.65rem;
-            font-weight: 700;
+            font-size: 0.68rem;
+            font-weight: 800;
             cursor: pointer;
-            transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
             box-sizing: border-box;
-            padding: 0 6px;
-            white-space: nowrap;
+            padding: 0 2px;
+            min-width: 0;
             overflow: hidden;
+            white-space: nowrap;
+            border-right: 1px solid rgba(15, 23, 42, 0.95);
+            transition: filter 0.12s ease;
+            user-select: none;
 
             &:hover {
                 filter: brightness(1.3);
                 z-index: 10;
-                transform: translateY(-1px);
-
-                .segment-quick-actions {
-                    display: flex;
-                }
             }
 
-            &.is-auto {
-                background: rgba(6, 182, 212, 0.22);
-                border: 1px solid rgba(6, 182, 212, 0.6);
+            // Screen Theme 1 (Cyan - mon-0 / Screen 1)
+            &.disp-theme-1 {
+                background: rgba(6, 182, 212, 0.25);
+                border-top: 1px solid rgba(6, 182, 212, 0.65);
+                border-bottom: 1px solid rgba(6, 182, 212, 0.65);
                 color: #22d3ee;
             }
 
-            &.is-override {
-                background: rgba(245, 158, 11, 0.25);
-                border: 1px solid rgba(245, 158, 11, 0.85);
-                color: #fbbf24;
+            // Screen Theme 2 (Purple - mon-1 / Screen 2)
+            &.disp-theme-2 {
+                background: rgba(168, 85, 247, 0.25);
+                border-top: 1px solid rgba(168, 85, 247, 0.65);
+                border-bottom: 1px solid rgba(168, 85, 247, 0.65);
+                color: #c084fc;
             }
 
+            // Screen Theme 3 (Emerald - mon-2 / Screen 3)
+            &.disp-theme-3 {
+                background: rgba(16, 185, 129, 0.25);
+                border-top: 1px solid rgba(16, 185, 129, 0.65);
+                border-bottom: 1px solid rgba(16, 185, 129, 0.65);
+                color: #34d399;
+            }
+
+            // Screen Theme 4 (Blue - mon-3 / Screen 4)
+            &.disp-theme-4 {
+                background: rgba(59, 130, 246, 0.25);
+                border-top: 1px solid rgba(59, 130, 246, 0.65);
+                border-bottom: 1px solid rgba(59, 130, 246, 0.65);
+                color: #60a5fa;
+            }
+
+            // Manual override accent
+            &.is-override {
+                border-top: 2px solid #f59e0b !important;
+                border-bottom: 1px solid rgba(245, 158, 11, 0.8) !important;
+                background-color: rgba(245, 158, 11, 0.28) !important;
+                color: #fbbf24 !important;
+            }
+
+            // Highlight at playhead
             &.is-active-at-playhead {
-                box-shadow: 0 0 10px rgba(6, 182, 212, 0.6), inset 0 0 6px rgba(6, 182, 212, 0.3);
+                box-shadow: 0 0 8px rgba(56, 189, 248, 0.6), inset 0 0 5px rgba(56, 189, 248, 0.25);
                 border-color: #38bdf8 !important;
                 z-index: 8;
 
                 &.is-override {
-                    box-shadow: 0 0 10px rgba(245, 158, 11, 0.8), inset 0 0 6px rgba(245, 158, 11, 0.35);
+                    box-shadow: 0 0 8px rgba(245, 158, 11, 0.8), inset 0 0 5px rgba(245, 158, 11, 0.35);
                     border-color: #f59e0b !important;
                 }
             }
 
-            .segment-badge-icon {
-                font-size: 0.72rem;
-            }
+            .segment-screen-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                letter-spacing: 0.04em;
+                line-height: 1;
 
-            .segment-badge-label {
-                letter-spacing: 0.05em;
-            }
+                &.mini {
+                    font-size: 0.62rem;
+                    gap: 1px;
+                }
 
-            .segment-badge-time {
-                font-size: 0.6rem;
-                color: rgba(226, 232, 240, 0.9);
-                margin-left: 4px;
-                letter-spacing: 0.02em;
-                font-weight: 500;
-            }
+                .override-indicator {
+                    font-size: 0.6rem;
+                    color: #fbbf24;
+                }
 
-            .segment-badge-duration {
-                font-size: 0.55rem;
-                color: rgba(148, 163, 184, 0.85);
-                margin-left: 2px;
+                .override-dot {
+                    font-size: 0.75rem;
+                    color: #fbbf24;
+                    line-height: 0.8;
+                }
+
+                .screen-num {
+                    font-weight: 800;
+                }
             }
 
             .playhead-indicator-dot {
-                width: 6px;
-                height: 6px;
+                width: 4px;
+                height: 4px;
                 border-radius: 50%;
                 background: #ffffff;
-                box-shadow: 0 0 6px #ffffff;
-                margin-left: 2px;
-            }
-
-            .segment-quick-actions {
-                display: none;
-                position: absolute;
-                right: 3px;
-                top: 50%;
-                transform: translateY(-50%);
-                align-items: center;
-                gap: 2px;
-                background: rgba(15, 23, 42, 0.95);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 3px;
-                padding: 1px 3px;
-                z-index: 15;
-
-                .quick-disp-btn {
-                    background: transparent;
-                    border: none;
-                    color: #CBD5E1;
-                    font-size: 0.62rem;
-                    font-weight: 800;
-                    padding: 1px 3px;
-                    border-radius: 2px;
-                    cursor: pointer;
-
-                    &:hover {
-                        background: #06B6D4;
-                        color: #FFFFFF;
-                    }
-
-                    &.active {
-                        background: rgba(6, 182, 212, 0.4);
-                        color: #22D3EE;
-                        font-weight: 900;
-                    }
-                }
-
-                .quick-action-btn.revert {
-                    background: transparent;
-                    border: none;
-                    color: #FBBF24;
-                    font-size: 0.62rem;
-                    font-weight: 800;
-                    padding: 1px 3px;
-                    border-radius: 2px;
-                    cursor: pointer;
-
-                    &:hover {
-                        background: #F59E0B;
-                        color: #0F172A;
-                    }
-                }
+                box-shadow: 0 0 4px #ffffff;
+                margin-left: 3px;
+                flex-shrink: 0;
             }
         }
     }
 }
 
-/* Tactical Override Popover Menu */
-.director-menu-popover {
+/* Tactical Context Menu for Right-Click Segment Editing */
+.director-context-menu {
     background: #0f172a;
-    border: 1px solid rgba(56, 189, 248, 0.4);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 0 15px rgba(6, 182, 212, 0.25);
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8), 0 0 20px rgba(6, 182, 212, 0.25);
     border-radius: 6px;
-    padding: 10px;
-    width: 210px;
+    padding: 9px 10px;
+    width: 220px;
     font-family: 'JetBrains Mono', monospace;
     backdrop-filter: blur(12px);
+    user-select: none;
 
     .menu-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 0.7rem;
+        font-size: 0.68rem;
         font-weight: 800;
         color: #38bdf8;
         border-bottom: 1px solid rgba(56, 189, 248, 0.2);
-        padding-bottom: 6px;
-        margin-bottom: 8px;
-        letter-spacing: 0.08em;
+        padding-bottom: 5px;
+        margin-bottom: 6px;
+        letter-spacing: 0.06em;
+
+        .menu-title {
+            white-space: nowrap;
+        }
 
         .menu-close-x {
+            background: transparent;
+            border: none;
             cursor: pointer;
             color: #94a3b8;
             font-size: 0.75rem;
+            padding: 0 2px;
+            line-height: 1;
 
             &:hover {
                 color: #f43f5e;
@@ -299,30 +263,50 @@
         }
     }
 
+    .menu-segment-info {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        padding: 4px 6px;
+        margin-bottom: 7px;
+
+        .info-time {
+            font-size: 0.6rem;
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+
+        .info-duration {
+            font-size: 0.56rem;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+    }
+
     .menu-section-label {
-        font-size: 0.58rem;
+        font-size: 0.56rem;
         color: #64748b;
         font-weight: 700;
-        margin-bottom: 6px;
+        margin-bottom: 5px;
         letter-spacing: 0.05em;
     }
 
     .menu-options-list {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 3px;
     }
 
     .menu-divider {
         height: 1px;
-        background: rgba(51, 65, 85, 0.7);
-        margin: 8px 0;
+        background: rgba(51, 65, 85, 0.6);
+        margin: 6px 0;
     }
 
     .menu-actions {
         display: flex;
         flex-direction: column;
-        gap: 5px;
+        gap: 4px;
     }
 
     .menu-item-btn {
@@ -333,13 +317,14 @@
         background: rgba(30, 41, 59, 0.6);
         border: 1px solid rgba(148, 163, 184, 0.2);
         color: #e2e8f0;
-        padding: 5px 8px;
-        border-radius: 4px;
-        font-size: 0.68rem;
+        padding: 4px 7px;
+        border-radius: 3px;
+        font-size: 0.64rem;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.15s ease;
         text-align: left;
+        font-family: inherit;
 
         &:hover {
             background: rgba(56, 189, 248, 0.2);
@@ -376,8 +361,9 @@
         }
 
         .menu-check {
-            font-size: 0.75rem;
+            font-size: 0.6rem;
             color: #fbbf24;
+            font-weight: 700;
         }
     }
 }

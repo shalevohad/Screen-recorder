@@ -926,9 +926,17 @@ To guarantee 100% deterministic time representation regardless of host operating
   - During playback in Director Mode, `DirectorTrack.jsx` and `StudioVideoFeed.jsx` dynamically update with the active screen and time interval using the 1-based display standard: `⚡ AUTO-DIRECTOR: SCREEN 1 [10:14:00 - 10:18:30]`.
 
 ### 4. Advanced Extractor Studio Timeline & HUD Enhancements
-- **Timeline Segment Visualization (`DirectorTrack.jsx`)**:
-  - Each segment renders a clean 1-based screen badge (`SCREEN 1`, `SCREEN 2`), start and end time interval `[10:14:00 - 10:18:30]`, and duration `(04m 30s)`.
-  - The track header features a live orientation badge with active time boundaries: `⚡ AUTO: SCREEN 1 [10:14:00 - 10:18:30]` or `✋ OVERRIDE: SCREEN 2`.
+- **10-Second Minimum Screen Dwell Time Invariant**:
+  - `ActivityFocusAnalyzer.cs` and `ExtractorAdvancedController.cs` enforce a strict minimum screen dwell threshold (`minDwellMs = 10000`, 10 seconds).
+  - Rapid interactions across monitors are smoothed out to eliminate visual fatigue: the camera remains locked on the current screen for at least 10 seconds before any automated transition can occur. Trailing micro-segments under 10 seconds are absorbed backward into the preceding segment.
+- **Minimalist Timeline Segment Visualization (`DirectorTrack.jsx`)**:
+  - Segments are rendered with high visual minimalism: displaying only the screen number (`🖥 1` / `🖥 2` or `1` / `2`), color-coded per physical display (Cyan for Screen 1, Purple for Screen 2, Emerald for Screen 3, Blue for Screen 4).
+  - Overlap Prevention in Zoom-Out: Exact floating-point percentages without artificial minimum widths ensure contiguous, non-overlapping segment layout even across multi-hour zoom scales. Text is automatically suppressed when segment pixel width is insufficient.
+- **Right-Click Context Menu Segment Editing**:
+  - Right-clicking (`onContextMenu`) any director segment opens a dedicated tactical context menu allowing operators to:
+    - Instantly reassign that specific segment to any available physical display (`Screen 1`, `Screen 2`, etc.), marking it as a manual override (`isManualOverride: true`).
+    - Revert the segment back to algorithmic AI Auto-Director decisions.
+    - Split the segment at the exact right-click timeline timestamp or at the current playhead position.
 - **Persistent Minimap HUD & Multi-Screen Indicators**:
   - `PersistentMinimapHud.jsx` and `StudioVideoFeed.jsx` render real-time time range badges, giving operators immediate visual clarity on which display is currently selected and for what exact time span.
 
