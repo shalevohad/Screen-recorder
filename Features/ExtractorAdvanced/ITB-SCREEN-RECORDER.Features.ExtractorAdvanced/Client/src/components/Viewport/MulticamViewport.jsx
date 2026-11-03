@@ -73,6 +73,38 @@ function getShadowCss(shadowEffect, isSelected, bColor) {
     return base;
 }
 
+export function getReadableAspectRatio(w, h) {
+    if (!w || !h || w <= 0 || h <= 0) return '16:9';
+    const ratio = w / h;
+    if (Math.abs(ratio - (16 / 9)) < 0.04) return '16:9';
+    if (Math.abs(ratio - (4 / 3)) < 0.04) return '4:3';
+    if (Math.abs(ratio - (16 / 10)) < 0.04) return '16:10';
+    if (Math.abs(ratio - (21 / 9)) < 0.06) return '21:9';
+    if (Math.abs(ratio - (32 / 9)) < 0.08) return '32:9';
+    if (Math.abs(ratio - (5 / 4)) < 0.04) return '5:4';
+    if (Math.abs(ratio - (9 / 16)) < 0.04) return '9:16';
+    if (Math.abs(ratio - 1) < 0.04) return '1:1';
+    return `${ratio.toFixed(2)}:1`;
+}
+
+function fitInCell(cellX, cellY, cellW, cellH, aspect) {
+    const safeAspect = aspect > 0 ? aspect : (16 / 9);
+    const cellAspect = cellW / cellH;
+    let w, h, x, y;
+    if (safeAspect >= cellAspect) {
+        w = cellW;
+        h = Math.round(w / safeAspect);
+        x = cellX;
+        y = cellY + Math.round((cellH - h) / 2);
+    } else {
+        h = cellH;
+        w = Math.round(h * safeAspect);
+        x = cellX + Math.round((cellW - w) / 2);
+        y = cellY;
+    }
+    return { x, y, width: w, height: h };
+}
+
 function generateAutoPackPlacements(feeds) {
     const W = VIRTUAL_CANVAS_W;
     const H = VIRTUAL_CANVAS_H;
@@ -80,12 +112,19 @@ function generateAutoPackPlacements(feeds) {
     if (count === 0) return [];
 
     if (count === 1) {
+        const f0 = feeds[0];
+        const aspect = f0.nativeAspectRatio || (f0.sourceWidth && f0.sourceHeight ? f0.sourceWidth / f0.sourceHeight : 16 / 9);
+        const { x, y, width, height } = fitInCell(0, 0, W, H, aspect);
         return [{
-            ...feeds[0],
-            x: 0,
-            y: 0,
-            width: W,
-            height: H,
+            ...f0,
+            x,
+            y,
+            width,
+            height,
+            sourceWidth: f0.sourceWidth || 1920,
+            sourceHeight: f0.sourceHeight || 1080,
+            nativeAspectRatio: aspect,
+            aspectRatio: aspect,
             zIndex: 0,
             rotation: 0,
             borderWidth: 0,
@@ -97,27 +136,92 @@ function generateAutoPackPlacements(feeds) {
 
     if (count === 2) {
         const halfW = 960;
-        return [
-            { ...feeds[0], x: 0, y: 0, width: halfW, height: H, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-            { ...feeds[1], x: halfW, y: 0, width: halfW, height: H, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 }
-        ];
+        return feeds.slice(0, 2).map((f, idx) => {
+            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+            const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, H, aspect);
+            return {
+                ...f,
+                x,
+                y,
+                width,
+                height,
+                sourceWidth: f.sourceWidth || 1920,
+                sourceHeight: f.sourceHeight || 1080,
+                nativeAspectRatio: aspect,
+                aspectRatio: aspect,
+                zIndex: idx,
+                rotation: 0,
+                borderWidth: 2,
+                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
+                shadowEffect: 'deep',
+                borderRadius: 0
+            };
+        });
     }
 
     if (count === 3) {
-        return [
-            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
-            { ...feeds[2], x: 480, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
+        const cellW = 960;
+        const cellH = 540;
+        const gridCells = [
+            { cx: 0, cy: 0 },
+            { cx: 960, cy: 0 },
+            { cx: 480, cy: 540 }
         ];
+        return feeds.slice(0, 3).map((f, idx) => {
+            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+            const { cx, cy } = gridCells[idx];
+            const { x, y, width, height } = fitInCell(cx, cy, cellW, cellH, aspect);
+            return {
+                ...f,
+                x,
+                y,
+                width,
+                height,
+                sourceWidth: f.sourceWidth || 1920,
+                sourceHeight: f.sourceHeight || 1080,
+                nativeAspectRatio: aspect,
+                aspectRatio: aspect,
+                zIndex: idx,
+                rotation: 0,
+                borderWidth: 2,
+                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
+                shadowEffect: 'deep',
+                borderRadius: 0
+            };
+        });
     }
 
     if (count === 4) {
-        return [
-            { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-            { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
-            { ...feeds[2], x: 0, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 },
-            { ...feeds[3], x: 960, y: 540, width: 960, height: 540, zIndex: 3, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[3], shadowEffect: 'deep', borderRadius: 0 }
+        const cellW = 960;
+        const cellH = 540;
+        const gridCells = [
+            { cx: 0, cy: 0 },
+            { cx: 960, cy: 0 },
+            { cx: 0, cy: 540 },
+            { cx: 960, cy: 540 }
         ];
+        return feeds.slice(0, 4).map((f, idx) => {
+            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+            const { cx, cy } = gridCells[idx];
+            const { x, y, width, height } = fitInCell(cx, cy, cellW, cellH, aspect);
+            return {
+                ...f,
+                x,
+                y,
+                width,
+                height,
+                sourceWidth: f.sourceWidth || 1920,
+                sourceHeight: f.sourceHeight || 1080,
+                nativeAspectRatio: aspect,
+                aspectRatio: aspect,
+                zIndex: idx,
+                rotation: 0,
+                borderWidth: 2,
+                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
+                shadowEffect: 'deep',
+                borderRadius: 0
+            };
+        });
     }
 
     const cols = count <= 6 ? 3 : count <= 8 ? 4 : Math.ceil(Math.sqrt(count));
@@ -128,12 +232,18 @@ function generateAutoPackPlacements(feeds) {
     return feeds.map((f, i) => {
         const col = i % cols;
         const row = Math.floor(i / cols);
+        const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+        const { x, y, width, height } = fitInCell(col * cellW, row * cellH, cellW, cellH, aspect);
         return {
             ...f,
-            x: col * cellW,
-            y: row * cellH,
-            width: cellW,
-            height: cellH,
+            x,
+            y,
+            width,
+            height,
+            sourceWidth: f.sourceWidth || 1920,
+            sourceHeight: f.sourceHeight || 1080,
+            nativeAspectRatio: aspect,
+            aspectRatio: aspect,
             zIndex: i,
             rotation: 0,
             borderWidth: 2,
@@ -243,12 +353,15 @@ export default function MulticamViewport({
                 ? st.displays
                 : (st.topology && st.topology.displays && st.topology.displays.length > 0)
                     ? st.topology.displays
-                    : [{ displayId: 'mon-0', isPrimary: true, width: 1920, height: 1080 }];
+                    : [{ displayId: 'mon-0', isPrimary: true, width: st.width || 1920, height: st.height || 1080 }];
 
             displays.forEach((d, idx) => {
                 const dispId = (d.displayId || `mon-${idx}`).toLowerCase();
                 const dispNum = d.displayNumber || (idx + 1);
                 const dispTitle = d.displayName || `Screen ${dispNum}`;
+                const srcW = d.width || d.Width || st.width || 1920;
+                const srcH = d.height || d.Height || st.height || 1080;
+                const nativeRatio = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
                 feeds.push({
                     stationId: st.id,
                     displayId: dispId,
@@ -256,8 +369,12 @@ export default function MulticamViewport({
                     stationName: st.displayName || st.roleAlias || st.hostname || st.name,
                     stationHostname: st.hostname || st.id,
                     isPrimary: Boolean(d.isPrimary),
-                    width: d.width || 1920,
-                    height: d.height || 1080
+                    sourceWidth: srcW,
+                    sourceHeight: srcH,
+                    nativeAspectRatio: nativeRatio,
+                    aspectRatio: nativeRatio,
+                    width: srcW,
+                    height: srcH
                 });
             });
         });
@@ -357,14 +474,22 @@ export default function MulticamViewport({
         const maxZ = currentPlacements.length > 0 ? Math.max(...currentPlacements.map(p => p.zIndex || 0)) + 1 : 0;
         const color = SLOT_BORDER_COLORS[currentPlacements.length % SLOT_BORDER_COLORS.length];
 
+        const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+        const initW = aspect >= 1 ? 640 : Math.round(360 * aspect);
+        const initH = aspect >= 1 ? Math.round(640 / aspect) : 360;
+
         const newPlacement = {
             stationId: f.stationId,
             displayId: f.displayId,
             label: f.label,
             x: 100 + (currentPlacements.length * 40) % 800,
             y: 80 + (currentPlacements.length * 40) % 500,
-            width: 640,
-            height: 360,
+            width: initW,
+            height: initH,
+            sourceWidth: f.sourceWidth || 1920,
+            sourceHeight: f.sourceHeight || 1080,
+            nativeAspectRatio: aspect,
+            aspectRatio: aspect,
             zIndex: maxZ,
             rotation: 0,
             borderWidth: 2,
@@ -733,6 +858,11 @@ export default function MulticamViewport({
         const p = currentPlacements[index];
         if (!p) return;
 
+        const matchedFeed = availableFeeds.find(f => f.stationId === p.stationId && f.displayId === p.displayId);
+        const sourceWidth = p.sourceWidth || matchedFeed?.sourceWidth || 1920;
+        const sourceHeight = p.sourceHeight || matchedFeed?.sourceHeight || 1080;
+        const nativeAspectRatio = p.nativeAspectRatio || p.aspectRatio || (matchedFeed?.nativeAspectRatio) || (sourceWidth / sourceHeight) || (p.width / p.height) || (16 / 9);
+
         dragStateRef.current = {
             mode: 'resize',
             corner,
@@ -743,6 +873,9 @@ export default function MulticamViewport({
             initialY: p.y,
             initialW: p.width,
             initialH: p.height,
+            sourceWidth,
+            sourceHeight,
+            nativeAspectRatio,
             scaleX: VIRTUAL_CANVAS_W / rect.width,
             scaleY: VIRTUAL_CANVAS_H / rect.height
         };
@@ -753,7 +886,11 @@ export default function MulticamViewport({
             if (!dragStateRef.current || dragStateRef.current.mode !== 'resize') return;
             const ds = dragStateRef.current;
             const dw = (moveEv.clientX - ds.startX) * ds.scaleX;
-            let dh = (moveEv.clientY - ds.startY) * ds.scaleY;
+            const dh = (moveEv.clientY - ds.startY) * ds.scaleY;
+
+            // User requirement: Resizing with CTRL (or Shift) maintains the recorded native aspect ratio!
+            const isLockAspect = moveEv.ctrlKey || moveEv.shiftKey || moveEv.metaKey;
+            const nativeRatio = ds.nativeAspectRatio > 0 ? ds.nativeAspectRatio : (ds.initialW / ds.initialH);
 
             let newX = ds.initialX;
             let newY = ds.initialY;
@@ -761,33 +898,93 @@ export default function MulticamViewport({
             let newH = ds.initialH;
 
             if (ds.corner === 'br') {
-                newW = Math.round(ds.initialW + dw);
-                newH = Math.round(ds.initialH + dh);
-                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
-                newW = clamp(newW, 200, VIRTUAL_CANVAS_W - ds.initialX);
-                newH = clamp(newH, 120, VIRTUAL_CANVAS_H - ds.initialY);
+                const maxW = VIRTUAL_CANVAS_W - ds.initialX;
+                const maxH = VIRTUAL_CANVAS_H - ds.initialY;
+                if (isLockAspect) {
+                    let targetW = Math.max(160, Math.min(maxW, Math.round(ds.initialW + dw)));
+                    let targetH = Math.round(targetW / nativeRatio);
+                    if (targetH > maxH) {
+                        targetH = maxH;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    if (targetH < 90) {
+                        targetH = 90;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    newW = targetW;
+                    newH = targetH;
+                } else {
+                    newW = clamp(Math.round(ds.initialW + dw), 160, maxW);
+                    newH = clamp(Math.round(ds.initialH + dh), 90, maxH);
+                }
             } else if (ds.corner === 'bl') {
-                newW = Math.round(ds.initialW - dw);
-                newH = Math.round(ds.initialH + dh);
-                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
-                newW = clamp(newW, 200, ds.initialX + ds.initialW);
-                newH = clamp(newH, 120, VIRTUAL_CANVAS_H - ds.initialY);
-                newX = ds.initialX + ds.initialW - newW;
+                const maxW = ds.initialX + ds.initialW;
+                const maxH = VIRTUAL_CANVAS_H - ds.initialY;
+                if (isLockAspect) {
+                    let targetW = Math.max(160, Math.min(maxW, Math.round(ds.initialW - dw)));
+                    let targetH = Math.round(targetW / nativeRatio);
+                    if (targetH > maxH) {
+                        targetH = maxH;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    if (targetH < 90) {
+                        targetH = 90;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    newW = targetW;
+                    newH = targetH;
+                    newX = ds.initialX + ds.initialW - newW;
+                } else {
+                    newW = clamp(Math.round(ds.initialW - dw), 160, maxW);
+                    newH = clamp(Math.round(ds.initialH + dh), 90, maxH);
+                    newX = ds.initialX + ds.initialW - newW;
+                }
             } else if (ds.corner === 'tr') {
-                newW = Math.round(ds.initialW + dw);
-                newH = Math.round(ds.initialH - dh);
-                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
-                newW = clamp(newW, 200, VIRTUAL_CANVAS_W - ds.initialX);
-                newH = clamp(newH, 120, ds.initialY + ds.initialH);
-                newY = ds.initialY + ds.initialH - newH;
+                const maxW = VIRTUAL_CANVAS_W - ds.initialX;
+                const maxH = ds.initialY + ds.initialH;
+                if (isLockAspect) {
+                    let targetW = Math.max(160, Math.min(maxW, Math.round(ds.initialW + dw)));
+                    let targetH = Math.round(targetW / nativeRatio);
+                    if (targetH > maxH) {
+                        targetH = maxH;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    if (targetH < 90) {
+                        targetH = 90;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    newW = targetW;
+                    newH = targetH;
+                    newY = ds.initialY + ds.initialH - newH;
+                } else {
+                    newW = clamp(Math.round(ds.initialW + dw), 160, maxW);
+                    newH = clamp(Math.round(ds.initialH - dh), 90, maxH);
+                    newY = ds.initialY + ds.initialH - newH;
+                }
             } else if (ds.corner === 'tl') {
-                newW = Math.round(ds.initialW - dw);
-                newH = Math.round(ds.initialH - dh);
-                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
-                newW = clamp(newW, 200, ds.initialX + ds.initialW);
-                newH = clamp(newH, 120, ds.initialY + ds.initialH);
-                newX = ds.initialX + ds.initialW - newW;
-                newY = ds.initialY + ds.initialH - newH;
+                const maxW = ds.initialX + ds.initialW;
+                const maxH = ds.initialY + ds.initialH;
+                if (isLockAspect) {
+                    let targetW = Math.max(160, Math.min(maxW, Math.round(ds.initialW - dw)));
+                    let targetH = Math.round(targetW / nativeRatio);
+                    if (targetH > maxH) {
+                        targetH = maxH;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    if (targetH < 90) {
+                        targetH = 90;
+                        targetW = Math.round(targetH * nativeRatio);
+                    }
+                    newW = targetW;
+                    newH = targetH;
+                    newX = ds.initialX + ds.initialW - newW;
+                    newY = ds.initialY + ds.initialH - newH;
+                } else {
+                    newW = clamp(Math.round(ds.initialW - dw), 160, maxW);
+                    newH = clamp(Math.round(ds.initialH - dh), 90, maxH);
+                    newX = ds.initialX + ds.initialW - newW;
+                    newY = ds.initialY + ds.initialH - newH;
+                }
             }
 
             setInternalTimeline(prev => {
@@ -795,7 +992,17 @@ export default function MulticamViewport({
                 if (!nextKfs[safeActiveIdx]) return prev;
                 const placements = [...(nextKfs[safeActiveIdx].layout.placements || [])];
                 if (!placements[ds.index]) return prev;
-                placements[ds.index] = { ...placements[ds.index], x: newX, y: newY, width: newW, height: newH };
+                placements[ds.index] = {
+                    ...placements[ds.index],
+                    x: newX,
+                    y: newY,
+                    width: newW,
+                    height: newH,
+                    sourceWidth: ds.sourceWidth,
+                    sourceHeight: ds.sourceHeight,
+                    nativeAspectRatio: ds.nativeAspectRatio,
+                    aspectRatio: ds.nativeAspectRatio
+                };
                 nextKfs[safeActiveIdx] = {
                     ...nextKfs[safeActiveIdx],
                     layout: { ...nextKfs[safeActiveIdx].layout, placements }
@@ -814,6 +1021,42 @@ export default function MulticamViewport({
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
     };
+
+    const handleSnapToNativeAspect = useCallback((index) => {
+        const p = currentPlacements[index];
+        if (!p) return;
+
+        const matchedFeed = availableFeeds.find(f => f.stationId === p.stationId && f.displayId === p.displayId);
+        const nativeRatio = p.nativeAspectRatio || p.aspectRatio || (matchedFeed?.nativeAspectRatio) || ((p.sourceWidth && p.sourceHeight) ? p.sourceWidth / p.sourceHeight : (16 / 9));
+
+        let newW = p.width;
+        let newH = Math.round(newW / nativeRatio);
+
+        if (p.y + newH > VIRTUAL_CANVAS_H) {
+            newH = VIRTUAL_CANVAS_H - p.y;
+            newW = Math.round(newH * nativeRatio);
+        }
+        if (p.x + newW > VIRTUAL_CANVAS_W) {
+            newW = VIRTUAL_CANVAS_W - p.x;
+            newH = Math.round(newW / nativeRatio);
+        }
+
+        const next = currentPlacements.map((pl, idx) => {
+            if (idx === index) {
+                return {
+                    ...pl,
+                    width: Math.max(160, newW),
+                    height: Math.max(90, newH),
+                    sourceWidth: p.sourceWidth || matchedFeed?.sourceWidth || 1920,
+                    sourceHeight: p.sourceHeight || matchedFeed?.sourceHeight || 1080,
+                    nativeAspectRatio: nativeRatio,
+                    aspectRatio: nativeRatio
+                };
+            }
+            return pl;
+        });
+        updateActivePlacements(next);
+    }, [currentPlacements, availableFeeds, updateActivePlacements]);
 
     // Fullscreen handling
     const handleToggleGridFullscreen = useCallback(() => {
@@ -1503,7 +1746,7 @@ export default function MulticamViewport({
                                             <span>{p.label || `${st.displayName || p.stationId} (${p.displayId})`}</span>
                                         </div>
                                         <div className="badge-coords">
-                                            {Math.round(p.width)}×{Math.round(p.height)} @ ({Math.round(p.x)},{Math.round(p.y)})
+                                            {Math.round(p.width)}×{Math.round(p.height)} ({getReadableAspectRatio(p.width, p.height)}) @ ({Math.round(p.x)},{Math.round(p.y)})
                                             {rot !== 0 && <span className="badge-rot">📐{rot}°</span>}
                                         </div>
                                         <span className="badge-layer">L{p.zIndex || origIdx}</span>
@@ -1558,22 +1801,22 @@ export default function MulticamViewport({
                                             <div
                                                 className="resize-handle-corner resize-handle-tl"
                                                 onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'tl')}
-                                                title="Resize Northwest (Top-Left)"
+                                                title={`Resize Northwest (Top-Left) - Hold CTRL to lock recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
                                             />
                                             <div
                                                 className="resize-handle-corner resize-handle-tr"
                                                 onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'tr')}
-                                                title="Resize Northeast (Top-Right)"
+                                                title={`Resize Northeast (Top-Right) - Hold CTRL to lock recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
                                             />
                                             <div
                                                 className="resize-handle-corner resize-handle-bl"
                                                 onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'bl')}
-                                                title="Resize Southwest (Bottom-Left)"
+                                                title={`Resize Southwest (Bottom-Left) - Hold CTRL to lock recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
                                             />
                                             <div
                                                 className="resize-handle-corner resize-handle-br"
                                                 onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'br')}
-                                                title="Resize Southeast (Bottom-Right) - Hold Shift for 16:9 aspect lock"
+                                                title={`Resize Southeast (Bottom-Right) - Hold CTRL to lock recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
                                             >
                                                 ↘
                                             </div>
@@ -1683,6 +1926,16 @@ export default function MulticamViewport({
                                                     />
                                                 )}
                                             </div>
+
+                                            {/* Native Recorded Aspect Ratio Snap */}
+                                            <button
+                                                type="button"
+                                                className="btn-action-tool highlight"
+                                                onClick={() => handleSnapToNativeAspect(origIdx)}
+                                                title={`Snap window dimensions to its exact recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
+                                            >
+                                                📐 NATIVE ({getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})
+                                            </button>
 
                                             {/* Delete Feed Button */}
                                             <button

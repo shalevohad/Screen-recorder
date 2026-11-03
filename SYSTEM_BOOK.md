@@ -41,6 +41,10 @@
 31. [Multi-Tier Video Quality, Output Resolution & Bitrate Scaling Engine](#31-multi-tier-video-quality-output-resolution--bitrate-scaling-engine-2026-11-02)
 32. [WYSIWYG Master Canvas Grid Studio, Direct Layout Editing & Screen Switching Architecture](#32-wysiwyg-master-canvas-grid-studio-direct-layout-editing--screen-switching-architecture-2026-11-02)
 33. [Air-Gapped Fontconfig Elimination & FFmpeg Custom Canvas Hardening](#33-air-gapped-fontconfig-elimination--ffmpeg-custom-canvas-hardening-2026-11-02)
+34. [Studio Canvas Dimension Stabilization & Frame Quantization](#34-studio-canvas-dimension-stabilization--frame-quantization-2026-11-02)
+35. [Live Grid Master Canvas Composer, Free Transform Engine & Timeline Keyframe Animation](#35-live-grid-master-canvas-composer-free-transform-engine--timeline-keyframe-animation-2026-11-02)
+36. [Minimalist Support Tracks, Draggable Keyframes & Live Canvas Auto-Grid Architecture](#36-minimalist-support-tracks-draggable-keyframes--live-canvas-auto-grid-architecture-2026-11-03)
+37. [Non-Standard Aspect Ratio Preservation & CTRL-Locked Canvas Resizing](#37-non-standard-aspect-ratio-preservation--ctrl-locked-canvas-resizing-2026-11-03)
 
 ---
 
@@ -1642,6 +1646,35 @@ To optimize tactical operator workflow and eliminate timeline clutter, the studi
    - Time-range scope updates and bookmark loading re-anchor existing keyframes and audio routing segments to prevent stale offsets from old sessions.
    - Audio routing track supports precision splitting directly at mouse click coordinates (`clickEpoch`) or playhead position (`playheadEpoch`) with right-click context menu and time display.
    - Keyframe dragging is stabilized using unique string IDs, updating only local drag state during cursor movement to prevent mid-drag array re-sorting and index corruption.
+
+---
+
+## 37. Non-Standard Aspect Ratio Preservation & CTRL-Locked Canvas Resizing (2026-11-03)
+
+### 1. Architectural Challenge: Non-Standard Workstation Displays
+Operational workstations in air-gapped environments frequently feature non-standard display geometries:
+- Ultra-wide monitoring screens (21:9, 32:9).
+- Vertical/portrait document and code monitors (9:16).
+- Legacy 4:3 and 5:4 square radar/telemetry displays.
+- Standard 16:10 laptop/desktop monitors.
+
+Previously, auto-grid packing and canvas additions assumed fixed 16:9 boxes, leading to black pillarbox/letterbox bars or distorted aspect ratios when repositioned or scaled manually.
+
+### 2. Multi-Aspect Native Preservation Engine (`MulticamViewport.jsx`)
+1. **Source Geometry Discovery**:
+   - Every available display feed probes and maintains its recorded native resolution (`sourceWidth`, `sourceHeight`) and computes `nativeAspectRatio = sourceWidth / sourceHeight`.
+   - `getReadableAspectRatio(w, h)` classifies ratios into clear tactical badges: `16:9`, `4:3`, `16:10`, `21:9`, `32:9`, `5:4`, `9:16`, `1:1`, or `X.XX:1`.
+2. **Auto-Grid Proportional Cell Packing (`fitInCell`)**:
+   - When calculating auto-grid layouts (1x1, 1x2, 2x2, 3-screen, 5+ screen dynamic grids), each screen is bounded inside its assigned grid cell using `fitInCell(cellX, cellY, cellW, cellH, nativeAspectRatio)`.
+   - The feed maintains its exact recorded proportions centered inside the cell without stretching or squishing.
+3. **CTRL / Shift Aspect Ratio Lock Across All 4 Resize Corners**:
+   - When dragging any of the 4 corner resize handles (`tl`, `tr`, `bl`, `br`), holding **`CTRL`** (or `Shift`) locks scaling strictly to the recorded native aspect ratio (`nativeRatio = sourceWidth / sourceHeight`).
+   - Freeform resizing remains available when releasing the modifier keys.
+4. **One-Click Native Ratio Snap (`📐 NATIVE RATIO`)**:
+   - The floating tactical inspector above selected feeds features a dedicated snap button: `📐 NATIVE (W:H)`.
+   - Clicking it instantaneously snaps the placement's dimensions to match its recorded aspect ratio while respecting the canvas boundary limits.
+5. **Real-Time Dimension & Aspect Ratio HUD**:
+   - The draggable top bar of each canvas window displays real-time dimensions and aspect ratio tags: `{width}×{height} ({readableAspect}) @ ({x},{y})`.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
