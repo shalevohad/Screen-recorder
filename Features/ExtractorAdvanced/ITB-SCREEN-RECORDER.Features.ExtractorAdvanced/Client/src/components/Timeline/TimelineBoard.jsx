@@ -8,7 +8,7 @@ import SessionClockBadge from './header/SessionClockBadge.jsx';
 import TimelineMinimap from './header/TimelineMinimap.jsx';
 import TimelineHeaderActions from './header/TimelineHeaderActions.jsx';
 import TimelineTrack from './tracks/TimelineTrack.jsx';
-import DirectorTrack from './tracks/DirectorTrack.jsx';
+// import DirectorTrack from './tracks/DirectorTrack.jsx';
 import AudioRoutingTrack from './tracks/AudioRoutingTrack.jsx';
 import CanvasKeyframeTrack from './tracks/CanvasKeyframeTrack.jsx';
 import Playhead from './overlays/Playhead.jsx';
@@ -20,7 +20,7 @@ import { useTimelineDrag } from './hooks/useTimelineDrag.js';
 
 import './TimelineBoard.scss';
 
-const TRACKS_PER_BANK = 8;
+const TRACKS_PER_BANK = 4;
 
 export default function TimelineBoard({
     stations = [],
@@ -56,9 +56,9 @@ export default function TimelineBoard({
     showKeystrokes = false,
     showRulerKeystrokes = false,
     onToggleRulerKeystrokes,
-    onSplitDirectorSegment,
-    onChangeDirectorSegmentDisplay,
-    onResetDirectorSegmentToAuto,
+    _onSplitDirectorSegment,
+    _onChangeDirectorSegmentDisplay,
+    _onResetDirectorSegmentToAuto,
     audioRoutingPlan,
     onSplitAudioSegment,
     onChangeAudioSegmentStation,
@@ -70,11 +70,15 @@ export default function TimelineBoard({
     onSelectKeyframe,
     onAddKeyframeAtEpoch,
     onDeleteKeyframe,
-    onUpdateKeyframeEpoch
+    onUpdateKeyframeEpoch,
+    onToggleDisplayOnCanvas,
+    onUpdateAudioPlan
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [trackBankIndex, setTrackBankIndex] = useState(0);
     const [contextMenu, setContextMenu] = useState(null);
+    const [isMasterVideoOpen, setIsMasterVideoOpen] = useState(true);
+    const [expandedStationId, setExpandedStationId] = useState(null);
 
     const trackAreaRef = useRef(null);
     const minimapRef = useRef(null);
@@ -87,13 +91,14 @@ export default function TimelineBoard({
     }, [stations, trackBankIndex]);
 
     useEffect(() => {
-        if (!activeStationId) return;
-        const stationIdx = stations.findIndex(s => s.id === activeStationId);
+        if (!activeStationId && !expandedStationId) return;
+        const targetId = expandedStationId || activeStationId;
+        const stationIdx = stations.findIndex(s => s.id === targetId);
         if (stationIdx !== -1) {
             const neededBank = Math.floor(stationIdx / TRACKS_PER_BANK);
             if (neededBank !== trackBankIndex) setTrackBankIndex(neededBank);
         }
-    }, [activeStationId, stations, trackBankIndex]);
+    }, [activeStationId, expandedStationId, stations, trackBankIndex]);
 
     const activeKeyframe = canvasLayoutTimeline?.keyframes?.[activeKfIndex] || canvasLayoutTimeline?.keyframes?.[0];
     const currentPlacements = useMemo(() => activeKeyframe?.layout?.placements || [], [activeKeyframe]);
@@ -279,99 +284,132 @@ export default function TimelineBoard({
                 onMouseLeave={() => !draggingTarget && setHoverMs(null)}
             >
                 <div className="tracks-scroll-area">
-                    {/* 1. Primary Station Workstation Video & Display Tracks */}
-                    {stations.length > 0 ? (
-                        currentBankStations.map(station => {
-                            const isSoloed = station.id === activeStationId;
-                            const isAnotherSoloed = Boolean(activeStationId && activeStationId !== station.id);
-                            const stationDisplays = station.displays || station.topology?.displays || [];
-                            const placedForThisStation = currentPlacements.filter(pl => 
-                                pl.stationId === station.id || (station.hostname && pl.stationId === station.hostname)
-                            );
-                            const areAllDisplaysPlaced = stationDisplays.length > 1 && placedForThisStation.length >= stationDisplays.length;
-                            const isStationAutoDirectorOn = stationAutoDirectorMap ? (stationAutoDirectorMap[station.id] ?? true) : true;
-
-                            return (
-                                <React.Fragment key={station.id}>
-                                    {/* Multi-display sub-tracks when station is in Solo focus */}
-                                    {isSoloed && stationDisplays.length > 1 ? (
-                                        stationDisplays.map((disp, dIdx) => {
-                                            const dispId = (disp.displayId || `mon-${dIdx}`).toLowerCase();
-                                            const dispLabel = disp.displayName || `Screen ${dIdx + 1}`;
-                                            return (
-                                                <TimelineTrack
-                                                    key={`${station.id}-${dispId}`}
-                                                    station={station}
-                                                    displayId={dispId}
-                                                    displayLabel={dispLabel}
-                                                    displayNumber={dIdx + 1}
-                                                    isActive={true}
-                                                    isCollapsed={false}
-                                                    onSelect={() => onSelectActiveStation?.(station.id)}
-                                                    onStationContextMenu={onStationContextMenu}
-                                                    onDeselectStation={onDeselectStation}
-                                                    viewportStartMs={viewportStartMs}
-                                                    viewportDurationMs={viewportDurationMs}
-                                                    inPointMs={inPointMs}
-                                                    outPointMs={outPointMs}
-                                                    baseEpochMs={baseEpochMs}
-                                                    segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
-                                                    recordingSegments={recordingSegments}
-                                                    globalGaps={estimateData?.removedGlobalGaps || []}
-                                                    disableFilmstrip={false}
-                                                />
-                                            );
-                                        })
-                                    ) : (
-                                        <TimelineTrack
-                                            station={station}
-                                            isActive={isSoloed || !activeStationId}
-                                            isCollapsed={isAnotherSoloed}
-                                            onSelect={() => onSelectActiveStation?.(station.id)}
-                                            onStationContextMenu={onStationContextMenu}
-                                            onDeselectStation={onDeselectStation}
-                                            viewportStartMs={viewportStartMs}
-                                            viewportDurationMs={viewportDurationMs}
-                                            inPointMs={inPointMs}
-                                            outPointMs={outPointMs}
-                                            baseEpochMs={baseEpochMs}
-                                            segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
-                                            recordingSegments={recordingSegments}
-                                            globalGaps={estimateData?.removedGlobalGaps || []}
-                                            disableFilmstrip={isAnotherSoloed}
-                                        />
-                                    )}
-
-                                    {/* Auto-Director Track: Automatically suppressed when all workstation displays are placed on Canvas */}
-                                    {!areAllDisplaysPlaced && stationDisplays.length > 1 && (
-                                        <DirectorTrack
-                                            stationId={station.id}
-                                            isAutoDirectorEnabled={isStationAutoDirectorOn}
-                                            onToggleAutoDirector={onToggleStationAutoDirector}
-                                            directorPlan={station.directorPlan || {
-                                                segments: [
-                                                    { startEpochMs: baseEpochMs, endEpochMs: baseEpochMs + totalDurationMs, targetDisplayId: 'mon-0', isManualOverride: false }
-                                                ]
-                                            }}
-                                            viewportStartMs={viewportStartMs}
-                                            viewportDurationMs={viewportDurationMs}
-                                            baseEpochMs={baseEpochMs}
-                                            playheadMs={playheadMs}
-                                            timeMode={timeMode}
-                                            availableDisplays={stationDisplays}
-                                            onSplitSegment={onSplitDirectorSegment}
-                                            onChangeSegmentDisplay={onChangeDirectorSegmentDisplay}
-                                            onResetSegmentToAuto={onResetDirectorSegmentToAuto}
-                                        />
-                                    )}
-                                </React.Fragment>
-                            );
-                        })
-                    ) : (
-                        <div className="timeline-empty-tracks-placeholder">
-                            <span className="placeholder-pulse" />
-                            <span>NO STATIONS SELECTED — TIMELINE CHANNELS MUTED</span>
+                    {/* Master Video Section Header Bar */}
+                    <div className="timeline-section-divider-bar video-section-bar">
+                        <div className="section-title-wrap" onClick={() => setIsMasterVideoOpen(prev => !prev)}>
+                            <button type="button" className="btn-section-toggle" title="Collapse / Expand All Video Stations">
+                                {isMasterVideoOpen ? '▼' : '▶'}
+                            </button>
+                            <span className="section-title-text">
+                                🎬 VIDEO STATIONS ({stations.length} Active Workstations)
+                            </span>
                         </div>
+
+                        {isMasterVideoOpen && totalBanks > 1 && (
+                            <div className="bank-pagination-inline">
+                                <button
+                                    type="button"
+                                    disabled={trackBankIndex === 0}
+                                    onClick={(e) => { e.stopPropagation(); setTrackBankIndex(p => Math.max(0, p - 1)); }}
+                                    className="btn-bank-mini"
+                                    title="Previous Bank"
+                                >
+                                    ◀
+                                </button>
+                                <span className="bank-pill-mini">
+                                    BANK {trackBankIndex + 1}/{totalBanks} ({trackBankIndex * TRACKS_PER_BANK + 1}–{Math.min(stations.length, (trackBankIndex + 1) * TRACKS_PER_BANK)})
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={trackBankIndex >= totalBanks - 1}
+                                    onClick={(e) => { e.stopPropagation(); setTrackBankIndex(p => Math.min(totalBanks - 1, p + 1)); }}
+                                    className="btn-bank-mini"
+                                    title="Next Bank"
+                                >
+                                    ▶
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* When Video Area is Collapsed: Sleek 26px Master Health Bar with Global Gaps */}
+                    {!isMasterVideoOpen && (
+                        <div className="timeline-track-container master-video-summary-track" onClick={() => setIsMasterVideoOpen(true)}>
+                            <div className="track-sidebar summary-sidebar">
+                                <button type="button" className="btn-accordion-toggle">▶</button>
+                                <span className="summary-title">🎬 ALL VIDEO (COLLAPSED)</span>
+                                <span className="summary-badge">{stations.length} STATIONS</span>
+                            </div>
+                            <div className="track-canvas">
+                                <div className="full-height-gaps-layer">
+                                    {(estimateData?.removedGlobalGaps || []).map((gap, gIdx) => {
+                                        const sMs = gap.startEpochMs - baseEpochMs;
+                                        const eMs = gap.endEpochMs - baseEpochMs;
+                                        const leftPct = ((Math.max(viewportStartMs, sMs) - viewportStartMs) / viewportDurationMs) * 100;
+                                        const rightPct = ((Math.min(viewportStartMs + viewportDurationMs, eMs) - viewportStartMs) / viewportDurationMs) * 100;
+                                        const widthPct = rightPct - leftPct;
+                                        if (widthPct <= 0) return null;
+                                        const durSec = Math.round((gap.endEpochMs - gap.startEpochMs) / 1000);
+                                        return (
+                                            <div
+                                                key={`sum_gap_${gIdx}`}
+                                                className="gap-full-block gap-global-skipped"
+                                                style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                                                title={`Shared Gap: ${durSec}s skipped across all stations`}
+                                            >
+                                                <div className="gap-pattern" />
+                                                {widthPct > 5 && (
+                                                    <div className="gap-badge global-badge">
+                                                        <span>✂ SKIPPED (${durSec}s)</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="data-presence-layer">
+                                    <div className="data-presence-bar" style={{ left: '0%', width: '100%' }} />
+                                </div>
+                                {inPointMs > viewportStartMs && (
+                                    <div className="mask-dimmed left-mask" style={{ width: `${Math.min(100, ((inPointMs - viewportStartMs) / viewportDurationMs) * 100)}%` }} />
+                                )}
+                                {outPointMs < viewportStartMs + viewportDurationMs && (
+                                    <div className="mask-dimmed right-mask" style={{ left: `${Math.max(0, ((outPointMs - viewportStartMs) / viewportDurationMs) * 100)}%`, right: 0 }} />
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* When Video Area is Open: Paginated Workstation Tracks with Accordion */}
+                    {isMasterVideoOpen && (
+                        stations.length > 0 ? (
+                            currentBankStations.map(station => {
+                                const isSoloed = station.id === activeStationId;
+                                const isExpanded = expandedStationId === station.id;
+                                const isStationAutoDirectorOn = stationAutoDirectorMap ? (stationAutoDirectorMap[station.id] ?? true) : true;
+
+                                return (
+                                    <TimelineTrack
+                                        key={station.id}
+                                        station={station}
+                                        isExpanded={isExpanded}
+                                        onToggleExpand={() => setExpandedStationId(prev => prev === station.id ? null : station.id)}
+                                        isAutoDirectorEnabled={isStationAutoDirectorOn}
+                                        onToggleAutoDirector={onToggleStationAutoDirector}
+                                        canvasPlacements={currentPlacements}
+                                        onToggleDisplayOnCanvas={onToggleDisplayOnCanvas}
+                                        directorPlan={station.directorPlan}
+                                        isActive={isSoloed || !activeStationId}
+                                        onSelect={() => onSelectActiveStation?.(station.id)}
+                                        onStationContextMenu={onStationContextMenu}
+                                        onDeselectStation={onDeselectStation}
+                                        viewportStartMs={viewportStartMs}
+                                        viewportDurationMs={viewportDurationMs}
+                                        inPointMs={inPointMs}
+                                        outPointMs={outPointMs}
+                                        baseEpochMs={baseEpochMs}
+                                        segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
+                                        recordingSegments={recordingSegments}
+                                        globalGaps={estimateData?.removedGlobalGaps || []}
+                                    />
+                                );
+                            })
+                        ) : (
+                            <div className="timeline-empty-tracks-placeholder">
+                                <span className="placeholder-pulse" />
+                                <span>NO STATIONS SELECTED — TIMELINE CHANNELS MUTED</span>
+                            </div>
+                        )
                     )}
 
                     {/* 2. Global Support Channels (Grouped cleanly at the end, one after the other) */}
@@ -389,6 +427,7 @@ export default function TimelineBoard({
                             onFollowVisualFeed={onFollowVisualFeed}
                             isAutoFollow={isAutoFollowAudio}
                             timeMode={timeMode}
+                            onUpdateAudioPlan={onUpdateAudioPlan}
                         />
                     )}
                     {canvasLayoutTimeline?.keyframes?.length > 0 && (

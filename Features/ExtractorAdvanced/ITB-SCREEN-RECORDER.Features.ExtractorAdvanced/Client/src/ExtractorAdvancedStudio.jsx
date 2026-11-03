@@ -243,6 +243,7 @@ export default function ExtractorAdvancedStudio() {
         }));
     }, []);
 
+
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
         if (activeStationId === stationId) setActiveStationId(null);
@@ -317,6 +318,60 @@ export default function ExtractorAdvancedStudio() {
     const activeStation = useMemo(() => {
         return allStations.find(s => s.id === activeStationId) || null;
     }, [allStations, activeStationId]);
+
+    const handleToggleDisplayOnCanvas = useCallback((stationId, displayId) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev || !prev.keyframes || prev.keyframes.length === 0) return prev;
+            const targetKfIdx = activeKfIndex >= 0 && activeKfIndex < prev.keyframes.length ? activeKfIndex : 0;
+            const currentKf = prev.keyframes[targetKfIdx];
+            const placements = currentKf?.layout?.placements || [];
+            const normDispId = (displayId || 'mon-0').toLowerCase();
+            const existingIdx = placements.findIndex(p => p.stationId === stationId && (p.displayId || 'mon-0').toLowerCase() === normDispId);
+
+            let nextPlacements;
+            if (existingIdx >= 0) {
+                nextPlacements = placements.filter((_, i) => i !== existingIdx);
+            } else {
+                const st = allStations.find(s => s.id === stationId);
+                const disp = st?.displays?.find(d => (d.displayId || '').toLowerCase() === normDispId) || { displayId: normDispId, width: 1920, height: 1080 };
+                const srcW = disp.width || 1920;
+                const srcH = disp.height || 1080;
+                const aspect = srcW / srcH;
+                const initW = aspect >= 1 ? 640 : Math.round(360 * aspect);
+                const initH = aspect >= 1 ? Math.round(640 / aspect) : 360;
+                const newPlacement = {
+                    stationId,
+                    displayId: normDispId,
+                    label: `${st?.displayName || stationId} - ${disp.displayName || normDispId}`,
+                    x: 120 + (placements.length * 40) % 800,
+                    y: 100 + (placements.length * 40) % 500,
+                    width: initW,
+                    height: initH,
+                    sourceWidth: srcW,
+                    sourceHeight: srcH,
+                    nativeAspectRatio: aspect,
+                    aspectRatio: aspect,
+                    zIndex: placements.length,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: '#06B6D4',
+                    shadowEffect: 'deep',
+                    borderRadius: 0
+                };
+                nextPlacements = [...placements, newPlacement];
+            }
+
+            const nextKfs = [...prev.keyframes];
+            nextKfs[targetKfIdx] = {
+                ...nextKfs[targetKfIdx],
+                layout: {
+                    ...nextKfs[targetKfIdx].layout,
+                    placements: nextPlacements
+                }
+            };
+            return { ...prev, keyframes: nextKfs };
+        });
+    }, [activeKfIndex, allStations]);
 
     const timelineStations = useMemo(() => {
         if (!selectedStationIds || selectedStationIds.length === 0) return [];
@@ -1163,6 +1218,8 @@ export default function ExtractorAdvancedStudio() {
                                     onAddKeyframeAtEpoch={handleAddKeyframeAtEpoch}
                                     onDeleteKeyframe={handleDeleteKeyframe}
                                     onUpdateKeyframeEpoch={handleUpdateKeyframeEpoch}
+                                    onToggleDisplayOnCanvas={handleToggleDisplayOnCanvas}
+                                    onUpdateAudioPlan={setAudioRoutingPlan}
                                 />
                             </div>
                         </div>

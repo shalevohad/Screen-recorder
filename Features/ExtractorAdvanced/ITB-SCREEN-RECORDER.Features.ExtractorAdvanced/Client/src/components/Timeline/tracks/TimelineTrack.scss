@@ -407,3 +407,356 @@
         opacity: 0.9;
     }
 }
+
+
+// ==========================================
+// TACTICAL ACCORDION & DIRECTOR COVERAGE EXTENSIONS
+// ==========================================
+
+.timeline-track-container.station-collapsed-track {
+    height: 42px;
+
+    .data-presence-layer.has-stepper {
+        bottom: 12px;
+    }
+
+    .btn-accordion-toggle {
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #06B6D4;
+        width: 18px;
+        height: 18px;
+        min-width: 18px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+
+        &:hover {
+            background: #06B6D4;
+            color: #020617;
+            border-color: #06B6D4;
+        }
+    }
+
+    .badge-multi-display {
+        font-size: 8px;
+        font-weight: 800;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-family: 'JetBrains Mono', monospace;
+        letter-spacing: 0.3px;
+
+        &.is-auto {
+            background: rgba(16, 185, 129, 0.18);
+            color: #34D399;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        &.is-manual {
+            background: rgba(245, 158, 11, 0.18);
+            color: #FBBF24;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+    }
+}
+
+.director-stepper-ribbon {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 12px;
+    display: flex;
+    background: rgba(10, 15, 26, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 6;
+    overflow: hidden;
+
+    .stepper-block {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 8.5px;
+        font-weight: 800;
+        border-right: 1px solid rgba(255, 255, 255, 0.15);
+        user-select: none;
+        line-height: 1;
+
+        &.display-1 {
+            background: rgba(6, 182, 212, 0.22);
+            color: #38bdf8;
+        }
+
+        &.display-2 {
+            background: rgba(139, 92, 246, 0.22);
+            color: #c084fc;
+        }
+
+        &.display-3 {
+            background: rgba(245, 158, 11, 0.22);
+            color: #fbbf24;
+        }
+    }
+}
+
+.timeline-station-accordion-group {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-bottom: 6px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+
+    .station-accordion-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 28px;
+        padding: 0 10px;
+        background: rgba(30, 41, 59, 0.75);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+        .accordion-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+
+            .btn-accordion-toggle {
+                background: rgba(6, 182, 212, 0.15);
+                border: 1px solid rgba(6, 182, 212, 0.35);
+                color: #38BDF8;
+                width: 18px;
+                height: 18px;
+                min-width: 18px;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 8px;
+                cursor: pointer;
+                transition: all 0.18s ease;
+
+                &:hover {
+                    background: #06B6D4;
+                    color: #020617;
+                }
+            }
+
+            .status-indicator {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+
+                &.online {
+                    background: #10B981;
+                    box-shadow: 0 0 6px #10B981;
+                }
+
+                &.idle {
+                    background: #64748B;
+                }
+            }
+
+            .station-accordion-title {
+                font-family: var(--font-primary, 'Inter', sans-serif);
+                font-size: 11px;
+                font-weight: 800;
+                color: #F8FAFC;
+                letter-spacing: 0.5px;
+            }
+
+            .physical-host-pill {
+                font-size: 9px;
+                color: #64748B;
+                background: rgba(15, 23, 42, 0.8);
+                padding: 1px 6px;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+            }
+
+            .btn-station-auto-director {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                font-size: 9.5px;
+                font-weight: 800;
+                font-family: 'JetBrains Mono', monospace;
+                padding: 2px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.18s ease;
+                margin-left: 8px;
+
+                .dot {
+                    width: 5px;
+                    height: 5px;
+                    border-radius: 50%;
+                    background: currentColor;
+                }
+
+                &.is-active {
+                    background: rgba(16, 185, 129, 0.18);
+                    border: 1px solid rgba(16, 185, 129, 0.45);
+                    color: #34D399;
+
+                    &:hover {
+                        background: rgba(16, 185, 129, 0.3);
+                        color: #fff;
+                    }
+                }
+
+                &.is-inactive {
+                    background: rgba(245, 158, 11, 0.18);
+                    border: 1px solid rgba(245, 158, 11, 0.45);
+                    color: #FBBF24;
+
+                    &:hover {
+                        background: rgba(245, 158, 11, 0.3);
+                        color: #fff;
+                    }
+                }
+            }
+        }
+
+        .accordion-header-right {
+            display: flex;
+            align-items: center;
+
+            .btn-close-accordion {
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #94A3B8;
+                font-size: 9px;
+                font-weight: 700;
+                padding: 2px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                transition: all 0.18s ease;
+
+                &:hover {
+                    color: #F8FAFC;
+                    border-color: rgba(255, 255, 255, 0.25);
+                    background: rgba(255, 255, 255, 0.05);
+                }
+            }
+        }
+    }
+
+    .station-child-tracks-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+
+        .station-child-display-track {
+            height: 32px !important;
+            margin-bottom: 1px !important;
+            border-radius: 0 !important;
+            background: rgba(15, 23, 42, 0.45) !important;
+            border: none !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+
+            &:last-child {
+                border-bottom: none !important;
+            }
+
+            .child-display-sidebar {
+                padding-left: 20px !important;
+                gap: 8px !important;
+
+                .child-display-icon {
+                    font-size: 11px;
+                }
+
+                .child-display-title {
+                    font-size: 10px !important;
+                    font-weight: 700 !important;
+                    color: #E2E8F0 !important;
+                }
+
+                .child-display-res {
+                    font-size: 8.5px;
+                    color: #64748B;
+                    font-family: 'JetBrains Mono', monospace;
+                }
+
+                .btn-add-screen-canvas {
+                    margin-left: auto;
+                    font-size: 8.5px;
+                    font-weight: 800;
+                    font-family: 'JetBrains Mono', monospace;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.18s ease;
+                    background: rgba(6, 182, 212, 0.15);
+                    border: 1px solid rgba(6, 182, 212, 0.4);
+                    color: #38BDF8;
+
+                    &:hover {
+                        background: rgba(6, 182, 212, 0.3);
+                        color: #fff;
+                    }
+
+                    &.is-on-canvas {
+                        background: rgba(16, 185, 129, 0.2);
+                        border-color: rgba(16, 185, 129, 0.5);
+                        color: #34D399;
+
+                        &:hover {
+                            background: rgba(244, 63, 94, 0.2);
+                            border-color: rgba(244, 63, 94, 0.5);
+                            color: #F87171;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+.director-mask-dimmed {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(7, 10, 16, 0.68);
+    backdrop-filter: grayscale(70%) blur(1.5px);
+    pointer-events: none;
+    z-index: 8;
+    transition: background-color 0.2s ease;
+}
+
+.director-active-coverage-highlight {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    box-shadow: inset 0 0 0 1.5px rgba(6, 182, 212, 0.85);
+    background: rgba(6, 182, 212, 0.04);
+    pointer-events: none;
+    z-index: 9;
+
+    .active-badge-tag {
+        position: absolute;
+        top: 2px;
+        right: 4px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 7.5px;
+        font-weight: 800;
+        color: #06B6D4;
+        background: rgba(6, 182, 212, 0.25);
+        border: 1px solid rgba(6, 182, 212, 0.5);
+        border-radius: 2px;
+        padding: 0 3px;
+        letter-spacing: 0.5px;
+    }
+}

@@ -543,7 +543,38 @@ export default function MulticamViewport({
         };
     }, [updateDimensions]);
 
-    // Enumerate all available workstation feeds across displays
+    // Default initial workstation feeds: exactly 1 central composition per station preserving aspect ratio
+    const defaultStationFeeds = useMemo(() => {
+        const pool = (timelineStations && timelineStations.length > 0) ? timelineStations : allStations;
+        return pool.map(st => {
+            const displays = (st.displays && st.displays.length > 0)
+                ? st.displays
+                : (st.topology && st.topology.displays && st.topology.displays.length > 0)
+                    ? st.topology.displays
+                    : [{ displayId: 'mon-0', isPrimary: true, width: st.width || 1920, height: st.height || 1080 }];
+            const primary = displays.find(d => d.isPrimary) || displays[0];
+            const srcW = primary.width || primary.Width || st.width || 1920;
+            const srcH = primary.height || primary.Height || st.height || 1080;
+            const nativeRatio = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
+            const hasMulti = displays.length > 1;
+            return {
+                stationId: st.id,
+                displayId: 'auto',
+                label: `${st.displayName || st.roleAlias || st.hostname || st.name} - ${hasMulti ? 'Central Composition (Auto-Director)' : 'Main Display'}`,
+                stationName: st.displayName || st.roleAlias || st.hostname || st.name,
+                stationHostname: st.hostname || st.id,
+                isPrimary: true,
+                sourceWidth: srcW,
+                sourceHeight: srcH,
+                nativeAspectRatio: nativeRatio,
+                aspectRatio: nativeRatio,
+                width: srcW,
+                height: srcH
+            };
+        });
+    }, [timelineStations, allStations]);
+
+    // Enumerate all available workstation feeds across displays (including central composite and individual screens)
     const availableFeeds = useMemo(() => {
         const pool = (allStations && allStations.length > 0) ? allStations : timelineStations;
         const feeds = [];
@@ -554,33 +585,57 @@ export default function MulticamViewport({
                     ? st.topology.displays
                     : [{ displayId: 'mon-0', isPrimary: true, width: st.width || 1920, height: st.height || 1080 }];
 
-            displays.forEach((d, idx) => {
-                const dispId = (d.displayId || `mon-${idx}`).toLowerCase();
-                const dispNum = d.displayNumber || (idx + 1);
-                const dispTitle = d.displayName || `Screen ${dispNum}`;
-                const srcW = d.width || d.Width || st.width || 1920;
-                const srcH = d.height || d.Height || st.height || 1080;
-                const nativeRatio = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
-                feeds.push({
-                    stationId: st.id,
-                    displayId: dispId,
-                    label: `${st.displayName || st.roleAlias || st.hostname || st.name} - ${dispTitle}`,
-                    stationName: st.displayName || st.roleAlias || st.hostname || st.name,
-                    stationHostname: st.hostname || st.id,
-                    isPrimary: Boolean(d.isPrimary),
-                    sourceWidth: srcW,
-                    sourceHeight: srcH,
-                    nativeAspectRatio: nativeRatio,
-                    aspectRatio: nativeRatio,
-                    width: srcW,
-                    height: srcH
-                });
+            const primary = displays.find(d => d.isPrimary) || displays[0];
+            const pW = primary.width || primary.Width || st.width || 1920;
+            const pH = primary.height || primary.Height || st.height || 1080;
+            const pRatio = (pW && pH) ? (pW / pH) : (16 / 9);
+
+            // Add Central Composition feed
+            feeds.push({
+                stationId: st.id,
+                displayId: 'auto',
+                label: `${st.displayName || st.roleAlias || st.hostname || st.name} - ${displays.length > 1 ? 'Central Composition' : 'Main Display'}`,
+                stationName: st.displayName || st.roleAlias || st.hostname || st.name,
+                stationHostname: st.hostname || st.id,
+                isPrimary: true,
+                sourceWidth: pW,
+                sourceHeight: pH,
+                nativeAspectRatio: pRatio,
+                aspectRatio: pRatio,
+                width: pW,
+                height: pH
             });
+
+            // If multi-monitor, also add discrete screens
+            if (displays.length > 1) {
+                displays.forEach((d, idx) => {
+                    const dispId = (d.displayId || `mon-${idx}`).toLowerCase();
+                    const dispNum = d.displayNumber || (idx + 1);
+                    const dispTitle = d.displayName || `Screen ${dispNum}`;
+                    const srcW = d.width || d.Width || st.width || 1920;
+                    const srcH = d.height || d.Height || st.height || 1080;
+                    const nativeRatio = (srcW && srcH) ? (srcW / srcH) : (16 / 9);
+                    feeds.push({
+                        stationId: st.id,
+                        displayId: dispId,
+                        label: `${st.displayName || st.roleAlias || st.hostname || st.name} - ${dispTitle}`,
+                        stationName: st.displayName || st.roleAlias || st.hostname || st.name,
+                        stationHostname: st.hostname || st.id,
+                        isPrimary: Boolean(d.isPrimary),
+                        sourceWidth: srcW,
+                        sourceHeight: srcH,
+                        nativeAspectRatio: nativeRatio,
+                        aspectRatio: nativeRatio,
+                        width: srcW,
+                        height: srcH
+                    });
+                });
+            }
         });
         return feeds;
     }, [allStations, timelineStations]);
 
-    // Timeline Keyframes Layout State
+    // Timeline Keyframes Layout State: Initializes with 1 equal slot per station (Central Composition)
     const [internalTimeline, setInternalTimeline] = useState(() => {
         if (canvasLayoutTimeline?.keyframes?.length > 0) {
             return JSON.parse(JSON.stringify(canvasLayoutTimeline));
@@ -598,7 +653,7 @@ export default function MulticamViewport({
                         height: DEFAULT_VIRTUAL_CANVAS_H,
                         backgroundColor: '#070A10',
                         fps: 30.0,
-                        placements: generateAutoPackPlacements(availableFeeds, DEFAULT_VIRTUAL_CANVAS_W, DEFAULT_VIRTUAL_CANVAS_H)
+                        placements: generateAutoPackPlacements(defaultStationFeeds, DEFAULT_VIRTUAL_CANVAS_W, DEFAULT_VIRTUAL_CANVAS_H)
                     }
                 }
             ]
@@ -726,22 +781,22 @@ export default function MulticamViewport({
         });
     }, [playheadEpochMs, baseEpochMs, playheadMs, virtualW, virtualH, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast, pushUndoSnapshot]);
 
-    // Auto-populate AUTO-GRID by default when availableFeeds become available and canvas is empty
+    // Auto-populate AUTO-GRID by default when defaultStationFeeds become available and canvas is empty (1 central composite per station)
     useEffect(() => {
-        if (availableFeeds.length > 0 && (!currentPlacements || currentPlacements.length === 0) && !hasUserCustomizedRef.current) {
+        if (defaultStationFeeds.length > 0 && (!currentPlacements || currentPlacements.length === 0) && !hasUserCustomizedRef.current) {
             let targetAspect = selectedAspectId;
-            if (availableFeeds.length === 2 && selectedAspectId === '16:9') {
+            if (defaultStationFeeds.length === 2 && selectedAspectId === '16:9') {
                 targetAspect = '32:9';
                 setSelectedAspectId('32:9');
             }
             const activePreset = ASPECT_PRESETS.find(p => p.id === targetAspect) || ASPECT_PRESETS[0];
-            const autoPacked = generateAutoPackPlacements(availableFeeds, activePreset.w, activePreset.h);
+            const autoPacked = generateAutoPackPlacements(defaultStationFeeds, activePreset.w, activePreset.h);
             if (autoPacked.length > 0) {
                 updateActivePlacements(autoPacked);
                 setSelectedPresetId('auto-grid');
             }
         }
-    }, [availableFeeds, currentPlacements, updateActivePlacements, selectedAspectId]);
+    }, [defaultStationFeeds, currentPlacements, updateActivePlacements, selectedAspectId]);
 
     // Sync current canvas layout to parent Studio
     useEffect(() => {
