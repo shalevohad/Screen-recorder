@@ -416,7 +416,27 @@ export default function MulticamViewport({
         }
         return '16:9';
     });
-    const [isFullWidth, setIsFullWidth] = useState(true);
+    const [isFullWidth, setIsFullWidth] = useState(() => {
+        try {
+            const stored = localStorage.getItem('itb_studio_canvas_fullwidth');
+            if (stored !== null) return stored === 'true';
+        } catch {
+            // Ignore
+        }
+        return false; // Default to FIT PAGE
+    });
+
+    const handleToggleFullWidth = useCallback(() => {
+        setIsFullWidth(prev => {
+            const next = !prev;
+            try {
+                localStorage.setItem('itb_studio_canvas_fullwidth', String(next));
+            } catch {
+                // Ignore
+            }
+            return next;
+        });
+    }, []);
 
     const activeAspectPreset = useMemo(() => {
         return ASPECT_PRESETS.find(p => p.id === selectedAspectId) || ASPECT_PRESETS[0];
@@ -2287,10 +2307,10 @@ export default function MulticamViewport({
                         <button
                             type="button"
                             className={`btn-width-mode ${isFullWidth ? 'is-full' : 'is-fit'}`}
-                            onClick={() => setIsFullWidth(p => !p)}
-                            title={isFullWidth ? 'Full Screen Width (100% Width) - Click to fit stage' : 'Fit to Stage - Click for 100% Full Width'}
+                            onClick={handleToggleFullWidth}
+                            title={isFullWidth ? 'Full Screen Width (100% Width) - Click for FIT PAGE' : 'Fit Page - Click for 100% Full Width'}
                         >
-                            {isFullWidth ? '↔ 100% WIDTH' : '⊞ FIT STAGE'}
+                            {isFullWidth ? '↔ 100% WIDTH' : '⊞ FIT PAGE'}
                         </button>
                     </div>
 
