@@ -1494,10 +1494,41 @@
                 white-space: nowrap;
                 user-select: none;
                 pointer-events: auto;
+                max-width: calc(100% - 16px);
+                box-sizing: border-box;
+                overflow-x: auto;
+
+                &::-webkit-scrollbar {
+                    height: 3px;
+                }
+                &::-webkit-scrollbar-thumb {
+                    background: rgba(6, 182, 212, 0.4);
+                    border-radius: 2px;
+                }
 
                 &.is-flipped-down {
                     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.95);
                     border-color: #38BDF8;
+                }
+
+                .inspector-screen-pill {
+                    background: rgba(6, 182, 212, 0.2);
+                    border: 1px solid rgba(6, 182, 212, 0.4);
+                    color: #06B6D4;
+                    font-family: monospace;
+                    font-size: 8.5px;
+                    font-weight: 800;
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    white-space: nowrap;
+                }
+
+                .control-icon,
+                .control-label-icon {
+                    font-size: 9.5px;
+                    line-height: 1;
+                    flex-shrink: 0;
+                    opacity: 0.85;
                 }
 
                 .inspector-group {

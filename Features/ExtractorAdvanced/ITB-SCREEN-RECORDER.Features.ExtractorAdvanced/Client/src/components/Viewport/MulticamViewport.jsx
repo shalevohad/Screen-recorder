@@ -2736,25 +2736,36 @@ export default function MulticamViewport({
                             const shadowEffect = p.shadowEffect || 'deep';
                             const layerRank = p.zIndex !== undefined ? p.zIndex : origIdx + 1;
 
-                            // Calculate positioning relative to virtual canvas bounds
-                            const isFlippedDown = p.y < 45;
-                            const centerXPct = ((p.x + p.width / 2) / virtualW) * 100;
-                            const isNearLeft = centerXPct < 22;
-                            const isNearRight = centerXPct > 78;
+                            // Strict Multi-Axis Viewport Clamping & Collision Prevention
+                            // If card top is too close to top frame (< 70 virtual pixels), flip inspector down
+                            // so it never clips or disappears above the canvas frame.
+                            const isFlippedDown = p.y < 70;
+                            const cardLeftPct = (p.x / virtualW) * 100;
+                            const cardWidthPct = (p.width / virtualW) * 100;
+                            const centerXPct = cardLeftPct + (cardWidthPct / 2);
 
+                            // Horizontal clamping: never clip outside left or right edges
                             let leftStyle = `${centerXPct}%`;
                             let transformStyle = 'translateX(-50%)';
-                            if (isNearLeft) {
-                                leftStyle = `${Math.max(1, (p.x / virtualW) * 100)}%`;
+                            if (centerXPct < 28) {
+                                leftStyle = `${Math.max(1, cardLeftPct)}%`;
                                 transformStyle = 'none';
-                            } else if (isNearRight) {
-                                leftStyle = `${Math.min(99, ((p.x + p.width) / virtualW) * 100)}%`;
+                            } else if (centerXPct > 72) {
+                                leftStyle = `${Math.min(99, cardLeftPct + cardWidthPct)}%`;
                                 transformStyle = 'translateX(-100%)';
                             }
 
-                            const topStyle = isFlippedDown
-                                ? `${((p.y + 26) / virtualH) * 100}%`
-                                : `calc(${((p.y) / virtualH) * 100}% - 34px)`;
+                            // Vertical clamping: strictly stay inside canvas boundaries
+                            let topStyle;
+                            if (isFlippedDown) {
+                                if (p.height < 110) {
+                                    topStyle = `min(calc(100% - 38px), ${((p.y + p.height + 6) / virtualH) * 100}%)`;
+                                } else {
+                                    topStyle = `min(calc(100% - 38px), ${((p.y + 28) / virtualH) * 100}%)`;
+                                }
+                            } else {
+                                topStyle = `max(4px, calc(${((p.y) / virtualH) * 100}% - 38px))`;
+                            }
 
                             const matchedStation = (allStations.length > 0 ? allStations : timelineStations).find(s => 
                                 s.id === p.stationId || 
@@ -2775,14 +2786,20 @@ export default function MulticamViewport({
                                     onMouseDown={(e) => e.stopPropagation()}
                                     onClick={(e) => e.stopPropagation()}
                                 >
+                                    {/* Active Screen Pill Badge */}
+                                    <span className="inspector-screen-pill" title={`Active Screen Controls: ${p.label || stationTargetId} • Layer #${layerRank}`}>
+                                        🎛️ #{layerRank}
+                                    </span>
+
                                     {/* Border Color Swatch Button & Popover */}
                                     <div className="inspector-group color-swatch-group">
                                         <button
                                             type="button"
                                             className="btn-color-swatch-trigger"
                                             onClick={() => setShowColorPicker(prev => !prev)}
-                                            title="Border Color: Click to choose"
+                                            title="🎨 Border Color: Click to choose accent frame color"
                                         >
+                                            <span className="control-icon">🎨</span>
                                             <span
                                                 className="swatch-circle"
                                                 style={{ backgroundColor: bColor === 'transparent' ? '#1E293B' : bColor }}
@@ -2801,7 +2818,7 @@ export default function MulticamViewport({
                                                             handleUpdateSelectedStyle({ borderColor: c });
                                                             setShowColorPicker(false);
                                                         }}
-                                                        title={c === 'transparent' ? 'No Border Color' : `Border Color: ${c}`}
+                                                        title={c === 'transparent' ? 'No Border (Transparent)' : `Set Border Color to ${c}`}
                                                     />
                                                 ))}
                                             </div>
@@ -2810,28 +2827,30 @@ export default function MulticamViewport({
 
                                     {/* Border Thickness Select (Stroke Lines) */}
                                     <div className="inspector-group width-select-group">
+                                        <span className="control-icon" title="Border Stroke Width">📏</span>
                                         <select
                                             className="tactical-select width-select"
                                             value={bWidth}
                                             onChange={(e) => handleUpdateSelectedStyle({ borderWidth: Number(e.target.value) })}
-                                            title="Select border thickness"
+                                            title="Border Width: Set border frame thickness (0px to 12px)"
                                         >
-                                            <option value={0}>━ None (0px)</option>
-                                            <option value={2}>━ Thin (2px)</option>
-                                            <option value={4}>━━ Med (4px)</option>
-                                            <option value={6}>━━━ Thick (6px)</option>
-                                            <option value={8}>━━━━ Heavy (8px)</option>
-                                            <option value={12}>━━━━━ Ultra (12px)</option>
+                                            <option value={0}>━ 0px (None)</option>
+                                            <option value={2}>━ 2px (Thin)</option>
+                                            <option value={4}>━━ 4px (Standard)</option>
+                                            <option value={6}>━━━ 6px (Thick)</option>
+                                            <option value={8}>━━━━ 8px (Heavy)</option>
+                                            <option value={12}>━━━━━ 12px (Ultra)</option>
                                         </select>
                                     </div>
 
                                     {/* Shadow Effect Dropdown */}
                                     <div className="inspector-group shadow-select-group">
+                                        <span className="control-icon" title="Drop Shadow & Ambient Glow">🌑</span>
                                         <select
                                             className="tactical-select shadow-select"
                                             value={shadowEffect}
                                             onChange={(e) => handleUpdateSelectedStyle({ shadowEffect: e.target.value })}
-                                            title="Shadow Effect"
+                                            title="Drop Shadow & Glow: Add visual depth or tactical glow to this window"
                                         >
                                             {SHADOW_PRESETS.map(s => (
                                                 <option key={s.id} value={s.id}>{s.label}</option>
@@ -2841,6 +2860,7 @@ export default function MulticamViewport({
 
                                     {/* Layer Stacking Order Select */}
                                     <div className="inspector-group layer-select-group">
+                                        <span className="control-icon" title="Layer Stacking Depth">📑</span>
                                         <select
                                             className="tactical-select layer-select"
                                             value=""
@@ -2851,23 +2871,24 @@ export default function MulticamViewport({
                                                 else if (val === 'up') handleBringForward(origIdx);
                                                 else if (val === 'down') handleSendBackward(origIdx);
                                             }}
-                                            title="Change layer stacking order"
+                                            title={`Layer Stacking Order: Currently Layer #${layerRank}. Choose to bring in front or send behind.`}
                                         >
                                             <option value="" disabled>L#{layerRank} ▾</option>
-                                            <option value="front">⏫ Front (Top)</option>
-                                            <option value="up">▲ Forward (+1)</option>
-                                            <option value="down">▼ Backward (-1)</option>
-                                            <option value="back">⏬ Back (Bottom)</option>
+                                            <option value="front">⏫ Bring to Front (Top)</option>
+                                            <option value="up">▲ Step Forward (+1)</option>
+                                            <option value="down">▼ Step Backward (-1)</option>
+                                            <option value="back">⏬ Send to Back (Bottom)</option>
                                         </select>
                                     </div>
 
                                     {/* Rotation Step & Fine Slider */}
                                     <div className="inspector-group rotate">
+                                        <span className="control-icon" title="Screen Rotation Controls">🔄</span>
                                         <button
                                             type="button"
                                             className="btn-action-tool"
                                             onClick={() => handleRotateStep(90)}
-                                            title="Rotate 90 degrees clockwise (↺)"
+                                            title="Rotate: Step 90 degrees clockwise (↺)"
                                         >
                                             ↺ 90°
                                         </button>
@@ -2875,7 +2896,7 @@ export default function MulticamViewport({
                                             type="button"
                                             className={`btn-action-tool ${showRotationControl ? 'active' : ''}`}
                                             onClick={() => setShowRotationControl(prev => !prev)}
-                                            title="Toggle fine rotation slider"
+                                            title={`Fine Rotation: Click to toggle angle slider (Current: ${rot}°)`}
                                         >
                                             📐 {rot}°
                                         </button>
@@ -2887,6 +2908,7 @@ export default function MulticamViewport({
                                                 value={rot}
                                                 onChange={(e) => handleUpdateSelectedStyle({ rotation: Number(e.target.value) })}
                                                 className="rotation-slider"
+                                                title={`Adjust tilt angle: ${rot}°`}
                                             />
                                         )}
                                     </div>
@@ -2896,19 +2918,19 @@ export default function MulticamViewport({
                                         type="button"
                                         className="btn-action-tool highlight"
                                         onClick={() => handleSnapToNativeAspect(origIdx)}
-                                        title={`Snap window dimensions to its exact recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
+                                        title={`Native Recorded Aspect Ratio: Snap window to its exact recorded aspect (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)}) to remove any distortion`}
                                     >
                                         📐 NATIVE ({getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})
                                     </button>
 
-                                    {/* 1x1 Focus Mode: Expand feed to fill entire 16:9 canvas */}
+                                    {/* 1x1 Focus Mode: Expand feed to fill entire canvas */}
                                     <button
                                         type="button"
                                         className="btn-action-tool highlight"
                                         onClick={() => handleFocus1x1(origIdx)}
-                                        title="Maximize this window to fill the entire 16:9 canvas (1x1 Focus View)"
+                                        title="1x1 Focus Viewport: Maximize this window to fill 100% of the canvas frame (Double-clicking the card also maximizes)"
                                     >
-                                        ⊞ 1x1
+                                        ⊞ 1x1 FOCUS
                                     </button>
 
                                     {/* Deep Forensic Spotlight Shortcut */}
@@ -2916,9 +2938,9 @@ export default function MulticamViewport({
                                         type="button"
                                         className="btn-action-tool"
                                         onClick={() => onOpenSpotlight && onOpenSpotlight(stationTargetId, p.displayId)}
-                                        title="Open station forensic spotlight view"
+                                        title="Deep Forensic Spotlight: Open multi-angle synchronized forensic viewer for this workstation"
                                     >
-                                        ⛶ SPOTLIGHT
+                                        🔍 SPOTLIGHT
                                     </button>
 
                                     {/* Delete Feed Button */}
@@ -2926,9 +2948,9 @@ export default function MulticamViewport({
                                         type="button"
                                         className="btn-action-tool btn-del-feed"
                                         onClick={() => handleRemovePlacement(origIdx)}
-                                        title="Remove this feed from canvas"
+                                        title="Remove Screen: Remove this window from canvas (can be restored anytime from the Feeds Palette)"
                                     >
-                                        🗑️
+                                        🗑️ REMOVE
                                     </button>
                                 </div>
                             );

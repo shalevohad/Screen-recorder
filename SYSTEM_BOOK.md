@@ -1918,5 +1918,50 @@ Tactical operators reviewing continuous multi-station recordings identified thre
    - When $\text{Gain} \ne 1.0$, FFmpeg injects ,volume={gain:0.00}, producing perfectly normalized exported MP4 audio with zero audio-video drift.
 
 ---
-*End of System Book
+## 44. Strict Multi-Axis Boundary Clamping, Universal Iconography & Comprehensive Tooltip Architecture for Floating Studio Controls (2026-11-03)
+
+### 1. Operational Problem & Requirement
+Tactical operators utilizing the forensic editing canvas and timeline tracks reported critical UI boundary collision and discoverability challenges:
+1. **Menu Clipping & Disappearance Near Edges**:
+   - When a video card was positioned near the top of the canvas frame (y < 70px), the floating card inspector menu rendered upwards into negative coordinates or outside the `.canvas-master-frame-16-9` container (`overflow: hidden`), becoming partially or completely invisible.
+   - When dragging cards near the extreme left or right borders, or opening the audio segment context menu near the bottom timeline dock or screen edge, popovers would spill outside the browser viewport, cutting off essential buttons and sliders.
+2. **Control Discoverability & Visual Clarity**:
+   - Floating toolbars and context popovers contained minimal labels or ambiguous iconography without clear hints, making it difficult for operators in fast-paced NOC environments to quickly understand tool effects (e.g. rotation degrees, border width presets, native aspect-ratio correction, audio gain scaling, timeline splits).
+
+### 2. Architectural Solution & Implementation
+1. **Canvas Floating Feed Inspector Multi-Axis Clamping (`MulticamViewport.jsx` & `MulticamViewport.scss`)**:
+   - **Dynamic Vertical Inversion & Clamping**:
+     - Evaluates placement y position against an increased 70px virtual coordinate threshold (`p.y < 70`).
+     - When y < 70, automatically flips downward below the card header: `min(calc(100% - 38px), (p.y + p.height + 6) / virtualH * 100%)` (for small cards) or `min(calc(100% - 38px), (p.y + 28) / virtualH * 100%)` (for tall cards).
+     - When y >= 70, clamps upward positioning to strictly stay inside the master frame: `max(4px, calc((p.y / virtualH) * 100% - 38px))`.
+   - **Horizontal Boundary Clamping**:
+     - Evaluates horizontal center percentage `centerXPct`. When centerXPct < 28%, pins to the card's left edge (`Math.max(1, cardLeftPct)%`, `transform: none`). When centerXPct > 72%, pins to the card's right edge (`Math.min(99, cardLeftPct + cardWidthPct)%`, `transform: translateX(-100%)`).
+   - **Container Safeguards**:
+     - `.floating-feed-inspector` is capped at `max-width: calc(100% - 16px)` with dedicated horizontal scrollbar fallback (`overflow-x: auto`), preventing horizontal screen overflow on narrow screens.
+2. **Audio Segment Context Menu Clamping (`AudioRoutingTrack.jsx` & `AudioRoutingTrack.scss`)**:
+   - **Dynamic Viewport Boundary Computation**:
+     - Calculates available viewport width and height before rendering (`window.innerWidth`, `window.innerHeight`).
+     - **Horizontal Clamp**: Computes `posX = ev.clientX - 60`, strictly clamped between 16px and `window.innerWidth - MENU_WIDTH - 16`.
+     - **Vertical Pop-Up Direction**: When the click occurs in the lower 55% of the screen (`ev.clientY > window.innerHeight * 0.45`), the menu automatically pops upward above the cursor (`posY = ev.clientY - MENU_HEIGHT - 12`), preventing any intrusion into taskbars or timeline controls.
+     - **Vertical Bounds Clamp**: Clamped with `Math.max(16, ...)` and capped at `maxHeight: calc(100vh - 32px)` with custom thin cyan scrollbars.
+3. **Universal Iconography & Comprehensive Tooltip Matrix**:
+   - **Canvas Floating Feed Inspector**:
+     - `🎛️ #Rank`: Active screen rank and layer priority badge.
+     - `🎨 Border Color Picker`: Embedded color dot and tooltip explaining active border highlight.
+     - `📏 Border Width Select`: Explicit presets (`0px - None`, `2px - Thin`, `4px - Medium`, `6px - Heavy`, `8px - Ultra Heavy`, `12px - Forensic Red Alert`).
+     - `🌑 Drop Shadow Select`: Dynamic shadow depth options (`None`, `Subtle`, `Medium Deep`, `Heavy Tactical`, `Cyan Glow Accent`).
+     - `📑 Layer Ordering Buttons`: `▲ BRING TO FRONT` (`Bring this window forward one layer above other windows`) / `▼ SEND TO BACK` (`Send this window backward one layer behind other windows`).
+     - `🔄 Screen Rotation Select`: Precise 90-degree clockwise increments (`0° - Normal`, `90° - CW`, `180° - Inverted`, `270° - CCW`) with explicit note that only the video surface rotates while menus remain upright.
+     - `📐 NATIVE (W:H)`: Dynamic button displaying exact source aspect ratio (e.g. `16:9`, `4:3`, `16:10`, `5:4`) and one-click un-distortion.
+     - `⊞ 1x1 FOCUS`: Maximize window to fill 100% of the canvas frame.
+     - `🔍 SPOTLIGHT`: Open synchronized forensic workstation multi-angle viewer.
+     - `🗑️ REMOVE`: Remove screen from canvas with note that it can be restored from the Feeds Palette.
+   - **Audio Segment Context Menu & Gain Controller**:
+     - `🎚️ Header & Time`: Clear `⏱️ Start - End` and `⏳ Duration` metrics.
+     - `🔊 Acoustic Gain Controller`: Clear subtitle explaining live and exported volume adjustment.
+     - `🔇 MUTE`, `🔉 -6 dB`, `⚖️ 0 dB (Unity)`, `🚀 +6 dB`: Universal preset buttons with decibel and percentage callouts.
+     - `🖥️ Workstation Route`: Workstation list with clear radio selection and `✓` checkmark.
+     - `✂️ SPLIT AT CLICK` and `✂️ SPLIT AT PLAYHEAD`: Explicit sub-second split tools with exact time tags.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

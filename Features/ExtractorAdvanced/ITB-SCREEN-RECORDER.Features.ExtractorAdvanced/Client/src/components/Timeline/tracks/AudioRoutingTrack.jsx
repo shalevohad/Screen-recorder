@@ -159,11 +159,38 @@ export default function AudioRoutingTrack({
         const currentGainVal = (typeof gain === 'number' && gain >= 0) ? gain : 1.0;
         setMenuGainValue(currentGainVal);
 
+        // Strict Viewport Clamping: Prevents menu from ever getting cut off on top, bottom, or sides
+        const MENU_WIDTH = 290;
+        const MENU_HEIGHT = 440;
+
+        let posX = ev.clientX - 60;
+        if (posX + MENU_WIDTH > window.innerWidth - 16) {
+            posX = window.innerWidth - MENU_WIDTH - 16;
+        }
+        if (posX < 16) {
+            posX = 16;
+        }
+
+        let posY;
+        // Pop above click if in the bottom 55% of the screen
+        if (ev.clientY > window.innerHeight * 0.45) {
+            posY = ev.clientY - MENU_HEIGHT - 12;
+        } else {
+            posY = ev.clientY + 12;
+        }
+
+        if (posY < 16) {
+            posY = 16;
+        }
+        if (posY + MENU_HEIGHT > window.innerHeight - 16) {
+            posY = Math.max(16, window.innerHeight - MENU_HEIGHT - 16);
+        }
+
         setSelectedMenuSegment({
             s,
             e,
-            x: ev.clientX,
-            y: ev.clientY,
+            x: posX,
+            y: posY,
             currentStationId: stId,
             currentGain: currentGainVal,
             clickEpoch
@@ -422,8 +449,11 @@ export default function AudioRoutingTrack({
                     className="audio-segment-context-menu"
                     style={{
                         position: 'fixed',
-                        left: `${Math.min(Math.max(10, selectedMenuSegment.x), window.innerWidth - 270)}px`,
-                        top: `${Math.min(Math.max(10, selectedMenuSegment.y - 120), window.innerHeight - 380)}px`,
+                        left: `${selectedMenuSegment.x}px`,
+                        top: `${selectedMenuSegment.y}px`,
+                        width: '290px',
+                        maxHeight: 'calc(100vh - 32px)',
+                        overflowY: 'auto',
                         zIndex: 99999
                     }}
                     onClick={(e) => e.stopPropagation()}
@@ -431,11 +461,12 @@ export default function AudioRoutingTrack({
                 >
                     <div className="menu-header">
                         <span className="menu-icon">🎚️</span>
-                        <span>AUDIO SEGMENT & GAIN SCALE</span>
+                        <span>AUDIO SEGMENT & GAIN CONTROLLER</span>
                         <button 
                             type="button" 
                             className="menu-close-x" 
                             onClick={() => setSelectedMenuSegment(null)}
+                            title="Close menu (Esc)"
                             style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', fontSize: '11px' }}
                         >
                             ✕
@@ -443,22 +474,26 @@ export default function AudioRoutingTrack({
                     </div>
 
                     <div className="menu-segment-info">
-                        <div className="info-time">
-                            {formatTimelineClock(selectedMenuSegment.s, timeMode, { includeSeconds: true })} - {formatTimelineClock(selectedMenuSegment.e, timeMode, { includeSeconds: true })}
+                        <div className="info-time" title="Segment Start and End Time">
+                            ⏱️ {formatTimelineClock(selectedMenuSegment.s, timeMode, { includeSeconds: true })} - {formatTimelineClock(selectedMenuSegment.e, timeMode, { includeSeconds: true })}
                         </div>
-                        <div className="info-duration">
-                            {Math.round((selectedMenuSegment.e - selectedMenuSegment.s) / 1000)}s duration
+                        <div className="info-duration" title="Segment Duration">
+                            ⏳ {Math.round((selectedMenuSegment.e - selectedMenuSegment.s) / 1000)}s duration
                         </div>
                     </div>
 
                     {/* GAIN SCALE & AMPLIFIER SECTION */}
                     <div className="menu-gain-section">
                         <div className="gain-header-row">
-                            <span className="gain-label">VOLUME GAIN SCALE:</span>
+                            <span className="gain-label">🔊 VOLUME GAIN SCALE:</span>
                             <span className={`gain-readout ${menuGainValue > 1 ? 'is-boost' : (menuGainValue === 0 ? 'is-mute' : 'is-normal')}`}>
+                                {menuGainValue > 1 ? '🚀 ' : (menuGainValue === 0 ? '🔇 ' : '🎚️ ')}
                                 {Math.round(menuGainValue * 100)}% ({menuGainValue > 0 ? (20 * Math.log10(menuGainValue)).toFixed(1) + ' dB' : '-∞ dB'})
                             </span>
                         </div>
+                        <p className="gain-subtitle">
+                            Calibrate volume for this slice. Applied live to playback and encoded into export MP4.
+                        </p>
 
                         {/* Interactive Range Slider */}
                         <div className="gain-slider-wrapper">
@@ -470,25 +505,25 @@ export default function AudioRoutingTrack({
                                 value={menuGainValue}
                                 onChange={(e) => handleApplyGainChange(e.target.value)}
                                 className="gain-range-slider"
-                                title={`Adjust Audio Volume Gain: ${Math.round(menuGainValue * 100)}%`}
+                                title={`Adjust Audio Volume Gain: ${Math.round(menuGainValue * 100)}% (${menuGainValue > 0 ? (20 * Math.log10(menuGainValue)).toFixed(1) + ' dB' : '-∞ dB'})`}
                             />
                             <div className="gain-ticks-scale">
-                                <span className="tick" onClick={() => handleApplyGainChange(0)}>0%</span>
-                                <span className="tick" onClick={() => handleApplyGainChange(0.5)}>-6dB</span>
-                                <span className="tick center" onClick={() => handleApplyGainChange(1.0)}>0dB (100%)</span>
-                                <span className="tick" onClick={() => handleApplyGainChange(1.41)}>+3dB</span>
-                                <span className="tick" onClick={() => handleApplyGainChange(2.0)}>+6dB</span>
-                                <span className="tick" onClick={() => handleApplyGainChange(2.5)}>+8dB</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(0)} title="Mute (0% / -∞ dB)">0%</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(0.5)} title="Cut 50% (-6 dB)">-6dB</span>
+                                <span className="tick center" onClick={() => handleApplyGainChange(1.0)} title="Unity Gain (100% / 0 dB)">0dB (100%)</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(1.41)} title="Boost +3 dB (141%)">+3dB</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(2.0)} title="Boost +6 dB (200%)">+6dB</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(2.5)} title="Max Boost +8 dB (250%)">+8dB</span>
                             </div>
                         </div>
 
-                        {/* Quick Gain Presets */}
+                        {/* Quick Gain Presets with Universal Icons & Tooltips */}
                         <div className="gain-presets-row">
                             <button
                                 type="button"
                                 className={`btn-gain-preset ${menuGainValue === 0 ? 'active' : ''}`}
                                 onClick={() => handleApplyGainChange(0)}
-                                title="Mute audio on this segment"
+                                title="Mute audio on this segment (0% / -∞ dB)"
                             >
                                 🔇 Mute
                             </button>
@@ -496,40 +531,40 @@ export default function AudioRoutingTrack({
                                 type="button"
                                 className={`btn-gain-preset ${Math.abs(menuGainValue - 0.5) < 0.05 ? 'active' : ''}`}
                                 onClick={() => handleApplyGainChange(0.5)}
-                                title="Cut volume by 50% (-6 dB)"
+                                title="Attenuate volume by 50% (-6.0 dB) for loud passages"
                             >
-                                -6 dB (50%)
+                                🔉 -6 dB
                             </button>
                             <button
                                 type="button"
                                 className={`btn-gain-preset unity ${Math.abs(menuGainValue - 1.0) < 0.05 ? 'active' : ''}`}
                                 onClick={() => handleApplyGainChange(1.0)}
-                                title="Reset to standard 100% (0 dB Unity Gain)"
+                                title="Reset volume to original unity recording level (100% / 0.0 dB)"
                             >
-                                0 dB (100%)
+                                ⚖️ 0 dB (100%)
                             </button>
                             <button
                                 type="button"
                                 className={`btn-gain-preset ${Math.abs(menuGainValue - 1.41) < 0.05 ? 'active' : ''}`}
                                 onClick={() => handleApplyGainChange(1.41)}
-                                title="Boost volume by +3 dB (141%)"
+                                title="Boost volume by 141% (+3.0 dB) for clearer speech"
                             >
-                                +3 dB
+                                🔊 +3 dB
                             </button>
                             <button
                                 type="button"
                                 className={`btn-gain-preset ${Math.abs(menuGainValue - 2.0) < 0.05 ? 'active' : ''}`}
                                 onClick={() => handleApplyGainChange(2.0)}
-                                title="Boost volume by +6 dB (200%)"
+                                title="Double volume (+6.0 dB / 200%) for quiet microphones"
                             >
-                                +6 dB (200%)
+                                🚀 +6 dB
                             </button>
                         </div>
                     </div>
 
                     {/* ASSIGN AUDIO SOURCE */}
                     <div className="menu-stations-list">
-                        <div className="sub-header">ASSIGN WORKSTATION SOURCE:</div>
+                        <div className="sub-header">🖥️ ROUTE AUDIO FROM WORKSTATION:</div>
                         {stations.map(st => {
                             const isSelected = selectedMenuSegment.currentStationId === st.id;
                             const name = st.displayName || st.hostname || st.id;
@@ -542,9 +577,10 @@ export default function AudioRoutingTrack({
                                         onChangeSegmentStation?.(selectedMenuSegment.s, st.id);
                                         setSelectedMenuSegment(null);
                                     }}
+                                    title={`Route live audio from ${name} during this segment`}
                                 >
                                     <span className="dot" />
-                                    <span className="name">{name}</span>
+                                    <span className="name">🖥️ {name}</span>
                                     {isSelected && <span className="check">✓</span>}
                                 </button>
                             );
@@ -557,6 +593,7 @@ export default function AudioRoutingTrack({
                                 onChangeSegmentStation?.(selectedMenuSegment.s, 'MUTE');
                                 setSelectedMenuSegment(null);
                             }}
+                            title="Mute all workstation audio during this segment"
                         >
                             <span className="dot mute" />
                             <span className="name">🔇 MUTE INTERVAL</span>
@@ -575,8 +612,9 @@ export default function AudioRoutingTrack({
                                     onSplitSegment?.(selectedMenuSegment.clickEpoch);
                                     setSelectedMenuSegment(null);
                                 }}
+                                title="Split this audio block at the clicked time to route different stations or gains"
                             >
-                                <span>✂️ SPLIT HERE ({formatTimelineClock(selectedMenuSegment.clickEpoch, timeMode, { includeSeconds: true })})</span>
+                                <span>✂️ SPLIT AT CLICK ({formatTimelineClock(selectedMenuSegment.clickEpoch, timeMode, { includeSeconds: true })})</span>
                             </button>
                         )}
 
@@ -588,6 +626,7 @@ export default function AudioRoutingTrack({
                                     onSplitSegment?.(playheadEpoch);
                                     setSelectedMenuSegment(null);
                                 }}
+                                title="Split this audio block at the current playhead position"
                             >
                                 <span>✂️ SPLIT AT PLAYHEAD ({formatTimelineClock(playheadEpoch, timeMode, { includeSeconds: true })})</span>
                             </button>
