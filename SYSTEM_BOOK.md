@@ -63,6 +63,7 @@
 43. [Real-Time Web Audio Acoustic VU Meter, Expandable Timeline Audio Track with Dynamic Waveforms & Precision Gain Scale (2026-11-03)](#43-real-time-web-audio-acoustic-vu-meter-expandable-timeline-audio-track-with-dynamic-waveforms--precision-gain-scale-2026-11-03)
 44. [Strict Multi-Axis Boundary Clamping, Universal Iconography & Comprehensive Tooltip Architecture for Floating Studio Controls (2026-11-03)](#44-strict-multi-axis-boundary-clamping-universal-iconography--comprehensive-tooltip-architecture-for-floating-studio-controls-2026-11-03)
 45. [Minimalist Tactical Display Strip, Elimination of Redundant Minimap Overlays & Smart Multi-Monitor Placement Visibility (2026-11-03)](#45-minimalist-tactical-display-strip-elimination-of-redundant-minimap-overlays--smart-multi-monitor-placement-visibility-2026-11-03)
+46. [Root-Level DOM Portal Isolation, Viewport Stacking Context & Modal Inspector Suppression Engine (2026-11-03)](#46-root-level-dom-portal-isolation-viewport-stacking-context--modal-inspector-suppression-engine-2026-11-03)
 
 ---
 
@@ -2008,6 +2009,34 @@ When monitoring or editing multi-monitor workstations on the Master Canvas Grid 
        - Hovering over the card (`.camera-card:hover` or `.canvas-feed-card-box:hover`) smoothly fades the strip into `opacity: 1`, allowing instant 1-click display switching whenever needed.
      - **When only a subset of monitors are placed (`areAllDisplaysPlaced === false`)**:
        - The strip rests at a subtle `opacity: 0.6`, brightening to `opacity: 1` on hover, providing continuous situational awareness that additional monitors exist for this workstation.
+
+
+---
+## 46. Root-Level DOM Portal Isolation, Viewport Stacking Context & Modal Inspector Suppression Engine (2026-11-03)
+
+### 1. Operational Problem & Visual Leakage Manifestation
+During operational review in the Advanced Editing Studio, triggering the Master MP4 Export dialog (`ExportOptionsModal`) exhibited two distinct visual defect artifacts poking through the modal overlay (as captured in operational inspection):
+1. **Un-Dimmed Main Navigation Bar Leakage**:
+   - The top-left fleet tabs (`[ ALL ] [ ★ EDITING & CANVAS STUDIO ]`) remained completely bright and un-dimmed, unaffected by the dark modal backdrop.
+   - *Root Cause: CSS Stacking Context & `backdrop-filter` Trap*:
+     The modal was rendered inside `.tab-pane-content-wrapper`, which specifies `backdrop-filter: blur(24px)`. Per CSS specifications, any element applying `backdrop-filter`, `transform`, or `filter` creates a new containing block and stacking context for all descendant `position: fixed` elements. As a consequence, `position: fixed; inset: 0` was constrained to the tab pane, unable to cover sibling elements such as `.fleet-tabs` in the root DOM tree.
+2. **Floating Feed Inspector Collision**:
+   - The `.floating-feed-inspector` toolbar (`🎛️ #1`, border color, border thickness, drop shadow, rotation, aspect ratio, 1x1 focus, spotlight, delete) was rendered with `z-index: 99999` at the stage level. Because the modal's CSS specified `z-index: 10000`, the inspector hovered directly over the export configuration dialog, obstructing resolution and audio selection controls.
+
+### 2. Architectural Solution & Implementation
+1. **Root-Level React DOM Portal (`ExportOptionsModal.jsx`)**:
+   - Wrapped the entire modal JSX output in `ReactDOM.createPortal(..., document.body)`.
+   - Bypasses all ancestor containing blocks, CSS filters, and tab wrapper stacking contexts, ensuring the backdrop anchors directly to the root document.
+2. **Full-Viewport Stacking Precedence (`ExportOptionsModal.scss`)**:
+   - Enforced maximum specificity and viewport pinning:
+     `position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(4, 8, 20, 0.88) !important; backdrop-filter: blur(12px) !important; z-index: 99999999 !important;`
+   - Seamlessly darkens and blurs all UI elements across the entire browser viewport (including top tabs, navigation headers, audio docks, and timeline controls).
+3. **Stage-Level Inspector Suppression Engine (`MulticamViewport.jsx` & `ExtractorAdvancedStudio.jsx`)**:
+   - Integrated `isModalOpen` boolean state into `MulticamViewport`:
+     `isModalOpen={isExportModalOpen || isRangeModalOpen || isBookmarksModalOpen || isSpotlightOpen || isHelpModalOpen}`
+   - Evaluated before rendering the floating inspector:
+     `{!isModalOpen && selectedFeedIndex !== null && selectedPlacement && ...}`
+   - Automatically unmounts the floating toolbar whenever any studio modal or export prompt is active, ensuring zero visual overlap and clean operator focus.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

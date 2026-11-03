@@ -2,6 +2,7 @@
 // File: Features/ExtractorAdvanced/Client/src/components/Modals/ExportOptionsModal.jsx
 // ==========================================
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import './ExportOptionsModal.scss';
 
 export default function ExportOptionsModal({
@@ -64,8 +65,8 @@ export default function ExportOptionsModal({
 
     const currentTier = qualityTiers.find(t => t.id === resolution) || qualityTiers[1];
 
-    return (
-        <div className="itb-export-modal-backdrop" onClick={onClose}>
+    return createPortal(
+        <div className="itb-export-modal-backdrop" onClick={onClose} dir="ltr">
             <div className="itb-export-modal-card" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <div className="header-title">
@@ -189,6 +190,7 @@ export default function ExportOptionsModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

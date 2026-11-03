@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/ExtractorAdvancedStudio.jsx
 // ==========================================
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -1038,6 +1038,7 @@ export default function ExtractorAdvancedStudio() {
                                     onUpdateCanvasLayoutTimeline={setCanvasLayoutTimeline}
                                     activeKfIndex={activeKfIndex}
                                     setActiveKfIndex={setActiveKfIndex}
+                                    isModalOpen={isExportModalOpen || isRangeModalOpen || isBookmarksModalOpen || isSpotlightOpen || isHelpModalOpen}
                                 />
                                 <TransportBar
                                     baseEpochMs={timelineBaseEpochMs}

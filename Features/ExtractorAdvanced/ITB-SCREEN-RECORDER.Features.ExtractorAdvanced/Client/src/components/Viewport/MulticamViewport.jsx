@@ -317,7 +317,8 @@ export default function MulticamViewport({
     canvasLayoutTimeline = null,
     onUpdateCanvasLayoutTimeline,
     activeKfIndex = 0,
-    _setActiveKfIndex
+    _setActiveKfIndex,
+    isModalOpen = false
 }) {
     const currentEpochMs = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
     const cutStartEpochMs = baseEpochMs + inPointMs;
@@ -2733,7 +2734,7 @@ export default function MulticamViewport({
                         })}
 
                         {/* Selected Floating Tactical Inspector (Stage-Level Overlay: Always on Top z-index: 99999) */}
-                        {selectedFeedIndex !== null && selectedPlacement && (() => {
+                        {!isModalOpen && selectedFeedIndex !== null && selectedPlacement && (() => {
                             const p = selectedPlacement;
                             const origIdx = selectedFeedIndex;
                             const bColor = p.borderColor || SLOT_BORDER_COLORS[origIdx % SLOT_BORDER_COLORS.length];
