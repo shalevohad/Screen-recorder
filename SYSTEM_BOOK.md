@@ -45,6 +45,7 @@
 35. [Live Grid Master Canvas Composer, Free Transform Engine & Timeline Keyframe Animation](#35-live-grid-master-canvas-composer-free-transform-engine--timeline-keyframe-animation-2026-11-02)
 36. [Minimalist Support Tracks, Draggable Keyframes & Live Canvas Auto-Grid Architecture](#36-minimalist-support-tracks-draggable-keyframes--live-canvas-auto-grid-architecture-2026-11-03)
 37. [Non-Standard Aspect Ratio Preservation & CTRL-Locked Canvas Resizing](#37-non-standard-aspect-ratio-preservation--ctrl-locked-canvas-resizing-2026-11-03)
+38. [Zero-Collapse Master Canvas Stage & Responsive ResizeObserver Architecture](#38-zero-collapse-master-canvas-stage--responsive-resizeobserver-architecture-2026-11-03)
 
 ---
 
@@ -1675,6 +1676,42 @@ Previously, auto-grid packing and canvas additions assumed fixed 16:9 boxes, lea
    - Clicking it instantaneously snaps the placement's dimensions to match its recorded aspect ratio while respecting the canvas boundary limits.
 5. **Real-Time Dimension & Aspect Ratio HUD**:
    - The draggable top bar of each canvas window displays real-time dimensions and aspect ratio tags: `{width}×{height} ({readableAspect}) @ ({x},{y})`.
+
+---
+
+## 38. Zero-Collapse Master Canvas Stage & Responsive ResizeObserver Architecture (2026-11-03)
+
+### 1. Root Cause Analysis: The 4-Pixel Slit Showstopper Bug
+When opening the forensic studio in Master Canvas Grid mode (`!isSoloMode`), workstations and screens populated on the canvas were rendered completely invisible.
+Chrome DevTools inspection revealed that the `.canvas-master-frame-16-9` container had computed dimensions of `724px × 4px`:
+1. **The CSS Flexbox Auto-Height Collapse**:
+   - `.canvas-master-frame-16-9` was styled with `width: auto; height: auto; aspect-ratio: 16 / 9; max-width: 100%; max-height: 100%;` inside a flex container (`.canvas-stage-wrapper`) with `align-items: center`.
+   - Every child of `.canvas-master-frame-16-9` (snap guides, empty guide, and station card boxes) is `position: absolute`.
+   - In CSS specification, an element containing exclusively out-of-flow (absolute) children has a min-content height of `0px`.
+   - In a flex row layout with `align-items: center`, `height: auto` resolves to the min-content height (`0px`).
+   - Adding top border (2px) and bottom border (2px) yielded a total computed height of **exactly 4px** (`724 × 4`).
+   - Station cards inside it were scaled to percentages of 4px, resulting in sub-pixel heights where the 22px header completely clipped out the video viewport (`height: calc(100% - 22px) <= 0px`).
+
+### 2. Architectural Solution: Dual-Tier Dynamic Responsive Canvas Engine
+1. **JavaScript Dynamic Responsive Measurement (`ResizeObserver`)**:
+   - Attached `stageWrapperRef` to `.canvas-stage-wrapper`.
+   - Integrated a `ResizeObserver` lifecycle listener inside `MulticamViewport.jsx` that dynamically computes available stage width and height (`availableW`, `availableH`).
+   - Computes the exact, maximum 16:9 bounding box that fits inside the stage:
+     $$\text{if } \frac{W}{H} \ge \frac{16}{9} \implies H_{\text{final}} = H, \quad W_{\text{final}} = \text{round}\left(H \cdot \frac{16}{9}\right) \quad (\text{pillarbox})$$
+     $$\text{else} \implies W_{\text{final}} = W, \quad H_{\text{final}} = \text{round}\left(W \cdot \frac{9}{16}\right) \quad (\text{letterbox})$$
+   - Explicit inline pixel dimensions `style={{ width: `${canvasFrameDimensions.width}px`, height: `${canvasFrameDimensions.height}px` }}` are stamped directly onto `.canvas-master-frame-16-9`.
+   - Guarantees `canvasFrameRef.current.getBoundingClientRect()` always returns healthy non-zero dimensions for exact mouse drag/resize translations.
+2. **CSS Defensive Hardening**:
+   - Added `min-height: 240px; min-width: 320px; box-sizing: border-box; padding: 8px;` to `.canvas-stage-wrapper`.
+   - Added `min-width: 320px; min-height: 180px; flex-shrink: 0;` to `.canvas-master-frame-16-9`, mathematically eliminating 4px/0px collapses regardless of rendering conditions.
+3. **Station Identity Resolution Defense**:
+   - In `CameraCardFeed.jsx`, updated station identity resolution to `const stationName = station.hostname || station.name || station.id || ''`.
+   - In `MulticamViewport.jsx`, added case-insensitive matching against `allStations` and `timelineStations` with metadata hydration from `availableFeeds`.
+
+### 3. Automated Integrity Regression Tests
+Enforced in `ITB-SCREEN-RECORDER.Tests/Frontend/FrontendBundleIntegrityTests.cs`:
+- `ExtractorAdvanced_CanvasStageFrame_EnforcesMinDimensionsAndNonCollapsedStyles`: Asserts compiled CSS and SCSS source enforce `min-height: 240px`, `min-height: 180px`, and `min-width: 320px`.
+- `ExtractorAdvanced_CanvasResponsiveEngine_HasResizeObserverAndStationFallback`: Asserts production JS bundle includes `ResizeObserver` responsive sizing logic and `station.id` fallback.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

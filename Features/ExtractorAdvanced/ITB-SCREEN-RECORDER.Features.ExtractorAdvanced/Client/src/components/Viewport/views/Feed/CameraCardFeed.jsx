@@ -28,7 +28,7 @@ export default function CameraCardFeed({
     isAutoDirectorEnabled = true,
     targetDisplayId = 'auto'
 }) {
-    const stationName = station.hostname || station.name || '';
+    const stationName = station.hostname || station.name || station.id || '';
     const roundedEpochMs = Math.round(currentEpochMs);
 
     const [frameSrc, setFrameSrc] = useState(() => {

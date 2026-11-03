@@ -331,6 +331,8 @@ export default function MulticamViewport({
     const hudTimerRef = useRef(null);
     const viewportRootRef = useRef(null);
     const canvasFrameRef = useRef(null);
+    const stageWrapperRef = useRef(null);
+    const [canvasFrameDimensions, setCanvasFrameDimensions] = useState({ width: 960, height: 540 });
 
     // Selection & Free Transform state
     const [selectedFeedIndex, setSelectedFeedIndex] = useState(0);
@@ -343,6 +345,51 @@ export default function MulticamViewport({
     const dragStateRef = useRef(null);
     const hasUserCustomizedRef = useRef(false);
     const [selectedPresetId, setSelectedPresetId] = useState('auto-grid');
+
+    // Dynamic responsive 16:9 canvas frame measurement
+    useEffect(() => {
+        const el = stageWrapperRef.current;
+        if (!el) return;
+
+        const updateDimensions = () => {
+            const rect = el.getBoundingClientRect();
+            // Provide 24px breathing space inside viewport
+            const availableW = Math.max(320, (rect.width || 960) - 24);
+            const availableH = Math.max(180, (rect.height || 540) - 24);
+
+            let finalW, finalH;
+            if (availableW / availableH >= (16 / 9)) {
+                // Height is the limiting factor (pillarbox)
+                finalH = availableH;
+                finalW = Math.round(finalH * (16 / 9));
+            } else {
+                // Width is the limiting factor (letterbox)
+                finalW = availableW;
+                finalH = Math.round(finalW / (16 / 9));
+            }
+
+            setCanvasFrameDimensions(prev => {
+                if (prev.width === finalW && prev.height === finalH) return prev;
+                return { width: finalW, height: finalH };
+            });
+        };
+
+        updateDimensions();
+
+        let ro = null;
+        if (typeof ResizeObserver !== 'undefined') {
+            ro = new ResizeObserver(() => {
+                updateDimensions();
+            });
+            ro.observe(el);
+        }
+        window.addEventListener('resize', updateDimensions);
+
+        return () => {
+            if (ro) ro.disconnect();
+            window.removeEventListener('resize', updateDimensions);
+        };
+    }, []);
 
     // Enumerate all available workstation feeds across displays
     const availableFeeds = useMemo(() => {
@@ -1546,7 +1593,7 @@ export default function MulticamViewport({
 
             {/* View Mode B: Interactive Live Master Canvas Stage (WYSIWYG 16:9 Frame) */}
             {!isSoloMode && (
-                <div className="canvas-stage-wrapper">
+                <div ref={stageWrapperRef} className="canvas-stage-wrapper">
                     {/* Collapsible Left Panel: Feeds & Displays Palette */}
                     {showFeedsPalette && (
                         <div className="canvas-side-drawer feeds-palette-drawer">
@@ -1640,6 +1687,12 @@ export default function MulticamViewport({
                     <div
                         ref={canvasFrameRef}
                         className="canvas-master-frame-16-9"
+                        style={{
+                            width: `${canvasFrameDimensions.width}px`,
+                            height: `${canvasFrameDimensions.height}px`,
+                            maxWidth: '100%',
+                            maxHeight: '100%'
+                        }}
                     >
                         <div className="corner-accent top-left" />
                         <div className="corner-accent top-right" />
@@ -1703,7 +1756,18 @@ export default function MulticamViewport({
                             const isSelected = selectedFeedIndex === origIdx;
                             const isThisDragging = isDragging && selectedFeedIndex === origIdx;
                             const isThisResizing = isResizing && selectedFeedIndex === origIdx;
-                            const st = (allStations.length > 0 ? allStations : timelineStations).find(s => s.id === p.stationId) || { id: p.stationId, displayName: p.label || p.stationId };
+                            const matchedStation = (allStations.length > 0 ? allStations : timelineStations).find(s => 
+                                s.id === p.stationId || 
+                                s.hostname?.toLowerCase() === p.stationId?.toLowerCase() || 
+                                s.id?.toLowerCase() === p.stationId?.toLowerCase()
+                            );
+                            const matchedFeed = availableFeeds.find(f => f.stationId === p.stationId && f.displayId === p.displayId);
+                            const st = matchedStation || { 
+                                id: p.stationId, 
+                                hostname: matchedFeed?.stationHostname || p.stationHostname || p.stationId,
+                                displayName: matchedFeed?.stationName || p.label || p.stationId,
+                                displays: matchedFeed ? [{ displayId: matchedFeed.displayId, width: matchedFeed.sourceWidth, height: matchedFeed.sourceHeight }] : []
+                            };
                             const bColor = p.borderColor || SLOT_BORDER_COLORS[origIdx % SLOT_BORDER_COLORS.length];
                             const bWidth = p.borderWidth !== undefined ? p.borderWidth : 2;
                             const rot = p.rotation || 0;
