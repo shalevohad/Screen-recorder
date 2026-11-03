@@ -1747,10 +1747,13 @@ During extensive forensic and multi-station layout editing, five workflow and UI
    - Eliminated `isSoloMode` viewport swapping. The Master Canvas Grid is now the single continuous stage.
    - Added `⊞ 1x1 FOCUS` in the inspector which instantly expands the selected station to fill the full 16:9 canvas (1920x1080 at 0,0) without leaving the canvas workspace.
    - Hardened `1x2 DUAL` preset to compute proportional aspect-preserved cells for stations with dual monitors.
-6. **Unified Minimalist Feeds & Layers Drawer with Top-Pinned Selection**:
+6. **Unified Minimalist Feeds & Layers Drawer with Native Drag & Drop (D&D) Reordering**:
    - Combined the separate left "Feeds Palette" and right "Layers Panel" into a single, compact `🗂️ FEEDS & LAYERS` drawer.
-   - Reduced feed items to a strict, elegant **single-row layout** (`27px` height) showing `#Rank`, active status dot, station/display title, native resolution, and quick action buttons (`⬆️`, `⬇️`, `✕` or `＋ ADD`).
-   - Implemented dynamic top-pinning: **the currently selected feed is automatically sorted and pinned to the very top of the list**, providing instant focus and immediate accessibility when selecting elements on the canvas or in the list.
+   - Reduced feed items to a strict, elegant **single-row layout** (`27px` height) showing a drag grip handle (`⠿`), `#Rank`, active status dot, station/display title, native resolution, and quick action buttons (`⬆️`, `⬇️`, `✕` or `＋ ADD`).
+   - **Native HTML5 Drag & Drop (D&D)**:
+     - Users can drag any layer row up or down within the list with real-time glowing drop-indicator lines (`.drop-above` / `.drop-below`).
+     - Dropping instantly recalculates the sequential layer ranks (`zIndex: N - position`) so the list order directly dictates the visual stacking order on the canvas.
+     - Unplaced feeds can be dragged directly into the layers list to insert them at a chosen layer rank, or dragged onto the 16:9 Master Canvas stage to position them at the exact drop coordinates.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

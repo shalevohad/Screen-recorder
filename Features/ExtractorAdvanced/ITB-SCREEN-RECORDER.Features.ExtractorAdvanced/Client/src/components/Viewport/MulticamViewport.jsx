@@ -298,6 +298,8 @@ export default function MulticamViewport({
 
     // Side Panels: Unified Feeds & Layers Manager, Save/Load Presets
     const [showFeedsDrawer, setShowFeedsDrawer] = useState(false);
+    const [draggedDrawerItem, setDraggedDrawerItem] = useState(null);
+    const [drawerDragOverState, setDrawerDragOverState] = useState({ index: null, position: null });
     const [showSavePresetModal, setShowSavePresetModal] = useState(false);
     const [showPresetsMenu, setShowPresetsMenu] = useState(false);
     const [presetNameInput, setPresetNameInput] = useState('');
@@ -1382,12 +1384,8 @@ export default function MulticamViewport({
             };
         });
 
-        // Sort placed: selected item first, then by layerRank descending
-        placed.sort((a, b) => {
-            if (a.isSelected) return -1;
-            if (b.isSelected) return 1;
-            return b.layerRank - a.layerRank;
-        });
+        // Sort placed strictly by layerRank descending (Top Layer #N at top, Bottom Layer #1 at bottom)
+        placed.sort((a, b) => b.layerRank - a.layerRank);
 
         const unplaced = availableFeeds
             .filter(f => !currentPlacements.some(p => p.stationId === f.stationId && p.displayId === f.displayId))
@@ -1408,6 +1406,214 @@ export default function MulticamViewport({
 
         return { filteredPlaced: filteredP, filteredUnplaced: filteredU };
     }, [currentPlacements, availableFeeds, selectedFeedIndex, feedSearchQuery]);
+
+    // -------------------------------------------------------------
+    // FEEDS & LAYERS DRAWER DRAG & DROP REORDERING ENGINE
+    // -------------------------------------------------------------
+    const handleRowDragStart = useCallback((e, item) => {
+        e.stopPropagation();
+        setDraggedDrawerItem(item);
+        e.dataTransfer.effectAllowed = 'copyMove';
+        e.dataTransfer.setData('text/plain', JSON.stringify({
+            origIdx: item.origIdx,
+            type: item.type,
+            stationId: item.stationId,
+            displayId: item.displayId
+        }));
+    }, []);
+
+    const handleRowDragOver = useCallback((e, index) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        const rect = e.currentTarget.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const position = e.clientY < midY ? 'above' : 'below';
+        setDrawerDragOverState(prev => {
+            if (prev.index === index && prev.position === position) return prev;
+            return { index, position };
+        });
+    }, []);
+
+    const handleRowDragLeave = useCallback((e, index) => {
+        e.stopPropagation();
+        setDrawerDragOverState(prev => {
+            if (prev.index === index) {
+                return { index: null, position: null };
+            }
+            return prev;
+        });
+    }, []);
+
+    const handleRowDragEnd = useCallback(() => {
+        setDraggedDrawerItem(null);
+        setDrawerDragOverState({ index: null, position: null });
+    }, []);
+
+    const handleRowDrop = useCallback((e, targetIndex) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const state = drawerDragOverState;
+        setDrawerDragOverState({ index: null, position: null });
+        setDraggedDrawerItem(null);
+
+        const dataStr = e.dataTransfer.getData('text/plain');
+        if (!dataStr) return;
+
+        try {
+            const data = JSON.parse(dataStr);
+            if (data.type === 'placed') {
+                const sourceOrigIdx = data.origIdx;
+                const sourceListIndex = filteredPlaced.findIndex(item => item.origIdx === sourceOrigIdx);
+                if (sourceListIndex === -1) return;
+
+                let insertIndex = targetIndex;
+                if (state.position === 'below') {
+                    insertIndex += 1;
+                }
+                if (sourceListIndex < insertIndex) {
+                    insertIndex -= 1;
+                }
+
+                if (sourceListIndex === insertIndex) return;
+
+                const reordered = [...filteredPlaced];
+                const [moved] = reordered.splice(sourceListIndex, 1);
+                reordered.splice(insertIndex, 0, moved);
+
+                // Re-rank sequentially: Index 0 gets highest rank N, bottom gets 1
+                const N = reordered.length;
+                const nextPlacements = currentPlacements.map((p, pIdx) => {
+                    const pos = reordered.findIndex(item => item.origIdx === pIdx);
+                    if (pos !== -1) {
+                        return {
+                            ...p,
+                            zIndex: N - pos
+                        };
+                    }
+                    return p;
+                });
+                updateActivePlacements(nextPlacements);
+                setSelectedFeedIndex(moved.origIdx);
+            } else if (data.type === 'unplaced') {
+                const feed = availableFeeds.find(f => f.stationId === data.stationId && f.displayId === data.displayId);
+                if (!feed) return;
+
+                const aspect = feed.nativeAspectRatio || (feed.sourceWidth && feed.sourceHeight ? feed.sourceWidth / feed.sourceHeight : 16 / 9);
+                const initW = aspect >= 1 ? 640 : Math.round(360 * aspect);
+                const initH = aspect >= 1 ? Math.round(640 / aspect) : 360;
+                const color = SLOT_BORDER_COLORS[currentPlacements.length % SLOT_BORDER_COLORS.length];
+
+                let insertIndex = targetIndex;
+                if (state.position === 'below') {
+                    insertIndex += 1;
+                }
+
+                const newPlacement = {
+                    stationId: feed.stationId,
+                    displayId: feed.displayId,
+                    label: feed.label,
+                    x: 100 + (currentPlacements.length * 40) % 800,
+                    y: 80 + (currentPlacements.length * 40) % 500,
+                    width: initW,
+                    height: initH,
+                    sourceWidth: feed.sourceWidth || 1920,
+                    sourceHeight: feed.sourceHeight || 1080,
+                    nativeAspectRatio: aspect,
+                    aspectRatio: aspect,
+                    zIndex: 1,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: color,
+                    shadowEffect: 'deep',
+                    borderRadius: 0
+                };
+
+                const next = [...currentPlacements, newPlacement];
+                const newOrigIdx = next.length - 1;
+
+                const reordered = [...filteredPlaced];
+                reordered.splice(insertIndex, 0, { origIdx: newOrigIdx });
+
+                const N = reordered.length;
+                const finalizedPlacements = next.map((p, pIdx) => {
+                    const pos = reordered.findIndex(item => item.origIdx === pIdx);
+                    return {
+                        ...p,
+                        zIndex: pos !== -1 ? N - pos : 1
+                    };
+                });
+
+                updateActivePlacements(finalizedPlacements);
+                setSelectedFeedIndex(newOrigIdx);
+            }
+        } catch (err) {
+            console.warn('Failed to handle layer drag drop:', err);
+        }
+    }, [drawerDragOverState, filteredPlaced, currentPlacements, availableFeeds, updateActivePlacements]);
+
+    const handleCanvasDrop = useCallback((e) => {
+        e.preventDefault();
+        const dataStr = e.dataTransfer.getData('text/plain');
+        if (!dataStr || !canvasFrameRef.current) return;
+        try {
+            const data = JSON.parse(dataStr);
+            const rect = canvasFrameRef.current.getBoundingClientRect();
+            const dropClientX = e.clientX - rect.left;
+            const dropClientY = e.clientY - rect.top;
+            const canvasX = clamp(Math.round((dropClientX / rect.width) * VIRTUAL_CANVAS_W), 0, VIRTUAL_CANVAS_W - 320);
+            const canvasY = clamp(Math.round((dropClientY / rect.height) * VIRTUAL_CANVAS_H), 0, VIRTUAL_CANVAS_H - 180);
+
+            if (data.type === 'unplaced') {
+                const feed = availableFeeds.find(f => f.stationId === data.stationId && f.displayId === data.displayId);
+                if (feed) {
+                    const aspect = feed.nativeAspectRatio || (feed.sourceWidth && feed.sourceHeight ? feed.sourceWidth / feed.sourceHeight : 16 / 9);
+                    const initW = aspect >= 1 ? 640 : Math.round(360 * aspect);
+                    const initH = aspect >= 1 ? Math.round(640 / aspect) : 360;
+                    const maxZ = currentPlacements.length > 0 ? Math.max(...currentPlacements.map(p => p.zIndex || 0)) + 1 : 1;
+                    const color = SLOT_BORDER_COLORS[currentPlacements.length % SLOT_BORDER_COLORS.length];
+
+                    const newPlacement = {
+                        stationId: feed.stationId,
+                        displayId: feed.displayId,
+                        label: feed.label,
+                        x: clamp(canvasX, 0, VIRTUAL_CANVAS_W - initW),
+                        y: clamp(canvasY, 0, VIRTUAL_CANVAS_H - initH),
+                        width: initW,
+                        height: initH,
+                        sourceWidth: feed.sourceWidth || 1920,
+                        sourceHeight: feed.sourceHeight || 1080,
+                        nativeAspectRatio: aspect,
+                        aspectRatio: aspect,
+                        zIndex: maxZ,
+                        rotation: 0,
+                        borderWidth: 2,
+                        borderColor: color,
+                        shadowEffect: 'deep',
+                        borderRadius: 0
+                    };
+                    const next = [...currentPlacements, newPlacement];
+                    updateActivePlacements(next);
+                    setSelectedFeedIndex(next.length - 1);
+                }
+            } else if (data.type === 'placed' && data.origIdx !== undefined) {
+                const next = currentPlacements.map((p, idx) => {
+                    if (idx === data.origIdx) {
+                        return {
+                            ...p,
+                            x: clamp(canvasX, 0, VIRTUAL_CANVAS_W - p.width),
+                            y: clamp(canvasY, 0, VIRTUAL_CANVAS_H - p.height)
+                        };
+                    }
+                    return p;
+                });
+                updateActivePlacements(next);
+                setSelectedFeedIndex(data.origIdx);
+            }
+        } catch (err) {
+            console.warn('Canvas drop failed:', err);
+        }
+    }, [availableFeeds, currentPlacements, updateActivePlacements]);
 
     return (
         <div
@@ -1689,49 +1895,62 @@ export default function MulticamViewport({
                                             <span>CANVAS LAYERS</span>
                                             <span className="section-count">{filteredPlaced.length}</span>
                                         </div>
-                                        {filteredPlaced.map((item) => (
-                                            <div
-                                                key={`feed-layer-${item.stationId}-${item.displayId}-${item.origIdx}`}
-                                                className={`feed-layer-row ${item.isSelected ? 'is-selected' : ''}`}
-                                                onClick={() => setSelectedFeedIndex(item.origIdx)}
-                                                title={`Click to select ${item.label}`}
-                                            >
-                                                <span className="layer-rank-badge" title={`Layer Priority: #${item.layerRank}`}>
-                                                    #{item.layerRank}
-                                                </span>
-                                                <span className={`status-dot ${item.isSelected ? 'active' : ''}`} />
-                                                <span className="row-label" title={item.label}>
-                                                    {item.label}
-                                                </span>
-                                                <span className="row-res">
-                                                    {item.sourceWidth}×{item.sourceHeight}
-                                                </span>
-                                                <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleBringForward(item.origIdx)}
-                                                        title="Bring Forward (Layer +1)"
-                                                    >
-                                                        ⬆️
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleSendBackward(item.origIdx)}
-                                                        title="Send Backward (Layer -1)"
-                                                    >
-                                                        ⬇️
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="btn-remove-row"
-                                                        onClick={() => handleRemovePlacement(item.origIdx)}
-                                                        title="Remove from canvas"
-                                                    >
-                                                        ✕
-                                                    </button>
+                                        {filteredPlaced.map((item, listIdx) => {
+                                            const isThisDragged = draggedDrawerItem && draggedDrawerItem.type === 'placed' && draggedDrawerItem.origIdx === item.origIdx;
+                                            const isOverThis = drawerDragOverState.index === listIdx;
+                                            const dropClass = isOverThis ? (drawerDragOverState.position === 'above' ? 'drop-above' : 'drop-below') : '';
+
+                                            return (
+                                                <div
+                                                    key={`feed-layer-${item.stationId}-${item.displayId}-${item.origIdx}`}
+                                                    className={`feed-layer-row ${item.isSelected ? 'is-selected' : ''} ${isThisDragged ? 'is-dragging-row' : ''} ${dropClass}`}
+                                                    draggable
+                                                    onDragStart={(e) => handleRowDragStart(e, item)}
+                                                    onDragOver={(e) => handleRowDragOver(e, listIdx)}
+                                                    onDragLeave={(e) => handleRowDragLeave(e, listIdx)}
+                                                    onDrop={(e) => handleRowDrop(e, listIdx)}
+                                                    onDragEnd={handleRowDragEnd}
+                                                    onClick={() => setSelectedFeedIndex(item.origIdx)}
+                                                    title={`Drag to reorder layer (${item.label})`}
+                                                >
+                                                    <span className="drag-handle-grip" title="Drag to reorder layer order">⠿</span>
+                                                    <span className="layer-rank-badge" title={`Layer Priority: #${item.layerRank}`}>
+                                                        #{item.layerRank}
+                                                    </span>
+                                                    <span className={`status-dot ${item.isSelected ? 'active' : ''}`} />
+                                                    <span className="row-label" title={item.label}>
+                                                        {item.label}
+                                                    </span>
+                                                    <span className="row-res">
+                                                        {item.sourceWidth}×{item.sourceHeight}
+                                                    </span>
+                                                    <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleBringForward(item.origIdx)}
+                                                            title="Bring Forward (Layer +1)"
+                                                        >
+                                                            ⬆️
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSendBackward(item.origIdx)}
+                                                            title="Send Backward (Layer -1)"
+                                                        >
+                                                            ⬇️
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="btn-remove-row"
+                                                            onClick={() => handleRemovePlacement(item.origIdx)}
+                                                            title="Remove from canvas"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
 
@@ -1742,33 +1961,41 @@ export default function MulticamViewport({
                                             <span>AVAILABLE FEEDS</span>
                                             <span className="section-count">{filteredUnplaced.length}</span>
                                         </div>
-                                        {filteredUnplaced.map((item) => (
-                                            <div
-                                                key={`unplaced-feed-${item.stationId}-${item.displayId}`}
-                                                className="feed-layer-row unplaced"
-                                                onClick={() => handleAddFeedToCanvas(item.feed)}
-                                                title={`Click to add ${item.label} to canvas`}
-                                            >
-                                                <span className="layer-rank-badge unplaced">＋</span>
-                                                <span className="status-dot unplaced" />
-                                                <span className="row-label" title={item.label}>
-                                                    {item.label}
-                                                </span>
-                                                <span className="row-res">
-                                                    {item.sourceWidth}×{item.sourceHeight}
-                                                </span>
-                                                <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-                                                    <button
-                                                        type="button"
-                                                        className="btn-add-row"
-                                                        onClick={() => handleAddFeedToCanvas(item.feed)}
-                                                        title="Add to canvas"
-                                                    >
-                                                        ＋ ADD
-                                                    </button>
+                                        {filteredUnplaced.map((item) => {
+                                            const isThisDragged = draggedDrawerItem && draggedDrawerItem.type === 'unplaced' && draggedDrawerItem.stationId === item.stationId && draggedDrawerItem.displayId === item.displayId;
+
+                                            return (
+                                                <div
+                                                    key={`unplaced-feed-${item.stationId}-${item.displayId}`}
+                                                    className={`feed-layer-row unplaced ${isThisDragged ? 'is-dragging-row' : ''}`}
+                                                    draggable
+                                                    onDragStart={(e) => handleRowDragStart(e, item)}
+                                                    onDragEnd={handleRowDragEnd}
+                                                    onClick={() => handleAddFeedToCanvas(item.feed)}
+                                                    title={`Drag onto canvas or layers, or click to add ${item.label}`}
+                                                >
+                                                    <span className="drag-handle-grip" title="Drag onto canvas or layers">⠿</span>
+                                                    <span className="layer-rank-badge unplaced">＋</span>
+                                                    <span className="status-dot unplaced" />
+                                                    <span className="row-label" title={item.label}>
+                                                        {item.label}
+                                                    </span>
+                                                    <span className="row-res">
+                                                        {item.sourceWidth}×{item.sourceHeight}
+                                                    </span>
+                                                    <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            type="button"
+                                                            className="btn-add-row"
+                                                            onClick={() => handleAddFeedToCanvas(item.feed)}
+                                                            title="Add to canvas"
+                                                        >
+                                                            ＋ ADD
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
 
@@ -1800,6 +2027,11 @@ export default function MulticamViewport({
                             maxHeight: '100%',
                             aspectRatio: '16 / 9'
                         }}
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'copy';
+                        }}
+                        onDrop={handleCanvasDrop}
                     >
                         <div className="corner-accent top-left" />
                         <div className="corner-accent top-right" />
