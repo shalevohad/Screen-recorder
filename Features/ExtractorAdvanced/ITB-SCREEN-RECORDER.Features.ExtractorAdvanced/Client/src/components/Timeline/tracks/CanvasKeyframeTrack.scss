@@ -1,96 +1,85 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/CanvasKeyframeTrack.scss
+// Tactical NOC Minimalist 26px Keyframe Layout Track
 // ==========================================
 .canvas-keyframe-track-row {
     display: flex;
-    align-items: stretch;
-    height: 40px;
-    background: #090e17;
-    border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+    align-items: center;
+    height: 26px;
+    width: 100%;
+    background: rgba(15, 23, 42, 0.95);
+    border-top: 1px dashed rgba(6, 182, 212, 0.25);
+    border-bottom: 1px solid rgba(30, 41, 59, 0.95);
     position: relative;
     user-select: none;
 
     .track-header-cell {
-        width: 220px;
-        min-width: 220px;
-        max-width: 220px;
-        background: #0c1424;
-        border-right: 1px solid rgba(6, 182, 212, 0.25);
-        padding: 4px 10px;
+        width: 180px;
+        min-width: 180px;
+        height: 100%;
         display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 2px;
-        z-index: 2;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px;
+        background: rgba(10, 15, 29, 0.98);
+        border-right: 1px solid rgba(6, 182, 212, 0.25);
+        z-index: 5;
+        box-sizing: border-box;
 
-        .header-meta {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-
-            .track-icon {
-                font-size: 13px;
-            }
-
-            .track-title {
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 0.08em;
-                color: #e2e8f0;
-                font-family: monospace;
-            }
-
-            .kf-count-pill {
-                font-size: 9px;
-                font-weight: 700;
-                padding: 1px 5px;
-                border-radius: 3px;
-                background: rgba(6, 182, 212, 0.15);
-                color: #06b6d4;
-                border: 1px solid rgba(6, 182, 212, 0.3);
-            }
+        .track-icon {
+            font-size: 0.75rem;
+            color: #06B6D4;
+            line-height: 1;
         }
 
-        .header-sub {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 6px;
+        .track-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.62rem;
+            font-weight: 700;
+            color: #06B6D4;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+        }
 
-            .active-trans-badge {
-                font-size: 9px;
-                font-family: monospace;
-                color: #94a3b8;
-                text-transform: uppercase;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
+        .kf-count-pill {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.58rem;
+            font-weight: 800;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: rgba(6, 182, 212, 0.15);
+            color: #22D3EE;
+            border: 1px solid rgba(6, 182, 212, 0.35);
+        }
 
-            .btn-add-kf-track {
-                background: rgba(6, 182, 212, 0.18);
-                border: 1px solid #06b6d4;
-                color: #06b6d4;
-                font-size: 9px;
-                font-weight: 700;
-                border-radius: 3px;
-                padding: 1px 6px;
-                cursor: pointer;
-                transition: all 0.15s ease;
+        .btn-add-kf-track {
+            margin-left: auto;
+            background: rgba(6, 182, 212, 0.18);
+            border: 1px solid #06B6D4;
+            color: #06B6D4;
+            font-size: 0.6rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            border-radius: 3px;
+            padding: 1px 5px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            line-height: 1.2;
 
-                &:hover {
-                    background: #06b6d4;
-                    color: #070a10;
-                }
+            &:hover {
+                background: #06B6D4;
+                color: #070A10;
+                box-shadow: 0 0 6px rgba(6, 182, 212, 0.5);
             }
         }
     }
 
     .track-surface {
         flex: 1;
+        height: 100%;
         position: relative;
-        background: #070b12;
-        overflow: hidden;
+        background: #070B12;
+        overflow: visible;
         cursor: crosshair;
 
         .track-grid-lines {
@@ -106,51 +95,78 @@
             top: 50%;
             transform: translate(-50%, -50%);
             display: flex;
-            flex-direction: column;
             align-items: center;
-            cursor: pointer;
-            z-index: 5;
-            transition: transform 0.15s ease;
+            justify-content: center;
+            cursor: grab;
+            z-index: 10;
+            transition: transform 0.1s ease;
+
+            &:active, &.is-dragging {
+                cursor: grabbing;
+                z-index: 20;
+            }
 
             .diamond-shape {
-                font-size: 16px;
-                line-height: 1;
-                color: #06b6d4;
-                filter: drop-shadow(0 0 4px rgba(6, 182, 212, 0.6));
+                width: 16px;
+                height: 16px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 11px;
+                color: #06B6D4;
+                background: rgba(7, 10, 16, 0.9);
+                border: 1.5px solid #06B6D4;
+                border-radius: 3px;
+                transform: rotate(45deg);
+                box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
                 transition: all 0.15s ease;
             }
 
-            .diamond-label {
-                font-size: 8px;
-                font-weight: 800;
-                font-family: monospace;
-                color: #cbd5e1;
-                background: rgba(15, 23, 42, 0.9);
-                padding: 0 3px;
-                border-radius: 2px;
-                margin-top: -2px;
-                border: 1px solid rgba(6, 182, 212, 0.4);
+            &:hover .diamond-shape {
+                transform: rotate(45deg) scale(1.2);
+                border-color: #38BDF8;
+                background: #06B6D4;
+                color: #070A10;
+                box-shadow: 0 0 12px rgba(6, 182, 212, 0.8);
+            }
+
+            &.is-active .diamond-shape {
+                border-color: #10B981;
+                color: #10B981;
+                box-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+            }
+
+            &.is-dragging .diamond-shape {
+                border-color: #F59E0B;
+                color: #070A10;
+                background: #F59E0B;
+                box-shadow: 0 0 14px rgba(245, 158, 11, 0.9);
+                transform: rotate(45deg) scale(1.25);
+            }
+
+            .diamond-drag-tooltip {
+                position: absolute;
+                bottom: calc(100% + 6px);
+                left: 50%;
+                transform: translateX(-50%);
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                background: rgba(11, 17, 30, 0.96);
+                border: 1px solid #F59E0B;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 9px;
+                font-weight: 700;
+                color: #FBBF24;
                 white-space: nowrap;
-            }
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+                pointer-events: none;
 
-            &:hover {
-                transform: translate(-50%, -50%) scale(1.25);
-                z-index: 10;
-
-                .diamond-shape {
-                    color: #38bdf8;
-                    filter: drop-shadow(0 0 8px #38bdf8);
-                }
-            }
-
-            &.is-active {
-                .diamond-shape {
-                    color: #10b981;
-                    filter: drop-shadow(0 0 10px #10b981);
-                }
-                .diamond-label {
-                    color: #10b981;
-                    border-color: #10b981;
+                .tooltip-sub {
+                    color: #94A3B8;
+                    font-weight: 400;
                 }
             }
         }

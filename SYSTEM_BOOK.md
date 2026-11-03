@@ -1613,4 +1613,29 @@ The Live Grid Master Canvas Composer unites workspace playback, freeform composi
    - **Persistent Custom Presets & JSON Data**: Operators can name and save custom layouts to `localStorage` (`itb_canvas_saved_presets`), recall them instantly from the `📁 SAVED PRESETS` dropdown, or export/import JSON configurations across sessions.
 
 ---
+## 36. Minimalist Support Tracks, Draggable Keyframes & Live Canvas Auto-Grid Architecture (2026-11-03)
+
+### 1. Operational Scope & UX Enhancements
+To optimize tactical operator workflow and eliminate timeline clutter, the studio canvas and timeline tracks have been upgraded:
+
+1. **Default AUTO-GRID & Zero-Blank Initial View**:
+   - Workstations and screens populate automatically into `AUTO-GRID` (renamed from `AUTO-PACK`) upon opening the studio, marked as selected and active.
+   - User custom edits and placements are preserved in local state (`hasUserCustomizedRef`).
+   - A dedicated `↺ RESET CANVAS` button in the toolbar allows operators to immediately revert to a clean, balanced auto-grid of all connected screens at any point.
+2. **Draggable Keyframes with Instant Anchoring (`CanvasKeyframeTrack`)**:
+   - Initial Keyframe 0 anchors precisely to `baseEpochMs` (`00:00:00` of the timeline), eliminating the artificial 23-second startup offset.
+   - Layout keyframe diamond pins (`❖`) support fluid mouse drag (`onMouseDownMarker`) across the timeline surface to adjust transition timestamps dynamically.
+   - During drag gestures, a glowing yellow floating badge displays the exact clock timestamp and positive offset (`+XX.Xs`).
+3. **Minimalist 26px Unified Support Tracks & 180px Sidebar Alignment**:
+   - Both `CanvasKeyframeTrack` (`❖ LAYOUT`) and `AudioRoutingTrack` (`🎙️ AUDIO`) have been streamlined into compact, single-row 26px heights, matching the height and style of `DirectorTrack`.
+   - The sidebar header cell across all tracks strictly adheres to the 180px standard width, eliminating header misalignments and redundant vertical stacking.
+4. **Timeline Track Stacking Order**:
+   - Primary station video tracks (`TimelineTrack`) and display director tracks (`DirectorTrack`) render at the top of the timeline board.
+   - All global support tracks (`AudioRoutingTrack` and `CanvasKeyframeTrack`) are grouped together at the bottom of the timeline board, one after the other.
+5. **Multi-Corner Freeform Resizing & Tactical Hotkeys**:
+   - Selected card boxes feature four corner resize handles (`tl`, `tr`, `bl`, `br`) supporting aspect-locked (Shift) and freeform scaling from any direction.
+   - Keyboard shortcuts: `Delete` / `Backspace` removes selected boxes, `Escape` dismisses drawers and popovers, arrow keys nudge selected feeds by 10px (or 1px with Shift), and `+` adds a layout keyframe at the current epoch.
+   - The redundant `WYSIWYG MASTER CANVAS STUDIO` center badge has been removed from the canvas toolbar to maximize operational screen real-estate.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

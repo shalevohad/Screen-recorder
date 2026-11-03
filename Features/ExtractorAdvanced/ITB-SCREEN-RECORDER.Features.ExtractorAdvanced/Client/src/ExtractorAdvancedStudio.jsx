@@ -186,6 +186,24 @@ export default function ExtractorAdvancedStudio() {
         });
     }, []);
 
+    const handleUpdateKeyframeEpoch = useCallback((idxToUpdate, newEpoch) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || !prev.keyframes[idxToUpdate]) return prev;
+            const nextKfs = [...prev.keyframes];
+            nextKfs[idxToUpdate] = {
+                ...nextKfs[idxToUpdate],
+                timestampEpochMs: Math.round(newEpoch)
+            };
+            nextKfs.sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+            const newActiveIdx = nextKfs.findIndex(k => k.timestampEpochMs === Math.round(newEpoch));
+            if (newActiveIdx >= 0) setActiveKfIndex(newActiveIdx);
+            return {
+                ...prev,
+                keyframes: nextKfs
+            };
+        });
+    }, []);
+
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
         if (activeStationId === stationId) setActiveStationId(null);
@@ -1015,6 +1033,7 @@ export default function ExtractorAdvancedStudio() {
                                     }}
                                     onAddKeyframeAtEpoch={handleAddKeyframeAtEpoch}
                                     onDeleteKeyframe={handleDeleteKeyframe}
+                                    onUpdateKeyframeEpoch={handleUpdateKeyframeEpoch}
                                 />
                             </div>
                         </div>

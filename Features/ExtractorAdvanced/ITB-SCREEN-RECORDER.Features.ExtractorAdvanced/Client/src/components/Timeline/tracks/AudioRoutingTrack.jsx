@@ -1,5 +1,6 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.jsx
+// Minimalist 26px Single-Row Audio Routing Track
 // ==========================================
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
@@ -86,11 +87,12 @@ export default function AudioRoutingTrack({
         return () => window.removeEventListener('click', handleOutside);
     }, [selectedMenuSegment]);
 
-    const handleSplitAtPlayhead = () => {
+    const handleSplitAtPlayhead = (e) => {
+        e?.stopPropagation();
         if (!currentActiveSegment) return;
         const s = currentActiveSegment.startEpochMs ?? currentActiveSegment.StartEpochMs ?? 0;
-        const e = currentActiveSegment.endEpochMs ?? currentActiveSegment.EndEpochMs ?? 0;
-        if (playheadEpoch > s + 500 && playheadEpoch < e - 500) {
+        const eMs = currentActiveSegment.endEpochMs ?? currentActiveSegment.EndEpochMs ?? 0;
+        if (playheadEpoch > s + 500 && playheadEpoch < eMs - 500) {
             onSplitSegment?.(playheadEpoch);
             setSelectedMenuSegment(null);
         }
@@ -104,47 +106,42 @@ export default function AudioRoutingTrack({
             aria-label="Audio Routing Track"
             ref={containerRef}
         >
+            {/* Sleek 180px Header Cell matching DirectorTrack */}
             <div className="audio-track-label">
                 <span className="audio-icon">🎙️</span>
-                <span className="audio-title">AUDIO ROUTING (MASTER MIX)</span>
+                <span className="audio-title">AUDIO</span>
                 <span 
                     className={`audio-active-badge ${activeStationId === 'MUTE' ? 'is-muted' : 'is-active'}`}
                     title={`Active audio source at playhead: ${activeStationName} [${activeStartClock} - ${activeEndClock}]`}
                 >
                     <span className="badge-pulse" />
-                    {activeStationId === 'MUTE' ? '🔇 MUTED' : `🎙️ ${activeStationName.toUpperCase()}`}
-                    {activeStartClock && (
-                        <span className="active-interval-time">
-                            [{activeStartClock} - {activeEndClock}]
-                        </span>
-                    )}
+                    <span className="badge-text">{activeStationId === 'MUTE' ? 'MUTED' : activeStationName.toUpperCase()}</span>
                 </span>
 
                 <div className="audio-track-actions">
                     {onFollowVisualFeed && (
                         <button
                             type="button"
-                            className={`btn-audio-action ${isAutoFollow ? 'active' : ''}`}
+                            className={`btn-audio-mini-action ${isAutoFollow ? 'active' : ''}`}
                             onClick={onFollowVisualFeed}
-                            title="Automatically route audio to whichever station is currently in active visual focus"
+                            title="Automatically route audio to whichever station is in active visual focus"
                         >
-                            <span className="icon">🎯</span>
-                            <span>{isAutoFollow ? 'AUTO-FOLLOW ON' : 'FOLLOW VISUAL'}</span>
+                            🎯
                         </button>
                     )}
 
                     <button
                         type="button"
-                        className="btn-audio-action"
+                        className="btn-audio-mini-action"
                         onClick={handleSplitAtPlayhead}
                         title="Split Audio Track at Playhead (✂️)"
                     >
-                        <span className="icon">✂️</span>
-                        <span>SPLIT</span>
+                        ✂️
                     </button>
                 </div>
             </div>
 
+            {/* Single-row Timeline surface */}
             <div className="audio-track-timeline">
                 {visibleSegments.map((seg, idx) => {
                     const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;

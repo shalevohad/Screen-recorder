@@ -231,6 +231,8 @@ export default function MulticamViewport({
     const [snapGuides, setSnapGuides] = useState({ vertical: null, horizontal: null });
 
     const dragStateRef = useRef(null);
+    const hasUserCustomizedRef = useRef(false);
+    const [selectedPresetId, setSelectedPresetId] = useState('auto-grid');
 
     // Enumerate all available workstation feeds across displays
     const availableFeeds = useMemo(() => {
@@ -271,7 +273,7 @@ export default function MulticamViewport({
             id: 'canvas-timeline-root',
             keyframes: [
                 {
-                    timestampEpochMs: cutStartEpochMs,
+                    timestampEpochMs: baseEpochMs,
                     transitionDurationSec: 0.5,
                     transitionType: 'smooth',
                     layout: {
@@ -289,6 +291,11 @@ export default function MulticamViewport({
     useEffect(() => {
         if (canvasLayoutTimeline?.keyframes?.length > 0) {
             setInternalTimeline(JSON.parse(JSON.stringify(canvasLayoutTimeline)));
+            const hasExisting = canvasLayoutTimeline.keyframes.some(k => k.layout?.placements?.length > 0);
+            if (hasExisting) {
+                hasUserCustomizedRef.current = true;
+                setSelectedPresetId('custom');
+            }
         }
     }, [canvasLayoutTimeline]);
 
@@ -316,6 +323,17 @@ export default function MulticamViewport({
             return nextTimeline;
         });
     }, [safeActiveIdx, onUpdateCanvasLayoutTimeline]);
+
+    // Auto-populate AUTO-GRID by default when availableFeeds become available and canvas is empty
+    useEffect(() => {
+        if (availableFeeds.length > 0 && (!currentPlacements || currentPlacements.length === 0) && !hasUserCustomizedRef.current) {
+            const autoPacked = generateAutoPackPlacements(availableFeeds);
+            if (autoPacked.length > 0) {
+                updateActivePlacements(autoPacked);
+                setSelectedPresetId('auto-grid');
+            }
+        }
+    }, [availableFeeds, currentPlacements, updateActivePlacements]);
 
     // Sync current canvas layout to parent Studio
     useEffect(() => {
@@ -434,6 +452,7 @@ export default function MulticamViewport({
 
         switch (presetId) {
             case 'auto':
+            case 'auto-grid':
                 newPlacements = generateAutoPackPlacements(feeds);
                 break;
             case '1x1':
@@ -528,6 +547,12 @@ export default function MulticamViewport({
         if (newPlacements.length > 0) {
             updateActivePlacements(newPlacements);
             setSelectedFeedIndex(0);
+            if (presetId === 'auto' || presetId === 'auto-grid') {
+                setSelectedPresetId('auto-grid');
+            } else {
+                setSelectedPresetId(presetId);
+                hasUserCustomizedRef.current = true;
+            }
         }
     }, [availableFeeds, currentPlacements, updateActivePlacements]);
 
@@ -554,6 +579,8 @@ export default function MulticamViewport({
         if (!preset || !preset.placements) return;
         updateActivePlacements(preset.placements);
         setSelectedFeedIndex(0);
+        setSelectedPresetId('custom');
+        hasUserCustomizedRef.current = true;
         setShowPresetsMenu(false);
     }, [updateActivePlacements]);
 
@@ -575,12 +602,16 @@ export default function MulticamViewport({
             if (parsed.placements && Array.isArray(parsed.placements)) {
                 updateActivePlacements(parsed.placements);
                 setSelectedFeedIndex(0);
+                setSelectedPresetId('custom');
+                hasUserCustomizedRef.current = true;
                 setShowJsonModal(false);
                 return;
             }
             if (parsed.keyframes && Array.isArray(parsed.keyframes)) {
                 setInternalTimeline({ id: 'canvas-timeline-imported', keyframes: parsed.keyframes });
                 setSelectedFeedIndex(0);
+                setSelectedPresetId('custom');
+                hasUserCustomizedRef.current = true;
                 setShowJsonModal(false);
                 return;
             }
@@ -599,6 +630,8 @@ export default function MulticamViewport({
         e.preventDefault();
 
         setSelectedFeedIndex(index);
+        hasUserCustomizedRef.current = true;
+        setSelectedPresetId('custom');
 
         if (!canvasFrameRef.current) return;
         const rect = canvasFrameRef.current.getBoundingClientRect();
@@ -685,12 +718,14 @@ export default function MulticamViewport({
         window.addEventListener('mouseup', handleMouseUp);
     };
 
-    const handleMouseDownResize = (e, index) => {
+    const handleMouseDownResize = (e, index, corner = 'br') => {
         if (e.button !== 0) return;
         e.stopPropagation();
         e.preventDefault();
 
         setSelectedFeedIndex(index);
+        hasUserCustomizedRef.current = true;
+        setSelectedPresetId('custom');
 
         if (!canvasFrameRef.current) return;
         const rect = canvasFrameRef.current.getBoundingClientRect();
@@ -699,9 +734,12 @@ export default function MulticamViewport({
 
         dragStateRef.current = {
             mode: 'resize',
+            corner,
             index,
             startX: e.clientX,
             startY: e.clientY,
+            initialX: p.x,
+            initialY: p.y,
             initialW: p.width,
             initialH: p.height,
             scaleX: VIRTUAL_CANVAS_W / rect.width,
@@ -716,25 +754,47 @@ export default function MulticamViewport({
             const dw = (moveEv.clientX - ds.startX) * ds.scaleX;
             let dh = (moveEv.clientY - ds.startY) * ds.scaleY;
 
-            let newW = Math.round(ds.initialW + dw);
-            let newH = Math.round(ds.initialH + dh);
+            let newX = ds.initialX;
+            let newY = ds.initialY;
+            let newW = ds.initialW;
+            let newH = ds.initialH;
 
-            if (moveEv.shiftKey) {
-                newH = Math.round(newW * (9 / 16));
+            if (ds.corner === 'br') {
+                newW = Math.round(ds.initialW + dw);
+                newH = Math.round(ds.initialH + dh);
+                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
+                newW = clamp(newW, 200, VIRTUAL_CANVAS_W - ds.initialX);
+                newH = clamp(newH, 120, VIRTUAL_CANVAS_H - ds.initialY);
+            } else if (ds.corner === 'bl') {
+                newW = Math.round(ds.initialW - dw);
+                newH = Math.round(ds.initialH + dh);
+                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
+                newW = clamp(newW, 200, ds.initialX + ds.initialW);
+                newH = clamp(newH, 120, VIRTUAL_CANVAS_H - ds.initialY);
+                newX = ds.initialX + ds.initialW - newW;
+            } else if (ds.corner === 'tr') {
+                newW = Math.round(ds.initialW + dw);
+                newH = Math.round(ds.initialH - dh);
+                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
+                newW = clamp(newW, 200, VIRTUAL_CANVAS_W - ds.initialX);
+                newH = clamp(newH, 120, ds.initialY + ds.initialH);
+                newY = ds.initialY + ds.initialH - newH;
+            } else if (ds.corner === 'tl') {
+                newW = Math.round(ds.initialW - dw);
+                newH = Math.round(ds.initialH - dh);
+                if (moveEv.shiftKey) newH = Math.round(newW * (9 / 16));
+                newW = clamp(newW, 200, ds.initialX + ds.initialW);
+                newH = clamp(newH, 120, ds.initialY + ds.initialH);
+                newX = ds.initialX + ds.initialW - newW;
+                newY = ds.initialY + ds.initialH - newH;
             }
-
-            const pTarget = currentPlacements[ds.index];
-            if (!pTarget) return;
-
-            newW = clamp(newW, 200, VIRTUAL_CANVAS_W - pTarget.x);
-            newH = clamp(newH, 120, VIRTUAL_CANVAS_H - pTarget.y);
 
             setInternalTimeline(prev => {
                 const nextKfs = [...(prev.keyframes || [])];
                 if (!nextKfs[safeActiveIdx]) return prev;
                 const placements = [...(nextKfs[safeActiveIdx].layout.placements || [])];
                 if (!placements[ds.index]) return prev;
-                placements[ds.index] = { ...placements[ds.index], width: newW, height: newH };
+                placements[ds.index] = { ...placements[ds.index], x: newX, y: newY, width: newW, height: newH };
                 nextKfs[safeActiveIdx] = {
                     ...nextKfs[safeActiveIdx],
                     layout: { ...nextKfs[safeActiveIdx].layout, placements }
@@ -772,6 +832,67 @@ export default function MulticamViewport({
             return next;
         });
     }, [onSelectActiveStation]);
+
+    // Keyboard shortcuts for tactical canvas editing
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                return;
+            }
+
+            // Delete / Backspace: delete selected box
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedFeedIndex >= 0 && currentPlacements[selectedFeedIndex]) {
+                    e.preventDefault();
+                    handleRemovePlacement(selectedFeedIndex);
+                }
+                return;
+            }
+
+            // Escape: close drawers / panels
+            if (e.key === 'Escape') {
+                setShowFeedsPalette(false);
+                setShowLayersPanel(false);
+                setShowPresetsMenu(false);
+                setShowShadowControl(false);
+                setShowRotationControl(false);
+                setShowSavePresetModal(false);
+                setShowJsonModal(false);
+                return;
+            }
+
+            // Arrow keys: nudge selected box
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                if (selectedFeedIndex >= 0 && currentPlacements[selectedFeedIndex]) {
+                    e.preventDefault();
+                    hasUserCustomizedRef.current = true;
+                    setSelectedPresetId('custom');
+                    const step = e.shiftKey ? 1 : 10;
+                    let dx = 0;
+                    let dy = 0;
+                    if (e.key === 'ArrowLeft') dx = -step;
+                    if (e.key === 'ArrowRight') dx = step;
+                    if (e.key === 'ArrowUp') dy = -step;
+                    if (e.key === 'ArrowDown') dy = step;
+
+                    const target = currentPlacements[selectedFeedIndex];
+                    const newX = clamp(target.x + dx, 0, VIRTUAL_CANVAS_W - target.width);
+                    const newY = clamp(target.y + dy, 0, VIRTUAL_CANVAS_H - target.height);
+                    const next = currentPlacements.map((p, idx) => {
+                        if (idx === selectedFeedIndex) {
+                            return { ...p, x: newX, y: newY };
+                        }
+                        return p;
+                    });
+                    updateActivePlacements(next);
+                }
+                return;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedFeedIndex, currentPlacements, handleRemovePlacement, updateActivePlacements]);
 
     // Interpolation for smooth playback transitions across keyframes
     const activeDisplayPlacements = useMemo(() => {
@@ -891,51 +1012,83 @@ export default function MulticamViewport({
                     <div className="comp-pill-group layouts">
                         <button
                             type="button"
-                            className="btn-comp-tab"
-                            onClick={() => handleApplyPreset('auto')}
-                            title="Auto-Pack: Neatly arrange all available stations & displays"
+                            className={`btn-comp-tab ${selectedPresetId === 'auto-grid' ? 'active' : ''}`}
+                            onClick={() => {
+                                setSelectedPresetId('auto-grid');
+                                handleApplyPreset('auto-grid');
+                            }}
+                            title="Auto-Grid: Neatly arrange all available stations & displays"
                         >
-                            ⊞ AUTO-PACK ({availableFeeds.length})
+                            ⊞ AUTO-GRID ({availableFeeds.length})
                         </button>
                         <button
                             type="button"
-                            className="btn-comp-tab"
-                            onClick={() => handleApplyPreset('1x1')}
+                            className={`btn-comp-tab ${selectedPresetId === '1x1' ? 'active' : ''}`}
+                            onClick={() => {
+                                setSelectedPresetId('1x1');
+                                handleApplyPreset('1x1');
+                            }}
                             title="Single Feed (1x1 Focus Frame)"
                         >
                             ⊞ 1x1
                         </button>
                         <button
                             type="button"
-                            className="btn-comp-tab"
-                            onClick={() => handleApplyPreset('1x2')}
+                            className={`btn-comp-tab ${selectedPresetId === '1x2' ? 'active' : ''}`}
+                            onClick={() => {
+                                setSelectedPresetId('1x2');
+                                handleApplyPreset('1x2');
+                            }}
                             title="Side-by-Side Dual Feeds (1x2 Dual)"
                         >
                             ⊞ 1x2 DUAL
                         </button>
                         <button
                             type="button"
-                            className="btn-comp-tab"
-                            onClick={() => handleApplyPreset('2x2')}
+                            className={`btn-comp-tab ${selectedPresetId === '2x2' ? 'active' : ''}`}
+                            onClick={() => {
+                                setSelectedPresetId('2x2');
+                                handleApplyPreset('2x2');
+                            }}
                             title="2x2 Quad Feeds Master Frame"
                         >
                             ⊞ 2x2 QUAD
                         </button>
                         <button
                             type="button"
-                            className="btn-comp-tab"
-                            onClick={() => handleApplyPreset('1+3-pip')}
+                            className={`btn-comp-tab ${selectedPresetId === '1+3-pip' ? 'active' : ''}`}
+                            onClick={() => {
+                                setSelectedPresetId('1+3-pip');
+                                handleApplyPreset('1+3-pip');
+                            }}
                             title="Picture-in-Picture: 1 Full Master + 3 Insets"
                         >
                             ⊞ 1+3 PIP
                         </button>
                         <button
                             type="button"
-                            className="btn-comp-tab"
-                            onClick={() => handleApplyPreset('hero-stacked')}
+                            className={`btn-comp-tab ${selectedPresetId === 'hero-stacked' ? 'active' : ''}`}
+                            onClick={() => {
+                                setSelectedPresetId('hero-stacked');
+                                handleApplyPreset('hero-stacked');
+                            }}
                             title="Hero Main + 2 Stacked Displays"
                         >
                             ⊞ HERO+2
+                        </button>
+                        <button
+                            type="button"
+                            className="btn-comp-action reset"
+                            onClick={() => {
+                                hasUserCustomizedRef.current = false;
+                                setSelectedPresetId('auto-grid');
+                                const autoPacked = generateAutoPackPlacements(availableFeeds);
+                                updateActivePlacements(autoPacked);
+                                setSelectedFeedIndex(0);
+                            }}
+                            title="Restart Canvas: Reset to default AUTO-GRID with all screens"
+                        >
+                            ↺ RESET CANVAS
                         </button>
                         <button
                             type="button"
@@ -957,14 +1110,6 @@ export default function MulticamViewport({
                         <span className="dot" />
                         <span>AUTO-DIRECTOR: {isAutoDirectorEnabled ? 'ON' : 'OFF'}</span>
                     </button>
-                </div>
-
-                {/* Center WYSIWYG Badge */}
-                <div className="comp-mode-center">
-                    <div className="wysiwyg-export-badge" title="Exact Master Canvas WYSIWYG Export Preview">
-                        <span className="dot live" />
-                        <span className="badge-text">WYSIWYG MASTER CANVAS STUDIO</span>
-                    </div>
                 </div>
 
                 {/* Right Actions: Save, Presets Dropdown, JSON, Fullscreen */}
@@ -1387,14 +1532,33 @@ export default function MulticamViewport({
                                         />
                                     </div>
 
-                                    {/* Bottom-Right Corner Resize Handle */}
-                                    <div
-                                        className="resize-handle-br"
-                                        onMouseDown={(e) => handleMouseDownResize(e, origIdx)}
-                                        title="Drag to resize dimensions (Hold Shift for 16:9 aspect lock)"
-                                    >
-                                        ↘
-                                    </div>
+                                    {/* Multi-Corner Freeform Resize Handles */}
+                                    {isSelected && (
+                                        <>
+                                            <div
+                                                className="resize-handle-corner resize-handle-tl"
+                                                onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'tl')}
+                                                title="Resize Northwest (Top-Left)"
+                                            />
+                                            <div
+                                                className="resize-handle-corner resize-handle-tr"
+                                                onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'tr')}
+                                                title="Resize Northeast (Top-Right)"
+                                            />
+                                            <div
+                                                className="resize-handle-corner resize-handle-bl"
+                                                onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'bl')}
+                                                title="Resize Southwest (Bottom-Left)"
+                                            />
+                                            <div
+                                                className="resize-handle-corner resize-handle-br"
+                                                onMouseDown={(e) => handleMouseDownResize(e, origIdx, 'br')}
+                                                title="Resize Southeast (Bottom-Right) - Hold Shift for 16:9 aspect lock"
+                                            >
+                                                ↘
+                                            </div>
+                                        </>
+                                    )}
 
                                     {/* Selected Floating Tactical Inspector */}
                                     {isSelected && selectedPlacement && (

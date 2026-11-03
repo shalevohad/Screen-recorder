@@ -65,7 +65,8 @@ export default function TimelineBoard({
     activeKfIndex = 0,
     onSelectKeyframe,
     onAddKeyframeAtEpoch,
-    onDeleteKeyframe
+    onDeleteKeyframe,
+    onUpdateKeyframeEpoch
 }) {
     const [hoverMs, setHoverMs] = useState(null);
     const [trackBankIndex, setTrackBankIndex] = useState(0);
@@ -271,35 +272,7 @@ export default function TimelineBoard({
                 onMouseLeave={() => !draggingTarget && setHoverMs(null)}
             >
                 <div className="tracks-scroll-area">
-                    {canvasLayoutTimeline?.keyframes?.length > 0 && (
-                        <CanvasKeyframeTrack
-                            canvasLayoutTimeline={canvasLayoutTimeline}
-                            activeKfIndex={activeKfIndex}
-                            onSelectKeyframe={onSelectKeyframe}
-                            onAddKeyframeAtEpoch={onAddKeyframeAtEpoch}
-                            onDeleteKeyframe={onDeleteKeyframe}
-                            viewportStartMs={viewportStartMs}
-                            viewportDurationMs={viewportDurationMs}
-                            baseEpochMs={baseEpochMs}
-                            playheadMs={playheadMs}
-                            timeMode={timeMode}
-                        />
-                    )}
-                    {stations.length > 0 && (
-                        <AudioRoutingTrack
-                            audioPlan={audioRoutingPlan}
-                            stations={stations}
-                            viewportStartMs={viewportStartMs}
-                            viewportDurationMs={viewportDurationMs}
-                            baseEpochMs={baseEpochMs}
-                            playheadMs={playheadMs}
-                            onSplitSegment={onSplitAudioSegment}
-                            onChangeSegmentStation={onChangeAudioSegmentStation}
-                            onFollowVisualFeed={onFollowVisualFeed}
-                            isAutoFollow={isAutoFollowAudio}
-                            timeMode={timeMode}
-                        />
-                    )}
+                    {/* 1. Primary Station Workstation Video & Display Tracks */}
                     {stations.length > 0 ? (
                         currentBankStations.map(station => (
                             <React.Fragment key={station.id}>
@@ -344,6 +317,39 @@ export default function TimelineBoard({
                             <span className="placeholder-pulse" />
                             <span>NO STATIONS SELECTED — TIMELINE CHANNELS MUTED</span>
                         </div>
+                    )}
+
+                    {/* 2. Global Support Channels (Grouped cleanly at the end, one after the other) */}
+                    {stations.length > 0 && (
+                        <AudioRoutingTrack
+                            audioPlan={audioRoutingPlan}
+                            stations={stations}
+                            viewportStartMs={viewportStartMs}
+                            viewportDurationMs={viewportDurationMs}
+                            baseEpochMs={baseEpochMs}
+                            playheadMs={playheadMs}
+                            onSplitSegment={onSplitAudioSegment}
+                            onChangeSegmentStation={onChangeAudioSegmentStation}
+                            onFollowVisualFeed={onFollowVisualFeed}
+                            isAutoFollow={isAutoFollowAudio}
+                            timeMode={timeMode}
+                        />
+                    )}
+                    {canvasLayoutTimeline?.keyframes?.length > 0 && (
+                        <CanvasKeyframeTrack
+                            canvasLayoutTimeline={canvasLayoutTimeline}
+                            activeKfIndex={activeKfIndex}
+                            onSelectKeyframe={onSelectKeyframe}
+                            onAddKeyframeAtEpoch={onAddKeyframeAtEpoch}
+                            onDeleteKeyframe={onDeleteKeyframe}
+                            onUpdateKeyframeEpoch={onUpdateKeyframeEpoch}
+                            viewportStartMs={viewportStartMs}
+                            viewportDurationMs={viewportDurationMs}
+                            baseEpochMs={baseEpochMs}
+                            totalDurationMs={totalDurationMs}
+                            playheadMs={playheadMs}
+                            timeMode={timeMode}
+                        />
                     )}
                 </div>
 
