@@ -869,7 +869,7 @@ export default function ExtractorAdvancedStudio() {
         if (targetStationIds.length === 0) return;
 
         let resolvedMode = chosenKeystrokeMode === 'None' ? 'None' : 'BurnIn';
-        const targetResolution = chosenResolution || 'FHD';
+        const targetResolution = chosenResolution || 'NATIVE';
 
         const directorSegs = ((enrichedActiveStation?.displays?.length > 1) || (enrichedActiveStation?.topology?.displays?.length > 1))
             ? (enrichedActiveStation?.directorPlan?.segments || [])
@@ -1249,7 +1249,9 @@ export default function ExtractorAdvancedStudio() {
                     isAutoDirectorEnabled,
                     stationsCount: timelineStations.length,
                     audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1,
-                    resolution: canvasLayoutTimeline?.resolution || 'FHD'
+                    resolution: canvasLayoutTimeline?.resolution || 'NATIVE',
+                    canvasWidth: currentCanvasLayout?.width || 1920,
+                    canvasHeight: currentCanvasLayout?.height || 1080
                 }}
             />
 

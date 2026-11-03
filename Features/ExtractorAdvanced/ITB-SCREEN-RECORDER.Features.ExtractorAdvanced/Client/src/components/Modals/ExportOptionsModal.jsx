@@ -12,8 +12,62 @@ export default function ExportOptionsModal({
     compositionSummary = {},
     title = 'MASTER MP4 EXPORT CONFIRMATION'
 }) {
+    const canvasW = compositionSummary.canvasWidth || 1920;
+    const canvasH = compositionSummary.canvasHeight || 1080;
+    const aspect = canvasW / canvasH;
+
+    let aspectLabel;
+    if (Math.abs(aspect - (32 / 9)) < 0.15) aspectLabel = '32:9 Dual Screen';
+    else if (Math.abs(aspect - (21 / 9)) < 0.15) aspectLabel = '21:9 Ultrawide';
+    else if (Math.abs(aspect - (16 / 10)) < 0.15) aspectLabel = '16:10 WUXGA';
+    else if (Math.abs(aspect - (4 / 3)) < 0.15) aspectLabel = '4:3 Standard';
+    else if (Math.abs(aspect - (16 / 9)) < 0.15) aspectLabel = '16:9 Broadcast';
+    else aspectLabel = `${Math.round(aspect * 100) / 100}:1 Custom`;
+
+    const calcWidth = (h) => {
+        const w = Math.round(h * aspect);
+        return w - (w % 2);
+    };
+
+    const calcBitrateStr = (w, h) => {
+        const mbps = Math.round((((w * h) / (1920 * 1080)) * 6.0) * 10) / 10;
+        const mbPerMin = Math.round((mbps * 60 / 8) * 10) / 10;
+        return `~${mbps} Mbps (~${mbPerMin} MB/min)`;
+    };
+
+    const qualityTiers = [
+        {
+            id: 'NATIVE',
+            badge: `Native 1:1 (${canvasW}×${canvasH})`,
+            res: `${canvasW} × ${canvasH}`,
+            bitrate: calcBitrateStr(canvasW, canvasH),
+            desc: `Exact 1:1 canvas match (Recommended). Preserves original recorded pixel fidelity without scaling or distortion.`
+        },
+        {
+            id: '4K',
+            badge: `4K UHD (${calcWidth(2160)}×2160)`,
+            res: `${calcWidth(2160)} × 2160`,
+            bitrate: calcBitrateStr(calcWidth(2160), 2160),
+            desc: `Maximum resolution. Uncompromised multi-monitor canvas clarity for NOC video walls.`
+        },
+        {
+            id: '2K',
+            badge: `2K QHD (${calcWidth(1440)}×1440)`,
+            res: `${calcWidth(1440)} × 1440`,
+            bitrate: calcBitrateStr(calcWidth(1440), 1440),
+            desc: `High pixel density. Preserves small fonts, HUD telemetry, and detailed application windows.`
+        },
+        {
+            id: 'HD',
+            badge: `HD 720p (${calcWidth(720)}×720)`,
+            res: `${calcWidth(720)} × 720`,
+            bitrate: calcBitrateStr(calcWidth(720), 720),
+            desc: `Compact file size, rapid export. Ideal for low-bandwidth operational networks or fast triage.`
+        }
+    ];
+
     const [keystrokeMode, setKeystrokeMode] = useState('BurnIn');
-    const [resolution, setResolution] = useState(compositionSummary.resolution || 'FHD');
+    const [resolution, setResolution] = useState(compositionSummary.resolution || 'NATIVE');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!isOpen) return null;
@@ -32,38 +86,7 @@ export default function ExportOptionsModal({
     const stationsCount = compositionSummary.stationsCount || 1;
     const audioRoutingCount = compositionSummary.audioSegmentsCount || 1;
 
-    const qualityTiers = [
-        {
-            id: 'HD',
-            badge: 'HD 720p',
-            res: '1280 × 720',
-            bitrate: '~2.5 Mbps (~18 MB/min)',
-            desc: 'Compact file size, rapid export. Ideal for low-bandwidth networks or rapid review.'
-        },
-        {
-            id: 'FHD',
-            badge: 'FHD 1080p',
-            res: '1920 × 1080',
-            bitrate: '~6.0 Mbps (~45 MB/min)',
-            desc: 'Standard high-fidelity master output (Recommended). Balanced clarity and size.'
-        },
-        {
-            id: '2K',
-            badge: '2K QHD 1440p',
-            res: '2560 × 1440',
-            bitrate: '~12.0 Mbps (~90 MB/min)',
-            desc: 'High pixel density. Preserves small fonts, HUD telemetry, and complex multi-window feeds.'
-        },
-        {
-            id: '4K',
-            badge: '4K UHD 2160p',
-            res: '3840 × 2160',
-            bitrate: '~24.0 Mbps (~180 MB/min)',
-            desc: 'Maximum resolution. Uncompromised multi-monitor canvas clarity for video walls.'
-        }
-    ];
-
-    const currentTier = qualityTiers.find(t => t.id === resolution) || qualityTiers[1];
+    const currentTier = qualityTiers.find(t => t.id === resolution) || qualityTiers[0];
 
     return createPortal(
         <div className="itb-export-modal-backdrop" onClick={onClose} dir="ltr">
@@ -93,8 +116,12 @@ export default function ExportOptionsModal({
                         <div className="summary-row">
                             <span className="label">VISUAL COMPOSITION:</span>
                             <span className="value highlight">
-                                MASTER CANVAS [{layoutLabel}] (WYSIWYG 16:9)
+                                MASTER CANVAS [{layoutLabel}] (WYSIWYG {aspectLabel})
                             </span>
+                        </div>
+                        <div className="summary-row">
+                            <span className="label">CANVAS GEOMETRY:</span>
+                            <span className="value">{canvasW} × {canvasH} (Ratio {aspect.toFixed(2)}:1)</span>
                         </div>
                         <div className="summary-row">
                             <span className="label">TARGET RESOLUTION:</span>
@@ -186,7 +213,7 @@ export default function ExportOptionsModal({
                         CANCEL
                     </button>
                     <button type="button" className="btn-confirm" onClick={handleConfirm} disabled={isSubmitting}>
-                        {isSubmitting ? 'ENQUEUING MASTER EXPORT...' : `CONFIRM & EXPORT MASTER MP4 (${currentTier.badge})`}
+                        {isSubmitting ? 'ENQUEUING MASTER EXPORT...' : `CONFIRM & EXPORT MASTER MP4 (${currentTier.res})`}
                     </button>
                 </div>
             </div>

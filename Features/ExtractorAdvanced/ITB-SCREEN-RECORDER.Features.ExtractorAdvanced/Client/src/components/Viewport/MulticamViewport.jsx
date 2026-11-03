@@ -600,13 +600,19 @@ export default function MulticamViewport({
     // Auto-populate AUTO-GRID by default when availableFeeds become available and canvas is empty
     useEffect(() => {
         if (availableFeeds.length > 0 && (!currentPlacements || currentPlacements.length === 0) && !hasUserCustomizedRef.current) {
-            const autoPacked = generateAutoPackPlacements(availableFeeds, virtualW, virtualH);
+            let targetAspect = selectedAspectId;
+            if (availableFeeds.length === 2 && selectedAspectId === '16:9') {
+                targetAspect = '32:9';
+                setSelectedAspectId('32:9');
+            }
+            const activePreset = ASPECT_PRESETS.find(p => p.id === targetAspect) || ASPECT_PRESETS[0];
+            const autoPacked = generateAutoPackPlacements(availableFeeds, activePreset.w, activePreset.h);
             if (autoPacked.length > 0) {
                 updateActivePlacements(autoPacked);
                 setSelectedPresetId('auto-grid');
             }
         }
-    }, [availableFeeds, currentPlacements, updateActivePlacements, virtualW, virtualH]);
+    }, [availableFeeds, currentPlacements, updateActivePlacements, selectedAspectId]);
 
     // Sync current canvas layout to parent Studio
     useEffect(() => {
@@ -622,7 +628,7 @@ export default function MulticamViewport({
         }
     }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, virtualW, virtualH]);
 
-    // Switch Aspect Ratio handler (rescaling existing placements proportionally)
+    // Switch Aspect Ratio handler (re-packing or rescaling existing placements proportionally to fill the target aspect)
     const handleSelectAspectRatio = useCallback((newAspectId) => {
         const oldPreset = activeAspectPreset;
         const newPreset = ASPECT_PRESETS.find(p => p.id === newAspectId) || ASPECT_PRESETS[0];
@@ -630,19 +636,22 @@ export default function MulticamViewport({
 
         setSelectedAspectId(newPreset.id);
 
-        const ratioX = newPreset.w / oldPreset.w;
-        const ratioY = newPreset.h / oldPreset.h;
-
-        const rescaled = currentPlacements.map(p => ({
-            ...p,
-            x: Math.round(p.x * ratioX),
-            y: Math.round(p.y * ratioY),
-            width: Math.round(p.width * ratioX),
-            height: Math.round(p.height * ratioY)
-        }));
-
-        updateActivePlacements(rescaled);
-    }, [activeAspectPreset, currentPlacements, updateActivePlacements]);
+        if (!hasUserCustomizedRef.current) {
+            const autoPacked = generateAutoPackPlacements(currentPlacements && currentPlacements.length > 0 ? currentPlacements : availableFeeds, newPreset.w, newPreset.h);
+            updateActivePlacements(autoPacked);
+        } else {
+            const ratioX = newPreset.w / oldPreset.w;
+            const ratioY = newPreset.h / oldPreset.h;
+            const rescaled = currentPlacements.map(p => ({
+                ...p,
+                x: Math.round(p.x * ratioX),
+                y: Math.round(p.y * ratioY),
+                width: Math.round(p.width * ratioX),
+                height: Math.round(p.height * ratioY)
+            }));
+            updateActivePlacements(rescaled);
+        }
+    }, [activeAspectPreset, currentPlacements, availableFeeds, updateActivePlacements]);
 
     // -------------------------------------------------------------
     // FEEDS PALETTE ACTIONS: ADD / REMOVE / CLEAR

@@ -64,6 +64,7 @@
 44. [Strict Multi-Axis Boundary Clamping, Universal Iconography & Comprehensive Tooltip Architecture for Floating Studio Controls (2026-11-03)](#44-strict-multi-axis-boundary-clamping-universal-iconography--comprehensive-tooltip-architecture-for-floating-studio-controls-2026-11-03)
 45. [Minimalist Tactical Display Strip, Elimination of Redundant Minimap Overlays & Smart Multi-Monitor Placement Visibility (2026-11-03)](#45-minimalist-tactical-display-strip-elimination-of-redundant-minimap-overlays--smart-multi-monitor-placement-visibility-2026-11-03)
 46. [Root-Level DOM Portal Isolation, Viewport Stacking Context & Modal Inspector Suppression Engine (2026-11-03)](#46-root-level-dom-portal-isolation-viewport-stacking-context--modal-inspector-suppression-engine-2026-11-03)
+47. [WYSIWYG Dynamic Canvas Aspect Topology, Proportional Resolution Scaling & Multi-Monitor Native 1:1 Export Fidelity Engine (2026-11-03)](#47-wysiwyg-dynamic-canvas-aspect-topology-proportional-resolution-scaling--multi-monitor-native-11-export-fidelity-engine-2026-11-03)
 
 ---
 
@@ -2039,4 +2040,40 @@ During operational review in the Advanced Editing Studio, triggering the Master 
    - Automatically unmounts the floating toolbar whenever any studio modal or export prompt is active, ensuring zero visual overlap and clean operator focus.
 
 ---
+## 47. WYSIWYG Dynamic Canvas Aspect Topology, Proportional Resolution Scaling & Multi-Monitor Native 1:1 Export Fidelity Engine (2026-11-03)
+
+### 1. Operational Problem & Geometry Inversion Analysis
+When editing workstations and exporting master MP4 files from the Advanced Editing Studio:
+1. **The Aspect Inversion Dilemma ("זה אמור להיות הפוך")**:
+   - Workstations typically feature distinct physical topologies: single 16:9 displays ($1920 \times 1080$), dual-monitor side-by-side configurations ($3840 \times 1080$, $32:9$), or ultrawide setups ($2560 \times 1080$, $21:9$).
+   - Previously, the canvas defaulted to a rigid $16:9$ ($1920 \times 1080$) virtual box. Placing two $16:9$ monitors side-by-side forced each screen into a $960 \times 540$ box with massive letterboxing (black bars top and bottom) and halved the native resolution.
+   - Concurrently, the Export Dialog presented fixed $16:9$ resolution options (`1280x720`, `1920x1080`, `2560x1440`, `3840x2160`), claiming `WYSIWYG 16:9` regardless of the canvas aspect ratio.
+   - On the backend, `AdvanceJobManager.cs` attempted to clamp $32:9$ layouts into $1920$ width by calculating $\text{canvasH} = 1920 / (32/9) = 540$, exporting a crushed $1920 \times 540$ video where text was blurred and monitor details lost.
+
+### 2. Architectural Solution & End-to-End Implementation
+1. **Dynamic Canvas Auto-Topology & Responsive Aspect Packing (`MulticamViewport.jsx`)**:
+   - **Smart Topology Detection**: Upon loading feeds or resetting the canvas:
+     $$\text{Feeds} = 2 \implies \text{Aspect Preset} = \text{'32:9 Dual Screen'} \ (3840 \times 1080)$$
+     $$\text{Feeds} = 1 \implies \text{Aspect Preset} = \text{'16:9 Broadcast'} \ (1920 \times 1080)$$
+   - Both monitors in dual-screen configurations now fill their respective halves ($0..1920$ and $1920..3840$) at **100% native $1920 \times 1080$ resolution** with zero letterboxing and zero black borders.
+   - Dynamic repacking: When switching aspect presets in the toolbar (`16:9`, `32:9`, `21:9`, `16:10`, `4:3`), feeds automatically repack to fill the newly chosen aspect ratio.
+2. **Canvas-Driven Dynamic Export Quality Tiers (`ExportOptionsModal.jsx`)**:
+   - Export options dynamically calculate target dimensions and bitrates directly from the active canvas dimensions ($W_{\text{canvas}}, H_{\text{canvas}}$):
+     - **`NATIVE (1:1 Canvas Master)`** *(Default)*: Exact 1:1 pixel fidelity ($3840 \times 1080$ for $32:9$, $1920 \times 1080$ for $16:9$). Zero scaling, pristine text clarity.
+     - **`4K UHD (2160p / 2x)`**: Scaled to $2160$ vertical lines ($7680 \times 2160$ for $32:9$, $3840 \times 2160$ for $16:9$) for high-density NOC video walls.
+     - **`2K QHD (1440p / 1.33x)`**: Scaled to $1440$ vertical lines ($5120 \times 1440$ for $32:9$, $2560 \times 1440$ for $16:9$).
+     - **`HD 720p (Compact)`**: Scaled to $720$ vertical lines ($2560 \times 720$ for $32:9$, $1280 \times 720$ for $16:9$) for rapid low-bandwidth transfer.
+   - Summary card displays real-time canvas geometry: `CANVAS GEOMETRY: 3840 × 1080 (Ratio 3.56:1)` and `WYSIWYG 32:9 Dual Screen`.
+3. **Proportional Resolution & Pixel-Scaled Bitrate Engine (`AdvanceJobManager.cs`)**:
+   - `ParseQualityResolution(string? quality, double aspect, int refW, int refH)`:
+     - Handles `"NATIVE"` / `"1:1"`: Returns exact canvas reference dimensions `(refW, refH)`.
+     - Handles custom `"WIDTHxHEIGHT"` strings directly.
+     - Scales vertical resolution tiers ($720, 1080, 1440, 2160$) by layout aspect ratio:
+       $$W_{\text{target}} = \text{RoundEven}(H_{\text{target}} \times \text{aspect})$$
+     - Dynamically calculates video encoding bitrate proportional to total pixel volume:
+       $$\text{Bitrate} = \text{Clamp}\left(\frac{W_{\text{target}} \times H_{\text{target}}}{1920 \times 1080} \times 6000\text{ kbps}, 2000\text{ kbps}, 50000\text{ kbps}\right)$$
+   - In `ComposeCustomCanvasMasterMp4Async`: Canvas width and height are directly set to the target dimensions, eliminating the legacy $1920 \times 540$ downscaling flaw.
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+

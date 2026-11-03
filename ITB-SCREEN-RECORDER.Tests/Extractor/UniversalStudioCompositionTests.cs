@@ -201,6 +201,45 @@ public class UniversalStudioCompositionTests
     }
 
     [Fact]
+    public void ParseQualityResolution_ScalesDualScreenAndNativeAspectCorrectly()
+    {
+        double aspect32_9 = 32.0 / 9.0;
+        int dualW = 3840;
+        int dualH = 1080;
+
+        // Native 1:1 on 32:9 dual screen canvas
+        var (natW, natH, natBr) = AdvanceJobManager.ParseQualityResolution("NATIVE", aspect32_9, dualW, dualH);
+        Assert.Equal(3840, natW);
+        Assert.Equal(1080, natH);
+        Assert.Equal(12000, natBr);
+
+        // FHD on 32:9 dual screen canvas (should match native vertical 1080 lines, NOT squashed to 1920x540)
+        var (fhdW, fhdH, fhdBr) = AdvanceJobManager.ParseQualityResolution("FHD", aspect32_9, dualW, dualH);
+        Assert.Equal(3840, fhdW);
+        Assert.Equal(1080, fhdH);
+        Assert.Equal(12000, fhdBr);
+
+        // 4K on 32:9 dual screen canvas (2160p vertical lines -> 7680x2160)
+        var (uhdW, uhdH, uhdBr) = AdvanceJobManager.ParseQualityResolution("4K", aspect32_9, dualW, dualH);
+        Assert.Equal(7680, uhdW);
+        Assert.Equal(2160, uhdH);
+        Assert.Equal(48000, uhdBr);
+
+        // HD on 32:9 dual screen canvas (720p vertical lines -> 2560x720)
+        var (hdW, hdH, hdBr) = AdvanceJobManager.ParseQualityResolution("HD", aspect32_9, dualW, dualH);
+        Assert.Equal(2560, hdW);
+        Assert.Equal(720, hdH);
+        Assert.True(hdBr >= 5000);
+
+        // Exact custom dimensions string
+        var (custW, custH, custBr) = AdvanceJobManager.ParseQualityResolution("3840X1080");
+        Assert.Equal(3840, custW);
+        Assert.Equal(1080, custH);
+        Assert.Equal(12000, custBr);
+    }
+
+
+    [Fact]
     public void QualityScaling_Scales4KCoordinates_Proportionally()
     {
         int refW = 1920;

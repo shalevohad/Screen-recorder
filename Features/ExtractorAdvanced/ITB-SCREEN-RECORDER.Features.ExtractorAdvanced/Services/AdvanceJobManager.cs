@@ -89,28 +89,92 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
         }
 
-                public static (int Width, int Height, int BitrateKbps) ParseQualityResolution(string? qualityOrResolution)
+        public static (int Width, int Height, int BitrateKbps) ParseQualityResolution(
+            string? qualityOrResolution,
+            double aspect = 16.0 / 9.0,
+            int fallbackRefW = 1920,
+            int fallbackRefH = 1080)
         {
             if (string.IsNullOrWhiteSpace(qualityOrResolution))
             {
-                return (1920, 1080, 6000);
+                if (Math.Abs(aspect - (16.0 / 9.0)) <= 0.05)
+                    return (1920, 1080, 6000);
+
+                int defH = 1080;
+                int defW = (int)Math.Round(defH * aspect);
+                defW -= (defW % 2);
+                int br = (int)Math.Clamp((((long)defW * defH) * 6000L) / (1920L * 1080L), 2000L, 50000L);
+                return (defW, defH, br);
             }
 
             string normalized = qualityOrResolution.Trim().ToUpperInvariant();
-            return normalized switch
+
+            if (normalized == "NATIVE" || normalized == "1:1" || normalized == "ORIGINAL")
             {
-                "HD" or "720P" or "720" or "1280X720" => (1280, 720, 2500),
-                "FHD" or "1080P" or "1080" or "1920X1080" or "FULLHD" => (1920, 1080, 6000),
-                "2K" or "1440P" or "1440" or "2560X1440" or "QHD" => (2560, 1440, 12000),
-                "4K" or "2160P" or "2160" or "3840X2160" or "UHD" => (3840, 2160, 24000),
-                _ => (1920, 1080, 6000)
+                int nw = fallbackRefW > 0 ? fallbackRefW : 1920;
+                int nh = fallbackRefH > 0 ? fallbackRefH : 1080;
+                nw -= (nw % 2);
+                nh -= (nh % 2);
+                long px = (long)nw * nh;
+                int br = (int)Math.Clamp((px * 6000L) / (1920L * 1080L), 2000L, 50000L);
+                return (nw, nh, br);
+            }
+
+            // Standard 16:9 fixed numbers for backward compatibility with established tests
+            if (Math.Abs(aspect - (16.0 / 9.0)) <= 0.05)
+            {
+                var standardMatch = normalized switch
+                {
+                    "HD" or "720P" or "720" or "1280X720" => (1280, 720, 2500),
+                    "FHD" or "1080P" or "1080" or "1920X1080" or "FULLHD" => (1920, 1080, 6000),
+                    "2K" or "1440P" or "1440" or "2560X1440" or "QHD" => (2560, 1440, 12000),
+                    "4K" or "2160P" or "2160" or "3840X2160" or "UHD" => (3840, 2160, 24000),
+                    _ => (0, 0, 0)
+                };
+                if (standardMatch.Item1 > 0) return standardMatch;
+            }
+
+            // Check if exact dimensions provided like 3840X1080 or 7680X2160
+            if (normalized.Contains('X'))
+            {
+                var parts = normalized.Split('X', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length == 2 && int.TryParse(parts[0], out int customW) && int.TryParse(parts[1], out int customH) && customW > 100 && customH > 100)
+                {
+                    customW -= (customW % 2);
+                    customH -= (customH % 2);
+                    long px = (long)customW * customH;
+                    int br = (int)Math.Clamp((px * 6000L) / (1920L * 1080L), 2000L, 50000L);
+                    return (customW, customH, br);
+                }
+            }
+
+            // Custom Aspect Ratio scaling (e.g. 32:9 dual screen, 21:9 ultrawide, 16:10, 4:3)
+            int targetH = normalized switch
+            {
+                "HD" or "720P" or "720" => 720,
+                "FHD" or "1080P" or "1080" or "FULLHD" => 1080,
+                "2K" or "1440P" or "1440" or "QHD" => 1440,
+                "4K" or "2160P" or "2160" or "UHD" => 2160,
+                _ => 1080
             };
+
+            int targetW = (int)Math.Round(targetH * aspect);
+            targetW -= (targetW % 2);
+            targetH -= (targetH % 2);
+
+            long totalPixels = (long)targetW * targetH;
+            int bitrateKbps = (int)Math.Clamp((totalPixels * 6000L) / (1920L * 1080L), 2000L, 50000L);
+
+            return (targetW, targetH, bitrateKbps);
         }
 
         public static string NormalizeQualityName(string? qualityOrResolution)
         {
             if (string.IsNullOrWhiteSpace(qualityOrResolution)) return "FHD";
             string normalized = qualityOrResolution.Trim().ToUpperInvariant();
+            if (normalized == "NATIVE" || normalized == "1:1" || normalized == "ORIGINAL" || normalized.Contains('X'))
+                return normalized;
+
             return normalized switch
             {
                 "HD" or "720P" or "720" or "1280X720" => "HD",
@@ -146,8 +210,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             var plan = _advancedExtractorService.BuildSynchronizationPlan(request.StationIds, startUtc, endUtc, allStationChunks);
             plan.KeystrokeMode = request.KeystrokeMode;
 
+            int estRefW = request.CanvasLayout?.Width ?? request.CanvasLayoutTimeline?.Keyframes?.FirstOrDefault()?.Layout?.Width ?? 1920;
+            int estRefH = request.CanvasLayout?.Height ?? request.CanvasLayoutTimeline?.Keyframes?.FirstOrDefault()?.Layout?.Height ?? 1080;
+            double estAspect = (estRefW > 0 && estRefH > 0) ? ((double)estRefW / estRefH) : (16.0 / 9.0);
+
             string qualityName = NormalizeQualityName(request.Resolution ?? request.VideoQuality ?? request.CanvasLayout?.Resolution ?? request.CanvasLayoutTimeline?.Resolution);
-            var (targetW, targetH, targetBitrateKbps) = ParseQualityResolution(qualityName);
+            var (targetW, targetH, targetBitrateKbps) = ParseQualityResolution(qualityName, estAspect, estRefW, estRefH);
 
             double originalSeconds = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
             double activeFraction = Math.Clamp(plan.TotalActiveSeconds / originalSeconds, 0.05, 1.0);
@@ -326,8 +394,12 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 fileName = $"{exportTimeUtc:yyyy-MM-dd_HH-mm-ss-fff}.mp4";
             }
+            int estRefW = request.CanvasLayout?.Width ?? request.CanvasLayoutTimeline?.Keyframes?.FirstOrDefault()?.Layout?.Width ?? 1920;
+            int estRefH = request.CanvasLayout?.Height ?? request.CanvasLayoutTimeline?.Keyframes?.FirstOrDefault()?.Layout?.Height ?? 1080;
+            double estAspect = (estRefW > 0 && estRefH > 0) ? ((double)estRefW / estRefH) : (16.0 / 9.0);
+
             string qualityName = NormalizeQualityName(request.Resolution ?? request.VideoQuality ?? request.CanvasLayout?.Resolution ?? request.CanvasLayoutTimeline?.Resolution);
-            var (targetW, targetH, targetBitrateKbps) = ParseQualityResolution(qualityName);
+            var (targetW, targetH, targetBitrateKbps) = ParseQualityResolution(qualityName, estAspect, estRefW, estRefH);
 
             double durationSeconds = Math.Max(1.0, (endUtc - startUtc).TotalSeconds);
             double durationMinutes = durationSeconds / 60.0;
@@ -1347,17 +1419,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     int refW = intLayout.Width > 0 ? intLayout.Width : 1920;
                     int refH = intLayout.Height > 0 ? intLayout.Height : 1080;
                     double layoutAspect = (double)refW / refH;
-                    int cW = targetWidth;
-                    int cH = targetHeight;
-                    if (Math.Abs(layoutAspect - (16.0 / 9.0)) > 0.05)
-                    {
-                        cH = (int)Math.Round(targetWidth / layoutAspect);
-                        if (cH < 360)
-                        {
-                            cH = targetHeight;
-                            cW = (int)Math.Round(targetHeight * layoutAspect);
-                        }
-                    }
+                    var (cW, cH, computedBitrate) = ParseQualityResolution(job.Resolution ?? job.VideoQuality, layoutAspect, refW, refH);
+                    targetBitrateKbps = computedBitrate;
                     cW -= (cW % 2);
                     cH -= (cH % 2);
                     double scaleX = (double)cW / refW;
@@ -1526,17 +1589,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 int refW = layout.Width > 0 ? layout.Width : 1920;
                 int refH = layout.Height > 0 ? layout.Height : 1080;
                 double layoutAspect = (double)refW / refH;
-                int canvasW = targetWidth;
-                int canvasH = targetHeight;
-                if (Math.Abs(layoutAspect - (16.0 / 9.0)) > 0.05)
-                {
-                    canvasH = (int)Math.Round(targetWidth / layoutAspect);
-                    if (canvasH < 360)
-                    {
-                        canvasH = targetHeight;
-                        canvasW = (int)Math.Round(targetHeight * layoutAspect);
-                    }
-                }
+                var (canvasW, canvasH, computedBitrate) = ParseQualityResolution(job.Resolution ?? job.VideoQuality, layoutAspect, refW, refH);
+                targetBitrateKbps = computedBitrate;
                 canvasW -= (canvasW % 2);
                 canvasH -= (canvasH % 2);
                 double scaleX = (double)canvasW / refW;
