@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Player/StudioVideoFeed.jsx
 // ==========================================
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
@@ -7,6 +7,7 @@ import PersistentMinimapHud from '../Viewport/overlays/PersistentMinimapHud.jsx'
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import { frameStore } from '../../utils/frameStore.js';
 import { getAudioSettings } from '../../utils/studioSessionStore.js';
+import { attachVideoAudio } from '../../utils/audioLevelMonitor.js';
 import { calculateTopologyBounds, calculateNormalizedDisplayRect } from '../../utils/topologyLayout.js';
 import './StudioVideoFeed.scss';
 
@@ -347,12 +348,18 @@ export default function StudioVideoFeed({
             videoRefA.current.muted = activeSlot !== 'A' || audio.isMuted;
             videoRefA.current.defaultPlaybackRate = playbackSpeed;
             videoRefA.current.playbackRate = playbackSpeed;
+            if (activeSlot === 'A' && !audio.isMuted) {
+                attachVideoAudio(videoRefA.current);
+            }
         }
         if (videoRefB.current) {
             videoRefB.current.volume = audio.volume;
             videoRefB.current.muted = activeSlot !== 'B' || audio.isMuted;
             videoRefB.current.defaultPlaybackRate = playbackSpeed;
             videoRefB.current.playbackRate = playbackSpeed;
+            if (activeSlot === 'B' && !audio.isMuted) {
+                attachVideoAudio(videoRefB.current);
+            }
         }
         if (videoRefSecondary.current) {
             videoRefSecondary.current.muted = true; // Secondary display audio muted to prevent echo

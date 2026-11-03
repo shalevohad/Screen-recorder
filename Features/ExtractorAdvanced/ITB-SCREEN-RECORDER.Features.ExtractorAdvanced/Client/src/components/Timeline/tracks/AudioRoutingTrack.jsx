@@ -1,9 +1,10 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.jsx
-// Minimalist 26px Single-Row Audio Routing Track
+// Tactical NOC Real-Time Reactive Audio Track with Waveform, Live VU Meter & Gain Control
 // ==========================================
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
+import { setAudioGain } from '../../../utils/audioLevelMonitor.js';
 import './AudioRoutingTrack.scss';
 
 export default function AudioRoutingTrack({
@@ -15,12 +16,48 @@ export default function AudioRoutingTrack({
     playheadMs = 0,
     onSplitSegment,
     onChangeSegmentStation,
+    onChangeSegmentGain,
     onFollowVisualFeed,
     isAutoFollow = false,
     timeMode = 'LOCAL'
 }) {
     const containerRef = useRef(null);
     const [selectedMenuSegment, setSelectedMenuSegment] = useState(null);
+    const [menuGainValue, setMenuGainValue] = useState(1.0);
+
+    // Track Height: Compact (26px) vs Expanded (74px) with persistent preference
+    const [isExpanded, setIsExpanded] = useState(() => {
+        try {
+            return localStorage.getItem('itb_audio_track_expanded') === 'true';
+        } catch {
+            return false;
+        }
+    });
+
+    // Real-time acoustic volume level from Web Audio AnalyserNode (not random)
+    const [liveLevel, setLiveLevel] = useState({ rms: 0, peak: 0, db: -60, isPlaying: false });
+
+    useEffect(() => {
+        const handleLevel = (e) => {
+            if (e.detail) {
+                setLiveLevel(e.detail);
+            }
+        };
+        window.addEventListener('itb-live-audio-level', handleLevel);
+        return () => window.removeEventListener('itb-live-audio-level', handleLevel);
+    }, []);
+
+    const toggleExpanded = useCallback(() => {
+        setIsExpanded(prev => {
+            const next = !prev;
+            try {
+                localStorage.setItem('itb_audio_track_expanded', String(next));
+            } catch {
+                // Ignore storage error
+            }
+            return next;
+        });
+    }, []);
 
     const segments = useMemo(() => {
         if (audioPlan?.segments && audioPlan.segments.length > 0) {
@@ -32,7 +69,8 @@ export default function AudioRoutingTrack({
             {
                 startEpochMs: baseEpochMs,
                 endEpochMs: baseEpochMs + viewportDurationMs * 2,
-                sourceStationId: defaultStationId
+                sourceStationId: defaultStationId,
+                gain: 1.0
             }
         ];
     }, [audioPlan, stations, baseEpochMs, viewportDurationMs]);
@@ -57,6 +95,7 @@ export default function AudioRoutingTrack({
     }, [stations, activeStationId]);
 
     const activeStationName = activeStation ? (activeStation.displayName || activeStation.hostname || activeStation.id) : (activeStationId === 'MUTE' ? 'MUTED' : activeStationId);
+    const activeGain = currentActiveSegment?.gain ?? currentActiveSegment?.Gain ?? 1.0;
 
     const activeStartClock = useMemo(() => {
         if (!currentActiveSegment) return '';
@@ -105,7 +144,7 @@ export default function AudioRoutingTrack({
         }
     };
 
-    const handleOpenMenu = (ev, s, e, stId) => {
+    const handleOpenMenu = (ev, s, e, stId, gain = 1.0) => {
         ev.preventDefault();
         ev.stopPropagation();
 
@@ -117,65 +156,141 @@ export default function AudioRoutingTrack({
             clickEpoch = Math.round(vpStartEpoch + ratio * viewportDurationMs);
         }
 
+        const currentGainVal = (typeof gain === 'number' && gain >= 0) ? gain : 1.0;
+        setMenuGainValue(currentGainVal);
+
         setSelectedMenuSegment({
             s,
             e,
             x: ev.clientX,
             y: ev.clientY,
             currentStationId: stId,
+            currentGain: currentGainVal,
             clickEpoch
         });
     };
+
+    const handleApplyGainChange = (newGain) => {
+        const val = Math.max(0, Math.min(2.5, Number(newGain)));
+        setMenuGainValue(val);
+        if (selectedMenuSegment) {
+            onChangeSegmentGain?.(selectedMenuSegment.s, val);
+            setAudioGain(val);
+        }
+    };
+
+    // Calculate real live bar heights from actual audio RMS & Peak
+    const liveBarHeights = useMemo(() => {
+        if (!liveLevel.isPlaying || liveLevel.rms < 0.005) {
+            return [2, 2, 2, 2]; // Resting silent baseline
+        }
+        const rms = liveLevel.rms;
+        const peak = liveLevel.peak;
+        return [
+            Math.min(100, Math.max(15, Math.round(rms * 125))),
+            Math.min(100, Math.max(22, Math.round(peak * 130))),
+            Math.min(100, Math.max(10, Math.round(rms * 105))),
+            Math.min(100, Math.max(28, Math.round(peak * 145)))
+        ];
+    }, [liveLevel]);
 
     if (!stations || stations.length === 0) return null;
 
     return (
         <div 
-            className="audio-routing-track-container" 
+            className={`audio-routing-track-container ${isExpanded ? 'is-expanded-track' : 'is-compact-track'}`} 
             aria-label="Audio Routing Track"
             ref={containerRef}
         >
-            {/* Sleek 180px Header Cell matching DirectorTrack */}
+            {/* 180px Header Cell with Real VU Meter, Active Source, and Expand Toggle */}
             <div className="audio-track-label">
-                <span className="audio-icon">🎙️</span>
-                <span className="audio-title">AUDIO</span>
-                <span 
-                    className={`audio-active-badge ${activeStationId === 'MUTE' ? 'is-muted' : 'is-active'}`}
-                    title={`Active audio source at playhead: ${activeStationName} [${activeStartClock} - ${activeEndClock}]`}
-                >
-                    <span className="badge-pulse" />
-                    <span className="badge-text">{activeStationId === 'MUTE' ? 'MUTED' : activeStationName.toUpperCase()}</span>
-                </span>
+                <div className="label-top-row">
+                    <span className="audio-icon">🎙️</span>
+                    <span className="audio-title">AUDIO</span>
+                    <span 
+                        className={`audio-active-badge ${activeStationId === 'MUTE' ? 'is-muted' : 'is-active'}`}
+                        title={`Active audio source: ${activeStationName} [${activeStartClock} - ${activeEndClock}] • Gain: ${Math.round(activeGain * 100)}% (${activeGain > 0 ? (20 * Math.log10(activeGain)).toFixed(1) + 'dB' : 'Mute'})`}
+                    >
+                        {/* Real-time VU Acoustic Indicator Bar */}
+                        <div className="badge-live-vu" title={`Real-time Level: ${liveLevel.db.toFixed(1)} dB (RMS: ${Math.round(liveLevel.rms * 100)}%)`}>
+                            <span 
+                                className="vu-meter-bar" 
+                                style={{ 
+                                    height: `${Math.min(100, Math.max(10, (liveLevel.rms * 115)))}%`,
+                                    background: liveLevel.db > -3 ? '#F43F5E' : (liveLevel.db > -9 ? '#F59E0B' : '#10B981')
+                                }} 
+                            />
+                        </div>
+                        <span className="badge-text">{activeStationId === 'MUTE' ? 'MUTED' : activeStationName.toUpperCase()}</span>
+                        {activeGain !== 1.0 && (
+                            <span className="badge-gain-tag">{Math.round(activeGain * 100)}%</span>
+                        )}
+                    </span>
 
-                <div className="audio-track-actions">
-                    {onFollowVisualFeed && (
+                    <div className="audio-track-actions">
+                        {/* Height Expand / Collapse Toggle (26px <-> 74px) */}
                         <button
                             type="button"
-                            className={`btn-audio-mini-action ${isAutoFollow ? 'active' : ''}`}
-                            onClick={onFollowVisualFeed}
-                            title="Automatically route audio to whichever station is in active visual focus"
+                            className={`btn-audio-mini-action expand-toggle ${isExpanded ? 'active' : ''}`}
+                            onClick={toggleExpanded}
+                            title={isExpanded ? 'Collapse Audio Track to Compact (26px)' : 'Expand Audio Track & Waveforms (74px)'}
                         >
-                            🎯
+                            {isExpanded ? '▲' : '▼'}
                         </button>
-                    )}
 
-                    <button
-                        type="button"
-                        className="btn-audio-mini-action"
-                        onClick={handleSplitAtPlayhead}
-                        title="Split Audio Track at Playhead (✂️)"
-                    >
-                        ✂️
-                    </button>
+                        {onFollowVisualFeed && (
+                            <button
+                                type="button"
+                                className={`btn-audio-mini-action ${isAutoFollow ? 'active' : ''}`}
+                                onClick={onFollowVisualFeed}
+                                title="Automatically route audio to whichever station is in active visual focus"
+                            >
+                                🎯
+                            </button>
+                        )}
+
+                        <button
+                            type="button"
+                            className="btn-audio-mini-action"
+                            onClick={handleSplitAtPlayhead}
+                            title="Split Audio Track at Playhead (✂️)"
+                        >
+                            ✂️
+                        </button>
+                    </div>
                 </div>
+
+                {/* Expanded Header Sub-Meter Display */}
+                {isExpanded && (
+                    <div className="label-bottom-expanded-meter">
+                        <div className="vu-scale-container">
+                            <span className="vu-db-readout">
+                                {liveLevel.isPlaying ? `${liveLevel.db.toFixed(1)} dB` : 'IDLE'}
+                            </span>
+                            <div className="vu-led-track">
+                                <div 
+                                    className="vu-led-fill" 
+                                    style={{ 
+                                        width: `${Math.min(100, Math.max(0, (liveLevel.rms * 120)))}%`,
+                                        background: liveLevel.db > -3 ? '#F43F5E' : (liveLevel.db > -9 ? '#F59E0B' : '#10B981')
+                                    }} 
+                                />
+                            </div>
+                        </div>
+                        <span className="vu-gain-label">
+                            MASTER: {Math.round(activeGain * 100)}%
+                        </span>
+                    </div>
+                )}
             </div>
 
-            {/* Single-row Timeline surface */}
+            {/* Timeline surface with Waveforms and Segments */}
             <div className="audio-track-timeline">
                 {visibleSegments.map((seg, idx) => {
                     const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
                     const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
                     const stId = seg.sourceStationId ?? seg.SourceStationId ?? '';
+                    const gain = seg.gain ?? seg.Gain ?? 1.0;
                     const st = stations.find(x => x.id === stId);
                     const labelName = st ? (st.displayName || st.hostname || st.id) : (stId === 'MUTE' ? 'MUTED' : stId);
 
@@ -186,26 +301,113 @@ export default function AudioRoutingTrack({
                     const isCurrent = currentActiveSegment && 
                         (currentActiveSegment.startEpochMs ?? currentActiveSegment.StartEpochMs) === s;
 
+                    const gainDbStr = gain > 0 ? (20 * Math.log10(gain)).toFixed(1) + ' dB' : '-∞ dB';
+
                     return (
                         <div
                             key={`audio_seg_${idx}_${s}`}
-                            className={`audio-segment-block ${isCurrent ? 'is-current' : ''} ${stId === 'MUTE' ? 'is-muted' : ''}`}
+                            className={`audio-segment-block ${isCurrent ? 'is-current' : ''} ${stId === 'MUTE' ? 'is-muted' : ''} ${isExpanded ? 'is-expanded' : ''}`}
                             style={{
                                 left: `${leftPct}%`,
                                 width: `${widthPct}%`
                             }}
-                            onClick={(ev) => handleOpenMenu(ev, s, e, stId)}
-                            onContextMenu={(ev) => handleOpenMenu(ev, s, e, stId)}
-                            title={`Audio Source: ${labelName} [${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })}] — Click or right-click to edit`}
+                            onClick={(ev) => handleOpenMenu(ev, s, e, stId, gain)}
+                            onContextMenu={(ev) => handleOpenMenu(ev, s, e, stId, gain)}
+                            title={`Audio Source: ${labelName} [${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })}] • Gain: ${Math.round(gain * 100)}% (${gainDbStr}) — Right-click for Gain Scale & Settings`}
                         >
-                            <div className="audio-wave-anim">
-                                <span className="bar b1" />
-                                <span className="bar b2" />
-                                <span className="bar b3" />
+                            {/* Detailed Acoustic Waveform Display (Mirrored Envelope) */}
+                            <div className="audio-segment-waveform-surface">
+                                <svg 
+                                    className="audio-waveform-svg" 
+                                    viewBox="0 0 200 40" 
+                                    preserveAspectRatio="none"
+                                >
+                                    {stId === 'MUTE' || gain === 0 ? (
+                                        // Muted flat baseline
+                                        <line x1="0" y1="20" x2="200" y2="20" stroke="#F43F5E" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.6" />
+                                    ) : (
+                                        // Realistic Speech & Signal Waveform Peaks (Scaled by Segment Gain)
+                                        <g className="waveform-peaks" opacity="0.85">
+                                            {/* Symmetrical Amplitude Envelope */}
+                                            {Array.from({ length: 50 }).map((_, barIdx) => {
+                                                const x = (barIdx / 50) * 200 + 2;
+                                                // Seeded deterministic pseudo-acoustic pattern
+                                                const seed = (Math.sin((s / 1000) + barIdx * 0.7) * 10000);
+                                                const rand = Math.abs(seed - Math.floor(seed));
+                                                // Natural speech cadence rhythm modulation
+                                                const cadence = Math.sin(barIdx * 0.25) * 0.4 + 0.6;
+                                                const rawAmp = (0.15 + rand * 0.85) * cadence;
+                                                // Scale directly by user gain!
+                                                const amp = Math.min(1.0, rawAmp * gain);
+                                                const h = Math.max(2, amp * 18);
+                                                const yTop = 20 - h;
+                                                const yBottom = 20 + h;
+
+                                                return (
+                                                    <line
+                                                        key={`wave_bar_${barIdx}`}
+                                                        x1={x}
+                                                        y1={yTop}
+                                                        x2={x}
+                                                        y2={yBottom}
+                                                        stroke={gain > 1.05 ? '#F59E0B' : (isCurrent ? '#34D399' : '#10B981')}
+                                                        strokeWidth="2.5"
+                                                        strokeLinecap="round"
+                                                        opacity={isCurrent ? 0.95 : 0.75}
+                                                    />
+                                                );
+                                            })}
+                                            {/* Center Reference Guide Line */}
+                                            <line x1="0" y1="20" x2="200" y2="20" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" strokeDasharray="2 2" />
+                                        </g>
+                                    )}
+                                </svg>
                             </div>
-                            <span className="audio-segment-label">
-                                {stId === 'MUTE' ? '🔇 MUTED' : `🎙️ ${labelName.toUpperCase()}`}
-                            </span>
+
+                            {/* Live Reactive Micro-VU Bars (Reacts strictly to heard sound) */}
+                            <div className="audio-wave-anim">
+                                <span 
+                                    className="bar b1" 
+                                    style={{ 
+                                        height: isCurrent ? `${liveBarHeights[0]}%` : '20%',
+                                        background: liveLevel.db > -4 ? '#F43F5E' : (liveLevel.db > -9 ? '#F59E0B' : '#10B981')
+                                    }} 
+                                />
+                                <span 
+                                    className="bar b2" 
+                                    style={{ 
+                                        height: isCurrent ? `${liveBarHeights[1]}%` : '35%',
+                                        background: liveLevel.db > -4 ? '#F43F5E' : (liveLevel.db > -9 ? '#F59E0B' : '#10B981')
+                                    }} 
+                                />
+                                <span 
+                                    className="bar b3" 
+                                    style={{ 
+                                        height: isCurrent ? `${liveBarHeights[2]}%` : '15%',
+                                        background: liveLevel.db > -4 ? '#F43F5E' : (liveLevel.db > -9 ? '#F59E0B' : '#10B981')
+                                    }} 
+                                />
+                                <span 
+                                    className="bar b4" 
+                                    style={{ 
+                                        height: isCurrent ? `${liveBarHeights[3]}%` : '40%',
+                                        background: liveLevel.db > -4 ? '#F43F5E' : (liveLevel.db > -9 ? '#F59E0B' : '#10B981')
+                                    }} 
+                                />
+                            </div>
+
+                            {/* Label & Details */}
+                            <div className="audio-segment-meta-group">
+                                <span className="audio-segment-label">
+                                    {stId === 'MUTE' ? '🔇 MUTED' : `🎙️ ${labelName.toUpperCase()}`}
+                                </span>
+                                {gain !== 1.0 && (
+                                    <span className={`audio-segment-gain-badge ${gain > 1 ? 'is-boost' : 'is-cut'}`}>
+                                        {gain > 1 ? `▲ ${gainDbStr}` : `▼ ${gainDbStr}`} ({Math.round(gain * 100)}%)
+                                    </span>
+                                )}
+                            </div>
+
                             <span className="audio-segment-time">
                                 {Math.round((e - s) / 1000)}s
                             </span>
@@ -214,22 +416,22 @@ export default function AudioRoutingTrack({
                 })}
             </div>
 
-            {/* Tactical Station Selector Popup Menu */}
+            {/* Tactical Station Selector & Gain Scale Popover Menu */}
             {selectedMenuSegment && (
                 <div 
                     className="audio-segment-context-menu"
                     style={{
                         position: 'fixed',
-                        left: `${Math.min(Math.max(10, selectedMenuSegment.x), window.innerWidth - 240)}px`,
-                        top: `${Math.min(Math.max(10, selectedMenuSegment.y), window.innerHeight - 250)}px`,
+                        left: `${Math.min(Math.max(10, selectedMenuSegment.x), window.innerWidth - 270)}px`,
+                        top: `${Math.min(Math.max(10, selectedMenuSegment.y - 120), window.innerHeight - 380)}px`,
                         zIndex: 99999
                     }}
                     onClick={(e) => e.stopPropagation()}
                     onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
                     <div className="menu-header">
-                        <span className="menu-icon">🎙️</span>
-                        <span>ASSIGN AUDIO SOURCE</span>
+                        <span className="menu-icon">🎚️</span>
+                        <span>AUDIO SEGMENT & GAIN SCALE</span>
                         <button 
                             type="button" 
                             className="menu-close-x" 
@@ -240,16 +442,94 @@ export default function AudioRoutingTrack({
                         </button>
                     </div>
 
-                    <div className="menu-segment-info" style={{ padding: '6px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', background: 'rgba(0, 0, 0, 0.2)' }}>
-                        <div className="info-time" style={{ fontFamily: 'JetBrains Mono', fontSize: '10.5px', color: '#06B6D4' }}>
+                    <div className="menu-segment-info">
+                        <div className="info-time">
                             {formatTimelineClock(selectedMenuSegment.s, timeMode, { includeSeconds: true })} - {formatTimelineClock(selectedMenuSegment.e, timeMode, { includeSeconds: true })}
                         </div>
-                        <div className="info-duration" style={{ fontSize: '9.5px', color: '#94A3B8', marginTop: '2px' }}>
+                        <div className="info-duration">
                             {Math.round((selectedMenuSegment.e - selectedMenuSegment.s) / 1000)}s duration
                         </div>
                     </div>
 
+                    {/* GAIN SCALE & AMPLIFIER SECTION */}
+                    <div className="menu-gain-section">
+                        <div className="gain-header-row">
+                            <span className="gain-label">VOLUME GAIN SCALE:</span>
+                            <span className={`gain-readout ${menuGainValue > 1 ? 'is-boost' : (menuGainValue === 0 ? 'is-mute' : 'is-normal')}`}>
+                                {Math.round(menuGainValue * 100)}% ({menuGainValue > 0 ? (20 * Math.log10(menuGainValue)).toFixed(1) + ' dB' : '-∞ dB'})
+                            </span>
+                        </div>
+
+                        {/* Interactive Range Slider */}
+                        <div className="gain-slider-wrapper">
+                            <input
+                                type="range"
+                                min="0"
+                                max="2.5"
+                                step="0.05"
+                                value={menuGainValue}
+                                onChange={(e) => handleApplyGainChange(e.target.value)}
+                                className="gain-range-slider"
+                                title={`Adjust Audio Volume Gain: ${Math.round(menuGainValue * 100)}%`}
+                            />
+                            <div className="gain-ticks-scale">
+                                <span className="tick" onClick={() => handleApplyGainChange(0)}>0%</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(0.5)}>-6dB</span>
+                                <span className="tick center" onClick={() => handleApplyGainChange(1.0)}>0dB (100%)</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(1.41)}>+3dB</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(2.0)}>+6dB</span>
+                                <span className="tick" onClick={() => handleApplyGainChange(2.5)}>+8dB</span>
+                            </div>
+                        </div>
+
+                        {/* Quick Gain Presets */}
+                        <div className="gain-presets-row">
+                            <button
+                                type="button"
+                                className={`btn-gain-preset ${menuGainValue === 0 ? 'active' : ''}`}
+                                onClick={() => handleApplyGainChange(0)}
+                                title="Mute audio on this segment"
+                            >
+                                🔇 Mute
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn-gain-preset ${Math.abs(menuGainValue - 0.5) < 0.05 ? 'active' : ''}`}
+                                onClick={() => handleApplyGainChange(0.5)}
+                                title="Cut volume by 50% (-6 dB)"
+                            >
+                                -6 dB (50%)
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn-gain-preset unity ${Math.abs(menuGainValue - 1.0) < 0.05 ? 'active' : ''}`}
+                                onClick={() => handleApplyGainChange(1.0)}
+                                title="Reset to standard 100% (0 dB Unity Gain)"
+                            >
+                                0 dB (100%)
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn-gain-preset ${Math.abs(menuGainValue - 1.41) < 0.05 ? 'active' : ''}`}
+                                onClick={() => handleApplyGainChange(1.41)}
+                                title="Boost volume by +3 dB (141%)"
+                            >
+                                +3 dB
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn-gain-preset ${Math.abs(menuGainValue - 2.0) < 0.05 ? 'active' : ''}`}
+                                onClick={() => handleApplyGainChange(2.0)}
+                                title="Boost volume by +6 dB (200%)"
+                            >
+                                +6 dB (200%)
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* ASSIGN AUDIO SOURCE */}
                     <div className="menu-stations-list">
+                        <div className="sub-header">ASSIGN WORKSTATION SOURCE:</div>
                         {stations.map(st => {
                             const isSelected = selectedMenuSegment.currentStationId === st.id;
                             const name = st.displayName || st.hostname || st.id;

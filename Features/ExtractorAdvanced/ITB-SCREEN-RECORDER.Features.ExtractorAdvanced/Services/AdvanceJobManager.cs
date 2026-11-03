@@ -1210,7 +1210,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                     if (tracks[inIdx].HasAudio)
                     {
-                        audioSegFilterOps.Add($"[{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS{aLabel}");
+                        double gain = aSeg.Gain > 0 ? aSeg.Gain : 1.0;
+                        string gainFilter = Math.Abs(gain - 1.0) > 0.01 
+                            ? $",volume={gain.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" 
+                            : "";
+                        audioSegFilterOps.Add($"[{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS{gainFilter}{aLabel}");
                     }
                     else
                     {
@@ -1730,7 +1734,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                     if (tracks[inIdx].HasAudio)
                     {
-                        audioSegFilterOps.Add($"[{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS{aLabel}");
+                        double gain = aSeg.Gain > 0 ? aSeg.Gain : 1.0;
+                        string gainFilter = Math.Abs(gain - 1.0) > 0.01 
+                            ? $",volume={gain.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}" 
+                            : "";
+                        audioSegFilterOps.Add($"[{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS{gainFilter}{aLabel}");
                     }
                     else
                     {

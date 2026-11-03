@@ -1,4 +1,4 @@
-# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
+﻿# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
 > **Last Updated**: 2026-11-02  
@@ -1879,4 +1879,44 @@ Manipulating multi-station and multi-display windows across high-density grid ca
    - Dedicated toolbar toggle `[ 🧲 SNAP: ON/OFF ]` and keyboard shortcut (`S`).
 
 ---
+
+## 43. Real-Time Web Audio Acoustic VU Meter, Expandable Timeline Audio Track with Dynamic Waveforms & Precision Gain Scale (2026-11-03)
+
+### 1. Operational Problem & Requirement
+Tactical operators reviewing continuous multi-station recordings identified three essential audio workflow gaps:
+1. **Simulated / Random Audio Animations**: Previously, audio presence in the timeline was visualized using arbitrary CSS keyframe loops (@keyframes wavePulse), which bore no relationship to the actual sound heard in headphones or speakers.
+2. **Fixed Height Audio Track Constraints**: The audio track was constrained to a compact 26px row, preventing operators from inspecting speech cadence, vocal pauses, or acoustic peaks.
+3. **Audio Gain Adjustment & Normalization**: Workstations often record at varying microphone / line-in levels (some too quiet, some clipping). Operators needed the ability to right-click an audio segment and adjust volume gain (attenuation or boost up to +8.0 dB / 250%) with immediate real-time acoustic feedback and backend export filter synthesis.
+
+### 2. Architectural Solution & Implementation
+1. **Web Audio API Acoustic Level Engine (udioLevelMonitor.js)**:
+   - Lazily instantiates a shared browser AudioContext and attaches an AnalyserNode (ftSize = 256, smoothingTimeConstant = 0.5) alongside a GainNode directly to the active unmuted <video> element (createMediaElementSource).
+   - Runs a 60fps acoustic measurement loop calculating true instantaneous **RMS (Root Mean Square)** and **Peak** deviation:
+     \text{RMS} = \sqrt{\frac{1}{N}\sum_{i=0}^{N-1}\left(\frac{\text{sample}[i] - 128}{128}\right)^2}, \quad \text{dB} = 20 \log_{10}(\text{RMS})
+   - Dispatches itb-live-audio-level events with exact acoustic measurements. When playback is paused, muted, or silent, all meters smoothly decay and rest at zero with zero artificial pulsing.
+2. **Expandable Audio Track (Compact 26px $\leftrightarrow$ Expanded 74px)**:
+   - Added a height toggle button (▲ / ▼) in the 180px audio header cell.
+   - Operators can toggle between a minimalist 26px single-row NOC view and a professional 74px expanded DAW/NLE waveform view, persisted to localStorage (itb_audio_track_expanded).
+   - In expanded mode, the header renders a high-precision multi-segment LED meter with real-time dB readout (e.g. -14.2 dB) and master gain indicator.
+3. **Dynamic Acoustic Waveform Display**:
+   - Each segment block in AudioRoutingTrack.jsx renders an SVG mirrored amplitude envelope across its time span:
+     - Symmetrical top and bottom peak geometry centered around  = 50\%$.
+     - When muted or $\text{Gain} = 0$, renders a flat dashed red baseline.
+     - Waveform peak heights scale dynamically in direct proportion to the segment's gain ($\text{Amplitude} \propto \text{Gain}$). Boosting gain visually raises the peaks; reducing gain flattens them.
+     - Displays visual badges for applied gain (e.g. ▲ +3.0 dB (141%) or ▼ -6.0 dB (50%)).
+4. **Interactive Right-Click Context Menu with Precision Gain Scale**:
+   - Right-clicking (or clicking) any audio segment opens an enhanced tactical context menu:
+     - **Gain Range Slider**: Continuous adjustment from  % (-∞ dB) to 250% (+8.0 dB) with clear dB/percentage readout.
+     - **Quick Preset Scale Buttons**: 🔇 Mute (0%), -6 dB (50%),   dB (100% Unity), +3 dB (141%), and +6 dB (200%).
+     - **Zero-Latency Audible Feedback**: Moving the slider immediately updates the segment in udioRoutingPlan and routes the new gain into the Web Audio GainNode (setAudioGain), giving operators instant audible volume changes during playback.
+5. **Backend Export FFmpeg Filter Synthesis (AdvanceJobManager.cs)**:
+   - Added Gain property to AudioRoutingSegmentDto (default 1.0).
+   - In both single-cut ComposeMasterMp4Async and multi-cam ComposeCustomCanvasMasterMp4Async, the filtergraph builder extracts Seg.Gain:
+     `	ext
+     [{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS,volume={gain}[a_seg_i]
+     `
+   - When $\text{Gain} \ne 1.0$, FFmpeg injects ,volume={gain:0.00}, producing perfectly normalized exported MP4 audio with zero audio-video drift.
+
+---
+*End of System Book
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

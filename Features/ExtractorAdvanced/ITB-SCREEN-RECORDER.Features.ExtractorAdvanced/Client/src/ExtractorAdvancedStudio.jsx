@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/ExtractorAdvancedStudio.jsx
 // ==========================================
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -495,6 +495,21 @@ export default function ExtractorAdvancedStudio() {
             return { ...plan, segments };
         });
         setIsAutoFollowAudio(false);
+    }, [effectiveAudioPlan]);
+
+    const handleChangeAudioSegmentGain = useCallback((segmentEpochMs, newGain) => {
+        setAudioRoutingPlan(prev => {
+            const plan = prev || effectiveAudioPlan;
+            const segments = (plan.segments || []).map(seg => {
+                const s = seg.startEpochMs ?? seg.StartEpochMs ?? 0;
+                const e = seg.endEpochMs ?? seg.EndEpochMs ?? 0;
+                if (segmentEpochMs >= s && segmentEpochMs <= e) {
+                    return { ...seg, gain: newGain };
+                }
+                return seg;
+            });
+            return { ...plan, segments };
+        });
     }, [effectiveAudioPlan]);
 
     const handleFollowVisualFeed = useCallback(() => {
@@ -1084,6 +1099,7 @@ export default function ExtractorAdvancedStudio() {
                                     audioRoutingPlan={effectiveAudioPlan}
                                     onSplitAudioSegment={handleSplitAudioSegment}
                                     onChangeAudioSegmentStation={handleChangeAudioSegmentStation}
+                                    onChangeAudioSegmentGain={handleChangeAudioSegmentGain}
                                     onFollowVisualFeed={handleFollowVisualFeed}
                                     isAutoFollowAudio={isAutoFollowAudio}
                                     canvasLayoutTimeline={canvasLayoutTimeline}

@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx
 // ==========================================
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -59,6 +59,7 @@ export default function TimelineBoard({
     audioRoutingPlan,
     onSplitAudioSegment,
     onChangeAudioSegmentStation,
+    onChangeAudioSegmentGain,
     onFollowVisualFeed,
     isAutoFollowAudio,
     canvasLayoutTimeline,
@@ -330,6 +331,7 @@ export default function TimelineBoard({
                             playheadMs={playheadMs}
                             onSplitSegment={onSplitAudioSegment}
                             onChangeSegmentStation={onChangeAudioSegmentStation}
+                            onChangeSegmentGain={onChangeAudioSegmentGain}
                             onFollowVisualFeed={onFollowVisualFeed}
                             isAutoFollow={isAutoFollowAudio}
                             timeMode={timeMode}

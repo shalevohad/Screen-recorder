@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/Extractor/Models/SynchronizationPlanModels.cs
 // ==========================================
 using System;
@@ -82,9 +82,17 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
 
     public class AudioRoutingSegmentDto
     {
+        [System.Text.Json.Serialization.JsonPropertyName("startEpochMs")]
         public long StartEpochMs { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("endEpochMs")]
         public long EndEpochMs { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("sourceStationId")]
         public string SourceStationId { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("gain")]
+        public double Gain { get; set; } = 1.0;
     }
 
     /// <summary>

@@ -1,9 +1,10 @@
-// ==========================================
+﻿// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Viewport/views/Feed/CameraCardFeed.jsx
 // ==========================================
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { frameStore } from '../../../../utils/frameStore.js';
 import { getAudioSettings } from '../../../../utils/studioSessionStore.js';
+import { attachVideoAudio } from '../../../../utils/audioLevelMonitor.js';
 import NoSignalHero from '../../overlays/NoSignalHero.jsx';
 import PersistentMinimapHud from '../../overlays/PersistentMinimapHud.jsx';
 import './CameraCardFeed.scss';
@@ -98,11 +99,15 @@ export default function CameraCardFeed({
         if (isSolo) {
             videoRef.current.volume = audio.volume;
             videoRef.current.muted = audio.isMuted;
+            if (!audio.isMuted) {
+                attachVideoAudio(videoRef.current);
+            }
         } else {
             const isActive = Boolean(activeAudioStationId && (station.id === activeAudioStationId || stationName === activeAudioStationId));
             videoRef.current.muted = !isActive;
             if (isActive) {
                 videoRef.current.volume = audio.volume;
+                attachVideoAudio(videoRef.current);
             }
         }
     }, [isSolo, activeAudioStationId, station.id, stationName]);
