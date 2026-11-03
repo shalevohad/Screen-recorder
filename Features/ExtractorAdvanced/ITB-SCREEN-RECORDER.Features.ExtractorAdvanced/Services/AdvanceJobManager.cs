@@ -964,7 +964,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 {
                     if (k < generatedTrackPaths.Count && File.Exists(generatedTrackPaths[k]))
                     {
-                        trackDescriptors.Add((renderTasks[k].StationId, renderTasks[k].DisplayId, generatedTrackPaths[k], true));
+                        string tPath = generatedTrackPaths[k];
+                        bool hasAudio = ProbeFileHasAudio(tPath);
+                        trackDescriptors.Add((renderTasks[k].StationId, renderTasks[k].DisplayId, tPath, hasAudio));
                     }
                 }
 
@@ -1180,15 +1182,27 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     double aDur = aEndSec - aStartSec;
                     if (aDur <= 0.05) continue;
 
-                    int inIdx = 0;
+                    int inIdx = -1;
                     for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
                     {
-                        if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase) && tracks[tIdx].HasAudio)
                         {
                             inIdx = tIdx;
                             break;
                         }
                     }
+                    if (inIdx < 0)
+                    {
+                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                        {
+                            if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                inIdx = tIdx;
+                                break;
+                            }
+                        }
+                    }
+                    if (inIdx < 0) inIdx = 0;
 
                     string aLabel = $"[a_seg_{i}]";
                     string startA = aStartSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
@@ -1218,12 +1232,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
                 else
                 {
-                    audioMapOption = tracks[0].HasAudio ? "-map 0:a? -c:a aac -b:a 192k" : "";
+                    int firstAudioIdx = tracks.FindIndex(t => t.HasAudio);
+                    audioMapOption = firstAudioIdx >= 0 ? $"-map {firstAudioIdx}:a? -c:a aac -b:a 192k" : "";
                 }
             }
-            else if (tracks[0].HasAudio)
+            else
             {
-                audioMapOption = "-map 0:a? -c:a aac -b:a 192k";
+                int firstAudioIdx = tracks.FindIndex(t => t.HasAudio);
+                if (firstAudioIdx >= 0)
+                {
+                    audioMapOption = $"-map {firstAudioIdx}:a? -c:a aac -b:a 192k";
+                }
             }
 
             filterComplex += " [vbase]format=yuv420p[outv]";
@@ -1618,6 +1637,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             // 4. Audio Routing
             string audioMapOption = "";
+            bool anyTrackHasAudio = tracks.Any(t => t.HasAudio);
+
             if (!string.IsNullOrEmpty(job.AudioSourceStation))
             {
                 if (string.Equals(job.AudioSourceStation, "mute", StringComparison.OrdinalIgnoreCase) ||
@@ -1627,14 +1648,27 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
                 else
                 {
-                    int audioIdx = tracks.FindIndex(t => string.Equals(t.StationId, job.AudioSourceStation, StringComparison.OrdinalIgnoreCase));
+                    int audioIdx = tracks.FindIndex(t => string.Equals(t.StationId, job.AudioSourceStation, StringComparison.OrdinalIgnoreCase) && t.HasAudio);
+                    if (audioIdx < 0)
+                    {
+                        audioIdx = tracks.FindIndex(t => string.Equals(t.StationId, job.AudioSourceStation, StringComparison.OrdinalIgnoreCase));
+                    }
+
                     if (audioIdx >= 0 && tracks[audioIdx].HasAudio)
                     {
                         audioMapOption = $"-map {audioIdx}:a? -c:a aac -b:a 192k";
                     }
+                    else if (anyTrackHasAudio)
+                    {
+                        int fallbackIdx = tracks.FindIndex(t => t.HasAudio);
+                        if (fallbackIdx >= 0)
+                        {
+                            audioMapOption = $"-map {fallbackIdx}:a? -c:a aac -b:a 192k";
+                        }
+                    }
                 }
             }
-            else if (job.AudioRoutingSegments != null && job.AudioRoutingSegments.Count > 0 && tracks.Any(t => t.HasAudio))
+            else if (job.AudioRoutingSegments != null && job.AudioRoutingSegments.Count > 0 && anyTrackHasAudio)
             {
                 long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
                 var audioSegFilterOps = new List<string>();
@@ -1648,15 +1682,27 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     double aDur = aEndSec - aStartSec;
                     if (aDur <= 0.05) continue;
 
-                    int inIdx = 0;
+                    int inIdx = -1;
                     for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
                     {
-                        if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase) && tracks[tIdx].HasAudio)
                         {
                             inIdx = tIdx;
                             break;
                         }
                     }
+                    if (inIdx < 0)
+                    {
+                        for (int tIdx = 0; tIdx < tracks.Count; tIdx++)
+                        {
+                            if (string.Equals(tracks[tIdx].StationId, aSeg.SourceStationId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                inIdx = tIdx;
+                                break;
+                            }
+                        }
+                    }
+                    if (inIdx < 0) inIdx = 0;
 
                     string aLabel = $"[a_seg_{i}]";
                     string startA = aStartSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
@@ -1686,12 +1732,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
                 else
                 {
-                    audioMapOption = tracks[0].HasAudio ? "-map 0:a? -c:a aac -b:a 192k" : "";
+                    int firstAudio = tracks.FindIndex(t => t.HasAudio);
+                    audioMapOption = firstAudio >= 0 ? $"-map {firstAudio}:a? -c:a aac -b:a 192k" : "";
                 }
             }
-            else if (tracks[0].HasAudio)
+            else
             {
-                audioMapOption = "-map 0:a? -c:a aac -b:a 192k";
+                int firstAudio = tracks.FindIndex(t => t.HasAudio);
+                if (firstAudio >= 0)
+                {
+                    audioMapOption = $"-map {firstAudio}:a? -c:a aac -b:a 192k";
+                }
             }
 
             filterBuilder.Append(" [vbase]format=yuv420p[outv]");
@@ -1730,6 +1781,34 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 string stderr = await stderrTask;
                 throw new InvalidOperationException($"FFmpeg custom canvas composition failed with exit code {process.ExitCode}: {stderr}");
+            }
+        }
+
+        private bool ProbeFileHasAudio(string filePath)
+        {
+            try
+            {
+                if (!File.Exists(filePath)) return false;
+                string ffprobePath = _binaryResolver.ResolveFfprobe();
+                var psi = new ProcessStartInfo
+                {
+                    FileName = ffprobePath,
+                    Arguments = $"-v error -select_streams a -show_entries stream=codec_type -of csv=p=0 \"{filePath.Replace('\\', '/')}\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var proc = Process.Start(psi);
+                if (proc == null) return false;
+                string output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(4000);
+                return output.Contains("audio", StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                _advLogger.LogWarning(ex, "[AdvanceJobManager] Failed to probe audio for {Path}, assuming false", filePath);
+                return false;
             }
         }
 

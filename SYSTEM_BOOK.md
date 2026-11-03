@@ -47,6 +47,7 @@
 37. [Non-Standard Aspect Ratio Preservation & CTRL-Locked Canvas Resizing](#37-non-standard-aspect-ratio-preservation--ctrl-locked-canvas-resizing-2026-11-03)
 38. [Zero-Collapse Master Canvas Stage & Responsive ResizeObserver Architecture](#38-zero-collapse-master-canvas-stage--responsive-resizeobserver-architecture-2026-11-03)
 39. [Tactical Master Canvas Workspace Normalization, Layer Stacking Hierarchy, Surface Rotation Isolation & Export/Import Architecture](#39-tactical-master-canvas-workspace-normalization-layer-stacking-hierarchy-surface-rotation-isolation--exportimport-architecture-2026-11-03)
+40. [FFmpeg Export Resilience, Synthetic Silence Synthesis & Stage-Level Compact Tactical Inspector Architecture](#40-ffmpeg-export-resilience-synthetic-silence-synthesis--stage-level-compact-tactical-inspector-architecture-2026-11-03)
 
 ---
 
@@ -1754,6 +1755,51 @@ During extensive forensic and multi-station layout editing, five workflow and UI
      - Users can drag any layer row up or down within the list with real-time glowing drop-indicator lines (`.drop-above` / `.drop-below`).
      - Dropping instantly recalculates the sequential layer ranks (`zIndex: N - position`) so the list order directly dictates the visual stacking order on the canvas.
      - Unplaced feeds can be dragged directly into the layers list to insert them at a chosen layer rank, or dragged onto the 16:9 Master Canvas stage to position them at the exact drop coordinates.
+
+
+---
+
+## 40. FFmpeg Export Resilience, Synthetic Silence Synthesis & Stage-Level Compact Tactical Inspector Architecture (2026-11-03)
+
+### 1. Root Cause Analysis: FFmpeg Exit Code -22 Stream Specifier Mismatch
+During Master MP4 Export compositions involving multi-station layouts with secondary monitors or video-only captures, FFmpeg composition jobs crashed with exit code `-22`:
+```text
+[fc#0 @ 000001b5753f44c0] Stream specifier ':a' in filtergraph description [0:v]...; [0:a]atrim=start=0.00:end=309.86,asetpts=PTS-STARTPTS[a_seg_0]; [vbase]format=yuv420p[outv] matches no streams.
+Error binding filtergraph inputs/outputs: Invalid argument
+```
+Investigation revealed three distinct flaws:
+1. **Hardcoded Audio Existence**: `AdvanceJobManager.cs` hardcoded `HasAudio = true` when packaging intermediate render tasks into `trackDescriptors` (line 967), disregarding `trackResult.HasAudio`.
+2. **Missing Audio in Secondary Displays (Rule 11)**: Secondary workstation screens (`mon-1`, `mon-2`) stream video-only streams without WASAPI audio loopback or microphones. Attempting to map `[inIdx:a]` for secondary screens or workstations without audio streams triggers FFmpeg fatal stream mismatch errors.
+3. **Filtergraph Deadlocks on Audio-Free Compositions**: Compositions where zero tracks had audio still attempted to bind audio routing chains instead of cleanly emitting a video-only MP4 container.
+
+### 2. Implementation & Architectural Patterns
+1. **Defensive Audio Validation (`ProbeFileHasAudio`)**:
+   - `AdvanceJobManager.cs` executes a fast, non-locking `ffprobe` verification probe prior to composing intermediate staging tracks:
+     ```bash
+     ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "{filePath}"
+     ```
+   - Only intermediate files with physically verified audio streams receive `HasAudio = true`.
+2. **Synthetic Silence Injection (`anullsrc`)**:
+   - In both `ComposeMasterMp4Async` and `ComposeCustomCanvasMasterMp4Async`, if an audio routing segment references a station whose stream does not contain audio, the engine automatically synthesizes synthetic silence:
+     ```text
+     anullsrc=r=48000:cl=stereo:d={aDur}[a_seg_i]
+     ```
+   - The engine never maps non-existent `[{inIdx}:a]` stream specifiers into filtergraphs, completely eliminating exit code `-22`.
+3. **Multi-Display Station Audio Resolution**:
+   - In multi-display setups (e.g. `mon-0` with audio, `mon-1` without audio), the audio router scans and prioritizes the display that actually carries audio streams when resolving a station ID.
+   - When no tracks in the composition have audio, the engine completely omits audio filters and maps `-map "[outv]"` alone without audio overhead.
+4. **Stage-Level Floating Tactical Inspector Overlay (`z-index: 99999`)**:
+   - In `MulticamViewport.jsx`, the floating inspector (`.floating-feed-inspector`) was elevated out of the `.canvas-feed-card-box` DOM hierarchy and rendered directly at the stage level (`.canvas-master-frame-16-9`).
+   - Eliminates CSS stacking-context traps where cards with higher layer ranks covered the inspector of a selected card.
+   - Positioned reactively relative to the selected card's coordinates (`p.x, p.y, p.width`) with automatic boundary detection and flip-down positioning (`top: 26px`) when snapped against the top edge.
+5. **Ultra-Compact Minimalist Inspector with Dropdown Select Boxes**:
+   - Replaced horizontal button bars (>750px wide) with sleek tactical `<select>` dropdowns:
+     - **Border Thickness**: Compact select box with visual stroke representations (`━ None`, `━ 2px`, `━━ 4px`, `━━━ 6px`, `━━━━ 8px`, `━━━━━ 12px`).
+     - **Border Color**: Single swatch button (`🎨 [swatch] ▾`) with popover color palette.
+     - **Shadow Effect**: Dropdown select box (`🌑 None / Soft / Medium / Deep / Tactical Cyan / Neon Rose / Emerald Glow`).
+     - **Layer Stacking**: Dropdown select box (`L#{layerRank} ▾` -> `⏫ Front`, `▲ +1`, `▼ -1`, `⏬ Back`).
+     - **Rotation**: Compact `↺ 90°` button + `📐 {rot}°` fine-tune toggle.
+   - Reduced inspector footprint to under 340px wide, preventing canvas occlusion.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

@@ -1216,190 +1216,189 @@
                         cursor: nwse-resize;
                     }
                 }
+            }
 
-                /* Floating Tactical Inspector for Selected Feed */
-                .floating-feed-inspector {
-                    position: absolute;
-                    top: -36px;
-                    left: 50%;
-                    transform: translateX(-50%);
+            /* Floating Tactical Inspector for Selected Feed (Stage-Level Overlay: Always on Top z-index: 99999) */
+            .floating-feed-inspector {
+                position: absolute;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                background: rgba(11, 17, 30, 0.96);
+                border: 1px solid #06B6D4;
+                padding: 3px 6px;
+                border-radius: 6px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+                backdrop-filter: blur(8px);
+                z-index: 99999;
+                white-space: nowrap;
+                user-select: none;
+                pointer-events: auto;
+
+                &.is-flipped-down {
+                    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.95);
+                    border-color: #38BDF8;
+                }
+
+                .inspector-group {
                     display: flex;
                     align-items: center;
-                    gap: 8px;
-                    background: rgba(11, 17, 30, 0.95);
-                    border: 1px solid #06B6D4;
-                    padding: 3px 8px;
-                    border-radius: 6px;
-                    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
-                    backdrop-filter: blur(8px);
-                    z-index: 99;
-                    white-space: nowrap;
+                    gap: 3px;
+                    position: relative;
+                }
 
-                    &.is-flipped-down {
-                        top: 26px; // Placed right below the 22px header inside the card!
-                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9);
-
-                        .inspector-group.shadow .shadow-dropdown-menu {
-                            bottom: auto;
-                            top: calc(100% + 4px);
-                        }
-                    }
-
-                    &.align-left {
-                        left: 8px;
-                        transform: none;
-                    }
-
-                    &.align-right {
-                        left: auto;
-                        right: 8px;
-                        transform: none;
-                    }
-
-                    
-                    .inspector-group.shadow {
-                        position: relative;
-
-                        .shadow-dropdown-menu {
-                            position: absolute;
-                            bottom: calc(100% + 4px);
-                            left: 0;
-                            background: #0B132B;
-                            border: 1px solid #06B6D4;
-                            border-radius: 4px;
-                            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
-                            z-index: 1000;
-                            display: flex;
-                            flex-direction: column;
-                            padding: 4px;
-                            gap: 2px;
-                            min-width: 110px;
-
-                            .shadow-option-btn {
-                                background: transparent;
-                                border: none;
-                                color: #94A3B8;
-                                font-family: inherit;
-                                font-size: 9px;
-                                font-weight: 700;
-                                padding: 3px 6px;
-                                border-radius: 2px;
-                                text-align: left;
-                                cursor: pointer;
-
-                                &:hover {
-                                    background: rgba(6, 182, 212, 0.15);
-                                    color: #38BDF8;
-                                }
-
-                                &.active {
-                                    background: #06B6D4;
-                                    color: #070A10;
-                                }
-                            }
-                        }
-                    }
-
-                    .inspector-group {
+                /* Border Color Swatch Trigger & Popover */
+                .color-swatch-group {
+                    .btn-color-swatch-trigger {
                         display: flex;
                         align-items: center;
                         gap: 3px;
-
-                        .group-label {
-                            font-size: 8px;
-                            font-weight: 800;
-                            color: #64748B;
-                            font-family: monospace;
-                            margin-right: 2px;
-                        }
-
-                        &.colors {
-                            .btn-color-dot {
-                                width: 12px;
-                                height: 12px;
-                                border-radius: 50%;
-                                border: 1px solid rgba(255, 255, 255, 0.3);
-                                cursor: pointer;
-                                padding: 0;
-                                transition: transform 0.15s ease;
-
-                                &:hover {
-                                    transform: scale(1.3);
-                                }
-
-                                &.is-active {
-                                    transform: scale(1.4);
-                                    border: 2px solid #FFFFFF;
-                                    box-shadow: 0 0 6px #FFFFFF;
-                                }
-                            }
-                        }
-
-                        &.width {
-                            .btn-width-pill {
-                                background: #151E2E;
-                                border: 1px solid #334155;
-                                color: #94A3B8;
-                                font-size: 8px;
-                                font-weight: 700;
-                                font-family: monospace;
-                                padding: 1px 4px;
-                                border-radius: 2px;
-                                cursor: pointer;
-
-                                &:hover {
-                                    color: #E2E8F0;
-                                }
-
-                                &.is-active {
-                                    background: #06B6D4;
-                                    color: #070A10;
-                                    border-color: #06B6D4;
-                                }
-                            }
-                        }
-
-                        &.rotate {
-                            .rotation-slider {
-                                width: 60px;
-                                height: 4px;
-                                accent-color: #06B6D4;
-                                cursor: pointer;
-                            }
-                        }
-                    }
-
-                    .btn-action-tool {
-                        background: #1E293B;
+                        background: #151E2E;
                         border: 1px solid #334155;
-                        color: #E2E8F0;
-                        font-size: 8.5px;
-                        font-weight: 700;
-                        font-family: monospace;
-                        padding: 2px 6px;
+                        padding: 2px 4px;
                         border-radius: 3px;
                         cursor: pointer;
                         transition: all 0.15s ease;
 
                         &:hover {
-                            background: #334155;
                             border-color: #06B6D4;
+                            background: #1E293B;
                         }
 
-                        &.active {
+                        .swatch-circle {
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 50%;
+                            border: 1px solid rgba(255, 255, 255, 0.4);
+                            display: inline-block;
+                        }
+
+                        .caret {
+                            font-size: 7px;
+                            color: #94A3B8;
+                        }
+                    }
+
+                    .compact-color-palette-popover {
+                        position: absolute;
+                        top: calc(100% + 5px);
+                        left: 0;
+                        display: grid;
+                        grid-template-columns: repeat(4, 16px);
+                        gap: 4px;
+                        padding: 5px;
+                        background: #0B132B;
+                        border: 1px solid #06B6D4;
+                        border-radius: 5px;
+                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9);
+                        z-index: 100000;
+
+                        .btn-color-dot {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 50%;
+                            border: 1px solid rgba(255, 255, 255, 0.3);
+                            cursor: pointer;
+                            padding: 0;
+                            transition: transform 0.15s ease;
+
+                            &:hover {
+                                transform: scale(1.25);
+                            }
+
+                            &.is-active {
+                                transform: scale(1.3);
+                                border: 2px solid #FFFFFF;
+                                box-shadow: 0 0 6px #FFFFFF;
+                            }
+                        }
+                    }
+                }
+
+                /* Compact Tactical Dropdowns */
+                .tactical-select {
+                    background: #151E2E;
+                    border: 1px solid #334155;
+                    color: #E2E8F0;
+                    font-family: inherit;
+                    font-size: 8.5px;
+                    font-weight: 700;
+                    padding: 2px 3px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    outline: none;
+                    transition: border-color 0.15s ease;
+
+                    &:hover, &:focus {
+                        border-color: #06B6D4;
+                    }
+
+                    option {
+                        background: #0F172A;
+                        color: #E2E8F0;
+                        padding: 3px;
+                    }
+                }
+
+                .width-select {
+                    max-width: 90px;
+                }
+
+                .shadow-select {
+                    max-width: 80px;
+                }
+
+                .layer-select {
+                    max-width: 72px;
+                }
+
+                .rotate {
+                    .rotation-slider {
+                        width: 50px;
+                        height: 4px;
+                        accent-color: #06B6D4;
+                        cursor: pointer;
+                    }
+                }
+
+                .btn-action-tool {
+                    background: #1E293B;
+                    border: 1px solid #334155;
+                    color: #E2E8F0;
+                    font-size: 8.5px;
+                    font-weight: 700;
+                    font-family: monospace;
+                    padding: 2px 5px;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        background: #334155;
+                        border-color: #06B6D4;
+                    }
+
+                    &.active {
+                        background: #06B6D4;
+                        color: #070A10;
+                    }
+
+                    &.highlight {
+                        background: rgba(6, 182, 212, 0.2);
+                        border-color: #06B6D4;
+                        color: #38BDF8;
+
+                        &:hover {
                             background: #06B6D4;
                             color: #070A10;
                         }
+                    }
 
-                        &.highlight {
-                            background: rgba(6, 182, 212, 0.2);
-                            border-color: #06B6D4;
-                            color: #38BDF8;
-
-                            &:hover {
-                                background: #06B6D4;
-                                color: #070A10;
-                            }
+                    &.btn-del-feed {
+                        color: #F43F5E;
+                        &:hover {
+                            background: rgba(244, 63, 94, 0.2);
+                            border-color: #F43F5E;
                         }
                     }
                 }

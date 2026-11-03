@@ -336,6 +336,7 @@ export default function MulticamViewport({
     const [selectedFeedIndex, setSelectedFeedIndex] = useState(0);
     const [showRotationControl, setShowRotationControl] = useState(false);
     const [showShadowControl, setShowShadowControl] = useState(false);
+    const [showColorPicker, setShowColorPicker] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
     const [snapGuides, setSnapGuides] = useState({ vertical: null, horizontal: null });
@@ -1254,6 +1255,7 @@ export default function MulticamViewport({
                 setShowPresetsMenu(false);
                 setShowShadowControl(false);
                 setShowRotationControl(false);
+                setShowColorPicker(false);
                 setShowSavePresetModal(false);
                 return;
             }
@@ -2239,156 +2241,217 @@ export default function MulticamViewport({
                                             </div>
                                         </>
                                     )}
+                                </div>
+                            );
+                        })}
 
-                                    {/* Selected Floating Tactical Inspector */}
-                                    {isSelected && selectedPlacement && (
-                                        <div
-                                            className={`floating-feed-inspector ${isFlippedDown ? 'is-flipped-down' : ''} ${isNearLeft ? 'align-left' : ''} ${isNearRight ? 'align-right' : ''}`}
-                                            onMouseDown={(e) => e.stopPropagation()}
-                                            onClick={(e) => e.stopPropagation()}
+                        {/* Selected Floating Tactical Inspector (Stage-Level Overlay: Always on Top z-index: 99999) */}
+                        {selectedFeedIndex !== null && selectedPlacement && (() => {
+                            const p = selectedPlacement;
+                            const origIdx = selectedFeedIndex;
+                            const bColor = p.borderColor || SLOT_BORDER_COLORS[origIdx % SLOT_BORDER_COLORS.length];
+                            const bWidth = p.borderWidth !== undefined ? p.borderWidth : 2;
+                            const rot = p.rotation || 0;
+                            const shadowEffect = p.shadowEffect || 'deep';
+                            const layerRank = p.zIndex !== undefined ? p.zIndex : origIdx + 1;
+
+                            // Calculate positioning relative to 1920x1080 canvas
+                            const isFlippedDown = p.y < 45;
+                            const centerXPct = ((p.x + p.width / 2) / VIRTUAL_CANVAS_W) * 100;
+                            const isNearLeft = centerXPct < 22;
+                            const isNearRight = centerXPct > 78;
+
+                            let leftStyle = `${centerXPct}%`;
+                            let transformStyle = 'translateX(-50%)';
+                            if (isNearLeft) {
+                                leftStyle = `${Math.max(1, (p.x / VIRTUAL_CANVAS_W) * 100)}%`;
+                                transformStyle = 'none';
+                            } else if (isNearRight) {
+                                leftStyle = `${Math.min(99, ((p.x + p.width) / VIRTUAL_CANVAS_W) * 100)}%`;
+                                transformStyle = 'translateX(-100%)';
+                            }
+
+                            const topStyle = isFlippedDown
+                                ? `${((p.y + 26) / VIRTUAL_CANVAS_H) * 100}%`
+                                : `calc(${((p.y) / VIRTUAL_CANVAS_H) * 100}% - 34px)`;
+
+                            const matchedStation = (allStations.length > 0 ? allStations : timelineStations).find(s => 
+                                s.id === p.stationId || 
+                                s.hostname?.toLowerCase() === p.stationId?.toLowerCase()
+                            );
+                            const stationTargetId = matchedStation ? matchedStation.id : p.stationId;
+
+                            return (
+                                <div
+                                    className={`floating-feed-inspector ${isFlippedDown ? 'is-flipped-down' : ''}`}
+                                    style={{
+                                        position: 'absolute',
+                                        left: leftStyle,
+                                        top: topStyle,
+                                        transform: transformStyle,
+                                        zIndex: 99999
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {/* Border Color Swatch Button & Popover */}
+                                    <div className="inspector-group color-swatch-group">
+                                        <button
+                                            type="button"
+                                            className="btn-color-swatch-trigger"
+                                            onClick={() => setShowColorPicker(prev => !prev)}
+                                            title="Border Color: Click to choose"
                                         >
-                                            {/* Border Color Palette */}
-                                            <div className="inspector-group colors">
-                                                <span className="group-label">BORDER:</span>
+                                            <span
+                                                className="swatch-circle"
+                                                style={{ backgroundColor: bColor === 'transparent' ? '#1E293B' : bColor }}
+                                            />
+                                            <span className="caret">▾</span>
+                                        </button>
+                                        {showColorPicker && (
+                                            <div className="compact-color-palette-popover">
                                                 {PALETTE_COLORS.map(c => (
                                                     <button
                                                         key={c}
                                                         type="button"
                                                         className={`btn-color-dot ${bColor === c ? 'is-active' : ''}`}
                                                         style={{ backgroundColor: c === 'transparent' ? '#1E293B' : c }}
-                                                        onClick={() => handleUpdateSelectedStyle({ borderColor: c })}
+                                                        onClick={() => {
+                                                            handleUpdateSelectedStyle({ borderColor: c });
+                                                            setShowColorPicker(false);
+                                                        }}
                                                         title={c === 'transparent' ? 'No Border Color' : `Border Color: ${c}`}
                                                     />
                                                 ))}
                                             </div>
+                                        )}
+                                    </div>
 
-                                            {/* Border Thickness */}
-                                            <div className="inspector-group width">
-                                                <span className="group-label">WIDTH:</span>
-                                                {BORDER_WIDTHS.map(w => (
-                                                    <button
-                                                        key={w}
-                                                        type="button"
-                                                        className={`btn-width-pill ${bWidth === w ? 'is-active' : ''}`}
-                                                        onClick={() => handleUpdateSelectedStyle({ borderWidth: w })}
-                                                    >
-                                                        {w === 0 ? 'NONE' : `${w}PX`}
-                                                    </button>
-                                                ))}
-                                            </div>
+                                    {/* Border Thickness Select (Stroke Lines) */}
+                                    <div className="inspector-group width-select-group">
+                                        <select
+                                            className="tactical-select width-select"
+                                            value={bWidth}
+                                            onChange={(e) => handleUpdateSelectedStyle({ borderWidth: Number(e.target.value) })}
+                                            title="Select border thickness"
+                                        >
+                                            <option value={0}>━ None (0px)</option>
+                                            <option value={2}>━ Thin (2px)</option>
+                                            <option value={4}>━━ Med (4px)</option>
+                                            <option value={6}>━━━ Thick (6px)</option>
+                                            <option value={8}>━━━━ Heavy (8px)</option>
+                                            <option value={12}>━━━━━ Ultra (12px)</option>
+                                        </select>
+                                    </div>
 
-                                            {/* Shadow Effect Dropdown */}
-                                            <div className="inspector-group shadow">
-                                                <button
-                                                    type="button"
-                                                    className={`btn-action-tool ${showShadowControl ? 'active' : ''}`}
-                                                    onClick={() => setShowShadowControl(prev => !prev)}
-                                                    title="Select shadow or glow effect"
-                                                >
-                                                    🌑 SHADOW ▾
-                                                </button>
-                                                {showShadowControl && (
-                                                    <div className="shadow-dropdown-menu">
-                                                        {SHADOW_PRESETS.map(s => (
-                                                            <button
-                                                                key={s.id}
-                                                                type="button"
-                                                                className={`shadow-option-btn ${shadowEffect === s.id ? 'active' : ''}`}
-                                                                onClick={() => {
-                                                                    handleUpdateSelectedStyle({ shadowEffect: s.id });
-                                                                    setShowShadowControl(false);
-                                                                }}
-                                                            >
-                                                                {s.label}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
+                                    {/* Shadow Effect Dropdown */}
+                                    <div className="inspector-group shadow-select-group">
+                                        <select
+                                            className="tactical-select shadow-select"
+                                            value={shadowEffect}
+                                            onChange={(e) => handleUpdateSelectedStyle({ shadowEffect: e.target.value })}
+                                            title="Shadow Effect"
+                                        >
+                                            {SHADOW_PRESETS.map(s => (
+                                                <option key={s.id} value={s.id}>{s.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
-                                            {/* Layer Stacking Order */}
-                                            <div className="inspector-group layers">
-                                                <span className="group-label">LAYER #{layerRank}:</span>
-                                                <button type="button" className="btn-action-tool" onClick={() => handleSendBackward(origIdx)} title="Send backward (L-1)">⬇️ -1</button>
-                                                <button type="button" className="btn-action-tool" onClick={() => handleBringForward(origIdx)} title="Bring forward (L+1)">⬆️ +1</button>
-                                                <button type="button" className="btn-action-tool" onClick={() => handleSendToBack(origIdx)} title="Send to Back (Bottom)">⏬ BACK</button>
-                                                <button type="button" className="btn-action-tool" onClick={() => handleBringToFront(origIdx)} title="Bring to Front (Top)">⏫ FRONT</button>
-                                            </div>
+                                    {/* Layer Stacking Order Select */}
+                                    <div className="inspector-group layer-select-group">
+                                        <select
+                                            className="tactical-select layer-select"
+                                            value=""
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === 'front') handleBringToFront(origIdx);
+                                                else if (val === 'back') handleSendToBack(origIdx);
+                                                else if (val === 'up') handleBringForward(origIdx);
+                                                else if (val === 'down') handleSendBackward(origIdx);
+                                            }}
+                                            title="Change layer stacking order"
+                                        >
+                                            <option value="" disabled>L#{layerRank} ▾</option>
+                                            <option value="front">⏫ Front (Top)</option>
+                                            <option value="up">▲ Forward (+1)</option>
+                                            <option value="down">▼ Backward (-1)</option>
+                                            <option value="back">⏬ Back (Bottom)</option>
+                                        </select>
+                                    </div>
 
-                                            {/* Rotate 90 & Slider Toggle */}
-                                            <div className="inspector-group rotate">
-                                                <button
-                                                    type="button"
-                                                    className="btn-action-tool"
-                                                    onClick={() => handleRotateStep(90)}
-                                                    title="Rotate 90 degrees clockwise (↺)"
-                                                >
-                                                    ↺ 90°
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className={`btn-action-tool ${showRotationControl ? 'active' : ''}`}
-                                                    onClick={() => setShowRotationControl(prev => !prev)}
-                                                    title="Toggle fine rotation slider"
-                                                >
-                                                    📐 {rot}°
-                                                </button>
-                                                {showRotationControl && (
-                                                    <input
-                                                        type="range"
-                                                        min="-180"
-                                                        max="180"
-                                                        value={rot}
-                                                        onChange={(e) => handleUpdateSelectedStyle({ rotation: Number(e.target.value) })}
-                                                        className="rotation-slider"
-                                                    />
-                                                )}
-                                            </div>
+                                    {/* Rotation Step & Fine Slider */}
+                                    <div className="inspector-group rotate">
+                                        <button
+                                            type="button"
+                                            className="btn-action-tool"
+                                            onClick={() => handleRotateStep(90)}
+                                            title="Rotate 90 degrees clockwise (↺)"
+                                        >
+                                            ↺ 90°
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`btn-action-tool ${showRotationControl ? 'active' : ''}`}
+                                            onClick={() => setShowRotationControl(prev => !prev)}
+                                            title="Toggle fine rotation slider"
+                                        >
+                                            📐 {rot}°
+                                        </button>
+                                        {showRotationControl && (
+                                            <input
+                                                type="range"
+                                                min="-180"
+                                                max="180"
+                                                value={rot}
+                                                onChange={(e) => handleUpdateSelectedStyle({ rotation: Number(e.target.value) })}
+                                                className="rotation-slider"
+                                            />
+                                        )}
+                                    </div>
 
-                                            {/* Native Recorded Aspect Ratio Snap */}
-                                            <button
-                                                type="button"
-                                                className="btn-action-tool highlight"
-                                                onClick={() => handleSnapToNativeAspect(origIdx)}
-                                                title={`Snap window dimensions to its exact recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
-                                            >
-                                                📐 NATIVE ({getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})
-                                            </button>
+                                    {/* Native Recorded Aspect Ratio Snap */}
+                                    <button
+                                        type="button"
+                                        className="btn-action-tool highlight"
+                                        onClick={() => handleSnapToNativeAspect(origIdx)}
+                                        title={`Snap window dimensions to its exact recorded aspect ratio (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
+                                    >
+                                        📐 NATIVE ({getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})
+                                    </button>
 
-                                            {/* Delete Feed Button */}
-                                            <button
-                                                type="button"
-                                                className="btn-action-tool btn-del-feed"
-                                                onClick={() => handleRemovePlacement(origIdx)}
-                                                title="Remove this feed from canvas"
-                                            >
-                                                🗑️
-                                            </button>
+                                    {/* 1x1 Focus Mode: Expand feed to fill entire 16:9 canvas */}
+                                    <button
+                                        type="button"
+                                        className="btn-action-tool highlight"
+                                        onClick={() => handleFocus1x1(origIdx)}
+                                        title="Maximize this window to fill the entire 16:9 canvas (1x1 Focus View)"
+                                    >
+                                        ⊞ 1x1
+                                    </button>
 
-                                            {/* 1x1 Focus Mode: Expand feed to fill entire 16:9 canvas */}
-                                            <button
-                                                type="button"
-                                                className="btn-action-tool highlight"
-                                                onClick={() => handleFocus1x1(origIdx)}
-                                                title="Maximize this window to fill the entire 16:9 canvas (1x1 Focus View)"
-                                            >
-                                                ⊞ 1x1 FOCUS
-                                            </button>
+                                    {/* Deep Forensic Spotlight Shortcut */}
+                                    <button
+                                        type="button"
+                                        className="btn-action-tool"
+                                        onClick={() => onOpenSpotlight && onOpenSpotlight(stationTargetId, p.displayId)}
+                                        title="Open station forensic spotlight view"
+                                    >
+                                        ⛶ SPOTLIGHT
+                                    </button>
 
-                                            {/* Deep Forensic Spotlight Shortcut */}
-                                            <button
-                                                type="button"
-                                                className="btn-action-tool"
-                                                onClick={() => onOpenSpotlight && onOpenSpotlight(st.id, p.displayId)}
-                                                title="Open station forensic spotlight view"
-                                            >
-                                                ⛶ SPOTLIGHT
-                                            </button>
-                                        </div>
-                                    )}
+                                    {/* Delete Feed Button */}
+                                    <button
+                                        type="button"
+                                        className="btn-action-tool btn-del-feed"
+                                        onClick={() => handleRemovePlacement(origIdx)}
+                                        title="Remove this feed from canvas"
+                                    >
+                                        🗑️
+                                    </button>
                                 </div>
                             );
-                        })}
+                        })()}
                     </div>
                 </div>
 
