@@ -421,6 +421,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         }
                     }
 
+                    double probeFps = probe0.Fps > 0 ? probe0.Fps : (probe1.Fps > 0 ? probe1.Fps : 30.0);
+                    if (probeFps < 20.0) probeFps = 30.0;
+                    string fpsStr = probeFps.ToString("0.##", CultureInfo.InvariantCulture);
+
+                    vfPost.Add($"fps=fps={fpsStr}:round=near");
                     vfPost.Add("format=yuv420p");
                     filterGraph += $"[vbase]{string.Join(",", vfPost)}[outv]";
 
@@ -436,7 +441,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                        $"-f concat -safe 0 -i \"{manifest0.Replace('\\', '/')}\" " +
                                        $"-f concat -safe 0 -i \"{manifest1.Replace('\\', '/')}\" " +
                                        $"{subInputArgs} -filter_complex \"{filterGraph}\" {mapArgs} " +
-                                       $"-c:v libx264 -preset veryfast -crf 20 -avoid_negative_ts make_zero {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
+                                       $"-c:v libx264 -preset fast -crf 17 -fps_mode cfr -r {fpsStr} -avoid_negative_ts make_zero {audioArg} -movflags +faststart -y \"{outputPath.Replace('\\', '/')}\"";
 
                     return await ExecuteFfmpegCommandAsync(ffmpegPath, arguments, outputPath, trackHasAudio, maxDuration, stationId, progress, ct);
                 }
@@ -539,6 +544,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                         }
                     }
 
+                    double trackFps = baselineProbe.Fps > 0 ? baselineProbe.Fps : 30.0;
+                    if (trackFps < 20.0) trackFps = 30.0;
+                    string fpsStr = trackFps.ToString("0.##", CultureInfo.InvariantCulture);
+
+                    vfFilters.Add($"fps=fps={fpsStr}:round=near");
                     vfFilters.Add("format=yuv420p");
                     string videoFilterArg = string.Join(",", vfFilters);
 

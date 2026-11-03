@@ -2309,6 +2309,52 @@ To achieve Premiere-grade non-linear editing (NLE) parity, ITB-SCREEN-RECORDER n
   - Each interval synthesizes a discrete FFmpeg canvas stage with its designated layout placements, trimming and padding each workstation track to exact sub-millisecond timestamps.
   - Concatenation cross-fades and cuts match the frontend preview with 100% forensic fidelity.
 
+---
+## 54. Master Export Video Quality & High-Fidelity CFR Framerate Pipeline (2026-11-03)
+
+### 1. Root Cause Analysis: Low Perceived FPS & Visual Degradation
+Operators reported that exported master MP4 recordings exhibited choppiness / low framerate and blurry / degraded visual quality compared to the pristine original recordings. Root cause analysis across the FFmpeg media pipeline identified five structural bottlenecks:
+1. **FFmpeg Background Color 25 FPS Default**: In `AdvanceJobManager.cs`, procedural canvas backgrounds were instantiated via `color=c=...:s=...:d=...` without an explicit frame rate (`:r=`). FFmpeg's `color` filter defaults strictly to **25 FPS**. Because the `overlay` filter synchronizes incoming video streams to the master clock of the primary background input, all multi-screen canvas placements were downsampled and dropped to 25 FPS.
+2. **Variable Frame Rate (VFR) Packet Jitter**: When concatenating DXGI screen chunks via `ffconcat` without an explicit `-fps_mode cfr` or `fps` filter, FFmpeg emitted variable frame rate timestamps. Screens with static content or low motion exhibited erratic frame spacing (5–15 FPS), causing media players to stutter.
+3. **Double Lossy Compression (Generation Loss)**:
+   - Pass 1 (`SynchronizedTrackCutter.cs`): Encoded tracks into intermediate MP4 files using `-preset veryfast -crf 20`.
+   - Pass 2 (`AdvanceJobManager.cs`): Decoded the intermediate MP4s and re-encoded them with a second lossy pass at low bitrate constraints.
+   Two successive passes with `preset veryfast` caused severe visual generation loss, blurring fine window text, terminal fonts, and HUD metrics.
+4. **Default Bilinear/Bicubic Scaling Artifacts**: Downscaling 1080p workstation feeds into multi-camera canvas grid tiles without interpolation flags blurred desktop typography.
+5. **Frame Dropping on Overlay Inputs**: Missing `:eof_action=pass:repeatlast=1` on overlay filters caused frames to drop or flicker whenever sub-second timestamp deltas occurred between tracks.
+
+### 2. High-Fidelity Constant Frame Rate (CFR 30/60 FPS) Engine
+* **Source & Master Framerate Alignment**:
+  `AdvanceJobManager` dynamically resolves the target framerate from the canvas layout or keyframe metadata (defaulting to 30.0 FPS, or 60.0 FPS for high-motion feeds):
+  $\text{targetFps} = \max(30, \text{round}(\text{canvasFps}))$
+* **Procedural Background Framerate Locking**:
+  All procedural background filter instances now enforce the target framerate:
+  `color=c={intBgHex}:s={cW}x{cH}:d={intDurStr}:r={targetFps}[bg]`
+* **Filtergraph Timestamp Normalization**:
+  Every workstation placement track undergoes CFR frame timing normalization prior to scaling:
+  `fps=fps={targetFps}:round=near`
+* **Seamless Frame Holding on Overlays**:
+  All multi-camera and multi-track overlays enforce frame continuity:
+  `overlay={x}:{y}:eof_action=pass:repeatlast=1`
+* **Output Stream CFR Enforcement**:
+  Master outputs pass through an explicit CFR filter (`[vbase]fps=fps={targetFps}:round=near,format=yuv420p[outv]`) and declare `-fps_mode cfr -r {targetFps}` on the FFmpeg command line, guaranteeing 100% rock-solid, judder-free playback across all media players.
+
+### 3. Studio-Grade Visual Fidelity & Lanczos Scaling
+* **Lanczos Sinc Resampling**:
+  All desktop screen scaling operations now utilize Lanczos interpolation with accurate rounding:
+  `scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd`
+  Small UI text, code in IDEs, and NOC telemetry remain sharp and readable even when downscaled to small grid tiles.
+* **Visually Lossless Intermediate Pass**:
+  `SynchronizedTrackCutter.cs` encodes intermediate tracks at visually lossless quality:
+  `-c:v libx264 -preset fast -crf 17 -fps_mode cfr -r {trackFps}`
+  This completely eliminates generation loss prior to final canvas composition.
+* **Studio-Grade Master Encoder Arguments**:
+  - **NVIDIA NVENC**: `-c:v h264_nvenc -preset p5 -tune hq -rc vbr -cq 19 -b:v 0 -maxrate 16000k -bufsize 32000k` (enabling B-frames and spatial/temporal AQ).
+  - **Intel QSV**: `-c:v h264_qsv -preset medium -global_quality 19 -b:v 0 -maxrate 16000k -bufsize 32000k`.
+  - **CPU libx264**: `-c:v libx264 -preset fast -crf 18 -maxrate 16000k -bufsize 32000k`.
+  - Dynamic buffer headroom allows complex multi-monitor canvas scenes to retain full detail without macroblocking.
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+
 
 

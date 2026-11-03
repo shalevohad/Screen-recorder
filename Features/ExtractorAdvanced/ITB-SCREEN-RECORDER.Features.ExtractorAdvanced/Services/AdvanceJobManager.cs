@@ -1110,6 +1110,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 inputArgsBuilder.Append($"-i \"{tracks[i].FilePath.Replace('\\', '/')}\" ");
             }
 
+            int targetFps = 30;
             string mode = (job.LayoutMode ?? "director").Trim().ToLowerInvariant();
             string filterComplex;
             string durationStr = exportedDurationSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
@@ -1118,17 +1119,17 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 string leftIn = !job.IsPipSwapped ? "[0:v]" : "[1:v]";
                 string rightIn = !job.IsPipSwapped ? "[1:v]" : "[0:v]";
-                filterComplex = $"{leftIn}scale=960:1080:force_original_aspect_ratio=decrease,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[left]; " +
-                                $"{rightIn}scale=960:1080:force_original_aspect_ratio=decrease,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[right]; " +
+                filterComplex = $"{leftIn}fps=fps={targetFps}:round=near,scale=960:1080:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[left]; " +
+                                $"{rightIn}fps=fps={targetFps}:round=near,scale=960:1080:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad=960:1080:(ow-iw)/2:(oh-ih)/2:black[right]; " +
                                 $"[left][right]hstack=inputs=2,drawbox=x=959:y=0:w=2:h=1080:color=0x1E293B@0.8:t=fill[vbase];";
             }
             else if (mode == "pip" && tracks.Count >= 2)
             {
                 string mainIn = !job.IsPipSwapped ? "[0:v]" : "[1:v]";
                 string insetIn = !job.IsPipSwapped ? "[1:v]" : "[0:v]";
-                filterComplex = $"{mainIn}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black[main]; " +
-                                $"{insetIn}scale=576:324:force_original_aspect_ratio=decrease,pad=576:324:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x06B6D4@0.9:t=2[inset]; " +
-                                $"[main][inset]overlay=W-w-24:H-h-24[vbase];";
+                filterComplex = $"{mainIn}fps=fps={targetFps}:round=near,scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black[main]; " +
+                                $"{insetIn}fps=fps={targetFps}:round=near,scale=576:324:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd,pad=576:324:(ow-iw)/2:(oh-ih)/2:black,drawbox=x=0:y=0:w=iw:h=ih:color=0x06B6D4@0.9:t=2[inset]; " +
+                                $"[main][inset]overlay=W-w-24:H-h-24:eof_action=pass:repeatlast=1[vbase];";
             }
             else if (mode == "canvas" || mode == "grid")
             {
@@ -1321,7 +1322,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
             }
 
-            filterComplex += " [vbase]format=yuv420p[outv]";
+            filterComplex += $" [vbase]fps=fps={targetFps}:round=near,format=yuv420p[outv]";
 
             var (_, _, masterBitrateKbps) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
             string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: masterBitrateKbps);
@@ -1332,6 +1333,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                $"-filter_complex \"{filterComplex}\" " +
                                $"-map \"[outv]\" {audioMapOption} " +
                                $"{encArgs} " +
+                               $"-fps_mode cfr -r {targetFps} " +
                                $"-metadata creation_time=\"{creationUtcIso}\" " +
                                $"-movflags +faststart " +
                                $"-y \"{finalMp4Path.Replace('\\', '/')}\"";
@@ -1375,6 +1377,19 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             {
                 inputArgsBuilder.Append($"-i \"{tracks[i].FilePath.Replace('\\', '/')}\" ");
             }
+
+            double canvasFps = 30.0;
+            if (job.CanvasLayout != null && job.CanvasLayout.Fps >= 20.0)
+            {
+                canvasFps = job.CanvasLayout.Fps;
+            }
+            else if (job.CanvasLayoutTimeline != null && job.CanvasLayoutTimeline.Keyframes.Count > 0)
+            {
+                var maxKfFps = job.CanvasLayoutTimeline.Keyframes.Max(k => k.Layout?.Fps ?? 0);
+                if (maxKfFps >= 20.0) canvasFps = maxKfFps;
+            }
+            int targetFps = (int)Math.Round(canvasFps);
+            if (targetFps < 24) targetFps = 30;
 
             var (targetWidth, targetHeight, targetBitrateKbps) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
             var filterBuilder = new System.Text.StringBuilder();
@@ -1428,7 +1443,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     string intBgHex = NormalizeHexColor(intLayout.BackgroundColor, "0x070A10");
 
                     string bgIntLabel = $"[bg_int_{intIdx}]";
-                    filterBuilder.Append($"color=c={intBgHex}:s={cW}x{cH}:d={intDurStr}{bgIntLabel}; ");
+                    filterBuilder.Append($"color=c={intBgHex}:s={cW}x{cH}:d={intDurStr}:r={targetFps}{bgIntLabel}; ");
 
                     var iSortedPlacements = intLayout.Placements.OrderBy(p => p.ZIndex).ToList();
                     var iPlacementLabels = new List<string>();
@@ -1487,7 +1502,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         {
                             $"trim=start={startStr}:end={endStr}",
                             "setpts=PTS-STARTPTS",
-                            $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease",
+                            $"fps=fps={targetFps}:round=near",
+                            $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd",
                             $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
                         };
 
@@ -1528,7 +1544,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         targetX -= (targetX % 2);
                         targetY -= (targetY % 2);
 
-                        filterBuilder.Append($"{curSurface}{pLabel}overlay={targetX}:{targetY}{nxtSurface}; ");
+                        filterBuilder.Append($"{curSurface}{pLabel}overlay={targetX}:{targetY}:eof_action=pass:repeatlast=1{nxtSurface}; ");
                         curSurface = nxtSurface;
                     }
 
@@ -1655,7 +1671,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     string pLabel = $"[p_{pIdx}]";
                     var ops = new List<string>
                     {
-                        $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease",
+                        $"fps=fps={targetFps}:round=near",
+                        $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease:flags=lanczos+accurate_rnd",
                         $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black"
                     };
 
@@ -1685,7 +1702,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
 
                 // 2. Base Canvas Background
-                filterBuilder.Append($"color=c={bgHex}:s={canvasW}x{canvasH}:d={durationStr}[bg]; ");
+                filterBuilder.Append($"color=c={bgHex}:s={canvasW}x{canvasH}:d={durationStr}:r={targetFps}[bg]; ");
 
                 // 3. Daisy-chain overlays
                 string currentSurface = "[bg]";
@@ -1708,7 +1725,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                         enableClause = $":enable='between(t,{startSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)},{endSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)})'";
                     }
 
-                    filterBuilder.Append($"{currentSurface}{pLabel}overlay={targetX}:{targetY}{enableClause}{nextSurface}; ");
+                    filterBuilder.Append($"{currentSurface}{pLabel}overlay={targetX}:{targetY}:eof_action=pass:repeatlast=1{enableClause}{nextSurface}; ");
                     currentSurface = nextSurface;
                 }
             }
@@ -1827,7 +1844,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
             }
 
-            filterBuilder.Append(" [vbase]format=yuv420p[outv]");
+            filterBuilder.Append($" [vbase]fps=fps={targetFps}:round=near,format=yuv420p[outv]");
 
             string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: targetBitrateKbps);
             string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
@@ -1837,6 +1854,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                                $"-filter_complex \"{filterBuilder}\" " +
                                $"-map \"[outv]\" {audioMapOption} " +
                                $"{encArgs} " +
+                               $"-fps_mode cfr -r {targetFps} " +
                                $"-metadata creation_time=\"{creationUtcIso}\" " +
                                $"-movflags +faststart " +
                                $"-y \"{finalMp4Path.Replace('\\', '/')}\"";
