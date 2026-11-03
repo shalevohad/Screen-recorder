@@ -955,6 +955,23 @@ export default function ExtractorAdvancedStudio() {
     const isInitialSetup = !isWorkspaceActive || selectedStationIds.length === 0;
     const currentPlayheadEpochMs = timelineBaseEpochMs + playheadMs;
 
+    // Synchronize active layout keyframe index with current playhead epoch during playback and scrubbing
+    useEffect(() => {
+        const kfs = canvasLayoutTimeline?.keyframes;
+        if (!kfs || kfs.length === 0) return;
+        let targetIdx = 0;
+        for (let i = 0; i < kfs.length; i++) {
+            if (kfs[i].timestampEpochMs <= currentPlayheadEpochMs + 50) {
+                targetIdx = i;
+            } else {
+                break;
+            }
+        }
+        if (targetIdx !== activeKfIndex) {
+            setActiveKfIndex(targetIdx);
+        }
+    }, [currentPlayheadEpochMs, canvasLayoutTimeline?.keyframes, activeKfIndex]);
+
     return (
         <div className="extractor-advanced-studio">
             <div className="studio-workspace-area">

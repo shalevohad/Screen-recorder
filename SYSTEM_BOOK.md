@@ -2252,5 +2252,63 @@ When composing multicam layouts on the Master Canvas, operators required the abi
   - Context menu `Deselect (Remove from Grid)` remains available via right-click.
 * **Automated Canvas Pruning**: Invoking `handleDeselectStation(stationId)` not only removes the station from project state but immediately prunes all of that station's window placements across all canvas layout keyframes in `canvasLayoutTimeline`.
 
+---
+## 53. Dynamic Mid-Stream Workstation Introduction, NLE Auto-Keyframing & Synchronized Canvas Playback Engine (2026-11-03)
+
+### 1. Architectural Mission & Rationale
+In enterprise forensic analysis and high-density command center debriefs, workstation activities evolve over time. Workstations often join an incident or become active only partway through a mission (e.g. at $t = 01:30$). Previously, modifications to the canvas layout (such as adding a feed or applying a preset) overwrote the initial keyframe at $t = 00:00$, causing workstations added mid-recording to appear from the very start of the session. 
+
+To achieve Premiere-grade non-linear editing (NLE) parity, ITB-SCREEN-RECORDER now features **Deterministic Auto-Keyframing**, **Dynamic Mid-Stream Workstation Introduction**, and **Synchronized Multi-Workstation Canvas Playback**.
+
+### 2. Auto-Keyframe Synthesis Invariants
+* **Temporal Detection**: When an operator modifies the canvas (adding a feed via `+ ADD TO CANVAS`, dragging from the Feeds Drawer, deleting a placement, resizing/moving a window, or choosing a layout preset), the system evaluates the playhead timestamp:
+  $T_{\text{epoch}} = \text{playheadEpochMs} > 0 ? \text{playheadEpochMs} : (T_{\text{base}} + \text{playheadMs})$
+* **Tolerance Window (\(\pm 500\text{ms}\))**:
+  - If a keyframe already exists within \(500\text{ms}\) of \(T_{\text{epoch}}\), the existing keyframe's layout is updated in place.
+  - If \(T_{\text{epoch}} \le T_{\text{base}} + 500\text{ms}\), Keyframe 0 (root keyframe at \(t=0\)) is updated.
+  - If \(T_{\text{epoch}} > T_{\text{base}} + 500\text{ms}\) and no keyframe exists within \(500\text{ms}\), the system automatically synthesizes a brand-new `Keyframe` object at \(T_{\text{epoch}}\).
+* **Preceding Keyframe Preservation**:
+  - Keyframe 0 (and all prior keyframes) remains 100% intact with its original placements.
+  - The newly synthesized keyframe inherits or receives the updated placement array.
+  - Keyframes are sorted chronologically, active keyframe index is advanced, and a tactical feedback toast is triggered (`💎 Keyframe #N created at HH:MM:SS`).
+
+### 3. Mid-Stream Station Introduction & Pruning Dynamics
+* **Introducing a Workstation Mid-Video**:
+  - When scrubbed to \(t = 01:30\) and adding Station B, Keyframe 0 (\(00:00 - 01:30\)) contains only Station A. Keyframe 1 (\(01:30+\)) contains Station A + Station B.
+  - Scrubbing before \(01:30\) renders only Station A; Station B is completely absent from canvas and listed in the Feeds Drawer as "AVAILABLE FEEDS".
+  - Crossing \(01:30\) displays Station B on the canvas and moves it to "CANVAS LAYERS" in the drawer.
+* **Removing a Workstation Mid-Video**:
+  - Scrubbing to \(t = 03:00\) and deleting Station A synthesizes Keyframe 2 at \(03:00\) containing only Station B.
+  - From \(00:00 - 01:30\): Station A only.
+  - From \(01:30 - 03:00\): Station A & Station B.
+  - From \(03:00+\): Station B only.
+
+### 4. Real-Time Playhead Tracking & Synchronized Canvas Playback
+* **Automatic Active Keyframe Resolution**:
+  - In `ExtractorAdvancedStudio.jsx`, an active keyframe synchronization hook resolves the active keyframe index whenever the playhead advances:
+    $\text{targetIdx} = \max \{ i \mid \text{keyframes}[i].\text{timestampEpochMs} \le T_{\text{playhead}} + 50\text{ms} \}$
+  - The diamond marker on `CanvasKeyframeTrack.jsx` dynamically highlights with glowing cyan as the playhead sweeps across keyframes.
+* **Smooth Easing & Opacity Transitions**:
+  - `activeDisplayPlacements` interpolates bounding boxes \((x, y, w, h)\) and rotations using cubic ease-in-out (`smooth`), linear (`linear`), or instant cut (`cut`).
+  - Workstations introduced mid-stream dynamically fade in during the transition duration (\(\text{opacity}: \max(0.05, t_{\text{eased}})\)).
+  - Workstations pruned mid-stream dynamically fade out (\(\text{opacity}: \max(0, 1 - t_{\text{eased}})\)).
+  - Synchronized canvas playback runs across all active video feeds in lockstep with WASAPI solo audio.
+
+### 5. Tactical Canvas Keyframe & Transition Inspector
+* **HUD Inspector Bar**: Embedded directly in the Canvas Toolbar (`.keyframe-inspector-group`):
+  - **Keyframe Badge**: `💎 KF #M/N` indicating the current active keyframe.
+  - **Transition Selectors** (visible on \(KF > 1\)):
+    - Type: `⚡ Smooth Ease` | `↗ Linear` | `✂ Cut (Instant)`
+    - Duration: `0.2s` | `0.3s` | `0.5s` | `0.75s` | `1.0s` | `1.5s` | `2.0s`
+  - **Direct Actions**: `＋ KF` (or keyboard shortcut `K`) to explicitly mint a keyframe; `🗑️ DEL KF` to remove the active keyframe.
+  - **Universal Playback Hotkey**: Spacebar toggles synchronized canvas play/pause.
+
+### 6. Backend Multi-Interval FFmpeg Export Alignment
+* In `AdvanceJobManager.cs`:
+  - When `CanvasLayoutTimeline.Keyframes.Count > 1`, the backend decomposes the mission into chronological intervals \([T_k, T_{k+1}]\).
+  - Each interval synthesizes a discrete FFmpeg canvas stage with its designated layout placements, trimming and padding each workstation track to exact sub-millisecond timestamps.
+  - Concatenation cross-fades and cuts match the frontend preview with 100% forensic fidelity.
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
+
 
