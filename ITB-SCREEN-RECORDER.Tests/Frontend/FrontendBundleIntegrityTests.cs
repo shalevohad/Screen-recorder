@@ -138,4 +138,77 @@ public class FrontendBundleIntegrityTests
         Assert.Contains("canvasFrameDimensions", viewportContent);
         Assert.Contains("station.hostname || station.name || station.id", feedContent);
     }
+
+    [Fact]
+    public void ExtractorAdvanced_NleTimelineEngine_PassesNodeTestSuiteWithZeroErrors()
+    {
+        var clientDir = GetClientDirectory();
+        var nodeModules = Path.Combine(clientDir, "node_modules");
+
+        if (!Directory.Exists(nodeModules))
+        {
+            return;
+        }
+
+        bool isWindows = OperatingSystem.IsWindows();
+        var psi = new ProcessStartInfo
+        {
+            FileName = isWindows ? "cmd.exe" : "npm",
+            Arguments = isWindows ? "/c npm test" : "test",
+            WorkingDirectory = clientDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = new Process { StartInfo = psi };
+        process.Start();
+
+        string stdout = process.StandardOutput.ReadToEnd();
+        string stderr = process.StandardError.ReadToEnd();
+        bool exited = process.WaitForExit(30000);
+
+        if (!exited)
+        {
+            process.Kill(entireProcessTree: true);
+            Assert.Fail("npm test timed out after 30 seconds");
+        }
+
+        Assert.True(process.ExitCode == 0, $"Node test suite failed with code {process.ExitCode}.\nSTDOUT: {stdout}\nSTDERR: {stderr}");
+        Assert.Contains("fail 0", stdout);
+        Assert.Contains("pass", stdout);
+    }
+
+    [Fact]
+    public void ExtractorAdvanced_NleTimelineEngine_KeyframeInspectorAndStyles_BundledInArtifacts()
+    {
+        var clientDir = GetClientDirectory();
+        var wwwrootDir = Path.Combine(clientDir, "..", "wwwroot");
+
+        var widgetJsPath = Path.Combine(wwwrootDir, "extractor-advanced.widget.js");
+        var styleCssPath = Path.Combine(wwwrootDir, "extractor-advanced.style.css");
+
+        Assert.True(File.Exists(widgetJsPath), $"Compiled bundle missing: {widgetJsPath}");
+        Assert.True(File.Exists(styleCssPath), $"Compiled stylesheet missing: {styleCssPath}");
+
+        var jsContent = File.ReadAllText(widgetJsPath);
+        var cssContent = File.ReadAllText(styleCssPath);
+
+        // Verify NLE engine source implementation exists
+        var enginePath = Path.Combine(clientDir, "src", "utils", "nleTimelineEngine.js");
+        Assert.True(File.Exists(enginePath), $"NLE Timeline Engine source missing: {enginePath}");
+        var engineContent = File.ReadAllText(enginePath);
+        Assert.Contains("synthesizeAutoKeyframe", engineContent);
+        Assert.Contains("interpolateKeyframePlacements", engineContent);
+        Assert.Contains("resolveActiveKeyframeIndex", engineContent);
+
+        // Verify key NLE properties are compiled into production bundle
+        Assert.Contains("transitionDurationSec", jsContent);
+        Assert.Contains("transitionType", jsContent);
+
+        // Verify tactical styling tokens for keyframe inspector are present
+        Assert.Contains("keyframe-inspector-group", cssContent);
+        Assert.Contains("kf-inspector-badge", cssContent);
+    }
 }

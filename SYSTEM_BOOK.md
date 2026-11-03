@@ -2354,6 +2354,72 @@ Operators reported that exported master MP4 recordings exhibited choppiness / lo
   - **CPU libx264**: `-c:v libx264 -preset fast -crf 18 -maxrate 16000k -bufsize 32000k`.
   - Dynamic buffer headroom allows complex multi-monitor canvas scenes to retain full detail without macroblocking.
 
+---
+## 55. NLE Timeline Engine Architecture & Automated Critical Verification Test Matrix (2026-11-03)
+
+### 1. Modular NLE Timeline Engine (`nleTimelineEngine.js`)
+To provide Adobe Premiere-grade non-linear editing (NLE) within an air-gapped web client, core keyframing, timeline tracking, and transition interpolation algorithms are decoupled into a dedicated, zero-dependency pure utility module:
+- **`resolveActiveKeyframeIndex(keyframes, currentEpochMs)`**: Resolves the exact active keyframe index as the playhead scrubs across time, with a 100ms lookahead tolerance for smooth boundary transitions.
+- **`interpolateKeyframePlacements({ keyframes, currentEpochMs, currentPlacements, isEditing })`**:
+  - Evaluates active keyframe intervals \([KF_A, KF_B]\).
+  - Morphing: Sub-pixel position \((X, Y)\), dimensions \((W, H)\), and rotation angle \(\theta\).
+  - Mid-Stream Feed Introductions: Feeds present in \(KF_B\) but absent in \(KF_A\) seamlessly fade in (\(\text{opacity} \in [0.05, 1.0]\)).
+  - Mid-Stream Feed Pruning / Deletions: Feeds present in \(KF_A\) but removed in \(KF_B\) seamlessly fade out (\(\text{opacity} \in [1.0, 0.0]\)).
+  - Transition Curvature:
+    - `smooth`: Standard cubic ease-in-out ($4t^3$ for $t < 0.5$, $1 - \frac{(-2t+2)^3}{2}$ for $t \ge 0.5$).
+    - `linear`: Standard linear lerp.
+    - `cut`: Instantaneous step-function at target keyframe timestamp.
+- **`synthesizeAutoKeyframe({ prevTimeline, newPlacements, currentEpochMs, baseEpochMs, toleranceMs })`**:
+  - Automatically discriminates between initial state setup ($t \le baseEpochMs + 500\text{ms}$), keyframe scrubbing/nudging ($\Delta t \le 500\text{ms}$ of an existing keyframe), and mid-stream modifications ($t > baseEpochMs + 500\text{ms}$).
+  - Automatically synthesizes a new keyframe chronologically sorted into the timeline without altering preceding keyframe states.
+- **`updateKeyframeTransition(timeline, index, { transitionType, transitionDurationSec })`**:
+  - Safely modifies transition type and duration while enforcing minimum duration bounds ($0.1\text{s} \le \tau \le 5.0\text{s}$).
+- **`deleteKeyframe(timeline, index)`**:
+  - Removes non-root keyframes while strictly protecting Keyframe 0 ($t=0$) from deletion.
+- **`insertExplicitKeyframe(timeline, currentEpochMs, layout, toleranceMs)`**:
+  - Handles explicit manual keyframe creation via keyboard shortcut `K` or the HUD `＋ KF` button.
+
+### 2. Comprehensive Critical Verification Test Matrix
+
+A dual-tier automated test harness covers all critical verification points across frontend and backend:
+
+#### Tier 1: Frontend Test Suite (`node --test src/tests/nleTimelineEngine.test.js`)
+* Built completely offline using Node.js native test runner (`node:test` + `node:assert/strict`) — zero remote CDN dependencies, complying with Rule 14:
+1. **Auto-Keyframe Initial Root**: Verifies that an empty timeline creates Root Keyframe 0 at $t_0$.
+2. **Origin Layout Edits**: Verifies that layout changes near origin ($t \le 500\text{ms}$) update Keyframe 0 in place without creating phantom keyframes.
+3. **Mid-Stream Auto-Keyframing**: Verifies that layout modifications at $t > 500\text{ms}$ mint a new keyframe and preserve Keyframe 0 intact.
+4. **Tolerance Deduping**: Verifies that scrubbing and editing within 500ms of an existing keyframe updates that keyframe in place without duplication.
+5. **Chronological Sorting**: Verifies that keyframes inserted out of order are automatically sorted chronologically.
+6. **Active Keyframe Tracking**: Verifies that `resolveActiveKeyframeIndex` accurately tracks the active keyframe index throughout playback and scrubbing.
+7. **Pre-Transition Stability**: Verifies that placements maintain Keyframe A geometry prior to the transition start epoch ($t < t_{KF_B} - \tau$).
+8. **Mid-Transition Interpolation**: Verifies exact 50% coordinate and dimension interpolation.
+9. **Mid-Stream Feed Entrance**: Verifies that newly added stations fade in smoothly ($0 \to 1$ opacity).
+10. **Mid-Stream Feed Pruning**: Verifies that removed stations fade out smoothly ($1 \to 0$ opacity).
+11. **Instantaneous Cut Transitions**: Verifies that `cut` mode holds preceding geometry until the exact keyframe epoch without intermediate tweening.
+12. **Transition Mutation**: Verifies that transition type and duration updates mutate the targeted keyframe without side-effects.
+13. **Keyframe Deletion**: Verifies mid-stream keyframe removal and active index re-indexing.
+14. **Root Keyframe Protection**: Verifies that attempting to delete Keyframe 0 is rejected to protect timeline integrity.
+15. **Explicit Keyframe Insertion**: Verifies shortcut insertion and deduplication.
+
+#### Tier 2: Backend Integration & Export Quality Suite (`ITB-SCREEN-RECORDER.Tests`)
+* Implemented in xUnit .NET 8 test runner:
+1. **`FrontendBundleIntegrityTests.ExtractorAdvanced_NleTimelineEngine_PassesNodeTestSuiteWithZeroErrors`**:
+   Directly executes the frontend test runner (`npm test`) as an automated step in the .NET CI test suite.
+2. **`FrontendBundleIntegrityTests.ExtractorAdvanced_NleTimelineEngine_KeyframeInspectorAndStyles_BundledInArtifacts`**:
+   Validates production artifacts (`extractor-advanced.widget.js` and `extractor-advanced.style.css`) for NLE engine signatures, transition properties, and tactical UI styles (`.keyframe-inspector-group`, `.kf-inspector-badge`).
+3. **`NleMasterExportQualityTests.ProceduralColorBackground_LocksFramerate_ToPreventVfrStutter`**:
+   Validates that procedural background filters enforce `:r={targetFps}` across 30 and 60 FPS exports.
+4. **`NleMasterExportQualityTests.VideoScalingFilterChain_EnforcesLanczosAndAccurateRnd`**:
+   Validates that all scaling operations enforce `flags=lanczos+accurate_rnd` for pin-sharp desktop text.
+5. **`NleMasterExportQualityTests.VideoOverlayFilterChain_EnforcesPassRepeatLast`**:
+   Validates `eof_action=pass:repeatlast=1` on overlay streams.
+6. **`NleMasterExportQualityTests.MasterOutputFfmpegArgs_EnforcesConstantFramerateMode`**:
+   Validates `-fps_mode cfr -r {targetFps}` in master FFmpeg argument lists.
+7. **`NleMasterExportQualityTests.IntermediateCutter_EnforcesVisuallyLosslessQuality_Crf17`**:
+   Validates visually lossless `-crf 17` intermediate cut tracks to prevent double-compression degradation.
+8. **`NleMasterExportQualityTests.CanvasLayoutTimeline_KeyframeSerialization_PreservesTransitions`**:
+   Validates DTO JSON and XML serialization/deserialization for multi-keyframe transition properties.
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 

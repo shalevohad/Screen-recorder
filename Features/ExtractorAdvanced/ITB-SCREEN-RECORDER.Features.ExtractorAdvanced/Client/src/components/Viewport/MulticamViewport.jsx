@@ -7,6 +7,15 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import CameraCard from './views/Card/CameraCard.jsx';
 import { saveStudioSessionCache } from '../../utils/studioSessionStore.js';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
+import {
+    clamp,
+    resolveActiveKeyframeIndex,
+    interpolateKeyframePlacements,
+    synthesizeAutoKeyframe,
+    updateKeyframeTransition,
+    deleteKeyframe,
+    insertExplicitKeyframe
+} from '../../utils/nleTimelineEngine.js';
 import './MulticamViewport.scss';
 
 export const ASPECT_PRESETS = [
@@ -44,14 +53,6 @@ const SHADOW_PRESETS = [
     { id: 'glow-rose', label: 'Rose Glow' },
     { id: 'glow-amber', label: 'Amber Glow' }
 ];
-
-function clamp(val, min, max) {
-    return Math.max(min, Math.min(max, val));
-}
-
-function cubicEaseInOut(t) {
-    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
 
 function getShadowCss(shadowEffect, isSelected, bColor) {
     let base;
@@ -615,16 +616,7 @@ export default function MulticamViewport({
 
     const keyframes = internalTimeline.keyframes || [];
     const activeKfIndexByTime = useMemo(() => {
-        if (!keyframes || keyframes.length === 0) return 0;
-        let bestIdx = 0;
-        for (let i = 0; i < keyframes.length; i++) {
-            if (keyframes[i].timestampEpochMs <= currentEpochMs + 100) {
-                bestIdx = i;
-            } else {
-                break;
-            }
-        }
-        return bestIdx;
+        return resolveActiveKeyframeIndex(keyframes, currentEpochMs);
     }, [keyframes, currentEpochMs]);
 
     const safeActiveIdx = clamp(
@@ -676,10 +668,6 @@ export default function MulticamViewport({
         const TOLERANCE_MS = 500;
         if (currentEpoch <= baseEpochMs + TOLERANCE_MS) return safeActiveIdx;
 
-        const existingIdx = keyframes.findIndex(k => Math.abs(k.timestampEpochMs - currentEpoch) <= TOLERANCE_MS);
-        if (existingIdx >= 0) return existingIdx;
-
-        // Auto-Keyframe synthesis for mid-stream layout modifications (Premiere-style)
         const activeLayout = currentKf?.layout || {
             width: virtualW,
             height: virtualH,
@@ -687,26 +675,20 @@ export default function MulticamViewport({
             fps: 30.0,
             placements: currentPlacements
         };
-        const newKf = {
-            id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            timestampEpochMs: Math.round(currentEpoch),
-            transitionDurationSec: 0.5,
-            transitionType: 'smooth',
-            layout: JSON.parse(JSON.stringify(activeLayout))
-        };
-        const nextKfs = [...keyframes, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
-        const newIdx = nextKfs.findIndex(k => k.id === newKf.id);
-        const nextTimeline = { ...internalTimeline, keyframes: nextKfs };
-        setInternalTimeline(nextTimeline);
-        if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-        if (setActiveKfIndex) setActiveKfIndex(newIdx >= 0 ? newIdx : 0);
-        triggerToast(
-            `Keyframe #${newIdx + 1} created at ${formatTimelineClock(currentEpoch, timeMode, { includeSeconds: true })}`,
-            'success',
-            '💎'
-        );
-        return newIdx >= 0 ? newIdx : safeActiveIdx;
-    }, [playheadEpochMs, baseEpochMs, playheadMs, keyframes, safeActiveIdx, currentKf, virtualW, virtualH, currentPlacements, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast]);
+
+        const { nextTimeline, newIndex, isNew } = insertExplicitKeyframe(internalTimeline, currentEpoch, activeLayout, TOLERANCE_MS);
+        if (isNew) {
+            setInternalTimeline(nextTimeline);
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            if (setActiveKfIndex) setActiveKfIndex(newIndex);
+            triggerToast(
+                `Keyframe #${newIndex + 1} created at ${formatTimelineClock(currentEpoch, timeMode, { includeSeconds: true })}`,
+                'success',
+                '💎'
+            );
+        }
+        return newIndex;
+    }, [playheadEpochMs, baseEpochMs, playheadMs, safeActiveIdx, currentKf, virtualW, virtualH, currentPlacements, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast]);
 
     // Helper to update current placements on active keyframe with Auto-Keyframe synthesis
     const updateActivePlacements = useCallback((newPlacements, actionLabel = null) => {
@@ -714,95 +696,29 @@ export default function MulticamViewport({
             pushUndoSnapshot(actionLabel);
         }
         const currentEpoch = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
-        const TOLERANCE_MS = 500;
 
         setInternalTimeline(prev => {
-            const nextKfs = [...(prev.keyframes || [])];
-            if (nextKfs.length === 0) {
-                const initialKf = {
-                    id: `kf_root_${Date.now()}`,
-                    timestampEpochMs: baseEpochMs,
-                    transitionDurationSec: 0.5,
-                    transitionType: 'smooth',
-                    layout: {
-                        width: virtualW,
-                        height: virtualH,
-                        backgroundColor: '#070A10',
-                        fps: 30.0,
-                        placements: newPlacements
-                    }
-                };
-                const nextTimeline = { ...prev, keyframes: [initialKf] };
-                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-                if (setActiveKfIndex) setActiveKfIndex(0);
-                return nextTimeline;
-            }
+            const { nextTimeline, newIndex, isNewKeyframe } = synthesizeAutoKeyframe({
+                prevTimeline: prev,
+                newPlacements,
+                currentEpochMs: currentEpoch,
+                baseEpochMs,
+                toleranceMs: 500,
+                virtualW,
+                virtualH,
+                fps: 30.0
+            });
 
-            // Check if an existing keyframe is close to current playhead epoch (within tolerance)
-            const closeIdx = nextKfs.findIndex(k => Math.abs(k.timestampEpochMs - currentEpoch) <= TOLERANCE_MS);
-
-            if (closeIdx >= 0) {
-                // Edit existing keyframe at this timestamp
-                nextKfs[closeIdx] = {
-                    ...nextKfs[closeIdx],
-                    layout: {
-                        ...nextKfs[closeIdx].layout,
-                        width: virtualW,
-                        height: virtualH,
-                        placements: newPlacements
-                    }
-                };
-                const nextTimeline = { ...prev, keyframes: nextKfs };
-                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-                if (setActiveKfIndex) setActiveKfIndex(closeIdx);
-                return nextTimeline;
-            }
-
-            // Check if we are near the very beginning of the timeline (baseEpochMs)
-            if (currentEpoch <= baseEpochMs + TOLERANCE_MS) {
-                nextKfs[0] = {
-                    ...nextKfs[0],
-                    layout: {
-                        ...nextKfs[0].layout,
-                        width: virtualW,
-                        height: virtualH,
-                        placements: newPlacements
-                    }
-                };
-                const nextTimeline = { ...prev, keyframes: nextKfs };
-                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-                if (setActiveKfIndex) setActiveKfIndex(0);
-                return nextTimeline;
-            }
-
-            // CASE 2: AUTO-KEYFRAME SYNTHESIS (NLE Premiere-Style)
-            // Mid-stream layout modification creates a new keyframe, preserving preceding keyframe layout!
-            const newKf = {
-                id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                timestampEpochMs: Math.round(currentEpoch),
-                transitionDurationSec: 0.5,
-                transitionType: 'smooth',
-                layout: {
-                    width: virtualW,
-                    height: virtualH,
-                    backgroundColor: '#070A10',
-                    fps: 30.0,
-                    placements: newPlacements
-                }
-            };
-
-            const sortedKfs = [...nextKfs, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
-            const newIndex = sortedKfs.findIndex(k => k.id === newKf.id);
-
-            const nextTimeline = { ...prev, keyframes: sortedKfs };
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-            if (setActiveKfIndex) setActiveKfIndex(newIndex >= 0 ? newIndex : 0);
+            if (setActiveKfIndex) setActiveKfIndex(newIndex);
 
-            triggerToast(
-                `Keyframe #${newIndex + 1} created at ${formatTimelineClock(currentEpoch, timeMode, { includeSeconds: true })}`,
-                'success',
-                '💎'
-            );
+            if (isNewKeyframe && newIndex > 0) {
+                triggerToast(
+                    `Keyframe #${newIndex + 1} created at ${formatTimelineClock(currentEpoch, timeMode, { includeSeconds: true })}`,
+                    'success',
+                    '💎'
+                );
+            }
 
             return nextTimeline;
         });
@@ -1884,36 +1800,29 @@ export default function MulticamViewport({
     // Explicit Keyframe & Transition Action Handlers
     const handleExplicitAddKeyframe = useCallback(() => {
         const currentEpoch = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
-        const TOLERANCE_MS = 500;
-        const existingIdx = keyframes.findIndex(k => Math.abs(k.timestampEpochMs - currentEpoch) <= TOLERANCE_MS);
-        if (existingIdx >= 0) {
-            triggerToast(`Keyframe already exists at ${formatTimelineClock(currentEpoch, timeMode, { includeSeconds: true })}`, 'info', '💎');
-            if (setActiveKfIndex) setActiveKfIndex(existingIdx);
-            return;
-        }
-
-        pushUndoSnapshot('Add Keyframe');
-        const newKf = {
-            id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            timestampEpochMs: Math.round(currentEpoch),
-            transitionDurationSec: 0.5,
-            transitionType: 'smooth',
-            layout: {
+        const { nextTimeline, newIndex, isNew } = insertExplicitKeyframe(
+            internalTimeline,
+            currentEpoch,
+            currentKf?.layout || {
                 width: virtualW,
                 height: virtualH,
                 backgroundColor: '#070A10',
                 fps: 30.0,
                 placements: JSON.parse(JSON.stringify(currentPlacements))
             }
-        };
-        const nextKfs = [...keyframes, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
-        const newIdx = nextKfs.findIndex(k => k.id === newKf.id);
-        const nextTimeline = { ...internalTimeline, keyframes: nextKfs };
-        setInternalTimeline(nextTimeline);
-        if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-        if (setActiveKfIndex) setActiveKfIndex(newIdx >= 0 ? newIdx : 0);
-        triggerToast(`Keyframe #${newIdx + 1} created at ${formatTimelineClock(currentEpoch, timeMode, { includeSeconds: true })}`, 'success', '💎');
-    }, [playheadEpochMs, baseEpochMs, playheadMs, keyframes, currentPlacements, virtualW, virtualH, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast, pushUndoSnapshot]);
+        );
+
+        if (isNew) {
+            pushUndoSnapshot('Add Keyframe');
+            setInternalTimeline(nextTimeline);
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            if (setActiveKfIndex) setActiveKfIndex(newIndex);
+            triggerToast(`Keyframe #${newIndex + 1} created at ${formatTimelineClock(currentEpoch, timeMode, { includeSeconds: true })}`, 'success', '💎');
+        } else {
+            if (setActiveKfIndex) setActiveKfIndex(newIndex);
+            triggerToast(`Jumped to existing Keyframe #${newIndex + 1}`, 'info', '💎');
+        }
+    }, [playheadEpochMs, baseEpochMs, playheadMs, currentKf, currentPlacements, virtualW, virtualH, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, timeMode, triggerToast, pushUndoSnapshot]);
 
     const handleDeleteActiveKeyframe = useCallback(() => {
         if (keyframes.length <= 1 || safeActiveIdx === 0) {
@@ -1921,26 +1830,20 @@ export default function MulticamViewport({
             return;
         }
         pushUndoSnapshot('Delete Keyframe');
-        const nextKfs = keyframes.filter((_, i) => i !== safeActiveIdx);
-        const nextTimeline = { ...internalTimeline, keyframes: nextKfs };
-        setInternalTimeline(nextTimeline);
-        if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
-        const newIdx = Math.max(0, safeActiveIdx - 1);
-        if (setActiveKfIndex) setActiveKfIndex(newIdx);
-        triggerToast('Keyframe deleted', 'info', '🗑️');
+        const { nextTimeline, success, newIndex } = deleteKeyframe(internalTimeline, safeActiveIdx);
+        if (success) {
+            setInternalTimeline(nextTimeline);
+            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
+            if (setActiveKfIndex) setActiveKfIndex(newIndex);
+            triggerToast('Keyframe deleted', 'info', '🗑️');
+        }
     }, [keyframes, safeActiveIdx, internalTimeline, onUpdateCanvasLayoutTimeline, setActiveKfIndex, triggerToast, pushUndoSnapshot]);
 
     const handleUpdateTransitionType = useCallback((type) => {
         if (safeActiveIdx === 0) return;
         pushUndoSnapshot('Update Transition Type');
         setInternalTimeline(prev => {
-            const nextKfs = [...(prev.keyframes || [])];
-            if (!nextKfs[safeActiveIdx]) return prev;
-            nextKfs[safeActiveIdx] = {
-                ...nextKfs[safeActiveIdx],
-                transitionType: type
-            };
-            const nextTimeline = { ...prev, keyframes: nextKfs };
+            const nextTimeline = updateKeyframeTransition(prev, safeActiveIdx, { transitionType: type });
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
             return nextTimeline;
         });
@@ -1950,13 +1853,7 @@ export default function MulticamViewport({
         if (safeActiveIdx === 0) return;
         pushUndoSnapshot('Update Transition Duration');
         setInternalTimeline(prev => {
-            const nextKfs = [...(prev.keyframes || [])];
-            if (!nextKfs[safeActiveIdx]) return prev;
-            nextKfs[safeActiveIdx] = {
-                ...nextKfs[safeActiveIdx],
-                transitionDurationSec: durSec
-            };
-            const nextTimeline = { ...prev, keyframes: nextKfs };
+            const nextTimeline = updateKeyframeTransition(prev, safeActiveIdx, { transitionDurationSec: durSec });
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
             return nextTimeline;
         });
@@ -2060,88 +1957,12 @@ export default function MulticamViewport({
 
     // Interpolation for smooth playback transitions across keyframes
     const activeDisplayPlacements = useMemo(() => {
-        if (isDragging || isResizing || keyframes.length <= 1) {
-            return currentPlacements;
-        }
-
-        let kfA = keyframes[0];
-        let kfB = keyframes[0];
-        for (let i = 0; i < keyframes.length; i++) {
-            if (keyframes[i].timestampEpochMs <= currentEpochMs) {
-                kfA = keyframes[i];
-                kfB = keyframes[i + 1] || keyframes[i];
-            } else {
-                if (kfB === kfA && keyframes[i]) {
-                    kfB = keyframes[i];
-                }
-                break;
-            }
-        }
-
-        if (kfA === kfB) {
-            return kfA.layout?.placements || currentPlacements;
-        }
-
-        const transDurMs = (kfB.transitionDurationSec || 0.5) * 1000;
-        const transType = kfB.transitionType || 'smooth';
-        const transStartEpoch = kfB.timestampEpochMs - transDurMs;
-
-        if (currentEpochMs < transStartEpoch) {
-            return kfA.layout?.placements || currentPlacements;
-        }
-        if (currentEpochMs >= kfB.timestampEpochMs) {
-            return kfB.layout?.placements || currentPlacements;
-        }
-
-        if (transType === 'cut') {
-            return kfA.layout?.placements || currentPlacements;
-        }
-
-        const rawRatio = (currentEpochMs - transStartEpoch) / transDurMs;
-        const ratio = clamp(rawRatio, 0, 1);
-        const tEased = transType === 'linear' ? ratio : cubicEaseInOut(ratio);
-
-        const aPlacements = kfA.layout?.placements || [];
-        const bPlacements = kfB.layout?.placements || [];
-
-        const result = bPlacements.map(pB => {
-            const pA = aPlacements.find(x => x.stationId === pB.stationId && x.displayId === pB.displayId);
-            if (!pA) {
-                // Newly introduced station mid-stream! Fade in with easing
-                return {
-                    ...pB,
-                    opacity: Math.max(0.05, tEased)
-                };
-            }
-            const interpX = Math.round(pA.x + (pB.x - pA.x) * tEased);
-            const interpY = Math.round(pA.y + (pB.y - pA.y) * tEased);
-            const interpW = Math.round(pA.width + (pB.width - pA.width) * tEased);
-            const interpH = Math.round(pA.height + (pB.height - pA.height) * tEased);
-            const interpRot = Number(((pA.rotation || 0) + ((pB.rotation || 0) - (pA.rotation || 0)) * tEased).toFixed(1));
-
-            return {
-                ...pB,
-                x: interpX,
-                y: interpY,
-                width: interpW,
-                height: interpH,
-                rotation: interpRot,
-                opacity: 1
-            };
+        return interpolateKeyframePlacements({
+            keyframes,
+            currentEpochMs,
+            currentPlacements,
+            isEditing: isDragging || isResizing
         });
-
-        // Fade out windows removed in kfB during transition
-        aPlacements.forEach(pA => {
-            const stillInB = bPlacements.some(x => x.stationId === pA.stationId && x.displayId === pA.displayId);
-            if (!stillInB) {
-                result.push({
-                    ...pA,
-                    opacity: Math.max(0, 1 - tEased)
-                });
-            }
-        });
-
-        return result;
     }, [isDragging, isResizing, keyframes, currentEpochMs, currentPlacements]);
 
     // Sorted placements for rendering (lowest zIndex in back)
