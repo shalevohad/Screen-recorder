@@ -1842,4 +1842,41 @@ Furthermore, dual-monitor workstations (whose screens natively combine into a `3
    - Boundary clamping, guidelines, and arrow key nudging automatically adapt to the dynamic virtual boundaries ($W_{\text{virtual}}, H_{\text{virtual}}$).
 
 ---
+
+## 42. Tactical Precision CAD/NLE Rulers, Windows Aero Snap Assist & Enhanced Window Drag Ergonomics (2026-11-03)
+
+### 1. Operational Problem & Requirement
+Manipulating multi-station and multi-display windows across high-density grid canvases required precise pixel positioning and effortless drag-and-drop ergonomics:
+1. Previously, dragging was constrained to the top 22px bar; clicking on the video surface was absorbed without initiating a drag.
+2. Operators arranging multi-monitor matrices needed visual pixel rulers and coordinate tracking for millimeter-accurate NLE alignments.
+3. Operators needed intuitive Windows 11-style Aero Snap (docking to left/right halves, quadrants, or maximizing) as well as magnetic snapping against adjacent display windows.
+
+### 2. Architectural Solution & Implementation
+1. **Effortless Surface-Wide Drag Ergonomics**:
+   - Overlayed a transparent tactical drag surface (`.card-drag-surface`, `z-index: 5`) over the entire feed area with `onMouseDown` and `onDoubleClick` handlers.
+   - Operators can click and drag anywhere on the window card to move it freely across the canvas.
+   - Integrated tactical drag cursor (`grab` / `grabbing`), elevated header badge (24px) with grip symbol (`⠿`), and double-click to maximize into 1x1 focus.
+2. **Tactical Precision CAD / NLE Rulers**:
+   - Embedded dynamic SVG rulers (`.canvas-ruler-top-bar` and `.canvas-ruler-left-bar`) overlaid along the top ($X$-axis) and left ($Y$-axis) edges of `.canvas-master-frame-16-9`:
+     - **Major, Medium, and Minor Ticks**: Dynamically generated to scale with virtual boundaries ($W_{\text{virtual}} \times H_{\text{virtual}}$).
+     - **Active Window Span Highlighting**: Automatically renders a translucent cyan rectangular span along both rulers highlighting the exact $X$ and $Y$ extents of the currently selected window (`selectedPlacement.x` to `x + width`, `y` to `y + height`).
+     - **Real-Time Hairline Tracker**: Dynamic cyan hairlines track the mouse coordinates along both axes in real time.
+     - **Corner Coordinate Readout**: Top-left corner box (`.canvas-ruler-corner`) displays live $[X, Y]$ virtual coordinates.
+     - **Non-Interfering Overlay**: Styled with `pointer-events: none` to guarantee zero interference with underlying drag surfaces and resize handles.
+   - Dedicated toolbar toggle `[ 📏 RULERS: ON/OFF ]` and keyboard shortcut (`R`) for instant toggling.
+3. **Windows Aero Snap Assist & Magnetic Smart Guides**:
+   - **Windows 11-Style Aero Snap Edge Zones**:
+     - When dragging a window within 32px of the left edge: snaps to **Left Half** ($50\%$ width, $100\%$ height).
+     - When dragging within 32px of the right edge: snaps to **Right Half** ($50\%$ width, $100\%$ height).
+     - Dragging near corners: snaps to **Quadrants** ($50\% \times 50\% = 25\%$ surface area).
+     - Dragging near the top-center edge: snaps to **Full Canvas Maximize** ($100\% \times 100\%$).
+   - **Visual Pulsing Snap Ghost Preview (`.canvas-snap-ghost-preview`)**:
+     - Displays an animated cyan dashed ghost box showing the exact snap boundary with a badge (e.g. `🧲 SNAP: LEFT HALF (50%)`) before mouse release. Releasing the mouse commits the snap geometry.
+   - **Magnetic Smart Docking & Guides**:
+     - Windows magnetically dock to canvas boundaries, center axes ($50\%$), and adjacent sibling windows (docking left-to-right, right-to-left, stacking top-to-bottom, bottom-to-top) within an 18px virtual threshold.
+     - Glowing vertical and horizontal cyan guidelines (`.canvas-snap-guide-v`, `.canvas-snap-guide-h`) render dynamically during drag.
+   - **Alt-Key Micro-Bypass**: Holding the **Alt** key bypasses snapping for sub-pixel freeform micro-adjustments.
+   - Dedicated toolbar toggle `[ 🧲 SNAP: ON/OFF ]` and keyboard shortcut (`S`).
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

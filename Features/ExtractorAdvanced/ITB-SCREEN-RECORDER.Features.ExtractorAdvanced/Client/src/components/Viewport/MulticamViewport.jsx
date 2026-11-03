@@ -372,6 +372,13 @@ export default function MulticamViewport({
     const [isResizing, setIsResizing] = useState(false);
     const [snapGuides, setSnapGuides] = useState({ vertical: null, horizontal: null });
 
+    // Precision Rulers & Windows Snap Assist State
+    const [showRulers, setShowRulers] = useState(true);
+    const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
+    const [snapZonePreview, setSnapZonePreview] = useState(null);
+    const [mouseCanvasCoords, setMouseCanvasCoords] = useState({ x: 0, y: 0, isInside: false });
+    const workSurfaceRef = useRef(null);
+
     const dragStateRef = useRef(null);
     const hasUserCustomizedRef = useRef(false);
     const [selectedPresetId, setSelectedPresetId] = useState('auto-grid');
@@ -395,6 +402,46 @@ export default function MulticamViewport({
     const virtualW = activeAspectPreset.w;
     const virtualH = activeAspectPreset.h;
     const currentAspect = activeAspectPreset.ratio;
+
+    // Precision Rulers ticks generation (dynamic to virtual canvas aspect)
+    const rulerTicksX = useMemo(() => {
+        const ticks = [];
+        const step = virtualW >= 3000 ? 200 : 100;
+        const medStep = step / 2;
+        const minorStep = step / 10;
+        for (let x = 0; x <= virtualW; x += minorStep) {
+            const isMajor = x % step === 0;
+            const isMed = !isMajor && x % medStep === 0;
+            ticks.push({ val: x, isMajor, isMed });
+        }
+        return ticks;
+    }, [virtualW]);
+
+    const rulerTicksY = useMemo(() => {
+        const ticks = [];
+        const step = 100;
+        const medStep = 50;
+        const minorStep = 10;
+        for (let y = 0; y <= virtualH; y += minorStep) {
+            const isMajor = y % step === 0;
+            const isMed = !isMajor && y % medStep === 0;
+            ticks.push({ val: y, isMajor, isMed });
+        }
+        return ticks;
+    }, [virtualH]);
+
+    const handleWorkSurfaceMouseMove = useCallback((e) => {
+        const activeRef = workSurfaceRef.current || canvasFrameRef.current;
+        if (!activeRef) return;
+        const rect = activeRef.getBoundingClientRect();
+        const cx = clamp(Math.round(((e.clientX - rect.left) / rect.width) * virtualW), 0, virtualW);
+        const cy = clamp(Math.round(((e.clientY - rect.top) / rect.height) * virtualH), 0, virtualH);
+        setMouseCanvasCoords({ x: cx, y: cy, isInside: true });
+    }, [virtualW, virtualH]);
+
+    const handleWorkSurfaceMouseLeave = useCallback(() => {
+        setMouseCanvasCoords(prev => ({ ...prev, isInside: false }));
+    }, []);
 
     // Dynamic responsive canvas frame measurement matching target export aspect ratio
     const updateDimensions = useCallback(() => {
@@ -1041,8 +1088,9 @@ export default function MulticamViewport({
         hasUserCustomizedRef.current = true;
         setSelectedPresetId('custom');
 
-        if (!canvasFrameRef.current) return;
-        const rect = canvasFrameRef.current.getBoundingClientRect();
+        const activeRef = workSurfaceRef.current || canvasFrameRef.current;
+        if (!activeRef) return;
+        const rect = activeRef.getBoundingClientRect();
         const p = currentPlacements[index];
         if (!p) return;
 
@@ -1056,7 +1104,8 @@ export default function MulticamViewport({
             initialW: p.width,
             initialH: p.height,
             scaleX: virtualW / rect.width,
-            scaleY: virtualH / rect.height
+            scaleY: virtualH / rect.height,
+            activeSnapZone: null
         };
 
         setIsDragging(true);
@@ -1064,6 +1113,10 @@ export default function MulticamViewport({
         const handleMouseMove = (moveEv) => {
             if (!dragStateRef.current || dragStateRef.current.mode !== 'drag') return;
             const ds = dragStateRef.current;
+            const targetEl = workSurfaceRef.current || canvasFrameRef.current;
+            if (!targetEl) return;
+            const currentRect = targetEl.getBoundingClientRect();
+
             const dx = (moveEv.clientX - ds.startX) * ds.scaleX;
             const dy = (moveEv.clientY - ds.startY) * ds.scaleY;
 
@@ -1073,31 +1126,107 @@ export default function MulticamViewport({
             newX = clamp(newX, 0, virtualW - ds.initialW);
             newY = clamp(newY, 0, virtualH - ds.initialH);
 
+            const isSnapActive = isSnappingEnabled && !moveEv.altKey;
+            let activeZone = null;
             let vGuide = null;
             let hGuide = null;
 
-            if (Math.abs(newX + ds.initialW / 2 - virtualW / 2) < 18) {
-                newX = Math.round((virtualW - ds.initialW) / 2);
-                vGuide = 50;
-            } else if (Math.abs(newX) < 16) {
-                newX = 0;
-                vGuide = 0;
-            } else if (Math.abs(newX + ds.initialW - virtualW) < 16) {
-                newX = virtualW - ds.initialW;
-                vGuide = 100;
+            if (isSnapActive) {
+                // 1. Windows Snap Assist (Aero Snap Edge Zones)
+                const cursorRelX = moveEv.clientX - currentRect.left;
+                const cursorRelY = moveEv.clientY - currentRect.top;
+                const edgeMargin = 32; // px from outer edge
+                const halfW = Math.round(virtualW / 2);
+                const halfH = Math.round(virtualH / 2);
+
+                if (cursorRelX <= edgeMargin) {
+                    // Left edge detected
+                    if (cursorRelY <= currentRect.height * 0.22) {
+                        activeZone = { x: 0, y: 0, width: halfW, height: halfH, label: '◰ Top-Left Quarter' };
+                    } else if (cursorRelY >= currentRect.height * 0.78) {
+                        activeZone = { x: 0, y: halfH, width: halfW, height: halfH, label: '◱ Bottom-Left Quarter' };
+                    } else {
+                        activeZone = { x: 0, y: 0, width: halfW, height: virtualH, label: '◧ Left Half (50%)' };
+                    }
+                } else if (cursorRelX >= currentRect.width - edgeMargin) {
+                    // Right edge detected
+                    if (cursorRelY <= currentRect.height * 0.22) {
+                        activeZone = { x: halfW, y: 0, width: halfW, height: halfH, label: '◲ Top-Right Quarter' };
+                    } else if (cursorRelY >= currentRect.height * 0.78) {
+                        activeZone = { x: halfW, y: halfH, width: halfW, height: halfH, label: '◳ Bottom-Right Quarter' };
+                    } else {
+                        activeZone = { x: halfW, y: 0, width: halfW, height: virtualH, label: '◨ Right Half (50%)' };
+                    }
+                } else if (cursorRelY <= edgeMargin && cursorRelX >= currentRect.width * 0.25 && cursorRelX <= currentRect.width * 0.75) {
+                    // Top edge center -> Fullscreen Maximize
+                    activeZone = { x: 0, y: 0, width: virtualW, height: virtualH, label: '🗖 Full Canvas Maximize' };
+                }
+
+                // 2. Magnetic Smart Guides (to canvas edges, center lines, and sibling windows)
+                if (!activeZone) {
+                    const SNAP_THRESHOLD = 18; // virtual pixels threshold
+                    const otherPlacements = currentPlacements.filter((_, i) => i !== ds.index);
+
+                    // Candidate X positions:
+                    const candidateSnapX = [
+                        { snapTo: 0, targetX: 0, guide: 0 },
+                        { snapTo: virtualW, targetX: virtualW - ds.initialW, guide: 100 },
+                        { snapTo: halfW, targetX: halfW - Math.round(ds.initialW / 2), guide: 50 }
+                    ];
+
+                    otherPlacements.forEach(op => {
+                        // Align Left-to-Left
+                        candidateSnapX.push({ snapTo: op.x, targetX: op.x, guide: (op.x / virtualW) * 100 });
+                        // Align Right-to-Right
+                        candidateSnapX.push({ snapTo: op.x + op.width, targetX: op.x + op.width - ds.initialW, guide: ((op.x + op.width) / virtualW) * 100 });
+                        // Dock Left-to-Right
+                        candidateSnapX.push({ snapTo: op.x + op.width, targetX: op.x + op.width, guide: ((op.x + op.width) / virtualW) * 100 });
+                        // Dock Right-to-Left
+                        candidateSnapX.push({ snapTo: op.x, targetX: op.x - ds.initialW, guide: (op.x / virtualW) * 100 });
+                    });
+
+                    let bestDiffX = SNAP_THRESHOLD;
+                    candidateSnapX.forEach(cand => {
+                        const diff = Math.abs(newX - cand.targetX);
+                        if (diff < bestDiffX) {
+                            bestDiffX = diff;
+                            newX = cand.targetX;
+                            vGuide = cand.guide;
+                        }
+                    });
+
+                    // Candidate Y positions:
+                    const candidateSnapY = [
+                        { snapTo: 0, targetY: 0, guide: 0 },
+                        { snapTo: virtualH, targetY: virtualH - ds.initialH, guide: 100 },
+                        { snapTo: halfH, targetY: halfH - Math.round(ds.initialH / 2), guide: 50 }
+                    ];
+
+                    otherPlacements.forEach(op => {
+                        // Align Top-to-Top
+                        candidateSnapY.push({ snapTo: op.y, targetY: op.y, guide: (op.y / virtualH) * 100 });
+                        // Align Bottom-to-Bottom
+                        candidateSnapY.push({ snapTo: op.y + op.height, targetY: op.y + op.height - ds.initialH, guide: ((op.y + op.height) / virtualH) * 100 });
+                        // Stack Below
+                        candidateSnapY.push({ snapTo: op.y + op.height, targetY: op.y + op.height, guide: ((op.y + op.height) / virtualH) * 100 });
+                        // Stack Above
+                        candidateSnapY.push({ snapTo: op.y, targetY: op.y - ds.initialH, guide: (op.y / virtualH) * 100 });
+                    });
+
+                    let bestDiffY = SNAP_THRESHOLD;
+                    candidateSnapY.forEach(cand => {
+                        const diff = Math.abs(newY - cand.targetY);
+                        if (diff < bestDiffY) {
+                            bestDiffY = diff;
+                            newY = cand.targetY;
+                            hGuide = cand.guide;
+                        }
+                    });
+                }
             }
 
-            if (Math.abs(newY + ds.initialH / 2 - virtualH / 2) < 18) {
-                newY = Math.round((virtualH - ds.initialH) / 2);
-                hGuide = 50;
-            } else if (Math.abs(newY) < 16) {
-                newY = 0;
-                hGuide = 0;
-            } else if (Math.abs(newY + ds.initialH - virtualH) < 16) {
-                newY = virtualH - ds.initialH;
-                hGuide = 100;
-            }
-
+            ds.activeSnapZone = activeZone;
+            setSnapZonePreview(activeZone);
             setSnapGuides({ vertical: vGuide, horizontal: hGuide });
 
             setInternalTimeline(prev => {
@@ -1117,6 +1246,31 @@ export default function MulticamViewport({
         const handleMouseUp = () => {
             setIsDragging(false);
             setSnapGuides({ vertical: null, horizontal: null });
+
+            if (dragStateRef.current?.activeSnapZone) {
+                const zone = dragStateRef.current.activeSnapZone;
+                const dsIdx = dragStateRef.current.index;
+                setInternalTimeline(prev => {
+                    const nextKfs = [...(prev.keyframes || [])];
+                    if (!nextKfs[safeActiveIdx]) return prev;
+                    const placements = [...(nextKfs[safeActiveIdx].layout.placements || [])];
+                    if (!placements[dsIdx]) return prev;
+                    placements[dsIdx] = {
+                        ...placements[dsIdx],
+                        x: zone.x,
+                        y: zone.y,
+                        width: zone.width,
+                        height: zone.height
+                    };
+                    nextKfs[safeActiveIdx] = {
+                        ...nextKfs[safeActiveIdx],
+                        layout: { ...nextKfs[safeActiveIdx].layout, placements }
+                    };
+                    return { ...prev, keyframes: nextKfs };
+                });
+            }
+
+            setSnapZonePreview(null);
             dragStateRef.current = null;
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
@@ -1413,11 +1567,29 @@ export default function MulticamViewport({
                 }
                 return;
             }
+
+            // R key: Toggle Precision CAD / NLE Rulers
+            if (e.key === 'r' || e.key === 'R') {
+                if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    setShowRulers(p => !p);
+                    return;
+                }
+            }
+
+            // S key: Toggle Windows Snap & Magnetic Smart Guides
+            if (e.key === 's' || e.key === 'S') {
+                if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    setIsSnappingEnabled(p => !p);
+                    return;
+                }
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedFeedIndex, currentPlacements, handleRemovePlacement, updateActivePlacements]);
+    }, [selectedFeedIndex, currentPlacements, handleRemovePlacement, updateActivePlacements, setShowRulers, setIsSnappingEnabled]);
 
     // Interpolation for smooth playback transitions across keyframes
     const activeDisplayPlacements = useMemo(() => {
@@ -1924,6 +2096,26 @@ export default function MulticamViewport({
                         <span className="dot" />
                         <span>AUTO-DIRECTOR: {isAutoDirectorEnabled ? 'ON' : 'OFF'}</span>
                     </button>
+
+                    {/* Precision CAD / NLE Rulers Toggle */}
+                    <button
+                        type="button"
+                        className={`btn-ruler-toggle ${showRulers ? 'is-active' : ''}`}
+                        onClick={() => setShowRulers(p => !p)}
+                        title={showRulers ? 'Precision Rulers: ON (Press R to toggle)' : 'Precision Rulers: OFF (Press R to toggle)'}
+                    >
+                        📏 RULERS: {showRulers ? 'ON' : 'OFF'}
+                    </button>
+
+                    {/* Windows Aero Snap & Magnetic Smart Guides Toggle */}
+                    <button
+                        type="button"
+                        className={`btn-snap-toggle ${isSnappingEnabled ? 'is-active' : ''}`}
+                        onClick={() => setIsSnappingEnabled(p => !p)}
+                        title={isSnappingEnabled ? 'Windows Snap & Smart Guides: ON (Press S to toggle, hold Alt to bypass)' : 'Windows Snap & Smart Guides: OFF (Press S to toggle)'}
+                    >
+                        🧲 SNAP: {isSnappingEnabled ? 'ON' : 'OFF'}
+                    </button>
                 </div>
 
                 {/* Right Actions: Save, Presets Dropdown, JSON, Fullscreen */}
@@ -2171,13 +2363,18 @@ export default function MulticamViewport({
 
                     {/* Master Canvas Stage Frame (WYSIWYG Export Parity) */}
                     <div
-                        ref={canvasFrameRef}
+                        ref={(el) => {
+                            canvasFrameRef.current = el;
+                            workSurfaceRef.current = el;
+                        }}
                         className={`canvas-master-frame-16-9 ${isFullWidth ? 'is-full-width' : 'is-fit-stage'}`}
                         style={{
                             width: canvasFrameDimensions.width > 180 ? `${canvasFrameDimensions.width}px` : '100%',
                             height: canvasFrameDimensions.height > 100 ? `${canvasFrameDimensions.height}px` : 'auto',
                             aspectRatio: `${virtualW} / ${virtualH}`
                         }}
+                        onMouseMove={handleWorkSurfaceMouseMove}
+                        onMouseLeave={handleWorkSurfaceMouseLeave}
                         onDragOver={(e) => {
                             e.preventDefault();
                             e.dataTransfer.dropEffect = 'copy';
@@ -2188,6 +2385,133 @@ export default function MulticamViewport({
                         <div className="corner-accent top-right" />
                         <div className="corner-accent bottom-left" />
                         <div className="corner-accent bottom-right" />
+
+                        {/* Windows Snap Assist Ghost Preview Box */}
+                        {snapZonePreview && (
+                            <div
+                                className="canvas-snap-ghost-preview"
+                                style={{
+                                    position: 'absolute',
+                                    left: `${(snapZonePreview.x / virtualW) * 100}%`,
+                                    top: `${(snapZonePreview.y / virtualH) * 100}%`,
+                                    width: `${(snapZonePreview.width / virtualW) * 100}%`,
+                                    height: `${(snapZonePreview.height / virtualH) * 100}%`,
+                                    zIndex: 9990,
+                                    pointerEvents: 'none'
+                                }}
+                            >
+                                <div className="snap-ghost-badge">
+                                    <span className="snap-icon">🧲</span>
+                                    <span className="snap-label">{snapZonePreview.label}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Precision CAD / NLE Rulers Overlay */}
+                        {showRulers && (
+                            <div className="canvas-rulers-container">
+                                {/* Top-Left Corner Box with live coordinate indicator */}
+                                <div className="canvas-ruler-corner" title={`Virtual Canvas Bounds: ${virtualW}×${virtualH}px`}>
+                                    <span className="corner-coord-mini">
+                                        {mouseCanvasCoords.isInside ? `${mouseCanvasCoords.x},${mouseCanvasCoords.y}` : 'px'}
+                                    </span>
+                                </div>
+
+                                {/* Horizontal Top Ruler (X-Axis) */}
+                                <div className="canvas-ruler-top-bar">
+                                    <svg
+                                        className="canvas-ruler-svg-x"
+                                        viewBox={`0 0 ${virtualW} 20`}
+                                        preserveAspectRatio="none"
+                                    >
+                                        {selectedPlacement && (
+                                            <rect
+                                                x={selectedPlacement.x}
+                                                y="0"
+                                                width={selectedPlacement.width}
+                                                height="20"
+                                                fill="rgba(6, 182, 212, 0.25)"
+                                                stroke="#06B6D4"
+                                                strokeWidth="1"
+                                            />
+                                        )}
+                                        {rulerTicksX.map(tick => {
+                                            if (tick.isMajor) {
+                                                return (
+                                                    <g key={`rx-${tick.val}`}>
+                                                        <line x1={tick.val} y1="0" x2={tick.val} y2="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
+                                                        <text x={tick.val + 2} y="11" fill="#94A3B8" fontSize="9" fontFamily="monospace">
+                                                            {tick.val}
+                                                        </text>
+                                                    </g>
+                                                );
+                                            }
+                                            if (tick.isMed) {
+                                                return <line key={`rx-${tick.val}`} x1={tick.val} y1="8" x2={tick.val} y2="18" stroke="rgba(255,255,255,0.25)" strokeWidth="1" />;
+                                            }
+                                            return <line key={`rx-${tick.val}`} x1={tick.val} y1="13" x2={tick.val} y2="18" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />;
+                                        })}
+                                        {mouseCanvasCoords.isInside && (
+                                            <line
+                                                x1={mouseCanvasCoords.x}
+                                                y1="0"
+                                                x2={mouseCanvasCoords.x}
+                                                y2="20"
+                                                stroke="#06B6D4"
+                                                strokeWidth="2"
+                                            />
+                                        )}
+                                    </svg>
+                                </div>
+
+                                {/* Vertical Left Ruler (Y-Axis) */}
+                                <div className="canvas-ruler-left-bar">
+                                    <svg
+                                        className="canvas-ruler-svg-y"
+                                        viewBox={`0 0 20 ${virtualH}`}
+                                        preserveAspectRatio="none"
+                                    >
+                                        {selectedPlacement && (
+                                            <rect
+                                                x="0"
+                                                y={selectedPlacement.y}
+                                                width="20"
+                                                height={selectedPlacement.height}
+                                                fill="rgba(6, 182, 212, 0.25)"
+                                                stroke="#06B6D4"
+                                                strokeWidth="1"
+                                            />
+                                        )}
+                                        {rulerTicksY.map(tick => {
+                                            if (tick.isMajor) {
+                                                return (
+                                                    <g key={`ry-${tick.val}`}>
+                                                        <line x1="0" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.4)" strokeWidth="1" />
+                                                        <text x="2" y={tick.val - 2} fill="#94A3B8" fontSize="8" fontFamily="monospace">
+                                                            {tick.val}
+                                                        </text>
+                                                    </g>
+                                                );
+                                            }
+                                            if (tick.isMed) {
+                                                return <line key={`ry-${tick.val}`} x1="8" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />;
+                                            }
+                                            return <line key={`ry-${tick.val}`} x1="13" y1={tick.val} x2="18" y2={tick.val} stroke="rgba(255,255,255,0.12)" strokeWidth="1" />;
+                                        })}
+                                        {mouseCanvasCoords.isInside && (
+                                            <line
+                                                x1="0"
+                                                y1={mouseCanvasCoords.y}
+                                                x2="20"
+                                                y2={mouseCanvasCoords.y}
+                                                stroke="#06B6D4"
+                                                strokeWidth="2"
+                                            />
+                                        )}
+                                    </svg>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Visual Glowing Snap Guidelines */}
                         {snapGuides.vertical !== null && (
@@ -2297,8 +2621,14 @@ export default function MulticamViewport({
                                     onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
                                 >
                                     {/* Top Draggable Bar & Coordinates */}
-                                    <div className="box-header-badge">
+                                    <div
+                                        className="box-header-badge"
+                                        onMouseDown={(e) => handleMouseDownBox(e, origIdx)}
+                                        onDoubleClick={() => handleFocus1x1(origIdx)}
+                                        title="Click and drag to move window (Double-click to expand 1x1)"
+                                    >
                                         <div className="badge-title">
+                                            <span className="badge-drag-grip">⠿</span>
                                             <span className="dot-indicator" />
                                             <span>{p.label || `${st.displayName || p.stationId} (${p.displayId})`}</span>
                                         </div>
@@ -2359,7 +2689,9 @@ export default function MulticamViewport({
                                         {/* Transparent Drag Surface overlay allowing instant drag over video */}
                                         <div
                                             className="card-drag-surface"
-                                            title="Click and drag anywhere to move this window on the canvas"
+                                            onMouseDown={(e) => handleMouseDownBox(e, origIdx)}
+                                            onDoubleClick={() => handleFocus1x1(origIdx)}
+                                            title="Click and drag anywhere to move this window on the canvas (Double-click for 1x1 focus)"
                                         />
                                     </div>
 
