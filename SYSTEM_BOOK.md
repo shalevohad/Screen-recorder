@@ -2420,6 +2420,133 @@ A dual-tier automated test harness covers all critical verification points acros
 8. **`NleMasterExportQualityTests.CanvasLayoutTimeline_KeyframeSerialization_PreservesTransitions`**:
    Validates DTO JSON and XML serialization/deserialization for multi-keyframe transition properties.
 
+
+---
+
+## 56. Maximum Canvas Real-Estate Architecture, Paginated Station Accordion with Zero-Scrollbar Guarantee, In/Out Masked Director Coverage & Multi-Track NLE Audio Bus (2026-11-04)
+
+### Operational Overview & Design Objectives
+
+Following comprehensive forensic evaluation of the ExtractorAdvanced Studio interface on high-density displays, this update implements a tactical, broadcast-grade NLE overhaul designed for maximum canvas real-estate, zero-clutter timeline navigation, deterministic screen packing, and multi-track audio mastering.
+
+```
++---------------------------------------------------------------------------------------------------+
+|  [ITB LOGO]   11:24:08 UTC   [▼ TELEMETRY] (Auto-Collapsed Stealth Header - 24px)                 |
++---------------------------------------------------------------------------------------------------+
+| [ WING DOCK: LEFT ] |                                              | [ WING DOCK: RIGHT ]        |
+| - Feeds Palette     |                                              | - Presets Library           |
+| - Grid Presets      |            WYSIWYG 16:9 MASTER CANVAS        | - Save Preset               |
+| - Aspect Ratio      |         (Expanded by >45% Area Fidelity)     | - Export / Import JSON      |
+| - Fit Page / 100%   |                                              | - Reset / Clear / Fullscreen|
+| - Rulers / Snap     |                                              |                             |
+| - Undo / Redo       |                                              |                             |
++---------------------------------------------------------------------------------------------------+
+| [ ▼ / ▶ ] 🎬 VIDEO STATIONS (N Workstations) [ ◀ PREV ] BANK 1/3 (1-4) [ NEXT ▶ ]                 |
++---------------------------------------------------------------------------------------------------+
+| WS-01  | ▶ | [ 🎬 AUTO ] | FILMSTRIP COMPOSITE | 3px HEALTH | [ 1 | 2 | 1 ] DIRECTOR STEPPER      |
+| WS-02  | ▼ | 🎬 AUTO-DIRECTOR: ON                                              [ CLOSE ✕ ]        |
+|        | 🖥 SCREEN 1 (mon-0) | [ 🎬 ON AIR ] (100% Bright) | [ 3px HEALTH ]                       |
+|        | 🖥 SCREEN 2 (mon-1) | .director-mask-dimmed (Grayscale Blur) | [ 3px HEALTH ]             |
+| WS-03  | ▶ | [ 🎬 AUTO ] | FILMSTRIP COMPOSITE | 3px HEALTH | [ 1 | 1 | 2 ] DIRECTOR STEPPER      |
+| WS-04  | ▶ | [ 1 SCREEN ]| FILMSTRIP COMPOSITE | 3px HEALTH BAR                                   |
++---------------------------------------------------------------------------------------------------+
+| [ ▼ / ▶ ] 🔊 MASTER AUDIO BUS (FAIRLIGHT / PREMIERE NLE)            [ ＋ ADD LANE ] [ 🔇 MUTE ALL]|
+| [ A1 ] [ M ] [ S ] [Vol: 100%] | [ WS-01 CLIP: 00:00 - 04:30 ] ~~~~~~~~~~~~~~~~                   |
+| [ A2 ] [ M ] [ S ] [Vol: 80% ] |                  [ WS-02 CLIP: 03:45 - 08:00 (Overlap Mix) ] ~~~ |
++---------------------------------------------------------------------------------------------------+
+```
+
+---
+
+### 1. Viewport Real-Estate Geometry: Stealth Header & Wing Tool Docks
+
+On widescreen displays (16:9 / 16:10), vertical height is the primary constraint. Previous horizontal toolbars stacked across the screen consumed valuable vertical height while leaving substantial left and right side margins empty:
+1. **Auto-Collapsing Stealth Header Ribbon**:
+   - `CommandCenterHeader.jsx` listens for `itb:studio-mode` events dispatched by ExtractorAdvancedStudio.
+   - Automatically collapses the central header to an ultra-slim 24px stealth ribbon (`.is-stealth-studio`), hiding telemetry gauges and cluster charts to reclaim ~45px of vertical space.
+   - Provides a non-intrusive `[ ▼ TELEMETRY ]` pill to inspect metrics on demand without leaving the Studio workspace.
+2. **Left Wing & Right Wing Docking Architecture**:
+   - The top horizontal toolbar is split and relocated into vertical side wings flanking the canvas:
+     - **Left Wing Dock**: Composition tools, Feeds Palette drawer, Grid presets popout, Aspect ratio selector, Fit Page / 100% zoom toggle, Rulers, Snap, and Undo/Redo.
+     - **Right Wing Dock**: Presets management, Save preset modal, Export/Import JSON layout files, Reset layout, Clear canvas, and Fullscreen toggle.
+   - Directly reclaims ~44px of vertical height across the viewport, expanding the 16:9 canvas area by over **45%**!
+3. **Keyframe Floating Island HUD**:
+   - Keyframe navigation (`◀ KF`, `KF ▶`, `＋ KF`, `✕ KF`), keyframe badges (`KF 2/4`), and transition inspectors (`SMOOTH`, `CUT`, `0.5s`) float directly above the canvas in a glassmorphic island HUD (`.keyframe-floating-island`).
+
+---
+
+### 2. Initial Deterministic Workstation Packing & Aspect Ratio Preservation
+
+In accordance with user requirements:
+1. **Default Aspect Ratio Grid Packing**:
+   - On initial workspace entry, all selected workstations appear in equal proportion packed into a single screen default (`fitToPage`).
+   - Each workstation strictly maintains its native aspect ratio (16:9, 16:10, 32:9...) using mathematical container bounding (`fitInCell`).
+2. **Central Composition Placement**:
+   - Initial layout generation (`defaultStationFeeds`) places exactly **one composition per workstation** on canvas:
+     - If the workstation has multiple monitors, it defaults to its **Central Composition** (`displayId: 'auto'`), displaying the Virtual Director's active selection.
+     - If the workstation is single-monitor, it displays its primary screen.
+   - Discrete monitors remain accessible via the Feeds Palette drawer and station accordion controls.
+
+---
+
+### 3. Timeline Station Accordion & Zero-Scrollbar Guarantee (`overflow-y: hidden`)
+
+To eliminate vertical scrollbars entirely:
+1. **Smart Bank Pagination (`TRACKS_PER_BANK = 4`)**:
+   - The timeline splits workstation channels into manageable banks of 4 stations per page.
+   - Smooth bank stepping (`[ ◀ PREV ] BANK 1/2 [ NEXT ▶ ]`) with auto-jump to the bank containing any active or expanded station.
+2. **Single Active Expanded Station Rule**:
+   - Expanding Station A automatically collapses any previously expanded station.
+   - Guaranteed slot budget: $3 \times 42\text{px}$ (collapsed rows) + $1 \times 92\text{px}$ (expanded station header + 2 display rows) = $\approx 218\text{px}$ total height.
+   - Fits cleanly within timeline container bounds with **`overflow-y: hidden !important`** enforced across all resolutions.
+3. **Collapsed Station Mode**:
+   - Single 42px row featuring:
+     - Workstation status dot, station title, physical host label, and multi-display badge.
+     - Central composite filmstrip with spritesheet Level-of-Detail (LOD).
+     - 3px thin emerald Health Bar (`.data-presence-layer`) indicating recording presence.
+     - Attached 12px **Director Stepper Ribbon** (`.director-stepper-ribbon`) directly beneath the health bar, displaying crisp numbered blocks (`[ 1 | 2 | 1 ]`) reflecting Auto-Director display selections over time.
+4. **Expanded Station Mode & In/Out Masked Director Coverage**:
+   - Accordion Header: Workstation title, `[ 🎬 AUTO-DIRECTOR: ON / OFF ]` toggle, and Close button.
+   - Child Display Tracks: One row per physical display (`SCREEN 1`, `SCREEN 2`):
+     - Displays individual monitor filmstrip and health bar.
+     - **Director Coverage Highlights (Requirements 4 & 6)**:
+       - Active director intervals: Rendered 100% bright, in-focus with an inset cyan glowing border (`box-shadow: inset 0 0 0 1.5px #06B6D4`) and a crisp `[ 🎬 ON AIR ]` badge.
+       - Inactive intervals: Covered by `.director-mask-dimmed` (`background: rgba(7, 10, 16, 0.68); backdrop-filter: grayscale(70%) blur(1.5px)`), visually matching Cut In / Cut Out mask styling.
+     - When Auto-Director is OFF: Coverage dimming is disabled, primary screen remains on canvas, and secondary screens expose interactive `[ ＋ ADD ]` / `[ ✓ ON CANVAS ]` toggle buttons to control canvas placement.
+   - Closing the station preserves all canvas additions, keyframes, and configuration choices.
+5. **Master Video Section Header & Global Summary Track**:
+   - Collapsible video section bar.
+   - When collapsed by operator: Compresses the entire workstation area into a sleek 26px **Master Video Summary Track** displaying a consolidated health line and global skipped gaps (`[ ✂ SKIPPED (42s) ]`).
+
+---
+
+### 4. Master Multi-Track NLE Audio Bus Engine (Fairlight / Premiere)
+
+A professional non-linear audio mastering bus is integrated into the bottom of the timeline:
+1. **Default Muted State**:
+   - Starts collapsed (26px height) with 0 active playback channels: `[ ▶ ] 🔇 MASTER AUDIO BUS (MUTED / 0 ACTIVE)`.
+2. **Multi-Track Vertical Audio Lanes (`A1`, `A2`, `A3`...)**:
+   - Expanding the bus reveals the Master Header Deck:
+     - Master VU meter with real-time dB readout (`-∞` to `0 dB`).
+     - `[ ＋ ADD AUDIO LANE ]` and `[ 🔇 MUTE ALL ]` master buttons.
+   - Each vertical audio lane provides:
+     - Lane Header: Lane badge (`A1`, `A2`), Lane Mute (`M`), Lane Solo (`S`), Lane Gain Slider (0% - 200%), and Delete Lane (`✕`).
+     - Interactive Clip Blocks (`AudioClipBlock`):
+       - Start and end timestamps rendered with sub-second precision.
+       - Source station pill (`[ WS-01 ]`) with color-coded border matching the lane.
+       - **Interactive Trimming Handles**: Left handle (Cut In) and Right handle (Cut Out) allow direct dragging to trim clip boundaries.
+       - Acoustic waveform envelope rendering.
+       - Tactical Context Menu:
+         - Station source picker (assign any workstation's audio to the clip).
+         - Split Clip at Playhead (`Ctrl+K` / `✂️ SPLIT`).
+         - Delete Clip (`🗑️ DELETE`).
+         - Volume Gain slider (0% to 250% / +8dB boost).
+3. **Simultaneous Multi-Station Overlap Mixing**:
+   - Multiple lanes can play audio concurrently (e.g. Lane A1 routing Station 1, Lane A2 routing Station 2 with overlap), enabling forensic cross-station audio comparison.
+   - Automatically synchronizes with `audioRoutingPlan` for single-click export and Web Audio playback.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 
