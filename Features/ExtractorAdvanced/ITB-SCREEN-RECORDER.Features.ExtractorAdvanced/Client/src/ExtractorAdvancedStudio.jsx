@@ -41,16 +41,32 @@ const generateDefaultTimeRange = (mode = 'LOCAL') => {
     };
 };
 
-export const parseSafeEpoch = (dateStr) => {
+export const parseSafeEpoch = (dateStr, timeStr = null, mode = 'LOCAL') => {
     if (!dateStr) return Date.now();
     if (typeof dateStr === 'number') return dateStr;
     const str = String(dateStr).trim();
     if (/^\d+$/.test(str)) return Number(str);
-    if (str.includes('T') && !str.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(str)) {
-        const [d, t] = str.split('T');
-        const epoch = dateTimeToEpochMs(d, t.substring(0, 8), 'LOCAL');
+    
+    let d = str;
+    let t = timeStr;
+    if (!t) {
+        if (str.includes('T')) {
+            const parts = str.split('T');
+            d = parts[0];
+            t = parts[1];
+        } else if (str.includes(' ')) {
+            const parts = str.split(' ');
+            d = parts[0];
+            t = parts[1];
+        }
+    }
+
+    if (d && t) {
+        const cleanT = t.substring(0, 8);
+        const epoch = dateTimeToEpochMs(d, cleanT, mode);
         if (epoch !== null && !isNaN(epoch)) return epoch;
     }
+
     const safeStr = str.replace(' ', 'T');
     const ms = new Date(safeStr).getTime();
     return isNaN(ms) ? Date.now() : ms;
@@ -156,14 +172,15 @@ export default function ExtractorAdvancedStudio() {
             };
 
             const newKf = {
-                timestampEpochMs: targetEpoch,
+                id: `kf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+                timestampEpochMs: Math.round(targetEpoch),
                 transitionDurationSec: 0.5,
                 transitionType: 'smooth',
                 layout: JSON.parse(JSON.stringify(activeLayout))
             };
 
             const nextKfs = [...currentKfs, newKf].sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
-            const newIdx = nextKfs.findIndex(k => k.timestampEpochMs === targetEpoch);
+            const newIdx = nextKfs.findIndex(k => k.timestampEpochMs === Math.round(targetEpoch));
             setActiveKfIndex(newIdx >= 0 ? newIdx : 0);
 
             return {
@@ -186,16 +203,22 @@ export default function ExtractorAdvancedStudio() {
         });
     }, []);
 
-    const handleUpdateKeyframeEpoch = useCallback((idxToUpdate, newEpoch) => {
+    const handleUpdateKeyframeEpoch = useCallback((idxOrId, newEpoch) => {
         setCanvasLayoutTimeline(prev => {
-            if (!prev?.keyframes || !prev.keyframes[idxToUpdate]) return prev;
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            const targetEpoch = Math.round(newEpoch);
+            const foundIdx = typeof idxOrId === 'number' && prev.keyframes[idxOrId]
+                ? idxOrId
+                : prev.keyframes.findIndex(k => k.id === idxOrId);
+            if (foundIdx === -1) return prev;
+
             const nextKfs = [...prev.keyframes];
-            nextKfs[idxToUpdate] = {
-                ...nextKfs[idxToUpdate],
-                timestampEpochMs: Math.round(newEpoch)
+            nextKfs[foundIdx] = {
+                ...nextKfs[foundIdx],
+                timestampEpochMs: targetEpoch
             };
             nextKfs.sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
-            const newActiveIdx = nextKfs.findIndex(k => k.timestampEpochMs === Math.round(newEpoch));
+            const newActiveIdx = nextKfs.findIndex(k => k.timestampEpochMs === targetEpoch);
             if (newActiveIdx >= 0) setActiveKfIndex(newActiveIdx);
             return {
                 ...prev,
@@ -765,10 +788,12 @@ export default function ExtractorAdvancedStudio() {
     }, []);
 
     const handleApplyRange = useCallback((newRange) => {
-        const startMs = newRange.startEpochMs || parseSafeEpoch(newRange.start);
-        const endMs = newRange.endEpochMs || parseSafeEpoch(newRange.end);
+        const startMs = newRange.startEpochMs || parseSafeEpoch(newRange.start, null, timeMode);
+        const endMs = newRange.endEpochMs || parseSafeEpoch(newRange.end, null, timeMode);
         const durationMs = Math.max(0, endMs - startMs) || 14400000;
         const newBuf = Math.max(60000, Math.round(durationMs * 0.05));
+        const newTimelineBase = startMs - newBuf;
+        const newTotalDuration = durationMs + (2 * newBuf);
 
         setTimeRange({
             ...newRange,
@@ -780,7 +805,43 @@ export default function ExtractorAdvancedStudio() {
         setInPointMs(newBuf);
         setOutPointMs(newBuf + durationMs);
         setPlayheadMs(newBuf);
-    }, []);
+
+        // Sanitize & re-anchor canvas timeline keyframes to new timeline range
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            const updated = prev.keyframes.map((kf, i) => {
+                if (i === 0) return { ...kf, timestampEpochMs: newTimelineBase };
+                return kf;
+            }).filter(kf => kf.timestampEpochMs >= newTimelineBase && kf.timestampEpochMs <= newTimelineBase + newTotalDuration);
+            return { ...prev, keyframes: updated };
+        });
+
+        // Re-anchor audio routing plan if existing segments fall outside the new window
+        setAudioRoutingPlan(prev => {
+            if (!prev?.segments || prev.segments.length === 0) return prev;
+            const hasOverlap = prev.segments.some(s => {
+                const segStart = s.startEpochMs ?? s.StartEpochMs ?? 0;
+                const segEnd = s.endEpochMs ?? s.EndEpochMs ?? 0;
+                return segEnd > newTimelineBase && segStart < newTimelineBase + newTotalDuration;
+            });
+            if (!hasOverlap) {
+                const defaultStationId = selectedStationIds[0] || activeStationId || 'station-0';
+                return {
+                    segments: [
+                        {
+                            startEpochMs: newTimelineBase,
+                            endEpochMs: newTimelineBase + newTotalDuration,
+                            sourceStationId: defaultStationId
+                        }
+                    ]
+                };
+            }
+            return prev;
+        });
+
+        // Reset manual overrides so fresh director analysis is loaded for the new scope
+        setStationDirectorPlans({});
+    }, [timeMode, selectedStationIds, activeStationId]);
 
     const handleExecuteExport = useCallback(() => {
         const targetStationIds = timelineStations.map(s => s.id);

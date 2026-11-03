@@ -273,6 +273,7 @@ export default function MulticamViewport({
             id: 'canvas-timeline-root',
             keyframes: [
                 {
+                    id: 'kf_root_0',
                     timestampEpochMs: baseEpochMs,
                     transitionDurationSec: 0.5,
                     transitionType: 'smooth',
@@ -1083,7 +1084,26 @@ export default function MulticamViewport({
                                 hasUserCustomizedRef.current = false;
                                 setSelectedPresetId('auto-grid');
                                 const autoPacked = generateAutoPackPlacements(availableFeeds);
-                                updateActivePlacements(autoPacked);
+                                const resetTimeline = {
+                                    id: 'canvas-timeline-root',
+                                    keyframes: [
+                                        {
+                                            id: 'kf_root_0',
+                                            timestampEpochMs: baseEpochMs,
+                                            transitionDurationSec: 0.5,
+                                            transitionType: 'smooth',
+                                            layout: {
+                                                width: VIRTUAL_CANVAS_W,
+                                                height: VIRTUAL_CANVAS_H,
+                                                backgroundColor: '#070A10',
+                                                fps: 30.0,
+                                                placements: autoPacked
+                                            }
+                                        }
+                                    ]
+                                };
+                                setInternalTimeline(resetTimeline);
+                                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(resetTimeline);
                                 setSelectedFeedIndex(0);
                             }}
                             title="Restart Canvas: Reset to default AUTO-GRID with all screens"

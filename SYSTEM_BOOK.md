@@ -1636,6 +1636,12 @@ To optimize tactical operator workflow and eliminate timeline clutter, the studi
    - Selected card boxes feature four corner resize handles (`tl`, `tr`, `bl`, `br`) supporting aspect-locked (Shift) and freeform scaling from any direction.
    - Keyboard shortcuts: `Delete` / `Backspace` removes selected boxes, `Escape` dismisses drawers and popovers, arrow keys nudge selected feeds by 10px (or 1px with Shift), and `+` adds a layout keyframe at the current epoch.
    - The redundant `WYSIWYG MASTER CANVAS STUDIO` center badge has been removed from the canvas toolbar to maximize operational screen real-estate.
+6. **Strict Unix Epoch Millisecond Time-Anchor & Cross-Track Synchronization**:
+   - All interval boundaries, cut points, keyframes, and audio routing segments are strictly stored, manipulated, and exported in absolute Unix Epoch milliseconds (`EpochMs`, UTC-anchored).
+   - Toggling between `LOCAL` and `UTC` time modes in `TopScopeBar` only modifies the textual presentation in `formatTimelineClock` with zero drift in the underlying cut data.
+   - Time-range scope updates and bookmark loading re-anchor existing keyframes and audio routing segments to prevent stale offsets from old sessions.
+   - Audio routing track supports precision splitting directly at mouse click coordinates (`clickEpoch`) or playhead position (`playheadEpoch`) with right-click context menu and time display.
+   - Keyframe dragging is stabilized using unique string IDs, updating only local drag state during cursor movement to prevent mid-drag array re-sorting and index corruption.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

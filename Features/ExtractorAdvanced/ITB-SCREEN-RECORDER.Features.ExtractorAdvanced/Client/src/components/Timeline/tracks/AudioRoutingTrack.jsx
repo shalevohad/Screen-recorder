@@ -79,12 +79,19 @@ export default function AudioRoutingTrack({
         });
     }, [segments, vpStartEpoch, vpEndEpoch]);
 
-    // Close menu on outside click
+    // Close menu on outside click or Escape key
     useEffect(() => {
         if (!selectedMenuSegment) return;
         const handleOutside = () => setSelectedMenuSegment(null);
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setSelectedMenuSegment(null);
+        };
         window.addEventListener('click', handleOutside);
-        return () => window.removeEventListener('click', handleOutside);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('click', handleOutside);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
     }, [selectedMenuSegment]);
 
     const handleSplitAtPlayhead = (e) => {
@@ -96,6 +103,28 @@ export default function AudioRoutingTrack({
             onSplitSegment?.(playheadEpoch);
             setSelectedMenuSegment(null);
         }
+    };
+
+    const handleOpenMenu = (ev, s, e, stId) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const timelineEl = containerRef.current?.querySelector('.audio-track-timeline');
+        let clickEpoch = null;
+        if (timelineEl) {
+            const rect = timelineEl.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+            clickEpoch = Math.round(vpStartEpoch + ratio * viewportDurationMs);
+        }
+
+        setSelectedMenuSegment({
+            s,
+            e,
+            x: ev.clientX,
+            y: ev.clientY,
+            currentStationId: stId,
+            clickEpoch
+        });
     };
 
     if (!stations || stations.length === 0) return null;
@@ -165,18 +194,9 @@ export default function AudioRoutingTrack({
                                 left: `${leftPct}%`,
                                 width: `${widthPct}%`
                             }}
-                            onClick={(ev) => {
-                                ev.stopPropagation();
-                                const rect = ev.currentTarget.getBoundingClientRect();
-                                setSelectedMenuSegment({
-                                    s,
-                                    e,
-                                    x: rect.left,
-                                    y: rect.bottom + 4,
-                                    currentStationId: stId
-                                });
-                            }}
-                            title={`Audio Source: ${labelName} [${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })}] — Click to change station`}
+                            onClick={(ev) => handleOpenMenu(ev, s, e, stId)}
+                            onContextMenu={(ev) => handleOpenMenu(ev, s, e, stId)}
+                            title={`Audio Source: ${labelName} [${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })}] — Click or right-click to edit`}
                         >
                             <div className="audio-wave-anim">
                                 <span className="bar b1" />
@@ -200,14 +220,33 @@ export default function AudioRoutingTrack({
                     className="audio-segment-context-menu"
                     style={{
                         position: 'fixed',
-                        left: `${Math.min(selectedMenuSegment.x, window.innerWidth - 220)}px`,
-                        top: `${Math.min(selectedMenuSegment.y, window.innerHeight - 200)}px`
+                        left: `${Math.min(Math.max(10, selectedMenuSegment.x), window.innerWidth - 240)}px`,
+                        top: `${Math.min(Math.max(10, selectedMenuSegment.y), window.innerHeight - 250)}px`,
+                        zIndex: 99999
                     }}
                     onClick={(e) => e.stopPropagation()}
+                    onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
                     <div className="menu-header">
                         <span className="menu-icon">🎙️</span>
                         <span>ASSIGN AUDIO SOURCE</span>
+                        <button 
+                            type="button" 
+                            className="menu-close-x" 
+                            onClick={() => setSelectedMenuSegment(null)}
+                            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', fontSize: '11px' }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    <div className="menu-segment-info" style={{ padding: '6px 12px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', background: 'rgba(0, 0, 0, 0.2)' }}>
+                        <div className="info-time" style={{ fontFamily: 'JetBrains Mono', fontSize: '10.5px', color: '#06B6D4' }}>
+                            {formatTimelineClock(selectedMenuSegment.s, timeMode, { includeSeconds: true })} - {formatTimelineClock(selectedMenuSegment.e, timeMode, { includeSeconds: true })}
+                        </div>
+                        <div className="info-duration" style={{ fontSize: '9.5px', color: '#94A3B8', marginTop: '2px' }}>
+                            {Math.round((selectedMenuSegment.e - selectedMenuSegment.s) / 1000)}s duration
+                        </div>
                     </div>
 
                     <div className="menu-stations-list">
@@ -246,16 +285,33 @@ export default function AudioRoutingTrack({
                     </div>
 
                     <div className="menu-footer">
-                        <button
-                            type="button"
-                            className="btn-menu-split"
-                            onClick={() => {
-                                onSplitSegment?.(playheadEpoch);
-                                setSelectedMenuSegment(null);
-                            }}
-                        >
-                            <span>✂️ SPLIT AT PLAYHEAD</span>
-                        </button>
+                        {selectedMenuSegment.clickEpoch && 
+                         selectedMenuSegment.clickEpoch > selectedMenuSegment.s + 500 && 
+                         selectedMenuSegment.clickEpoch < selectedMenuSegment.e - 500 && (
+                            <button
+                                type="button"
+                                className="btn-menu-split"
+                                onClick={() => {
+                                    onSplitSegment?.(selectedMenuSegment.clickEpoch);
+                                    setSelectedMenuSegment(null);
+                                }}
+                            >
+                                <span>✂️ SPLIT HERE ({formatTimelineClock(selectedMenuSegment.clickEpoch, timeMode, { includeSeconds: true })})</span>
+                            </button>
+                        )}
+
+                        {playheadEpoch > selectedMenuSegment.s + 500 && playheadEpoch < selectedMenuSegment.e - 500 && (
+                            <button
+                                type="button"
+                                className="btn-menu-split"
+                                onClick={() => {
+                                    onSplitSegment?.(playheadEpoch);
+                                    setSelectedMenuSegment(null);
+                                }}
+                            >
+                                <span>✂️ SPLIT AT PLAYHEAD ({formatTimelineClock(playheadEpoch, timeMode, { includeSeconds: true })})</span>
+                            </button>
+                        )}
                     </div>
                 </div>
             )}

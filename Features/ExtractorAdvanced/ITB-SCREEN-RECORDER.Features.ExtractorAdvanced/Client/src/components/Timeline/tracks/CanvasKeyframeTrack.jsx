@@ -48,6 +48,7 @@ export default function CanvasKeyframeTrack({
 
         const startClientX = e.clientX;
         const initialEpoch = kf.timestampEpochMs;
+        const kfId = kf.id || `kf_${idx}_${initialEpoch}`;
         const surfaceEl = e.currentTarget.closest('.track-surface');
         if (!surfaceEl) return;
 
@@ -55,6 +56,7 @@ export default function CanvasKeyframeTrack({
 
         setDraggingKf({
             idx,
+            kfId,
             startClientX,
             initialEpoch,
             currentEpoch: initialEpoch
@@ -72,10 +74,6 @@ export default function CanvasKeyframeTrack({
             targetEpoch = Math.max(baseEpochMs, Math.min(baseEpochMs + totalDurationMs, targetEpoch));
 
             setDraggingKf(prev => prev ? { ...prev, currentEpoch: targetEpoch } : null);
-
-            if (onUpdateKeyframeEpoch) {
-                onUpdateKeyframeEpoch(idx, targetEpoch);
-            }
         };
 
         const handleMouseUp = (upEv) => {
@@ -91,7 +89,7 @@ export default function CanvasKeyframeTrack({
 
             if (hasMoved) {
                 if (onUpdateKeyframeEpoch) {
-                    onUpdateKeyframeEpoch(idx, finalEpoch);
+                    onUpdateKeyframeEpoch(kfId, finalEpoch);
                 }
                 if (onSelectKeyframe) {
                     onSelectKeyframe(idx, finalEpoch);
