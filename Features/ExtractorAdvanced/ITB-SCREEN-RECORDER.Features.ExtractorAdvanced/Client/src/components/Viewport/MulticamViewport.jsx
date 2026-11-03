@@ -4,9 +4,7 @@
 // Full Drag-and-Drop, Feeds Palette, Layers Stacking, Shadows, and Preset Save/Load Parity
 // ==========================================
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import StudioVideoFeed from '../Player/StudioVideoFeed.jsx';
 import CameraCard from './views/Card/CameraCard.jsx';
-import KeystrokePlaybackOverlay from '../Player/KeystrokePlaybackOverlay.jsx';
 import './MulticamViewport.scss';
 
 const VIRTUAL_CANVAS_W = 1920;
@@ -303,10 +301,9 @@ export default function MulticamViewport({
     const [showLayersPanel, setShowLayersPanel] = useState(false);
     const [showSavePresetModal, setShowSavePresetModal] = useState(false);
     const [showPresetsMenu, setShowPresetsMenu] = useState(false);
-    const [showJsonModal, setShowJsonModal] = useState(false);
-    const [jsonModalText, setJsonModalText] = useState('');
     const [presetNameInput, setPresetNameInput] = useState('');
     const [feedSearchQuery, setFeedSearchQuery] = useState('');
+    const importFileInputRef = useRef(null);
 
     // Saved Presets in localStorage
     const [savedPresets, setSavedPresets] = useState(() => {
@@ -561,36 +558,76 @@ export default function MulticamViewport({
         setSelectedFeedIndex(-1);
     }, [updateActivePlacements]);
 
+    // Helper to normalize placements to sequential 1-based ranks (1 = bottom, N = top)
+    const normalizeLayers = (placements) => {
+        const indexed = placements.map((p, origIdx) => ({ p, origIdx }));
+        indexed.sort((a, b) => ((a.p.zIndex ?? a.origIdx) - (b.p.zIndex ?? b.origIdx)));
+        const res = [...placements];
+        indexed.forEach(({ origIdx }, rank) => {
+            res[origIdx] = { ...res[origIdx], zIndex: rank + 1 };
+        });
+        return res;
+    };
+
     // -------------------------------------------------------------
-    // LAYER STACKING ACTIONS ("מי לפני מי")
+    // LAYER STACKING ACTIONS ("מי לפני מי" - מספור קדימות מוגדר ומדויק)
     // -------------------------------------------------------------
     const handleBringToFront = useCallback((idx = selectedFeedIndex) => {
         if (idx < 0 || !currentPlacements[idx]) return;
-        const maxZ = Math.max(...currentPlacements.map(p => p.zIndex || 0), 0);
-        const next = [...currentPlacements];
-        next[idx] = { ...next[idx], zIndex: maxZ + 1 };
+        const normalized = normalizeLayers(currentPlacements);
+        const currentRank = normalized[idx].zIndex;
+        const maxRank = normalized.length;
+        if (currentRank >= maxRank) return;
+
+        const next = normalized.map((p, i) => {
+            if (i === idx) return { ...p, zIndex: maxRank };
+            if (p.zIndex > currentRank) return { ...p, zIndex: p.zIndex - 1 };
+            return p;
+        });
         updateActivePlacements(next);
     }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
 
     const handleSendToBack = useCallback((idx = selectedFeedIndex) => {
         if (idx < 0 || !currentPlacements[idx]) return;
-        const minZ = Math.min(...currentPlacements.map(p => p.zIndex || 0), 0);
-        const next = [...currentPlacements];
-        next[idx] = { ...next[idx], zIndex: Math.max(0, minZ - 1) };
+        const normalized = normalizeLayers(currentPlacements);
+        const currentRank = normalized[idx].zIndex;
+        if (currentRank <= 1) return;
+
+        const next = normalized.map((p, i) => {
+            if (i === idx) return { ...p, zIndex: 1 };
+            if (p.zIndex < currentRank) return { ...p, zIndex: p.zIndex + 1 };
+            return p;
+        });
         updateActivePlacements(next);
     }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
 
     const handleBringForward = useCallback((idx = selectedFeedIndex) => {
         if (idx < 0 || !currentPlacements[idx]) return;
-        const next = [...currentPlacements];
-        next[idx] = { ...next[idx], zIndex: (next[idx].zIndex || 0) + 1 };
+        const normalized = normalizeLayers(currentPlacements);
+        const currentRank = normalized[idx].zIndex;
+        const targetRank = currentRank + 1;
+        if (targetRank > normalized.length) return;
+
+        const next = normalized.map((p, i) => {
+            if (i === idx) return { ...p, zIndex: targetRank };
+            if (p.zIndex === targetRank) return { ...p, zIndex: currentRank };
+            return p;
+        });
         updateActivePlacements(next);
     }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
 
     const handleSendBackward = useCallback((idx = selectedFeedIndex) => {
         if (idx < 0 || !currentPlacements[idx]) return;
-        const next = [...currentPlacements];
-        next[idx] = { ...next[idx], zIndex: Math.max(0, (next[idx].zIndex || 0) - 1) };
+        const normalized = normalizeLayers(currentPlacements);
+        const currentRank = normalized[idx].zIndex;
+        const targetRank = currentRank - 1;
+        if (targetRank < 1) return;
+
+        const next = normalized.map((p, i) => {
+            if (i === idx) return { ...p, zIndex: targetRank };
+            if (p.zIndex === targetRank) return { ...p, zIndex: currentRank };
+            return p;
+        });
         updateActivePlacements(next);
     }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
 
@@ -616,6 +653,26 @@ export default function MulticamViewport({
         handleUpdateSelectedStyle({ rotation: nextRot });
     }, [selectedFeedIndex, currentPlacements, handleUpdateSelectedStyle]);
 
+    // Focus single placement to fill 100% of 16:9 canvas (1x1 Focus Viewport)
+    const handleFocus1x1 = useCallback((idx = selectedFeedIndex) => {
+        if (idx < 0 || !currentPlacements[idx]) return;
+        const maxRank = currentPlacements.length;
+        const next = currentPlacements.map((p, i) => {
+            if (i === idx) {
+                return {
+                    ...p,
+                    x: 0,
+                    y: 0,
+                    width: VIRTUAL_CANVAS_W,
+                    height: VIRTUAL_CANVAS_H,
+                    zIndex: maxRank
+                };
+            }
+            return p;
+        });
+        updateActivePlacements(next);
+    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+
     // -------------------------------------------------------------
     // PRESET TEMPLATES
     // -------------------------------------------------------------
@@ -636,7 +693,7 @@ export default function MulticamViewport({
                         y: 0,
                         width: 1920,
                         height: 1080,
-                        zIndex: 0,
+                        zIndex: 1,
                         rotation: 0,
                         borderWidth: 0,
                         borderColor: SLOT_BORDER_COLORS[0],
@@ -647,10 +704,28 @@ export default function MulticamViewport({
                 break;
             case '1x2':
                 if (feeds.length >= 2) {
-                    newPlacements = [
-                        { ...feeds[0], x: 0, y: 0, width: 960, height: 1080, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-                        { ...feeds[1], x: 960, y: 0, width: 960, height: 1080, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 }
-                    ];
+                    const halfW = 960;
+                    newPlacements = feeds.slice(0, 2).map((f, idx) => {
+                        const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+                        const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, 1080, aspect);
+                        return {
+                            ...f,
+                            x,
+                            y,
+                            width,
+                            height,
+                            sourceWidth: f.sourceWidth || 1920,
+                            sourceHeight: f.sourceHeight || 1080,
+                            nativeAspectRatio: aspect,
+                            aspectRatio: aspect,
+                            zIndex: idx + 1,
+                            rotation: 0,
+                            borderWidth: 2,
+                            borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
+                            shadowEffect: 'deep',
+                            borderRadius: 0
+                        };
+                    });
                 } else {
                     newPlacements = generateAutoPackPlacements(feeds);
                 }
@@ -763,36 +838,68 @@ export default function MulticamViewport({
         persistSavedPresets(next);
     }, [savedPresets]);
 
-    // JSON Import / Export
-    const handleOpenJsonModal = useCallback(() => {
-        setJsonModalText(JSON.stringify({ placements: currentPlacements, keyframes }, null, 2));
-        setShowJsonModal(true);
-    }, [currentPlacements, keyframes]);
+    // -------------------------------------------------------------
+    // CANVAS FILE EXPORT & IMPORT (No raw JSON modal needed)
+    // -------------------------------------------------------------
+    const handleExportCanvasFile = useCallback(() => {
+        const exportData = {
+            version: '1.0',
+            type: 'itb-canvas-layout',
+            exportedAt: new Date().toISOString(),
+            width: VIRTUAL_CANVAS_W,
+            height: VIRTUAL_CANVAS_H,
+            placements: currentPlacements,
+            timeline: internalTimeline
+        };
+        const jsonStr = JSON.stringify(exportData, null, 2);
+        const blob = new window.Blob([jsonStr], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        a.href = url;
+        a.download = `canvas_layout_${timeStr}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }, [currentPlacements, internalTimeline]);
 
-    const handleApplyJsonImport = useCallback(() => {
-        try {
-            const parsed = JSON.parse(jsonModalText);
-            if (parsed.placements && Array.isArray(parsed.placements)) {
-                updateActivePlacements(parsed.placements);
-                setSelectedFeedIndex(0);
-                setSelectedPresetId('custom');
-                hasUserCustomizedRef.current = true;
-                setShowJsonModal(false);
-                return;
+    const handleImportCanvasFile = useCallback((e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new window.FileReader();
+        reader.onload = (event) => {
+            try {
+                const parsed = JSON.parse(event.target.result);
+                let importedPlacements = null;
+                if (Array.isArray(parsed)) {
+                    importedPlacements = parsed;
+                } else if (parsed.placements && Array.isArray(parsed.placements)) {
+                    importedPlacements = parsed.placements;
+                } else if (parsed.layout?.placements && Array.isArray(parsed.layout.placements)) {
+                    importedPlacements = parsed.layout.placements;
+                }
+
+                if (importedPlacements && importedPlacements.length > 0) {
+                    updateActivePlacements(importedPlacements);
+                    setSelectedFeedIndex(0);
+                    setSelectedPresetId('custom');
+                    hasUserCustomizedRef.current = true;
+                }
+                if (parsed.timeline?.keyframes?.length > 0) {
+                    setInternalTimeline(parsed.timeline);
+                    if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(parsed.timeline);
+                }
+            } catch (err) {
+                console.error('Failed to parse imported canvas JSON:', err);
+                alert(`Canvas Import Error: ${err.message}`);
             }
-            if (parsed.keyframes && Array.isArray(parsed.keyframes)) {
-                setInternalTimeline({ id: 'canvas-timeline-imported', keyframes: parsed.keyframes });
-                setSelectedFeedIndex(0);
-                setSelectedPresetId('custom');
-                hasUserCustomizedRef.current = true;
-                setShowJsonModal(false);
-                return;
-            }
-            alert('Invalid JSON structure. Must contain "placements" array or "keyframes" array.');
-        } catch (err) {
-            alert(`JSON Parse Error: ${err.message}`);
-        }
-    }, [jsonModalText, updateActivePlacements]);
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+    }, [updateActivePlacements, onUpdateCanvasLayoutTimeline]);
 
     // -------------------------------------------------------------
     // DIRECT DRAG & RESIZE ENGINE (MODAL PARITY)
@@ -1148,7 +1255,6 @@ export default function MulticamViewport({
                 setShowShadowControl(false);
                 setShowRotationControl(false);
                 setShowSavePresetModal(false);
-                setShowJsonModal(false);
                 return;
             }
 
@@ -1248,16 +1354,15 @@ export default function MulticamViewport({
     // Sorted placements for rendering (lowest zIndex in back)
     const sortedRenderPlacements = useMemo(() => {
         return activeDisplayPlacements.map((p, originalIndex) => ({ ...p, originalIndex }))
-            .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+            .sort((a, b) => ((a.zIndex ?? a.originalIndex) - (b.zIndex ?? b.originalIndex)));
     }, [activeDisplayPlacements]);
 
-    const isSoloMode = Boolean(activeStation);
     const selectedPlacement = currentPlacements[selectedFeedIndex] || null;
 
     return (
         <div
             ref={viewportRootRef}
-            className={`multicam-viewport-root ${isSoloMode ? 'solo' : 'canvas-grid'} ${isGridFullscreen ? 'fullscreen-grid-active' : ''}`}
+            className={`multicam-viewport-root canvas-grid ${isGridFullscreen ? 'fullscreen-grid-active' : ''}`}
         >
             {/* Global Transparent Drag Shield */}
             {(isDragging || isResizing) && (
@@ -1479,26 +1584,30 @@ export default function MulticamViewport({
                         )}
                     </div>
 
-                    {/* JSON Import / Export Button */}
+                    {/* Canvas Layout File Export & Import */}
                     <button
                         type="button"
                         className="btn-comp-action"
-                        onClick={handleOpenJsonModal}
-                        title="View, copy, or paste layout JSON structure"
+                        onClick={handleExportCanvasFile}
+                        title="Download/Export current canvas layout as a .json file"
                     >
-                        📋 JSON DATA
+                        📤 EXPORT CANVAS
                     </button>
-
-                    {isSoloMode && (
-                        <button
-                            type="button"
-                            className="btn-grid-toggle active"
-                            onClick={() => onSelectActiveStation && onSelectActiveStation(null)}
-                            title="Return to Master Canvas Grid"
-                        >
-                            ⊞ BACK TO CANVAS GRID
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        className="btn-comp-action"
+                        onClick={() => importFileInputRef.current?.click()}
+                        title="Import/Load a canvas layout from a saved .json file"
+                    >
+                        📥 IMPORT CANVAS
+                    </button>
+                    <input
+                        ref={importFileInputRef}
+                        type="file"
+                        accept=".json"
+                        style={{ display: 'none' }}
+                        onChange={handleImportCanvasFile}
+                    />
 
                     <button
                         type="button"
@@ -1511,89 +1620,8 @@ export default function MulticamViewport({
                 </div>
             </div>
 
-            {/* View Mode A: Solo Workstation Spotlight */}
-            {isSoloMode && activeStation && (
-                <div
-                    className="spotlight-workspace-viewport"
-                    onClick={() => onOpenSpotlight && onOpenSpotlight(activeStation.id, compositionLayout)}
-                    onContextMenu={(e) => {
-                        e.preventDefault();
-                        if (onSelectActiveStation) onSelectActiveStation(null);
-                    }}
-                >
-                    <div className="spotlight-viewport-header">
-                        <div className="header-meta-group">
-                            <span className="status-dot live" />
-                            <span className="station-name">
-                                {activeStation.hostname || activeStation.displayName || activeStation.name}
-                            </span>
-                            <span className="feed-spec">
-                                {activeStation.feedSpec || `${activeStation.resolution || '1080p'} • ${activeStation.fps || 30}fps`}
-                            </span>
-                        </div>
-
-                        <button
-                            type="button"
-                            className="btn-fullscreen-trigger"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenSpotlight && onOpenSpotlight(activeStation.id, compositionLayout);
-                            }}
-                            title="Expand to Cinema Fullscreen"
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="14" height="14">
-                                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                            </svg>
-                        </button>
-                    </div>
-
-                    <div className="spotlight-feed-wrapper">
-                        <StudioVideoFeed
-                            station={activeStation}
-                            baseEpochMs={baseEpochMs}
-                            totalDurationMs={totalDurationMs}
-                            playheadMs={playheadMs}
-                            setPlayheadMs={setPlayheadMs}
-                            isPlaying={isPlaying}
-                            setIsPlaying={setIsPlaying}
-                            playbackSpeed={playbackSpeed}
-                            timeMode={timeMode}
-                            inPointMs={inPointMs}
-                            outPointMs={outPointMs}
-                            isLooping={true}
-                            recordingSegments={recordingSegments}
-                            globalGaps={globalGaps}
-                            showWatermark={false}
-                            directorPlan={directorPlan || activeStation?.directorPlan}
-                            onOverrideDisplay={onOverrideDisplay}
-                            onResetOverride={onResetOverride}
-                            viewMode={compositionLayout || 'canvas'}
-                            onViewModeChange={(newMode) => {
-                                onChangeCompositionLayout && onChangeCompositionLayout(newMode);
-                            }}
-                            onOpenFullscreen={(targetDispId) => {
-                                onOpenSpotlight && onOpenSpotlight(activeStation.id, targetDispId);
-                            }}
-                        />
-
-                        <KeystrokePlaybackOverlay
-                            currentEpochMs={currentEpochMs}
-                            keystrokes={keystrokes}
-                            keystrokeMode={keystrokeMode}
-                        />
-
-                        <div className="spotlight-interaction-hint">
-                            <span className="hint-pill">
-                                L-Click: Fullscreen • R-Click: Back to Grid
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* View Mode B: Interactive Live Master Canvas Stage (WYSIWYG 16:9 Frame) */}
-            {!isSoloMode && (
-                <div ref={stageWrapperRef} className="canvas-stage-wrapper">
+            {/* Interactive Live Master Canvas Stage (WYSIWYG 16:9 Frame) */}
+            <div ref={stageWrapperRef} className="canvas-stage-wrapper">
                     {/* Collapsible Left Panel: Feeds & Displays Palette */}
                     {showFeedsPalette && (
                         <div className="canvas-side-drawer feeds-palette-drawer">
@@ -1666,14 +1694,14 @@ export default function MulticamViewport({
                                             onClick={() => setSelectedFeedIndex(origIdx)}
                                         >
                                             <div className="layer-info-left">
-                                                <span className="layer-num-pill">L{p.zIndex || origIdx}</span>
+                                                <span className="layer-num-pill">#{p.zIndex ?? origIdx + 1}</span>
                                                 <span className="layer-name">{p.label || `${p.stationId} (${p.displayId})`}</span>
                                             </div>
                                             <div className="layer-actions-right" onClick={(e) => e.stopPropagation()}>
-                                                <button type="button" onClick={() => handleBringForward(origIdx)} title="Bring Forward (L+1)">⬆️</button>
                                                 <button type="button" onClick={() => handleSendBackward(origIdx)} title="Send Backward (L-1)">⬇️</button>
-                                                <button type="button" onClick={() => handleBringToFront(origIdx)} title="Bring to Front (Top)">⏫</button>
+                                                <button type="button" onClick={() => handleBringForward(origIdx)} title="Bring Forward (L+1)">⬆️</button>
                                                 <button type="button" onClick={() => handleSendToBack(origIdx)} title="Send to Back (Bottom)">⏬</button>
+                                                <button type="button" onClick={() => handleBringToFront(origIdx)} title="Bring to Front (Top)">⏫</button>
                                                 <button type="button" className="btn-del-layer" onClick={() => handleRemovePlacement(origIdx)} title="Remove feed from canvas">✕</button>
                                             </div>
                                         </div>
@@ -1688,10 +1716,11 @@ export default function MulticamViewport({
                         ref={canvasFrameRef}
                         className="canvas-master-frame-16-9"
                         style={{
-                            width: `${canvasFrameDimensions.width}px`,
-                            height: `${canvasFrameDimensions.height}px`,
+                            width: canvasFrameDimensions.width > 180 ? `${canvasFrameDimensions.width}px` : '100%',
+                            height: canvasFrameDimensions.height > 100 ? `${canvasFrameDimensions.height}px` : '100%',
                             maxWidth: '100%',
-                            maxHeight: '100%'
+                            maxHeight: '100%',
+                            aspectRatio: '16 / 9'
                         }}
                     >
                         <div className="corner-accent top-left" />
@@ -1780,6 +1809,10 @@ export default function MulticamViewport({
                             const heightPct = (p.height / VIRTUAL_CANVAS_H) * 100;
 
                             const boxBoxShadow = getShadowCss(shadowEffect, isSelected, bColor);
+                            const isFlippedDown = p.y < 50;
+                            const isNearLeft = p.x < 100;
+                            const isNearRight = (p.x + p.width) > 1820;
+                            const layerRank = p.zIndex !== undefined ? p.zIndex : origIdx + 1;
 
                             return (
                                 <div
@@ -1791,14 +1824,13 @@ export default function MulticamViewport({
                                         top: `${topPct}%`,
                                         width: `${widthPct}%`,
                                         height: `${heightPct}%`,
-                                        zIndex: isSelected ? 1000 : (p.zIndex || origIdx),
-                                        transform: `rotate(${rot}deg)`,
+                                        zIndex: (layerRank * 10) + (isThisDragging ? 100 : 0),
                                         transformOrigin: 'center center',
                                         border: `${bWidth}px solid ${bColor}`,
                                         borderRadius: `${bRadius}px`,
                                         boxShadow: boxBoxShadow,
                                         cursor: isThisDragging ? 'grabbing' : 'grab',
-                                        transition: (isThisDragging || isThisResizing) ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out, transform 0.15s ease-out'
+                                        transition: (isThisDragging || isThisResizing) ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out'
                                     }}
                                     onMouseDown={(e) => handleMouseDownBox(e, origIdx)}
                                     onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
@@ -1813,44 +1845,55 @@ export default function MulticamViewport({
                                             {Math.round(p.width)}×{Math.round(p.height)} ({getReadableAspectRatio(p.width, p.height)}) @ ({Math.round(p.x)},{Math.round(p.y)})
                                             {rot !== 0 && <span className="badge-rot">📐{rot}°</span>}
                                         </div>
-                                        <span className="badge-layer">L{p.zIndex || origIdx}</span>
+                                        <span className="badge-layer" title={`Layer priority rank: #${layerRank}`}>#{layerRank}</span>
                                     </div>
 
                                     {/* Live Video Content Viewport */}
                                     <div className="feed-content-viewport">
-                                        <CameraCard
-                                            station={st}
-                                            isSolo={false}
-                                            currentEpochMs={currentEpochMs}
-                                            timeMode={timeMode}
-                                            isPlaying={isPlaying}
-                                            setIsPlaying={setIsPlaying}
-                                            baseEpochMs={baseEpochMs}
-                                            totalDurationMs={totalDurationMs}
-                                            outPointMs={outPointMs}
-                                            setPlayheadMs={setPlayheadMs}
-                                            globalGaps={globalGaps}
-                                            onOpenSpotlight={onOpenSpotlight}
-                                            onSelectActiveStation={null}
-                                            recordingSegments={recordingSegments}
-                                            playbackSpeed={playbackSpeed}
-                                            activeAudioStationId={activeAudioStationId}
-                                            onSoloAudio={setActiveAudioStationId}
-                                            directorPlan={directorPlan || st?.directorPlan}
-                                            isAutoDirectorEnabled={isAutoDirectorEnabled}
-                                            targetDisplayId={p.displayId}
-                                            onSelectDisplayId={(dispId) => {
-                                                const next = currentPlacements.map((pl, idx) => {
-                                                    if (idx === origIdx) {
-                                                        return { ...pl, displayId: dispId };
-                                                    }
-                                                    return pl;
-                                                });
-                                                updateActivePlacements(next);
+                                        <div
+                                            className="feed-rotation-surface"
+                                            style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                transform: rot ? `rotate(${rot}deg)` : undefined,
+                                                transformOrigin: 'center center',
+                                                transition: isThisDragging ? 'none' : 'transform 0.2s ease-out'
                                             }}
-                                            slotIndex={origIdx}
-                                            borderColor={bColor}
-                                        />
+                                        >
+                                            <CameraCard
+                                                station={st}
+                                                isSolo={false}
+                                                currentEpochMs={currentEpochMs}
+                                                timeMode={timeMode}
+                                                isPlaying={isPlaying}
+                                                setIsPlaying={setIsPlaying}
+                                                baseEpochMs={baseEpochMs}
+                                                totalDurationMs={totalDurationMs}
+                                                outPointMs={outPointMs}
+                                                setPlayheadMs={setPlayheadMs}
+                                                globalGaps={globalGaps}
+                                                onOpenSpotlight={onOpenSpotlight}
+                                                onSelectActiveStation={null}
+                                                recordingSegments={recordingSegments}
+                                                playbackSpeed={playbackSpeed}
+                                                activeAudioStationId={activeAudioStationId}
+                                                onSoloAudio={setActiveAudioStationId}
+                                                directorPlan={directorPlan || st?.directorPlan}
+                                                isAutoDirectorEnabled={isAutoDirectorEnabled}
+                                                targetDisplayId={p.displayId}
+                                                onSelectDisplayId={(dispId) => {
+                                                    const next = currentPlacements.map((pl, idx) => {
+                                                        if (idx === origIdx) {
+                                                            return { ...pl, displayId: dispId };
+                                                        }
+                                                        return pl;
+                                                    });
+                                                    updateActivePlacements(next);
+                                                }}
+                                                slotIndex={origIdx}
+                                                borderColor={bColor}
+                                            />
+                                        </div>
 
                                         {/* Transparent Drag Surface overlay allowing instant drag over video */}
                                         <div
@@ -1890,7 +1933,7 @@ export default function MulticamViewport({
                                     {/* Selected Floating Tactical Inspector */}
                                     {isSelected && selectedPlacement && (
                                         <div
-                                            className="floating-feed-inspector"
+                                            className={`floating-feed-inspector ${isFlippedDown ? 'is-flipped-down' : ''} ${isNearLeft ? 'align-left' : ''} ${isNearRight ? 'align-right' : ''}`}
                                             onMouseDown={(e) => e.stopPropagation()}
                                             onClick={(e) => e.stopPropagation()}
                                         >
@@ -1955,10 +1998,11 @@ export default function MulticamViewport({
 
                                             {/* Layer Stacking Order */}
                                             <div className="inspector-group layers">
-                                                <button type="button" className="btn-action-tool" onClick={() => handleBringForward(origIdx)} title="Bring forward (+1)">⬆️</button>
-                                                <button type="button" className="btn-action-tool" onClick={() => handleSendBackward(origIdx)} title="Send backward (-1)">⬇️</button>
-                                                <button type="button" className="btn-action-tool" onClick={() => handleBringToFront(origIdx)} title="Bring to Front">⏫</button>
-                                                <button type="button" className="btn-action-tool" onClick={() => handleSendToBack(origIdx)} title="Send to Back">⏬</button>
+                                                <span className="group-label">LAYER #{layerRank}:</span>
+                                                <button type="button" className="btn-action-tool" onClick={() => handleSendBackward(origIdx)} title="Send backward (L-1)">⬇️ -1</button>
+                                                <button type="button" className="btn-action-tool" onClick={() => handleBringForward(origIdx)} title="Bring forward (L+1)">⬆️ +1</button>
+                                                <button type="button" className="btn-action-tool" onClick={() => handleSendToBack(origIdx)} title="Send to Back (Bottom)">⏬ BACK</button>
+                                                <button type="button" className="btn-action-tool" onClick={() => handleBringToFront(origIdx)} title="Bring to Front (Top)">⏫ FRONT</button>
                                             </div>
 
                                             {/* Rotate 90 & Slider Toggle */}
@@ -2011,14 +2055,24 @@ export default function MulticamViewport({
                                                 🗑️
                                             </button>
 
-                                            {/* Solo Inspection Shortcut */}
+                                            {/* 1x1 Focus Mode: Expand feed to fill entire 16:9 canvas */}
                                             <button
                                                 type="button"
                                                 className="btn-action-tool highlight"
-                                                onClick={() => onSelectActiveStation && onSelectActiveStation(st.id)}
-                                                title="Inspect this workstation in Solo Viewport"
+                                                onClick={() => handleFocus1x1(origIdx)}
+                                                title="Maximize this window to fill the entire 16:9 canvas (1x1 Focus View)"
                                             >
-                                                🔍 SOLO
+                                                ⊞ 1x1 FOCUS
+                                            </button>
+
+                                            {/* Deep Forensic Spotlight Shortcut */}
+                                            <button
+                                                type="button"
+                                                className="btn-action-tool"
+                                                onClick={() => onOpenSpotlight && onOpenSpotlight(st.id, p.displayId)}
+                                                title="Open station forensic spotlight view"
+                                            >
+                                                ⛶ SPOTLIGHT
                                             </button>
                                         </div>
                                     )}
@@ -2027,7 +2081,6 @@ export default function MulticamViewport({
                         })}
                     </div>
                 </div>
-            )}
 
             {/* Save Preset Modal Dialog */}
             {showSavePresetModal && (
@@ -2057,43 +2110,6 @@ export default function MulticamViewport({
                         <div className="modal-footer">
                             <button type="button" className="btn-modal-cancel" onClick={() => setShowSavePresetModal(false)}>Cancel</button>
                             <button type="button" className="btn-modal-confirm" onClick={handleSaveCurrentPreset}>Save Preset</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* JSON Import / Export Modal Dialog */}
-            {showJsonModal && (
-                <div className="canvas-modal-backdrop" onClick={() => setShowJsonModal(false)}>
-                    <div className="canvas-modal-card wide" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <span>📋 JSON LAYOUT DATA (IMPORT / EXPORT)</span>
-                            <button type="button" className="btn-close-modal" onClick={() => setShowJsonModal(false)}>✕</button>
-                        </div>
-                        <div className="modal-body">
-                            <p className="modal-hint">
-                                Copy this configuration to save elsewhere, or paste existing canvas JSON to apply immediately.
-                            </p>
-                            <textarea
-                                className="json-textarea"
-                                rows={14}
-                                value={jsonModalText}
-                                onChange={(e) => setJsonModalText(e.target.value)}
-                            />
-                        </div>
-                        <div className="modal-footer">
-                            <button
-                                type="button"
-                                className="btn-modal-cancel"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(jsonModalText);
-                                    alert('JSON copied to clipboard!');
-                                }}
-                            >
-                                📋 Copy to Clipboard
-                            </button>
-                            <button type="button" className="btn-modal-cancel" onClick={() => setShowJsonModal(false)}>Close</button>
-                            <button type="button" className="btn-modal-confirm" onClick={handleApplyJsonImport}>Apply Layout</button>
                         </div>
                     </div>
                 </div>

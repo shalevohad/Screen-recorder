@@ -46,6 +46,7 @@
 36. [Minimalist Support Tracks, Draggable Keyframes & Live Canvas Auto-Grid Architecture](#36-minimalist-support-tracks-draggable-keyframes--live-canvas-auto-grid-architecture-2026-11-03)
 37. [Non-Standard Aspect Ratio Preservation & CTRL-Locked Canvas Resizing](#37-non-standard-aspect-ratio-preservation--ctrl-locked-canvas-resizing-2026-11-03)
 38. [Zero-Collapse Master Canvas Stage & Responsive ResizeObserver Architecture](#38-zero-collapse-master-canvas-stage--responsive-resizeobserver-architecture-2026-11-03)
+39. [Tactical Master Canvas Workspace Normalization, Layer Stacking Hierarchy, Surface Rotation Isolation & Export/Import Architecture](#39-tactical-master-canvas-workspace-normalization-layer-stacking-hierarchy-surface-rotation-isolation--exportimport-architecture-2026-11-03)
 
 ---
 
@@ -1712,6 +1713,40 @@ Chrome DevTools inspection revealed that the `.canvas-master-frame-16-9` contain
 Enforced in `ITB-SCREEN-RECORDER.Tests/Frontend/FrontendBundleIntegrityTests.cs`:
 - `ExtractorAdvanced_CanvasStageFrame_EnforcesMinDimensionsAndNonCollapsedStyles`: Asserts compiled CSS and SCSS source enforce `min-height: 240px`, `min-height: 180px`, and `min-width: 320px`.
 - `ExtractorAdvanced_CanvasResponsiveEngine_HasResizeObserverAndStationFallback`: Asserts production JS bundle includes `ResizeObserver` responsive sizing logic and `station.id` fallback.
+
+---
+
+## 39. Tactical Master Canvas Workspace Normalization, Layer Stacking Hierarchy, Surface Rotation Isolation & Export/Import Architecture (2026-11-03)
+
+### 1. Architectural Problem Analysis
+During extensive forensic and multi-station layout editing, five workflow and UI anomalies were identified:
+1. **Top-Edge Inspector Invisibility**: When a station card was snapped or moved to the absolute top edge ($y = 0$), its floating tactical inspector (`top: -36px`) was placed above the window bounds, and got clipped out by `.canvas-master-frame-16-9`'s `overflow: hidden`.
+2. **Layer Hierarchy Invalidation by Selection**: The layer stacking hierarchy ("מי לפני מי") was broken because `.canvas-feed-card-box.is-selected` had `z-index: 60 !important;` in SCSS, causing any selected window to artificially jump in front of or behind other elements, overriding user-configured layer priorities.
+3. **Inspector & Control Skew During Rotation**: When rotating a workstation screen (e.g. 90° portrait / flipped displays), `transform: rotate` was applied to the outer `.canvas-feed-card-box`, causing header titles, badges, resize handles, and the floating inspector menu to rotate diagonally along with the video.
+4. **Friction in Canvas Data Sharing**: Inspecting and moving canvas layouts required viewing and manually copying raw JSON blobs from a modal dialog rather than exporting/importing standardized `.json` configuration files.
+5. **Solo Viewport Workflow Fragmentation**: The old modal/mode-swapping Solo mechanism completely removed the user from the 16:9 Master Canvas, jarring the editing context when reviewing workstations with multi-monitor configurations.
+
+### 2. Implementation & Architectural Patterns
+1. **Adaptive Floating Inspector Positioning**:
+   - Integrated geometry boundary detection (`isFlippedDown = p.y < 50; isNearLeft = p.x < 100; isNearRight = (p.x + p.width) > 1820;`).
+   - Added `.floating-feed-inspector.is-flipped-down` with `top: 26px`, positioning the inspector immediately beneath the 22px window title bar inside the card when touching the top canvas edge.
+   - Realigned shadow dropdowns to open downwards (`top: calc(100% + 4px)`) when flipped down.
+2. **Normalized Discrete Layer Stacking Hierarchy**:
+   - Removed `z-index: 60 !important;` from `.is-selected`.
+   - Normalizes placement layers into discrete sequential 1-based ranks (`Layer #1, #2, #3...`).
+   - Stacks elements via `zIndex: (layerRank * 10) + (isThisDragging ? 100 : 0)`. Active selection never overrides layer ordering.
+   - Added discrete step controls (`⬇️ -1`, `⬆️ +1`, `⏬ BACK`, `⏫ FRONT`) and displayed `#{layerRank}` badge on window headers.
+3. **Inner Surface Rotation Isolation**:
+   - Isolated `transform: rotate(...)` to an inner `.feed-rotation-surface` wrapping `<CameraCard>`.
+   - The outer card, title bar, resize handles, and floating inspector remain perfectly horizontal and stable while the video screen rotates freely.
+4. **1-Click Canvas File Export & Import Engine**:
+   - Added `📤 EXPORT CANVAS` downloading timestamped `canvas_layout_YYYYMMDD_HHmmss.json`.
+   - Added `📥 IMPORT CANVAS` utilizing a silent file picker reading standard JSON layout schemas.
+   - Completely eliminated the legacy raw JSON text modal.
+5. **Unified Master Canvas Mode & 1x1 Focus**:
+   - Eliminated `isSoloMode` viewport swapping. The Master Canvas Grid is now the single continuous stage.
+   - Added `⊞ 1x1 FOCUS` in the inspector which instantly expands the selected station to fill the full 16:9 canvas (1920x1080 at 0,0) without leaving the canvas workspace.
+   - Hardened `1x2 DUAL` preset to compute proportional aspect-preserved cells for stations with dual monitors.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

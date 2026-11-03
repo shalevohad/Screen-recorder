@@ -839,6 +839,8 @@
 
         .canvas-master-frame-16-9 {
             position: relative;
+            width: 100%;
+            height: 100%;
             aspect-ratio: 16 / 9;
             flex-shrink: 0;
             min-width: 320px;
@@ -922,8 +924,6 @@
                 box-sizing: border-box;
 
                 &.is-selected {
-                    z-index: 60 !important;
-
                     .box-header-badge,
                     .feed-drag-header {
                         background: rgba(6, 182, 212, 0.35);
@@ -1043,6 +1043,16 @@
                     overflow: hidden;
                     background: #000000;
 
+                    .feed-rotation-surface {
+                        width: 100%;
+                        height: 100%;
+                        position: relative;
+                        overflow: hidden;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+
                     .card-drag-surface {
                         position: absolute;
                         inset: 0;
@@ -1118,6 +1128,27 @@
                     backdrop-filter: blur(8px);
                     z-index: 99;
                     white-space: nowrap;
+
+                    &.is-flipped-down {
+                        top: 26px; // Placed right below the 22px header inside the card!
+                        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.9);
+
+                        .inspector-group.shadow .shadow-dropdown-menu {
+                            bottom: auto;
+                            top: calc(100% + 4px);
+                        }
+                    }
+
+                    &.align-left {
+                        left: 8px;
+                        transform: none;
+                    }
+
+                    &.align-right {
+                        left: auto;
+                        right: 8px;
+                        transform: none;
+                    }
 
                     
                     .inspector-group.shadow {
