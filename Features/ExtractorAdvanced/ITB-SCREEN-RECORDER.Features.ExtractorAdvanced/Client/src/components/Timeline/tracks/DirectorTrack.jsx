@@ -8,6 +8,8 @@ import './DirectorTrack.scss';
 export default function DirectorTrack({
     stationId,
     directorPlan,
+    isAutoDirectorEnabled = true,
+    onToggleAutoDirector,
     viewportStartMs = 0,
     viewportDurationMs = 3600000,
     baseEpochMs = 0,
@@ -124,6 +126,20 @@ export default function DirectorTrack({
             <div className="director-track-label">
                 <span className="director-icon">🎬</span>
                 <span className="director-title">DIRECTOR</span>
+                {onToggleAutoDirector && (
+                    <button
+                        type="button"
+                        className={`director-auto-toggle-btn ${isAutoDirectorEnabled ? 'is-enabled' : 'is-disabled'}`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleAutoDirector(stationId);
+                        }}
+                        title={isAutoDirectorEnabled ? 'Auto-Director is ACTIVE for this station. Click to pause.' : 'Auto-Director is PAUSED for this station. Click to activate.'}
+                    >
+                        <span className="dot" />
+                        <span>{isAutoDirectorEnabled ? '⚡ AUTO' : '✋ PAUSE'}</span>
+                    </button>
+                )}
                 <span 
                     className={`director-active-badge ${isActiveOverride ? 'is-override' : 'is-auto'}`}
                     title={`Current orientation at playhead: Screen ${activeDisplayNum} (${isActiveOverride ? 'Manual Override' : 'Auto-Director'})`}

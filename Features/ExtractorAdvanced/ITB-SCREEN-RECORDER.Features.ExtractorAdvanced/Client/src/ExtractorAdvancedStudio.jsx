@@ -227,10 +227,30 @@ export default function ExtractorAdvancedStudio() {
         });
     }, []);
 
+    const [stationAutoDirectorMap, setStationAutoDirectorMap] = useState({});
+    const handleToggleStationAutoDirector = useCallback((stationId) => {
+        setStationAutoDirectorMap(prev => ({
+            ...prev,
+            [stationId]: !(prev[stationId] ?? true)
+        }));
+    }, []);
+
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
         if (activeStationId === stationId) setActiveStationId(null);
         if (spotlightStationId === stationId) setSpotlightStationId(null);
+        // Purge deselected station from canvas layout keyframes
+        setCanvasLayoutTimeline(prev => {
+            if (!prev || !prev.keyframes) return prev;
+            const nextKfs = prev.keyframes.map(kf => ({
+                ...kf,
+                layout: {
+                    ...kf.layout,
+                    placements: (kf.layout?.placements || []).filter(p => p.stationId !== stationId)
+                }
+            }));
+            return { ...prev, keyframes: nextKfs };
+        });
     }, [activeStationId, spotlightStationId]);
 
     const handleStationContextMenu = useCallback((e, station) => {
@@ -1004,6 +1024,9 @@ export default function ExtractorAdvancedStudio() {
                                     onSelectActiveStation={handleSelectActiveStation}
                                     onOpenSpotlight={handleOpenSpotlightFullscreen}
                                     onStationContextMenu={handleStationContextMenu}
+                                    onDeselectStation={handleDeselectStation}
+                                    stationAutoDirectorMap={stationAutoDirectorMap}
+                                    onToggleStationAutoDirector={handleToggleStationAutoDirector}
                                     onOpenDrawer={() => setIsDrawerOpen(true)}
                                     baseEpochMs={timelineBaseEpochMs}
                                     playheadMs={playheadMs}
@@ -1068,6 +1091,9 @@ export default function ExtractorAdvancedStudio() {
                                     activeStationId={activeStationId}
                                     onSelectActiveStation={(id) => handleSelectActiveStation(selectedStationIds.length <= 1 ? id : (id === activeStationId ? null : id))}
                                     onStationContextMenu={handleStationContextMenu}
+                                    onDeselectStation={handleDeselectStation}
+                                    stationAutoDirectorMap={stationAutoDirectorMap}
+                                    onToggleStationAutoDirector={handleToggleStationAutoDirector}
                                     baseEpochMs={timelineBaseEpochMs}
                                     timeMode={timeMode}
                                     totalDurationMs={totalTimelineDurationMs}

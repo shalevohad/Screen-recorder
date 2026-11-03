@@ -190,7 +190,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             int frameCount,
             int tileWidth = 100,
             int tileHeight = 50,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            string? displayId = null)
         {
             frameCount = Math.Clamp(frameCount, 2, 8);
             tileWidth = Math.Clamp(tileWidth, 60, 240);
@@ -204,7 +205,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             long bucketSizeMs = Math.Max(1000, totalMs / frameCount);
             long bucketStart = (startEpoch / bucketSizeMs) * bucketSizeMs;
-            string sheetCacheKey = $"sheet_{hostname}_{bucketStart}_{frameCount}_{tileWidth}x{tileHeight}";
+            string cleanDisplay = string.IsNullOrWhiteSpace(displayId) ? "mon-0" : displayId.Trim().ToLowerInvariant();
+            string sheetCacheKey = $"sheet_{hostname}_{cleanDisplay}_{bucketStart}_{frameCount}_{tileWidth}x{tileHeight}";
 
             if (_memoryCache != null && _memoryCache.TryGetValue(sheetCacheKey, out byte[]? cachedSheet) && cachedSheet != null)
             {
@@ -212,6 +214,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             }
 
             var chunks = await _storageScanner.GetChunksForStationAsync(hostname, startUtc, endUtc);
+            if (!string.IsNullOrEmpty(displayId))
+            {
+                var matching = chunks.Where(c => string.Equals(c.DisplayId, cleanDisplay, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (matching.Count > 0) chunks = matching;
+            }
             string ffmpegPath = ResolveFfmpegBinary();
 
             var candidateChunks = chunks

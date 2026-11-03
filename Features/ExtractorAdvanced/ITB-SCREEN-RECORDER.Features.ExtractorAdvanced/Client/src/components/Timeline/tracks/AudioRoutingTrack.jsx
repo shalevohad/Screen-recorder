@@ -265,7 +265,7 @@ export default function AudioRoutingTrack({
                             {isExpanded ? '▲' : '▼'}
                         </button>
 
-                        {onFollowVisualFeed && (
+                        {onFollowVisualFeed && stations.length > 1 && (
                             <button
                                 type="button"
                                 className={`btn-audio-mini-action ${isAutoFollow ? 'active' : ''}`}

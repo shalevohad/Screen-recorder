@@ -26,7 +26,10 @@ export default function TimelineBoard({
     stations = [],
     activeStationId,
     onSelectActiveStation,
-    onStationContextMenu, // Context menu event callback: (stationId, mouseEvent) => void
+    onStationContextMenu,
+    onDeselectStation,
+    stationAutoDirectorMap = {},
+    onToggleStationAutoDirector,
     baseEpochMs = 0,
     timeMode = 'LOCAL',
     totalDurationMs = 3600000,
@@ -91,6 +94,9 @@ export default function TimelineBoard({
             if (neededBank !== trackBankIndex) setTrackBankIndex(neededBank);
         }
     }, [activeStationId, stations, trackBankIndex]);
+
+    const activeKeyframe = canvasLayoutTimeline?.keyframes?.[activeKfIndex] || canvasLayoutTimeline?.keyframes?.[0];
+    const currentPlacements = useMemo(() => activeKeyframe?.layout?.placements || [], [activeKeyframe]);
 
     const activeStationObj = useMemo(() => stations.find(s => s.id === activeStationId) || null, [stations, activeStationId]);
 
@@ -275,44 +281,92 @@ export default function TimelineBoard({
                 <div className="tracks-scroll-area">
                     {/* 1. Primary Station Workstation Video & Display Tracks */}
                     {stations.length > 0 ? (
-                        currentBankStations.map(station => (
-                            <React.Fragment key={station.id}>
-                                <TimelineTrack
-                                    station={station}
-                                    isActive={station.id === activeStationId}
-                                    onSelect={() => onSelectActiveStation?.(station.id)}
-                                    onStationContextMenu={onStationContextMenu}
-                                    viewportStartMs={viewportStartMs}
-                                    viewportDurationMs={viewportDurationMs}
-                                    inPointMs={inPointMs}
-                                    outPointMs={outPointMs}
-                                    baseEpochMs={baseEpochMs}
-                                    segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
-                                    recordingSegments={recordingSegments}
-                                    globalGaps={estimateData?.removedGlobalGaps || []}
-                                    disableFilmstrip={stations.length > 1 && station.id !== activeStationId}
-                                />
-                                {((station.displays?.length > 1) || (station.topology?.displays?.length > 1)) && (
-                                    <DirectorTrack
-                                        stationId={station.id}
-                                        directorPlan={station.directorPlan || {
-                                            segments: [
-                                                { startEpochMs: baseEpochMs, endEpochMs: baseEpochMs + totalDurationMs, targetDisplayId: 'mon-0', isManualOverride: false }
-                                            ]
-                                        }}
-                                        viewportStartMs={viewportStartMs}
-                                        viewportDurationMs={viewportDurationMs}
-                                        baseEpochMs={baseEpochMs}
-                                        playheadMs={playheadMs}
-                                        timeMode={timeMode}
-                                        availableDisplays={station.displays || station.topology?.displays || []}
-                                        onSplitSegment={onSplitDirectorSegment}
-                                        onChangeSegmentDisplay={onChangeDirectorSegmentDisplay}
-                                        onResetSegmentToAuto={onResetDirectorSegmentToAuto}
-                                    />
-                                )}
-                            </React.Fragment>
-                        ))
+                        currentBankStations.map(station => {
+                            const isSoloed = station.id === activeStationId;
+                            const isAnotherSoloed = Boolean(activeStationId && activeStationId !== station.id);
+                            const stationDisplays = station.displays || station.topology?.displays || [];
+                            const placedForThisStation = currentPlacements.filter(pl => 
+                                pl.stationId === station.id || (station.hostname && pl.stationId === station.hostname)
+                            );
+                            const areAllDisplaysPlaced = stationDisplays.length > 1 && placedForThisStation.length >= stationDisplays.length;
+                            const isStationAutoDirectorOn = stationAutoDirectorMap ? (stationAutoDirectorMap[station.id] ?? true) : true;
+
+                            return (
+                                <React.Fragment key={station.id}>
+                                    {/* Multi-display sub-tracks when station is in Solo focus */}
+                                    {isSoloed && stationDisplays.length > 1 ? (
+                                        stationDisplays.map((disp, dIdx) => {
+                                            const dispId = (disp.displayId || `mon-${dIdx}`).toLowerCase();
+                                            const dispLabel = disp.displayName || `Screen ${dIdx + 1}`;
+                                            return (
+                                                <TimelineTrack
+                                                    key={`${station.id}-${dispId}`}
+                                                    station={station}
+                                                    displayId={dispId}
+                                                    displayLabel={dispLabel}
+                                                    displayNumber={dIdx + 1}
+                                                    isActive={true}
+                                                    isCollapsed={false}
+                                                    onSelect={() => onSelectActiveStation?.(station.id)}
+                                                    onStationContextMenu={onStationContextMenu}
+                                                    onDeselectStation={onDeselectStation}
+                                                    viewportStartMs={viewportStartMs}
+                                                    viewportDurationMs={viewportDurationMs}
+                                                    inPointMs={inPointMs}
+                                                    outPointMs={outPointMs}
+                                                    baseEpochMs={baseEpochMs}
+                                                    segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
+                                                    recordingSegments={recordingSegments}
+                                                    globalGaps={estimateData?.removedGlobalGaps || []}
+                                                    disableFilmstrip={false}
+                                                />
+                                            );
+                                        })
+                                    ) : (
+                                        <TimelineTrack
+                                            station={station}
+                                            isActive={isSoloed || !activeStationId}
+                                            isCollapsed={isAnotherSoloed}
+                                            onSelect={() => onSelectActiveStation?.(station.id)}
+                                            onStationContextMenu={onStationContextMenu}
+                                            onDeselectStation={onDeselectStation}
+                                            viewportStartMs={viewportStartMs}
+                                            viewportDurationMs={viewportDurationMs}
+                                            inPointMs={inPointMs}
+                                            outPointMs={outPointMs}
+                                            baseEpochMs={baseEpochMs}
+                                            segments={recordingSegments[station.id] || recordingSegments[station.hostname] || station.segments || []}
+                                            recordingSegments={recordingSegments}
+                                            globalGaps={estimateData?.removedGlobalGaps || []}
+                                            disableFilmstrip={isAnotherSoloed}
+                                        />
+                                    )}
+
+                                    {/* Auto-Director Track: Automatically suppressed when all workstation displays are placed on Canvas */}
+                                    {!areAllDisplaysPlaced && stationDisplays.length > 1 && (
+                                        <DirectorTrack
+                                            stationId={station.id}
+                                            isAutoDirectorEnabled={isStationAutoDirectorOn}
+                                            onToggleAutoDirector={onToggleStationAutoDirector}
+                                            directorPlan={station.directorPlan || {
+                                                segments: [
+                                                    { startEpochMs: baseEpochMs, endEpochMs: baseEpochMs + totalDurationMs, targetDisplayId: 'mon-0', isManualOverride: false }
+                                                ]
+                                            }}
+                                            viewportStartMs={viewportStartMs}
+                                            viewportDurationMs={viewportDurationMs}
+                                            baseEpochMs={baseEpochMs}
+                                            playheadMs={playheadMs}
+                                            timeMode={timeMode}
+                                            availableDisplays={stationDisplays}
+                                            onSplitSegment={onSplitDirectorSegment}
+                                            onChangeSegmentDisplay={onChangeDirectorSegmentDisplay}
+                                            onResetSegmentToAuto={onResetDirectorSegmentToAuto}
+                                        />
+                                    )}
+                                </React.Fragment>
+                            );
+                        })
                     ) : (
                         <div className="timeline-empty-tracks-placeholder">
                             <span className="placeholder-pulse" />

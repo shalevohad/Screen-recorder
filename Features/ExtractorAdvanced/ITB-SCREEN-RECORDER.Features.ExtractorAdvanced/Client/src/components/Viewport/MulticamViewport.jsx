@@ -291,6 +291,9 @@ export default function MulticamViewport({
     onSelectActiveStation,
     onOpenSpotlight,
     onStationContextMenu,
+    onDeselectStation = null,
+    stationAutoDirectorMap = {},
+    onToggleStationAutoDirector = null,
     baseEpochMs = 0,
     playheadMs = 0,
     playheadEpochMs = 0,
@@ -2291,16 +2294,7 @@ export default function MulticamViewport({
                         </button>
                     </div>
 
-                    {/* Auto-Director Toggle */}
-                    <button
-                        type="button"
-                        className={`btn-director-toggle ${isAutoDirectorEnabled ? 'is-on' : 'is-off'}`}
-                        onClick={onToggleAutoDirector}
-                        title={isAutoDirectorEnabled ? 'Auto-Director is ON' : 'Auto-Director is OFF'}
-                    >
-                        <span className="dot" />
-                        <span>AUTO-DIRECTOR: {isAutoDirectorEnabled ? 'ON' : 'OFF'}</span>
-                    </button>
+
 
                     {/* Precision CAD / NLE Rulers Toggle */}
                     <button
@@ -2916,7 +2910,9 @@ export default function MulticamViewport({
                                                 activeAudioStationId={activeAudioStationId}
                                                 onSoloAudio={setActiveAudioStationId}
                                                 directorPlan={directorPlan || st?.directorPlan}
-                                                isAutoDirectorEnabled={isAutoDirectorEnabled}
+                                                isAutoDirectorEnabled={stationAutoDirectorMap ? (stationAutoDirectorMap[st.id] ?? true) : true}
+                                                stationsCount={timelineStations.length}
+                                                onDeselectStation={onDeselectStation}
                                                 targetDisplayId={p.displayId}
                                                 onSelectDisplayId={(dispId) => {
                                                     const next = currentPlacements.map((pl, idx) => {

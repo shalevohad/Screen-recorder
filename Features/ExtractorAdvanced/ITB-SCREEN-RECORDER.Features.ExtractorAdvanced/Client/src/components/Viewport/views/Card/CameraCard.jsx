@@ -9,6 +9,8 @@ import './CameraCard.scss';
 export default function CameraCard({
     station,
     isSolo = false,
+    stationsCount = 1,
+    onDeselectStation = null,
     currentEpochMs,
     timeMode = 'LOCAL',
     isPlaying,
@@ -80,33 +82,7 @@ export default function CameraCard({
                         )}
                     </div>
 
-                    {hasMultipleDisplays && (
-                        <div className="card-display-picker-group" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                type="button"
-                                className={`btn-disp-pill ${(!targetDisplayId || targetDisplayId === 'auto' || targetDisplayId === 'director') ? 'active' : ''}`}
-                                onClick={() => onSelectDisplayId?.('auto')}
-                                title="Auto-Director: Automatically follows active monitor cuts"
-                            >
-                                ⚡ Auto
-                            </button>
-                            {stationDisplays.map((disp, dIdx) => {
-                                const dId = (disp.displayId || `mon-${dIdx}`).toLowerCase();
-                                const isActive = targetDisplayId?.toLowerCase() === dId;
-                                return (
-                                    <button
-                                        key={dId}
-                                        type="button"
-                                        className={`btn-disp-pill ${isActive ? 'active' : ''}`}
-                                        onClick={() => onSelectDisplayId?.(dId)}
-                                        title={`Lock Slot to Monitor ${dIdx + 1} (${disp.width || 1920}x${disp.height || 1080})`}
-                                    >
-                                        🖥 {dIdx + 1}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
+
 
                     <div className="card-header-actions">
                         {onSwapWithNext && (
@@ -125,7 +101,7 @@ export default function CameraCard({
                             </button>
                         )}
 
-                        {onSoloAudio && (
+                        {onSoloAudio && stationsCount > 1 && (
                             <button
                                 type="button"
                                 className={`btn-card-action audio-action ${isAudioActive ? 'audio-active' : ''}`}
@@ -167,21 +143,37 @@ export default function CameraCard({
                             </button>
                         )}
 
-                        <button
-                            type="button"
-                            className={`btn-card-action ${isSolo ? 'active' : ''}`}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (isSolo && setIsPlaying) setIsPlaying(false);
-                                onSelectActiveStation(isSolo ? null : station.id);
-                            }}
-                            title={isSolo ? "Exit Solo Focus (Back to Grid)" : "Solo Focus"}
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                {isSolo ? <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" /> : <circle cx="12" cy="12" r="3" />}
-                                {!isSolo && <path d="M3 12h3m12 0h3M12 3v3m0 12v3" />}
-                            </svg>
-                        </button>
+                        {onSelectActiveStation && (
+                            <button
+                                type="button"
+                                className={`btn-card-action ${isSolo ? 'active' : ''}`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isSolo && setIsPlaying) setIsPlaying(false);
+                                    onSelectActiveStation(isSolo ? null : station.id);
+                                }}
+                                title={isSolo ? "Exit Solo Focus (Back to Grid)" : "Solo Focus"}
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    {isSolo ? <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" /> : <circle cx="12" cy="12" r="3" />}
+                                    {!isSolo && <path d="M3 12h3m12 0h3M12 3v3m0 12v3" />}
+                                </svg>
+                            </button>
+                        )}
+
+                        {onDeselectStation && (
+                            <button
+                                type="button"
+                                className="btn-card-action deselect-action"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeselectStation(station.id);
+                                }}
+                                title={`Deselect and remove ${station.displayName || station.hostname} from project`}
+                            >
+                                ✕
+                            </button>
+                        )}
                     </div>
                 </div>
 

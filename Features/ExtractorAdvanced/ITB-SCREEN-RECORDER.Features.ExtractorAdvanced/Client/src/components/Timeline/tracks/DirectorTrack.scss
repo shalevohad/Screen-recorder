@@ -29,6 +29,53 @@
             line-height: 1;
         }
 
+
+        .director-auto-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 8.5px;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+            background: rgba(15, 23, 42, 0.7);
+
+            .dot {
+                width: 4px;
+                height: 4px;
+                border-radius: 50%;
+            }
+
+            &.is-enabled {
+                color: #06B6D4;
+                border-color: rgba(6, 182, 212, 0.3);
+                background: rgba(6, 182, 212, 0.1);
+
+                .dot {
+                    background: #06B6D4;
+                    box-shadow: 0 0 4px #06B6D4;
+                }
+            }
+
+            &.is-disabled {
+                color: #F59E0B;
+                border-color: rgba(245, 158, 11, 0.3);
+                background: rgba(245, 158, 11, 0.1);
+
+                .dot {
+                    background: #F59E0B;
+                }
+            }
+
+            &:hover {
+                filter: brightness(1.2);
+            }
+        }
+
         .director-title {
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.62rem;

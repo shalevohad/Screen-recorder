@@ -2219,5 +2219,38 @@ When composing multicam layouts on the Master Canvas, operators required the abi
   - Only when a workstation is operating in condensed mode does it report active Auto-Director transitions, ensuring total transparency.
 
 ---
+
+---
+## 52. Tactical Station Lifecycle, Solo Mode Multi-Display Filmstrips, and Audio Governance Architecture (2026-11-03)
+
+### 1. Workstation Multi-Screen Auto-Director Suppression
+* **Invariant**: When an operator places all physical monitors of a workstation onto the Canvas (`areAllDisplaysPlaced === true`), Auto-Director is completely suppressed.
+* **Timeline Enforcement**: `DirectorTrack` is dynamically removed from `TimelineBoard.jsx` when `placedForThisStation.length >= stationDisplays.length`.
+* **Viewport Cleanup**: The horizontal `card-display-picker-group` pill buttons on the video card header have been removed in favor of the tactical vertical display strip, which automatically hides when all screens are placed concurrently.
+
+### 2. Station-Decoupled Auto-Director Engine
+* **Removal of Global Toggle**: The global Auto-Director toggle button on the Canvas Toolbar has been eliminated.
+* **Granular Per-Station Control**: Auto-Director is managed per workstation via `stationAutoDirectorMap`. Operators can pause or resume Auto-Director on individual multi-screen stations using the `[ ⚡ AUTO / ✋ PAUSE ]` toggle button directly on the station's `DirectorTrack` header.
+
+### 3. Solo Focus Multi-Display Filmstrip Tracks & Inactive Track Minimization
+* **Discrete Screen Filmstrips**: When an operator enters Solo focus on a multi-monitor workstation, the timeline renders a distinct `TimelineTrack` filmstrip for **every physical monitor** (`mon-0`, `mon-1`, etc.).
+* **Backend `displayId` Spritesheet Pipeline**:
+  - `/api/v1/extractor-advanced/spritesheet` now accepts optional `displayId` parameter.
+  - `AdvancedExtractorService.GenerateSpritesheetAsync` indexes cached tiles with `sheet_{hostname}_{cleanDisplay}_{bucketStart}_{frameCount}_{tileWidth}x{tileHeight}` and filters recording chunks strictly matching the target monitor.
+  - `spritesheetStore.js` implements client-side RAM caching and queue deduplication per `displayId`.
+* **Inactive Station Compaction**: While a station is in Solo focus, all non-focused workstations on the timeline collapse into sleek 24px micro-bars (`.is-collapsed-sub`), preserving timeline minimap alignment while dedicating vertical space to the multi-screen filmstrips.
+
+### 4. Adaptive Audio Routing Governance
+* **Single-Station Projects**: When only one workstation is selected in the mission scope (`stations.length <= 1`):
+  - Station routing selection inside the audio segment popover menu is hidden in favor of a static lock indicator: `🎙️ Audio source locked to single active station`.
+  - The Auto-Follow Visual Feed button (`🎯`) on the audio track header is automatically hidden.
+  - Audio solo buttons on video cards are hidden to avoid redundant clicks.
+
+### 5. Ergonomic Station Deselection & Canvas Keyframe Purging
+* **Direct Deselection Triggers**:
+  - Sleek `✕` remove buttons are embedded directly into the `TimelineTrack` sidebar and the `CameraCard` topbar.
+  - Context menu `Deselect (Remove from Grid)` remains available via right-click.
+* **Automated Canvas Pruning**: Invoking `handleDeselectStation(stationId)` not only removes the station from project state but immediately prunes all of that station's window placements across all canvas layout keyframes in `canvasLayoutTimeline`.
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 

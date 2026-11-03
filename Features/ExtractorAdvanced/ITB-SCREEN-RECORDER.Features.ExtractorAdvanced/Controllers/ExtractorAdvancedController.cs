@@ -1082,6 +1082,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] int frameCount = 6,
             [FromQuery] int tileWidth = 100,
             [FromQuery] int tileHeight = 50,
+            [FromQuery] string? displayId = null,
             CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
@@ -1096,7 +1097,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 var endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
                 var imageStream = await _advancedExtractorService.GenerateSpritesheetAsync(
-                    hostname, startUtc, endUtc, frameCount, tileWidth, tileHeight, ct);
+                    hostname, startUtc, endUtc, frameCount, tileWidth, tileHeight, ct, displayId);
 
                 if (imageStream == null || imageStream == Stream.Null || imageStream.Length == 0)
                 {

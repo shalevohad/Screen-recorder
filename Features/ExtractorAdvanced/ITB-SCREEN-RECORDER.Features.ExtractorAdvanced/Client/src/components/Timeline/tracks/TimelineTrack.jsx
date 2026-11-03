@@ -25,9 +25,14 @@ const getSegEnd = (seg) => seg.endEpochMs ?? seg.endEpoch ?? seg.end ?? 0;
 
 export default function TimelineTrack({
     station,
+    displayId = 'mon-0',
+    displayLabel = null,
+    displayNumber = null,
     isActive,
+    isCollapsed = false,
     onSelect,
     onStationContextMenu,
+    onDeselectStation,
     viewportStartMs = 0,
     viewportDurationMs = 3600000,
     inPointMs,
@@ -85,11 +90,12 @@ export default function TimelineTrack({
 
                 if (clampedEnd > clampedStart) {
                     tiles.push({
-                        key: `${hostname}_${clampedStart}_${clampedEnd}_${framesPerTile}`,
+                        key: `${hostname}_${displayId}_${clampedStart}_${clampedEnd}_${framesPerTile}`,
                         sIdx,
                         startEpoch: clampedStart,
                         endEpoch: clampedEnd,
-                        framesPerTile
+                        framesPerTile,
+                        displayId
                     });
                 }
             }
@@ -121,7 +127,7 @@ export default function TimelineTrack({
         let hasImmediate = false;
 
         timelineTiles.forEach(tile => {
-            const cached = spritesheetStore.get(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile);
+            const cached = spritesheetStore.get(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile, displayId);
             if (cached) {
                 if (tilesMapRef.current[tile.key] !== cached) {
                     immediateUpdates[tile.key] = cached;
@@ -156,7 +162,7 @@ export default function TimelineTrack({
         // Controlled debouncing (150ms): prevents network and FFmpeg spam during slider drag or rapid zoom
         const debounceTimer = setTimeout(() => {
             missingTiles.forEach(tile => {
-                spritesheetStore.fetchTile(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile, abortController.signal)
+                spritesheetStore.fetchTile(hostname, tile.startEpoch, tile.endEpoch, tile.framesPerTile, abortController.signal, displayId)
                     .then(blobUrl => {
                         if (isMounted && blobUrl) {
                             tilesMapRef.current[tile.key] = blobUrl;
@@ -171,7 +177,7 @@ export default function TimelineTrack({
             clearTimeout(debounceTimer);
             abortController.abort();
         };
-    }, [timelineTiles, hostname]);
+    }, [timelineTiles, hostname, displayId]);
 
     const inPercent = ((inPointMs - viewportStartMs) / viewportDurationMs) * 100;
     const outPercent = ((outPointMs - viewportStartMs) / viewportDurationMs) * 100;
@@ -333,18 +339,35 @@ export default function TimelineTrack({
                     onStationContextMenu(e, station);
                 }
             }}
-            className={`timeline-track-container ${isActive ? 'active-track' : 'collapsed-track'}`}
+            className={`timeline-track-container ${isActive ? 'active-track' : 'collapsed-track'} ${isCollapsed ? 'is-collapsed-sub' : ''}`}
         >
-            <div className="track-sidebar" title={`Right-click to deselect ${stationDisplayName}${hasDifferentHost ? ` (${physicalHost})` : ''}`}>
+            <div className="track-sidebar" title={`Workstation: ${stationDisplayName}${hasDifferentHost ? ` (${physicalHost})` : ''} • Right-click for options`}>
                 <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
                 <div className="station-sidebar-labels">
                     <span className="station-label" title={stationDisplayName}>{stationDisplayName}</span>
-                    {hasDifferentHost && (
+                    {displayNumber ? (
+                        <span className="station-display-tag" title={`Display: ${displayLabel || `Screen ${displayNumber}`}`}>
+                            🖥️ {displayLabel || `SCREEN ${displayNumber}`}
+                        </span>
+                    ) : hasDifferentHost ? (
                         <span className="station-physical-sublabel" title={`Physical Machine: ${physicalHost}`}>
                             {physicalHost}
                         </span>
-                    )}
+                    ) : null}
                 </div>
+                {onDeselectStation && (
+                    <button
+                        type="button"
+                        className="btn-track-deselect"
+                        title={`Remove ${stationDisplayName} from project`}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDeselectStation(station.id);
+                        }}
+                    >
+                        ✕
+                    </button>
+                )}
             </div>
 
             <div className="track-canvas">

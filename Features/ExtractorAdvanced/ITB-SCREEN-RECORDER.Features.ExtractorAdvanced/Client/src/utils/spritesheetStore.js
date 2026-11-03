@@ -41,7 +41,7 @@ function processQueue() {
  * @param {{ key: string, hostname: string, startEpoch: number, endEpoch: number, frameCount: number, signal: AbortSignal, resolve: (val: any) => void }} task
  */
 async function executeTask(task) {
-    const { key, hostname, startEpoch, endEpoch, frameCount, signal, resolve } = task;
+    const { key, hostname, startEpoch, endEpoch, frameCount, signal, resolve, displayId } = task;
     let isCleanedUp = false;
     let taskTimer = null;
 
@@ -61,7 +61,7 @@ async function executeTask(task) {
     }, TASK_TIMEOUT_MS);
 
     try {
-        const url = `/api/v1/extractor-advanced/spritesheet?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}&frameCount=${frameCount}&tileWidth=100&tileHeight=50`;
+        const url = `/api/v1/extractor-advanced/spritesheet?hostname=${encodeURIComponent(hostname)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}&frameCount=${frameCount}&tileWidth=100&tileHeight=50${displayId ? `&displayId=${encodeURIComponent(displayId)}` : ''}`;
         const res = await fetch(url, { signal });
 
         if (res.ok && res.status !== 204) {
@@ -100,8 +100,8 @@ export const spritesheetStore = {
      * @param {number} [frameCount=6]
      * @returns {string|undefined} Blob URL if cached.
      */
-    get(hostname, startEpoch, endEpoch, frameCount = 6) {
-        const key = `${hostname}_${startEpoch}_${endEpoch}_${frameCount}`;
+    get(hostname, startEpoch, endEpoch, frameCount = 6, displayId = null) {
+        const key = `${hostname}_${displayId || 'mon-0'}_${startEpoch}_${endEpoch}_${frameCount}`;
         return tileCache.get(key);
     },
 
@@ -115,8 +115,8 @@ export const spritesheetStore = {
      * @param {AbortSignal} [signal=null]
      * @returns {Promise<string|null>}
      */
-    fetchTile(hostname, startEpoch, endEpoch, frameCount = 6, signal = null) {
-        const key = `${hostname}_${startEpoch}_${endEpoch}_${frameCount}`;
+    fetchTile(hostname, startEpoch, endEpoch, frameCount = 6, signal = null, displayId = null) {
+        const key = `${hostname}_${displayId || 'mon-0'}_${startEpoch}_${endEpoch}_${frameCount}`;
 
         // 1. Immediate retrieval from RAM cache (0ms)
         if (tileCache.has(key)) {
@@ -140,6 +140,7 @@ export const spritesheetStore = {
                 startEpoch,
                 endEpoch,
                 frameCount,
+                displayId: displayId || 'mon-0',
                 signal,
                 resolve
             };
