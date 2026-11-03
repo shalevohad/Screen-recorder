@@ -6,7 +6,7 @@ import { frameStore } from '../../../../utils/frameStore.js';
 import { getAudioSettings } from '../../../../utils/studioSessionStore.js';
 import { attachVideoAudio } from '../../../../utils/audioLevelMonitor.js';
 import NoSignalHero from '../../overlays/NoSignalHero.jsx';
-import PersistentMinimapHud from '../../overlays/PersistentMinimapHud.jsx';
+import TacticalDisplayStrip from '../../overlays/TacticalDisplayStrip.jsx';
 import './CameraCardFeed.scss';
 
 export default function CameraCardFeed({
@@ -27,7 +27,9 @@ export default function CameraCardFeed({
     activeAudioStationId = null,
     directorPlan = null,
     isAutoDirectorEnabled = true,
-    targetDisplayId = 'auto'
+    targetDisplayId = 'auto',
+    onSelectDisplayId = null,
+    areAllDisplaysPlaced = false
 }) {
     const stationName = station.hostname || station.name || station.id || '';
     const roundedEpochMs = Math.round(currentEpochMs);
@@ -533,10 +535,15 @@ export default function CameraCardFeed({
                 </div>
             )}
 
-            <PersistentMinimapHud
+            <TacticalDisplayStrip
                 displays={stationDisplays}
                 activeDisplayId={activeDisplayId}
-                onSelectDisplay={(newDispId) => setManualDisplayId(newDispId)}
+                onSelectDisplay={(newDispId) => {
+                    setManualDisplayId(newDispId);
+                    onSelectDisplayId?.(newDispId);
+                }}
+                areAllDisplaysPlaced={areAllDisplaysPlaced}
+                isAutoDirectorEnabled={isAutoDirectorEnabled}
             />
         </div>
     );

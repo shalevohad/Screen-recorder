@@ -29,6 +29,7 @@ export default function CameraCard({
     isAutoDirectorEnabled = true,
     targetDisplayId = 'auto',
     onSelectDisplayId = null,
+    areAllDisplaysPlaced = false,
     _slotIndex = 0,
     borderColor = null,
     onSwapWithNext = null
@@ -204,6 +205,8 @@ export default function CameraCard({
                         directorPlan={directorPlan}
                         isAutoDirectorEnabled={isAutoDirectorEnabled}
                         targetDisplayId={targetDisplayId}
+                        onSelectDisplayId={onSelectDisplayId}
+                        areAllDisplaysPlaced={areAllDisplaysPlaced}
                     />
 
                     {isSolo && !isPlaying && (

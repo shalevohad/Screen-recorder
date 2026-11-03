@@ -62,6 +62,7 @@
 42. [Tactical Precision CAD/NLE Rulers, Windows Aero Snap Assist & Enhanced Window Drag Ergonomics (2026-11-03)](#42-tactical-precision-cadnle-rulers-windows-aero-snap-assist--enhanced-window-drag-ergonomics-2026-11-03)
 43. [Real-Time Web Audio Acoustic VU Meter, Expandable Timeline Audio Track with Dynamic Waveforms & Precision Gain Scale (2026-11-03)](#43-real-time-web-audio-acoustic-vu-meter-expandable-timeline-audio-track-with-dynamic-waveforms--precision-gain-scale-2026-11-03)
 44. [Strict Multi-Axis Boundary Clamping, Universal Iconography & Comprehensive Tooltip Architecture for Floating Studio Controls (2026-11-03)](#44-strict-multi-axis-boundary-clamping-universal-iconography--comprehensive-tooltip-architecture-for-floating-studio-controls-2026-11-03)
+45. [Minimalist Tactical Display Strip, Elimination of Redundant Minimap Overlays & Smart Multi-Monitor Placement Visibility (2026-11-03)](#45-minimalist-tactical-display-strip-elimination-of-redundant-minimap-overlays--smart-multi-monitor-placement-visibility-2026-11-03)
 
 ---
 
@@ -1975,6 +1976,38 @@ Tactical operators utilizing the forensic editing canvas and timeline tracks rep
      - `🔇 MUTE`, `🔉 -6 dB`, `⚖️ 0 dB (Unity)`, `🚀 +6 dB`: Universal preset buttons with decibel and percentage callouts.
      - `🖥️ Workstation Route`: Workstation list with clear radio selection and `✓` checkmark.
      - `✂️ SPLIT AT CLICK` and `✂️ SPLIT AT PLAYHEAD`: Explicit sub-second split tools with exact time tags.
+
+---
+## 45. Minimalist Tactical Display Strip, Elimination of Redundant Minimap Overlays & Smart Multi-Monitor Placement Visibility (2026-11-03)
+
+### 1. Operational Problem & Requirement
+When monitoring or editing multi-monitor workstations on the Master Canvas Grid (e.g. `OHAD-DESKTOP` Screen 1 and Screen 2):
+1. **Redundant & Obstructive Minimap Radar HUDs**:
+   - The legacy `PersistentMinimapHud` rendered a bulky 120x80px overlay (`⚡ AUTO: SCREEN 1 [1][2]`) floating directly on top of the video content in the top-right corner of every screen.
+   - When all monitors of a station were already placed side-by-side on the canvas, showing a radar topology map on each individual window created visual clutter, covered critical operating system window controls (close/minimize buttons, browser tabs), and repeated redundant information.
+2. **Ergonomic Display Switching Requirement**:
+   - Operators still required a fast, 1-click method to swap or toggle the target monitor of a specific canvas window without navigating into modal menus or deleting/re-adding feeds.
+   - The UX needed to follow the proven, minimalist design language of the main C2 dashboard (`StationDisplayBar.jsx`)—a sleek, vertical strip of circular numbered buttons (`①`, `②`, `③`...) anchored unobtrusively on the edge.
+
+### 2. Architectural Solution & Implementation
+1. **Minimalist Tactical Vertical Display Strip (`TacticalDisplayStrip.jsx` & `TacticalDisplayStrip.scss`)**:
+   - Replaced `PersistentMinimapHud` on canvas feed windows with `TacticalDisplayStrip`.
+   - **Ultra-Compact Footprint**: A slim vertical pill (width: 24px) styled with tactical dark glassmorphism (`rgba(10, 15, 29, 0.82)`, `backdrop-filter: blur(10px)`, cyan border).
+   - **Circular Numbered Buttons (`①`, `②`...)**:
+     - 22px circular buttons indicating each physical monitor (`Monitor 1`, `Monitor 2`, etc.).
+     - The active monitor is highlighted in a vibrant cyan gradient (`#0EA5E9` to `#0284C7`) with soft glow (`box-shadow: 0 0 8px rgba(14, 165, 233, 0.7)`).
+     - Optional `[ ⚡ ]` auto-director trigger button if auto-direction is active.
+   - **Instant Display Switching**:
+     - Clicking any numbered button invokes `onSelectDisplay(dId)`: updates the placement record in `MulticamViewport` (`p.displayId = dId`), re-binds the underlying video stream and static frame store, and persists to the canvas composition state.
+2. **Smart Multi-Monitor Placement Visibility Engine (`MulticamViewport.jsx`)**:
+   - Computes whether all physical monitors of a given workstation are already placed on the canvas:
+     $$\text{areAllDisplaysPlaced} = (\text{displays.length} > 1) \land (\text{placedCount} \ge \text{displays.length})$$
+   - **Context-Aware Dynamic Opacity**:
+     - **When all monitors are placed (`areAllDisplaysPlaced === true`)**:
+       - The vertical strip rests at `opacity: 0` (100% invisible), keeping the recorded video completely clean and unobstructed during review.
+       - Hovering over the card (`.camera-card:hover` or `.canvas-feed-card-box:hover`) smoothly fades the strip into `opacity: 1`, allowing instant 1-click display switching whenever needed.
+     - **When only a subset of monitors are placed (`areAllDisplaysPlaced === false`)**:
+       - The strip rests at a subtle `opacity: 0.6`, brightening to `opacity: 1` on hover, providing continuous situational awareness that additional monitors exist for this workstation.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

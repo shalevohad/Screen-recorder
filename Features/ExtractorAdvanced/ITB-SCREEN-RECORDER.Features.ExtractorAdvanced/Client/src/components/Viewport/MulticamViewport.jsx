@@ -2582,6 +2582,11 @@ export default function MulticamViewport({
                                 displayName: matchedFeed?.stationName || p.label || p.stationId,
                                 displays: matchedFeed ? [{ displayId: matchedFeed.displayId, width: matchedFeed.sourceWidth, height: matchedFeed.sourceHeight }] : []
                             };
+                            const stDisplays = st?.displays || st?.topology?.displays || [];
+                            const placedForThisStation = currentPlacements.filter(pl => 
+                                pl.stationId === p.stationId || (st && (pl.stationId === st.id || pl.stationId === st.hostname))
+                            );
+                            const areAllDisplaysPlaced = stDisplays.length > 1 && placedForThisStation.length >= stDisplays.length;
                             const bColor = p.borderColor || SLOT_BORDER_COLORS[origIdx % SLOT_BORDER_COLORS.length];
                             const bWidth = p.borderWidth !== undefined ? p.borderWidth : 2;
                             const rot = p.rotation || 0;
@@ -2681,6 +2686,7 @@ export default function MulticamViewport({
                                                     });
                                                     updateActivePlacements(next);
                                                 }}
+                                                areAllDisplaysPlaced={areAllDisplaysPlaced}
                                                 slotIndex={origIdx}
                                                 borderColor={bColor}
                                             />
