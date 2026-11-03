@@ -249,6 +249,78 @@
                         color: #38BDF8;
                     }
                 }
+
+                &.aspect-group {
+                    border-color: rgba(6, 182, 212, 0.4);
+                    background: #090E17;
+                    align-items: center;
+                    gap: 5px;
+                    padding: 1px 6px;
+
+                    .aspect-label {
+                        font-size: 9px;
+                        font-weight: 800;
+                        color: #06B6D4;
+                        padding-left: 2px;
+                        white-space: nowrap;
+                    }
+
+                    .select-aspect-ratio {
+                        background: #151E2E;
+                        border: 1px solid rgba(6, 182, 212, 0.35);
+                        color: #E2E8F0;
+                        font-size: 9.5px;
+                        font-family: inherit;
+                        font-weight: 700;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        outline: none;
+
+                        &:focus {
+                            border-color: #06B6D4;
+                            box-shadow: 0 0 6px rgba(6, 182, 212, 0.35);
+                        }
+
+                        option {
+                            background: #0B132B;
+                            color: #E2E8F0;
+                        }
+                    }
+
+                    .btn-width-mode {
+                        background: #151E2E;
+                        border: 1px solid #334155;
+                        color: #94A3B8;
+                        font-size: 9px;
+                        font-family: inherit;
+                        font-weight: 800;
+                        padding: 3px 7px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        transition: all 0.15s ease;
+                        white-space: nowrap;
+
+                        &:hover {
+                            background: #1E293B;
+                            color: #FFF;
+                        }
+
+                        &.is-full {
+                            background: rgba(16, 185, 129, 0.15);
+                            border-color: #10B981;
+                            color: #10B981;
+                            box-shadow: 0 0 6px rgba(16, 185, 129, 0.25);
+                        }
+
+                        &.is-fit {
+                            background: rgba(6, 182, 212, 0.15);
+                            border-color: #06B6D4;
+                            color: #38BDF8;
+                            box-shadow: 0 0 6px rgba(6, 182, 212, 0.25);
+                        }
+                    }
+                }
             }
 
             .btn-director-toggle {
@@ -939,25 +1011,53 @@
         align-items: center;
         justify-content: center;
         position: relative;
-        overflow: hidden;
+        overflow-y: auto;
+        overflow-x: hidden;
         padding: 8px;
         box-sizing: border-box;
+
+        &.is-full-width-mode {
+            align-items: flex-start;
+        }
+
+        /* Tactical scrollbar for canvas stage in full width mode */
+        &::-webkit-scrollbar {
+            width: 6px;
+        }
+        &::-webkit-scrollbar-track {
+            background: rgba(7, 10, 16, 0.6);
+        }
+        &::-webkit-scrollbar-thumb {
+            background: rgba(6, 182, 212, 0.3);
+            border-radius: 3px;
+            &:hover {
+                background: #06B6D4;
+            }
+        }
 
         .canvas-master-frame-16-9 {
             position: relative;
             width: 100%;
-            height: 100%;
-            aspect-ratio: 16 / 9;
+            margin: auto;
             flex-shrink: 0;
             min-width: 320px;
             min-height: 180px;
-            max-width: 100%;
-            max-height: 100%;
             background: #070A10;
             border: 2px solid rgba(6, 182, 212, 0.4);
             border-radius: 6px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(6, 182, 212, 0.05);
             overflow: hidden;
+            transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), height 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+            &.is-full-width {
+                max-width: none;
+                max-height: none;
+            }
+
+            &.is-fit-stage {
+                max-width: 100%;
+                max-height: 100%;
+            }
 
             // Subtle tactical background grid lines
             background-image: 

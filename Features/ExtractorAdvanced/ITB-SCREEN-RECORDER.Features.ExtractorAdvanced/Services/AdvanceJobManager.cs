@@ -1342,8 +1342,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                     string intDurStr = intDur.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
                     int refW = intLayout.Width > 0 ? intLayout.Width : 1920;
                     int refH = intLayout.Height > 0 ? intLayout.Height : 1080;
+                    double layoutAspect = (double)refW / refH;
                     int cW = targetWidth;
                     int cH = targetHeight;
+                    if (Math.Abs(layoutAspect - (16.0 / 9.0)) > 0.05)
+                    {
+                        cH = (int)Math.Round(targetWidth / layoutAspect);
+                        if (cH < 360)
+                        {
+                            cH = targetHeight;
+                            cW = (int)Math.Round(targetHeight * layoutAspect);
+                        }
+                    }
                     cW -= (cW % 2);
                     cH -= (cH % 2);
                     double scaleX = (double)cW / refW;
@@ -1511,8 +1521,18 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                 int refW = layout.Width > 0 ? layout.Width : 1920;
                 int refH = layout.Height > 0 ? layout.Height : 1080;
+                double layoutAspect = (double)refW / refH;
                 int canvasW = targetWidth;
                 int canvasH = targetHeight;
+                if (Math.Abs(layoutAspect - (16.0 / 9.0)) > 0.05)
+                {
+                    canvasH = (int)Math.Round(targetWidth / layoutAspect);
+                    if (canvasH < 360)
+                    {
+                        canvasH = targetHeight;
+                        canvasW = (int)Math.Round(targetHeight * layoutAspect);
+                    }
+                }
                 canvasW -= (canvasW % 2);
                 canvasH -= (canvasH % 2);
                 double scaleX = (double)canvasW / refW;

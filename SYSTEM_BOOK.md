@@ -1802,4 +1802,44 @@ Investigation revealed three distinct flaws:
    - Reduced inspector footprint to under 340px wide, preventing canvas occlusion.
 
 ---
+
+## 41. Full-Width Responsive Canvas Staging, Dynamic Export Aspect Ratio & True WYSIWYG Dimensional Parity Engine (2026-11-03)
+
+### 1. Operational Problem & Requirement
+On modern widescreen (1920x1080), ultrawide (2560x1080), or multi-monitor workstations, the master composition canvas was previously constrained to an inner box (e.g. 800px wide) bounded by available vertical viewport height (`finalH = availableH; finalW = finalH * 16/9`), leaving extensive black pillarboxed voids on the sides.
+Furthermore, dual-monitor workstations (whose screens natively combine into a `32:9` ultra-wide aspect ratio) or non-16:9 displays (16:10, 4:3) experienced squishing or forced pillarboxing, and lacked accurate dimensional representation between editor view and final exported MP4 master video.
+
+### 2. Architectural Solution & Mathematical Foundations
+1. **Full-Width Canvas Grid (`isFullWidth = true`)**:
+   - The master canvas frame utilizes **100% of available screen width** (`finalW = availableW`).
+   - Frame height is calculated strictly from the chosen export aspect ratio:
+     $$\text{finalH} = \text{round}\left(\frac{\text{finalW}}{\text{currentAspect}}\right)$$
+   - When $\text{finalH} > \text{availableH}$, the stage container (`.canvas-stage-wrapper`) activates smooth tactical vertical scrolling (`overflow-y: auto; overflow-x: hidden;`) with custom cyan-accented micro-scrollbars.
+   - A toggle button on the composition toolbar allows switching between `↔ 100% WIDTH` (default) and `⊞ FIT STAGE` (contain mode).
+2. **Configurable Target Export Aspect Ratios**:
+   - The composition toolbar provides an instant dropdown selector (`📐 EXPORT ASPECT`):
+     - **`16:9 Broadcast`**: Virtual bounds $1920 \times 1080$ (Ratio: 1.777)
+     - **`32:9 Dual Screen`**: Virtual bounds $3840 \times 1080$ (Ratio: 3.555) — perfect side-by-side dual screen forensic review.
+     - **`21:9 Ultrawide`**: Virtual bounds $2560 \times 1080$ (Ratio: 2.333)
+     - **`16:10 WUXGA`**: Virtual bounds $1920 \times 1200$ (Ratio: 1.600)
+     - **`4:3 Standard`**: Virtual bounds $1440 \times 1080$ (Ratio: 1.333)
+   - Switching the aspect ratio automatically rescales existing placements proportionally to the new virtual boundaries:
+     $$\text{ratioX} = \frac{W_{\text{new}}}{W_{\text{old}}}, \quad \text{ratioY} = \frac{H_{\text{new}}}{H_{\text{old}}}$$
+     $$x' = \text{round}(x \cdot \text{ratioX}), \quad y' = \text{round}(y \cdot \text{ratioY}), \quad w' = \text{round}(w \cdot \text{ratioX}), \quad h' = \text{round}(h \cdot \text{ratioY})$$
+3. **True WYSIWYG Dimensional & Geometric Parity**:
+   - Internal placement coordinates in the viewport are rendered as exact percentages of the virtual canvas bounds:
+     $$\text{leftPct} = \frac{p.x}{W_{\text{virtual}}} \times 100\%, \quad \text{topPct} = \frac{p.y}{H_{\text{virtual}}} \times 100\%$$
+     $$\text{widthPct} = \frac{p.width}{W_{\text{virtual}}} \times 100\%, \quad \text{heightPct} = \frac{p.height}{H_{\text{virtual}}} \times 100\%$$
+   - Since the canvas frame's CSS `aspect-ratio` matches $W_{\text{virtual}} / H_{\text{virtual}}$, every feed card displayed in the editor maintains its exact native aspect ratio:
+     $$\frac{\text{renderedWidth}}{\text{renderedHeight}} = \frac{p.width}{p.height}$$
+   - When passed to `AdvanceJobManager.cs`, FFmpeg scales placements with $\text{scaleX} = \frac{\text{targetW}}{W_{\text{virtual}}}$ and $\text{scaleY} = \frac{\text{targetH}}{H_{\text{virtual}}}$. Because $\text{scaleX} == \text{scaleY}$, the exported MP4 master video has zero distortion, zero squishing, and 100% visual identity to the editor stage.
+4. **Adaptive Multi-Display Auto-Grid Layout**:
+   - `generateAutoPackPlacements(feeds, W, H)` dynamically handles arbitrary canvas dimensions.
+   - For `count == 2` on a `32:9` canvas: Each 16:9 monitor occupies exactly half the width ($1920 \times 1080$) at full height ($y = 0, h = 1080$), seamlessly spanning dual displays side-by-side with 0% black bars.
+   - For `count == 3` on wide canvases ($W / H \ge 2.5$): Automatically arranges 3 screens side-by-side ($W / 3$).
+5. **Interactive Controls & Snapping**:
+   - Resizing feeds while holding **Ctrl** or **Shift** continues to strictly lock the feed's recorded native aspect ratio (`nativeAspectRatio`).
+   - Boundary clamping, guidelines, and arrow key nudging automatically adapt to the dynamic virtual boundaries ($W_{\text{virtual}}, H_{\text{virtual}}$).
+
+---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

@@ -7,8 +7,16 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import CameraCard from './views/Card/CameraCard.jsx';
 import './MulticamViewport.scss';
 
-const VIRTUAL_CANVAS_W = 1920;
-const VIRTUAL_CANVAS_H = 1080;
+export const ASPECT_PRESETS = [
+    { id: '16:9', label: '16:9 Broadcast', ratio: 16 / 9, w: 1920, h: 1080 },
+    { id: '32:9', label: '32:9 Dual Screen', ratio: 32 / 9, w: 3840, h: 1080 },
+    { id: '21:9', label: '21:9 Ultrawide', ratio: 21 / 9, w: 2560, h: 1080 },
+    { id: '16:10', label: '16:10 WUXGA', ratio: 16 / 10, w: 1920, h: 1200 },
+    { id: '4:3', label: '4:3 Standard', ratio: 4 / 3, w: 1440, h: 1080 }
+];
+
+const DEFAULT_VIRTUAL_CANVAS_W = 1920;
+const DEFAULT_VIRTUAL_CANVAS_H = 1080;
 
 const SLOT_BORDER_COLORS = [
     '#06B6D4', // Cyan
@@ -103,9 +111,7 @@ function fitInCell(cellX, cellY, cellW, cellH, aspect) {
     return { x, y, width: w, height: h };
 }
 
-function generateAutoPackPlacements(feeds) {
-    const W = VIRTUAL_CANVAS_W;
-    const H = VIRTUAL_CANVAS_H;
+function generateAutoPackPlacements(feeds, W = DEFAULT_VIRTUAL_CANVAS_W, H = DEFAULT_VIRTUAL_CANVAS_H) {
     const count = feeds.length;
     if (count === 0) return [];
 
@@ -133,7 +139,7 @@ function generateAutoPackPlacements(feeds) {
     }
 
     if (count === 2) {
-        const halfW = 960;
+        const halfW = Math.round(W / 2);
         return feeds.slice(0, 2).map((f, idx) => {
             const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
             const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, H, aspect);
@@ -158,12 +164,37 @@ function generateAutoPackPlacements(feeds) {
     }
 
     if (count === 3) {
-        const cellW = 960;
-        const cellH = 540;
+        const isUltrawide = (W / H) >= 2.5;
+        if (isUltrawide) {
+            const thirdW = Math.round(W / 3);
+            return feeds.slice(0, 3).map((f, idx) => {
+                const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+                const { x, y, width, height } = fitInCell(idx * thirdW, 0, thirdW, H, aspect);
+                return {
+                    ...f,
+                    x,
+                    y,
+                    width,
+                    height,
+                    sourceWidth: f.sourceWidth || 1920,
+                    sourceHeight: f.sourceHeight || 1080,
+                    nativeAspectRatio: aspect,
+                    aspectRatio: aspect,
+                    zIndex: idx,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
+                    shadowEffect: 'deep',
+                    borderRadius: 0
+                };
+            });
+        }
+        const cellW = Math.round(W / 2);
+        const cellH = Math.round(H / 2);
         const gridCells = [
             { cx: 0, cy: 0 },
-            { cx: 960, cy: 0 },
-            { cx: 480, cy: 540 }
+            { cx: cellW, cy: 0 },
+            { cx: Math.round(cellW / 2), cy: cellH }
         ];
         return feeds.slice(0, 3).map((f, idx) => {
             const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
@@ -190,13 +221,13 @@ function generateAutoPackPlacements(feeds) {
     }
 
     if (count === 4) {
-        const cellW = 960;
-        const cellH = 540;
+        const cellW = Math.round(W / 2);
+        const cellH = Math.round(H / 2);
         const gridCells = [
             { cx: 0, cy: 0 },
-            { cx: 960, cy: 0 },
-            { cx: 0, cy: 540 },
-            { cx: 960, cy: 540 }
+            { cx: cellW, cy: 0 },
+            { cx: 0, cy: cellH },
+            { cx: cellW, cy: cellH }
         ];
         return feeds.slice(0, 4).map((f, idx) => {
             const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
@@ -345,33 +376,61 @@ export default function MulticamViewport({
     const hasUserCustomizedRef = useRef(false);
     const [selectedPresetId, setSelectedPresetId] = useState('auto-grid');
 
-    // Dynamic responsive 16:9 canvas frame measurement
-    useEffect(() => {
+    // Master Export Aspect Ratio & Full-Width Staging Mode
+    const [selectedAspectId, setSelectedAspectId] = useState(() => {
+        const w = canvasLayoutTimeline?.keyframes?.[0]?.layout?.width;
+        const h = canvasLayoutTimeline?.keyframes?.[0]?.layout?.height;
+        if (w && h) {
+            const match = ASPECT_PRESETS.find(p => p.w === w && p.h === h);
+            if (match) return match.id;
+        }
+        return '16:9';
+    });
+    const [isFullWidth, setIsFullWidth] = useState(true);
+
+    const activeAspectPreset = useMemo(() => {
+        return ASPECT_PRESETS.find(p => p.id === selectedAspectId) || ASPECT_PRESETS[0];
+    }, [selectedAspectId]);
+
+    const virtualW = activeAspectPreset.w;
+    const virtualH = activeAspectPreset.h;
+    const currentAspect = activeAspectPreset.ratio;
+
+    // Dynamic responsive canvas frame measurement matching target export aspect ratio
+    const updateDimensions = useCallback(() => {
         const el = stageWrapperRef.current;
         if (!el) return;
 
-        const updateDimensions = () => {
-            const rect = el.getBoundingClientRect();
-            // Provide 24px breathing space inside viewport
-            const availableW = Math.max(320, (rect.width || 960) - 24);
-            const availableH = Math.max(180, (rect.height || 540) - 24);
+        const rect = el.getBoundingClientRect();
+        // Provide 16px breathing space inside viewport
+        const availableW = Math.max(320, Math.floor(rect.width || 960) - 16);
+        const availableH = Math.max(180, Math.floor(rect.height || 540) - 16);
 
-            let finalW, finalH;
-            if (availableW / availableH >= (16 / 9)) {
-                // Height is the limiting factor (pillarbox)
+        let finalW, finalH;
+        if (isFullWidth) {
+            // Full screen width: canvas expands to 100% of available viewport width
+            finalW = availableW;
+            finalH = Math.round(finalW / currentAspect);
+        } else {
+            // Fit stage: contain within stage bounds
+            if (availableW / availableH >= currentAspect) {
                 finalH = availableH;
-                finalW = Math.round(finalH * (16 / 9));
+                finalW = Math.round(finalH * currentAspect);
             } else {
-                // Width is the limiting factor (letterbox)
                 finalW = availableW;
-                finalH = Math.round(finalW / (16 / 9));
+                finalH = Math.round(finalW / currentAspect);
             }
+        }
 
-            setCanvasFrameDimensions(prev => {
-                if (prev.width === finalW && prev.height === finalH) return prev;
-                return { width: finalW, height: finalH };
-            });
-        };
+        setCanvasFrameDimensions(prev => {
+            if (prev.width === finalW && prev.height === finalH) return prev;
+            return { width: finalW, height: finalH };
+        });
+    }, [isFullWidth, currentAspect]);
+
+    useEffect(() => {
+        const el = stageWrapperRef.current;
+        if (!el) return;
 
         updateDimensions();
 
@@ -388,7 +447,7 @@ export default function MulticamViewport({
             if (ro) ro.disconnect();
             window.removeEventListener('resize', updateDimensions);
         };
-    }, []);
+    }, [updateDimensions]);
 
     // Enumerate all available workstation feeds across displays
     const availableFeeds = useMemo(() => {
@@ -441,11 +500,11 @@ export default function MulticamViewport({
                     transitionDurationSec: 0.5,
                     transitionType: 'smooth',
                     layout: {
-                        width: VIRTUAL_CANVAS_W,
-                        height: VIRTUAL_CANVAS_H,
+                        width: DEFAULT_VIRTUAL_CANVAS_W,
+                        height: DEFAULT_VIRTUAL_CANVAS_H,
                         backgroundColor: '#070A10',
                         fps: 30.0,
-                        placements: generateAutoPackPlacements(availableFeeds)
+                        placements: generateAutoPackPlacements(availableFeeds, DEFAULT_VIRTUAL_CANVAS_W, DEFAULT_VIRTUAL_CANVAS_H)
                     }
                 }
             ]
@@ -479,6 +538,8 @@ export default function MulticamViewport({
                 ...nextKfs[safeActiveIdx],
                 layout: {
                     ...nextKfs[safeActiveIdx].layout,
+                    width: virtualW,
+                    height: virtualH,
                     placements: newPlacements
                 }
             };
@@ -486,32 +547,54 @@ export default function MulticamViewport({
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
             return nextTimeline;
         });
-    }, [safeActiveIdx, onUpdateCanvasLayoutTimeline]);
+    }, [safeActiveIdx, onUpdateCanvasLayoutTimeline, virtualW, virtualH]);
 
     // Auto-populate AUTO-GRID by default when availableFeeds become available and canvas is empty
     useEffect(() => {
         if (availableFeeds.length > 0 && (!currentPlacements || currentPlacements.length === 0) && !hasUserCustomizedRef.current) {
-            const autoPacked = generateAutoPackPlacements(availableFeeds);
+            const autoPacked = generateAutoPackPlacements(availableFeeds, virtualW, virtualH);
             if (autoPacked.length > 0) {
                 updateActivePlacements(autoPacked);
                 setSelectedPresetId('auto-grid');
             }
         }
-    }, [availableFeeds, currentPlacements, updateActivePlacements]);
+    }, [availableFeeds, currentPlacements, updateActivePlacements, virtualW, virtualH]);
 
     // Sync current canvas layout to parent Studio
     useEffect(() => {
         if (onUpdateCanvasLayout) {
             onUpdateCanvasLayout({
-                width: VIRTUAL_CANVAS_W,
-                height: VIRTUAL_CANVAS_H,
+                width: virtualW,
+                height: virtualH,
                 backgroundColor: '#070A10',
                 fps: 30.0,
                 placements: currentPlacements,
                 timeline: internalTimeline
             });
         }
-    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout]);
+    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, virtualW, virtualH]);
+
+    // Switch Aspect Ratio handler (rescaling existing placements proportionally)
+    const handleSelectAspectRatio = useCallback((newAspectId) => {
+        const oldPreset = activeAspectPreset;
+        const newPreset = ASPECT_PRESETS.find(p => p.id === newAspectId) || ASPECT_PRESETS[0];
+        if (oldPreset.id === newPreset.id) return;
+
+        setSelectedAspectId(newPreset.id);
+
+        const ratioX = newPreset.w / oldPreset.w;
+        const ratioY = newPreset.h / oldPreset.h;
+
+        const rescaled = currentPlacements.map(p => ({
+            ...p,
+            x: Math.round(p.x * ratioX),
+            y: Math.round(p.y * ratioY),
+            width: Math.round(p.width * ratioX),
+            height: Math.round(p.height * ratioY)
+        }));
+
+        updateActivePlacements(rescaled);
+    }, [activeAspectPreset, currentPlacements, updateActivePlacements]);
 
     // -------------------------------------------------------------
     // FEEDS PALETTE ACTIONS: ADD / REMOVE / CLEAR
@@ -655,7 +738,7 @@ export default function MulticamViewport({
         handleUpdateSelectedStyle({ rotation: nextRot });
     }, [selectedFeedIndex, currentPlacements, handleUpdateSelectedStyle]);
 
-    // Focus single placement to fill 100% of 16:9 canvas (1x1 Focus Viewport)
+    // Focus single placement to fill 100% of canvas (1x1 Focus Viewport)
     const handleFocus1x1 = useCallback((idx = selectedFeedIndex) => {
         if (idx < 0 || !currentPlacements[idx]) return;
         const maxRank = currentPlacements.length;
@@ -665,15 +748,15 @@ export default function MulticamViewport({
                     ...p,
                     x: 0,
                     y: 0,
-                    width: VIRTUAL_CANVAS_W,
-                    height: VIRTUAL_CANVAS_H,
+                    width: virtualW,
+                    height: virtualH,
                     zIndex: maxRank
                 };
             }
             return p;
         });
         updateActivePlacements(next);
-    }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+    }, [selectedFeedIndex, currentPlacements, updateActivePlacements, virtualW, virtualH]);
 
     // -------------------------------------------------------------
     // PRESET TEMPLATES
@@ -685,7 +768,7 @@ export default function MulticamViewport({
         switch (presetId) {
             case 'auto':
             case 'auto-grid':
-                newPlacements = generateAutoPackPlacements(feeds);
+                newPlacements = generateAutoPackPlacements(feeds, virtualW, virtualH);
                 break;
             case '1x1':
                 if (feeds.length > 0) {
@@ -693,8 +776,8 @@ export default function MulticamViewport({
                         ...feeds[0],
                         x: 0,
                         y: 0,
-                        width: 1920,
-                        height: 1080,
+                        width: virtualW,
+                        height: virtualH,
                         zIndex: 1,
                         rotation: 0,
                         borderWidth: 0,
@@ -706,10 +789,10 @@ export default function MulticamViewport({
                 break;
             case '1x2':
                 if (feeds.length >= 2) {
-                    const halfW = 960;
+                    const halfW = Math.round(virtualW / 2);
                     newPlacements = feeds.slice(0, 2).map((f, idx) => {
                         const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
-                        const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, 1080, aspect);
+                        const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, virtualH, aspect);
                         return {
                             ...f,
                             x,
@@ -729,16 +812,18 @@ export default function MulticamViewport({
                         };
                     });
                 } else {
-                    newPlacements = generateAutoPackPlacements(feeds);
+                    newPlacements = generateAutoPackPlacements(feeds, virtualW, virtualH);
                 }
                 break;
-            case '2x2':
+            case '2x2': {
+                const halfW = Math.round(virtualW / 2);
+                const halfH = Math.round(virtualH / 2);
                 newPlacements = feeds.slice(0, 4).map((f, idx) => ({
                     ...f,
-                    x: (idx % 2) * 960,
-                    y: Math.floor(idx / 2) * 540,
-                    width: 960,
-                    height: 540,
+                    x: (idx % 2) * halfW,
+                    y: Math.floor(idx / 2) * halfH,
+                    width: halfW,
+                    height: halfH,
                     zIndex: idx,
                     rotation: 0,
                     borderWidth: 2,
@@ -747,18 +832,19 @@ export default function MulticamViewport({
                     borderRadius: 0
                 }));
                 break;
+            }
             case '1+3-pip':
                 if (feeds.length >= 2) {
                     newPlacements = [
-                        { ...feeds[0], x: 0, y: 0, width: 1920, height: 1080, zIndex: 0, rotation: 0, borderWidth: 0, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'none', borderRadius: 0 }
+                        { ...feeds[0], x: 0, y: 0, width: virtualW, height: virtualH, zIndex: 0, rotation: 0, borderWidth: 0, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'none', borderRadius: 0 }
                     ];
                     const insets = feeds.slice(1, 4);
-                    const insetW = 440;
-                    const insetH = 248;
+                    const insetW = Math.round(virtualW * 0.23);
+                    const insetH = Math.round(insetW / (16 / 9));
                     insets.forEach((f, idx) => {
                         newPlacements.push({
                             ...f,
-                            x: 1920 - insetW - 24,
+                            x: virtualW - insetW - 24,
                             y: 24 + idx * (insetH + 16),
                             width: insetW,
                             height: insetH,
@@ -774,20 +860,51 @@ export default function MulticamViewport({
                 break;
             case 'hero-stacked':
                 if (feeds.length >= 3) {
+                    const heroW = Math.round(virtualW * 0.666);
+                    const sideW = virtualW - heroW;
+                    const sideH = Math.round(virtualH / 2);
                     newPlacements = [
-                        { ...feeds[0], x: 0, y: 0, width: 1280, height: 1080, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-                        { ...feeds[1], x: 1280, y: 0, width: 640, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
-                        { ...feeds[2], x: 1280, y: 540, width: 640, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
+                        { ...feeds[0], x: 0, y: 0, width: heroW, height: virtualH, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+                        { ...feeds[1], x: heroW, y: 0, width: sideW, height: sideH, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
+                        { ...feeds[2], x: heroW, y: sideH, width: sideW, height: sideH, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
                     ];
                 }
                 break;
             case '3-grid':
                 if (feeds.length >= 3) {
-                    newPlacements = [
-                        { ...feeds[0], x: 0, y: 0, width: 960, height: 540, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
-                        { ...feeds[1], x: 960, y: 0, width: 960, height: 540, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
-                        { ...feeds[2], x: 480, y: 540, width: 960, height: 540, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
-                    ];
+                    const isWide = (virtualW / virtualH) >= 2.5;
+                    if (isWide) {
+                        const thirdW = Math.round(virtualW / 3);
+                        newPlacements = feeds.slice(0, 3).map((f, idx) => {
+                            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+                            const { x, y, width, height } = fitInCell(idx * thirdW, 0, thirdW, virtualH, aspect);
+                            return {
+                                ...f,
+                                x,
+                                y,
+                                width,
+                                height,
+                                sourceWidth: f.sourceWidth || 1920,
+                                sourceHeight: f.sourceHeight || 1080,
+                                nativeAspectRatio: aspect,
+                                aspectRatio: aspect,
+                                zIndex: idx,
+                                rotation: 0,
+                                borderWidth: 2,
+                                borderColor: SLOT_BORDER_COLORS[idx % SLOT_BORDER_COLORS.length],
+                                shadowEffect: 'deep',
+                                borderRadius: 0
+                            };
+                        });
+                    } else {
+                        const halfW = Math.round(virtualW / 2);
+                        const halfH = Math.round(virtualH / 2);
+                        newPlacements = [
+                            { ...feeds[0], x: 0, y: 0, width: halfW, height: halfH, zIndex: 0, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[0], shadowEffect: 'deep', borderRadius: 0 },
+                            { ...feeds[1], x: halfW, y: 0, width: halfW, height: halfH, zIndex: 1, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[1], shadowEffect: 'deep', borderRadius: 0 },
+                            { ...feeds[2], x: Math.round(halfW / 2), y: halfH, width: halfW, height: halfH, zIndex: 2, rotation: 0, borderWidth: 2, borderColor: SLOT_BORDER_COLORS[2], shadowEffect: 'deep', borderRadius: 0 }
+                        ];
+                    }
                 }
                 break;
             default:
@@ -804,7 +921,7 @@ export default function MulticamViewport({
                 hasUserCustomizedRef.current = true;
             }
         }
-    }, [availableFeeds, currentPlacements, updateActivePlacements]);
+    }, [availableFeeds, currentPlacements, updateActivePlacements, virtualW, virtualH]);
 
     // -------------------------------------------------------------
     // CUSTOM PRESETS: SAVE & LOAD ("לשמור אותו ולטעון אותו")
@@ -848,8 +965,9 @@ export default function MulticamViewport({
             version: '1.0',
             type: 'itb-canvas-layout',
             exportedAt: new Date().toISOString(),
-            width: VIRTUAL_CANVAS_W,
-            height: VIRTUAL_CANVAS_H,
+            width: virtualW,
+            height: virtualH,
+            aspectRatio: selectedAspectId,
             placements: currentPlacements,
             timeline: internalTimeline
         };
@@ -866,7 +984,7 @@ export default function MulticamViewport({
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
-    }, [currentPlacements, internalTimeline]);
+    }, [currentPlacements, internalTimeline, virtualW, virtualH, selectedAspectId]);
 
     const handleImportCanvasFile = useCallback((e) => {
         const file = e.target.files?.[0];
@@ -875,6 +993,14 @@ export default function MulticamViewport({
         reader.onload = (event) => {
             try {
                 const parsed = JSON.parse(event.target.result);
+                if (parsed.width && parsed.height) {
+                    const match = ASPECT_PRESETS.find(p => p.w === parsed.width && p.h === parsed.height);
+                    if (match) setSelectedAspectId(match.id);
+                } else if (parsed.aspectRatio) {
+                    const match = ASPECT_PRESETS.find(p => p.id === parsed.aspectRatio);
+                    if (match) setSelectedAspectId(match.id);
+                }
+
                 let importedPlacements = null;
                 if (Array.isArray(parsed)) {
                     importedPlacements = parsed;
@@ -929,8 +1055,8 @@ export default function MulticamViewport({
             initialY: p.y,
             initialW: p.width,
             initialH: p.height,
-            scaleX: VIRTUAL_CANVAS_W / rect.width,
-            scaleY: VIRTUAL_CANVAS_H / rect.height
+            scaleX: virtualW / rect.width,
+            scaleY: virtualH / rect.height
         };
 
         setIsDragging(true);
@@ -944,31 +1070,31 @@ export default function MulticamViewport({
             let newX = Math.round(ds.initialX + dx);
             let newY = Math.round(ds.initialY + dy);
 
-            newX = clamp(newX, 0, VIRTUAL_CANVAS_W - ds.initialW);
-            newY = clamp(newY, 0, VIRTUAL_CANVAS_H - ds.initialH);
+            newX = clamp(newX, 0, virtualW - ds.initialW);
+            newY = clamp(newY, 0, virtualH - ds.initialH);
 
             let vGuide = null;
             let hGuide = null;
 
-            if (Math.abs(newX + ds.initialW / 2 - VIRTUAL_CANVAS_W / 2) < 18) {
-                newX = Math.round((VIRTUAL_CANVAS_W - ds.initialW) / 2);
+            if (Math.abs(newX + ds.initialW / 2 - virtualW / 2) < 18) {
+                newX = Math.round((virtualW - ds.initialW) / 2);
                 vGuide = 50;
             } else if (Math.abs(newX) < 16) {
                 newX = 0;
                 vGuide = 0;
-            } else if (Math.abs(newX + ds.initialW - VIRTUAL_CANVAS_W) < 16) {
-                newX = VIRTUAL_CANVAS_W - ds.initialW;
+            } else if (Math.abs(newX + ds.initialW - virtualW) < 16) {
+                newX = virtualW - ds.initialW;
                 vGuide = 100;
             }
 
-            if (Math.abs(newY + ds.initialH / 2 - VIRTUAL_CANVAS_H / 2) < 18) {
-                newY = Math.round((VIRTUAL_CANVAS_H - ds.initialH) / 2);
+            if (Math.abs(newY + ds.initialH / 2 - virtualH / 2) < 18) {
+                newY = Math.round((virtualH - ds.initialH) / 2);
                 hGuide = 50;
             } else if (Math.abs(newY) < 16) {
                 newY = 0;
                 hGuide = 0;
-            } else if (Math.abs(newY + ds.initialH - VIRTUAL_CANVAS_H) < 16) {
-                newY = VIRTUAL_CANVAS_H - ds.initialH;
+            } else if (Math.abs(newY + ds.initialH - virtualH) < 16) {
+                newY = virtualH - ds.initialH;
                 hGuide = 100;
             }
 
@@ -1032,8 +1158,8 @@ export default function MulticamViewport({
             sourceWidth,
             sourceHeight,
             nativeAspectRatio,
-            scaleX: VIRTUAL_CANVAS_W / rect.width,
-            scaleY: VIRTUAL_CANVAS_H / rect.height
+            scaleX: virtualW / rect.width,
+            scaleY: virtualH / rect.height
         };
 
         setIsResizing(true);
@@ -1054,8 +1180,8 @@ export default function MulticamViewport({
             let newH = ds.initialH;
 
             if (ds.corner === 'br') {
-                const maxW = VIRTUAL_CANVAS_W - ds.initialX;
-                const maxH = VIRTUAL_CANVAS_H - ds.initialY;
+                const maxW = virtualW - ds.initialX;
+                const maxH = virtualH - ds.initialY;
                 if (isLockAspect) {
                     let targetW = Math.max(160, Math.min(maxW, Math.round(ds.initialW + dw)));
                     let targetH = Math.round(targetW / nativeRatio);
@@ -1075,7 +1201,7 @@ export default function MulticamViewport({
                 }
             } else if (ds.corner === 'bl') {
                 const maxW = ds.initialX + ds.initialW;
-                const maxH = VIRTUAL_CANVAS_H - ds.initialY;
+                const maxH = virtualH - ds.initialY;
                 if (isLockAspect) {
                     let targetW = Math.max(160, Math.min(maxW, Math.round(ds.initialW - dw)));
                     let targetH = Math.round(targetW / nativeRatio);
@@ -1096,7 +1222,7 @@ export default function MulticamViewport({
                     newX = ds.initialX + ds.initialW - newW;
                 }
             } else if (ds.corner === 'tr') {
-                const maxW = VIRTUAL_CANVAS_W - ds.initialX;
+                const maxW = virtualW - ds.initialX;
                 const maxH = ds.initialY + ds.initialH;
                 if (isLockAspect) {
                     let targetW = Math.max(160, Math.min(maxW, Math.round(ds.initialW + dw)));
@@ -1188,12 +1314,12 @@ export default function MulticamViewport({
         let newW = p.width;
         let newH = Math.round(newW / nativeRatio);
 
-        if (p.y + newH > VIRTUAL_CANVAS_H) {
-            newH = VIRTUAL_CANVAS_H - p.y;
+        if (p.y + newH > virtualH) {
+            newH = virtualH - p.y;
             newW = Math.round(newH * nativeRatio);
         }
-        if (p.x + newW > VIRTUAL_CANVAS_W) {
-            newW = VIRTUAL_CANVAS_W - p.x;
+        if (p.x + newW > virtualW) {
+            newW = virtualW - p.x;
             newH = Math.round(newW / nativeRatio);
         }
 
@@ -1275,8 +1401,8 @@ export default function MulticamViewport({
                     if (e.key === 'ArrowDown') dy = step;
 
                     const target = currentPlacements[selectedFeedIndex];
-                    const newX = clamp(target.x + dx, 0, VIRTUAL_CANVAS_W - target.width);
-                    const newY = clamp(target.y + dy, 0, VIRTUAL_CANVAS_H - target.height);
+                    const newX = clamp(target.x + dx, 0, virtualW - target.width);
+                    const newY = clamp(target.y + dy, 0, virtualH - target.height);
                     const next = currentPlacements.map((p, idx) => {
                         if (idx === selectedFeedIndex) {
                             return { ...p, x: newX, y: newY };
@@ -1563,8 +1689,8 @@ export default function MulticamViewport({
             const rect = canvasFrameRef.current.getBoundingClientRect();
             const dropClientX = e.clientX - rect.left;
             const dropClientY = e.clientY - rect.top;
-            const canvasX = clamp(Math.round((dropClientX / rect.width) * VIRTUAL_CANVAS_W), 0, VIRTUAL_CANVAS_W - 320);
-            const canvasY = clamp(Math.round((dropClientY / rect.height) * VIRTUAL_CANVAS_H), 0, VIRTUAL_CANVAS_H - 180);
+            const canvasX = clamp(Math.round((dropClientX / rect.width) * virtualW), 0, virtualW - 320);
+            const canvasY = clamp(Math.round((dropClientY / rect.height) * virtualH), 0, virtualH - 180);
 
             if (data.type === 'unplaced') {
                 const feed = availableFeeds.find(f => f.stationId === data.stationId && f.displayId === data.displayId);
@@ -1579,8 +1705,8 @@ export default function MulticamViewport({
                         stationId: feed.stationId,
                         displayId: feed.displayId,
                         label: feed.label,
-                        x: clamp(canvasX, 0, VIRTUAL_CANVAS_W - initW),
-                        y: clamp(canvasY, 0, VIRTUAL_CANVAS_H - initH),
+                        x: clamp(canvasX, 0, virtualW - initW),
+                        y: clamp(canvasY, 0, virtualH - initH),
                         width: initW,
                         height: initH,
                         sourceWidth: feed.sourceWidth || 1920,
@@ -1603,8 +1729,8 @@ export default function MulticamViewport({
                     if (idx === data.origIdx) {
                         return {
                             ...p,
-                            x: clamp(canvasX, 0, VIRTUAL_CANVAS_W - p.width),
-                            y: clamp(canvasY, 0, VIRTUAL_CANVAS_H - p.height)
+                            x: clamp(canvasX, 0, virtualW - p.width),
+                            y: clamp(canvasY, 0, virtualH - p.height)
                         };
                     }
                     return p;
@@ -1615,7 +1741,7 @@ export default function MulticamViewport({
         } catch (err) {
             console.warn('Canvas drop failed:', err);
         }
-    }, [availableFeeds, currentPlacements, updateActivePlacements]);
+    }, [availableFeeds, currentPlacements, updateActivePlacements, virtualW, virtualH]);
 
     return (
         <div
@@ -1726,7 +1852,7 @@ export default function MulticamViewport({
                             onClick={() => {
                                 hasUserCustomizedRef.current = false;
                                 setSelectedPresetId('auto-grid');
-                                const autoPacked = generateAutoPackPlacements(availableFeeds);
+                                const autoPacked = generateAutoPackPlacements(availableFeeds, virtualW, virtualH);
                                 const resetTimeline = {
                                     id: 'canvas-timeline-root',
                                     keyframes: [
@@ -1736,8 +1862,8 @@ export default function MulticamViewport({
                                             transitionDurationSec: 0.5,
                                             transitionType: 'smooth',
                                             layout: {
-                                                width: VIRTUAL_CANVAS_W,
-                                                height: VIRTUAL_CANVAS_H,
+                                                width: virtualW,
+                                                height: virtualH,
                                                 backgroundColor: '#070A10',
                                                 fps: 30.0,
                                                 placements: autoPacked
@@ -1760,6 +1886,31 @@ export default function MulticamViewport({
                             title="Clear Canvas: Start fresh with an empty canvas"
                         >
                             🗑️ CLEAR
+                        </button>
+                    </div>
+
+                    {/* Export Aspect Ratio Selector & Full Width Toggle */}
+                    <div className="comp-pill-group aspect-group">
+                        <span className="aspect-label">📐 EXPORT ASPECT:</span>
+                        <select
+                            className="select-aspect-ratio"
+                            value={selectedAspectId}
+                            onChange={(e) => handleSelectAspectRatio(e.target.value)}
+                            title="Set Export Master Aspect Ratio (WYSIWYG Target)"
+                        >
+                            {ASPECT_PRESETS.map(ap => (
+                                <option key={ap.id} value={ap.id}>
+                                    {ap.label} ({ap.w}×{ap.h})
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            className={`btn-width-mode ${isFullWidth ? 'is-full' : 'is-fit'}`}
+                            onClick={() => setIsFullWidth(p => !p)}
+                            title={isFullWidth ? 'Full Screen Width (100% Width) - Click to fit stage' : 'Fit to Stage - Click for 100% Full Width'}
+                        >
+                            {isFullWidth ? '↔ 100% WIDTH' : '⊞ FIT STAGE'}
                         </button>
                     </div>
 
@@ -1868,8 +2019,8 @@ export default function MulticamViewport({
                 </div>
             </div>
 
-            {/* Interactive Live Master Canvas Stage (WYSIWYG 16:9 Frame) */}
-            <div ref={stageWrapperRef} className="canvas-stage-wrapper">
+            {/* Interactive Live Master Canvas Stage (WYSIWYG Frame) */}
+            <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>
                     {/* Unified Minimalist Feeds & Layers Drawer */}
                     {showFeedsDrawer && (
                         <div className="canvas-side-drawer feeds-layers-drawer">
@@ -2018,16 +2169,14 @@ export default function MulticamViewport({
                         </div>
                     )}
 
-                    {/* 16:9 Canvas Stage Frame */}
+                    {/* Master Canvas Stage Frame (WYSIWYG Export Parity) */}
                     <div
                         ref={canvasFrameRef}
-                        className="canvas-master-frame-16-9"
+                        className={`canvas-master-frame-16-9 ${isFullWidth ? 'is-full-width' : 'is-fit-stage'}`}
                         style={{
                             width: canvasFrameDimensions.width > 180 ? `${canvasFrameDimensions.width}px` : '100%',
-                            height: canvasFrameDimensions.height > 100 ? `${canvasFrameDimensions.height}px` : '100%',
-                            maxWidth: '100%',
-                            maxHeight: '100%',
-                            aspectRatio: '16 / 9'
+                            height: canvasFrameDimensions.height > 100 ? `${canvasFrameDimensions.height}px` : 'auto',
+                            aspectRatio: `${virtualW} / ${virtualH}`
                         }}
                         onDragOver={(e) => {
                             e.preventDefault();
@@ -2115,15 +2264,15 @@ export default function MulticamViewport({
                             const shadowEffect = p.shadowEffect || 'deep';
                             const bRadius = p.borderRadius || 0;
 
-                            const leftPct = (p.x / VIRTUAL_CANVAS_W) * 100;
-                            const topPct = (p.y / VIRTUAL_CANVAS_H) * 100;
-                            const widthPct = (p.width / VIRTUAL_CANVAS_W) * 100;
-                            const heightPct = (p.height / VIRTUAL_CANVAS_H) * 100;
+                            const leftPct = (p.x / virtualW) * 100;
+                            const topPct = (p.y / virtualH) * 100;
+                            const widthPct = (p.width / virtualW) * 100;
+                            const heightPct = (p.height / virtualH) * 100;
 
                             const boxBoxShadow = getShadowCss(shadowEffect, isSelected, bColor);
                             const isFlippedDown = p.y < 50;
                             const isNearLeft = p.x < 100;
-                            const isNearRight = (p.x + p.width) > 1820;
+                            const isNearRight = (p.x + p.width) > (virtualW - 100);
                             const layerRank = p.zIndex !== undefined ? p.zIndex : origIdx + 1;
 
                             return (
@@ -2255,25 +2404,25 @@ export default function MulticamViewport({
                             const shadowEffect = p.shadowEffect || 'deep';
                             const layerRank = p.zIndex !== undefined ? p.zIndex : origIdx + 1;
 
-                            // Calculate positioning relative to 1920x1080 canvas
+                            // Calculate positioning relative to virtual canvas bounds
                             const isFlippedDown = p.y < 45;
-                            const centerXPct = ((p.x + p.width / 2) / VIRTUAL_CANVAS_W) * 100;
+                            const centerXPct = ((p.x + p.width / 2) / virtualW) * 100;
                             const isNearLeft = centerXPct < 22;
                             const isNearRight = centerXPct > 78;
 
                             let leftStyle = `${centerXPct}%`;
                             let transformStyle = 'translateX(-50%)';
                             if (isNearLeft) {
-                                leftStyle = `${Math.max(1, (p.x / VIRTUAL_CANVAS_W) * 100)}%`;
+                                leftStyle = `${Math.max(1, (p.x / virtualW) * 100)}%`;
                                 transformStyle = 'none';
                             } else if (isNearRight) {
-                                leftStyle = `${Math.min(99, ((p.x + p.width) / VIRTUAL_CANVAS_W) * 100)}%`;
+                                leftStyle = `${Math.min(99, ((p.x + p.width) / virtualW) * 100)}%`;
                                 transformStyle = 'translateX(-100%)';
                             }
 
                             const topStyle = isFlippedDown
-                                ? `${((p.y + 26) / VIRTUAL_CANVAS_H) * 100}%`
-                                : `calc(${((p.y) / VIRTUAL_CANVAS_H) * 100}% - 34px)`;
+                                ? `${((p.y + 26) / virtualH) * 100}%`
+                                : `calc(${((p.y) / virtualH) * 100}% - 34px)`;
 
                             const matchedStation = (allStations.length > 0 ? allStations : timelineStations).find(s => 
                                 s.id === p.stationId || 
