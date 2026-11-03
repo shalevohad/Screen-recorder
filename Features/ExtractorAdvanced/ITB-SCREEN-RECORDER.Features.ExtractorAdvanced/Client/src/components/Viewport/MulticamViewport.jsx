@@ -340,6 +340,8 @@ export default function MulticamViewport({
     const [drawerDragOverState, setDrawerDragOverState] = useState({ index: null, position: null });
     const [showSavePresetModal, setShowSavePresetModal] = useState(false);
     const [showPresetsMenu, setShowPresetsMenu] = useState(false);
+    const [showLayoutPresetsPopout, setShowLayoutPresetsPopout] = useState(false);
+    const [showAspectPopout, setShowAspectPopout] = useState(false);
     const [presetNameInput, setPresetNameInput] = useState('');
     const [feedSearchQuery, setFeedSearchQuery] = useState('');
     const importFileInputRef = useRef(null);
@@ -2248,146 +2250,227 @@ export default function MulticamViewport({
                 />
             )}
 
-            {/* Universal Master Composition Toolbar */}
-            <div className="multicam-composition-mode-bar">
-                <div className="comp-mode-left">
-                    <span className="comp-icon">🎛️</span>
-                    <span className="comp-title">LIVE CANVAS COMPOSER:</span>
+            {/* Tactical Action Toast */}
+            {toastMessage && (
+                <div className={`canvas-action-toast ${toastMessage.type}`}>
+                    <span className="toast-icon">{toastMessage.icon}</span>
+                    <span className="toast-text">{toastMessage.text}</span>
+                </div>
+            )}
 
-                    {/* Unified Feeds & Layers Drawer Toggle */}
+            {/* Master Canvas Editing Arena */}
+            <div className="canvas-editing-arena">
+                {/* Left Wing Dock: Composition Tools */}
+                <aside className="canvas-left-wing-dock">
                     <button
                         type="button"
-                        className={`btn-comp-action ${showFeedsDrawer ? 'active' : ''}`}
+                        className={`btn-wing-tool ${showFeedsDrawer ? 'active' : ''}`}
                         onClick={() => setShowFeedsDrawer(p => !p)}
-                        title="Toggle Feeds Inventory & Layers Manager"
+                        title={`Feeds & Layers Palette (${currentPlacements.length}/${availableFeeds.length} on canvas)`}
                     >
-                        🗂️ FEEDS & LAYERS ({currentPlacements.length}/{availableFeeds.length})
+                        <span className="tool-icon">🗂️</span>
+                        <span className="tool-badge">{currentPlacements.length}</span>
+                        <span className="tool-label">FEEDS</span>
                     </button>
 
-                    {/* Canvas Presets Toolbar */}
-                    <div className="comp-pill-group layouts">
+                    <div className="wing-divider" />
+
+                    {/* Layout Presets Popout Trigger */}
+                    <div className="wing-popout-wrapper">
                         <button
                             type="button"
-                            className={`btn-comp-tab ${selectedPresetId === 'auto-grid' ? 'active' : ''}`}
+                            className={`btn-wing-tool ${showLayoutPresetsPopout ? 'active' : ''}`}
                             onClick={() => {
-                                setSelectedPresetId('auto-grid');
-                                handleApplyPreset('auto-grid');
+                                setShowLayoutPresetsPopout(p => !p);
+                                setShowAspectPopout(false);
                             }}
-                            title="Auto-Grid: Neatly arrange all available stations & displays"
+                            title="Canvas Layout Presets (Auto-Grid, 1x1, 1x2, 2x2, PIP, Hero)"
                         >
-                            ⊞ AUTO-GRID ({availableFeeds.length})
+                            <span className="tool-icon">⊞</span>
+                            <span className="tool-label">GRID</span>
                         </button>
-                        <button
-                            type="button"
-                            className={`btn-comp-tab ${selectedPresetId === '1x1' ? 'active' : ''}`}
-                            onClick={() => {
-                                setSelectedPresetId('1x1');
-                                handleApplyPreset('1x1');
-                            }}
-                            title="Single Feed (1x1 Focus Frame)"
-                        >
-                            ⊞ 1x1
-                        </button>
-                        <button
-                            type="button"
-                            className={`btn-comp-tab ${selectedPresetId === '1x2' ? 'active' : ''}`}
-                            onClick={() => {
-                                setSelectedPresetId('1x2');
-                                handleApplyPreset('1x2');
-                            }}
-                            title="Side-by-Side Dual Feeds (1x2 Dual)"
-                        >
-                            ⊞ 1x2 DUAL
-                        </button>
-                        <button
-                            type="button"
-                            className={`btn-comp-tab ${selectedPresetId === '2x2' ? 'active' : ''}`}
-                            onClick={() => {
-                                setSelectedPresetId('2x2');
-                                handleApplyPreset('2x2');
-                            }}
-                            title="2x2 Quad Feeds Master Frame"
-                        >
-                            ⊞ 2x2 QUAD
-                        </button>
-                        <button
-                            type="button"
-                            className={`btn-comp-tab ${selectedPresetId === '1+3-pip' ? 'active' : ''}`}
-                            onClick={() => {
-                                setSelectedPresetId('1+3-pip');
-                                handleApplyPreset('1+3-pip');
-                            }}
-                            title="Picture-in-Picture: 1 Full Master + 3 Insets"
-                        >
-                            ⊞ 1+3 PIP
-                        </button>
-                        <button
-                            type="button"
-                            className={`btn-comp-tab ${selectedPresetId === 'hero-stacked' ? 'active' : ''}`}
-                            onClick={() => {
-                                setSelectedPresetId('hero-stacked');
-                                handleApplyPreset('hero-stacked');
-                            }}
-                            title="Hero Main + 2 Stacked Displays"
-                        >
-                            ⊞ HERO+2
-                        </button>
-                        <button
-                            type="button"
-                            className="btn-comp-action reset"
-                            onClick={() => {
-                                hasUserCustomizedRef.current = false;
-                                setSelectedPresetId('auto-grid');
-                                const autoPacked = generateAutoPackPlacements(availableFeeds, virtualW, virtualH);
-                                const resetTimeline = {
-                                    id: 'canvas-timeline-root',
-                                    keyframes: [
-                                        {
-                                            id: 'kf_root_0',
-                                            timestampEpochMs: baseEpochMs,
-                                            transitionDurationSec: 0.5,
-                                            transitionType: 'smooth',
-                                            layout: {
-                                                width: virtualW,
-                                                height: virtualH,
-                                                backgroundColor: '#070A10',
-                                                fps: 30.0,
-                                                placements: autoPacked
-                                            }
-                                        }
-                                    ]
-                                };
-                                setInternalTimeline(resetTimeline);
-                                if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(resetTimeline);
-                                setSelectedFeedIndex(0);
-                            }}
-                            title="Restart Canvas: Reset to default AUTO-GRID with all screens"
-                        >
-                            ↺ RESET CANVAS
-                        </button>
-                        <button
-                            type="button"
-                            className="btn-comp-tab clear"
-                            onClick={handleClearCanvas}
-                            title="Clear Canvas: Start fresh with an empty canvas"
-                        >
-                            🗑️ CLEAR
-                        </button>
+
+                        {showLayoutPresetsPopout && (
+                            <div className="wing-floating-popout left-side-popout">
+                                <div className="popout-title">LAYOUT PRESETS</div>
+                                <button
+                                    type="button"
+                                    className={`popout-item ${selectedPresetId === 'auto-grid' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setSelectedPresetId('auto-grid');
+                                        handleApplyPreset('auto-grid');
+                                        setShowLayoutPresetsPopout(false);
+                                    }}
+                                >
+                                    <span>⊞ AUTO-GRID</span>
+                                    <span className="item-badge">{availableFeeds.length}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`popout-item ${selectedPresetId === '1x1' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setSelectedPresetId('1x1');
+                                        handleApplyPreset('1x1');
+                                        setShowLayoutPresetsPopout(false);
+                                    }}
+                                >
+                                    <span>⊞ 1x1 FOCUS</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`popout-item ${selectedPresetId === '1x2' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setSelectedPresetId('1x2');
+                                        handleApplyPreset('1x2');
+                                        setShowLayoutPresetsPopout(false);
+                                    }}
+                                >
+                                    <span>⊞ 1x2 DUAL</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`popout-item ${selectedPresetId === '2x2' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setSelectedPresetId('2x2');
+                                        handleApplyPreset('2x2');
+                                        setShowLayoutPresetsPopout(false);
+                                    }}
+                                >
+                                    <span>⊞ 2x2 QUAD</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`popout-item ${selectedPresetId === '1+3-pip' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setSelectedPresetId('1+3-pip');
+                                        handleApplyPreset('1+3-pip');
+                                        setShowLayoutPresetsPopout(false);
+                                    }}
+                                >
+                                    <span>⊞ 1+3 PIP</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`popout-item ${selectedPresetId === 'hero-stacked' ? 'active' : ''}`}
+                                    onClick={() => {
+                                        setSelectedPresetId('hero-stacked');
+                                        handleApplyPreset('hero-stacked');
+                                        setShowLayoutPresetsPopout(false);
+                                    }}
+                                >
+                                    <span>⊞ HERO+2</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Dedicated Keyframe & Transition Inspector */}
-                    <div className="comp-pill-group keyframe-inspector-group">
-                        <span className="kf-inspector-badge" title={`Active Keyframe #${safeActiveIdx + 1} of ${keyframes.length} on canvas timeline`}>
+                    {/* Aspect Ratio Popout Trigger */}
+                    <div className="wing-popout-wrapper">
+                        <button
+                            type="button"
+                            className={`btn-wing-tool ${showAspectPopout ? 'active' : ''}`}
+                            onClick={() => {
+                                setShowAspectPopout(p => !p);
+                                setShowLayoutPresetsPopout(false);
+                            }}
+                            title={`Aspect Ratio: ${selectedAspectId} (Click to change)`}
+                        >
+                            <span className="tool-icon">📐</span>
+                            <span className="tool-label">{selectedAspectId}</span>
+                        </button>
+
+                        {showAspectPopout && (
+                            <div className="wing-floating-popout left-side-popout">
+                                <div className="popout-title">EXPORT ASPECT</div>
+                                {ASPECT_PRESETS.map(ap => (
+                                    <button
+                                        key={ap.id}
+                                        type="button"
+                                        className={`popout-item ${selectedAspectId === ap.id ? 'active' : ''}`}
+                                        onClick={() => {
+                                            handleSelectAspectRatio(ap.id);
+                                            setShowAspectPopout(false);
+                                        }}
+                                    >
+                                        <span>{ap.label}</span>
+                                        <span className="dimmed-size">{ap.w}×{ap.h}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <button
+                        type="button"
+                        className={`btn-wing-tool ${isFullWidth ? 'highlight-emerald' : 'highlight-cyan'}`}
+                        onClick={handleToggleFullWidth}
+                        title={isFullWidth ? '100% Width (Click for FIT PAGE)' : 'Fit Page (Click for 100% Width)'}
+                    >
+                        <span className="tool-icon">{isFullWidth ? '↔' : '⊞'}</span>
+                        <span className="tool-label">{isFullWidth ? '100%' : 'FIT'}</span>
+                    </button>
+
+                    <div className="wing-divider" />
+
+                    <button
+                        type="button"
+                        className={`btn-wing-tool ${isSnappingEnabled ? 'active' : ''}`}
+                        onClick={() => setIsSnappingEnabled(p => !p)}
+                        title={isSnappingEnabled ? 'Aero Snap & Smart Guides: ON (S)' : 'Aero Snap: OFF (S)'}
+                    >
+                        <span className="tool-icon">🧲</span>
+                        <span className="tool-label">SNAP</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`btn-wing-tool ${showRulers ? 'active' : ''}`}
+                        onClick={() => setShowRulers(p => !p)}
+                        title={showRulers ? 'CAD Rulers: ON (R)' : 'CAD Rulers: OFF (R)'}
+                    >
+                        <span className="tool-icon">📏</span>
+                        <span className="tool-label">RULER</span>
+                    </button>
+
+                    <div className="wing-divider" />
+
+                    <button
+                        type="button"
+                        className="btn-wing-tool"
+                        onClick={handleUndo}
+                        disabled={undoStackRef.current.length === 0}
+                        title="Undo (Ctrl+Z)"
+                    >
+                        <span className="tool-icon">↺</span>
+                        <span className="tool-label">UNDO</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="btn-wing-tool"
+                        onClick={handleRedo}
+                        disabled={redoStackRef.current.length === 0}
+                        title="Redo (Ctrl+Y)"
+                    >
+                        <span className="tool-icon">↻</span>
+                        <span className="tool-label">REDO</span>
+                    </button>
+                </aside>
+
+                {/* Center Canvas Stage */}
+                <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>
+                    {/* Floating Keyframe Island (Zero Vertical Height Impact) */}
+                    <div className="keyframe-floating-island">
+                        <span className="kf-island-badge" title={`Active Keyframe #${safeActiveIdx + 1} of ${keyframes.length} on timeline`}>
                             💎 KF #{safeActiveIdx + 1}/{keyframes.length}
                         </span>
                         {safeActiveIdx > 0 && (
-                            <div className="kf-transition-controls">
-                                <span className="trans-label">TRANSITION:</span>
+                            <div className="kf-island-controls">
                                 <select
                                     className="select-trans-type"
                                     value={currentKf.transitionType || 'smooth'}
                                     onChange={(e) => handleUpdateTransitionType(e.target.value)}
-                                    title="Transition animation type into this keyframe"
+                                    title="Transition animation into this keyframe"
                                 >
                                     <option value="smooth">⚡ Smooth</option>
                                     <option value="linear">↗ Linear</option>
@@ -2411,16 +2494,16 @@ export default function MulticamViewport({
                         )}
                         <button
                             type="button"
-                            className="btn-add-kf-canvas"
+                            className="btn-island-action add-kf"
                             onClick={handleExplicitAddKeyframe}
-                            title="Add Keyframe at current playhead position (or press K)"
+                            title="Add Keyframe at current playhead (K)"
                         >
                             ＋ KF
                         </button>
                         {keyframes.length > 1 && safeActiveIdx > 0 && (
                             <button
                                 type="button"
-                                className="btn-del-kf-canvas"
+                                className="btn-island-action del-kf"
                                 onClick={handleDeleteActiveKeyframe}
                                 title="Delete active keyframe"
                             >
@@ -2429,185 +2512,6 @@ export default function MulticamViewport({
                         )}
                     </div>
 
-                    {/* Export Aspect Ratio Selector & Full Width Toggle */}
-                    <div className="comp-pill-group aspect-group">
-                        <span className="aspect-label">📐 EXPORT ASPECT:</span>
-                        <select
-                            className="select-aspect-ratio"
-                            value={selectedAspectId}
-                            onChange={(e) => handleSelectAspectRatio(e.target.value)}
-                            title="Set Export Master Aspect Ratio (WYSIWYG Target)"
-                        >
-                            {ASPECT_PRESETS.map(ap => (
-                                <option key={ap.id} value={ap.id}>
-                                    {ap.label} ({ap.w}×{ap.h})
-                                </option>
-                            ))}
-                        </select>
-                        <button
-                            type="button"
-                            className={`btn-width-mode ${isFullWidth ? 'is-full' : 'is-fit'}`}
-                            onClick={handleToggleFullWidth}
-                            title={isFullWidth ? 'Full Screen Width (100% Width) - Click for FIT PAGE' : 'Fit Page - Click for 100% Full Width'}
-                        >
-                            {isFullWidth ? '↔ 100% WIDTH' : '⊞ FIT PAGE'}
-                        </button>
-                    </div>
-
-
-
-                    {/* Precision CAD / NLE Rulers Toggle */}
-                    <button
-                        type="button"
-                        className={`btn-ruler-toggle ${showRulers ? 'is-active' : ''}`}
-                        onClick={() => setShowRulers(p => !p)}
-                        title={showRulers ? 'Precision Rulers: ON (Press R to toggle)' : 'Precision Rulers: OFF (Press R to toggle)'}
-                    >
-                        📏 RULERS: {showRulers ? 'ON' : 'OFF'}
-                    </button>
-
-                    {/* Windows Aero Snap & Magnetic Smart Guides Toggle */}
-                    <button
-                        type="button"
-                        className={`btn-snap-toggle ${isSnappingEnabled ? 'is-active' : ''}`}
-                        onClick={() => setIsSnappingEnabled(p => !p)}
-                        title={isSnappingEnabled ? 'Windows Snap & Smart Guides: ON (Press S to toggle, hold Alt to bypass)' : 'Windows Snap & Smart Guides: OFF (Press S to toggle)'}
-                    >
-                        🧲 SNAP: {isSnappingEnabled ? 'ON' : 'OFF'}
-                    </button>
-                </div>
-
-                {/* Right Actions: Save, Presets Dropdown, JSON, Fullscreen */}
-                <div className="comp-mode-right">
-                    {/* Save Preset Button */}
-                    <button
-                        type="button"
-                        className="btn-comp-action save"
-                        onClick={() => setShowSavePresetModal(true)}
-                        title="Save current canvas placement layout for future edits"
-                    >
-                        💾 SAVE PRESET
-                    </button>
-
-                    {/* Saved Presets Dropdown */}
-                    <div className="saved-presets-dropdown-wrapper">
-                        <button
-                            type="button"
-                            className={`btn-comp-action ${showPresetsMenu ? 'active' : ''}`}
-                            onClick={() => setShowPresetsMenu(p => !p)}
-                            title="Load a saved custom layout preset"
-                        >
-                            📁 SAVED PRESETS ({savedPresets.length}) ▾
-                        </button>
-
-                        {showPresetsMenu && (
-                            <div className="saved-presets-menu-popover">
-                                <div className="popover-header">
-                                    <span>SAVED CANVAS PRESETS</span>
-                                    <button type="button" className="btn-close-pop" onClick={() => setShowPresetsMenu(false)}>✕</button>
-                                </div>
-                                <div className="presets-list-scroll">
-                                    {savedPresets.length === 0 ? (
-                                        <div className="empty-presets-hint">
-                                            No saved custom presets yet. Arrange your canvas and click "SAVE PRESET"!
-                                        </div>
-                                    ) : (
-                                        savedPresets.map(preset => (
-                                            <div key={preset.id} className="saved-preset-item" onClick={() => handleLoadSavedPreset(preset)}>
-                                                <div className="preset-item-info">
-                                                    <span className="preset-item-name">{preset.name}</span>
-                                                    <span className="preset-item-meta">{preset.placements?.length || 0} screens • {preset.dateStr}</span>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    className="btn-del-preset"
-                                                    onClick={(e) => handleDeleteSavedPreset(preset.id, e)}
-                                                    title="Delete saved preset"
-                                                >
-                                                    🗑️
-                                                </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Undo / Redo & Save Action Controls */}
-                    <button
-                        type="button"
-                        className="btn-comp-action undo"
-                        onClick={handleUndo}
-                        disabled={undoStackRef.current.length === 0}
-                        title="Undo Canvas Action (CTRL+Z)"
-                    >
-                        ↺ UNDO (Ctrl+Z)
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-comp-action redo"
-                        onClick={handleRedo}
-                        disabled={redoStackRef.current.length === 0}
-                        title="Redo Canvas Action (CTRL+Y)"
-                    >
-                        ↻ REDO (Ctrl+Y)
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-comp-action save"
-                        onClick={handleSaveState}
-                        title="Save State (CTRL+S)"
-                    >
-                        💾 SAVE (Ctrl+S)
-                    </button>
-
-                    {/* Canvas Layout File Export & Import */}
-                    <button
-                        type="button"
-                        className="btn-comp-action"
-                        onClick={handleExportCanvasFile}
-                        title="Download/Export current canvas layout as a .json file"
-                    >
-                        📤 EXPORT CANVAS
-                    </button>
-                    <button
-                        type="button"
-                        className="btn-comp-action"
-                        onClick={() => importFileInputRef.current?.click()}
-                        title="Import/Load a canvas layout from a saved .json file"
-                    >
-                        📥 IMPORT CANVAS
-                    </button>
-                    <input
-                        ref={importFileInputRef}
-                        type="file"
-                        accept=".json"
-                        style={{ display: 'none' }}
-                        onChange={handleImportCanvasFile}
-                    />
-
-                    <button
-                        type="button"
-                        className={`btn-grid-fullscreen-top ${isGridFullscreen ? 'active' : ''}`}
-                        onClick={handleToggleGridFullscreen}
-                        title="Fullscreen Multi-Station Grid (F)"
-                    >
-                        {isGridFullscreen ? '⤓ EXIT FULLSCREEN' : '⛶ FULLSCREEN GRID'}
-                    </button>
-                </div>
-            </div>
-
-            {/* Tactical Feedback Action Toast */}
-            {toastMessage && (
-                <div className={`canvas-action-toast ${toastMessage.type}`}>
-                    <span className="toast-icon">{toastMessage.icon}</span>
-                    <span className="toast-text">{toastMessage.text}</span>
-                </div>
-            )}
-
-            {/* Interactive Live Master Canvas Stage (WYSIWYG Frame) */}
-            <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>
                     {/* Unified Minimalist Feeds & Layers Drawer */}
                     {showFeedsDrawer && (
                         <div className="canvas-side-drawer feeds-layers-drawer">
@@ -3363,7 +3267,157 @@ export default function MulticamViewport({
                     </div>
                 </div>
 
-            {/* Save Preset Modal Dialog */}
+            
+                {/* Right Wing Dock: Presets & Production Actions */}
+                <aside className="canvas-right-wing-dock">
+                    <button
+                        type="button"
+                        className="btn-wing-tool highlight-emerald"
+                        onClick={() => setShowSavePresetModal(true)}
+                        title="Save current canvas layout as custom preset"
+                    >
+                        <span className="tool-icon">💾</span>
+                        <span className="tool-label">SAVE</span>
+                    </button>
+
+                    <div className="wing-popout-wrapper">
+                        <button
+                            type="button"
+                            className={`btn-wing-tool ${showPresetsMenu ? 'active' : ''}`}
+                            onClick={() => setShowPresetsMenu(p => !p)}
+                            title={`Saved Presets Library (${savedPresets.length})`}
+                        >
+                            <span className="tool-icon">📁</span>
+                            <span className="tool-badge">{savedPresets.length}</span>
+                            <span className="tool-label">PRESETS</span>
+                        </button>
+
+                        {showPresetsMenu && (
+                            <div className="wing-floating-popout right-side-popout">
+                                <div className="popout-header">
+                                    <span>SAVED PRESETS</span>
+                                    <button type="button" className="btn-close-pop" onClick={() => setShowPresetsMenu(false)}>✕</button>
+                                </div>
+                                <div className="presets-list-scroll">
+                                    {savedPresets.length === 0 ? (
+                                        <div className="empty-presets-hint">No saved custom presets yet.</div>
+                                    ) : (
+                                        savedPresets.map(preset => (
+                                            <div key={preset.id} className="saved-preset-item" onClick={() => {
+                                                handleLoadSavedPreset(preset);
+                                                setShowPresetsMenu(false);
+                                            }}>
+                                                <div className="preset-item-info">
+                                                    <span className="preset-item-name">{preset.name}</span>
+                                                    <span className="preset-item-meta">{preset.placements?.length || 0} screens • {preset.dateStr}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    className="btn-del-preset"
+                                                    onClick={(e) => handleDeleteSavedPreset(preset.id, e)}
+                                                    title="Delete saved preset"
+                                                >
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="wing-divider" />
+
+                    <button
+                        type="button"
+                        className="btn-wing-tool"
+                        onClick={handleExportCanvasFile}
+                        title="Export Canvas Layout to .json file"
+                    >
+                        <span className="tool-icon">📤</span>
+                        <span className="tool-label">EXPORT</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="btn-wing-tool"
+                        onClick={() => importFileInputRef.current?.click()}
+                        title="Import Canvas Layout from .json file"
+                    >
+                        <span className="tool-icon">📥</span>
+                        <span className="tool-label">IMPORT</span>
+                    </button>
+
+                    <input
+                        ref={importFileInputRef}
+                        type="file"
+                        accept=".json"
+                        style={{ display: 'none' }}
+                        onChange={handleImportCanvasFile}
+                    />
+
+                    <div className="wing-divider" />
+
+                    <button
+                        type="button"
+                        className="btn-wing-tool highlight-rose"
+                        onClick={() => {
+                            hasUserCustomizedRef.current = false;
+                            setSelectedPresetId('auto-grid');
+                            const autoPacked = generateAutoPackPlacements(availableFeeds, virtualW, virtualH);
+                            const resetTimeline = {
+                                id: 'canvas-timeline-root',
+                                keyframes: [
+                                    {
+                                        id: 'kf_root_0',
+                                        timestampEpochMs: baseEpochMs,
+                                        transitionDurationSec: 0.5,
+                                        transitionType: 'smooth',
+                                        layout: {
+                                            width: virtualW,
+                                            height: virtualH,
+                                            backgroundColor: '#070A10',
+                                            fps: 30.0,
+                                            placements: autoPacked
+                                        }
+                                    }
+                                ]
+                            };
+                            setInternalTimeline(resetTimeline);
+                            if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(resetTimeline);
+                            setSelectedFeedIndex(0);
+                        }}
+                        title="Reset Canvas: Auto-Grid arrangement of all available screens"
+                    >
+                        <span className="tool-icon">↺</span>
+                        <span className="tool-label">RESET</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="btn-wing-tool"
+                        onClick={handleClearCanvas}
+                        title="Clear Canvas: Remove all screens"
+                    >
+                        <span className="tool-icon">🗑️</span>
+                        <span className="tool-label">CLEAR</span>
+                    </button>
+
+                    <div className="wing-divider" />
+
+                    <button
+                        type="button"
+                        className={`btn-wing-tool ${isGridFullscreen ? 'active' : ''}`}
+                        onClick={handleToggleGridFullscreen}
+                        title="Fullscreen Canvas Grid (F)"
+                    >
+                        <span className="tool-icon">{isGridFullscreen ? '⤓' : '⛶'}</span>
+                        <span className="tool-label">{isGridFullscreen ? 'EXIT' : 'FULL'}</span>
+                    </button>
+                </aside>
+            </div> {/* End canvas-editing-arena */}
+{/* Save Preset Modal Dialog */}
             {showSavePresetModal && (
                 <div className="canvas-modal-backdrop" onClick={() => setShowSavePresetModal(false)}>
                     <div className="canvas-modal-card" onClick={(e) => e.stopPropagation()}>

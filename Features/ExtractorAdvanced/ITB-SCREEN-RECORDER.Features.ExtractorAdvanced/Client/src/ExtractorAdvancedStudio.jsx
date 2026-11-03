@@ -227,6 +227,14 @@ export default function ExtractorAdvancedStudio() {
         });
     }, []);
 
+    // Notify parent app (CommandCenterHeader) that Studio editing mode is active to auto-collapse telemetry
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('itb:studio-mode', { detail: { active: true } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent('itb:studio-mode', { detail: { active: false } }));
+        };
+    }, []);
+
     const [stationAutoDirectorMap, setStationAutoDirectorMap] = useState({});
     const handleToggleStationAutoDirector = useCallback((stationId) => {
         setStationAutoDirectorMap(prev => ({

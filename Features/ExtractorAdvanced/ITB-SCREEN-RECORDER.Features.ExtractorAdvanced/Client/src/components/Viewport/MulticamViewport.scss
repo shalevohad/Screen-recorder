@@ -2292,3 +2292,309 @@
         transform: translate(-50%, 0) scale(1);
     }
 }
+
+
+/* =========================================================================
+   TACTICAL SIDE-WING DOCKS & FLOATING KEYFRAME ISLAND (MAX CANVAS AREA)
+   ========================================================================= */
+
+.canvas-editing-arena {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+
+    .canvas-left-wing-dock,
+    .canvas-right-wing-dock {
+        width: 44px;
+        min-width: 44px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 8px 3px;
+        background: rgba(11, 17, 30, 0.88);
+        border: 1px solid rgba(6, 182, 212, 0.25);
+        border-radius: 8px;
+        backdrop-filter: blur(14px);
+        z-index: 60;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+        margin: 4px 6px;
+        box-sizing: border-box;
+
+        .wing-divider {
+            width: 26px;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.08);
+            margin: 2px 0;
+        }
+
+        .btn-wing-tool {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            background: #151E2E;
+            border: 1px solid #293548;
+            border-radius: 6px;
+            color: #94A3B8;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+            padding: 0;
+            box-sizing: border-box;
+
+            .tool-icon {
+                font-size: 13px;
+                line-height: 1;
+            }
+
+            .tool-label {
+                font-size: 7.5px;
+                font-weight: 800;
+                font-family: 'JetBrains Mono', monospace;
+                letter-spacing: 0.3px;
+                line-height: 1;
+            }
+
+            .tool-badge {
+                position: absolute;
+                top: 1px;
+                right: 1px;
+                background: #06B6D4;
+                color: #070A10;
+                font-size: 7px;
+                font-weight: 900;
+                border-radius: 6px;
+                padding: 0 3px;
+                line-height: 1.2;
+            }
+
+            &:hover:not(:disabled) {
+                background: #1E293B;
+                border-color: #06B6D4;
+                color: #FFFFFF;
+                box-shadow: 0 0 10px rgba(6, 182, 212, 0.35);
+            }
+
+            &:disabled {
+                opacity: 0.3;
+                cursor: not-allowed;
+            }
+
+            &.active {
+                background: #06B6D4;
+                border-color: #06B6D4;
+                color: #070A10;
+                box-shadow: 0 0 8px rgba(6, 182, 212, 0.4);
+            }
+
+            &.highlight-emerald {
+                color: #10B981;
+                border-color: rgba(16, 185, 129, 0.4);
+                &:hover { border-color: #10B981; }
+            }
+
+            &.highlight-rose {
+                color: #F43F5E;
+                border-color: rgba(244, 63, 94, 0.4);
+                &:hover { border-color: #F43F5E; }
+            }
+
+            &.highlight-cyan {
+                color: #38BDF8;
+                border-color: rgba(6, 182, 212, 0.4);
+                &:hover { border-color: #06B6D4; }
+            }
+        }
+
+        .wing-popout-wrapper {
+            position: relative;
+
+            .wing-floating-popout {
+                position: absolute;
+                top: 0;
+                background: rgba(9, 14, 23, 0.96);
+                border: 1px solid #06B6D4;
+                border-radius: 6px;
+                box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85), 0 0 14px rgba(6, 182, 212, 0.2);
+                backdrop-filter: blur(14px);
+                z-index: 500;
+                padding: 6px;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                min-width: 140px;
+
+                &.left-side-popout {
+                    left: 48px;
+                }
+
+                &.right-side-popout {
+                    right: 48px;
+                    min-width: 180px;
+                }
+
+                .popout-title,
+                .popout-header {
+                    font-size: 8.5px;
+                    font-weight: 800;
+                    color: #06B6D4;
+                    letter-spacing: 0.6px;
+                    padding: 2px 4px 4px 4px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+
+                    .btn-close-pop {
+                        background: transparent;
+                        border: none;
+                        color: #94A3B8;
+                        cursor: pointer;
+                        font-size: 10px;
+                        padding: 0;
+                        &:hover { color: #FFF; }
+                    }
+                }
+
+                .popout-item {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 8px;
+                    background: #151E2E;
+                    border: 1px solid #293548;
+                    color: #CBD5E1;
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: all 0.12s ease;
+                    white-space: nowrap;
+
+                    .item-badge {
+                        background: rgba(6, 182, 212, 0.2);
+                        color: #06B6D4;
+                        font-size: 8px;
+                        padding: 1px 4px;
+                        border-radius: 4px;
+                    }
+
+                    .dimmed-size {
+                        font-size: 7.5px;
+                        color: #64748B;
+                    }
+
+                    &:hover {
+                        background: #1E293B;
+                        border-color: #06B6D4;
+                        color: #FFF;
+                    }
+
+                    &.active {
+                        background: #06B6D4;
+                        color: #070A10;
+                        border-color: #06B6D4;
+                    }
+                }
+            }
+        }
+    }
+
+    .canvas-stage-wrapper {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 4px;
+        box-sizing: border-box;
+
+        .keyframe-floating-island {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 120;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            background: rgba(9, 14, 23, 0.9);
+            border: 1px solid rgba(6, 182, 212, 0.45);
+            border-radius: 20px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 12px rgba(6, 182, 212, 0.2);
+            backdrop-filter: blur(12px);
+            font-family: 'JetBrains Mono', monospace;
+            pointer-events: auto;
+
+            .kf-island-badge {
+                font-size: 9.5px;
+                font-weight: 800;
+                color: #38BDF8;
+                letter-spacing: 0.5px;
+            }
+
+            .kf-island-controls {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+
+                .select-trans-type,
+                .select-trans-duration {
+                    background: #151E2E;
+                    border: 1px solid rgba(6, 182, 212, 0.35);
+                    color: #E2E8F0;
+                    font-size: 9px;
+                    font-weight: 700;
+                    font-family: inherit;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    outline: none;
+
+                    &:focus {
+                        border-color: #06B6D4;
+                        box-shadow: 0 0 6px rgba(6, 182, 212, 0.35);
+                    }
+                }
+            }
+
+            .btn-island-action {
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 9px;
+                font-weight: 800;
+                padding: 2px 6px;
+                transition: all 0.15s ease;
+
+                &.add-kf {
+                    background: rgba(16, 185, 129, 0.15);
+                    border: 1px solid #10B981;
+                    color: #10B981;
+                    &:hover { background: #10B981; color: #070A10; }
+                }
+
+                &.del-kf {
+                    background: rgba(244, 63, 94, 0.15);
+                    border: 1px solid rgba(244, 63, 94, 0.4);
+                    color: #FB7185;
+                    &:hover { background: #F43F5E; color: #FFF; }
+                }
+            }
+        }
+    }
+}
