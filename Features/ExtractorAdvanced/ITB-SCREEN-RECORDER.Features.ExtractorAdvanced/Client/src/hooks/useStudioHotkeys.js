@@ -55,9 +55,31 @@ export function useStudioHotkeys({
                 return;
             }
 
-            if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (e.code === 'KeyS') {
+                if (e.ctrlKey || e.metaKey) {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent('itb:studio-save-now'));
+                    return;
+                } else if (!e.altKey) {
+                    e.preventDefault();
+                    onSplitDirectorAtPlayhead?.();
+                    return;
+                }
+            }
+
+            if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
-                onSplitDirectorAtPlayhead?.();
+                if (e.shiftKey) {
+                    window.dispatchEvent(new CustomEvent('itb:studio-redo'));
+                } else {
+                    window.dispatchEvent(new CustomEvent('itb:studio-undo'));
+                }
+                return;
+            }
+
+            if (e.code === 'KeyY' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                window.dispatchEvent(new CustomEvent('itb:studio-redo'));
                 return;
             }
 

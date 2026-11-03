@@ -5,6 +5,7 @@
 // ==========================================
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import CameraCard from './views/Card/CameraCard.jsx';
+import { saveStudioSessionCache } from '../../utils/studioSessionStore.js';
 import './MulticamViewport.scss';
 
 export const ASPECT_PRESETS = [
@@ -384,6 +385,24 @@ export default function MulticamViewport({
     const hasUserCustomizedRef = useRef(false);
     const [selectedPresetId, setSelectedPresetId] = useState('auto-grid');
 
+    // Undo / Redo History Stack (CTRL+Z / CTRL+Y) & Windows QuickSave (CTRL+S)
+    const undoStackRef = useRef([]);
+    const redoStackRef = useRef([]);
+    const preActionSnapshotRef = useRef(null);
+    const [, setHistoryVersion] = useState(0);
+
+    const toastTimerRef = useRef(null);
+    const [toastMessage, setToastMessage] = useState(null);
+
+    const triggerToast = useCallback((text, type = 'success', icon = '💾') => {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        setToastMessage({ text, type, icon });
+        toastTimerRef.current = setTimeout(() => {
+            setToastMessage(null);
+            toastTimerRef.current = null;
+        }, 2200);
+    }, []);
+
     // Master Export Aspect Ratio & Full-Width Staging Mode
     const [selectedAspectId, setSelectedAspectId] = useState(() => {
         const w = canvasLayoutTimeline?.keyframes?.[0]?.layout?.width;
@@ -577,8 +596,44 @@ export default function MulticamViewport({
         return currentKf?.layout?.placements || [];
     }, [currentKf]);
 
+    // Capture current snapshot of entire canvas state
+    const captureCurrentSnapshot = useCallback((label = 'Action') => {
+        return {
+            label,
+            timeline: JSON.parse(JSON.stringify(internalTimeline)),
+            aspectId: selectedAspectId,
+            presetId: selectedPresetId,
+            selectedFeedIndex: selectedFeedIndex
+        };
+    }, [internalTimeline, selectedAspectId, selectedPresetId, selectedFeedIndex]);
+
+    const pushUndoSnapshot = useCallback((label = 'Action') => {
+        const snap = captureCurrentSnapshot(label);
+        undoStackRef.current.push(snap);
+        if (undoStackRef.current.length > 50) {
+            undoStackRef.current.shift();
+        }
+        redoStackRef.current = [];
+        setHistoryVersion(v => v + 1);
+    }, [captureCurrentSnapshot]);
+
+    const pushPreActionSnapshot = useCallback(() => {
+        if (preActionSnapshotRef.current) {
+            undoStackRef.current.push(preActionSnapshotRef.current);
+            if (undoStackRef.current.length > 50) {
+                undoStackRef.current.shift();
+            }
+            redoStackRef.current = [];
+            preActionSnapshotRef.current = null;
+            setHistoryVersion(v => v + 1);
+        }
+    }, []);
+
     // Helper to update current placements on active keyframe
-    const updateActivePlacements = useCallback((newPlacements) => {
+    const updateActivePlacements = useCallback((newPlacements, actionLabel = null) => {
+        if (actionLabel) {
+            pushUndoSnapshot(actionLabel);
+        }
         setInternalTimeline(prev => {
             const nextKfs = [...(prev.keyframes || [])];
             if (!nextKfs[safeActiveIdx]) return prev;
@@ -595,7 +650,7 @@ export default function MulticamViewport({
             if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextTimeline);
             return nextTimeline;
         });
-    }, [safeActiveIdx, onUpdateCanvasLayoutTimeline, virtualW, virtualH]);
+    }, [safeActiveIdx, onUpdateCanvasLayoutTimeline, virtualW, virtualH, pushUndoSnapshot]);
 
     // Auto-populate AUTO-GRID by default when availableFeeds become available and canvas is empty
     useEffect(() => {
@@ -1104,6 +1159,8 @@ export default function MulticamViewport({
         const p = currentPlacements[index];
         if (!p) return;
 
+        preActionSnapshotRef.current = captureCurrentSnapshot('Move Feed');
+
         dragStateRef.current = {
             mode: 'drag',
             index,
@@ -1236,6 +1293,8 @@ export default function MulticamViewport({
             }
 
             ds.activeSnapZone = activeZone;
+            ds.latestX = newX;
+            ds.latestY = newY;
             setSnapZonePreview(activeZone);
             setSnapGuides({ vertical: vGuide, horizontal: hGuide });
 
@@ -1280,6 +1339,25 @@ export default function MulticamViewport({
                 });
             }
 
+            if (dragStateRef.current) {
+                const ds = dragStateRef.current;
+                const initialX = ds.initialX;
+                const initialY = ds.initialY;
+                const finalX = ds.activeSnapZone ? ds.activeSnapZone.x : (ds.latestX ?? initialX);
+                const finalY = ds.activeSnapZone ? ds.activeSnapZone.y : (ds.latestY ?? initialY);
+                if (finalX !== initialX || finalY !== initialY) {
+                    pushPreActionSnapshot();
+                    if (onUpdateCanvasLayoutTimeline) {
+                        setInternalTimeline(latest => {
+                            onUpdateCanvasLayoutTimeline(latest);
+                            return latest;
+                        });
+                    }
+                } else {
+                    preActionSnapshotRef.current = null;
+                }
+            }
+
             setSnapZonePreview(null);
             dragStateRef.current = null;
             window.removeEventListener('mousemove', handleMouseMove);
@@ -1303,6 +1381,8 @@ export default function MulticamViewport({
         const rect = canvasFrameRef.current.getBoundingClientRect();
         const p = currentPlacements[index];
         if (!p) return;
+
+        preActionSnapshotRef.current = captureCurrentSnapshot('Resize Feed');
 
         const matchedFeed = availableFeeds.find(f => f.stationId === p.stationId && f.displayId === p.displayId);
         const sourceWidth = p.sourceWidth || matchedFeed?.sourceWidth || 1920;
@@ -1458,6 +1538,22 @@ export default function MulticamViewport({
         };
 
         const handleMouseUp = () => {
+            if (dragStateRef.current) {
+                const ds = dragStateRef.current;
+                const finalW = ds.latestW ?? ds.initialW;
+                const finalH = ds.latestH ?? ds.initialH;
+                if (finalW !== ds.initialW || finalH !== ds.initialH) {
+                    pushPreActionSnapshot();
+                    if (onUpdateCanvasLayoutTimeline) {
+                        setInternalTimeline(latest => {
+                            onUpdateCanvasLayoutTimeline(latest);
+                            return latest;
+                        });
+                    }
+                } else {
+                    preActionSnapshotRef.current = null;
+                }
+            }
             setIsResizing(false);
             dragStateRef.current = null;
             window.removeEventListener('mousemove', handleMouseMove);
@@ -1501,8 +1597,107 @@ export default function MulticamViewport({
             }
             return pl;
         });
-        updateActivePlacements(next);
+        updateActivePlacements(next, 'Snap Native Aspect');
     }, [currentPlacements, availableFeeds, updateActivePlacements]);
+
+    // -------------------------------------------------------------
+    // UNDO / REDO & QUICK-SAVE (CTRL+Z / CTRL+Y / CTRL+S PARITY)
+    // -------------------------------------------------------------
+    const handleUndo = useCallback(() => {
+        if (undoStackRef.current.length === 0) return;
+
+        const currentSnap = captureCurrentSnapshot('Redo State');
+        redoStackRef.current.push(currentSnap);
+        if (redoStackRef.current.length > 50) {
+            redoStackRef.current.shift();
+        }
+
+        const prevSnap = undoStackRef.current.pop();
+        if (!prevSnap) return;
+
+        setInternalTimeline(prevSnap.timeline);
+        if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(prevSnap.timeline);
+        if (prevSnap.aspectId && prevSnap.aspectId !== selectedAspectId) {
+            setSelectedAspectId(prevSnap.aspectId);
+        }
+        if (prevSnap.presetId) setSelectedPresetId(prevSnap.presetId);
+        if (prevSnap.selectedFeedIndex !== undefined) setSelectedFeedIndex(prevSnap.selectedFeedIndex);
+
+        hasUserCustomizedRef.current = true;
+        setHistoryVersion(v => v + 1);
+        triggerToast(`Undo: ${prevSnap.label || 'Previous State'}`, 'undo', '↺');
+    }, [captureCurrentSnapshot, onUpdateCanvasLayoutTimeline, selectedAspectId, triggerToast]);
+
+    const handleRedo = useCallback(() => {
+        if (redoStackRef.current.length === 0) return;
+
+        const currentSnap = captureCurrentSnapshot('Undo State');
+        undoStackRef.current.push(currentSnap);
+        if (undoStackRef.current.length > 50) {
+            undoStackRef.current.shift();
+        }
+
+        const nextSnap = redoStackRef.current.pop();
+        if (!nextSnap) return;
+
+        setInternalTimeline(nextSnap.timeline);
+        if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextSnap.timeline);
+        if (nextSnap.aspectId && nextSnap.aspectId !== selectedAspectId) {
+            setSelectedAspectId(nextSnap.aspectId);
+        }
+        if (nextSnap.presetId) setSelectedPresetId(nextSnap.presetId);
+        if (nextSnap.selectedFeedIndex !== undefined) setSelectedFeedIndex(nextSnap.selectedFeedIndex);
+
+        hasUserCustomizedRef.current = true;
+        setHistoryVersion(v => v + 1);
+        triggerToast(`Redo: ${nextSnap.label || 'Restored State'}`, 'info', '↻');
+    }, [captureCurrentSnapshot, onUpdateCanvasLayoutTimeline, selectedAspectId, triggerToast]);
+
+    const handleSaveState = useCallback(() => {
+        const quickSavePreset = {
+            id: 'preset-quicksave',
+            name: `QuickSave (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})`,
+            createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            dateStr: new Date().toLocaleDateString(),
+            placements: JSON.parse(JSON.stringify(currentPlacements)),
+            keyframes: JSON.parse(JSON.stringify(keyframes)),
+            aspectId: selectedAspectId,
+            width: virtualW,
+            height: virtualH
+        };
+
+        const nextPresets = [quickSavePreset, ...savedPresets.filter(p => p.id !== 'preset-quicksave')];
+        persistSavedPresets(nextPresets);
+
+        try {
+            saveStudioSessionCache({
+                canvasLayoutTimeline: internalTimeline,
+                selectedAspectId,
+                selectedPresetId,
+                isFullWidth
+            });
+        } catch (e) {
+            console.warn('[MulticamViewport] QuickSave session cache flush error:', e);
+        }
+
+        triggerToast(`State Saved (${virtualW}×${virtualH} • ${currentPlacements.length} Feeds)`, 'success', '💾');
+    }, [currentPlacements, keyframes, selectedAspectId, virtualW, virtualH, savedPresets, persistSavedPresets, internalTimeline, selectedPresetId, isFullWidth, triggerToast]);
+
+    // Hotkey Custom Event Listeners
+    useEffect(() => {
+        const onUndo = () => handleUndo();
+        const onRedo = () => handleRedo();
+        const onSave = () => handleSaveState();
+
+        window.addEventListener('itb:studio-undo', onUndo);
+        window.addEventListener('itb:studio-redo', onRedo);
+        window.addEventListener('itb:studio-save-now', onSave);
+        return () => {
+            window.removeEventListener('itb:studio-undo', onUndo);
+            window.removeEventListener('itb:studio-redo', onRedo);
+            window.removeEventListener('itb:studio-save-now', onSave);
+        };
+    }, [handleUndo, handleRedo, handleSaveState]);
 
     // Fullscreen handling
     const handleToggleGridFullscreen = useCallback(() => {
@@ -2185,6 +2380,34 @@ export default function MulticamViewport({
                         )}
                     </div>
 
+                    {/* Undo / Redo & Save Action Controls */}
+                    <button
+                        type="button"
+                        className="btn-comp-action undo"
+                        onClick={handleUndo}
+                        disabled={undoStackRef.current.length === 0}
+                        title="Undo Canvas Action (CTRL+Z)"
+                    >
+                        ↺ UNDO (Ctrl+Z)
+                    </button>
+                    <button
+                        type="button"
+                        className="btn-comp-action redo"
+                        onClick={handleRedo}
+                        disabled={redoStackRef.current.length === 0}
+                        title="Redo Canvas Action (CTRL+Y)"
+                    >
+                        ↻ REDO (Ctrl+Y)
+                    </button>
+                    <button
+                        type="button"
+                        className="btn-comp-action save"
+                        onClick={handleSaveState}
+                        title="Save State (CTRL+S)"
+                    >
+                        💾 SAVE (Ctrl+S)
+                    </button>
+
                     {/* Canvas Layout File Export & Import */}
                     <button
                         type="button"
@@ -2220,6 +2443,14 @@ export default function MulticamViewport({
                     </button>
                 </div>
             </div>
+
+            {/* Tactical Feedback Action Toast */}
+            {toastMessage && (
+                <div className={`canvas-action-toast ${toastMessage.type}`}>
+                    <span className="toast-icon">{toastMessage.icon}</span>
+                    <span className="toast-text">{toastMessage.text}</span>
+                </div>
+            )}
 
             {/* Interactive Live Master Canvas Stage (WYSIWYG Frame) */}
             <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>

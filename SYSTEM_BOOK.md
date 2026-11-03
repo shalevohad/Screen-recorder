@@ -1,4 +1,4 @@
-﻿# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
+# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
 > **Last Updated**: 2026-11-03  
@@ -65,6 +65,7 @@
 45. [Minimalist Tactical Display Strip, Elimination of Redundant Minimap Overlays & Smart Multi-Monitor Placement Visibility (2026-11-03)](#45-minimalist-tactical-display-strip-elimination-of-redundant-minimap-overlays--smart-multi-monitor-placement-visibility-2026-11-03)
 46. [Root-Level DOM Portal Isolation, Viewport Stacking Context & Modal Inspector Suppression Engine (2026-11-03)](#46-root-level-dom-portal-isolation-viewport-stacking-context--modal-inspector-suppression-engine-2026-11-03)
 47. [WYSIWYG Dynamic Canvas Aspect Topology, Proportional Resolution Scaling & Multi-Monitor Native 1:1 Export Fidelity Engine (2026-11-03)](#47-wysiwyg-dynamic-canvas-aspect-topology-proportional-resolution-scaling--multi-monitor-native-11-export-fidelity-engine-2026-11-03)
+48. [Undo / Redo History Stack (CTRL+Z / CTRL+Y), Windows-Style State QuickSave (CTRL+S) & Tactical Feedback Toasts Engine (2026-11-03)](#48-undo--redo-history-stack-ctrlz--ctrly-windows-style-state-quicksave-ctrls--tactical-feedback-toasts-engine-2026-11-03)
 
 ---
 
@@ -2073,6 +2074,44 @@ When editing workstations and exporting master MP4 files from the Advanced Editi
      - Dynamically calculates video encoding bitrate proportional to total pixel volume:
        $$\text{Bitrate} = \text{Clamp}\left(\frac{W_{\text{target}} \times H_{\text{target}}}{1920 \times 1080} \times 6000\text{ kbps}, 2000\text{ kbps}, 50000\text{ kbps}\right)$$
    - In `ComposeCustomCanvasMasterMp4Async`: Canvas width and height are directly set to the target dimensions, eliminating the legacy $1920 \times 540$ downscaling flaw.
+
+---
+## 48. Undo / Redo History Stack (CTRL+Z / CTRL+Y), Windows-Style State QuickSave (CTRL+S) & Tactical Feedback Toasts Engine (2026-11-03)
+
+### 1. Operational Problem & Workflow Friction
+During active tactical editing and multicam layout composition in the Studio:
+1. **Accidental Modifications & Lack of Reversion**:
+   - Complex visual compositions involve moving and resizing multiple workstation feeds, tuning aspect ratios, adjusting border widths, shadows, and z-index layer ordering.
+   - Accidental movements or erroneous layout decisions could not be undone, requiring manual repositioning or resetting the entire auto-grid.
+2. **Missing Windows Hotkey Muscle Memory**:
+   - Operators accustomed to standard desktop editing environments expect `CTRL+Z` (Undo), `CTRL+Y` / `CTRL+SHIFT+Z` (Redo), and `CTRL+S` (Save) to function seamlessly without triggering browser default actions (such as saving HTML pages).
+3. **Absence of Tactical Action Confirmation**:
+   - Operators required visual confirmation of layout saves and historical jumps without intrusive modal alerts blocking the live viewport.
+
+### 2. Architectural Solution & Implementation
+1. **Bounded Multi-Tier Undo / Redo History Engine (`MulticamViewport.jsx`)**:
+   - **Undo/Redo History Stacks**: Maintains an immutable stack of up to 50 deep-cloned state snapshots:
+     $$\text{Snapshot} = \{\text{label}, \text{timeline}, \text{aspectId}, \text{presetId}, \text{selectedFeedIndex}\}$$
+   - **Micro-State Drag/Resize Decoupling**: Rather than polluting the history stack on every `mousemove` tick, drag and resize operations capture a `preActionSnapshot` on mouse-down. Only upon mouse-up, if the feed geometry actually changed from initial coordinates, is the pre-action snapshot committed to the undo stack, guaranteeing 60 FPS silky smooth drag performance without intermediate state clutter.
+   - **Discrete Action Snapshots**: Pushes clear action labels (`'Clear Canvas'`, `'Reset Auto-Grid'`, `'Aspect: 32:9'`, `'Remove Screen'`, `'Snap Native Aspect'`, `'Border Width'`, etc.) on all user-initiated modifications.
+   - Redo stack automatically clears whenever a new divergent action is taken.
+2. **Global Hotkey Interception Engine (`useStudioHotkeys.js`)**:
+   - Intercepts `Ctrl+Z` / `Cmd+Z`, `Ctrl+Y` / `Cmd+Y`, `Ctrl+Shift+Z` / `Cmd+Shift+Z`, and `Ctrl+S` / `Cmd+S`.
+   - Protects text inputs: Strictly suppresses hotkey capture when focused on `input`, `textarea`, `select`, or `contentEditable` fields to prevent interfering with typing.
+   - Prevents browser defaults (`e.preventDefault()`) and dispatches high-priority custom events:
+     `itb:studio-undo`, `itb:studio-redo`, `itb:studio-save-now`.
+3. **Windows-Style QuickSave Engine (`handleSaveState`)**:
+   - Upon pressing `CTRL+S` or clicking `[ 💾 SAVE (Ctrl+S) ]`:
+     - Creates a prioritized `QuickSave (HH:MM:SS)` layout preset in local storage.
+     - Immediately persists the entire Studio session state (timeline, aspect ratio, preset ID, full-width mode) to `localStorage` (`ITB_STUDIO_SESSION_CACHE_V2`) via `saveStudioSessionCache`.
+4. **Tactical Ambient Feedback Toast System (`.canvas-action-toast`)**:
+   - Lightweight floating glassmorphic badge at top-center of the stage:
+     - 💾 **State Saved** (`success`, emerald glow): Confirms resolution, dimensions, and feed count (`State Saved (3840×1080 • 2 Feeds)`).
+     - ↺ **Undo** (`undo`, amber glow): Displays the reverted action name (`Undo: Move Feed`).
+     - ↻ **Redo** (`info`, sky-blue glow): Displays the restored action name (`Redo: Restored State`).
+   - Automatically fades out via cubic-bezier transition after 2200ms without blocking mouse interactions (`pointer-events: none`).
+5. **Interactive Toolbar Integration**:
+   - Added `[ ↺ UNDO (Ctrl+Z) ]`, `[ ↻ REDO (Ctrl+Y) ]`, and `[ 💾 SAVE (Ctrl+S) ]` directly onto the master canvas toolbar with dynamic `:disabled` states when stacks are empty.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
