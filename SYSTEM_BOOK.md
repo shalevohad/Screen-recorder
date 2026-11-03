@@ -66,6 +66,9 @@
 46. [Root-Level DOM Portal Isolation, Viewport Stacking Context & Modal Inspector Suppression Engine (2026-11-03)](#46-root-level-dom-portal-isolation-viewport-stacking-context--modal-inspector-suppression-engine-2026-11-03)
 47. [WYSIWYG Dynamic Canvas Aspect Topology, Proportional Resolution Scaling & Multi-Monitor Native 1:1 Export Fidelity Engine (2026-11-03)](#47-wysiwyg-dynamic-canvas-aspect-topology-proportional-resolution-scaling--multi-monitor-native-11-export-fidelity-engine-2026-11-03)
 48. [Undo / Redo History Stack (CTRL+Z / CTRL+Y), Windows-Style State QuickSave (CTRL+S) & Tactical Feedback Toasts Engine (2026-11-03)](#48-undo--redo-history-stack-ctrlz--ctrly-windows-style-state-quicksave-ctrls--tactical-feedback-toasts-engine-2026-11-03)
+49. [Tactical Mission Control C2/NOC Unified UX/UI Design Standard & Aesthetic Harmony (2026-11-03)](#49-tactical-mission-control-c2noc-unified-uxui-design-standard--aesthetic-harmony-2026-11-03)
+50. [Master Synchronized Canvas Lockstep Playback, Auto-Keyframe Synthesis & Visual Transition Ramp Architecture (2026-11-03)](#50-master-synchronized-canvas-lockstep-playback-auto-keyframe-synthesis--visual-transition-ramp-architecture-2026-11-03)
+51. [Workstation-Level Auto-Director Decoupling & Multi-Monitor Conditional Timeline Visibility (2026-11-03)](#51-workstation-level-auto-director-decoupling--multi-monitor-conditional-timeline-visibility-2026-11-03)
 
 ---
 
@@ -2112,6 +2115,108 @@ During active tactical editing and multicam layout composition in the Studio:
    - Automatically fades out via cubic-bezier transition after 2200ms without blocking mouse interactions (`pointer-events: none`).
 5. **Interactive Toolbar Integration**:
    - Added `[ ↺ UNDO (Ctrl+Z) ]`, `[ ↻ REDO (Ctrl+Y) ]`, and `[ 💾 SAVE (Ctrl+S) ]` directly onto the master canvas toolbar with dynamic `:disabled` states when stacks are empty.
+
+---
+## 49. Tactical Mission Control C2/NOC Unified UX/UI Design Standard & Aesthetic Harmony (2026-11-03)
+
+### 1. Architectural Mission & Operational Scope
+To support high-stress air-gapped operations across 70–100+ dense workstations, the interface transitions from harsh retro-neon wireframes to a **modern tactical dark-mode command console characterized by tactile softness, layered elevation, rounded geometry, and effortless operational clarity**.
+
+### 2. Design Tokens, Elevation Hierarchy & Geometry Scale
+* **Surface Hierarchy**:
+  * Deepest Canvas Background: `--bg-app: #070A10`
+  * Main Container Panels & Shells: `--surface-panel: #0F172A`
+  * Video Player Containers & Card Surfaces: `--surface-card: #151E2E`
+  * Floating Docks & Popovers: `--surface-glass: rgba(15, 23, 42, 0.78)` with `backdrop-filter: blur(16px)`
+* **Curvature Scale (Radius Tokens)**:
+  * Windows, Modal Shells & Large Canvas Wrappers: `rounded-xl` ($12\text{px} - 16\text{px}$)
+  * Control Buttons, Toolbar Tabs & Inputs: `rounded-lg` ($8\text{px}$)
+  * Status Pills, Playhead Knobs, VU Meters & Badges: `rounded-full` ($9999\text{px}$)
+* **Translucent Separation (No Harsh Wireframes)**:
+  * Eliminates harsh yellow/electric-cyan neon perimeters.
+  * Boundaries use soft translucent division lines: `1px solid rgba(148, 163, 184, 0.12)`.
+  * Interactive elements feature subtle ambient glows: `box-shadow: 0 0 16px rgba(6, 182, 212, 0.25)`.
+
+### 3. Unified GRID Ergonomics
+1. **Virtual Desktop Topology as Default**:
+   - Each workstation card in the Grid displays `VirtualTopologyCanvas`, placing sub-displays proportionally matching their physical virtual desktop coordinates.
+   - Header Pill Switcher: Segmented glass pill `[ ⊞ Canvas | 🖥 1 | 🖥 2 ]` enabling operators to drop secondary streams and isolate specific monitors on demand.
+2. **Tactical Display Strip (`TacticalDisplayStrip.jsx`)**:
+   - Replaced bulky minimap radar overlays with a minimalist vertical pill with numbered buttons (`1`, `2`).
+   - Automatically hidden (`opacity: 0`) when all workstation displays are placed on screen, eliminating visual occlusion.
+3. **Exclusive Audio Solo & Master Dock**:
+   - Strict single active listener rule: exactly one station plays audio across the entire NOC matrix.
+   - Floating glassmorphic dock (`MasterAudioDock`) with a live 5-bar animated acoustic VU meter and volume slider.
+
+---
+## 50. Master Synchronized Canvas Lockstep Playback, Auto-Keyframe Synthesis & Visual Transition Ramp Architecture (2026-11-03)
+
+### 1. Operational Problem & Multi-Feed Desynchronization
+When composing multicam layouts on the Master Canvas, operators required the ability to preview the exact final composition in real time before committing to a forensic MP4 export. Previously:
+1. Video streams in Grid mode lacked a unified lockstep clock, resulting in independent drifting across multi-monitor workstations.
+2. Scrubbing to an arbitrary timestamp and adjusting a window modified the base keyframe ($T=0$), overwriting earlier layout definitions rather than recording a new keyframe at the playhead position.
+3. Transitions between keyframe positions lacked visual representation and operator controls.
+
+### 2. Multi-Feed Lockstep Synchronized Canvas Playback Engine
+1. **Monolithic Master Clock (`usePlaybackEngine.js`)**:
+   - In Canvas mode, playback is driven by a single 60 FPS master requestAnimationFrame loop broadcasting unified `playheadEpochMs` to all placed feeds.
+2. **Sub-150ms Anti-Drift Enforcement**:
+   - Each canvas video stream continuously compares its `currentTime` with the master playhead offset:
+     $$\Delta = |t_{\text{video}} - t_{\text{master}}|$$
+   - If $\Delta > 150\text{ms}$, the player gently corrects without stutter, ensuring frame-accurate synchronization across all active workstation monitors.
+3. **Master Audio Routing**:
+   - Audio is routed exclusively from the active solo channel (or dynamic audio routing track), with real-time acoustic VU metering and precision gain scaling.
+
+### 3. Auto-Keyframe Synthesis Engine (Auto-KF)
+* When editing the Canvas (moving, resizing, snapping, applying presets, or changing aspect ratio) at any timestamp:
+  * **If an existing keyframe is within $\pm 300\text{ms}$**: The existing keyframe layout is updated.
+  * **If the playhead is at a timestamp without a keyframe**:
+    - An automatic keyframe (`❖`) is immediately instantiated at the exact playhead timestamp:
+      $$\text{NewKF} = \{\text{id}, \text{timestampEpochMs}, \text{transitionDurationSec}: 0.8, \text{transitionType}: \text{'smooth'}, \text{layout}\}$$
+    - Sorted chronologically into `canvasLayoutTimeline.keyframes`.
+    - Ambient feedback toast: `❖ Keyframe Created (+01:30.0)`.
+
+### 4. Visual Transition Ramp & Controller Popover
+1. **Visual Transition Ramps on Timeline (`CanvasKeyframeTrack.jsx`)**:
+   - Preceding each keyframe diamond `❖`, a glowing gradient transition band is rendered:
+     `[ ~ ~ ~ 0.8s Smooth ~ ~ ~ ❖ ]`
+   - Spans the exact time window $[T_{\text{KF}} - \text{Duration}, T_{\text{KF}}]$.
+2. **Interactive Transition Controller Popover**:
+   - Clicking or right-clicking on the transition ramp opens a tactile popover:
+     - **Transition Types**:
+       - 🌊 **Smooth (Ease-In-Out)**: Cubic bezier acceleration and deceleration (`cubicEaseInOut`).
+       - 📏 **Linear**: Constant-velocity motion.
+       - ⚡ **Instant Cut**: Snaps instantly to the destination layout without interpolation.
+       - 🌫️ **Dip to Black / Crossfade**: Fades out and fades into new layout.
+     - **Duration Presets**: `[ 0.3s ]` `[ 0.5s ]` `[ 0.8s ]` `[ 1.0s ]` `[ 1.5s ]` `[ 2.0s ]`.
+3. **Real-Time WYSIWYG Morphing Parity**:
+   - During live Canvas playback, windows smoothly slide, resize, and rotate across transition intervals at 60 FPS, matching the exact FFmpeg export behavior.
+
+---
+## 51. Workstation-Level Auto-Director Decoupling & Multi-Monitor Conditional Timeline Visibility (2026-11-03)
+
+### 1. The Spatial Compression vs. Full Multi-Screen Distinction
+* **Spatial Compression Scope**: Auto-Director was engineered for scenarios where $N$ physical workstation monitors must be compressed into fewer than $N$ viewing windows (e.g., 1 window for 2 displays). In that scenario, telemetry cuts switch the single window to whichever display has active keyboard/mouse input.
+* **Full Multi-Screen Invariant**: When an operator places all physical monitors of a workstation on the Canvas (e.g., Screen 1 and Screen 2 in a 32:9 dual layout):
+  - Both screens are already visible concurrently at 100% Native resolution with full temporal parity.
+  - Applying Auto-Director here is destructive: typing on Screen 2 would cause Screen 1 to flip to Screen 2, resulting in two duplicate Screen 2 windows while Screen 1 disappears.
+  - **Invariant**: **When all monitors of a workstation are placed on the Canvas, Auto-Director is completely moot and suppressed for that workstation.**
+
+### 2. Conditional Timeline Sub-Track Rendering
+* **When `areAllDisplaysPlaced === true`**:
+  - The `DirectorTrack` row in `TimelineBoard.jsx` is **completely suppressed/hidden**.
+  - All feeds for that station are locked 1:1 (`mon-0`, `mon-1`).
+  - Canvas Toolbar Director toggle displays `N/A (DISCRETE 1:1)`.
+* **When `areAllDisplaysPlaced === false` (Single-Window / Condensed Mode)**:
+  - The `DirectorTrack` row is dynamically rendered as a **sub-track cleanly indented directly beneath that workstation**:
+    `└── 🎬 AUTO-DIRECTOR (STATION-NAME)`
+  - Displays cut blocks, allowing the operator to split segments and override active monitor orientations.
+
+### 3. Master Export Dialog Integrity
+* In `ExportOptionsModal.jsx`:
+  - When exporting a full multi-screen canvas, the dialog summary explicitly reports:
+    `MULTI-MONITOR: 1:1 DISCRETE (ALL SCREENS CONCURRENT)`
+  - Only when a workstation is operating in condensed mode does it report active Auto-Director transitions, ensuring total transparency.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
