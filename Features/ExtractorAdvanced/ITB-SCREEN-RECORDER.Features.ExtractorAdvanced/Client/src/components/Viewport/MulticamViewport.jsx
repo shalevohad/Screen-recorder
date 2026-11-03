@@ -296,9 +296,8 @@ export default function MulticamViewport({
         return timelineStations[0]?.id || null;
     });
 
-    // Side Panels: Feeds Palette, Layers Manager, Save/Load Presets, JSON Modal
-    const [showFeedsPalette, setShowFeedsPalette] = useState(false);
-    const [showLayersPanel, setShowLayersPanel] = useState(false);
+    // Side Panels: Unified Feeds & Layers Manager, Save/Load Presets
+    const [showFeedsDrawer, setShowFeedsDrawer] = useState(false);
     const [showSavePresetModal, setShowSavePresetModal] = useState(false);
     const [showPresetsMenu, setShowPresetsMenu] = useState(false);
     const [presetNameInput, setPresetNameInput] = useState('');
@@ -1249,8 +1248,7 @@ export default function MulticamViewport({
 
             // Escape: close drawers / panels
             if (e.key === 'Escape') {
-                setShowFeedsPalette(false);
-                setShowLayersPanel(false);
+                setShowFeedsDrawer(false);
                 setShowPresetsMenu(false);
                 setShowShadowControl(false);
                 setShowRotationControl(false);
@@ -1359,6 +1357,58 @@ export default function MulticamViewport({
 
     const selectedPlacement = currentPlacements[selectedFeedIndex] || null;
 
+    // Unified Feeds & Layers items list:
+    // Placed feeds: Sorted with the currently SELECTED feed at the very top!
+    // Remaining placed feeds are ordered by layer rank descending (top layer to bottom layer).
+    // Unplaced feeds: Feeds available in the system not yet on canvas.
+    const { filteredPlaced, filteredUnplaced } = useMemo(() => {
+        const q = (feedSearchQuery || '').toLowerCase();
+
+        const placed = currentPlacements.map((p, origIdx) => {
+            const layerRank = p.zIndex ?? (origIdx + 1);
+            const matchedFeed = availableFeeds.find(f => f.stationId === p.stationId && f.displayId === p.displayId);
+            return {
+                type: 'placed',
+                origIdx,
+                placement: p,
+                feed: matchedFeed,
+                stationId: p.stationId,
+                displayId: p.displayId,
+                label: p.label || matchedFeed?.label || `${p.stationId} (${p.displayId})`,
+                layerRank,
+                isSelected: origIdx === selectedFeedIndex,
+                sourceWidth: p.sourceWidth || matchedFeed?.sourceWidth || 1920,
+                sourceHeight: p.sourceHeight || matchedFeed?.sourceHeight || 1080
+            };
+        });
+
+        // Sort placed: selected item first, then by layerRank descending
+        placed.sort((a, b) => {
+            if (a.isSelected) return -1;
+            if (b.isSelected) return 1;
+            return b.layerRank - a.layerRank;
+        });
+
+        const unplaced = availableFeeds
+            .filter(f => !currentPlacements.some(p => p.stationId === f.stationId && p.displayId === f.displayId))
+            .map(f => ({
+                type: 'unplaced',
+                feed: f,
+                stationId: f.stationId,
+                displayId: f.displayId,
+                label: f.label,
+                layerRank: null,
+                isSelected: false,
+                sourceWidth: f.sourceWidth || 1920,
+                sourceHeight: f.sourceHeight || 1080
+            }));
+
+        const filteredP = q ? placed.filter(item => item.label.toLowerCase().includes(q)) : placed;
+        const filteredU = q ? unplaced.filter(item => item.label.toLowerCase().includes(q)) : unplaced;
+
+        return { filteredPlaced: filteredP, filteredUnplaced: filteredU };
+    }, [currentPlacements, availableFeeds, selectedFeedIndex, feedSearchQuery]);
+
     return (
         <div
             ref={viewportRootRef}
@@ -1384,24 +1434,14 @@ export default function MulticamViewport({
                     <span className="comp-icon">🎛️</span>
                     <span className="comp-title">LIVE CANVAS COMPOSER:</span>
 
-                    {/* Feeds Palette Button */}
+                    {/* Unified Feeds & Layers Drawer Toggle */}
                     <button
                         type="button"
-                        className={`btn-comp-action ${showFeedsPalette ? 'active' : ''}`}
-                        onClick={() => setShowFeedsPalette(p => !p)}
-                        title="Open Station Feeds & Displays Inventory Palette"
+                        className={`btn-comp-action ${showFeedsDrawer ? 'active' : ''}`}
+                        onClick={() => setShowFeedsDrawer(p => !p)}
+                        title="Toggle Feeds Inventory & Layers Manager"
                     >
-                        ＋ FEEDS PALETTE
-                    </button>
-
-                    {/* Layers Panel Button */}
-                    <button
-                        type="button"
-                        className={`btn-comp-action ${showLayersPanel ? 'active' : ''}`}
-                        onClick={() => setShowLayersPanel(p => !p)}
-                        title="Open Canvas Stacking Layers Hierarchy Manager"
-                    >
-                        ≡ LAYERS ({currentPlacements.length})
+                        🗂️ FEEDS & LAYERS ({currentPlacements.length}/{availableFeeds.length})
                     </button>
 
                     {/* Canvas Presets Toolbar */}
@@ -1622,48 +1662,121 @@ export default function MulticamViewport({
 
             {/* Interactive Live Master Canvas Stage (WYSIWYG 16:9 Frame) */}
             <div ref={stageWrapperRef} className="canvas-stage-wrapper">
-                    {/* Collapsible Left Panel: Feeds & Displays Palette */}
-                    {showFeedsPalette && (
-                        <div className="canvas-side-drawer feeds-palette-drawer">
+                    {/* Unified Minimalist Feeds & Layers Drawer */}
+                    {showFeedsDrawer && (
+                        <div className="canvas-side-drawer feeds-layers-drawer">
                             <div className="drawer-header">
-                                <span>＋ FEEDS & DISPLAYS PALETTE</span>
-                                <button type="button" className="btn-close-drawer" onClick={() => setShowFeedsPalette(false)}>✕</button>
+                                <div className="header-title-group">
+                                    <span className="header-icon">🗂️</span>
+                                    <span>FEEDS & LAYERS</span>
+                                    <span className="header-count-pill">{currentPlacements.length} on canvas</span>
+                                </div>
+                                <button type="button" className="btn-close-drawer" onClick={() => setShowFeedsDrawer(false)}>✕</button>
                             </div>
                             <div className="drawer-search">
                                 <input
                                     type="text"
-                                    placeholder="Filter workstations..."
+                                    placeholder="Filter workstations / displays..."
                                     value={feedSearchQuery}
                                     onChange={(e) => setFeedSearchQuery(e.target.value)}
                                 />
                             </div>
                             <div className="drawer-list-scroll">
-                                {availableFeeds
-                                    .filter(f => !feedSearchQuery || f.label.toLowerCase().includes(feedSearchQuery.toLowerCase()))
-                                    .map((f, fIdx) => {
-                                        const countOnCanvas = currentPlacements.filter(p => p.stationId === f.stationId && p.displayId === f.displayId).length;
-                                        return (
-                                            <div key={`palette-feed-${f.stationId}-${f.displayId}-${fIdx}`} className="drawer-feed-item">
-                                                <div className="feed-item-header">
-                                                    <span className="feed-item-title">{f.label}</span>
-                                                    {f.isPrimary && <span className="primary-badge">PRIMARY</span>}
+                                {/* 1. Placed Feeds (Canvas Layers) - Selected item is always pinned at the top! */}
+                                {filteredPlaced.length > 0 && (
+                                    <div className="drawer-section">
+                                        <div className="drawer-section-title">
+                                            <span>CANVAS LAYERS</span>
+                                            <span className="section-count">{filteredPlaced.length}</span>
+                                        </div>
+                                        {filteredPlaced.map((item) => (
+                                            <div
+                                                key={`feed-layer-${item.stationId}-${item.displayId}-${item.origIdx}`}
+                                                className={`feed-layer-row ${item.isSelected ? 'is-selected' : ''}`}
+                                                onClick={() => setSelectedFeedIndex(item.origIdx)}
+                                                title={`Click to select ${item.label}`}
+                                            >
+                                                <span className="layer-rank-badge" title={`Layer Priority: #${item.layerRank}`}>
+                                                    #{item.layerRank}
+                                                </span>
+                                                <span className={`status-dot ${item.isSelected ? 'active' : ''}`} />
+                                                <span className="row-label" title={item.label}>
+                                                    {item.label}
+                                                </span>
+                                                <span className="row-res">
+                                                    {item.sourceWidth}×{item.sourceHeight}
+                                                </span>
+                                                <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleBringForward(item.origIdx)}
+                                                        title="Bring Forward (Layer +1)"
+                                                    >
+                                                        ⬆️
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSendBackward(item.origIdx)}
+                                                        title="Send Backward (Layer -1)"
+                                                    >
+                                                        ⬇️
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="btn-remove-row"
+                                                        onClick={() => handleRemovePlacement(item.origIdx)}
+                                                        title="Remove from canvas"
+                                                    >
+                                                        ✕
+                                                    </button>
                                                 </div>
-                                                <div className="feed-item-details">
-                                                    <span>{f.width}×{f.height}</span>
-                                                    {countOnCanvas > 0 && (
-                                                        <span className="on-canvas-tag">{countOnCanvas} on canvas</span>
-                                                    )}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    className="btn-add-to-canvas"
-                                                    onClick={() => handleAddFeedToCanvas(f)}
-                                                >
-                                                    ＋ ADD TO CANVAS
-                                                </button>
                                             </div>
-                                        );
-                                    })}
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* 2. Unplaced Available Feeds */}
+                                {filteredUnplaced.length > 0 && (
+                                    <div className="drawer-section">
+                                        <div className="drawer-section-title">
+                                            <span>AVAILABLE FEEDS</span>
+                                            <span className="section-count">{filteredUnplaced.length}</span>
+                                        </div>
+                                        {filteredUnplaced.map((item) => (
+                                            <div
+                                                key={`unplaced-feed-${item.stationId}-${item.displayId}`}
+                                                className="feed-layer-row unplaced"
+                                                onClick={() => handleAddFeedToCanvas(item.feed)}
+                                                title={`Click to add ${item.label} to canvas`}
+                                            >
+                                                <span className="layer-rank-badge unplaced">＋</span>
+                                                <span className="status-dot unplaced" />
+                                                <span className="row-label" title={item.label}>
+                                                    {item.label}
+                                                </span>
+                                                <span className="row-res">
+                                                    {item.sourceWidth}×{item.sourceHeight}
+                                                </span>
+                                                <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                                    <button
+                                                        type="button"
+                                                        className="btn-add-row"
+                                                        onClick={() => handleAddFeedToCanvas(item.feed)}
+                                                        title="Add to canvas"
+                                                    >
+                                                        ＋ ADD
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {filteredPlaced.length === 0 && filteredUnplaced.length === 0 && (
+                                    <div className="drawer-empty-search">
+                                        No matching workstation feeds found.
+                                    </div>
+                                )}
                             </div>
                             <div className="drawer-footer-actions">
                                 <button type="button" className="btn-drawer-action auto" onClick={() => handleApplyPreset('auto')}>
@@ -1672,41 +1785,6 @@ export default function MulticamViewport({
                                 <button type="button" className="btn-drawer-action clear" onClick={handleClearCanvas}>
                                     🗑️ CLEAR CANVAS
                                 </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Collapsible Right Panel: Layers Stacking Hierarchy ("מי לפני מי") */}
-                    {showLayersPanel && (
-                        <div className="canvas-side-drawer layers-panel-drawer">
-                            <div className="drawer-header">
-                                <span>≡ LAYERS STACKING ORDER</span>
-                                <button type="button" className="btn-close-drawer" onClick={() => setShowLayersPanel(false)}>✕</button>
-                            </div>
-                            <div className="layers-list-scroll">
-                                {sortedRenderPlacements.slice().reverse().map((p) => {
-                                    const origIdx = p.originalIndex;
-                                    const isSel = origIdx === selectedFeedIndex;
-                                    return (
-                                        <div
-                                            key={`layer-row-${p.stationId}-${p.displayId}-${origIdx}`}
-                                            className={`layer-item-row ${isSel ? 'selected' : ''}`}
-                                            onClick={() => setSelectedFeedIndex(origIdx)}
-                                        >
-                                            <div className="layer-info-left">
-                                                <span className="layer-num-pill">#{p.zIndex ?? origIdx + 1}</span>
-                                                <span className="layer-name">{p.label || `${p.stationId} (${p.displayId})`}</span>
-                                            </div>
-                                            <div className="layer-actions-right" onClick={(e) => e.stopPropagation()}>
-                                                <button type="button" onClick={() => handleSendBackward(origIdx)} title="Send Backward (L-1)">⬇️</button>
-                                                <button type="button" onClick={() => handleBringForward(origIdx)} title="Bring Forward (L+1)">⬆️</button>
-                                                <button type="button" onClick={() => handleSendToBack(origIdx)} title="Send to Back (Bottom)">⏬</button>
-                                                <button type="button" onClick={() => handleBringToFront(origIdx)} title="Bring to Front (Top)">⏫</button>
-                                                <button type="button" className="btn-del-layer" onClick={() => handleRemovePlacement(origIdx)} title="Remove feed from canvas">✕</button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
                             </div>
                         </div>
                     )}
@@ -1769,8 +1847,8 @@ export default function MulticamViewport({
                                 <h3>MANUAL CANVAS STUDIO</h3>
                                 <p>The canvas is currently empty. Open the Feeds Palette to add screens or apply a preset template.</p>
                                 <div className="empty-actions-row">
-                                    <button type="button" className="btn-empty-add" onClick={() => setShowFeedsPalette(true)}>
-                                        ＋ OPEN FEEDS PALETTE
+                                    <button type="button" className="btn-empty-add" onClick={() => setShowFeedsDrawer(true)}>
+                                        ＋ OPEN FEEDS & LAYERS
                                     </button>
                                     <button type="button" className="btn-empty-preset" onClick={() => handleApplyPreset('auto')}>
                                         ⊞ AUTO-PACK ALL SCREENS

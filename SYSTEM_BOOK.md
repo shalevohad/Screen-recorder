@@ -1747,6 +1747,10 @@ During extensive forensic and multi-station layout editing, five workflow and UI
    - Eliminated `isSoloMode` viewport swapping. The Master Canvas Grid is now the single continuous stage.
    - Added `⊞ 1x1 FOCUS` in the inspector which instantly expands the selected station to fill the full 16:9 canvas (1920x1080 at 0,0) without leaving the canvas workspace.
    - Hardened `1x2 DUAL` preset to compute proportional aspect-preserved cells for stations with dual monitors.
+6. **Unified Minimalist Feeds & Layers Drawer with Top-Pinned Selection**:
+   - Combined the separate left "Feeds Palette" and right "Layers Panel" into a single, compact `🗂️ FEEDS & LAYERS` drawer.
+   - Reduced feed items to a strict, elegant **single-row layout** (`27px` height) showing `#Rank`, active status dot, station/display title, native resolution, and quick action buttons (`⬆️`, `⬇️`, `✕` or `＋ ADD`).
+   - Implemented dynamic top-pinning: **the currently selected feed is automatically sorted and pinned to the very top of the list**, providing instant focus and immediate accessibility when selecting elements on the canvas or in the list.
 
 ---
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
