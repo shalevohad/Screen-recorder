@@ -1,19 +1,23 @@
 ﻿# 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
-> **Last Updated**: 2026-11-02  
-> **Current Version**: v1.0.50  
+> **Last Updated**: 2026-11-03  
+> **Current Version**: v1.0.52  
 > **Governing Rules**: Consult [RULES.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/RULES.md) for behavioral invariants and strict system constraints.
 
 ---
 
 ## 📑 Table of Contents
+
+### 🏛️ Part I: System Mission, Core Architecture & Low-Level Foundations
 1. [Executive Summary & Operational Mission](#1-executive-summary--operational-mission)
 2. [High-Level Architecture & Network Topology](#2-high-level-architecture--network-topology)
 3. [Component Matrix & Repository Structure](#3-component-matrix--repository-structure)
 4. [Windows Session 0 vs. Session 1 Architecture & IPC](#4-windows-session-0-vs-session-1-architecture--ipc)
 5. [Media Capture, Hardware Encoding & Streaming Pipeline](#5-media-capture-hardware-encoding--streaming-pipeline)
 6. [Wall-Clock Chunking, Storage Failover & File Locking](#6-wall-clock-chunking-storage-failover--file-locking)
+
+### 📡 Part II: Fleet Ingestion, Storage, Telemetry & Environment Invariants
 7. [Multi-Monitor Topology & Dynamic Hot-Plug](#7-multi-monitor-topology--dynamic-hot-plug)
 8. [Multicam Forensic Extraction & Gap Interpolation](#8-multicam-forensic-extraction--gap-interpolation)
 9. [C2 Communication, SignalR Hubs & SQLite Catalog](#9-c2-communication-signalr-hubs--sqlite-catalog)
@@ -21,33 +25,43 @@
 11. [Air-Gapped & Offline Environment Invariants](#11-air-gapped--offline-environment-invariants)
 12. [Developer Playbook: Build, Debug & Test Workflows](#12-developer-playbook-build-debug--test-workflows)
 13. [Enterprise Forensic Log Diagnostic & RCA Tool (itb-diagnostics)](#13-enterprise-forensic-log-diagnostic--rca-tool-itb-diagnostics)
-14. [Enterprise UI/UX Modernization, Fleet Intercom & Advanced Resilience Updates](#14-enterprise-uiux-modernization-fleet-intercom--advanced-resilience-updates-2026-10-28)
-15. [Multi-Screen Studio Editing, Director Track Overrides, Server Folder Browser, 1-Hour Stream Drop Immunity & AD SSO](#15-multi-screen-studio-editing-director-track-overrides-server-folder-browser-1-hour-stream-drop-immunity--ad-sso-2026-10-28)
-16. [Multi-Monitor Adaptive Video Export Engine (PiP, Split Screen, Auto-Director & Solo Display)](#16-multi-monitor-adaptive-video-export-engine-pip-split-screen-auto-director--solo-display-2026-10-28)
-17. [Tactical C2 Bulk Recording Iconography & Ergonomic Inversion](#17-tactical-c2-bulk-recording-iconography--ergonomic-inversion-2026-10-28)
-18. [Multi-Monitor Mouse Pointer & Interaction Isolation Engine](#18-multi-monitor-mouse-pointer--interaction-isolation-engine-2026-10-28)
-19. [Zero-Black-Screen Persistent Player, Multi-Station Audio Listening & Studio Forensic Canvas Layout](#19-zero-black-screen-persistent-player-multi-station-audio-listening--studio-forensic-canvas-layout-2026-10-28)
-20. [Cross-Platform CI/CD Architecture & Pipeline Hardening](#20-cross-platform-cicd-architecture--pipeline-hardening-2026-10-29)
-21. [Multi-Monitor Canvas Layout Normalization, Viewport Collision Prevention & Iconography Hardening](#21-multi-monitor-canvas-layout-normalization-viewport-collision-prevention--iconography-hardening-2026-10-29)
-22. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination](#22-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
-23. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture](#23-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
-24. [Host GPU Hardware Detection & Architecture Diagnostics](#24-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
-25. [Server-Calibrated Time Engine & Playhead Synchronization Architecture](#25-server-calibrated-time-engine--playhead-synchronization-architecture-2026-11-02)
-26. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals](#26-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
-27. [Universal Studio Composition Engine & Single Master MP4 Export Architecture](#27-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
-28. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture](#28-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
-29. [External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API](#29-external-forensic-inspection-custom-canvas-layout--master-remote-mp4-export-api-2026-11-02)
-30. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis](#30-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
-31. [Multi-Tier Video Quality, Output Resolution & Bitrate Scaling Engine](#31-multi-tier-video-quality-output-resolution--bitrate-scaling-engine-2026-11-02)
-32. [WYSIWYG Master Canvas Grid Studio, Direct Layout Editing & Screen Switching Architecture](#32-wysiwyg-master-canvas-grid-studio-direct-layout-editing--screen-switching-architecture-2026-11-02)
-33. [Air-Gapped Fontconfig Elimination & FFmpeg Custom Canvas Hardening](#33-air-gapped-fontconfig-elimination--ffmpeg-custom-canvas-hardening-2026-11-02)
-34. [Studio Canvas Dimension Stabilization & Frame Quantization](#34-studio-canvas-dimension-stabilization--frame-quantization-2026-11-02)
-35. [Live Grid Master Canvas Composer, Free Transform Engine & Timeline Keyframe Animation](#35-live-grid-master-canvas-composer-free-transform-engine--timeline-keyframe-animation-2026-11-02)
-36. [Minimalist Support Tracks, Draggable Keyframes & Live Canvas Auto-Grid Architecture](#36-minimalist-support-tracks-draggable-keyframes--live-canvas-auto-grid-architecture-2026-11-03)
-37. [Non-Standard Aspect Ratio Preservation & CTRL-Locked Canvas Resizing](#37-non-standard-aspect-ratio-preservation--ctrl-locked-canvas-resizing-2026-11-03)
-38. [Zero-Collapse Master Canvas Stage & Responsive ResizeObserver Architecture](#38-zero-collapse-master-canvas-stage--responsive-resizeobserver-architecture-2026-11-03)
-39. [Tactical Master Canvas Workspace Normalization, Layer Stacking Hierarchy, Surface Rotation Isolation & Export/Import Architecture](#39-tactical-master-canvas-workspace-normalization-layer-stacking-hierarchy-surface-rotation-isolation--exportimport-architecture-2026-11-03)
-40. [FFmpeg Export Resilience, Synthetic Silence Synthesis & Stage-Level Compact Tactical Inspector Architecture](#40-ffmpeg-export-resilience-synthetic-silence-synthesis--stage-level-compact-tactical-inspector-architecture-2026-11-03)
+
+### 🔊 Part III: Audio Engineering, Multi-Monitor Capture & Server Core Upgrades
+14. [Enterprise UI/UX Modernization, Fleet Intercom & Advanced Resilience Updates (2026-10-28)](#14-enterprise-uiux-modernization-fleet-intercom--advanced-resilience-updates-2026-10-28)
+15. [Multi-Screen Studio Editing, Director Track Overrides, Server Folder Browser, 1-Hour Stream Drop Immunity & AD SSO (2026-10-28)](#15-multi-screen-studio-editing-director-track-overrides-server-folder-browser-1-hour-stream-drop-immunity--ad-sso-2026-10-28)
+16. [Multi-Monitor Adaptive Video Export Engine (PiP, Split Screen, Auto-Director & Solo Display) (2026-10-28)](#16-multi-monitor-adaptive-video-export-engine-pip-split-screen-auto-director--solo-display-2026-10-28)
+17. [Tactical C2 Bulk Recording Iconography & Ergonomic Inversion (2026-10-28)](#17-tactical-c2-bulk-recording-iconography--ergonomic-inversion-2026-10-28)
+18. [Multi-Monitor Mouse Pointer & Interaction Isolation Engine (2026-10-28)](#18-multi-monitor-mouse-pointer--interaction-isolation-engine-2026-10-28)
+19. [Zero-Black-Screen Persistent Player, Multi-Station Audio Listening & Studio Forensic Canvas Layout (2026-10-28)](#19-zero-black-screen-persistent-player-multi-station-audio-listening--studio-forensic-canvas-layout-2026-10-28)
+20. [Cross-Platform CI/CD Architecture & Pipeline Hardening (2026-10-29)](#20-cross-platform-cicd-architecture--pipeline-hardening-2026-10-29)
+21. [Multi-Monitor Canvas Layout Normalization, Viewport Collision Prevention & Iconography Hardening (2026-10-29)](#21-multi-monitor-canvas-layout-normalization-viewport-collision-prevention--iconography-hardening-2026-10-29)
+22. [Discrete Dual-Channel Audio Architecture & Delayed Intercom Echo Elimination (2026-11-01)](#22-discrete-dual-channel-audio-architecture--delayed-intercom-echo-elimination-2026-11-01)
+23. [Graceful Central Server Self-Restart & Online Port Re-Binding Architecture (2026-11-01)](#23-graceful-central-server-self-restart--online-port-re-binding-architecture-2026-11-01)
+24. [Host GPU Hardware Detection & Architecture Diagnostics (2026-11-01)](#24-host-gpu-hardware-detection--architecture-diagnostics-2026-11-01)
+25. [Server-Calibrated Time Engine & Playhead Synchronization Architecture (2026-11-02)](#25-server-calibrated-time-engine--playhead-synchronization-architecture-2026-11-02)
+26. [Multi-Monitor Auto-Director: Active Screen Resolution, Zero-Drift Dip-to-Black & Forensic Timeline Visuals (2026-11-02)](#26-multi-monitor-auto-director-active-screen-resolution-zero-drift-dip-to-black--forensic-timeline-visuals-2026-11-02)
+
+### 🎬 Part IV: Master MP4 Composition, Remote Export API & WYSIWYG Canvas Foundations
+27. [Universal Studio Composition Engine & Single Master MP4 Export Architecture (2026-11-02)](#27-universal-studio-composition-engine--single-master-mp4-export-architecture-2026-11-02)
+28. [Studio Fullscreen Grid View, Synchronous Multi-Video Playback & Exclusive Audio Solo Architecture (2026-11-02)](#28-studio-fullscreen-grid-view-synchronous-multi-video-playback--exclusive-audio-solo-architecture-2026-11-02)
+29. [External Forensic Inspection, Custom Canvas Layout & Master Remote MP4 Export API (2026-11-02)](#29-external-forensic-inspection-custom-canvas-layout--master-remote-mp4-export-api-2026-11-02)
+30. [Visual Canvas Composer, Multi-Keyframe Layout Timeline & Dynamic Master Synthesis (2026-11-02)](#30-visual-canvas-composer-multi-keyframe-layout-timeline--dynamic-master-synthesis-2026-11-02)
+31. [Multi-Tier Video Quality, Output Resolution & Bitrate Scaling Engine (2026-11-02)](#31-multi-tier-video-quality-output-resolution--bitrate-scaling-engine-2026-11-02)
+32. [WYSIWYG Master Canvas Grid Studio, Direct Layout Editing & Screen Switching Architecture (2026-11-02)](#32-wysiwyg-master-canvas-grid-studio-direct-layout-editing--screen-switching-architecture-2026-11-02)
+33. [Air-Gapped Fontconfig Elimination & FFmpeg Custom Canvas Hardening (2026-11-02)](#33-air-gapped-fontconfig-elimination--ffmpeg-custom-canvas-hardening-2026-11-02)
+34. [Studio Canvas Dimension Stabilization & Frame Quantization (2026-11-02)](#34-studio-canvas-dimension-stabilization--frame-quantization-2026-11-02)
+
+### 🎛️ Part V: Advanced Forensic Studio, Interactive Free-Transform Stage, CAD Rulers & Acoustic DAW Engine
+35. [Live Grid Master Canvas Composer, Free Transform Engine & Timeline Keyframe Animation (2026-11-02)](#35-live-grid-master-canvas-composer-free-transform-engine--timeline-keyframe-animation-2026-11-02)
+36. [Minimalist Support Tracks, Draggable Keyframes & Live Canvas Auto-Grid Architecture (2026-11-03)](#36-minimalist-support-tracks-draggable-keyframes--live-canvas-auto-grid-architecture-2026-11-03)
+37. [Non-Standard Aspect Ratio Preservation & CTRL-Locked Canvas Resizing (2026-11-03)](#37-non-standard-aspect-ratio-preservation--ctrl-locked-canvas-resizing-2026-11-03)
+38. [Zero-Collapse Master Canvas Stage & Responsive ResizeObserver Architecture (2026-11-03)](#38-zero-collapse-master-canvas-stage--responsive-resizeobserver-architecture-2026-11-03)
+39. [Tactical Master Canvas Workspace Normalization, Layer Stacking Hierarchy, Surface Rotation Isolation & Export/Import Architecture (2026-11-03)](#39-tactical-master-canvas-workspace-normalization-layer-stacking-hierarchy-surface-rotation-isolation--exportimport-architecture-2026-11-03)
+40. [FFmpeg Export Resilience, Synthetic Silence Synthesis & Stage-Level Compact Tactical Inspector Architecture (2026-11-03)](#40-ffmpeg-export-resilience-synthetic-silence-synthesis--stage-level-compact-tactical-inspector-architecture-2026-11-03)
+41. [Full-Width Responsive Canvas Staging, Dynamic Export Aspect Ratio & True WYSIWYG Dimensional Parity Engine (2026-11-03)](#41-full-width-responsive-canvas-staging-dynamic-export-aspect-ratio--true-wysiwyg-dimensional-parity-engine-2026-11-03)
+42. [Tactical Precision CAD/NLE Rulers, Windows Aero Snap Assist & Enhanced Window Drag Ergonomics (2026-11-03)](#42-tactical-precision-cadnle-rulers-windows-aero-snap-assist--enhanced-window-drag-ergonomics-2026-11-03)
+43. [Real-Time Web Audio Acoustic VU Meter, Expandable Timeline Audio Track with Dynamic Waveforms & Precision Gain Scale (2026-11-03)](#43-real-time-web-audio-acoustic-vu-meter-expandable-timeline-audio-track-with-dynamic-waveforms--precision-gain-scale-2026-11-03)
+44. [Strict Multi-Axis Boundary Clamping, Universal Iconography & Comprehensive Tooltip Architecture for Floating Studio Controls (2026-11-03)](#44-strict-multi-axis-boundary-clamping-universal-iconography--comprehensive-tooltip-architecture-for-floating-studio-controls-2026-11-03)
 
 ---
 
@@ -122,7 +136,7 @@ c:\Devlopers\ITB-SCREEN-RECORDER\
 ├── ITB-SCREEN-RECORDER.Core\             # Shared domain, contracts, encryption, SQLite DB base
 ├── ITB-SCREEN-RECORDER.Server\           # Central ASP.NET Core 8 Web API, SignalR, MediaMTX supervisor
 │   ├── ClientApp\                        # Tactical C2 Command Dashboard (React 18, Vite, SCSS)
-│   ├── MediaMTX\                         # Bundled MediaMTX v1.15.4 binary and mediamtx.yml config
+│   ├── Tools\                            # Bundled MediaMTX v1.15.4 binaries (Win/Linux) and mediamtx.yml
 │   ├── Controllers\                      # REST API endpoints (Auth, Fleet, Settings, Maintenance)
 │   ├── Hubs\                             # SignalR Realtime Hubs (AgentHub, DashboardHub)
 │   └── Services\                         # Storage failover, chunk scheduler, telemetry monitor
@@ -134,7 +148,7 @@ c:\Devlopers\ITB-SCREEN-RECORDER\
 ├── Tools\
 │   └── ITB-SCREEN-RECORDER.Diagnostics\  # Enterprise forensic log diagnostic & RCA utility
 ├── Installers\                           # WiX Toolset v4 installer definitions (.msi) & Linux packaging
-└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (427+ unit, integration, sync & frontend integrity tests)
+└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (434 unit, integration, sync & frontend integrity tests)
 ```
 
 ---
@@ -190,11 +204,11 @@ The media ingestion engine in `ITB-SCREEN-RECORDER.AgentWorker` is optimized for
 - **Linux**: Uses **X11 / XSHM** or **PipeWire** portal interfaces for headless or modern display servers.
 
 ### 2. Audio Capture & Intercom Mixer
-- Implemented in [`WasapiAudioCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/WasapiAudioCapture.cs).
-- Captures two independent streams:
-  1. **Speaker Output**: System audio loopback (`eRender` endpoint in loopback mode).
-  2. **Microphone Input**: Operator headset/microphone (`eCapture` endpoint).
-- Real-time software mixer blends both channels into a unified stereo PCM audio stream, synchronized with video timecodes.
+- Implemented via [`AudioCaptureFactory.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/AudioCaptureFactory.cs) and [`WasapiDualMixer.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/WasapiDualMixer.cs) (Windows) / [`LinuxPulseAudioMixer.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/LinuxPulseAudioMixer.cs) (Linux).
+- Captures two discrete audio streams:
+  1. **Speaker Output**: System desktop audio loopback (`eRender` endpoint in loopback mode).
+  2. **Microphone Input**: Operator headset/microphone intercom (`eCapture` endpoint).
+- Employs discrete dual-channel architecture (Channel 0: Desktop loopback, Channel 1: Headset intercom) eliminating delayed intercom echo (detailed in Section 22), with dynamic fallback to [`SilentAudioProvider.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/SilentAudioProvider.cs) when hardware endpoints are absent.
 
 > [!IMPORTANT]
 > **Audio Codec Invariant for RTMP Ingest**: When muxing live feeds into -f flv for MediaMTX RTMP/RTMPS ingest, audio **must** be encoded using -c:a aac (MPEG-4 Audio). Formats such as libopus are unsupported by the FLV container specification; attempting to use libopus with -f flv causes native FFmpeg initialization failure (exit code -22: Invalid argument).
@@ -223,9 +237,9 @@ The encoder selection evaluates capabilities in strict sequence:
 > **Probe Result Caching**: `HardwareProbe` results are cached for the entire process lifetime. Hardware probes are never re-executed during active streaming to prevent pipeline stutter.
 
 ### 4. MediaMTX Streaming Server (CRITICAL VERSION PIN)
-- **Pinned Version**: **MediaMTX v1.15.4** ([`mediamtx.exe`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.exe)).
+- **Pinned Version**: **MediaMTX v1.15.4** ([`mediamtx.exe`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Tools/Win/mediamtx.exe)).
 - **Why It Is Pinned**: In MediaMTX v1.15.5+, an internal `ntpDriftTolerance` check was introduced in the fMP4 recorder that force-splits chunks if clock jitter occurs. Under real-time workstation encoding, this causes chunks to split every 15–20 seconds instead of adhering to the 5-minute wall-clock rule. **Do not upgrade MediaMTX.**
-- **Port Invariant**: MediaMTX RTMP port is hardcoded to `19350` in [`mediamtx.yml`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.yml).
+- **Port Invariant**: MediaMTX RTMP port is hardcoded to `19350` in [`mediamtx.yml`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Tools/mediamtx.yml).
 
 ---
 
@@ -438,7 +452,6 @@ npm run build     # Runs ESLint gating followed by Vite production widget bundli
 
 - **Automated Frontend Integrity Verification**:
 Covered by `FrontendBundleIntegrityTests.cs` inside `ITB-SCREEN-RECORDER.Tests`, verifying widget bundle presence, non-empty compiled artifacts, absence of undefined identifiers, and zero ESLint errors during `dotnet test`.
-```
 
 ### 4. Running the Complete System Locally for Debugging
 1. **Start MediaMTX**: Run `ITB-SCREEN-RECORDER.Server/MediaMTX/mediamtx.exe`.
@@ -507,10 +520,9 @@ To address real-world deployment feedback across 70–100+ dense workstations, t
 ### 3. Debounced Audio State & 3-Tier Fault Detection
 - **Hysteresis Smoothing**: Integrated a 3.5-second debounce buffer on audio presence telemetry to eliminate rapid green/grey flickering caused by network polling bursts.
 - **3-Tier Health States**:
-  - ctive (Emerald): Real-time audio stream flowing smoothly.
-  - 
-ault (Amber): Workstation audio hardware (speakers/mic) present and configured, but audio stream packets are stalled or absent.
-  - muted (Slate): Workstation has no audio devices or is operating in silent mode.
+  - **Active (Emerald)**: Real-time audio stream flowing smoothly.
+  - **Fault (Amber)**: Workstation audio hardware (speakers/mic) present and configured, but audio stream packets are stalled or absent.
+  - **Muted (Slate)**: Workstation has no audio devices or is operating in silent mode.
 
 ### 4. Storage Quota Clamping & Physical NetApp Enforcement
 - Max storage quota in settings is dynamically clamped to the total physical capacity of the active NetApp pool (liveStorage.totalSizeBytes), preventing operators from setting quotas beyond actual disk boundaries.
@@ -1884,40 +1896,41 @@ Manipulating multi-station and multi-display windows across high-density grid ca
 
 ### 1. Operational Problem & Requirement
 Tactical operators reviewing continuous multi-station recordings identified three essential audio workflow gaps:
-1. **Simulated / Random Audio Animations**: Previously, audio presence in the timeline was visualized using arbitrary CSS keyframe loops (@keyframes wavePulse), which bore no relationship to the actual sound heard in headphones or speakers.
+1. **Simulated / Random Audio Animations**: Previously, audio presence in the timeline was visualized using arbitrary CSS keyframe loops (`@keyframes wavePulse`), which bore no relationship to the actual sound heard in headphones or speakers.
 2. **Fixed Height Audio Track Constraints**: The audio track was constrained to a compact 26px row, preventing operators from inspecting speech cadence, vocal pauses, or acoustic peaks.
 3. **Audio Gain Adjustment & Normalization**: Workstations often record at varying microphone / line-in levels (some too quiet, some clipping). Operators needed the ability to right-click an audio segment and adjust volume gain (attenuation or boost up to +8.0 dB / 250%) with immediate real-time acoustic feedback and backend export filter synthesis.
 
 ### 2. Architectural Solution & Implementation
-1. **Web Audio API Acoustic Level Engine (udioLevelMonitor.js)**:
-   - Lazily instantiates a shared browser AudioContext and attaches an AnalyserNode (ftSize = 256, smoothingTimeConstant = 0.5) alongside a GainNode directly to the active unmuted <video> element (createMediaElementSource).
+1. **Web Audio API Acoustic Level Engine (`audioLevelMonitor.js`)**:
+   - Lazily instantiates a shared browser `AudioContext` and attaches an `AnalyserNode` (`fftSize = 256`, `smoothingTimeConstant = 0.5`) alongside a `GainNode` directly to the active unmuted `<video>` element (`createMediaElementSource`).
    - Runs a 60fps acoustic measurement loop calculating true instantaneous **RMS (Root Mean Square)** and **Peak** deviation:
-     \text{RMS} = \sqrt{\frac{1}{N}\sum_{i=0}^{N-1}\left(\frac{\text{sample}[i] - 128}{128}\right)^2}, \quad \text{dB} = 20 \log_{10}(\text{RMS})
-   - Dispatches itb-live-audio-level events with exact acoustic measurements. When playback is paused, muted, or silent, all meters smoothly decay and rest at zero with zero artificial pulsing.
+     $$\text{RMS} = \sqrt{\frac{1}{N}\sum_{i=0}^{N-1}\left(\frac{\text{sample}[i] - 128}{128}\right)^2}, \quad \text{dB} = 20 \log_{10}(\text{RMS})$$
+   - Dispatches `itb-live-audio-level` events with exact acoustic measurements. When playback is paused, muted, or silent, all meters smoothly decay and rest at zero with zero artificial pulsing.
 2. **Expandable Audio Track (Compact 26px $\leftrightarrow$ Expanded 74px)**:
    - Added a height toggle button (▲ / ▼) in the 180px audio header cell.
-   - Operators can toggle between a minimalist 26px single-row NOC view and a professional 74px expanded DAW/NLE waveform view, persisted to localStorage (itb_audio_track_expanded).
-   - In expanded mode, the header renders a high-precision multi-segment LED meter with real-time dB readout (e.g. -14.2 dB) and master gain indicator.
+   - Operators can toggle between a minimalist 26px single-row NOC view and a professional 74px expanded DAW/NLE waveform view, persisted to `localStorage` (`itb_audio_track_expanded`).
+   - In expanded mode, the header renders a high-precision multi-segment LED meter with real-time dB readout (e.g. `-14.2 dB`) and master gain indicator.
 3. **Dynamic Acoustic Waveform Display**:
-   - Each segment block in AudioRoutingTrack.jsx renders an SVG mirrored amplitude envelope across its time span:
-     - Symmetrical top and bottom peak geometry centered around  = 50\%$.
+   - Each segment block in `AudioRoutingTrack.jsx` renders an SVG mirrored amplitude envelope across its time span:
+     - Symmetrical top and bottom peak geometry centered around $Y = 50\%$.
      - When muted or $\text{Gain} = 0$, renders a flat dashed red baseline.
      - Waveform peak heights scale dynamically in direct proportion to the segment's gain ($\text{Amplitude} \propto \text{Gain}$). Boosting gain visually raises the peaks; reducing gain flattens them.
-     - Displays visual badges for applied gain (e.g. ▲ +3.0 dB (141%) or ▼ -6.0 dB (50%)).
+     - Displays visual badges for applied gain (e.g. `▲ +3.0 dB (141%)` or `▼ -6.0 dB (50%)`).
 4. **Interactive Right-Click Context Menu with Precision Gain Scale**:
    - Right-clicking (or clicking) any audio segment opens an enhanced tactical context menu:
-     - **Gain Range Slider**: Continuous adjustment from  % (-∞ dB) to 250% (+8.0 dB) with clear dB/percentage readout.
-     - **Quick Preset Scale Buttons**: 🔇 Mute (0%), -6 dB (50%),   dB (100% Unity), +3 dB (141%), and +6 dB (200%).
-     - **Zero-Latency Audible Feedback**: Moving the slider immediately updates the segment in udioRoutingPlan and routes the new gain into the Web Audio GainNode (setAudioGain), giving operators instant audible volume changes during playback.
-5. **Backend Export FFmpeg Filter Synthesis (AdvanceJobManager.cs)**:
-   - Added Gain property to AudioRoutingSegmentDto (default 1.0).
-   - In both single-cut ComposeMasterMp4Async and multi-cam ComposeCustomCanvasMasterMp4Async, the filtergraph builder extracts Seg.Gain:
-     `	ext
+     - **Gain Range Slider**: Continuous adjustment from $0\%$ ($-\infty\text{ dB}$) to $250\%$ ($+8.0\text{ dB}$) with clear dB/percentage readout.
+     - **Quick Preset Scale Buttons**: `🔇 Mute (0%)`, `🔉 -6 dB (50%)`, `⚖️ 0 dB (100% Unity)`, `🚀 +3 dB (141%)`, and `🚀 +6 dB (200%)`.
+     - **Zero-Latency Audible Feedback**: Moving the slider immediately updates the segment in `audioRoutingPlan` and routes the new gain into the Web Audio `GainNode` (`setAudioGain`), giving operators instant audible volume changes during playback.
+5. **Backend Export FFmpeg Filter Synthesis (`AdvanceJobManager.cs`)**:
+   - Added `Gain` property to `AudioRoutingSegmentDto` (default 1.0).
+   - In both single-cut `ComposeMasterMp4Async` and multi-cam `ComposeCustomCanvasMasterMp4Async`, the filtergraph builder extracts `aSeg.Gain`:
+     ```text
      [{inIdx}:a]atrim=start={startA}:end={endA},asetpts=PTS-STARTPTS,volume={gain}[a_seg_i]
-     `
-   - When $\text{Gain} \ne 1.0$, FFmpeg injects ,volume={gain:0.00}, producing perfectly normalized exported MP4 audio with zero audio-video drift.
+     ```
+   - When $\text{Gain} \ne 1.0$, FFmpeg injects `,volume={gain:0.00}`, producing perfectly normalized exported MP4 audio with zero audio-video drift.
 
 ---
+
 ## 44. Strict Multi-Axis Boundary Clamping, Universal Iconography & Comprehensive Tooltip Architecture for Floating Studio Controls (2026-11-03)
 
 ### 1. Operational Problem & Requirement
