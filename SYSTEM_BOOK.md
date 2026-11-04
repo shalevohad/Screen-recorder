@@ -2500,19 +2500,29 @@ To eliminate vertical scrollbars entirely:
    - Guaranteed slot budget: $3 \times 42\text{px}$ (collapsed rows) + $1 \times 92\text{px}$ (expanded station header + 2 display rows) = $\approx 218\text{px}$ total height.
    - Fits cleanly within timeline container bounds with **`overflow-y: hidden !important`** enforced across all resolutions.
 3. **Collapsed Station Mode**:
-   - Single 42px row featuring:
-     - Workstation status dot, station title, physical host label, and multi-display badge.
+   - Single 44px row featuring:
+     - Streamlined single-line sidebar (180px fixed width, `white-space: nowrap; flex-wrap: nowrap`):
+       - Compact `[ ▶ ]` accordion toggle button (16×16px).
+       - Live workstation status dot (`#10B981` online).
+       - Station title (`font-weight: 800; text-overflow: ellipsis; white-space: nowrap`) occupying full available width without line breaking.
+       - Ultra-compact multi-display badge (`2x` / `3x` in cyan monospace).
+       - Contextual `[ ✕ ]` track deselect button.
      - Central composite filmstrip with spritesheet Level-of-Detail (LOD).
-     - 3px thin emerald Health Bar (`.data-presence-layer`) indicating recording presence.
-     - Attached 12px **Director Stepper Ribbon** (`.director-stepper-ribbon`) directly beneath the health bar, displaying crisp numbered blocks (`[ 1 | 2 | 1 ]`) reflecting Auto-Director display selections over time.
+     - 3px thin emerald Health Bar (`.data-presence-layer`) indicating recording presence, with fallback height enforcement and PascalCase/camelCase DTO resilience.
+     - Attached 12px **Director Stepper Ribbon** (`.director-stepper-ribbon`) directly beneath the health bar (`bottom: 0; height: 12px`), displaying crisp numbered blocks (`[ 1 | 2 | 1 ]`) reflecting Auto-Director display selections over time.
 4. **Expanded Station Mode & In/Out Masked Director Coverage**:
-   - Accordion Header: Workstation title, `[ 🎬 AUTO-DIRECTOR: ON / OFF ]` toggle, and Close button.
+   - Streamlined Accordion Header Bar (28px height, zero line wrapping):
+     - Left Sidebar Segment (180px fixed width): `[ ▼ ]` collapse button, status dot, and station title (`white-space: nowrap; text-overflow: ellipsis`) with zero button crowding or name truncation.
+     - Right Timeline Deck Segment: Placed cleanly across the wide timeline canvas header:
+       - Compact `[ ⚡ AUTO-DIRECTOR: ON / OFF ]` pill button.
+       - `[ CLOSE ✕ ]` collapse trigger button.
    - Child Display Tracks: One row per physical display (`SCREEN 1`, `SCREEN 2`):
+     - Sidebar (180px): Single-line `🖥️ SCREEN X` label with native hover tooltip showing resolution, plus `[ ＋ ADD ]` / `[ ✓ ON ]` canvas placement button when Auto-Director is OFF.
      - Displays individual monitor filmstrip and health bar.
      - **Director Coverage Highlights (Requirements 4 & 6)**:
        - Active director intervals: Rendered 100% bright, in-focus with an inset cyan glowing border (`box-shadow: inset 0 0 0 1.5px #06B6D4`) and a crisp `[ 🎬 ON AIR ]` badge.
        - Inactive intervals: Covered by `.director-mask-dimmed` (`background: rgba(7, 10, 16, 0.68); backdrop-filter: grayscale(70%) blur(1.5px)`), visually matching Cut In / Cut Out mask styling.
-     - When Auto-Director is OFF: Coverage dimming is disabled, primary screen remains on canvas, and secondary screens expose interactive `[ ＋ ADD ]` / `[ ✓ ON CANVAS ]` toggle buttons to control canvas placement.
+     - When Auto-Director is OFF: Coverage dimming is disabled, primary screen remains on canvas, and secondary screens expose interactive `[ ＋ ADD ]` / `[ ✓ ON ]` toggle buttons to control canvas placement.
    - Closing the station preserves all canvas additions, keyframes, and configuration choices.
 5. **Master Video Section Header & Global Summary Track**:
    - Collapsible video section bar.

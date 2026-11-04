@@ -18,8 +18,8 @@ const getLodConfig = (viewportDurationMs) => {
     return { tileDurationMs: autoTileMs, framesPerTile: 4 };
 };
 
-const getSegStart = (seg) => seg.startEpochMs ?? seg.startEpoch ?? seg.start ?? 0;
-const getSegEnd = (seg) => seg.endEpochMs ?? seg.endEpoch ?? seg.end ?? 0;
+const getSegStart = (seg) => seg.startEpochMs ?? seg.StartEpochMs ?? seg.startEpoch ?? seg.start ?? 0;
+const getSegEnd = (seg) => seg.endEpochMs ?? seg.EndEpochMs ?? seg.endEpoch ?? seg.end ?? 0;
 
 /**
  * Sub-component for rendering a filmstrip canvas (used by both collapsed station composite and expanded child displays)
@@ -240,8 +240,8 @@ function FilmstripCanvas({
 
         if (globalGaps && globalGaps.length > 0) {
             globalGaps.forEach((g, idx) => {
-                const boundedStart = Math.max(g.startEpochMs, effectiveInEpoch);
-                const boundedEnd = Math.min(g.endEpochMs, effectiveOutEpoch);
+                const boundedStart = Math.max(g.startEpochMs ?? g.StartEpochMs, effectiveInEpoch);
+                const boundedEnd = Math.min(g.endEpochMs ?? g.EndEpochMs, effectiveOutEpoch);
 
                 if (boundedEnd > boundedStart && boundedEnd > vpStartEpoch && boundedStart < vpEndEpoch) {
                     const clStartEpoch = Math.max(vpStartEpoch, boundedStart);
@@ -265,8 +265,8 @@ function FilmstripCanvas({
             let subRanges = [range];
             if (globalGaps && globalGaps.length > 0) {
                 globalGaps.forEach(g => {
-                    const boundedStart = Math.max(g.startEpochMs, effectiveInEpoch);
-                    const boundedEnd = Math.min(g.endEpochMs, effectiveOutEpoch);
+                    const boundedStart = Math.max(g.startEpochMs ?? g.StartEpochMs, effectiveInEpoch);
+                    const boundedEnd = Math.min(g.endEpochMs ?? g.EndEpochMs, effectiveOutEpoch);
                     if (boundedEnd <= boundedStart) return;
 
                     const nextSubs = [];
@@ -439,8 +439,8 @@ function FilmstripCanvas({
 
 /**
  * Main TimelineTrack Component supporting:
- * 1. Collapsed Mode: Central Composite Filmstrip + Health Bar + 12px Director Stepper Ribbon [1|2|1]
- * 2. Expanded Mode: Station Accordion Header ([🎬 AUTO-DIRECTOR: ON/OFF]) + Multi-Screen Child Tracks with Director Coverage In/Out Masking
+ * 1. Collapsed Mode: Clean Single-Line Sidebar + Central Filmstrip + Health Bar + 12px Director Stepper Ribbon [1|2|1]
+ * 2. Expanded Mode: Streamlined Single-Line Header + Multi-Screen Child Tracks with Director Coverage Masking
  */
 export default function TimelineTrack({
     station,
@@ -468,28 +468,55 @@ export default function TimelineTrack({
     const stationId = station?.id || hostname;
     const stationDisplayName = station?.displayName || station?.roleAlias || station?.hostname || station?.name || '';
     const physicalHost = station?.hostname || '';
-    const hasDifferentHost = Boolean(physicalHost && stationDisplayName && physicalHost.toLowerCase() !== stationDisplayName.toLowerCase());
 
     const stationDisplays = useMemo(() => {
-        return station?.displays || station?.topology?.displays || [{ displayId: 'mon-0', displayName: 'Screen 1', isPrimary: true, width: 1920, height: 1080 }];
+        return station?.displays || station?.Displays || station?.displayTopology?.displays || station?.DisplayTopology?.Displays || station?.topology?.displays || [{ displayId: 'mon-0', displayName: 'Screen 1', isPrimary: true, width: 1920, height: 1080 }];
     }, [station]);
 
-    const hasMultiDisplays = stationDisplays.length > 1;
+    const primaryDisplayId = useMemo(() => {
+        const found = stationDisplays.find(d => d.isPrimary || d.IsPrimary);
+        return (found?.displayId || found?.DisplayId || stationDisplays[0]?.displayId || stationDisplays[0]?.DisplayId || 'mon-0').toLowerCase();
+    }, [stationDisplays]);
 
-    // Retrieve active recording segments
+    // Director Plan Segments (supporting both PascalCase and camelCase)
+    const effectiveDirectorPlan = directorPlan || station?.directorPlan || station?.DirectorPlan;
+    const rawDirectorSegments = useMemo(() => {
+        return effectiveDirectorPlan?.segments || effectiveDirectorPlan?.Segments || [];
+    }, [effectiveDirectorPlan]);
+
+    const hasDirectorCuts = rawDirectorSegments && rawDirectorSegments.length > 0;
+    const hasMultiDisplays = stationDisplays.length > 1 || hasDirectorCuts;
+
+    // Retrieve active recording segments with resilient case-insensitive key lookup
     const activeSegments = useMemo(() => {
-        const stationSegs = recordingSegments[stationId] || recordingSegments[hostname] || rawSegments || [];
-        if (!stationSegs || stationSegs.length === 0) return [];
-        return stationSegs.filter(s => (getSegEnd(s) - getSegStart(s)) > 0);
-    }, [recordingSegments, rawSegments, stationId, hostname]);
-
-    // Director Plan Segments
-    const effectiveDirectorPlan = directorPlan || station?.directorPlan;
-    const rawDirectorSegments = effectiveDirectorPlan?.segments || [];
+        let segs = recordingSegments[stationId] || recordingSegments[hostname] || rawSegments || [];
+        if (!segs || segs.length === 0) {
+            const lowerId = (stationId || '').toLowerCase();
+            const lowerHost = (hostname || '').toLowerCase();
+            for (const [k, v] of Object.entries(recordingSegments || {})) {
+                const lk = k.toLowerCase();
+                if ((lowerId && lk === lowerId) || (lowerHost && lk === lowerHost)) {
+                    segs = v;
+                    break;
+                }
+            }
+        }
+        if (!segs || segs.length === 0) segs = station?.segments || station?.Segments || [];
+        if (!segs || segs.length === 0) {
+            for (const d of stationDisplays) {
+                const dSegs = d.segments || d.Segments || [];
+                if (dSegs.length > 0) {
+                    segs = dSegs;
+                    break;
+                }
+            }
+        }
+        return (segs || []).filter(s => (getSegEnd(s) - getSegStart(s)) > 0);
+    }, [recordingSegments, rawSegments, stationId, hostname, station, stationDisplays]);
 
     // Stepper segments for collapsed view
     const stepperSegments = useMemo(() => {
-        if (!hasMultiDisplays || rawDirectorSegments.length === 0 || viewportDurationMs <= 0) return null;
+        if (!hasDirectorCuts || viewportDurationMs <= 0) return null;
         const vpStart = viewportStartMs;
         const vpEnd = viewportStartMs + viewportDurationMs;
 
@@ -505,9 +532,13 @@ export default function TimelineTrack({
             if (widthPct <= 0) return null;
 
             const targetId = (seg.targetDisplayId || seg.TargetDisplayId || 'mon-0').toLowerCase();
-            const dispIdx = stationDisplays.findIndex(d => (d.displayId || '').toLowerCase() === targetId);
-            const dispNum = dispIdx >= 0 ? (dispIdx + 1) : (targetId.includes('1') ? 2 : 1);
-            const dispLabel = dispIdx >= 0 ? (stationDisplays[dispIdx].displayName || `Screen ${dispNum}`) : `Screen ${dispNum}`;
+            const dispIdx = stationDisplays.findIndex(d => (d.displayId || d.DisplayId || '').toLowerCase() === targetId);
+            let dispNum = dispIdx >= 0 ? (dispIdx + 1) : null;
+            if (!dispNum) {
+                const match = targetId.match(/\d+/);
+                dispNum = match ? parseInt(match[0], 10) + 1 : 1;
+            }
+            const dispLabel = dispIdx >= 0 ? (stationDisplays[dispIdx].displayName || stationDisplays[dispIdx].DisplayName || `Screen ${dispNum}`) : `Screen ${dispNum}`;
 
             return {
                 id: idx,
@@ -517,7 +548,7 @@ export default function TimelineTrack({
                 widthPct
             };
         }).filter(Boolean);
-    }, [hasMultiDisplays, rawDirectorSegments, stationDisplays, baseEpochMs, viewportStartMs, viewportDurationMs]);
+    }, [hasDirectorCuts, rawDirectorSegments, stationDisplays, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
     // Check if display is on canvas
     const isDisplayOnCanvas = useCallback((dispId) => {
@@ -526,12 +557,12 @@ export default function TimelineTrack({
     }, [canvasPlacements, stationId]);
 
     // -------------------------------------------------------------
-    // RENDER: COLLAPSED VIEW
+    // RENDER: COLLAPSED VIEW (Single Line, Minimum Icons, Zero Vertical Wrapping)
     // -------------------------------------------------------------
     if (!isExpanded) {
         return (
             <div
-                onClick={(e) => {
+                onClick={() => {
                     if (onSelect) onSelect();
                 }}
                 onContextMenu={(e) => {
@@ -541,11 +572,11 @@ export default function TimelineTrack({
                         onStationContextMenu(e, station);
                     }
                 }}
-                className={`timeline-track-container station-collapsed-track ${isActive ? 'active-track' : ''}`}
+                className={`timeline-track-container station-collapsed-track ${isActive ? 'active-track' : ''} ${stepperSegments?.length > 0 ? 'has-stepper' : ''}`}
             >
                 <div
-                    className="track-sidebar"
-                    title={`Workstation: ${stationDisplayName}${hasDifferentHost ? ` (${physicalHost})` : ''} • Click to select, arrow to expand`}
+                    className="track-sidebar station-collapsed-sidebar"
+                    title={`Workstation: ${stationDisplayName}${physicalHost ? ` (${physicalHost})` : ''} • Click to select, arrow to expand`}
                 >
                     {hasMultiDisplays && (
                         <button
@@ -561,21 +592,14 @@ export default function TimelineTrack({
                         </button>
                     )}
                     <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
-                    <div className="station-sidebar-labels">
-                        <div className="station-name-row">
-                            <span className="station-label" title={stationDisplayName}>{stationDisplayName}</span>
-                            {hasMultiDisplays && (
-                                <span className={`badge-multi-display ${isAutoDirectorEnabled ? 'is-auto' : 'is-manual'}`}>
-                                    {isAutoDirectorEnabled ? '🎬 AUTO' : '🖥️ 2x'}
-                                </span>
-                            )}
-                        </div>
-                        {hasDifferentHost && (
-                            <span className="station-physical-sublabel" title={`Physical Machine: ${physicalHost}`}>
-                                {physicalHost}
-                            </span>
-                        )}
-                    </div>
+                    <span className="station-single-label" title={stationDisplayName}>
+                        {stationDisplayName}
+                    </span>
+                    {hasMultiDisplays && (
+                        <span className="compact-multi-tag" title="Multi-Display Station (Auto-Director Active)">
+                            2x
+                        </span>
+                    )}
                     {onDeselectStation && (
                         <button
                             type="button"
@@ -593,7 +617,7 @@ export default function TimelineTrack({
 
                 <FilmstripCanvas
                     hostname={hostname}
-                    displayId="mon-0"
+                    displayId={primaryDisplayId}
                     activeSegments={activeSegments}
                     viewportStartMs={viewportStartMs}
                     viewportDurationMs={viewportDurationMs}
@@ -608,11 +632,11 @@ export default function TimelineTrack({
     }
 
     // -------------------------------------------------------------
-    // RENDER: EXPANDED ACCORDION VIEW
+    // RENDER: EXPANDED ACCORDION VIEW (Streamlined Single Line Header, Minimum Icons)
     // -------------------------------------------------------------
     return (
         <div className="timeline-station-accordion-group">
-            {/* 1. Accordion Master Header Bar */}
+            {/* 1. Accordion Header Bar: Aligns with 180px sidebar, Zero Wrapping */}
             <div className="station-accordion-header">
                 <div className="accordion-header-left">
                     <button
@@ -627,13 +651,14 @@ export default function TimelineTrack({
                         ▼
                     </button>
                     <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
-                    <span className="station-accordion-title">{stationDisplayName}</span>
-                    {hasDifferentHost && (
-                        <span className="physical-host-pill">{physicalHost}</span>
-                    )}
+                    <span className="station-accordion-title" title={stationDisplayName}>
+                        {stationDisplayName}
+                    </span>
+                </div>
 
-                    {/* Auto-Director Toggle Button */}
-                    {hasMultiDisplays && onToggleAutoDirector && (
+                <div className="accordion-header-timeline">
+                    {/* Auto-Director Toggle Button: Single compact pill on timeline surface */}
+                    {hasMultiDisplays && onToggleAutoDirector ? (
                         <button
                             type="button"
                             className={`btn-station-auto-director ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
@@ -644,12 +669,10 @@ export default function TimelineTrack({
                             title={isAutoDirectorEnabled ? 'Auto-Director is Active. Click to turn OFF for manual multi-screen canvas placement.' : 'Auto-Director is OFF. Primary screen active. Click to re-enable Auto-Director.'}
                         >
                             <span className="dot" />
-                            <span>{isAutoDirectorEnabled ? '🎬 AUTO-DIRECTOR: ON' : '✋ AUTO-DIRECTOR: OFF'}</span>
+                            <span>{isAutoDirectorEnabled ? '⚡ AUTO-DIRECTOR: ON' : '✋ AUTO-DIRECTOR: OFF'}</span>
                         </button>
-                    )}
-                </div>
+                    ) : <span />}
 
-                <div className="accordion-header-right">
                     <button
                         type="button"
                         className="btn-close-accordion"
@@ -667,9 +690,9 @@ export default function TimelineTrack({
             {/* 2. Child Display Tracks (SCREEN 1, SCREEN 2...) */}
             <div className="station-child-tracks-container">
                 {stationDisplays.map((disp, dIdx) => {
-                    const dispId = (disp.displayId || `mon-${dIdx}`).toLowerCase();
-                    const dispNumber = disp.displayNumber || (dIdx + 1);
-                    const dispLabel = disp.displayName || `SCREEN ${dispNumber}`;
+                    const dispId = (disp.displayId || disp.DisplayId || `mon-${dIdx}`).toLowerCase();
+                    const dispNumber = disp.displayNumber || disp.DisplayNumber || (dIdx + 1);
+                    const dispLabel = disp.displayName || disp.DisplayName || `SCREEN ${dispNumber}`;
                     const onCanvas = isDisplayOnCanvas(dispId);
 
                     return (
@@ -679,14 +702,9 @@ export default function TimelineTrack({
                         >
                             <div className="track-sidebar child-display-sidebar">
                                 <span className="child-display-icon">🖥️</span>
-                                <div className="station-sidebar-labels">
-                                    <span className="station-label child-display-title">
-                                        {dispLabel}
-                                    </span>
-                                    <span className="child-display-res">
-                                        {disp.width || 1920}×{disp.height || 1080}
-                                    </span>
-                                </div>
+                                <span className="child-display-title" title={`${dispLabel} (${disp.width || 1920}×${disp.height || 1080})`}>
+                                    {dispLabel}
+                                </span>
 
                                 {/* When Auto-Director is OFF: button to add/remove screen from Canvas */}
                                 {!isAutoDirectorEnabled && onToggleDisplayOnCanvas && (
@@ -699,7 +717,7 @@ export default function TimelineTrack({
                                         }}
                                         title={onCanvas ? 'Remove Screen from Canvas' : 'Add Screen to Canvas Grid'}
                                     >
-                                        {onCanvas ? '✓ ON CANVAS' : '＋ ADD'}
+                                        {onCanvas ? '✓ ON' : '＋ ADD'}
                                     </button>
                                 )}
                             </div>
