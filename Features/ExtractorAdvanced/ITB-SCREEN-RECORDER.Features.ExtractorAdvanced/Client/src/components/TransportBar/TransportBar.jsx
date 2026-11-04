@@ -40,7 +40,7 @@ export default function TransportBar({
     const [audioState, setAudioState] = useState(() => getAudioSettings());
     const { volume, isMuted } = audioState;
 
-    const isEnabled = Boolean(activeStationId);
+    const isEnabled = Boolean(activeStationId || totalDurationMs > 0);
 
     useEffect(() => {
         const handleAudioSync = (e) => {
@@ -210,7 +210,7 @@ export default function TransportBar({
     return (
         <div
             className={`transport-bar-root ${isEnabled ? 'is-expanded' : 'is-compact-disabled'}`}
-            title={!isEnabled ? 'Select a station card above to enable timeline playback' : ''}
+            title={!isEnabled ? 'Playback ready' : ''}
         >
             <button
                 type="button"

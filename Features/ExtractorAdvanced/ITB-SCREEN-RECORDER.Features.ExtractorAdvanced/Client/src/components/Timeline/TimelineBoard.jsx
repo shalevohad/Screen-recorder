@@ -125,8 +125,8 @@ export default function TimelineBoard({
     const getMsFromClientX = useCallback((clientX) => {
         if (!trackAreaRef.current) return viewportStartMs;
         const rect = trackAreaRef.current.getBoundingClientRect();
-        const contentLeft = rect.left + 180;
-        const contentWidth = rect.width - 180 - 58;
+        const contentLeft = rect.left + 200;
+        const contentWidth = rect.width - 200 - 58;
         if (contentWidth <= 0) return viewportStartMs;
         const offsetX = Math.max(0, Math.min(clientX - contentLeft, contentWidth));
         return Math.round(viewportStartMs + (offsetX / contentWidth) * viewportDurationMs);
@@ -188,8 +188,8 @@ export default function TimelineBoard({
                 const maxDynamicZoom = Math.max(32, currentTotal / 2000);
 
                 const rect = el.getBoundingClientRect();
-                const contentLeft = rect.left + 180;
-                const contentWidth = rect.width - 180 - 58;
+                const contentLeft = rect.left + 200;
+                const contentWidth = rect.width - 200 - 58;
 
                 let mouseRatio = 0.5;
                 if (contentWidth > 0) {
@@ -230,7 +230,7 @@ export default function TimelineBoard({
             onContextMenu={(e) => {
                 e.preventDefault();
                 const rect = trackAreaRef.current?.getBoundingClientRect();
-                if (!rect || e.clientX - rect.left < 180 || e.clientX > rect.right - 58) return;
+                if (!rect || e.clientX - rect.left < 200 || e.clientX > rect.right - 58) return;
                 setContextMenu({ x: e.clientX, y: e.clientY, targetMs: Math.max(0, Math.min(totalDurationMs, getMsFromClientX(e.clientX))) });
             }}
         >
@@ -349,7 +349,7 @@ export default function TimelineBoard({
                 onMouseMove={(e) => {
                     if (draggingTarget || !trackAreaRef.current) return;
                     const rect = trackAreaRef.current.getBoundingClientRect();
-                    if (e.clientX >= rect.left + 180 && e.clientX <= rect.right - 58) {
+                    if (e.clientX >= rect.left + 200 && e.clientX <= rect.right - 58) {
                         setHoverMs(getMsFromClientX(e.clientX));
                     } else {
                         setHoverMs(null);
@@ -362,7 +362,9 @@ export default function TimelineBoard({
                     <div className="timeline-section-divider-bar video-section-bar">
                         <div className="section-title-wrap" onClick={() => setIsMasterVideoOpen(prev => !prev)}>
                             <button type="button" className="btn-section-toggle" title="Collapse / Expand All Video Stations">
-                                {isMasterVideoOpen ? '▼' : '▶'}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
+                                    <polyline points={isMasterVideoOpen ? "6 9 12 15 18 9" : "9 18 15 12 9 6"} />
+                                </svg>
                             </button>
                             <span className="section-title-text">
                                 🎬 VIDEO STATIONS ({stations.length} Active Workstations)

@@ -114,17 +114,6 @@ export default function CommandCenterHeader({
 
                 <div className="header-actions-group">
                     <SessionControlWidget onOpenAppSwitcher={onOpenAppSwitcher} />
-                    {isStudioMode && !isExpanded && (
-                        <button
-                            type="button"
-                            className="btn-stealth-telemetry-toggle"
-                            onClick={() => setIsExpanded(true)}
-                            title="Show Full Telemetry"
-                        >
-                            ▼ TELEMETRY
-                        </button>
-                    )}
-
                     <button
                         className={`header-icon-btn toggle-collapse-btn ${isExpanded ? 'active' : ''}`}
                         title={isExpanded ? "Collapse Overview" : "Expand Overview"}

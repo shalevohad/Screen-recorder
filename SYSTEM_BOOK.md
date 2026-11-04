@@ -2621,11 +2621,31 @@ To eliminate operator friction and guarantee smooth timeline navigation without 
    - **Direct Binding on Track Root**: `TimelineBoard.jsx` binds the native wheel event listener directly to `trackAreaRef.current` upon mounting (`{ passive: false, capture: true }`), ensuring that wheel zooming and horizontal scrubbing respond immediately on initial load without requiring the operator to click `[ ⤢ FIT CUT ]` or any other UI control first.
    - **Fail-Safe Polling & Fallback**: `useTimelineNavigation.js` incorporates a robust element-binding fallback with `defaultPrevented` checks, eliminating duplicate events while ensuring universal responsiveness across all timeline containers.
 2. **Proportional Cursor Anchor & Layout Offset Compensation**:
-   - Zoom calculations dynamically compensate for the 180px workstation sidebar and 58px right-side export button slot (`rect.left + 180`, `width - 180 - 58`).
+   - Zoom calculations dynamically compensate for the 200px workstation sidebar and 58px right-side export button slot (`rect.left + 200`, `width - 200 - 58`).
    - When hovering over the active track canvas, zooming in/out scales symmetrically around the exact millisecond epoch beneath the mouse cursor, preserving focal context.
    - When hovering over the station sidebar or export controls, zooming anchors automatically to the current playhead position or viewport midpoint.
 3. **High-Precision Horizontal Scrubbing**:
    - Holding `Ctrl` or `Shift` while scrolling executes smooth horizontal viewport scrubbing across the active timeline duration, facilitating rapid forensic traversal.
+
+---
+
+### 9. Canvas-Flush Side Docks, Universal TransportBar & Integrated Accordion Architecture (2026-11-04)
+
+1. **Canvas-Flush Side Docks Assembly (`.canvas-stage-assembly`)**:
+   - The Left Wing Dock (`canvas-left-wing-dock`) and Right Wing Dock (`canvas-right-wing-dock`) are nested within `.canvas-stage-assembly`, docking directly against the left and right perimeters of `.canvas-master-frame-16-9`.
+   - On wide and ultra-wide monitors, this eliminates empty dead space and keeps essential editing tools (Feeds Palette, Presets, Snap, Rulers, Clear) immediately adjacent to the active canvas.
+   - Stage measurement (`updateDimensions`) subtracts `docksReserve` (104px) from available stage width to guarantee zero clipping or horizontal scrollbars.
+2. **Universal TransportBar in Canvas Mode**:
+   - TransportBar is permanently active and usable upon opening the studio (`isEnabled = Boolean(activeStationId || totalDurationMs > 0)`), removing the restriction that required soloing a single workstation.
+   - Spacebar playback runs a 60 FPS master clock driving all canvas cards synchronously. Continuous streaming utilizes `-c copy` direct stream remuxing with 0% CPU transcoding overhead, automatically cleaning up processes upon pause.
+3. **Integrated & Embedded Accordion Chevrons**:
+   - Replaced bulky and crude expand/collapse buttons with sleek, embedded SVG chevrons (`9 18 15 12 9 6` / `6 9 12 15 18 9`) with subtle glass backgrounds (`rgba(30, 41, 59, 0.60)`) and cyan hover glows, matching the tactical design system.
+4. **200px Expanded Sidebar Alignment & Truncation Elimination**:
+   - Standardized the timeline sidebar to 200px across all tracks (`TimelineTrack`, `AudioRoutingTrack`, `CanvasKeyframeTrack`, `DirectorTrack`), rulers, and the playhead overlay.
+   - Long workstation hostnames (e.g. `OHAD-DESKTOP`) display in full without text truncation or wrapping.
+   - Station deselect buttons (`✕`) are concealed by default and revealed smoothly upon row hover.
+5. **Streamlined Header Telemetry Toggle**:
+   - The duplicate textual `▼ TELEMETRY` button in `CommandCenterHeader.jsx` has been eliminated, leaving only the clean, unified chevron icon button on the right.
 
 ---
 

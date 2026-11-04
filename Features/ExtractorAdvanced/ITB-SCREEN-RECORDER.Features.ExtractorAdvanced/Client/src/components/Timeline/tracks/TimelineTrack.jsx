@@ -680,7 +680,9 @@ export default function TimelineTrack({
                             }}
                             title="Expand multi-screen tracks (Screens 1 & 2)"
                         >
-                            ▶
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
+                                <polyline points="9 18 15 12 9 6" />
+                            </svg>
                         </button>
                     )}
                     <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
@@ -749,7 +751,9 @@ export default function TimelineTrack({
                         }}
                         title="Collapse station tracks (Preserves canvas placements)"
                     >
-                        ▼
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
                     </button>
                     <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
                     <span className="station-accordion-title" title={stationDisplayName}>

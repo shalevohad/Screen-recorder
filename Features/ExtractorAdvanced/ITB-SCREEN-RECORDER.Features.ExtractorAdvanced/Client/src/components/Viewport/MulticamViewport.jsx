@@ -507,8 +507,9 @@ export default function MulticamViewport({
         if (!el) return;
 
         const rect = el.getBoundingClientRect();
-        // Provide 16px breathing space inside viewport
-        const availableW = Math.max(320, Math.floor(rect.width || 960) - 16);
+        // Provide breathing space and reserve room for flush side toolbars
+        const docksReserve = 104;
+        const availableW = Math.max(320, Math.floor(rect.width || 960) - docksReserve - 16);
         const availableH = Math.max(180, Math.floor(rect.height || 540) - 16);
 
         let finalW, finalH;
@@ -2327,7 +2328,160 @@ export default function MulticamViewport({
             {/* Master Canvas Editing Arena */}
             <div className="canvas-editing-arena">
                 {/* Left Wing Dock: Composition Tools */}
-                <aside className="canvas-left-wing-dock">
+                
+
+                {/* Center Canvas Stage */}
+                <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>
+                    {/* Unified Minimalist Feeds & Layers Drawer */}
+                    {showFeedsDrawer && (
+                        <div className="canvas-side-drawer feeds-layers-drawer">
+                            <div className="drawer-header">
+                                <div className="header-title-group">
+                                    <span className="header-icon">🗂️</span>
+                                    <span>FEEDS & LAYERS</span>
+                                    <span className="header-count-pill">{currentPlacements.length} on canvas</span>
+                                </div>
+                                <button type="button" className="btn-close-drawer" onClick={() => setShowFeedsDrawer(false)}>✕</button>
+                            </div>
+                            <div className="drawer-search">
+                                <input
+                                    type="text"
+                                    placeholder="Filter workstations / displays..."
+                                    value={feedSearchQuery}
+                                    onChange={(e) => setFeedSearchQuery(e.target.value)}
+                                />
+                            </div>
+                            <div className="drawer-list-scroll">
+                                {/* 1. Placed Feeds (Canvas Layers) - Selected item is always pinned at the top! */}
+                                {filteredPlaced.length > 0 && (
+                                    <div className="drawer-section">
+                                        <div className="drawer-section-title">
+                                            <span>CANVAS LAYERS</span>
+                                            <span className="section-count">{filteredPlaced.length}</span>
+                                        </div>
+                                        {filteredPlaced.map((item, listIdx) => {
+                                            const isThisDragged = draggedDrawerItem && draggedDrawerItem.type === 'placed' && draggedDrawerItem.origIdx === item.origIdx;
+                                            const isOverThis = drawerDragOverState.index === listIdx;
+                                            const dropClass = isOverThis ? (drawerDragOverState.position === 'above' ? 'drop-above' : 'drop-below') : '';
+
+                                            return (
+                                                <div
+                                                    key={`feed-layer-${item.stationId}-${item.displayId}-${item.origIdx}`}
+                                                    className={`feed-layer-row ${item.isSelected ? 'is-selected' : ''} ${isThisDragged ? 'is-dragging-row' : ''} ${dropClass}`}
+                                                    draggable
+                                                    onDragStart={(e) => handleRowDragStart(e, item)}
+                                                    onDragOver={(e) => handleRowDragOver(e, listIdx)}
+                                                    onDragLeave={(e) => handleRowDragLeave(e, listIdx)}
+                                                    onDrop={(e) => handleRowDrop(e, listIdx)}
+                                                    onDragEnd={handleRowDragEnd}
+                                                    onClick={() => setSelectedFeedIndex(item.origIdx)}
+                                                    title={`Drag to reorder layer (${item.label})`}
+                                                >
+                                                    <span className="drag-handle-grip" title="Drag to reorder layer order">⠿</span>
+                                                    <span className="layer-rank-badge" title={`Layer Priority: #${item.layerRank}`}>
+                                                        #{item.layerRank}
+                                                    </span>
+                                                    <span className={`status-dot ${item.isSelected ? 'active' : ''}`} />
+                                                    <span className="row-label" title={item.label}>
+                                                        {item.label}
+                                                    </span>
+                                                    <span className="row-res">
+                                                        {item.sourceWidth}×{item.sourceHeight}
+                                                    </span>
+                                                    <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleBringForward(item.origIdx)}
+                                                            title="Bring Forward (Layer +1)"
+                                                        >
+                                                            ⬆️
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSendBackward(item.origIdx)}
+                                                            title="Send Backward (Layer -1)"
+                                                        >
+                                                            ⬇️
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="btn-remove-row"
+                                                            onClick={() => handleRemovePlacement(item.origIdx)}
+                                                            title="Remove from canvas"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* 2. Unplaced Available Feeds */}
+                                {filteredUnplaced.length > 0 && (
+                                    <div className="drawer-section">
+                                        <div className="drawer-section-title">
+                                            <span>AVAILABLE FEEDS</span>
+                                            <span className="section-count">{filteredUnplaced.length}</span>
+                                        </div>
+                                        {filteredUnplaced.map((item) => {
+                                            const isThisDragged = draggedDrawerItem && draggedDrawerItem.type === 'unplaced' && draggedDrawerItem.stationId === item.stationId && draggedDrawerItem.displayId === item.displayId;
+
+                                            return (
+                                                <div
+                                                    key={`unplaced-feed-${item.stationId}-${item.displayId}`}
+                                                    className={`feed-layer-row unplaced ${isThisDragged ? 'is-dragging-row' : ''}`}
+                                                    draggable
+                                                    onDragStart={(e) => handleRowDragStart(e, item)}
+                                                    onDragEnd={handleRowDragEnd}
+                                                    onClick={() => handleAddFeedToCanvas(item.feed)}
+                                                    title={`Drag onto canvas or layers, or click to add ${item.label}`}
+                                                >
+                                                    <span className="drag-handle-grip" title="Drag onto canvas or layers">⠿</span>
+                                                    <span className="layer-rank-badge unplaced">＋</span>
+                                                    <span className="status-dot unplaced" />
+                                                    <span className="row-label" title={item.label}>
+                                                        {item.label}
+                                                    </span>
+                                                    <span className="row-res">
+                                                        {item.sourceWidth}×{item.sourceHeight}
+                                                    </span>
+                                                    <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                                        <button
+                                                            type="button"
+                                                            className="btn-add-row"
+                                                            onClick={() => handleAddFeedToCanvas(item.feed)}
+                                                            title="Add to canvas"
+                                                        >
+                                                            ＋ ADD
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {filteredPlaced.length === 0 && filteredUnplaced.length === 0 && (
+                                    <div className="drawer-empty-search">
+                                        No matching workstation feeds found.
+                                    </div>
+                                )}
+                            </div>
+                            <div className="drawer-footer-actions">
+                                <button type="button" className="btn-drawer-action auto" onClick={() => handleApplyPreset('auto')}>
+                                    ⊞ ADD ALL FEEDS
+                                </button>
+                                <button type="button" className="btn-drawer-action clear" onClick={handleClearCanvas}>
+                                    🗑️ CLEAR CANVAS
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="canvas-stage-assembly">
+                        <aside className="canvas-left-wing-dock">
                     <button
                         type="button"
                         className={`btn-wing-tool ${showFeedsDrawer ? 'active' : ''}`}
@@ -2523,157 +2677,7 @@ export default function MulticamViewport({
                     </button>
                 </aside>
 
-                {/* Center Canvas Stage */}
-                <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>
-                    {/* Unified Minimalist Feeds & Layers Drawer */}
-                    {showFeedsDrawer && (
-                        <div className="canvas-side-drawer feeds-layers-drawer">
-                            <div className="drawer-header">
-                                <div className="header-title-group">
-                                    <span className="header-icon">🗂️</span>
-                                    <span>FEEDS & LAYERS</span>
-                                    <span className="header-count-pill">{currentPlacements.length} on canvas</span>
-                                </div>
-                                <button type="button" className="btn-close-drawer" onClick={() => setShowFeedsDrawer(false)}>✕</button>
-                            </div>
-                            <div className="drawer-search">
-                                <input
-                                    type="text"
-                                    placeholder="Filter workstations / displays..."
-                                    value={feedSearchQuery}
-                                    onChange={(e) => setFeedSearchQuery(e.target.value)}
-                                />
-                            </div>
-                            <div className="drawer-list-scroll">
-                                {/* 1. Placed Feeds (Canvas Layers) - Selected item is always pinned at the top! */}
-                                {filteredPlaced.length > 0 && (
-                                    <div className="drawer-section">
-                                        <div className="drawer-section-title">
-                                            <span>CANVAS LAYERS</span>
-                                            <span className="section-count">{filteredPlaced.length}</span>
-                                        </div>
-                                        {filteredPlaced.map((item, listIdx) => {
-                                            const isThisDragged = draggedDrawerItem && draggedDrawerItem.type === 'placed' && draggedDrawerItem.origIdx === item.origIdx;
-                                            const isOverThis = drawerDragOverState.index === listIdx;
-                                            const dropClass = isOverThis ? (drawerDragOverState.position === 'above' ? 'drop-above' : 'drop-below') : '';
-
-                                            return (
-                                                <div
-                                                    key={`feed-layer-${item.stationId}-${item.displayId}-${item.origIdx}`}
-                                                    className={`feed-layer-row ${item.isSelected ? 'is-selected' : ''} ${isThisDragged ? 'is-dragging-row' : ''} ${dropClass}`}
-                                                    draggable
-                                                    onDragStart={(e) => handleRowDragStart(e, item)}
-                                                    onDragOver={(e) => handleRowDragOver(e, listIdx)}
-                                                    onDragLeave={(e) => handleRowDragLeave(e, listIdx)}
-                                                    onDrop={(e) => handleRowDrop(e, listIdx)}
-                                                    onDragEnd={handleRowDragEnd}
-                                                    onClick={() => setSelectedFeedIndex(item.origIdx)}
-                                                    title={`Drag to reorder layer (${item.label})`}
-                                                >
-                                                    <span className="drag-handle-grip" title="Drag to reorder layer order">⠿</span>
-                                                    <span className="layer-rank-badge" title={`Layer Priority: #${item.layerRank}`}>
-                                                        #{item.layerRank}
-                                                    </span>
-                                                    <span className={`status-dot ${item.isSelected ? 'active' : ''}`} />
-                                                    <span className="row-label" title={item.label}>
-                                                        {item.label}
-                                                    </span>
-                                                    <span className="row-res">
-                                                        {item.sourceWidth}×{item.sourceHeight}
-                                                    </span>
-                                                    <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleBringForward(item.origIdx)}
-                                                            title="Bring Forward (Layer +1)"
-                                                        >
-                                                            ⬆️
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleSendBackward(item.origIdx)}
-                                                            title="Send Backward (Layer -1)"
-                                                        >
-                                                            ⬇️
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="btn-remove-row"
-                                                            onClick={() => handleRemovePlacement(item.origIdx)}
-                                                            title="Remove from canvas"
-                                                        >
-                                                            ✕
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {/* 2. Unplaced Available Feeds */}
-                                {filteredUnplaced.length > 0 && (
-                                    <div className="drawer-section">
-                                        <div className="drawer-section-title">
-                                            <span>AVAILABLE FEEDS</span>
-                                            <span className="section-count">{filteredUnplaced.length}</span>
-                                        </div>
-                                        {filteredUnplaced.map((item) => {
-                                            const isThisDragged = draggedDrawerItem && draggedDrawerItem.type === 'unplaced' && draggedDrawerItem.stationId === item.stationId && draggedDrawerItem.displayId === item.displayId;
-
-                                            return (
-                                                <div
-                                                    key={`unplaced-feed-${item.stationId}-${item.displayId}`}
-                                                    className={`feed-layer-row unplaced ${isThisDragged ? 'is-dragging-row' : ''}`}
-                                                    draggable
-                                                    onDragStart={(e) => handleRowDragStart(e, item)}
-                                                    onDragEnd={handleRowDragEnd}
-                                                    onClick={() => handleAddFeedToCanvas(item.feed)}
-                                                    title={`Drag onto canvas or layers, or click to add ${item.label}`}
-                                                >
-                                                    <span className="drag-handle-grip" title="Drag onto canvas or layers">⠿</span>
-                                                    <span className="layer-rank-badge unplaced">＋</span>
-                                                    <span className="status-dot unplaced" />
-                                                    <span className="row-label" title={item.label}>
-                                                        {item.label}
-                                                    </span>
-                                                    <span className="row-res">
-                                                        {item.sourceWidth}×{item.sourceHeight}
-                                                    </span>
-                                                    <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-                                                        <button
-                                                            type="button"
-                                                            className="btn-add-row"
-                                                            onClick={() => handleAddFeedToCanvas(item.feed)}
-                                                            title="Add to canvas"
-                                                        >
-                                                            ＋ ADD
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {filteredPlaced.length === 0 && filteredUnplaced.length === 0 && (
-                                    <div className="drawer-empty-search">
-                                        No matching workstation feeds found.
-                                    </div>
-                                )}
-                            </div>
-                            <div className="drawer-footer-actions">
-                                <button type="button" className="btn-drawer-action auto" onClick={() => handleApplyPreset('auto')}>
-                                    ⊞ ADD ALL FEEDS
-                                </button>
-                                <button type="button" className="btn-drawer-action clear" onClick={handleClearCanvas}>
-                                    🗑️ CLEAR CANVAS
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Master Canvas Stage Frame (WYSIWYG Export Parity) */}
+                        {/* Master Canvas Stage Frame (WYSIWYG Export Parity) */}
                     <div
                         ref={(el) => {
                             canvasFrameRef.current = el;
@@ -3291,11 +3295,8 @@ export default function MulticamViewport({
                             );
                         })()}
                     </div>
-                </div>
 
-            
-                {/* Right Wing Dock: Presets & Production Actions */}
-                <aside className="canvas-right-wing-dock">
+                    <aside className="canvas-right-wing-dock">
                     <button
                         type="button"
                         className="btn-wing-tool highlight-emerald"
@@ -3442,6 +3443,12 @@ export default function MulticamViewport({
                         <span className="tool-label">{isGridFullscreen ? 'EXIT' : 'FULL'}</span>
                     </button>
                 </aside>
+                </div> {/* End canvas-stage-assembly */}
+            </div>
+
+            
+                {/* Right Wing Dock: Presets & Production Actions */}
+                
             </div> {/* End canvas-editing-arena */}
 {/* Save Preset Modal Dialog */}
             {showSavePresetModal && (
