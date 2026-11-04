@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/hooks/useTimelineNavigation.js
 // ==========================================
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -19,6 +19,10 @@ export function useTimelineNavigation({
     const animFrameRef = useRef(null);
     const viewportStartRef = useRef(viewportStartMs);
     viewportStartRef.current = viewportStartMs;
+    const zoomLevelRef = useRef(zoomLevel);
+    zoomLevelRef.current = zoomLevel;
+    const totalDurationRef = useRef(totalTimelineDurationMs);
+    totalDurationRef.current = totalTimelineDurationMs;
 
     const maxDynamicZoom = Math.max(32, totalTimelineDurationMs / 2000);
     const viewportDurationMs = totalTimelineDurationMs / zoomLevel;
@@ -75,21 +79,24 @@ export function useTimelineNavigation({
     }, []);
 
     useEffect(() => {
-        const el = containerRef?.current;
-        if (!el) return;
+        let attachedEl = null;
 
         const handleWheel = (e) => {
+            if (e.defaultPrevented) return;
             e.preventDefault();
             e.stopPropagation();
 
             const isHorizontalScroll = e.ctrlKey || e.shiftKey;
+            const currentZoom = zoomLevelRef.current;
+            const currentStart = viewportStartRef.current;
+            const currentTotal = totalDurationRef.current;
 
             if (isHorizontalScroll) {
                 const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
                 if (delta === 0) return;
 
-                const visibleDurationMs = totalTimelineDurationMs / zoomLevel;
-                const maxStart = Math.max(0, totalTimelineDurationMs - visibleDurationMs);
+                const visibleDurationMs = currentTotal / Math.max(1, currentZoom);
+                const maxStart = Math.max(0, currentTotal - visibleDurationMs);
                 const scrollStepMs = (visibleDurationMs * 0.08) * (delta > 0 ? 1 : -1);
 
                 setViewportStartMs(prev => Math.max(0, Math.min(maxStart, prev + scrollStepMs)));
@@ -98,21 +105,22 @@ export function useTimelineNavigation({
 
                 const isZoomIn = e.deltaY < 0;
                 const zoomFactor = isZoomIn ? 1.25 : 0.8;
+                const maxDynZoom = Math.max(32, currentTotal / 2000);
 
-                const rect = el.getBoundingClientRect();
+                const rect = attachedEl ? attachedEl.getBoundingClientRect() : { left: 0, width: window.innerWidth };
                 const mouseX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
                 const mouseRatio = rect.width > 0 ? (mouseX / rect.width) : 0.5;
 
                 setZoomLevel(prevZoom => {
-                    const nextZoom = Math.max(1, Math.min(maxDynamicZoom, Math.round(prevZoom * zoomFactor * 100) / 100));
+                    const nextZoom = Math.max(1, Math.min(maxDynZoom, Math.round(prevZoom * zoomFactor * 100) / 100));
                     if (nextZoom === prevZoom) return prevZoom;
 
-                    const oldVisibleMs = totalTimelineDurationMs / prevZoom;
-                    const newVisibleMs = totalTimelineDurationMs / nextZoom;
-                    const mouseEpochOffset = viewportStartMs + (mouseRatio * oldVisibleMs);
+                    const oldVisibleMs = currentTotal / prevZoom;
+                    const newVisibleMs = currentTotal / nextZoom;
+                    const mouseEpochOffset = currentStart + (mouseRatio * oldVisibleMs);
 
                     const nextStart = mouseEpochOffset - (mouseRatio * newVisibleMs);
-                    const maxStart = Math.max(0, totalTimelineDurationMs - newVisibleMs);
+                    const maxStart = Math.max(0, currentTotal - newVisibleMs);
 
                     setViewportStartMs(Math.max(0, Math.min(maxStart, nextStart)));
                     return nextZoom;
@@ -120,9 +128,30 @@ export function useTimelineNavigation({
             }
         };
 
-        el.addEventListener('wheel', handleWheel, { passive: false, capture: true });
-        return () => el.removeEventListener('wheel', handleWheel, { capture: true });
-    }, [containerRef, totalTimelineDurationMs, zoomLevel, viewportStartMs, maxDynamicZoom]);
+        const tryAttach = () => {
+            const el = containerRef?.current || (typeof document !== 'undefined' ? (document.querySelector('.studio-bottom-timeline') || document.querySelector('.timeline-board-root')) : null);
+            if (el && !attachedEl) {
+                attachedEl = el;
+                attachedEl.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+                return true;
+            }
+            return Boolean(attachedEl);
+        };
+
+        if (!tryAttach()) {
+            const checkTimer = setInterval(() => {
+                if (tryAttach()) clearInterval(checkTimer);
+            }, 100);
+            return () => {
+                clearInterval(checkTimer);
+                if (attachedEl) attachedEl.removeEventListener('wheel', handleWheel, { capture: true });
+            };
+        }
+
+        return () => {
+            if (attachedEl) attachedEl.removeEventListener('wheel', handleWheel, { capture: true });
+        };
+    }, [containerRef]);
 
     return {
         zoomLevel,

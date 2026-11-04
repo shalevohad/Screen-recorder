@@ -2613,6 +2613,22 @@ To prevent confusing visual fragmentation and adhere to Rule 9/13 synchronizatio
 
 ---
 
+### 8. Immediate Timeline Mouse Wheel Zoom & Cursor Anchor Architecture
+
+To eliminate operator friction and guarantee smooth timeline navigation without prerequisites:
+1. **Immediate Lifecycle Availability without Prerequisite Interactions**:
+   - Resolved the React ref-attachment race condition where wheel listeners were not bound on initial render when workstation datasets or initial setup flags delayed DOM insertion.
+   - **Direct Binding on Track Root**: `TimelineBoard.jsx` binds the native wheel event listener directly to `trackAreaRef.current` upon mounting (`{ passive: false, capture: true }`), ensuring that wheel zooming and horizontal scrubbing respond immediately on initial load without requiring the operator to click `[ ⤢ FIT CUT ]` or any other UI control first.
+   - **Fail-Safe Polling & Fallback**: `useTimelineNavigation.js` incorporates a robust element-binding fallback with `defaultPrevented` checks, eliminating duplicate events while ensuring universal responsiveness across all timeline containers.
+2. **Proportional Cursor Anchor & Layout Offset Compensation**:
+   - Zoom calculations dynamically compensate for the 180px workstation sidebar and 58px right-side export button slot (`rect.left + 180`, `width - 180 - 58`).
+   - When hovering over the active track canvas, zooming in/out scales symmetrically around the exact millisecond epoch beneath the mouse cursor, preserving focal context.
+   - When hovering over the station sidebar or export controls, zooming anchors automatically to the current playhead position or viewport midpoint.
+3. **High-Precision Horizontal Scrubbing**:
+   - Holding `Ctrl` or `Shift` while scrolling executes smooth horizontal viewport scrubbing across the active timeline duration, facilitating rapid forensic traversal.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 

@@ -34,7 +34,7 @@ export default function TimelineBoard({
     timeMode = 'LOCAL',
     totalDurationMs = 3600000,
     zoomLevel = 1,
-    _onZoomChange,
+    onZoomChange,
     onZoomReset,
     playheadMs = 0,
     setPlayheadMs,
@@ -146,6 +146,80 @@ export default function TimelineBoard({
         getMsFromClientX,
         minimapRef
     });
+
+    const zoomLevelRef = useRef(zoomLevel);
+    zoomLevelRef.current = zoomLevel;
+    const viewportStartRef = useRef(viewportStartMs);
+    viewportStartRef.current = viewportStartMs;
+    const totalDurationRef = useRef(totalDurationMs);
+    totalDurationRef.current = totalDurationMs;
+    const playheadRef = useRef(playheadMs);
+    playheadRef.current = playheadMs;
+
+    // Immediate wheel zoom and horizontal scrub listener on the timeline board
+    useEffect(() => {
+        const el = trackAreaRef.current;
+        if (!el) return;
+
+        const handleWheel = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const isHorizontalScroll = e.ctrlKey || e.shiftKey;
+            const currentZoom = zoomLevelRef.current;
+            const currentStart = viewportStartRef.current;
+            const currentTotal = totalDurationRef.current;
+            const currentPlayhead = playheadRef.current;
+
+            if (isHorizontalScroll) {
+                const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+                if (delta === 0) return;
+
+                const visibleDurationMs = currentTotal / Math.max(1, currentZoom);
+                const maxStart = Math.max(0, currentTotal - visibleDurationMs);
+                const scrollStepMs = (visibleDurationMs * 0.08) * (delta > 0 ? 1 : -1);
+
+                onViewportStartChange?.(Math.max(0, Math.min(maxStart, currentStart + scrollStepMs)));
+            } else {
+                if (e.deltaY === 0) return;
+
+                const isZoomIn = e.deltaY < 0;
+                const zoomFactor = isZoomIn ? 1.25 : 0.8;
+                const maxDynamicZoom = Math.max(32, currentTotal / 2000);
+
+                const rect = el.getBoundingClientRect();
+                const contentLeft = rect.left + 180;
+                const contentWidth = rect.width - 180 - 58;
+
+                let mouseRatio = 0.5;
+                if (contentWidth > 0) {
+                    if (e.clientX >= contentLeft && e.clientX <= rect.right - 58) {
+                        mouseRatio = Math.max(0, Math.min(1, (e.clientX - contentLeft) / contentWidth));
+                    } else {
+                        const visibleDurationMs = currentTotal / Math.max(1, currentZoom);
+                        const playheadRatio = (currentPlayhead - currentStart) / visibleDurationMs;
+                        mouseRatio = (playheadRatio >= 0 && playheadRatio <= 1) ? playheadRatio : 0.5;
+                    }
+                }
+
+                const nextZoom = Math.max(1, Math.min(maxDynamicZoom, Math.round(currentZoom * zoomFactor * 100) / 100));
+                if (nextZoom === currentZoom) return;
+
+                const oldVisibleMs = currentTotal / currentZoom;
+                const newVisibleMs = currentTotal / nextZoom;
+                const mouseEpochOffset = currentStart + (mouseRatio * oldVisibleMs);
+
+                const nextStart = mouseEpochOffset - (mouseRatio * newVisibleMs);
+                const maxStart = Math.max(0, currentTotal - newVisibleMs);
+
+                onZoomChange?.(nextZoom);
+                onViewportStartChange?.(Math.max(0, Math.min(maxStart, nextStart)));
+            }
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+        return () => el.removeEventListener('wheel', handleWheel, { capture: true });
+    }, [onZoomChange, onViewportStartChange]);
 
     const isRangeValid = stations.length > 0 && Math.abs(outPointMs - inPointMs) >= 1000;
 
