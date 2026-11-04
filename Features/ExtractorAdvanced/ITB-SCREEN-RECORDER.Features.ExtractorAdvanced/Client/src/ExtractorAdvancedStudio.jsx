@@ -1115,7 +1115,14 @@ export default function ExtractorAdvancedStudio() {
                     isPipSwapped: isPipSwapped,
                     isAutoDirectorEnabled: isAutoDirectorEnabled,
                     directorSegments: directorSegs,
-                    audioRoutingSegments: effectiveAudioPlan.segments || []
+                    audioRoutingSegments: effectiveAudioPlan.segments || [],
+                    utcClockPosition: (() => {
+                        try {
+                            return localStorage.getItem('itb_canvas_utc_clock_pos') || 'top-right';
+                        } catch {
+                            return 'top-right';
+                        }
+                    })()
                 })
             });
 

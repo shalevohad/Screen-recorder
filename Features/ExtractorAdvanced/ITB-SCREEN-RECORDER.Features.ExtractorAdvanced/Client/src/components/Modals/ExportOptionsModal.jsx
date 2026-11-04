@@ -142,9 +142,13 @@ export default function ExportOptionsModal({
                         {compositionSummary.isAutoDirectorEnabled && (
                             <div className="summary-row">
                                 <span className="label">AUTO-DIRECTOR:</span>
-                                <span className="value enabled">ENABLED (SEAMLESS 150ms DIP-TO-BLACK TRANSITIONS)</span>
+                                <span className="value enabled">ENABLED (SEAMLESS 150ms DIP-TO-BLACK & DISPLAY TOPOLOGY HUD)</span>
                             </div>
                         )}
+                        <div className="summary-row">
+                            <span className="label">UTC WALL CLOCK:</span>
+                            <span className="value enabled">PERMANENT (BURNED-IN AT {((typeof localStorage !== 'undefined' && localStorage.getItem('itb_canvas_utc_clock_pos')) || 'TOP-RIGHT').toUpperCase()})</span>
+                        </div>
                     </div>
 
                     {/* Target Resolution & Quality Selection */}

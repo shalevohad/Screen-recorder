@@ -2766,6 +2766,35 @@ To support flexible manual multi-monitor composition when automated camera switc
      - Fallback default feeds (`defaultStationFeeds`) are only injected for active stations that currently have zero screens placed on canvas.
      - The station synchronization effect preserves all operator-placed screens and prevents automatic purges.
 
+### 15. Auto-Director Screen Orientation HUD Radar & Canvas Permanent UTC Wall Clock (2026-11-04)
+
+To guarantee complete situational awareness and forensic temporal alignment during multi-monitor playback and exported video review, the platform introduces two integrated capabilities:
+
+1. **Auto-Director Screen Orientation HUD Radar (Live & Forensic Export)**:
+   - **Interactive Studio View**:
+     - `CameraCardFeed.jsx` mounts `PersistentMinimapHud.jsx` whenever a workstation has multiple physical displays (`stationDisplays.length > 1`).
+     - Renders an unmistakable HUD badge: `⚡ AUTO : SCREEN 1 (MAIN)` or `⚡ AUTO : SCREEN 2 (SECONDARY)` with real-time display topology SVG bounds.
+     - On display transitions, `isDisplayTransitioning` fires for 2 seconds, displaying a vibrant green alert pill: `⚡ SWITCHED TO SCREEN X` accompanied by a cyan pulse glow.
+     - Clicking any monitor box inside the HUD instantly switches the active camera feed to that physical monitor.
+   - **Master MP4 Forensic Video Export**:
+     - In `AdvanceJobManager.cs` and `SynchronizedTrackCutter.cs`, when cutting multi-monitor director segments (`dirSegments`), FFmpeg filtergraphs burn in:
+       1. Top-left dark glass orientation badge: `⚡ AUTO-DIRECTOR • VIEWING: SCREEN {num} ({label})`.
+       2. Physical topology minimap boxes: miniature rectangle nodes representing all workstation displays side by side, with the active monitor highlighted in glowing cyan (`#06B6D4`) and inactive monitors in dark slate (`#334155`).
+       3. Dynamic transition banner: on segment switch, a top-center green pill (`▶ SWITCHED TO SCREEN {num}`) is displayed for the initial 2.5 seconds of the transition (`enable='between(t,0,2.5)'`).
+
+2. **Permanent Canvas UTC Wall Clock Overlay (Movable, Unremovable)**:
+   - **Interactive Studio Stage**:
+     - `MulticamViewport.jsx` mounts `CanvasUtcWallClock.jsx` directly within the canvas staging assembly.
+     - Displays live playhead UTC date (`YYYY-MM-DD`) and timecode (`HH:MM:SS UTC`) with a glowing green beacon pulse.
+     - **Movable Corner Cycling**: Clicking the clock or its corner switch button (`[ ⤢ ]`) sequentially cycles between 4 corners: `top-right` ➔ `bottom-right` ➔ `bottom-left` ➔ `top-left` ➔ `top-right`.
+     - **Permanent Unremovable Guarantee**: The clock contains zero delete or hide controls and remains permanently anchored on the canvas.
+     - Preference is persisted in `localStorage` under `itb_canvas_utc_clock_pos`.
+   - **Master MP4 Video Export Burn-In**:
+     - Both standard master compositions (`ComposeMasterMp4Async`) and custom canvas layouts (`ComposeCustomCanvasMp4Async`) in `AdvanceJobManager.cs` receive `UtcClockPosition`.
+     - An FFmpeg `drawtext` filtergraph is dynamically appended before the output encoder:
+       `drawtext={fontClause}text='%{pts\:gmtime\:{startEpochSec}\:%Y-%m-%d  %H\\\:%M\\\:%S UTC}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x={clockX}:y={clockY}`
+     - Evaluates accurate pixel offsets matching the chosen corner (`top-right`, `top-left`, `bottom-right`, `bottom-left`), permanently burning the exact UTC wall clock into the exported MP4 video.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

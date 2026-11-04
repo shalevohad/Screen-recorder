@@ -353,6 +353,33 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                     segFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", CultureInfo.InvariantCulture)}:duration=0.15");
                                 }
 
+                                // Auto-Director Screen Orientation HUD & Physical Minimap Overlay
+                                string dirFontClause = ResolveFontClause();
+                                if (!string.IsNullOrEmpty(dirFontClause) && dirSegments.Count > 1)
+                                {
+                                    int displayNum = inIdx + 1;
+                                    string displayAlias = (inIdx == 0) ? "MAIN" : "SECONDARY";
+                                    int totalDisplays = 2;
+
+                                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x0F172A@0.88:t=fill");
+                                    segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x06B6D4@0.85:t=2");
+                                    segFilters.Add($"drawtext={dirFontClause}text='⚡ AUTO-DIRECTOR':fontcolor=0x22D3EE:fontsize=10:x=34:y=30");
+                                    segFilters.Add($"drawtext={dirFontClause}text='VIEWING\\: SCREEN {displayNum} ({displayAlias})':fontcolor=white:fontsize=13:x=34:y=46");
+
+                                    for (int m = 0; m < totalDisplays; m++)
+                                    {
+                                        int boxX = 24 + 280 - 12 - (totalDisplays * 32) + (m * 32);
+                                        string mColor = (m == inIdx) ? "0x06B6D4" : "0x334155";
+                                        segFilters.Add($"drawbox=x={boxX}:y=36:w=26:h=18:color={mColor}:t=fill");
+                                        segFilters.Add($"drawtext={dirFontClause}text='{m + 1}':fontcolor=white:fontsize=10:x={boxX + 9}:y=40");
+                                    }
+
+                                    if (i > 0)
+                                    {
+                                        segFilters.Add($"drawtext={dirFontClause}text='▶ SWITCHED TO SCREEN {displayNum} ({displayAlias})':enable='between(t,0,2.5)':fontcolor=0x10B981:fontsize=15:box=1:boxcolor=0x0F172A@0.92:boxborderw=6:x=(w-tw)/2:y=28");
+                                    }
+                                }
+
                                 segFilterOps.Add($"[{inIdx}:v]{string.Join(",", segFilters)}{segOutLabel}");
                                 concatInputLabels.Add(segOutLabel);
                             }
@@ -681,6 +708,38 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
             {
                 try { ExtractorGarbageCollectorService.UntrackProcess(process.Id); } catch { }
             }
+        }
+        private static string ResolveFontClause()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                string fontsDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+                string[] winCandidates = {
+                    Path.Combine(fontsDir, "arial.ttf"),
+                    Path.Combine(fontsDir, "segoeui.ttf"),
+                    Path.Combine(fontsDir, "tahoma.ttf"),
+                    "C:/Windows/Fonts/arial.ttf"
+                };
+                foreach (var font in winCandidates)
+                {
+                    if (File.Exists(font))
+                    {
+                        string normalized = font.Replace("\\", "/").Replace(":", "\\:");
+                        return $"fontfile='{normalized}':";
+                    }
+                }
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                string[] linuxFonts = {
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+                };
+                var found = linuxFonts.FirstOrDefault(File.Exists);
+                if (found != null) return $"fontfile='{found}':";
+            }
+            return "";
         }
     }
 }

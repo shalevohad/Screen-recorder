@@ -5,6 +5,7 @@
 // ==========================================
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import CameraCard from './views/Card/CameraCard.jsx';
+import CanvasUtcWallClock from './overlays/CanvasUtcWallClock.jsx';
 import { saveStudioSessionCache } from '../../utils/studioSessionStore.js';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import {
@@ -327,6 +328,13 @@ export default function MulticamViewport({
     isModalOpen = false
 }) {
     const currentEpochMs = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
+    const [utcClockPosition, setUtcClockPosition] = useState(() => {
+        try {
+            return localStorage.getItem('itb_canvas_utc_clock_pos') || 'top-right';
+        } catch {
+            return 'top-right';
+        }
+    });
     const cutStartEpochMs = baseEpochMs + inPointMs;
 
     // Audio solo state
@@ -3344,6 +3352,17 @@ export default function MulticamViewport({
                                 </div>
                             );
                         })()}
+                        {/* Persistent Canvas UTC Wall Clock Overlay (Movable, Cannot Be Removed) */}
+                        <CanvasUtcWallClock
+                            currentEpochMs={currentEpochMs}
+                            position={utcClockPosition}
+                            onPositionChange={(newPos) => {
+                                setUtcClockPosition(newPos);
+                                try {
+                                    localStorage.setItem('itb_canvas_utc_clock_pos', newPos);
+                                } catch { }
+                            }}
+                        />
                     </div>
 
                     <aside className="canvas-right-wing-dock">

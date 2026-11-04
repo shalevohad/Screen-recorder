@@ -38,9 +38,12 @@ export default function PersistentMinimapHud({
 
     const activeDisplay = displays.find(d => (d.displayId ?? d.DisplayId) === activeDisplayId) || displays[0];
     const activeIndex = displays.indexOf(activeDisplay);
+    const screenNum = activeIndex >= 0 ? (activeIndex + 1) : 1;
     const rawLabel = activeDisplay ? (activeDisplay.displayName ?? activeDisplay.DisplayName ?? '') : '';
     const cleanLabel = rawLabel.replace(/\s*\(mon-\d+\)/i, '').trim();
-    const activeLabel = (cleanLabel || 'SCREEN').toUpperCase();
+    const activeLabel = cleanLabel && !cleanLabel.toLowerCase().includes('screen')
+        ? `SCREEN ${screenNum} (${cleanLabel.toUpperCase()})`
+        : (cleanLabel ? cleanLabel.toUpperCase() : `SCREEN ${screenNum}`);
 
     return (
         <aside 
@@ -55,6 +58,13 @@ export default function PersistentMinimapHud({
                     {activeTimeRange && <span className="hud-time-range"> [{activeTimeRange}]</span>}
                 </span>
             </div>
+
+            {isTransitioning && (
+                <div className="hud-transition-alert">
+                    <span className="transition-icon">⚡</span>
+                    <span>SWITCHED TO {activeLabel}</span>
+                </div>
+            )}
 
             <div className="hud-canvas-wrap">
                 <svg 

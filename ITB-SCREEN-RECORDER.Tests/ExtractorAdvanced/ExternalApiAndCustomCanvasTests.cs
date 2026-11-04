@@ -681,4 +681,93 @@ public class ExternalApiAndCustomCanvasTests
         Assert.Equal(0, process.ExitCode);
         Assert.DoesNotContain("Fontconfig error", stderr, StringComparison.OrdinalIgnoreCase);
     }
+    
+    [Fact]
+    public void UtcClockPosition_DtoSerializationAndDefaultHandling()
+    {
+        var req = new AdvanceCutRequestDto
+        {
+            UtcClockPosition = "bottom-left"
+        };
+        Assert.Equal("bottom-left", req.UtcClockPosition);
+
+        var defaultJob = new AdvanceJobInfo();
+        Assert.Equal("top-right", defaultJob.UtcClockPosition);
     }
+
+    [Fact]
+    public async Task UtcWallClock_DrawtextFilterFormat_ExecutesSuccessfullyInFFmpeg()
+    {
+        string? fontClause = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services.AdvanceJobManager.ResolveSystemFontClause();
+        if (string.IsNullOrEmpty(fontClause)) return;
+
+        string[] candidates = {
+            Path.Combine(AppContext.BaseDirectory, "Features", "ExtractorAdvanced", "ffmpeg.exe"),
+            Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
+            "ffmpeg.exe"
+        };
+        string? ffmpegPath = candidates.FirstOrDefault(File.Exists);
+        if (ffmpegPath == null) return;
+
+        long testStartEpochSec = 1730742633;
+        string filterGraph = $"[0:v]drawtext={fontClause}text='%{{pts\\:gmtime\\:{testStartEpochSec}\\:%Y-%m-%d  %H\\\\\\:%M\\\\\\:%S UTC}}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x=w-tw-24:y=24[outv]";
+
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            Arguments = $"-nostdin -v error -f lavfi -i color=c=black:s=640x360:d=1 -filter_complex \"{filterGraph}\" -map \"[outv]\" -f null -",
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = new System.Diagnostics.Process { StartInfo = psi };
+        process.Start();
+        string stderr = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        Assert.Equal(0, process.ExitCode);
+        Assert.DoesNotContain("error", stderr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AutoDirectorScreenOrientationOverlay_ExecutesSuccessfullyInFFmpeg()
+    {
+        string? fontClause = ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services.AdvanceJobManager.ResolveSystemFontClause();
+        if (string.IsNullOrEmpty(fontClause)) return;
+
+        string[] candidates = {
+            Path.Combine(AppContext.BaseDirectory, "Features", "ExtractorAdvanced", "ffmpeg.exe"),
+            Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe"),
+            "ffmpeg.exe"
+        };
+        string? ffmpegPath = candidates.FirstOrDefault(File.Exists);
+        if (ffmpegPath == null) return;
+
+        // Verify orientation badge, minimap topology boxes, and transition banner
+        string filterGraph = "[0:v]drawbox=x=24:y=24:w=280:h=46:color=0x0F172A@0.88:t=fill," +
+                             "drawbox=x=24:y=24:w=280:h=46:color=0x06B6D4@0.85:t=2," +
+                             $"drawtext={fontClause}text='⚡ AUTO-DIRECTOR':fontcolor=0x22D3EE:fontsize=10:x=34:y=30," +
+                             $"drawtext={fontClause}text='VIEWING\\: SCREEN 2 (SECONDARY)':fontcolor=white:fontsize=13:x=34:y=46," +
+                             "drawbox=x=234:y=36:w=26:h=18:color=0x334155:t=fill," +
+                             "drawbox=x=266:y=36:w=26:h=18:color=0x06B6D4:t=fill," +
+                             $"drawtext={fontClause}text='▶ SWITCHED TO SCREEN 2 (SECONDARY)':enable='between(t,0,2.5)':fontcolor=0x10B981:fontsize=15:box=1:boxcolor=0x0F172A@0.92:boxborderw=6:x=(w-tw)/2:y=28[outv]";
+
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            Arguments = $"-nostdin -v error -f lavfi -i color=c=black:s=1280x720:d=1 -filter_complex \"{filterGraph}\" -map \"[outv]\" -f null -",
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = new System.Diagnostics.Process { StartInfo = psi };
+        process.Start();
+        string stderr = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        Assert.Equal(0, process.ExitCode);
+        Assert.DoesNotContain("error", stderr, StringComparison.OrdinalIgnoreCase);
+    }
+}

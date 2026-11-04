@@ -44,6 +44,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
         public string? AudioSourceStation { get; set; }
         public CustomCanvasLayoutDto? CanvasLayout { get; set; }
         public CanvasLayoutTimelineDto? CanvasLayoutTimeline { get; set; }
+        public string? UtcClockPosition { get; set; } = "top-right";
     }
 
     public class AdvanceCutRequestDto
@@ -101,6 +102,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("canvasLayoutTimeline")]
         public CanvasLayoutTimelineDto? CanvasLayoutTimeline { get; set; }
+
+        [JsonPropertyName("utcClockPosition")]
+        public string? UtcClockPosition { get; set; } = "top-right";
 
         [JsonPropertyName("fileName")]
         public string? FileName { get; set; }

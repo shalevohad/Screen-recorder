@@ -436,7 +436,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 AudioRoutingSegments = request.AudioRoutingSegments,
                 AudioSourceStation = request.AudioSourceStation,
                 CanvasLayout = request.CanvasLayout,
-                CanvasLayoutTimeline = request.CanvasLayoutTimeline
+                CanvasLayoutTimeline = request.CanvasLayoutTimeline,
+                UtcClockPosition = request.UtcClockPosition ?? "top-right"
             };
 
             _jobs[job.JobId] = job;
@@ -1114,6 +1115,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             string mode = (job.LayoutMode ?? "director").Trim().ToLowerInvariant();
             string filterComplex;
             string durationStr = exportedDurationSec.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
 
             if (mode == "split" && tracks.Count >= 2)
             {
@@ -1169,7 +1171,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 var dirSegments = job.DirectorSegments;
                 if (dirSegments != null && dirSegments.Count > 0)
                 {
-                    long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
                     var segFilterOps = new List<string>();
                     var concatInputLabels = new List<string>();
 
@@ -1214,6 +1215,33 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             segFilters.Add($"fade=type=out:start_time={outStart.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}:duration=0.15");
                         }
 
+                        // Auto-Director Screen Orientation HUD & Physical Minimap Overlay
+                        string? dirFontClause = ResolveSystemFontClause();
+                        if (!string.IsNullOrEmpty(dirFontClause) && (tracks.Count > 1 || dirSegments.Count > 1))
+                        {
+                            int displayNum = inIdx + 1;
+                            string displayAlias = (inIdx == 0) ? "MAIN" : "SECONDARY";
+                            int totalDisplays = Math.Max(2, tracks.Count);
+
+                            segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x0F172A@0.88:t=fill");
+                            segFilters.Add("drawbox=x=24:y=24:w=280:h=46:color=0x06B6D4@0.85:t=2");
+                            segFilters.Add($"drawtext={dirFontClause}text='⚡ AUTO-DIRECTOR':fontcolor=0x22D3EE:fontsize=10:x=34:y=30");
+                            segFilters.Add($"drawtext={dirFontClause}text='VIEWING\\: SCREEN {displayNum} ({displayAlias})':fontcolor=white:fontsize=13:x=34:y=46");
+
+                            for (int m = 0; m < totalDisplays; m++)
+                            {
+                                int boxX = 24 + 280 - 12 - (totalDisplays * 32) + (m * 32);
+                                string mColor = (m == inIdx) ? "0x06B6D4" : "0x334155";
+                                segFilters.Add($"drawbox=x={boxX}:y=36:w=26:h=18:color={mColor}:t=fill");
+                                segFilters.Add($"drawtext={dirFontClause}text='{m + 1}':fontcolor=white:fontsize=10:x={boxX + 9}:y=40");
+                            }
+
+                            if (i > 0)
+                            {
+                                segFilters.Add($"drawtext={dirFontClause}text='▶ SWITCHED TO SCREEN {displayNum} ({displayAlias})':enable='between(t,0,2.5)':fontcolor=0x10B981:fontsize=15:box=1:boxcolor=0x0F172A@0.92:boxborderw=6:x=(w-tw)/2:y=28");
+                            }
+                        }
+
                         segFilterOps.Add($"[{inIdx}:v]{string.Join(",", segFilters)}{segOutLabel}");
                         concatInputLabels.Add(segOutLabel);
                     }
@@ -1243,7 +1271,6 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             if (job.AudioRoutingSegments != null && job.AudioRoutingSegments.Count > 0 && anyTrackHasAudio)
             {
-                long cutStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
                 var audioSegFilterOps = new List<string>();
                 var audioConcatLabels = new List<string>();
 
@@ -1322,7 +1349,40 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
             }
 
-            filterComplex += $" [vbase]fps=fps={targetFps}:round=near,format=yuv420p[outv]";
+            long startEpochSec = cutStartEpochMs / 1000;
+            string clockPos = (job.UtcClockPosition ?? "top-right").Trim().ToLowerInvariant();
+            string clockX = "w-tw-24";
+            string clockY = "24";
+            switch (clockPos)
+            {
+                case "top-left":
+                    clockX = "24";
+                    clockY = "24";
+                    break;
+                case "bottom-left":
+                    clockX = "24";
+                    clockY = "h-th-24";
+                    break;
+                case "bottom-right":
+                    clockX = "w-tw-24";
+                    clockY = "h-th-24";
+                    break;
+                case "top-right":
+                default:
+                    clockX = "w-tw-24";
+                    clockY = "24";
+                    break;
+            }
+
+            string? masterFontClause = ResolveSystemFontClause();
+            if (!string.IsNullOrEmpty(masterFontClause))
+            {
+                filterComplex += $" [vbase]drawtext={masterFontClause}text='%{{pts\\:gmtime\\:{startEpochSec}\\:%Y-%m-%d  %H\\\\\\:%M\\\\\\:%S UTC}}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x={clockX}:y={clockY}[v_clock]; [v_clock]fps=fps={targetFps}:round=near,format=yuv420p[outv]";
+            }
+            else
+            {
+                filterComplex += $" [vbase]fps=fps={targetFps}:round=near,format=yuv420p[outv]";
+            }
 
             var (_, _, masterBitrateKbps) = ParseQualityResolution(job.Resolution ?? job.VideoQuality);
             string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: masterBitrateKbps);
@@ -1844,7 +1904,40 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 }
             }
 
-            filterBuilder.Append($" [vbase]fps=fps={targetFps}:round=near,format=yuv420p[outv]");
+            long canvasStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
+            long canvasStartEpochSec = canvasStartEpochMs / 1000;
+            string canvasClockPos = (job.UtcClockPosition ?? "top-right").Trim().ToLowerInvariant();
+            string canvasClockX = "w-tw-24";
+            string canvasClockY = "24";
+            switch (canvasClockPos)
+            {
+                case "top-left":
+                    canvasClockX = "24";
+                    canvasClockY = "24";
+                    break;
+                case "bottom-left":
+                    canvasClockX = "24";
+                    canvasClockY = "h-th-24";
+                    break;
+                case "bottom-right":
+                    canvasClockX = "w-tw-24";
+                    canvasClockY = "h-th-24";
+                    break;
+                case "top-right":
+                default:
+                    canvasClockX = "w-tw-24";
+                    canvasClockY = "24";
+                    break;
+            }
+
+            if (!string.IsNullOrEmpty(fontClause))
+            {
+                filterBuilder.Append($" [vbase]drawtext={fontClause}text='%{{pts\\:gmtime\\:{canvasStartEpochSec}\\:%Y-%m-%d  %H\\\\\\:%M\\\\\\:%S UTC}}':fontcolor=0x22D3EE:fontsize=15:box=1:boxcolor=0x070A10@0.85:boxborderw=6:x={canvasClockX}:y={canvasClockY}[v_clock]; [v_clock]fps=fps={targetFps}:round=near,format=yuv420p[outv]");
+            }
+            else
+            {
+                filterBuilder.Append($" [vbase]fps=fps={targetFps}:round=near,format=yuv420p[outv]");
+            }
 
             string encArgs = _binaryResolver.GetOptimalVideoEncoderArgs(bitrateKbps: targetBitrateKbps);
             string creationUtcIso = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");

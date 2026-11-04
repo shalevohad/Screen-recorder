@@ -7,6 +7,7 @@ import { getAudioSettings } from '../../../../utils/studioSessionStore.js';
 import { attachVideoAudio } from '../../../../utils/audioLevelMonitor.js';
 import NoSignalHero from '../../overlays/NoSignalHero.jsx';
 import TacticalDisplayStrip from '../../overlays/TacticalDisplayStrip.jsx';
+import PersistentMinimapHud from '../../overlays/PersistentMinimapHud.jsx';
 import './CameraCardFeed.scss';
 
 export default function CameraCardFeed({
@@ -82,6 +83,19 @@ export default function CameraCardFeed({
         }
         return (stationDisplays[0]?.displayId || 'mon-0').toLowerCase();
     }, [manualDisplayId, targetDisplayId, stationDisplays, isAutoDirectorEnabled, activeDirectorSegment]);
+
+    const prevDisplayIdRef = useRef(activeDisplayId);
+    const [isDisplayTransitioning, setIsDisplayTransitioning] = useState(false);
+
+    useEffect(() => {
+        if (prevDisplayIdRef.current && prevDisplayIdRef.current !== activeDisplayId) {
+            setIsDisplayTransitioning(true);
+            const timer = setTimeout(() => setIsDisplayTransitioning(false), 2000);
+            prevDisplayIdRef.current = activeDisplayId;
+            return () => clearTimeout(timer);
+        }
+        prevDisplayIdRef.current = activeDisplayId;
+    }, [activeDisplayId]);
 
     const stationSegments = recordingSegments[station?.id] || recordingSegments[stationName] || station?.segments || [];
     const isInRecordingSegment = stationSegments.length === 0 || stationSegments.some(seg => {
@@ -534,6 +548,19 @@ export default function CameraCardFeed({
                         </div>
                     </div>
                 </div>
+            )}
+
+            {stationDisplays.length > 1 && (
+                <PersistentMinimapHud
+                    displays={stationDisplays}
+                    activeDisplayId={activeDisplayId}
+                    onSelectDisplay={(newDispId) => {
+                        setManualDisplayId(newDispId);
+                        onSelectDisplayId?.(newDispId);
+                    }}
+                    isTransitioning={isDisplayTransitioning}
+                    mode={isAutoDirectorEnabled ? 'AUTO' : 'MANUAL'}
+                />
             )}
 
             {!hideDisplayStrip && (
