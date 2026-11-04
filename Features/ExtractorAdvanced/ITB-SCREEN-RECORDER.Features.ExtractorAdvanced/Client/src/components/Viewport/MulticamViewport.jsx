@@ -114,7 +114,7 @@ function fitInCell(cellX, cellY, cellW, cellH, aspect) {
     return { x, y, width: w, height: h };
 }
 
-function generateAutoPackPlacements(feeds, W = DEFAULT_VIRTUAL_CANVAS_W, H = DEFAULT_VIRTUAL_CANVAS_H) {
+export function generateAutoPackPlacements(feeds, W = DEFAULT_VIRTUAL_CANVAS_W, H = DEFAULT_VIRTUAL_CANVAS_H) {
     const count = feeds.length;
     if (count === 0) return [];
 
@@ -588,7 +588,7 @@ export default function MulticamViewport({
 
     // Enumerate all available workstation feeds across displays (including central composite and individual screens)
     const availableFeeds = useMemo(() => {
-        const pool = (allStations && allStations.length > 0) ? allStations : timelineStations;
+        const pool = (timelineStations && timelineStations.length > 0) ? timelineStations : allStations;
         const feeds = [];
         pool.forEach(st => {
             const displays = (st.displays && st.displays.length > 0)
@@ -645,12 +645,24 @@ export default function MulticamViewport({
             }
         });
         return feeds;
-    }, [allStations, timelineStations]);
+    }, [timelineStations, allStations]);
 
     // Timeline Keyframes Layout State: Initializes with 1 equal slot per station (Central Composition)
     const [internalTimeline, setInternalTimeline] = useState(() => {
         if (canvasLayoutTimeline?.keyframes?.length > 0) {
-            return JSON.parse(JSON.stringify(canvasLayoutTimeline));
+            const sanitized = JSON.parse(JSON.stringify(canvasLayoutTimeline));
+            if (timelineStations && timelineStations.length > 0) {
+                const selectedIds = new Set(timelineStations.map(s => s.id));
+                sanitized.keyframes.forEach(kf => {
+                    if (kf.layout?.placements?.length > 0) {
+                        kf.layout.placements = kf.layout.placements.filter(p => selectedIds.has(p.stationId));
+                    }
+                });
+                const hasValid = sanitized.keyframes.some(kf => kf.layout?.placements?.length > 0);
+                if (hasValid) return sanitized;
+            } else {
+                return sanitized;
+            }
         }
         return {
             id: 'canvas-timeline-root',
@@ -674,14 +686,23 @@ export default function MulticamViewport({
 
     useEffect(() => {
         if (canvasLayoutTimeline?.keyframes?.length > 0) {
-            setInternalTimeline(JSON.parse(JSON.stringify(canvasLayoutTimeline)));
-            const hasExisting = canvasLayoutTimeline.keyframes.some(k => k.layout?.placements?.length > 0);
+            const sanitized = JSON.parse(JSON.stringify(canvasLayoutTimeline));
+            if (timelineStations && timelineStations.length > 0) {
+                const selectedIds = new Set(timelineStations.map(s => s.id));
+                sanitized.keyframes.forEach(kf => {
+                    if (kf.layout?.placements?.length > 0) {
+                        kf.layout.placements = kf.layout.placements.filter(p => selectedIds.has(p.stationId));
+                    }
+                });
+            }
+            setInternalTimeline(sanitized);
+            const hasExisting = sanitized.keyframes.some(k => k.layout?.placements?.length > 0);
             if (hasExisting) {
                 hasUserCustomizedRef.current = true;
                 setSelectedPresetId('custom');
             }
         }
-    }, [canvasLayoutTimeline]);
+    }, [canvasLayoutTimeline, timelineStations]);
 
     const keyframes = internalTimeline.keyframes || [];
     const activeKfIndexByTime = useMemo(() => {
@@ -810,6 +831,47 @@ export default function MulticamViewport({
         }
     }, [defaultStationFeeds, currentPlacements, updateActivePlacements, selectedAspectId]);
 
+    // Keep canvas layout synchronized with selected timeline stations:
+    // If the operator adds/removes stations from selection, auto-update the grid if in auto-grid mode,
+    // or purge unselected stations if custom layout.
+    const prevTimelineStationIdsRef = useRef('');
+    useEffect(() => {
+        const currentIdsStr = (timelineStations || []).map(s => s.id).sort().join(',');
+        if (prevTimelineStationIdsRef.current === '') {
+            prevTimelineStationIdsRef.current = currentIdsStr;
+            return;
+        }
+        if (prevTimelineStationIdsRef.current !== currentIdsStr) {
+            prevTimelineStationIdsRef.current = currentIdsStr;
+
+            if (timelineStations && timelineStations.length > 0) {
+                const selectedIds = new Set(timelineStations.map(s => s.id));
+                if (selectedPresetId === 'auto-grid' || !hasUserCustomizedRef.current) {
+                    let targetAspect = selectedAspectId;
+                    if (defaultStationFeeds.length === 2 && selectedAspectId === '16:9') {
+                        targetAspect = '32:9';
+                        setSelectedAspectId('32:9');
+                    }
+                    const activePreset = ASPECT_PRESETS.find(p => p.id === targetAspect) || ASPECT_PRESETS[0];
+                    const autoPacked = generateAutoPackPlacements(defaultStationFeeds, activePreset.w, activePreset.h);
+                    if (autoPacked.length > 0) {
+                        updateActivePlacements(autoPacked);
+                    }
+                } else if (currentPlacements && currentPlacements.length > 0) {
+                    const cleaned = currentPlacements.filter(p => selectedIds.has(p.stationId));
+                    if (cleaned.length !== currentPlacements.length) {
+                        if (cleaned.length === 0) {
+                            const autoPacked = generateAutoPackPlacements(defaultStationFeeds, virtualW, virtualH);
+                            updateActivePlacements(autoPacked);
+                        } else {
+                            updateActivePlacements(cleaned);
+                        }
+                    }
+                }
+            }
+        }
+    }, [timelineStations, defaultStationFeeds, selectedPresetId, selectedAspectId, currentPlacements, updateActivePlacements, virtualW, virtualH]);
+
     // Sync current canvas layout to parent Studio
     useEffect(() => {
         if (onUpdateCanvasLayout) {
@@ -833,7 +895,8 @@ export default function MulticamViewport({
         setSelectedAspectId(newPreset.id);
 
         if (!hasUserCustomizedRef.current) {
-            const autoPacked = generateAutoPackPlacements(currentPlacements && currentPlacements.length > 0 ? currentPlacements : availableFeeds, newPreset.w, newPreset.h);
+            const targetFeeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : (currentPlacements && currentPlacements.length > 0 ? currentPlacements : availableFeeds);
+            const autoPacked = generateAutoPackPlacements(targetFeeds, newPreset.w, newPreset.h);
             updateActivePlacements(autoPacked);
         } else {
             const ratioX = newPreset.w / oldPreset.w;
@@ -1016,7 +1079,8 @@ export default function MulticamViewport({
     // -------------------------------------------------------------
     const handleApplyPreset = useCallback((presetId) => {
         let newPlacements = [];
-        const feeds = availableFeeds.length > 0 ? availableFeeds : currentPlacements;
+        // Strictly use selected station feeds (defaultStationFeeds / availableFeeds)
+        const feeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : (availableFeeds.length > 0 ? availableFeeds : currentPlacements);
 
         switch (presetId) {
             case 'auto':
@@ -2523,7 +2587,7 @@ export default function MulticamViewport({
                                     }}
                                 >
                                     <span>⊞ AUTO-GRID</span>
-                                    <span className="item-badge">{availableFeeds.length}</span>
+                                    <span className="item-badge">{defaultStationFeeds.length}</span>
                                 </button>
                                 <button
                                     type="button"
@@ -3392,7 +3456,8 @@ export default function MulticamViewport({
                         onClick={() => {
                             hasUserCustomizedRef.current = false;
                             setSelectedPresetId('auto-grid');
-                            const autoPacked = generateAutoPackPlacements(availableFeeds, virtualW, virtualH);
+                            const targetFeeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : availableFeeds;
+                            const autoPacked = generateAutoPackPlacements(targetFeeds, virtualW, virtualH);
                             const resetTimeline = {
                                 id: 'canvas-timeline-root',
                                 keyframes: [

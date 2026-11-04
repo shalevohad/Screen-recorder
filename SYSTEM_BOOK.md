@@ -2649,6 +2649,25 @@ To eliminate operator friction and guarantee smooth timeline navigation without 
 
 ---
 
+### 10. Strict Selection-Bounded Auto-Grid & Canvas Reset Invariant (2026-11-04)
+
+To prevent visual clutter and protect the operator's forensic project scope, the Canvas layout engine enforces a strict selection boundary:
+
+1. **Selection-Bounded Auto-Grid & Preset Packing**:
+   - `handleApplyPreset('auto-grid')`, `handleApplyPreset('auto')`, and the right-wing Reset Canvas button (`↺`) derive exclusively from `defaultStationFeeds` (representing the selected workstations in `timelineStations`).
+   - Unselected workstations from `allStations` are strictly excluded from automated placement generation. If an operator selects 1 station (e.g. `OHAD-DESKTOP`), Auto-Grid packs exactly 1 card taking the full 16:9 canvas stage; if 2 stations are selected, Auto-Grid packs exactly 2 side-by-side cards.
+2. **Initial Layout & Aspect Ratio Switching Bounds**:
+   - When the workspace initializes or when the operator switches the export aspect ratio (e.g. 16:9 to 32:9), auto-packing targets `defaultStationFeeds`. Cached keyframes from previous sessions are sanitized upon mounting, instantly stripping out any obsolete placements for workstations no longer present in the active timeline selection.
+3. **Dynamic Station Selection Synchronization & Deselection Pruning**:
+   - `MulticamViewport` monitors changes to `timelineStations`. When stations are toggled in the Studio Drawer:
+     - In `auto-grid` mode: The layout automatically re-packs to accommodate the newly selected workstations.
+     - In `custom` mode: Placements belonging to deselected workstations are purged immediately from keyframes. If no placements remain, the canvas auto-packs the surviving selected stations.
+4. **Feeds Palette Drawer Scoping & Badge Precision**:
+   - `availableFeeds` scopes strictly to `timelineStations` whenever a selection exists, showing discrete monitors and central compositions only for the active workstations.
+   - The `⊞ AUTO-GRID` button badge in the layout presets popout accurately reflects `defaultStationFeeds.length`, displaying the exact number of selected workstations being arranged.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 

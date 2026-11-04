@@ -333,3 +333,209 @@ export function insertExplicitKeyframe(timeline, currentEpochMs, activeLayout, t
         isNew: true
     };
 }
+
+/**
+ * Fits a media rectangle of given aspect ratio inside a bounding grid cell preserving aspect
+ */
+export function fitInCell(cellX, cellY, cellW, cellH, aspect) {
+    const safeAspect = aspect > 0 ? aspect : (16 / 9);
+    const cellAspect = cellW / cellH;
+    let w, h, x, y;
+    if (safeAspect >= cellAspect) {
+        w = cellW;
+        h = Math.round(w / safeAspect);
+        x = cellX;
+        y = cellY + Math.round((cellH - h) / 2);
+    } else {
+        h = cellH;
+        w = Math.round(h * safeAspect);
+        x = cellX + Math.round((cellW - w) / 2);
+        y = cellY;
+    }
+    return { x, y, width: w, height: h };
+}
+
+export const DEFAULT_CANVAS_SLOT_BORDER_COLORS = [
+    '#06B6D4', // Cyan
+    '#10B981', // Emerald
+    '#F59E0B', // Amber
+    '#F43F5E', // Rose
+    '#A855F7', // Purple
+    '#38BDF8'  // Sky
+];
+
+/**
+ * Auto-packs feeds onto a virtual canvas stage according to aspect ratio and feed count.
+ * Strictly packs ONLY the feeds passed into the argument.
+ */
+export function generateAutoPackPlacements(feeds, W = 1920, H = 1080) {
+    const count = feeds ? feeds.length : 0;
+    if (count === 0) return [];
+
+    if (count === 1) {
+        const f0 = feeds[0];
+        const aspect = f0.nativeAspectRatio || (f0.sourceWidth && f0.sourceHeight ? f0.sourceWidth / f0.sourceHeight : 16 / 9);
+        const { x, y, width, height } = fitInCell(0, 0, W, H, aspect);
+        return [{
+            ...f0,
+            x,
+            y,
+            width,
+            height,
+            sourceWidth: f0.sourceWidth || 1920,
+            sourceHeight: f0.sourceHeight || 1080,
+            nativeAspectRatio: aspect,
+            aspectRatio: aspect,
+            zIndex: 0,
+            rotation: 0,
+            borderWidth: 0,
+            borderColor: DEFAULT_CANVAS_SLOT_BORDER_COLORS[0],
+            shadowEffect: 'deep',
+            borderRadius: 0
+        }];
+    }
+
+    if (count === 2) {
+        const halfW = Math.round(W / 2);
+        return feeds.slice(0, 2).map((f, idx) => {
+            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+            const { x, y, width, height } = fitInCell(idx * halfW, 0, halfW, H, aspect);
+            return {
+                ...f,
+                x,
+                y,
+                width,
+                height,
+                sourceWidth: f.sourceWidth || 1920,
+                sourceHeight: f.sourceHeight || 1080,
+                nativeAspectRatio: aspect,
+                aspectRatio: aspect,
+                zIndex: idx,
+                rotation: 0,
+                borderWidth: 2,
+                borderColor: DEFAULT_CANVAS_SLOT_BORDER_COLORS[idx % DEFAULT_CANVAS_SLOT_BORDER_COLORS.length],
+                shadowEffect: 'deep',
+                borderRadius: 0
+            };
+        });
+    }
+
+    if (count === 3) {
+        const isUltrawide = (W / H) >= 2.5;
+        if (isUltrawide) {
+            const thirdW = Math.round(W / 3);
+            return feeds.slice(0, 3).map((f, idx) => {
+                const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+                const { x, y, width, height } = fitInCell(idx * thirdW, 0, thirdW, H, aspect);
+                return {
+                    ...f,
+                    x,
+                    y,
+                    width,
+                    height,
+                    sourceWidth: f.sourceWidth || 1920,
+                    sourceHeight: f.sourceHeight || 1080,
+                    nativeAspectRatio: aspect,
+                    aspectRatio: aspect,
+                    zIndex: idx,
+                    rotation: 0,
+                    borderWidth: 2,
+                    borderColor: DEFAULT_CANVAS_SLOT_BORDER_COLORS[idx % DEFAULT_CANVAS_SLOT_BORDER_COLORS.length],
+                    shadowEffect: 'deep',
+                    borderRadius: 0
+                };
+            });
+        }
+        const cellW = Math.round(W / 2);
+        const cellH = Math.round(H / 2);
+        const gridCells = [
+            { cx: 0, cy: 0 },
+            { cx: cellW, cy: 0 },
+            { cx: Math.round(cellW / 2), cy: cellH }
+        ];
+        return feeds.slice(0, 3).map((f, idx) => {
+            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+            const { cx, cy } = gridCells[idx];
+            const { x, y, width, height } = fitInCell(cx, cy, cellW, cellH, aspect);
+            return {
+                ...f,
+                x,
+                y,
+                width,
+                height,
+                sourceWidth: f.sourceWidth || 1920,
+                sourceHeight: f.sourceHeight || 1080,
+                nativeAspectRatio: aspect,
+                aspectRatio: aspect,
+                zIndex: idx,
+                rotation: 0,
+                borderWidth: 2,
+                borderColor: DEFAULT_CANVAS_SLOT_BORDER_COLORS[idx % DEFAULT_CANVAS_SLOT_BORDER_COLORS.length],
+                shadowEffect: 'deep',
+                borderRadius: 0
+            };
+        });
+    }
+
+    if (count === 4) {
+        const cellW = Math.round(W / 2);
+        const cellH = Math.round(H / 2);
+        const gridCells = [
+            { cx: 0, cy: 0 },
+            { cx: cellW, cy: 0 },
+            { cx: 0, cy: cellH },
+            { cx: cellW, cy: cellH }
+        ];
+        return feeds.slice(0, 4).map((f, idx) => {
+            const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+            const { cx, cy } = gridCells[idx];
+            const { x, y, width, height } = fitInCell(cx, cy, cellW, cellH, aspect);
+            return {
+                ...f,
+                x,
+                y,
+                width,
+                height,
+                sourceWidth: f.sourceWidth || 1920,
+                sourceHeight: f.sourceHeight || 1080,
+                nativeAspectRatio: aspect,
+                aspectRatio: aspect,
+                zIndex: idx,
+                rotation: 0,
+                borderWidth: 2,
+                borderColor: DEFAULT_CANVAS_SLOT_BORDER_COLORS[idx % DEFAULT_CANVAS_SLOT_BORDER_COLORS.length],
+                shadowEffect: 'deep',
+                borderRadius: 0
+            };
+        });
+    }
+
+    const cols = count <= 6 ? 3 : count <= 8 ? 4 : Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+    const cellW = Math.floor(W / cols);
+    const cellH = Math.floor(H / rows);
+
+    return feeds.map((f, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const aspect = f.nativeAspectRatio || (f.sourceWidth && f.sourceHeight ? f.sourceWidth / f.sourceHeight : 16 / 9);
+        const { x, y, width, height } = fitInCell(col * cellW, row * cellH, cellW, cellH, aspect);
+        return {
+            ...f,
+            x,
+            y,
+            width,
+            height,
+            sourceWidth: f.sourceWidth || 1920,
+            sourceHeight: f.sourceHeight || 1080,
+            nativeAspectRatio: aspect,
+            aspectRatio: aspect,
+            zIndex: i,
+            rotation: 0,
+            borderWidth: 2,
+            borderColor: DEFAULT_CANVAS_SLOT_BORDER_COLORS[i % DEFAULT_CANVAS_SLOT_BORDER_COLORS.length],
+            shadowEffect: 'deep',
+            borderRadius: 0
+        };
+    });
+}
