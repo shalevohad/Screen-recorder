@@ -416,7 +416,8 @@
 // ==========================================
 
 .timeline-track-container.station-collapsed-track {
-    height: 44px !important;
+    height: 52px !important;
+    min-height: 52px !important;
     background-color: rgba(15, 23, 42, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
@@ -429,7 +430,7 @@
         box-shadow: 0 4px 16px rgba(6, 182, 212, 0.15);
 
         .track-sidebar {
-            border-left: 3px solid #06B6D4;
+            border-left: 3px solid #06B6D4 !important;
         }
     }
 
@@ -443,6 +444,7 @@
         width: 180px;
         min-width: 180px;
         max-width: 180px;
+        height: 52px !important;
         flex-shrink: 0;
         display: flex;
         flex-direction: row;
@@ -502,11 +504,52 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            font-size: 11px;
-            font-weight: 800;
+            font-size: 11.5px;
+            font-weight: 700;
             color: #F8FAFC;
             font-family: var(--font-primary, 'Inter', sans-serif);
             letter-spacing: 0.3px;
+        }
+
+        .btn-track-auto-dir-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8.5px;
+            font-weight: 800;
+            padding: 2px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            flex-shrink: 0;
+            line-height: 1.2;
+
+            &.is-active {
+                background: rgba(6, 182, 212, 0.16);
+                border: 1px solid rgba(6, 182, 212, 0.45);
+                color: #38BDF8;
+                box-shadow: 0 0 6px rgba(6, 182, 212, 0.2);
+
+                &:hover {
+                    background: rgba(6, 182, 212, 0.3);
+                    color: #fff;
+                    border-color: #06B6D4;
+                }
+            }
+
+            &.is-inactive {
+                background: rgba(245, 158, 11, 0.16);
+                border: 1px solid rgba(245, 158, 11, 0.45);
+                color: #FBBF24;
+                box-shadow: 0 0 6px rgba(245, 158, 11, 0.2);
+
+                &:hover {
+                    background: rgba(245, 158, 11, 0.3);
+                    color: #fff;
+                    border-color: #F59E0B;
+                }
+            }
         }
 
         .compact-multi-tag {
@@ -615,6 +658,24 @@
             background: rgba(245, 158, 11, 0.22);
             color: #fbbf24;
         }
+    }
+
+    .stepper-block-manual {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(245, 158, 11, 0.14);
+        color: #FBBF24;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        user-select: none;
     }
 }
 

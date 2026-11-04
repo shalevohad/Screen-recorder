@@ -2574,6 +2574,30 @@ To maximize unobstructed visual canvas space and eliminate ruler interference:
 
 ---
 
+### 6. Unified 52px Default Station Track Architecture & Direct Auto-Director Toggle
+
+To maintain a consistent mental model and eliminate ambiguous "squished" tracks:
+1. **Unified Default Track (52px Height for All Workstations)**:
+   - All workstation tracks in the timeline share identical 52px height by default, rendering:
+     - 37px top Spritesheet filmstrip canvas.
+     - 3px health bar indicating recorded video intervals.
+     - 12px bottom Auto-Director stepper ribbon (`[ 1 | 2 | 1 ]`) for multi-display stations.
+   - Unselected stations have a neutral border; only an explicitly soloed/active station displays the cyan left accent (`border-left: 3px solid #06B6D4`).
+2. **Prominent Auto-Director Toggle (`[ ⚡ AUTO ]` / `[ ✋ OFF ]`)**:
+   - Displayed directly in the track sidebar next to the workstation name:
+     - **Active state**: Glowing cyan/emerald pill `[ ⚡ AUTO ]`.
+     - **Inactive state**: Amber pill `[ ✋ OFF ]`.
+   - Stepper ribbon reflects status dynamically:
+     - When ON: Segments indicate active monitor switches `[ 1 | 2 | 1 ]`.
+     - When OFF: Stepper ribbon renders `✋ AUTO-DIRECTOR OFF • SCREEN 1 (MANUAL)`.
+   - Also prominently available on the expanded accordion header deck as `[ ⚡ AUTO-DIRECTOR: ON ]` / `[ ✋ AUTO-DIRECTOR: OFF ]`.
+3. **Click-to-Expand Multi-Screen Accordion**:
+   - Clicking anywhere on a multi-display station track (or clicking `▶`) expands it into discrete child tracks for each physical screen (`SCREEN 1`, `SCREEN 2`).
+   - When Auto-Director is OFF, child track headers provide `[ ＋ ADD ]` / `[ ✓ ON ]` buttons allowing the operator to place secondary monitors independently on the Canvas grid.
+   - Collapsing the station preserves all Canvas layout changes and placement configurations.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 

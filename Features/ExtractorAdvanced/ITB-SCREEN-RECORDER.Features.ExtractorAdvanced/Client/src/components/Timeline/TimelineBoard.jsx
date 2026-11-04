@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx
 // ==========================================
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -374,7 +374,7 @@ export default function TimelineBoard({
                     {isMasterVideoOpen && (
                         stations.length > 0 ? (
                             currentBankStations.map(station => {
-                                const isSoloed = station.id === activeStationId;
+                                const isSoloed = Boolean(activeStationId && station.id === activeStationId);
                                 const isExpanded = expandedStationId === station.id;
                                 const isStationAutoDirectorOn = stationAutoDirectorMap ? (stationAutoDirectorMap[station.id] ?? true) : true;
 
@@ -389,7 +389,7 @@ export default function TimelineBoard({
                                         canvasPlacements={currentPlacements}
                                         onToggleDisplayOnCanvas={onToggleDisplayOnCanvas}
                                         directorPlan={station.directorPlan}
-                                        isActive={isSoloed || !activeStationId}
+                                        isActive={isSoloed}
                                         onSelect={() => onSelectActiveStation?.(station.id)}
                                         onStationContextMenu={onStationContextMenu}
                                         onDeselectStation={onDeselectStation}

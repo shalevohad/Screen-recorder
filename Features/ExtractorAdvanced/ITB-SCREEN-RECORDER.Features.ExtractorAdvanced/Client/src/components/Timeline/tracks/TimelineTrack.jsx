@@ -417,16 +417,22 @@ function FilmstripCanvas({
             {/* Director Stepper Ribbon (Only on Collapsed Station Bar with Multi-Screens) */}
             {stepperSegments && stepperSegments.length > 0 && (
                 <div className="director-stepper-ribbon">
-                    {stepperSegments.map((st, sIdx) => (
-                        <div
-                            key={`stp_${sIdx}`}
-                            className={`stepper-block display-${st.dispNum}`}
-                            style={{ left: `${st.leftPct}%`, width: `${st.widthPct}%` }}
-                            title={`Auto-Director: Screen ${st.dispNum} (${st.dispLabel})`}
-                        >
-                            <span>{st.dispNum}</span>
+                    {isAutoDirectorEnabled ? (
+                        stepperSegments.map((st, sIdx) => (
+                            <div
+                                key={`stp_${sIdx}`}
+                                className={`stepper-block display-${st.dispNum}`}
+                                style={{ left: `${st.leftPct}%`, width: `${st.widthPct}%` }}
+                                title={`Auto-Director: Screen ${st.dispNum} (${st.dispLabel})`}
+                            >
+                                <span>{st.dispNum}</span>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="stepper-block-manual" title="Auto-Director is OFF — Displaying Screen 1 (Manual Mode)">
+                            <span>✋ AUTO-DIRECTOR OFF • SCREEN 1 (MANUAL)</span>
                         </div>
-                    ))}
+                    )}
                 </div>
             )}
 
@@ -564,6 +570,9 @@ export default function TimelineTrack({
             <div
                 onClick={() => {
                     if (onSelect) onSelect();
+                    if (hasMultiDisplays && onToggleExpand) {
+                        onToggleExpand();
+                    }
                 }}
                 onContextMenu={(e) => {
                     if (onStationContextMenu) {
@@ -572,11 +581,11 @@ export default function TimelineTrack({
                         onStationContextMenu(e, station);
                     }
                 }}
-                className={`timeline-track-container station-collapsed-track ${isActive ? 'active-track' : ''} ${stepperSegments?.length > 0 ? 'has-stepper' : ''}`}
+                className={`timeline-track-container station-collapsed-track ${isActive ? 'active-track' : ''} ${hasMultiDisplays ? 'has-stepper' : ''}`}
             >
                 <div
                     className="track-sidebar station-collapsed-sidebar"
-                    title={`Workstation: ${stationDisplayName}${physicalHost ? ` (${physicalHost})` : ''} • Click to select, arrow to expand`}
+                    title={`Workstation: ${stationDisplayName}${physicalHost ? ` (${physicalHost})` : ''} • Click to select / expand`}
                 >
                     {hasMultiDisplays && (
                         <button
@@ -586,7 +595,7 @@ export default function TimelineTrack({
                                 e.stopPropagation();
                                 onToggleExpand?.();
                             }}
-                            title="Expand display tracks (Screens 1 & 2)"
+                            title="Expand multi-screen tracks (Screens 1 & 2)"
                         >
                             ▶
                         </button>
@@ -595,10 +604,18 @@ export default function TimelineTrack({
                     <span className="station-single-label" title={stationDisplayName}>
                         {stationDisplayName}
                     </span>
-                    {hasMultiDisplays && (
-                        <span className="compact-multi-tag" title="Multi-Display Station (Auto-Director Active)">
-                            2x
-                        </span>
+                    {hasMultiDisplays && onToggleAutoDirector && (
+                        <button
+                            type="button"
+                            className={`btn-track-auto-dir-pill ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleAutoDirector(station.id);
+                            }}
+                            title={isAutoDirectorEnabled ? 'Auto-Director is Active. Click to turn OFF (Hold Screen 1)' : 'Auto-Director is OFF. Primary Screen 1 active. Click to turn ON'}
+                        >
+                            {isAutoDirectorEnabled ? '⚡ AUTO' : '✋ OFF'}
+                        </button>
                     )}
                     {onDeselectStation && (
                         <button
@@ -625,7 +642,8 @@ export default function TimelineTrack({
                     inPointMs={inPointMs}
                     outPointMs={outPointMs}
                     globalGaps={globalGaps}
-                    stepperSegments={stepperSegments}
+                    isAutoDirectorEnabled={isAutoDirectorEnabled}
+                    stepperSegments={hasMultiDisplays ? stepperSegments : null}
                 />
             </div>
         );
