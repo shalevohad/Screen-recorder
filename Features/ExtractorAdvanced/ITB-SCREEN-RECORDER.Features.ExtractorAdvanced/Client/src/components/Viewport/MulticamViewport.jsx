@@ -374,6 +374,17 @@ export default function MulticamViewport({
 
     // Selection & Free Transform state
     const [selectedFeedIndex, setSelectedFeedIndex] = useState(0);
+    const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setIsInspectorOpen(false);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
     const [showRotationControl, setShowRotationControl] = useState(false);
     const [showShadowControl, setShowShadowControl] = useState(false);
     const [showColorPicker, setShowColorPicker] = useState(false);
@@ -2514,59 +2525,6 @@ export default function MulticamViewport({
 
                 {/* Center Canvas Stage */}
                 <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>
-                    {/* Floating Keyframe Island (Zero Vertical Height Impact) */}
-                    <div className="keyframe-floating-island">
-                        <span className="kf-island-badge" title={`Active Keyframe #${safeActiveIdx + 1} of ${keyframes.length} on timeline`}>
-                            💎 KF #{safeActiveIdx + 1}/{keyframes.length}
-                        </span>
-                        {safeActiveIdx > 0 && (
-                            <div className="kf-island-controls">
-                                <select
-                                    className="select-trans-type"
-                                    value={currentKf.transitionType || 'smooth'}
-                                    onChange={(e) => handleUpdateTransitionType(e.target.value)}
-                                    title="Transition animation into this keyframe"
-                                >
-                                    <option value="smooth">⚡ Smooth</option>
-                                    <option value="linear">↗ Linear</option>
-                                    <option value="cut">✂ Cut</option>
-                                </select>
-                                <select
-                                    className="select-trans-duration"
-                                    value={currentKf.transitionDurationSec ?? 0.5}
-                                    onChange={(e) => handleUpdateTransitionDuration(parseFloat(e.target.value))}
-                                    title="Transition duration (seconds)"
-                                >
-                                    <option value="0.2">0.2s</option>
-                                    <option value="0.3">0.3s</option>
-                                    <option value="0.5">0.5s</option>
-                                    <option value="0.75">0.75s</option>
-                                    <option value="1.0">1.0s</option>
-                                    <option value="1.5">1.5s</option>
-                                    <option value="2.0">2.0s</option>
-                                </select>
-                            </div>
-                        )}
-                        <button
-                            type="button"
-                            className="btn-island-action add-kf"
-                            onClick={handleExplicitAddKeyframe}
-                            title="Add Keyframe at current playhead (K)"
-                        >
-                            ＋ KF
-                        </button>
-                        {keyframes.length > 1 && safeActiveIdx > 0 && (
-                            <button
-                                type="button"
-                                className="btn-island-action del-kf"
-                                onClick={handleDeleteActiveKeyframe}
-                                title="Delete active keyframe"
-                            >
-                                🗑️
-                            </button>
-                        )}
-                    </div>
-
                     {/* Unified Minimalist Feeds & Layers Drawer */}
                     {showFeedsDrawer && (
                         <div className="canvas-side-drawer feeds-layers-drawer">
@@ -2734,6 +2692,7 @@ export default function MulticamViewport({
                             e.dataTransfer.dropEffect = 'copy';
                         }}
                         onDrop={handleCanvasDrop}
+                        onClick={() => setIsInspectorOpen(false)}
                     >
                         <div className="corner-accent top-left" />
                         <div className="corner-accent top-right" />
@@ -2979,7 +2938,12 @@ export default function MulticamViewport({
                                         transition: (isThisDragging || isThisResizing) ? 'none' : 'left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out'
                                     }}
                                     onMouseDown={(e) => handleMouseDownBox(e, origIdx)}
-                                    onContextMenu={(e) => onStationContextMenu && onStationContextMenu(e, st)}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setSelectedFeedIndex(origIdx);
+                                        setIsInspectorOpen(true);
+                                    }}
                                 >
                                     {/* Top Draggable Bar & Coordinates */}
                                     <div
@@ -2997,7 +2961,19 @@ export default function MulticamViewport({
                                             {Math.round(p.width)}×{Math.round(p.height)} ({getReadableAspectRatio(p.width, p.height)}) @ ({Math.round(p.x)},{Math.round(p.y)})
                                             {rot !== 0 && <span className="badge-rot">📐{rot}°</span>}
                                         </div>
-                                        <span className="badge-layer" title={`Layer priority rank: #${layerRank}`}>#{layerRank}</span>
+                                        <span className="badge-layer" title={`Layer priority rank: #${layerRank}`}>#${layerRank}</span>
+                                        <button
+                                            type="button"
+                                            className={`btn-badge-action-inspector ${isSelected && isInspectorOpen ? 'active' : ''}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedFeedIndex(origIdx);
+                                                setIsInspectorOpen(prev => (!prev || selectedFeedIndex !== origIdx));
+                                            }}
+                                            title="Window Controls & Styling (Right-click window)"
+                                        >
+                                            ⚙️
+                                        </button>
                                     </div>
 
                                     {/* Live Video Content Viewport */}
@@ -3091,7 +3067,7 @@ export default function MulticamViewport({
                         })}
 
                         {/* Selected Floating Tactical Inspector (Stage-Level Overlay: Always on Top z-index: 99999) */}
-                        {!isModalOpen && selectedFeedIndex !== null && selectedPlacement && (() => {
+                        {!isModalOpen && isInspectorOpen && selectedFeedIndex !== null && selectedPlacement && (() => {
                             const p = selectedPlacement;
                             const origIdx = selectedFeedIndex;
                             const bColor = p.borderColor || SLOT_BORDER_COLORS[origIdx % SLOT_BORDER_COLORS.length];
@@ -3100,10 +3076,7 @@ export default function MulticamViewport({
                             const shadowEffect = p.shadowEffect || 'deep';
                             const layerRank = p.zIndex !== undefined ? p.zIndex : origIdx + 1;
 
-                            // Strict Multi-Axis Viewport Clamping & Collision Prevention
-                            // If card top is too close to top frame (< 70 virtual pixels), flip inspector down
-                            // so it never clips or disappears above the canvas frame.
-                            const isFlippedDown = p.y < 70;
+                            // Strict Multi-Axis Viewport Clamping: position BELOW the window (never on the top ruler)
                             const cardLeftPct = (p.x / virtualW) * 100;
                             const cardWidthPct = (p.width / virtualW) * 100;
                             const centerXPct = cardLeftPct + (cardWidthPct / 2);
@@ -3119,16 +3092,14 @@ export default function MulticamViewport({
                                 transformStyle = 'translateX(-100%)';
                             }
 
-                            // Vertical clamping: strictly stay inside canvas boundaries
+                            // Strictly place inspector BELOW the bottom edge of the window
+                            const bottomEdgeVirtual = p.y + p.height + 8;
                             let topStyle;
-                            if (isFlippedDown) {
-                                if (p.height < 110) {
-                                    topStyle = `min(calc(100% - 38px), ${((p.y + p.height + 6) / virtualH) * 100}%)`;
-                                } else {
-                                    topStyle = `min(calc(100% - 38px), ${((p.y + 28) / virtualH) * 100}%)`;
-                                }
+                            if (bottomEdgeVirtual + 45 > virtualH) {
+                                // If window is flush with bottom of canvas, dock inside bottom of window
+                                topStyle = `${Math.max(20, ((p.y + p.height - 44) / virtualH) * 100)}%`;
                             } else {
-                                topStyle = `max(4px, calc(${((p.y) / virtualH) * 100}% - 38px))`;
+                                topStyle = `${(bottomEdgeVirtual / virtualH) * 100}%`;
                             }
 
                             const matchedStation = (allStations.length > 0 ? allStations : timelineStations).find(s => 
@@ -3139,7 +3110,7 @@ export default function MulticamViewport({
 
                             return (
                                 <div
-                                    className={`floating-feed-inspector ${isFlippedDown ? 'is-flipped-down' : ''}`}
+                                    className="floating-feed-inspector"
                                     style={{
                                         position: 'absolute',
                                         left: leftStyle,

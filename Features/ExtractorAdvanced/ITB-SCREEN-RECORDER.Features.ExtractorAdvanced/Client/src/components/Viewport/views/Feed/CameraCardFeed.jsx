@@ -29,7 +29,8 @@ export default function CameraCardFeed({
     isAutoDirectorEnabled = true,
     targetDisplayId = 'auto',
     onSelectDisplayId = null,
-    areAllDisplaysPlaced = false
+    areAllDisplaysPlaced = false,
+    hideDisplayStrip = false
 }) {
     const stationName = station.hostname || station.name || station.id || '';
     const roundedEpochMs = Math.round(currentEpochMs);
@@ -535,6 +536,7 @@ export default function CameraCardFeed({
                 </div>
             )}
 
+            {!hideDisplayStrip && (
             <TacticalDisplayStrip
                 displays={stationDisplays}
                 activeDisplayId={activeDisplayId}
@@ -545,6 +547,7 @@ export default function CameraCardFeed({
                 areAllDisplaysPlaced={areAllDisplaysPlaced}
                 isAutoDirectorEnabled={isAutoDirectorEnabled}
             />
+            )}
         </div>
     );
 }

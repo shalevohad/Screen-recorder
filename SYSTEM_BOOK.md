@@ -2557,6 +2557,23 @@ A professional non-linear audio mastering bus is integrated into the bottom of t
 
 ---
 
+### 5. Context-Driven Feed Inspector & Keyframe Popover Architecture
+
+To maximize unobstructed visual canvas space and eliminate ruler interference:
+1. **Relocation of Keyframe HUD to Timeline Popover**:
+   - The persistent floating Keyframe Island has been removed from the canvas stage.
+   - Keyframe configuration is activated strictly upon clicking a keyframe diamond (`❖`) on the `CanvasKeyframeTrack`.
+   - A dedicated `.kf-inspector-popover` opens directly above the diamond, exposing Transition type (`Smooth`, `Linear`, `Cut`), Duration (`0.2s` to `2.0s`), and single-click Keyframe Deletion.
+2. **Context-Driven Window Tactical Inspector**:
+   - The floating window inspector does not appear on ordinary window selection or dragging.
+   - It is summoned on demand via **Right-Click** on any canvas window (`onContextMenu`) or clicking the `⚙️` settings button in the window header badge.
+   - Strictly positioned **BELOW the window** (`p.y + p.height + 8`), ensuring the top CAD ruler remains completely visible and unobstructed.
+   - Dismissible via `[ ✕ ]` close button, stage background click, or `Escape` key.
+3. **Suppression of Multi-Monitor Strip in Canvas Mode**:
+   - `TacticalDisplayStrip` (`[ ⚡ ] [ 1 ] [ 2 ]`) is suppressed in canvas mode (`hideDisplayStrip={true}`) as workstations and displays are placed independently on the Virtual Desktop canvas.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 

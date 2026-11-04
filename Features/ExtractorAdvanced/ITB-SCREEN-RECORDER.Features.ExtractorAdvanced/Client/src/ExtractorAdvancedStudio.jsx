@@ -19,6 +19,7 @@ import { useStudioData } from './hooks/useStudioData.js';
 import { usePlaybackEngine } from './hooks/usePlaybackEngine.js';
 import { useTimelineNavigation } from './hooks/useTimelineNavigation.js';
 import { useStudioHotkeys } from './hooks/useStudioHotkeys.js';
+import { updateKeyframeTransition } from './utils/nleTimelineEngine.js';
 import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache } from './utils/studioSessionStore.js';
 import { initDstEngineAsync, formatDateTimeComponents, dateTimeToEpochMs } from './utils/dstEngine.js';
 
@@ -193,6 +194,13 @@ export default function ExtractorAdvancedStudio() {
             };
         });
     }, [activeKfIndex, currentCanvasLayout]);
+
+    const handleUpdateKeyframeTransition = useCallback((idx, patch) => {
+        setCanvasLayoutTimeline(prev => {
+            if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
+            return updateKeyframeTransition(prev, idx, patch);
+        });
+    }, []);
 
     const handleDeleteKeyframe = useCallback((idxToDelete) => {
         setCanvasLayoutTimeline(prev => {
@@ -1218,6 +1226,7 @@ export default function ExtractorAdvancedStudio() {
                                     onAddKeyframeAtEpoch={handleAddKeyframeAtEpoch}
                                     onDeleteKeyframe={handleDeleteKeyframe}
                                     onUpdateKeyframeEpoch={handleUpdateKeyframeEpoch}
+                                    onUpdateKeyframeTransition={handleUpdateKeyframeTransition}
                                     onToggleDisplayOnCanvas={handleToggleDisplayOnCanvas}
                                     onUpdateAudioPlan={setAudioRoutingPlan}
                                 />

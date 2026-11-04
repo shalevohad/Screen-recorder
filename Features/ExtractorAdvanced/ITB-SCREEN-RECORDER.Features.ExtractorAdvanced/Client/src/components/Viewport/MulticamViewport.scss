@@ -1478,6 +1478,29 @@
                         padding: 1px 4px;
                         border-radius: 2px;
                     }
+                    .btn-badge-action-inspector {
+                        background: transparent;
+                        border: 1px solid rgba(255, 255, 255, 0.15);
+                        color: #94A3B8;
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 3px;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 10px;
+                        cursor: pointer;
+                        padding: 0;
+                        margin-left: 4px;
+                        transition: all 0.15s ease;
+
+                        &:hover,
+                        &.active {
+                            background: rgba(6, 182, 212, 0.25);
+                            color: #38BDF8;
+                            border-color: #06B6D4;
+                        }
+                    }
 
                     .rotation-badge {
                         font-size: 8px;
@@ -1787,6 +1810,30 @@
                             color: #070A10;
                         }
                     }
+
+                    
+                .btn-inspector-close {
+                    background: transparent;
+                    border: 1px solid rgba(255, 255, 255, 0.15);
+                    color: #94A3B8;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    font-size: 10px;
+                    padding: 0;
+                    margin-left: 6px;
+                    transition: all 0.15s ease;
+
+                    &:hover {
+                        background: rgba(244, 63, 94, 0.2);
+                        color: #F43F5E;
+                        border-color: #F43F5E;
+                    }
+                }
 
                     &.btn-del-feed {
                         color: #F43F5E;

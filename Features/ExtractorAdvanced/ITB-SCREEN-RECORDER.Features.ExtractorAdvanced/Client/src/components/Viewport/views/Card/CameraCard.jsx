@@ -199,6 +199,7 @@ export default function CameraCard({
                         targetDisplayId={targetDisplayId}
                         onSelectDisplayId={onSelectDisplayId}
                         areAllDisplaysPlaced={areAllDisplaysPlaced}
+                        hideDisplayStrip={true}
                     />
 
                     {isSolo && !isPlaying && (

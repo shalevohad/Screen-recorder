@@ -13,6 +13,7 @@ export default function CanvasKeyframeTrack({
     onAddKeyframeAtEpoch,
     onDeleteKeyframe,
     onUpdateKeyframeEpoch,
+    onUpdateKeyframeTransition,
     viewportStartMs = 0,
     viewportDurationMs = 3600000,
     baseEpochMs = 0,
@@ -24,7 +25,26 @@ export default function CanvasKeyframeTrack({
         return canvasLayoutTimeline?.keyframes || [];
     }, [canvasLayoutTimeline]);
 
-    const [draggingKf, setDraggingKf] = useState(null); // { idx, startClientX, initialEpoch, currentEpoch }
+    const [draggingKf, setDraggingKf] = useState(null);
+    const [selectedConfigKfIndex, setSelectedConfigKfIndex] = useState(null);
+
+    React.useEffect(() => {
+        if (selectedConfigKfIndex === null) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') setSelectedConfigKfIndex(null);
+        };
+        const handleClickOutside = (e) => {
+            if (!e.target.closest('.kf-inspector-popover') && !e.target.closest('.kf-marker-diamond')) {
+                setSelectedConfigKfIndex(null);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [selectedConfigKfIndex]); // { idx, startClientX, initialEpoch, currentEpoch }
 
     const playheadEpoch = baseEpochMs + playheadMs;
     const vpStartEpoch = baseEpochMs + viewportStartMs;
@@ -98,6 +118,7 @@ export default function CanvasKeyframeTrack({
                 if (onSelectKeyframe) {
                     onSelectKeyframe(idx, initialEpoch);
                 }
+                setSelectedConfigKfIndex(prev => prev === idx ? null : idx);
             }
         };
 
@@ -166,6 +187,100 @@ export default function CanvasKeyframeTrack({
                                 <div className="diamond-drag-tooltip">
                                     <span>{clockStr}</span>
                                     <span className="tooltip-sub">+{offsetSec}s</span>
+                                </div>
+                            )}
+                            {selectedConfigKfIndex === idx && !isThisDragging && (
+                                <div
+                                    className="kf-inspector-popover"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                    <div className="kf-popover-header">
+                                        <span className="kf-badge">💎 KEYFRAME #{idx + 1}</span>
+                                        <span className="kf-clock">{clockStr}</span>
+                                        <button
+                                            type="button"
+                                            className="btn-kf-popover-close"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedConfigKfIndex(null);
+                                            }}
+                                            title="Close"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+
+                                    {idx > 0 ? (
+                                        <div className="kf-popover-body">
+                                            <div className="kf-field-row">
+                                                <span className="kf-field-label">TRANSITION</span>
+                                                <div className="kf-trans-buttons">
+                                                    <button
+                                                        type="button"
+                                                        className={`btn-trans-choice ${(kf.transitionType || 'smooth') === 'smooth' ? 'is-active' : ''}`}
+                                                        onClick={() => onUpdateKeyframeTransition?.(idx, { transitionType: 'smooth' })}
+                                                        title="Smooth Bezier transition into keyframe layout"
+                                                    >
+                                                        ⚡ Smooth
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={`btn-trans-choice ${kf.transitionType === 'linear' ? 'is-active' : ''}`}
+                                                        onClick={() => onUpdateKeyframeTransition?.(idx, { transitionType: 'linear' })}
+                                                        title="Linear transition into keyframe layout"
+                                                    >
+                                                        ↗ Linear
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={`btn-trans-choice ${kf.transitionType === 'cut' ? 'is-active' : ''}`}
+                                                        onClick={() => onUpdateKeyframeTransition?.(idx, { transitionType: 'cut' })}
+                                                        title="Instant cut into keyframe layout"
+                                                    >
+                                                        ✂ Cut
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {kf.transitionType !== 'cut' && (
+                                                <div className="kf-field-row">
+                                                    <span className="kf-field-label">DURATION</span>
+                                                    <div className="kf-dur-buttons">
+                                                        {[0.2, 0.5, 1.0, 1.5, 2.0].map(sec => (
+                                                            <button
+                                                                key={sec}
+                                                                type="button"
+                                                                className={`btn-dur-choice ${(kf.transitionDurationSec ?? 0.5) === sec ? 'is-active' : ''}`}
+                                                                onClick={() => onUpdateKeyframeTransition?.(idx, { transitionDurationSec: sec })}
+                                                            >
+                                                                {sec}s
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="kf-popover-footer">
+                                                <button
+                                                    type="button"
+                                                    className="btn-kf-delete"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (onDeleteKeyframe) onDeleteKeyframe(idx);
+                                                        setSelectedConfigKfIndex(null);
+                                                    }}
+                                                    title="Delete this keyframe"
+                                                >
+                                                    🗑️ Delete Keyframe
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="kf-popover-body">
+                                            <span className="kf-root-notice">Root Origin Keyframe (Base layout at timeline origin)</span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
