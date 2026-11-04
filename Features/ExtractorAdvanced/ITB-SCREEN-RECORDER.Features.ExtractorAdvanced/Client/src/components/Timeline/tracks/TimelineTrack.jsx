@@ -25,7 +25,7 @@ const getSegEnd = (seg) => seg.endEpochMs ?? seg.EndEpochMs ?? seg.endEpoch ?? s
 /**
  * Sub-component for rendering a filmstrip canvas (used by both collapsed station composite and expanded child displays)
  */
-function FilmstripCanvas({
+export function FilmstripCanvas({
     hostname,
     displayId = 'mon-0',
     activeSegments = [],
@@ -69,21 +69,30 @@ function FilmstripCanvas({
             });
         };
 
+        // Invariant (2026-11-04): Filmstrip tiles are strictly generated inside the CUTS area (inPointMs -> outPointMs)
+        // and NEVER inside any GAP regions.
+        const cutStartEpoch = baseEpochMs + inPointMs;
+        const cutEndEpoch = baseEpochMs + outPointMs;
+
         sorted.forEach((seg, sIdx) => {
             const segStart = Math.round(getSegStart(seg));
             const segEnd = Math.round(getSegEnd(seg));
             if (segEnd <= segStart) return;
 
-            const visibleSegStart = Math.max(segStart, cullStartEpoch);
-            const visibleSegEnd = Math.min(segEnd, cullEndEpoch);
+            const cutClampedStart = Math.max(segStart, cutStartEpoch);
+            const cutClampedEnd = Math.min(segEnd, cutEndEpoch);
+            if (cutClampedEnd <= cutClampedStart) return;
+
+            const visibleSegStart = Math.max(cutClampedStart, cullStartEpoch);
+            const visibleSegEnd = Math.min(cutClampedEnd, cullEndEpoch);
             if (visibleSegEnd <= visibleSegStart) return;
 
             const firstTileStart = Math.floor(visibleSegStart / tileDurationMs) * tileDurationMs;
 
             for (let tStart = firstTileStart; tStart < visibleSegEnd; tStart += tileDurationMs) {
                 const tEnd = tStart + tileDurationMs;
-                const clampedStart = Math.max(segStart, tStart);
-                const clampedEnd = Math.min(segEnd, tEnd);
+                const clampedStart = Math.max(cutClampedStart, tStart);
+                const clampedEnd = Math.min(cutClampedEnd, tEnd);
 
                 // Invariant: NEVER generate or request filmstrip tiles inside any GAP region
                 if (clampedEnd > clampedStart && !isTileInGap(clampedStart, clampedEnd)) {
@@ -111,7 +120,7 @@ function FilmstripCanvas({
         }
 
         return tiles;
-    }, [activeSegments, baseEpochMs, hostname, displayId, viewportStartMs, viewportDurationMs, lodConfig]);
+    }, [activeSegments, baseEpochMs, hostname, displayId, viewportStartMs, viewportDurationMs, lodConfig, inPointMs, outPointMs, gaps, globalGaps]);
 
     useEffect(() => {
         if (timelineTiles.length === 0) return;

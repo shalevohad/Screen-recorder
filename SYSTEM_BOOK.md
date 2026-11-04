@@ -2704,9 +2704,51 @@ To prevent erroneous timeline coverage and maintain visual minimalism during for
      - Collapsed track stepper blocks and expanded child track coverage overlays never render over global gaps, allowing the amber diagonal hatch pattern (`gap-global-skipped`) to be clearly visible.
      - In contrast, **Local Gaps** (station-specific gaps where synthetic dummy "No Signal" is injected for multicam alignment) retain continuous single-display coverage without mid-gap cuts, ensuring that automated switching never occurs across missing footage.
 
+
+### 13. Collapsed Filmstrip Clamping, Keyframe Magnetic Snapping, Compact Canvas HUD & Multi-Station Telemetry (2026-11-04)
+
+Following advanced forensic testing, the platform has completed seven tactical ergonomics and operational upgrades:
+
+1. **Filmstrip Clamping strictly to Cut Ranges & Zero Gap Rendering**:
+   - In `TimelineTrack.jsx`, `FilmstripCanvas` tile generation strictly bounds sprite calculations to `[baseEpochMs + inPointMs, baseEpochMs + outPointMs]`.
+   - Any interval overlapping local or global gaps produces zero filmstrip requests, completely eliminating phantom tile shimmers and out-of-boundary queries on collapsed master tracks (`master-video-summary-track`).
+2. **Sleek Single-Line Sidebar in Collapsed Master Track**:
+   - The master summary track sidebar (`.summary-sidebar` in `TimelineBoard.scss`) is enforced with single-line non-wrapping layout (`height: 52px; white-space: nowrap; flex-wrap: nowrap`).
+   - Workstation headers use sleek titles (`ALL VIDEO` and `STA` count pill) that never overlap or clip.
+3. **Keyframe Magnetic Snapping & Dynamic Cut Boundary Binding**:
+   - `CanvasKeyframeTrack.jsx` features a 14px magnetic snapping threshold to the Playhead, Mark In, and Mark Out points during drag operations.
+   - `ExtractorAdvancedStudio.jsx` introduces a reactive synchronization invariant that automatically provisions keyframes at CUT boundaries (`tag: 'cut-in'` and `tag: 'cut-out'`), dynamically sliding their epoch timestamps whenever Mark In or Mark Out cut handles are adjusted.
+4. **Compact Canvas Feed HUD Inspector**:
+   - The bulky floating feed inspector (`MulticamViewport.jsx` / `MulticamViewport.scss`) has been redesigned into an ultra-compact 28px glassmorphic HUD pill (`.compact-hud-inspector`).
+   - Replaced wide native HTML dropdowns with tactile mini-buttons:
+     - Border width cycle pill: `📏 0px → 2px → 4px → 8px`
+     - Shadow/Glow cycle button: `🌑 None → Cinema → Cyan Glow → Emerald Glow`
+     - Stacking order dock: `[ ▲ Step Up | ▼ Step Down ]`
+     - Quick angle step: `[ ↺ 90° ]`
+     - Aspect snap: `[ 📐 NATIVE ]`
+     - Fullscreen focus: `[ ⛶ 1x1 ]`
+     - Delete screen: `[ 🗑️ ]`
+     - Close inspector: `[ ✕ ]`
+5. **Comprehensive Keyboard Shortcuts & Modal Reference**:
+   - `useStudioHotkeys.js` and `ShortcutsHelpModal.jsx` provide full operational NLE hotkeys:
+     - **Playback & Shuttle**: `Space` (Play/Pause), `J/K/L` (NLE Shuttle: Reverse, Pause, Forward 1x/2x/4x), `M` (Mute toggle), `←/→` (adaptive frame step), `Ctrl+←/→` (33ms single frame step), `Shift+←/→` (5s jump), `Home/End` (In/Out jump).
+     - **Marking & Cutting**: `I` (Mark In), `O` (Mark Out), `X` (Clear/Reset In & Out to full timeline), `S` (Split Multicam cut at playhead), `Ctrl+E` (Export cut range), `Ctrl+S` (Save session).
+     - **Canvas Layout Presets**: `1` (1x1 Focus), `2` (2-Screen Dual), `4` (4-Screen Quad), `G` (Auto-Grid), `R` (Reset Canvas), `F` (Fullscreen).
+     - **Timeline & Editing**: `+` / `Ins` (Add keyframe at playhead), `Delete` / `Backspace` (Delete selected keyframe or audio clip), `Ctrl+Click` (Multi-select audio clips), `[` / `]` (Zoom Timeline In/Out), `\` (Zoom to Fit Cut), `Ctrl+Z` / `Ctrl+Y` (Undo/Redo).
+6. **Multi-Track Audio Clip Selection & Popover Optimization**:
+   - In `AudioRoutingTrack.jsx`:
+     - Normal left click selects an audio clip; clicking empty timeline deselects.
+     - `Ctrl + Click` / `Cmd + Click` toggles multi-clip selection (Windows Explorer style).
+     - Selected audio clips receive a glowing cyan border (`2px solid #06B6D4`), cyan drop-shadow, and highlighted badge (`.is-selected`).
+     - Hitting `Delete` or `Backspace` instantly removes all selected audio clips.
+     - Clip property editor is triggered via right-click (`onContextMenu`) or double-click.
+     - The "Edit Audio Clip" popover is clamped within viewport boundaries with `z-index: 999999 !important`, completely eliminating ruler clipping or visual obstruction.
+7. **Multi-Station Ruler Keystroke Telemetry**:
+   - `TimelineRuler.jsx` and `TimelineKeystrokes.jsx` accept all active timeline `stations`.
+   - Queries keystrokes across all workstations in parallel via `Promise.all`.
+   - Ticks with simultaneous activity from multiple stations display purple/cyan gradient lines and a multi-station count pip (`2S`).
+   - The hover tooltip clusters events into structured, dedicated workstation cards (`🖥️ WORKSTATION-NAME`), displaying clean key pills and counts per computer.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
-
-
-

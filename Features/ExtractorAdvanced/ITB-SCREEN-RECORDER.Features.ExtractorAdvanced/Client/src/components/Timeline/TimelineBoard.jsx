@@ -7,7 +7,7 @@ import TimelineRuler from './header/TimelineRuler.jsx';
 import SessionClockBadge from './header/SessionClockBadge.jsx';
 import TimelineMinimap from './header/TimelineMinimap.jsx';
 import TimelineHeaderActions from './header/TimelineHeaderActions.jsx';
-import TimelineTrack from './tracks/TimelineTrack.jsx';
+import TimelineTrack, { FilmstripCanvas } from './tracks/TimelineTrack.jsx';
 // import DirectorTrack from './tracks/DirectorTrack.jsx';
 import AudioRoutingTrack from './tracks/AudioRoutingTrack.jsx';
 import CanvasKeyframeTrack from './tracks/CanvasKeyframeTrack.jsx';
@@ -407,49 +407,32 @@ export default function TimelineBoard({
                         )}
                     </div>
 
-                    {/* When Video Area is Collapsed: Sleek 26px Master Health Bar with Global Gaps */}
+                    {/* When Video Area is Collapsed: Sleek Master Track with Filmstrip in Cuts & Zero Gaps */}
                     {!isMasterVideoOpen && (
                         <div className="timeline-track-container master-video-summary-track" onClick={() => setIsMasterVideoOpen(true)}>
-                            <div className="track-sidebar summary-sidebar">
-                                <button type="button" className="btn-accordion-toggle">▶</button>
-                                <span className="summary-title">🎬 ALL VIDEO (COLLAPSED)</span>
-                                <span className="summary-badge">{stations.length} STATIONS</span>
+                            <div className="track-sidebar summary-sidebar" title="Click to Expand Video Stations">
+                                <button type="button" className="btn-accordion-toggle">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
+                                        <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                </button>
+                                <span className="summary-title">ALL VIDEO</span>
+                                <span className="summary-badge">{stations.length} STA</span>
                             </div>
                             <div className="track-canvas">
-                                <div className="full-height-gaps-layer">
-                                    {(estimateData?.removedGlobalGaps || []).map((gap, gIdx) => {
-                                        const sMs = gap.startEpochMs - baseEpochMs;
-                                        const eMs = gap.endEpochMs - baseEpochMs;
-                                        const leftPct = ((Math.max(viewportStartMs, sMs) - viewportStartMs) / viewportDurationMs) * 100;
-                                        const rightPct = ((Math.min(viewportStartMs + viewportDurationMs, eMs) - viewportStartMs) / viewportDurationMs) * 100;
-                                        const widthPct = rightPct - leftPct;
-                                        if (widthPct <= 0) return null;
-                                        const durSec = Math.round((gap.endEpochMs - gap.startEpochMs) / 1000);
-                                        return (
-                                            <div
-                                                key={`sum_gap_${gIdx}`}
-                                                className="gap-full-block gap-global-skipped"
-                                                style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                                                title={`Shared Gap: ${durSec}s skipped across all stations`}
-                                            >
-                                                <div className="gap-pattern" />
-                                                {widthPct > 5 && (
-                                                    <div className="gap-badge global-badge">
-                                                        <span>✂ SKIPPED (${durSec}s)</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="data-presence-layer">
-                                    <div className="data-presence-bar" style={{ left: '0%', width: '100%' }} />
-                                </div>
-                                {inPointMs > viewportStartMs && (
-                                    <div className="mask-dimmed left-mask" style={{ width: `${Math.min(100, ((inPointMs - viewportStartMs) / viewportDurationMs) * 100)}%` }} />
-                                )}
-                                {outPointMs < viewportStartMs + viewportDurationMs && (
-                                    <div className="mask-dimmed right-mask" style={{ left: `${Math.max(0, ((outPointMs - viewportStartMs) / viewportDurationMs) * 100)}%`, right: 0 }} />
+                                {stations.length > 0 && (
+                                    <FilmstripCanvas
+                                        hostname={stations[0]?.hostname || stations[0]?.id}
+                                        displayId="mon-0"
+                                        activeSegments={recordingSegments[stations[0]?.id] || recordingSegments[stations[0]?.hostname] || stations[0]?.segments || []}
+                                        viewportStartMs={viewportStartMs}
+                                        viewportDurationMs={viewportDurationMs}
+                                        baseEpochMs={baseEpochMs}
+                                        inPointMs={inPointMs}
+                                        outPointMs={outPointMs}
+                                        globalGaps={estimateData?.removedGlobalGaps || []}
+                                        isAutoDirectorEnabled={false}
+                                    />
                                 )}
                             </div>
                         </div>
@@ -528,6 +511,8 @@ export default function TimelineBoard({
                             baseEpochMs={baseEpochMs}
                             totalDurationMs={totalDurationMs}
                             playheadMs={playheadMs}
+                            inPointMs={inPointMs}
+                            outPointMs={outPointMs}
                             timeMode={timeMode}
                         />
                     )}

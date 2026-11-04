@@ -70,6 +70,28 @@
             }
         }
 
+        
+        // Multi-Station simultaneous activity styling
+        &.is-multi-station {
+            .keystroke-tick-line {
+                width: 2px !important;
+                background: linear-gradient(180deg, #A855F7 0%, #06B6D4 100%) !important;
+                box-shadow: 0 0 6px rgba(168, 85, 247, 0.75) !important;
+            }
+
+            .keystroke-pip-anchor {
+                .keystroke-pip-glyph {
+                    background: #A855F7 !important;
+                    box-shadow: 0 0 8px #A855F7 !important;
+                }
+                .keystroke-pip-count {
+                    background: rgba(88, 28, 135, 0.95) !important;
+                    border-color: #A855F7 !important;
+                    color: #F3E8FF !important;
+                }
+            }
+        }
+
         // Multi-event cluster styling
         &.is-cluster {
             .keystroke-tick-line {
@@ -162,6 +184,49 @@
                     font-size: 7px;
                     font-weight: 700;
                     color: #94a3b8;
+                }
+            }
+
+            
+            .tooltip-station-sections-container {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-top: 2px;
+                margin-bottom: 2px;
+            }
+
+            .tooltip-station-row {
+                display: flex;
+                flex-direction: column;
+                gap: 2.5px;
+                padding: 3px 5px;
+                background: rgba(15, 23, 42, 0.65);
+                border: 1px solid rgba(56, 189, 248, 0.2);
+                border-radius: 3px;
+
+                .station-row-badge {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+
+                    .station-mini-icon {
+                        font-size: 7px;
+                    }
+
+                    .station-title {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 7px;
+                        font-weight: 800;
+                        color: #38BDF8;
+                        text-transform: uppercase;
+                    }
+
+                    .station-count {
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 6.5px;
+                        color: #94A3B8;
+                    }
                 }
             }
 

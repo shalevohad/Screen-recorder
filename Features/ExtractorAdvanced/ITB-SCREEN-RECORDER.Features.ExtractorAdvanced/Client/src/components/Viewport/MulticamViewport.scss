@@ -1605,6 +1605,92 @@
             }
 
             /* Floating Tactical Inspector for Selected Feed (Stage-Level Overlay: Always on Top z-index: 99999) */
+            .floating-feed-inspector.compact-hud-inspector {
+                height: 28px;
+                padding: 2px 6px;
+                gap: 4px;
+                border: 1px solid rgba(6, 182, 212, 0.45);
+                background: rgba(11, 17, 30, 0.94);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
+
+                .inspector-screen-pill {
+                    font-size: 8.5px;
+                    padding: 2px 5px;
+                    border-radius: 3px;
+                }
+
+                .btn-mini-tool {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 20px;
+                    padding: 0 5px;
+                    font-size: 8.5px;
+                    font-weight: 700;
+                    font-family: inherit;
+                    color: #E2E8F0;
+                    background: #151E2E;
+                    border: 1px solid #334155;
+                    border-radius: 3px;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    transition: all 0.12s ease;
+
+                    &:hover {
+                        border-color: #06B6D4;
+                        background: #1E293B;
+                        color: #FFFFFF;
+                    }
+
+                    &.highlight {
+                        background: rgba(6, 182, 212, 0.2);
+                        border-color: #06B6D4;
+                        color: #38BDF8;
+                        &:hover {
+                            background: #06B6D4;
+                            color: #070A10;
+                        }
+                    }
+
+                    &.highlight-glow {
+                        border-color: #F59E0B;
+                        color: #F59E0B;
+                        box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+                    }
+
+                    &.btn-del-feed {
+                        color: #F43F5E;
+                        &:hover {
+                            background: rgba(244, 63, 94, 0.2);
+                            border-color: #F43F5E;
+                        }
+                    }
+
+                    &.btn-close-inspector {
+                        color: #94A3B8;
+                        padding: 0 4px;
+                        font-size: 9px;
+                        &:hover {
+                            color: #F43F5E;
+                            border-color: #F43F5E;
+                        }
+                    }
+
+                    .swatch-circle {
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 50%;
+                        border: 1px solid rgba(255, 255, 255, 0.5);
+                    }
+                }
+
+                .mini-layer-dock {
+                    display: flex;
+                    align-items: center;
+                    gap: 1px;
+                }
+            }
+
             .floating-feed-inspector {
                 position: absolute;
                 display: flex;

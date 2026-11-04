@@ -1,5 +1,6 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx
+// Multi-Station Forensics Ruler Keystroke Indicators & Tooltip
 // ==========================================
 import React, { useState, useEffect, useMemo, memo } from 'react';
 import { cleanKeyName, KEYSTROKE_CALIBRATION_OFFSET_MS } from '../../../utils/virtualKeyMap.js';
@@ -11,6 +12,7 @@ const MIN_PIXEL_DISTANCE = 8; // Pixel distance threshold for clustering close k
 function TimelineKeystrokes({
     activeStationName = '',
     stationHostname = '',
+    stations = [],
     keystrokes: propKeystrokes = null,
     baseEpochMs = 0,
     timeMode = 'LOCAL',
@@ -20,18 +22,34 @@ function TimelineKeystrokes({
     onSeek
 }) {
     const [fetchedKeystrokes, setFetchedKeystrokes] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const [, setIsLoading] = useState(false);
 
-    const queryStation = stationHostname || activeStationName;
+    // Target stations resolution for parallel multi-workstation query
+    const targetStations = useMemo(() => {
+        if (stations && Array.isArray(stations) && stations.length > 0) {
+            return stations.map(s => ({
+                id: s.id,
+                name: s.displayName || s.hostname || s.name || s.id,
+                hostname: s.hostname || s.id
+            }));
+        }
+        if (stationHostname || activeStationName) {
+            return [{
+                id: stationHostname || activeStationName,
+                name: activeStationName || stationHostname,
+                hostname: stationHostname || activeStationName
+            }];
+        }
+        return [];
+    }, [stations, stationHostname, activeStationName]);
 
-    // Viewport-aware data fetching with previous request cancellation on fast drag/zoom
+    // Viewport-aware data fetching with parallel station queries & cancellation
     useEffect(() => {
-        // If external propKeystrokes are supplied, we use them directly without secondary fetch
         if (propKeystrokes && Array.isArray(propKeystrokes) && propKeystrokes.length > 0) {
             return;
         }
 
-        if (!queryStation || !baseEpochMs || viewportDurationMs <= 0) {
+        if (!targetStations.length || !baseEpochMs || viewportDurationMs <= 0) {
             setFetchedKeystrokes([]);
             return;
         }
@@ -42,12 +60,25 @@ function TimelineKeystrokes({
 
         setIsLoading(true);
 
-        const url = `/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(queryStation)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`;
+        const fetches = targetStations.map(st => {
+            const url = `/api/v1/extractor-advanced/keystrokes?stationId=${encodeURIComponent(st.hostname)}&startEpoch=${startEpoch}&endEpoch=${endEpoch}`;
+            return fetch(url, { signal: abortController.signal })
+                .then(res => res.ok ? res.json() : [])
+                .then(data => (Array.isArray(data) ? data : []).map(evt => ({
+                    ...evt,
+                    stationId: st.id,
+                    stationName: st.name
+                })))
+                .catch(err => {
+                    if (err.name !== 'AbortError') return [];
+                    throw err;
+                });
+        });
 
-        fetch(url, { signal: abortController.signal })
-            .then(res => res.ok ? res.json() : [])
-            .then(data => {
-                setFetchedKeystrokes(Array.isArray(data) ? data : []);
+        Promise.all(fetches)
+            .then(results => {
+                const combined = results.flat();
+                setFetchedKeystrokes(combined);
                 setIsLoading(false);
             })
             .catch(err => {
@@ -58,7 +89,7 @@ function TimelineKeystrokes({
             });
 
         return () => abortController.abort();
-    }, [queryStation, baseEpochMs, viewportStartMs, viewportDurationMs, propKeystrokes]);
+    }, [targetStations, baseEpochMs, viewportStartMs, viewportDurationMs, propKeystrokes]);
 
     const activeKeystrokes = (propKeystrokes && Array.isArray(propKeystrokes) && propKeystrokes.length > 0)
         ? propKeystrokes
@@ -93,6 +124,9 @@ function TimelineKeystrokes({
                 currentCluster.events.push(evt);
                 currentCluster.endOffsetMs = offsetMs;
                 currentCluster.endEpochMs = calibratedEpochMs;
+                const uniqueStations = new Set(currentCluster.events.map(e => e.stationName || 'Workstation'));
+                currentCluster.isMultiStation = uniqueStations.size > 1;
+                currentCluster.stationCount = uniqueStations.size;
                 lastPixel = currentPixel;
             } else {
                 // Initialize new cluster
@@ -104,7 +138,9 @@ function TimelineKeystrokes({
                     startEpochMs: calibratedEpochMs,
                     endEpochMs: calibratedEpochMs,
                     pct,
-                    events: [evt]
+                    events: [evt],
+                    isMultiStation: false,
+                    stationCount: 1
                 };
                 result.push(currentCluster);
                 lastPixel = currentPixel;
@@ -163,15 +199,23 @@ function TimelineKeystrokes({
             {clusters.map((cluster) => {
                 const count = cluster.events.length;
                 const isCluster = count > 1;
+                const isMultiStation = cluster.isMultiStation;
                 const badgeText = formatBadgeText(cluster);
                 const timeLabel = formatTooltipTime(cluster.startEpochMs, timeMode);
-                const groups = groupClusterEvents(cluster.events);
                 const edgeClass = cluster.pct < 10 ? 'edge-left' : (cluster.pct > 90 ? 'edge-right' : '');
+
+                // Group cluster events by station
+                const stationGroups = {};
+                cluster.events.forEach(evt => {
+                    const sName = evt.stationName || activeStationName || 'Workstation';
+                    if (!stationGroups[sName]) stationGroups[sName] = [];
+                    stationGroups[sName].push(evt);
+                });
 
                 return (
                     <div
                         key={cluster.id}
-                        className={`keystroke-tick-node ${isCluster ? 'is-cluster' : 'is-single'}`}
+                        className={`keystroke-tick-node ${isCluster ? 'is-cluster' : 'is-single'} ${isMultiStation ? 'is-multi-station' : ''}`}
                         style={{ left: `${cluster.pct}%` }}
                         onClick={(e) => {
                             e.stopPropagation();
@@ -181,27 +225,49 @@ function TimelineKeystrokes({
                         <div className="keystroke-tick-line" />
                         <div className="keystroke-pip-anchor" title={`${badgeText} at ${timeLabel}`}>
                             <div className="keystroke-pip-glyph" />
-                            {isCluster && <span className="keystroke-pip-count">{count > 9 ? '9+' : count}</span>}
+                            {isCluster && (
+                                <span className="keystroke-pip-count">
+                                    {isMultiStation ? `${cluster.stationCount}S` : (count > 9 ? '9+' : count)}
+                                </span>
+                            )}
                         </div>
 
                         {/* Tactical tooltip popover */}
                         <div className={`keystroke-tooltip ${edgeClass}`}>
                             <div className="tooltip-header">
                                 <span className="tooltip-type">
-                                    {isCluster ? `KEYSTROKE BURST (${count})` : 'KEYSTROKE'}
+                                    {isMultiStation
+                                        ? `MULTICAM KEYSTROKES (${cluster.stationCount} WORKSTATIONS • ${count} EVT)`
+                                        : (isCluster ? `KEYSTROKE BURST (${count})` : 'KEYSTROKE')}
                                 </span>
                                 <span className="tooltip-time">{timeLabel}</span>
                             </div>
-                            <div className="tooltip-keys-list">
-                                {groups.slice(0, 8).map((g, idx) => (
-                                    <span key={idx} className="tooltip-key-pill">
-                                        {g.key}{g.count > 1 ? ` ×${g.count}` : ''}
-                                    </span>
-                                ))}
-                                {groups.length > 8 && (
-                                    <span className="tooltip-more">+{groups.length - 8} more</span>
-                                )}
+
+                            <div className="tooltip-station-sections-container">
+                                {Object.entries(stationGroups).map(([stName, stEvents]) => {
+                                    const groups = groupClusterEvents(stEvents);
+                                    return (
+                                        <div key={stName} className="tooltip-station-row">
+                                            <div className="station-row-badge">
+                                                <span className="station-mini-icon">🖥️</span>
+                                                <span className="station-title">{stName}</span>
+                                                <span className="station-count">({stEvents.length})</span>
+                                            </div>
+                                            <div className="tooltip-keys-list">
+                                                {groups.slice(0, 6).map((g, idx) => (
+                                                    <span key={idx} className="tooltip-key-pill">
+                                                        {g.key}{g.count > 1 ? ` ×${g.count}` : ''}
+                                                    </span>
+                                                ))}
+                                                {groups.length > 6 && (
+                                                    <span className="tooltip-more">+{groups.length - 6} more</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
+
                             <div className="tooltip-hint">Click to seek playhead</div>
                         </div>
                     </div>

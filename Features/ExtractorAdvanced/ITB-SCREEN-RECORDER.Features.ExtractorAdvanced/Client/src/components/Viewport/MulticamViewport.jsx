@@ -3178,7 +3178,7 @@ export default function MulticamViewport({
 
                             return (
                                 <div
-                                    className="floating-feed-inspector"
+                                    className="floating-feed-inspector compact-hud-inspector"
                                     style={{
                                         position: 'absolute',
                                         left: leftStyle,
@@ -3190,24 +3190,22 @@ export default function MulticamViewport({
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     {/* Active Screen Pill Badge */}
-                                    <span className="inspector-screen-pill" title={`Active Screen Controls: ${p.label || stationTargetId} • Layer #${layerRank}`}>
-                                        🎛️ #{layerRank}
+                                    <span className="inspector-screen-pill" title={`Active Screen: ${p.label || stationTargetId} • Layer #${layerRank}`}>
+                                        🎛️ #${layerRank}
                                     </span>
 
                                     {/* Border Color Swatch Button & Popover */}
                                     <div className="inspector-group color-swatch-group">
                                         <button
                                             type="button"
-                                            className="btn-color-swatch-trigger"
+                                            className="btn-mini-tool color-swatch-trigger"
                                             onClick={() => setShowColorPicker(prev => !prev)}
-                                            title="🎨 Border Color: Click to choose accent frame color"
+                                            title="🎨 Frame Color: Choose border color"
                                         >
-                                            <span className="control-icon">🎨</span>
                                             <span
                                                 className="swatch-circle"
                                                 style={{ backgroundColor: bColor === 'transparent' ? '#1E293B' : bColor }}
                                             />
-                                            <span className="caret">▾</span>
                                         </button>
                                         {showColorPicker && (
                                             <div className="compact-color-palette-popover">
@@ -3221,139 +3219,121 @@ export default function MulticamViewport({
                                                             handleUpdateSelectedStyle({ borderColor: c });
                                                             setShowColorPicker(false);
                                                         }}
-                                                        title={c === 'transparent' ? 'No Border (Transparent)' : `Set Border Color to ${c}`}
+                                                        title={c === 'transparent' ? 'No Border (Transparent)' : `Border Color: ${c}`}
                                                     />
                                                 ))}
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Border Thickness Select (Stroke Lines) */}
-                                    <div className="inspector-group width-select-group">
-                                        <span className="control-icon" title="Border Stroke Width">📏</span>
-                                        <select
-                                            className="tactical-select width-select"
-                                            value={bWidth}
-                                            onChange={(e) => handleUpdateSelectedStyle({ borderWidth: Number(e.target.value) })}
-                                            title="Border Width: Set border frame thickness (0px to 12px)"
-                                        >
-                                            <option value={0}>━ 0px (None)</option>
-                                            <option value={2}>━ 2px (Thin)</option>
-                                            <option value={4}>━━ 4px (Standard)</option>
-                                            <option value={6}>━━━ 6px (Thick)</option>
-                                            <option value={8}>━━━━ 8px (Heavy)</option>
-                                            <option value={12}>━━━━━ 12px (Ultra)</option>
-                                        </select>
-                                    </div>
+                                    {/* Border Width Cycle Mini-Button */}
+                                    <button
+                                        type="button"
+                                        className="btn-mini-tool"
+                                        onClick={() => {
+                                            const widths = [0, 2, 4, 8];
+                                            const nextW = widths[(widths.indexOf(bWidth) + 1) % widths.length];
+                                            handleUpdateSelectedStyle({ borderWidth: nextW });
+                                        }}
+                                        title={`Border Width: ${bWidth}px (Click to cycle: 0px → 2px → 4px → 8px)`}
+                                    >
+                                        📏 {bWidth}px
+                                    </button>
 
-                                    {/* Shadow Effect Dropdown */}
-                                    <div className="inspector-group shadow-select-group">
-                                        <span className="control-icon" title="Drop Shadow & Ambient Glow">🌑</span>
-                                        <select
-                                            className="tactical-select shadow-select"
-                                            value={shadowEffect}
-                                            onChange={(e) => handleUpdateSelectedStyle({ shadowEffect: e.target.value })}
-                                            title="Drop Shadow & Glow: Add visual depth or tactical glow to this window"
-                                        >
-                                            {SHADOW_PRESETS.map(s => (
-                                                <option key={s.id} value={s.id}>{s.label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    {/* Shadow Glow Cycle Mini-Button */}
+                                    <button
+                                        type="button"
+                                        className={`btn-mini-tool ${shadowEffect !== 'none' ? 'highlight-glow' : ''}`}
+                                        onClick={() => {
+                                            const shadows = ['none', 'deep', 'glow-cyan', 'glow-emerald'];
+                                            const nextS = shadows[(shadows.indexOf(shadowEffect) + 1) % shadows.length];
+                                            handleUpdateSelectedStyle({ shadowEffect: nextS });
+                                        }}
+                                        title={`Shadow Effect: ${shadowEffect} (Click to cycle: None → Cinema → Cyan Glow → Emerald Glow)`}
+                                    >
+                                        🌑
+                                    </button>
 
-                                    {/* Layer Stacking Order Select */}
-                                    <div className="inspector-group layer-select-group">
-                                        <span className="control-icon" title="Layer Stacking Depth">📑</span>
-                                        <select
-                                            className="tactical-select layer-select"
-                                            value=""
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                if (val === 'front') handleBringToFront(origIdx);
-                                                else if (val === 'back') handleSendToBack(origIdx);
-                                                else if (val === 'up') handleBringForward(origIdx);
-                                                else if (val === 'down') handleSendBackward(origIdx);
-                                            }}
-                                            title={`Layer Stacking Order: Currently Layer #${layerRank}. Choose to bring in front or send behind.`}
-                                        >
-                                            <option value="" disabled>L#{layerRank} ▾</option>
-                                            <option value="front">⏫ Bring to Front (Top)</option>
-                                            <option value="up">▲ Step Forward (+1)</option>
-                                            <option value="down">▼ Step Backward (-1)</option>
-                                            <option value="back">⏬ Send to Back (Bottom)</option>
-                                        </select>
-                                    </div>
-
-                                    {/* Rotation Step & Fine Slider */}
-                                    <div className="inspector-group rotate">
-                                        <span className="control-icon" title="Screen Rotation Controls">🔄</span>
+                                    {/* Layer Ordering Mini Cluster */}
+                                    <div className="mini-layer-dock">
                                         <button
                                             type="button"
-                                            className="btn-action-tool"
-                                            onClick={() => handleRotateStep(90)}
-                                            title="Rotate: Step 90 degrees clockwise (↺)"
+                                            className="btn-mini-tool"
+                                            onClick={() => handleBringForward(origIdx)}
+                                            title="Step Layer Up (+1)"
                                         >
-                                            ↺ 90°
+                                            ▲
                                         </button>
                                         <button
                                             type="button"
-                                            className={`btn-action-tool ${showRotationControl ? 'active' : ''}`}
-                                            onClick={() => setShowRotationControl(prev => !prev)}
-                                            title={`Fine Rotation: Click to toggle angle slider (Current: ${rot}°)`}
+                                            className="btn-mini-tool"
+                                            onClick={() => handleSendBackward(origIdx)}
+                                            title="Step Layer Down (-1)"
                                         >
-                                            📐 {rot}°
+                                            ▼
                                         </button>
-                                        {showRotationControl && (
-                                            <input
-                                                type="range"
-                                                min="-180"
-                                                max="180"
-                                                value={rot}
-                                                onChange={(e) => handleUpdateSelectedStyle({ rotation: Number(e.target.value) })}
-                                                className="rotation-slider"
-                                                title={`Adjust tilt angle: ${rot}°`}
-                                            />
-                                        )}
                                     </div>
+
+                                    {/* Rotation Step Button */}
+                                    <button
+                                        type="button"
+                                        className="btn-mini-tool"
+                                        onClick={() => handleRotateStep(90)}
+                                        title={`Rotate: Step 90° clockwise (Current: ${rot}°)`}
+                                    >
+                                        ↺ 90°
+                                    </button>
 
                                     {/* Native Recorded Aspect Ratio Snap */}
                                     <button
                                         type="button"
-                                        className="btn-action-tool highlight"
+                                        className="btn-mini-tool highlight"
                                         onClick={() => handleSnapToNativeAspect(origIdx)}
-                                        title={`Native Recorded Aspect Ratio: Snap window to its exact recorded aspect (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)}) to remove any distortion`}
+                                        title={`Snap to Native Recorded Aspect (${getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})`}
                                     >
-                                        📐 NATIVE ({getReadableAspectRatio(p.sourceWidth, p.sourceHeight)})
+                                        📐 NATIVE
                                     </button>
 
-                                    {/* 1x1 Focus Mode: Expand feed to fill entire canvas */}
+                                    {/* 1x1 Focus Viewport */}
                                     <button
                                         type="button"
-                                        className="btn-action-tool highlight"
+                                        className="btn-mini-tool highlight"
                                         onClick={() => handleFocus1x1(origIdx)}
-                                        title="1x1 Focus Viewport: Maximize this window to fill 100% of the canvas frame (Double-clicking the card also maximizes)"
+                                        title="1x1 Focus Mode (Double-click window to toggle)"
                                     >
-                                        ⊞ 1x1 FOCUS
+                                        ⛶ 1x1
                                     </button>
 
                                     {/* Deep Forensic Spotlight Shortcut */}
+                                    {onOpenSpotlight && (
+                                        <button
+                                            type="button"
+                                            className="btn-mini-tool"
+                                            onClick={() => onOpenSpotlight(stationTargetId, p.displayId)}
+                                            title="Deep Forensic Multi-Angle Spotlight"
+                                        >
+                                            🔍
+                                        </button>
+                                    )}
+
+                                    {/* Remove Screen Button */}
                                     <button
                                         type="button"
-                                        className="btn-action-tool"
-                                        onClick={() => onOpenSpotlight && onOpenSpotlight(stationTargetId, p.displayId)}
-                                        title="Deep Forensic Spotlight: Open multi-angle synchronized forensic viewer for this workstation"
+                                        className="btn-mini-tool btn-del-feed"
+                                        onClick={() => handleRemovePlacement(origIdx)}
+                                        title="Remove Screen from Canvas"
                                     >
-                                        🔍 SPOTLIGHT
+                                        🗑️
                                     </button>
 
-                                    {/* Delete Feed Button */}
+                                    {/* Close Inspector Button */}
                                     <button
                                         type="button"
-                                        className="btn-action-tool btn-del-feed"
-                                        onClick={() => handleRemovePlacement(origIdx)}
-                                        title="Remove Screen: Remove this window from canvas (can be restored anytime from the Feeds Palette)"
+                                        className="btn-mini-tool btn-close-inspector"
+                                        onClick={() => setSelectedFeedIndex(null)}
+                                        title="Close Menu (Esc)"
                                     >
-                                        🗑️ REMOVE
+                                        ✕
                                     </button>
                                 </div>
                             );

@@ -19,6 +19,8 @@ export default function CanvasKeyframeTrack({
     baseEpochMs = 0,
     totalDurationMs = 3600000,
     playheadMs = 0,
+    inPointMs = 0,
+    outPointMs = 3600000,
     timeMode = 'LOCAL'
 }) {
     const keyframes = useMemo(() => {
@@ -93,6 +95,19 @@ export default function CanvasKeyframeTrack({
             // Clamp within timeline range
             targetEpoch = Math.max(baseEpochMs, Math.min(baseEpochMs + totalDurationMs, targetEpoch));
 
+            // Magnetic snap to Playhead, Cut Start (In Point), and Cut End (Out Point)
+            const inEpoch = baseEpochMs + inPointMs;
+            const outEpoch = baseEpochMs + outPointMs;
+            const snapToleranceMs = (14 / rect.width) * viewportDurationMs;
+
+            if (Math.abs(targetEpoch - playheadEpoch) <= snapToleranceMs) {
+                targetEpoch = playheadEpoch;
+            } else if (Math.abs(targetEpoch - inEpoch) <= snapToleranceMs) {
+                targetEpoch = inEpoch;
+            } else if (Math.abs(targetEpoch - outEpoch) <= snapToleranceMs) {
+                targetEpoch = outEpoch;
+            }
+
             setDraggingKf(prev => prev ? { ...prev, currentEpoch: targetEpoch } : null);
         };
 
@@ -106,6 +121,18 @@ export default function CanvasKeyframeTrack({
             const deltaMs = (dx / rect.width) * viewportDurationMs;
             let finalEpoch = Math.round(initialEpoch + deltaMs);
             finalEpoch = Math.max(baseEpochMs, Math.min(baseEpochMs + totalDurationMs, finalEpoch));
+
+            const inEpoch = baseEpochMs + inPointMs;
+            const outEpoch = baseEpochMs + outPointMs;
+            const snapToleranceMs = (14 / rect.width) * viewportDurationMs;
+
+            if (Math.abs(finalEpoch - playheadEpoch) <= snapToleranceMs) {
+                finalEpoch = playheadEpoch;
+            } else if (Math.abs(finalEpoch - inEpoch) <= snapToleranceMs) {
+                finalEpoch = inEpoch;
+            } else if (Math.abs(finalEpoch - outEpoch) <= snapToleranceMs) {
+                finalEpoch = outEpoch;
+            }
 
             if (hasMoved) {
                 if (onUpdateKeyframeEpoch) {

@@ -211,6 +211,9 @@ export default function ExtractorAdvancedStudio() {
         });
     }, []);
 
+
+    
+
     const handleUpdateKeyframeEpoch = useCallback((idxOrId, newEpoch) => {
         setCanvasLayoutTimeline(prev => {
             if (!prev?.keyframes || prev.keyframes.length === 0) return prev;
@@ -314,6 +317,80 @@ export default function ExtractorAdvancedStudio() {
 
     const [inPointMs, setInPointMs] = useState(initialInPointMs);
     const [outPointMs, setOutPointMs] = useState(initialOutPointMs);
+
+    // Invariant (2026-11-04): Automatically ensure Keyframes exist at CUT boundaries (In and Out) and move with them
+    useEffect(() => {
+        if (!timelineBaseEpochMs) return;
+        const inEpoch = Math.round(timelineBaseEpochMs + inPointMs);
+        const outEpoch = Math.round(timelineBaseEpochMs + outPointMs);
+
+        setCanvasLayoutTimeline(prev => {
+            if (!prev || !prev.keyframes || prev.keyframes.length === 0) return prev;
+            let kfs = [...prev.keyframes];
+            let modified = false;
+
+            // Find or bind cut-in keyframe
+            let inKf = kfs.find(k => k.tag === 'cut-in');
+            if (inKf) {
+                if (inKf.timestampEpochMs !== inEpoch) {
+                    inKf.timestampEpochMs = inEpoch;
+                    modified = true;
+                }
+            } else {
+                const nearIn = kfs.find(k => Math.abs(k.timestampEpochMs - inEpoch) < 500);
+                if (nearIn) {
+                    nearIn.tag = 'cut-in';
+                    nearIn.timestampEpochMs = inEpoch;
+                    modified = true;
+                } else {
+                    const baseLayout = kfs[0]?.layout || currentCanvasLayout || { width: 1920, height: 1080, placements: [] };
+                    kfs.push({
+                        id: `kf_cut_in_${Date.now()}`,
+                        tag: 'cut-in',
+                        timestampEpochMs: inEpoch,
+                        transitionDurationSec: 0.5,
+                        transitionType: 'smooth',
+                        layout: JSON.parse(JSON.stringify(baseLayout))
+                    });
+                    modified = true;
+                }
+            }
+
+            // Find or bind cut-out keyframe
+            let outKf = kfs.find(k => k.tag === 'cut-out');
+            if (outKf) {
+                if (outKf.timestampEpochMs !== outEpoch) {
+                    outKf.timestampEpochMs = outEpoch;
+                    modified = true;
+                }
+            } else {
+                const nearOut = kfs.find(k => Math.abs(k.timestampEpochMs - outEpoch) < 500 && k.tag !== 'cut-in');
+                if (nearOut) {
+                    nearOut.tag = 'cut-out';
+                    nearOut.timestampEpochMs = outEpoch;
+                    modified = true;
+                } else {
+                    const baseLayout = kfs[kfs.length - 1]?.layout || currentCanvasLayout || { width: 1920, height: 1080, placements: [] };
+                    kfs.push({
+                        id: `kf_cut_out_${Date.now()}`,
+                        tag: 'cut-out',
+                        timestampEpochMs: outEpoch,
+                        transitionDurationSec: 0.5,
+                        transitionType: 'smooth',
+                        layout: JSON.parse(JSON.stringify(baseLayout))
+                    });
+                    modified = true;
+                }
+            }
+
+            if (!modified) return prev;
+            kfs.sort((a, b) => a.timestampEpochMs - b.timestampEpochMs);
+            return {
+                ...prev,
+                keyframes: kfs
+            };
+        });
+    }, [timelineBaseEpochMs, inPointMs, outPointMs, currentCanvasLayout]);
 
     const { allStations, recordingSegments, isLoadingStations, movieBoundaries } = useStudioData(
         timelineBaseEpochMs,

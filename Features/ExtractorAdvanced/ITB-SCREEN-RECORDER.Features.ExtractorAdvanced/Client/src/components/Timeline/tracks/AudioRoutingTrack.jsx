@@ -39,6 +39,7 @@ export default function AudioRoutingTrack({
     const [isMasterMuted, setIsMasterMuted] = useState(false);
     const [selectedMenuClip, setSelectedMenuClip] = useState(null); // { laneId, clipId, s, e, x, y, stationId, gain }
     const [menuGainValue, setMenuGainValue] = useState(1.0);
+    const [selectedClipIds, setSelectedClipIds] = useState([]);
 
     // Real-time acoustic volume level from Web Audio AnalyserNode
     const [liveLevel, setLiveLevel] = useState({ rms: 0, peak: 0, db: -60, isPlaying: false });
@@ -118,6 +119,43 @@ export default function AudioRoutingTrack({
         allClips.sort((a, b) => a.startEpochMs - b.startEpochMs);
         onUpdateAudioPlan({ segments: allClips });
     }, [onUpdateAudioPlan, isMasterMuted]);
+
+    // Delete selected audio clips via Delete/Backspace hotkey or custom event
+    useEffect(() => {
+        const handleDeleteSelectedClips = () => {
+            if (selectedClipIds.length === 0) return;
+            setLanes(prev => {
+                const updated = prev.map(l => ({
+                    ...l,
+                    clips: l.clips.filter(c => !selectedClipIds.includes(c.id))
+                }));
+                syncLanesToPlan(updated);
+                return updated;
+            });
+            setSelectedClipIds([]);
+            setSelectedMenuClip(null);
+        };
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                const target = e.target;
+                const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+                if (isTyping) return;
+                if (selectedClipIds.length > 0) {
+                    e.preventDefault();
+                    handleDeleteSelectedClips();
+                }
+            }
+        };
+
+        const handleCustomDelete = () => handleDeleteSelectedClips();
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('itb:studio-delete-selected', handleCustomDelete);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('itb:studio-delete-selected', handleCustomDelete);
+        };
+    }, [selectedClipIds, syncLanesToPlan]);
 
     // Add a new Audio Lane (A2, A3...)
     const handleAddLane = useCallback(() => {
@@ -340,8 +378,13 @@ export default function AudioRoutingTrack({
     const handleOpenClipMenu = (ev, laneId, clip) => {
         ev.preventDefault();
         ev.stopPropagation();
-        const posX = Math.min(window.innerWidth - 260, Math.max(16, ev.clientX - 40));
-        const posY = Math.min(window.innerHeight - 280, Math.max(16, ev.clientY - 200));
+        const menuWidth = 260;
+        const menuHeight = 280;
+        const posX = Math.max(16, Math.min(window.innerWidth - menuWidth - 16, ev.clientX - (menuWidth / 2)));
+        let posY = ev.clientY - menuHeight - 12;
+        if (posY < 140) {
+            posY = Math.min(window.innerHeight - menuHeight - 16, ev.clientY + 24);
+        }
         setMenuGainValue(clip.gain || 1.0);
         setSelectedMenuClip({
             laneId,
@@ -523,7 +566,7 @@ export default function AudioRoutingTrack({
 
                             {/* Lane Timeline Track Canvas */}
                             <div
-                                className="audio-lane-timeline"
+                                className="audio-lane-timeline" onClick={() => setSelectedClipIds([])}
                                 onDoubleClick={(e) => {
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -548,13 +591,23 @@ export default function AudioRoutingTrack({
                                     return (
                                         <div
                                             key={clip.id}
-                                            className={`audio-clip-block ${lane.isMuted ? 'lane-muted' : ''}`}
+                                            className={`audio-clip-block ${lane.isMuted ? 'lane-muted' : ''} ${selectedClipIds.includes(clip.id) ? 'is-selected' : ''}`}
                                             style={{
                                                 left: `${leftPct}%`,
                                                 width: `${widthPct}%`,
                                                 borderLeftColor: laneColor
                                             }}
-                                            onClick={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
+                                            onClick={(ev) => {
+                                                ev.stopPropagation();
+                                                if (ev.ctrlKey || ev.metaKey) {
+                                                    setSelectedClipIds(prev =>
+                                                        prev.includes(clip.id) ? prev.filter(x => x !== clip.id) : [...prev, clip.id]
+                                                    );
+                                                } else {
+                                                    setSelectedClipIds([clip.id]);
+                                                }
+                                            }}
+                                            onDoubleClick={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
                                             onContextMenu={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
                                             title={`Audio Clip: ${stationName} [${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })}] • Gain: ${Math.round(clip.gain * 100)}%`}
                                         >
