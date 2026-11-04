@@ -539,3 +539,98 @@ export function generateAutoPackPlacements(feeds, W = 1920, H = 1080) {
         };
     });
 }
+
+/**
+ * Invariant (Rule 13 & 2026-11-04 Update):
+ * 1. Screen switches (cuts) within any gap region (local or global) are merged into preceding segments to eliminate mid-gap jitter.
+ * 2. Auto-Director is strictly forbidden from selecting or covering GLOBAL GAP regions.
+ *    Global gaps must remain completely unselected ('לא בחורים').
+ *    Local gaps (station-specific gaps with 'No Signal' synthetic slate) remain covered without cuts.
+ */
+export function cleanDirectorSegmentsWithGaps(rawSegments, stationGaps = [], globalGaps = []) {
+    if (!Array.isArray(rawSegments) || rawSegments.length === 0) return [];
+
+    let segs = rawSegments.map(s => ({
+        ...s,
+        startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? 0,
+        endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? 0,
+        targetDisplayId: (s.targetDisplayId || s.TargetDisplayId || 'mon-0').toLowerCase()
+    })).sort((a, b) => a.startEpochMs - b.startEpochMs);
+
+    // 1. Subtract GLOBAL GAPS completely:
+    // Invariant: Auto-Director is strictly forbidden from selecting or covering GLOBAL GAP regions.
+    // Global gaps must remain completely unselected ('לא בחורים').
+    const activeGlobalGaps = [];
+    if (Array.isArray(globalGaps) && globalGaps.length > 0) {
+        globalGaps.forEach(g => {
+            const gs = g.startEpochMs ?? g.StartEpochMs ?? g.startEpoch ?? 0;
+            const ge = g.endEpochMs ?? g.EndEpochMs ?? g.endEpoch ?? 0;
+            if (ge > gs) activeGlobalGaps.push({ startEpoch: gs, endEpoch: ge });
+        });
+    }
+    if (Array.isArray(stationGaps)) {
+        stationGaps.filter(g => g.type === 'global').forEach(g => {
+            const gs = g.startEpochMs ?? g.startEpoch ?? 0;
+            const ge = g.endEpochMs ?? g.endEpoch ?? 0;
+            if (ge > gs && !activeGlobalGaps.some(ag => ag.startEpoch === gs && ag.endEpoch === ge)) {
+                activeGlobalGaps.push({ startEpoch: gs, endEpoch: ge });
+            }
+        });
+    }
+
+    activeGlobalGaps.forEach(g => {
+        const gStart = g.startEpoch;
+        const gEnd = g.endEpoch;
+        const newSegs = [];
+
+        segs.forEach(s => {
+            if (s.endEpochMs <= gStart || s.startEpochMs >= gEnd) {
+                // No overlap
+                newSegs.push(s);
+            } else {
+                // Overlaps with global gap
+                if (s.startEpochMs < gStart) {
+                    newSegs.push({
+                        ...s,
+                        endEpochMs: gStart
+                    });
+                }
+                if (s.endEpochMs > gEnd) {
+                    newSegs.push({
+                        ...s,
+                        startEpochMs: gEnd
+                    });
+                }
+                // The region [gStart, gEnd] is left completely empty / unselected!
+            }
+        });
+
+        segs = newSegs;
+    });
+
+    // 2. Merge cuts inside local gaps (station-specific gaps) so screens do not switch mid-gap
+    const localGaps = (stationGaps || []).filter(g => g.type !== 'global');
+    localGaps.forEach(gap => {
+        const gStart = gap.startEpochMs ?? gap.StartEpochMs ?? gap.startEpoch ?? 0;
+        const gEnd = gap.endEpochMs ?? gap.EndEpochMs ?? gap.endEpoch ?? 0;
+        if (!gStart || !gEnd || gEnd <= gStart) return;
+
+        for (let i = segs.length - 1; i > 0; i--) {
+            const cutEpoch = segs[i].startEpochMs;
+            if (cutEpoch >= gStart && cutEpoch <= gEnd && segs[i].startEpochMs === segs[i - 1].endEpochMs) {
+                segs[i - 1].endEpochMs = segs[i].endEpochMs;
+                segs.splice(i, 1);
+            }
+        }
+    });
+
+    // 3. Merge contiguous segments that share the same targetDisplayId and touch exactly
+    for (let i = segs.length - 1; i > 0; i--) {
+        if (segs[i].targetDisplayId === segs[i - 1].targetDisplayId && segs[i].startEpochMs === segs[i - 1].endEpochMs) {
+            segs[i - 1].endEpochMs = segs[i].endEpochMs;
+            segs.splice(i, 1);
+        }
+    }
+
+    return segs;
+}

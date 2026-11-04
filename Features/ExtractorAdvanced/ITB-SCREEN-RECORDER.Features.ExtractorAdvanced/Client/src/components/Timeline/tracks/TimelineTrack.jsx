@@ -4,6 +4,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { spritesheetStore } from '../../../utils/spritesheetStore.js';
 import './TimelineTrack.scss';
+import { cleanDirectorSegmentsWithGaps } from '../../../utils/nleTimelineEngine.js';
 
 const getLodConfig = (viewportDurationMs) => {
     if (viewportDurationMs <= 60 * 1000) return { tileDurationMs: 5 * 1000, framesPerTile: 4 };
@@ -406,9 +407,9 @@ function FilmstripCanvas({
                         key={blk.id}
                         className="director-active-coverage-highlight"
                         style={{ left: `${blk.leftPct}%`, width: `${blk.widthPct}%` }}
-                        title="Display Featured by Auto-Director (ON AIR)"
+                        title="Display Featured by Auto-Director"
                     >
-                        {blk.widthPct > 6 && <span className="active-badge-tag">🎬 ON AIR</span>}
+                        
                     </div>
                 ) : (
                     <div
@@ -607,42 +608,12 @@ export default function TimelineTrack({
         return gaps;
     }, [activeSegments, globalGaps, baseEpochMs, viewportDurationMs]);
 
-    // Rule: Auto-Director never plans or cuts between screens inside a GAP region!
-    // Any cut boundary falling strictly inside a gap is merged so screens do not switch during gaps.
+    // Rule 13 & 2026-11-04 Update: Auto-Director is strictly forbidden from selecting or covering GLOBAL GAPS.
+    // Global gaps must remain completely unselected ('לא בחורים').
+    // Only local gaps (station-specific gaps with 'No Signal' synthetic slate) remain covered without cuts.
     const gapCleanDirectorSegments = useMemo(() => {
-        if (!rawDirectorSegments || rawDirectorSegments.length === 0) return [];
-        if (!stationGaps || stationGaps.length === 0) return rawDirectorSegments;
-
-        let segs = rawDirectorSegments.map(s => ({
-            ...s,
-            startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? 0,
-            endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? 0,
-            targetDisplayId: (s.targetDisplayId || s.TargetDisplayId || 'mon-0').toLowerCase()
-        })).sort((a, b) => a.startEpochMs - b.startEpochMs);
-
-        stationGaps.forEach(gap => {
-            const gStart = gap.startEpoch;
-            const gEnd = gap.endEpoch;
-            if (!gStart || !gEnd || gEnd <= gStart) return;
-
-            for (let i = segs.length - 1; i > 0; i--) {
-                const cutEpoch = segs[i].startEpochMs;
-                if (cutEpoch >= gStart && cutEpoch <= gEnd) {
-                    segs[i - 1].endEpochMs = segs[i].endEpochMs;
-                    segs.splice(i, 1);
-                }
-            }
-        });
-
-        for (let i = segs.length - 1; i > 0; i--) {
-            if (segs[i].targetDisplayId === segs[i - 1].targetDisplayId) {
-                segs[i - 1].endEpochMs = segs[i].endEpochMs;
-                segs.splice(i, 1);
-            }
-        }
-
-        return segs;
-    }, [rawDirectorSegments, stationGaps]);
+        return cleanDirectorSegmentsWithGaps(rawDirectorSegments, stationGaps, globalGaps);
+    }, [rawDirectorSegments, stationGaps, globalGaps]);
 
     // Stepper segments for collapsed view
     const stepperSegments = useMemo(() => {
@@ -678,7 +649,7 @@ export default function TimelineTrack({
                 widthPct
             };
         }).filter(Boolean);
-    }, [hasDirectorCuts, rawDirectorSegments, stationDisplays, baseEpochMs, viewportStartMs, viewportDurationMs]);
+    }, [hasDirectorCuts, gapCleanDirectorSegments, stationDisplays, baseEpochMs, viewportStartMs, viewportDurationMs]);
 
     // Check if display is on canvas
     const isDisplayOnCanvas = useCallback((dispId) => {

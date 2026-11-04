@@ -2690,6 +2690,20 @@ To ensure visual clarity, eliminate unnecessary network fetch strain, and stream
 5. **Tactical Transparent Purple Token for Auto-Director Coverage**:
    - Chosen display blocks and active director coverage overlays are styled in transparent tactical purple (`rgba(168, 85, 247, 0.20-0.32)` with border `rgba(168, 85, 247, 0.75)` and text `#F3E8FF`), visually distinguishing director decisions from cyan keyframes, emerald recording media, and amber gap skips.
 
+### 12. Auto-Director Global Gap Exclusion Invariant & Badge Minimalism (2026-11-04)
+
+To prevent erroneous timeline coverage and maintain visual minimalism during forensic playback, the timeline director engine enforces two key invariants:
+
+1. **Badge Minimalism (Removal of "ON AIR" Badges)**:
+   - The textual badge `🎬 ON AIR` has been completely removed from active coverage highlights in `FilmstripCanvas` (`TimelineTrack.jsx`).
+   - Active screen coverage is now conveyed purely through tactical transparent purple highlighting (`rgba(168, 85, 247, 0.20)` with border `rgba(168, 85, 247, 0.85)`), keeping video thumbnails and waveforms clean and unobstructed by redundant UI text.
+2. **Strict Global Gap Exclusion Invariant (`cleanDirectorSegmentsWithGaps`)**:
+   - The Auto-Director is strictly forbidden from selecting or covering **GLOBAL GAP** regions. In multi-workstation projects, global gaps represent intervals where *no workstation* was recording; these intervals are skipped entirely during forensic export.
+   - The algorithm `cleanDirectorSegmentsWithGaps` (exported from `nleTimelineEngine.js`) subtracts all global gaps from director segments:
+     - Global gap intervals are sliced out, leaving the gap range completely empty and unselected (`לא בחור`).
+     - Collapsed track stepper blocks and expanded child track coverage overlays never render over global gaps, allowing the amber diagonal hatch pattern (`gap-global-skipped`) to be clearly visible.
+     - In contrast, **Local Gaps** (station-specific gaps where synthetic dummy "No Signal" is injected for multicam alignment) retain continuous single-display coverage without mid-gap cuts, ensuring that automated switching never occurs across missing footage.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
