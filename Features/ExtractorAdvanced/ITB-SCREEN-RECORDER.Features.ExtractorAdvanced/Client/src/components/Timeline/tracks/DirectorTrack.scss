@@ -174,12 +174,12 @@
                 z-index: 10;
             }
 
-            // Screen Theme 1 (Cyan - mon-0 / Screen 1)
+            // Screen Theme 1 (Transparent Purple - featured by auto-director)
             &.disp-theme-1 {
-                background: rgba(6, 182, 212, 0.25);
-                border-top: 1px solid rgba(6, 182, 212, 0.65);
-                border-bottom: 1px solid rgba(6, 182, 212, 0.65);
-                color: #22d3ee;
+                background: rgba(168, 85, 247, 0.25);
+                border-top: 1px solid rgba(168, 85, 247, 0.75);
+                border-bottom: 1px solid rgba(168, 85, 247, 0.75);
+                color: #e9d5ff;
             }
 
             // Screen Theme 2 (Purple - mon-1 / Screen 2)

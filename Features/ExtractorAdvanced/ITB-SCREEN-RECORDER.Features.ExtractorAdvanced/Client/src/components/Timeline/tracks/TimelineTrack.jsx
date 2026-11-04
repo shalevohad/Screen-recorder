@@ -34,6 +34,7 @@ function FilmstripCanvas({
     inPointMs = 0,
     outPointMs = 3600000,
     globalGaps = [],
+    gaps = [],
     directorSegments = [],
     isAutoDirectorEnabled = false,
     showDirectorCoverage = false,
@@ -56,6 +57,17 @@ function FilmstripCanvas({
 
         const sorted = [...activeSegments].sort((a, b) => getSegStart(a) - getSegStart(b));
 
+        const allGapsToCheck = [...(globalGaps || []), ...(gaps || [])];
+        const isTileInGap = (tStart, tEnd) => {
+            if (!allGapsToCheck || allGapsToCheck.length === 0) return false;
+            return allGapsToCheck.some(g => {
+                const gs = g.startEpochMs ?? g.startEpoch ?? g.start ?? 0;
+                const ge = g.endEpochMs ?? g.endEpoch ?? g.end ?? 0;
+                if (ge <= gs) return false;
+                return Math.max(tStart, gs) < Math.min(tEnd, ge);
+            });
+        };
+
         sorted.forEach((seg, sIdx) => {
             const segStart = Math.round(getSegStart(seg));
             const segEnd = Math.round(getSegEnd(seg));
@@ -72,7 +84,8 @@ function FilmstripCanvas({
                 const clampedStart = Math.max(segStart, tStart);
                 const clampedEnd = Math.min(segEnd, tEnd);
 
-                if (clampedEnd > clampedStart) {
+                // Invariant: NEVER generate or request filmstrip tiles inside any GAP region
+                if (clampedEnd > clampedStart && !isTileInGap(clampedStart, clampedEnd)) {
                     tiles.push({
                         key: `${hostname}_${displayId}_${clampedStart}_${clampedEnd}_${framesPerTile}`,
                         sIdx,
@@ -541,11 +554,12 @@ export default function TimelineTrack({
         return (segs || []).filter(s => (getSegEnd(s) - getSegStart(s)) > 0);
     }, [recordingSegments, rawSegments, stationId, hostname, station, stationDisplays]);
 
-    // All known gaps for this station (global gaps and empty recording holes)
+    // All known gaps for this station (global gaps, leading/trailing gaps, and empty recording holes)
     const stationGaps = useMemo(() => {
         if (!baseEpochMs || viewportDurationMs <= 0) return [];
         const sorted = [...activeSegments].sort((a, b) => getSegStart(a) - getSegStart(b));
         const gaps = [];
+        const vpEndEpoch = baseEpochMs + viewportDurationMs;
 
         if (globalGaps && globalGaps.length > 0) {
             globalGaps.forEach(g => {
@@ -555,11 +569,38 @@ export default function TimelineTrack({
             });
         }
 
+        if (sorted.length === 0) {
+            gaps.push({ startEpoch: baseEpochMs, endEpoch: vpEndEpoch, type: 'station' });
+            return gaps;
+        }
+
+        // Leading gap before first recording segment
+        const firstSegStart = Math.round(getSegStart(sorted[0]));
+        if (firstSegStart - baseEpochMs > 2000) {
+            const isCovered = gaps.some(g => g.type === 'global' && g.startEpoch <= baseEpochMs && g.endEpoch >= firstSegStart);
+            if (!isCovered) {
+                gaps.push({ startEpoch: baseEpochMs, endEpoch: firstSegStart, type: 'station' });
+            }
+        }
+
+        // Internal gaps between recordings
         for (let i = 0; i < sorted.length - 1; i++) {
-            const cEnd = getSegEnd(sorted[i]);
-            const nStart = getSegStart(sorted[i + 1]);
-            if (nStart - cEnd > 1000) {
-                gaps.push({ startEpoch: cEnd, endEpoch: nStart, type: 'station' });
+            const cEnd = Math.round(getSegEnd(sorted[i]));
+            const nStart = Math.round(getSegStart(sorted[i + 1]));
+            if (nStart - cEnd > 2000) {
+                const isCovered = gaps.some(g => g.type === 'global' && g.startEpoch <= cEnd && g.endEpoch >= nStart);
+                if (!isCovered) {
+                    gaps.push({ startEpoch: cEnd, endEpoch: nStart, type: 'station' });
+                }
+            }
+        }
+
+        // Trailing gap after last recording segment
+        const lastSegEnd = Math.round(getSegEnd(sorted[sorted.length - 1]));
+        if (vpEndEpoch - lastSegEnd > 2000) {
+            const isCovered = gaps.some(g => g.type === 'global' && g.startEpoch <= lastSegEnd && g.endEpoch >= vpEndEpoch);
+            if (!isCovered) {
+                gaps.push({ startEpoch: lastSegEnd, endEpoch: vpEndEpoch, type: 'station' });
             }
         }
 
@@ -670,26 +711,24 @@ export default function TimelineTrack({
                     className="track-sidebar station-collapsed-sidebar"
                     title={`Workstation: ${stationDisplayName}${physicalHost ? ` (${physicalHost})` : ''} • Click to select / expand`}
                 >
-                    {hasMultiDisplays && (
-                        <button
-                            type="button"
-                            className="btn-accordion-toggle"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onToggleExpand?.();
-                            }}
-                            title="Expand multi-screen tracks (Screens 1 & 2)"
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
-                                <polyline points="9 18 15 12 9 6" />
-                            </svg>
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        className="btn-accordion-toggle"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleExpand?.();
+                        }}
+                        title={isExpanded ? "Collapse station tracks" : "Expand station tracks"}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
+                            <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                    </button>
                     <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
                     <span className="station-single-label" title={stationDisplayName}>
                         {stationDisplayName}
                     </span>
-                    {hasMultiDisplays && onToggleAutoDirector && (
+                    {onToggleAutoDirector && (
                         <button
                             type="button"
                             className={`btn-track-auto-dir-pill ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
@@ -697,7 +736,7 @@ export default function TimelineTrack({
                                 e.stopPropagation();
                                 onToggleAutoDirector(station.id);
                             }}
-                            title={isAutoDirectorEnabled ? 'Auto-Director is Active. Click to turn OFF (Hold Screen 1)' : 'Auto-Director is OFF. Primary Screen 1 active. Click to turn ON'}
+                            title={isAutoDirectorEnabled ? 'Auto-Director is Active. Click to turn OFF' : 'Auto-Director is OFF. Click to turn ON'}
                         >
                             {isAutoDirectorEnabled ? '⚡ AUTO' : '✋ OFF'}
                         </button>
@@ -728,6 +767,7 @@ export default function TimelineTrack({
                     outPointMs={outPointMs}
                     globalGaps={globalGaps}
                     isAutoDirectorEnabled={isAutoDirectorEnabled}
+                    gaps={stationGaps}
                     stepperSegments={hasMultiDisplays ? stepperSegments : null}
                 />
             </div>
@@ -739,7 +779,7 @@ export default function TimelineTrack({
     // -------------------------------------------------------------
     return (
         <div className="timeline-station-accordion-group">
-            {/* 1. Accordion Header Bar: Aligns with 180px sidebar, Zero Wrapping */}
+            {/* 1. Accordion Header Bar: Aligns with 200px sidebar, Zero Wrapping, Always Accessible Auto-Director */}
             <div className="station-accordion-header">
                 <div className="accordion-header-left">
                     <button
@@ -749,7 +789,7 @@ export default function TimelineTrack({
                             e.stopPropagation();
                             onToggleExpand?.();
                         }}
-                        title="Collapse station tracks (Preserves canvas placements)"
+                        title="Collapse station tracks"
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
                             <polyline points="6 9 12 15 18 9" />
@@ -759,11 +799,23 @@ export default function TimelineTrack({
                     <span className="station-accordion-title" title={stationDisplayName}>
                         {stationDisplayName}
                     </span>
+                    {onToggleAutoDirector && (
+                        <button
+                            type="button"
+                            className={`btn-track-auto-dir-pill ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleAutoDirector(station.id);
+                            }}
+                            title={isAutoDirectorEnabled ? 'Auto-Director is Active. Click to turn OFF' : 'Auto-Director is OFF. Click to turn ON'}
+                        >
+                            {isAutoDirectorEnabled ? '⚡ AUTO' : '✋ OFF'}
+                        </button>
+                    )}
                 </div>
 
                 <div className="accordion-header-timeline">
-                    {/* Auto-Director Toggle Button: Single compact pill on timeline surface */}
-                    {hasMultiDisplays && onToggleAutoDirector ? (
+                    {onToggleAutoDirector && (
                         <button
                             type="button"
                             className={`btn-station-auto-director ${isAutoDirectorEnabled ? 'is-active' : 'is-inactive'}`}
@@ -776,7 +828,7 @@ export default function TimelineTrack({
                             <span className="dot" />
                             <span>{isAutoDirectorEnabled ? '⚡ AUTO-DIRECTOR: ON' : '✋ AUTO-DIRECTOR: OFF'}</span>
                         </button>
-                    ) : <span />}
+                    )}
 
                     <button
                         type="button"
@@ -792,12 +844,15 @@ export default function TimelineTrack({
                 </div>
             </div>
 
-            {/* 2. Child Display Tracks (SCREEN 1, SCREEN 2...) */}
+            {/* 2. Child Display Tracks (SCREEN 1, SCREEN 2...) with Clean Non-Redundant Naming */}
             <div className="station-child-tracks-container">
                 {stationDisplays.map((disp, dIdx) => {
                     const dispId = (disp.displayId || disp.DisplayId || `mon-${dIdx}`).toLowerCase();
                     const dispNumber = disp.displayNumber || disp.DisplayNumber || (dIdx + 1);
-                    const dispLabel = disp.displayName || disp.DisplayName || `SCREEN ${dispNumber}`;
+                    const rawName = disp.displayName || disp.DisplayName || '';
+                    const dispLabel = (rawName && !rawName.toLowerCase().includes(hostname.toLowerCase()))
+                        ? rawName
+                        : `Screen ${dispNumber}${disp.isPrimary || dIdx === 0 ? ' (Main)' : ''}`;
                     const onCanvas = isDisplayOnCanvas(dispId);
 
                     return (
@@ -811,7 +866,6 @@ export default function TimelineTrack({
                                     {dispLabel}
                                 </span>
 
-                                {/* When Auto-Director is OFF: button to add/remove screen from Canvas */}
                                 {!isAutoDirectorEnabled && onToggleDisplayOnCanvas && (
                                     <button
                                         type="button"
@@ -839,6 +893,7 @@ export default function TimelineTrack({
                                 globalGaps={globalGaps}
                                 directorSegments={gapCleanDirectorSegments}
                                 isAutoDirectorEnabled={isAutoDirectorEnabled}
+                                gaps={stationGaps}
                                 showDirectorCoverage={hasMultiDisplays}
                             />
                         </div>

@@ -78,7 +78,16 @@ export default function TimelineBoard({
     const [trackBankIndex, setTrackBankIndex] = useState(0);
     const [contextMenu, setContextMenu] = useState(null);
     const [isMasterVideoOpen, setIsMasterVideoOpen] = useState(true);
-    const [expandedStationId, setExpandedStationId] = useState(null);
+    // Invariant: When there is only 1 workstation, auto-expand its multi-screen row by default
+    const [expandedStationId, setExpandedStationId] = useState(() => {
+        return stations.length === 1 ? stations[0]?.id : null;
+    });
+
+    useEffect(() => {
+        if (stations.length === 1 && !expandedStationId && stations[0]?.id) {
+            setExpandedStationId(stations[0].id);
+        }
+    }, [stations, expandedStationId]);
 
     const trackAreaRef = useRef(null);
     const minimapRef = useRef(null);

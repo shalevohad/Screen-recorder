@@ -2666,6 +2666,30 @@ To prevent visual clutter and protect the operator's forensic project scope, the
    - `availableFeeds` scopes strictly to `timelineStations` whenever a selection exists, showing discrete monitors and central compositions only for the active workstations.
    - The `⊞ AUTO-GRID` button badge in the layout presets popout accurately reflects `defaultStationFeeds.length`, displaying the exact number of selected workstations being arranged.
 
+### 11. Gap Filmstrip Suppression, Single-Station Auto-Expansion & Transparent Purple Director Architecture (2026-11-04)
+
+To ensure visual clarity, eliminate unnecessary network fetch strain, and streamline operator workflows during forensic playback, the timeline track rendering and accordion architecture enforce five critical invariants:
+
+1. **Gap Filmstrip Suppression & Boundary Gap Detection**:
+   - `FilmstripCanvas` strictly consumes both `globalGaps` and `stationGaps`.
+   - `stationGaps` in `TimelineTrack.jsx` computes complete boundary coverage:
+     - **Leading Gaps**: Time range from viewport `baseEpochMs` to the start of the first recording segment.
+     - **Internal Gaps**: Gaps exceeding 2000ms between consecutive recorded chunks.
+     - **Trailing Gaps**: Time range from the end of the last recorded chunk to `vpEndEpoch` (viewport boundary).
+     - **Full Viewport Gaps**: Total coverage if a workstation has zero recording segments.
+   - Any tile interval overlapping with a gap is filtered out via `isTileInGap(clampedStart, clampedEnd)`. Zero spritesheet requests are sent to `/api/v1/extractor-advanced/spritesheet` for gap regions, eliminating phantom fetch errors and infinite shimmer wave loaders.
+2. **Single-Station Auto-Expansion Invariant**:
+   - In `TimelineBoard.jsx`, when `stations.length === 1`, `expandedStationId` automatically initializes to `stations[0].id`.
+   - A reactive synchronization hook ensures that single-workstation projects immediately open in multi-screen expanded mode, giving the operator direct access to individual monitor channels without requiring manual accordion clicks.
+3. **Always-Accessible Auto-Director Toggle**:
+   - The Auto-Director toggle button is rendered unconditionally in both collapsed and expanded states, regardless of display count or prior cut synthesis.
+   - Both the sidebar header (compact `⚡ AUTO` / `✋ OFF` pill) and the timeline surface (`⚡ AUTO-DIRECTOR: ON/OFF`) provide instant single-click engagement/disengagement of automated camera director logic.
+4. **Clean Non-Redundant Track Naming & Hover-Safe Deselect**:
+   - Child display tracks in expanded view display clean, non-redundant labels (`Screen 1 (Main)`, `Screen 2`, etc.) rather than repeating the workstation host name (`OHAD-DESKTOP`).
+   - In collapsed mode, `.btn-track-deselect` is positioned absolutely and hidden until row hover (`opacity: 0`), guaranteeing that workstation names have full horizontal width without truncation.
+5. **Tactical Transparent Purple Token for Auto-Director Coverage**:
+   - Chosen display blocks and active director coverage overlays are styled in transparent tactical purple (`rgba(168, 85, 247, 0.20-0.32)` with border `rgba(168, 85, 247, 0.75)` and text `#F3E8FF`), visually distinguishing director decisions from cyan keyframes, emerald recording media, and amber gap skips.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
