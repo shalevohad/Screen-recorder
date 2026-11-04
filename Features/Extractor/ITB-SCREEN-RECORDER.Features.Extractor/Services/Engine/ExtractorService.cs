@@ -245,7 +245,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services
                                         Height = 1080
                                     }).ToList()
                                 };
-                                var computedPlan = analyzer.AnalyzeFocus(host, sMs, eMs, topo, Array.Empty<ActivityEventDto>());
+                                var computedPlan = analyzer.AnalyzeFocus(host, sMs, eMs, topo, Array.Empty<ActivityEventDto>(), knownGaps: plan.RemovedGlobalGaps?.Select(g => (new DateTimeOffset(g.StartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(g.EndUtc).ToUnixTimeMilliseconds())).ToList());
                                 dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
                                 {
                                     StartEpochMs = s.StartEpochMs,

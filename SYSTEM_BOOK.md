@@ -2598,6 +2598,21 @@ To maintain a consistent mental model and eliminate ambiguous "squished" tracks:
 
 ---
 
+### 7. Auto-Director Gap Immunity & Switch Elimination Invariant
+
+To prevent confusing visual fragmentation and adhere to Rule 9/13 synchronization invariants:
+1. **Elimination of Cuts Inside Gaps**:
+   - Auto-Director never plans or executes display switches across or within any GAP region (both Global Gaps and Station-Specific No-Signal Gaps).
+   - Any cut boundary that would fall inside a gap interval is absorbed by the preceding segment, holding the active display continuously until valid media resumes.
+   - Activity focus telemetry (clicks, keystrokes, synthetic bitrate slices) occurring within recording gaps is strictly filtered out.
+2. **Clean Stepper Ribbon Presentation Across Gaps**:
+   - In the station's bottom Stepper Ribbon (`[ 1 | 2 | 1 ]`), gap intervals are rendered with clean, neutral gap blocks:
+     - Global Gaps: Subdued cyan-dashed block displaying `✂ SKIPPED` (indicating trimmed time).
+     - Station Gaps: Subdued amber-dashed block displaying `NO SIGNAL` (indicating synthetic bridge).
+   - Under no circumstances are screen numbers (`1`, `2`) or cut division lines rendered across a gap, guaranteeing zero visual clutter or misleading switches.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
 
 

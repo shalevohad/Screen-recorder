@@ -294,7 +294,38 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             };
 
             var analyzer = new ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine.ActivityFocusAnalyzer();
-            return analyzer.AnalyzeFocus(stationId, startEpochMs, endEpochMs, topology, activityEvents, minDwellMs: minDwellMs);
+            var sortedStationChunks = chunks.OrderBy(c => c.StartUtc).ToList();
+            var stationGaps = new List<(long StartEpochMs, long EndEpochMs)>();
+            if (sortedStationChunks.Count > 0)
+            {
+                long firstChunkStart = new DateTimeOffset(sortedStationChunks[0].StartUtc).ToUnixTimeMilliseconds();
+                if (firstChunkStart > startEpochMs)
+                {
+                    stationGaps.Add((startEpochMs, firstChunkStart));
+                }
+
+                for (int i = 0; i < sortedStationChunks.Count - 1; i++)
+                {
+                    long cEnd = new DateTimeOffset(sortedStationChunks[i].EndUtc).ToUnixTimeMilliseconds();
+                    long nextStart = new DateTimeOffset(sortedStationChunks[i + 1].StartUtc).ToUnixTimeMilliseconds();
+                    if (nextStart - cEnd > 1000)
+                    {
+                        stationGaps.Add((cEnd, nextStart));
+                    }
+                }
+
+                long lastChunkEnd = new DateTimeOffset(sortedStationChunks[^1].EndUtc).ToUnixTimeMilliseconds();
+                if (lastChunkEnd < endEpochMs)
+                {
+                    stationGaps.Add((lastChunkEnd, endEpochMs));
+                }
+            }
+            else
+            {
+                stationGaps.Add((startEpochMs, endEpochMs));
+            }
+
+            return analyzer.AnalyzeFocus(stationId, startEpochMs, endEpochMs, topology, activityEvents, minDwellMs: minDwellMs, knownGaps: stationGaps);
         }
 
         [HttpGet("stations")]

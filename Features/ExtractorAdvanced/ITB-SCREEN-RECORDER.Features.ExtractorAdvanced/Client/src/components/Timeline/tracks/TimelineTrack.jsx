@@ -252,6 +252,8 @@ function FilmstripCanvas({
                         resultGaps.push({
                             id: `global-${idx}`,
                             type: 'global',
+                            startEpoch: clStartEpoch,
+                            endEpoch: clEndEpoch,
                             leftPct: (((clStartEpoch - baseEpochMs) - vpStart) / viewportDurationMs) * 100,
                             widthPct,
                             durationSec: Math.round((boundedEnd - boundedStart) / 1000)
@@ -292,6 +294,8 @@ function FilmstripCanvas({
                     resultGaps.push({
                         id: `station-${rIdx}-${sIdx}`,
                         type: 'station',
+                        startEpoch: clStartEpoch,
+                        endEpoch: clEndEpoch,
                         leftPct: (((clStartEpoch - baseEpochMs) - vpStart) / viewportDurationMs) * 100,
                         widthPct,
                         durationSec: Math.round((sub.endEpoch - sub.startEpoch) / 1000)
@@ -418,16 +422,33 @@ function FilmstripCanvas({
             {stepperSegments && stepperSegments.length > 0 && (
                 <div className="director-stepper-ribbon">
                     {isAutoDirectorEnabled ? (
-                        stepperSegments.map((st, sIdx) => (
-                            <div
-                                key={`stp_${sIdx}`}
-                                className={`stepper-block display-${st.dispNum}`}
-                                style={{ left: `${st.leftPct}%`, width: `${st.widthPct}%` }}
-                                title={`Auto-Director: Screen ${st.dispNum} (${st.dispLabel})`}
-                            >
-                                <span>{st.dispNum}</span>
-                            </div>
-                        ))
+                        <>
+                            {stepperSegments.map((st, sIdx) => (
+                                <div
+                                    key={`stp_${sIdx}`}
+                                    className={`stepper-block display-${st.dispNum}`}
+                                    style={{ left: `${st.leftPct}%`, width: `${st.widthPct}%` }}
+                                    title={`Auto-Director: Screen ${st.dispNum} (${st.dispLabel})`}
+                                >
+                                    <span>{st.dispNum}</span>
+                                </div>
+                            ))}
+                            {/* In GAP regions, zero cuts or screen switches appear */}
+                            {classifiedGaps && classifiedGaps.map(gap => (
+                                <div
+                                    key={`gap_stp_${gap.id}`}
+                                    className={`stepper-gap-block ${gap.type === 'global' ? 'gap-global' : 'gap-station'}`}
+                                    style={{ left: `${gap.leftPct}%`, width: `${gap.widthPct}%` }}
+                                    title={gap.type === 'global' ? `Global Gap: ${gap.durationSec}s skipped in export (No switches)` : `Station Gap: ${gap.durationSec}s No Signal (No switches)`}
+                                >
+                                    {gap.widthPct > 6 && (
+                                        <span className="stepper-gap-badge">
+                                            {gap.type === 'global' ? '✂ SKIPPED' : 'NO SIGNAL'}
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
+                        </>
                     ) : (
                         <div className="stepper-block-manual" title="Auto-Director is OFF — Displaying Screen 1 (Manual Mode)">
                             <span>✋ AUTO-DIRECTOR OFF • SCREEN 1 (MANUAL)</span>
@@ -520,13 +541,75 @@ export default function TimelineTrack({
         return (segs || []).filter(s => (getSegEnd(s) - getSegStart(s)) > 0);
     }, [recordingSegments, rawSegments, stationId, hostname, station, stationDisplays]);
 
+    // All known gaps for this station (global gaps and empty recording holes)
+    const stationGaps = useMemo(() => {
+        if (!baseEpochMs || viewportDurationMs <= 0) return [];
+        const sorted = [...activeSegments].sort((a, b) => getSegStart(a) - getSegStart(b));
+        const gaps = [];
+
+        if (globalGaps && globalGaps.length > 0) {
+            globalGaps.forEach(g => {
+                const s = g.startEpochMs ?? g.StartEpochMs ?? 0;
+                const e = g.endEpochMs ?? g.EndEpochMs ?? 0;
+                if (e > s) gaps.push({ startEpoch: s, endEpoch: e, type: 'global' });
+            });
+        }
+
+        for (let i = 0; i < sorted.length - 1; i++) {
+            const cEnd = getSegEnd(sorted[i]);
+            const nStart = getSegStart(sorted[i + 1]);
+            if (nStart - cEnd > 1000) {
+                gaps.push({ startEpoch: cEnd, endEpoch: nStart, type: 'station' });
+            }
+        }
+
+        return gaps;
+    }, [activeSegments, globalGaps, baseEpochMs, viewportDurationMs]);
+
+    // Rule: Auto-Director never plans or cuts between screens inside a GAP region!
+    // Any cut boundary falling strictly inside a gap is merged so screens do not switch during gaps.
+    const gapCleanDirectorSegments = useMemo(() => {
+        if (!rawDirectorSegments || rawDirectorSegments.length === 0) return [];
+        if (!stationGaps || stationGaps.length === 0) return rawDirectorSegments;
+
+        let segs = rawDirectorSegments.map(s => ({
+            ...s,
+            startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? 0,
+            endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? 0,
+            targetDisplayId: (s.targetDisplayId || s.TargetDisplayId || 'mon-0').toLowerCase()
+        })).sort((a, b) => a.startEpochMs - b.startEpochMs);
+
+        stationGaps.forEach(gap => {
+            const gStart = gap.startEpoch;
+            const gEnd = gap.endEpoch;
+            if (!gStart || !gEnd || gEnd <= gStart) return;
+
+            for (let i = segs.length - 1; i > 0; i--) {
+                const cutEpoch = segs[i].startEpochMs;
+                if (cutEpoch >= gStart && cutEpoch <= gEnd) {
+                    segs[i - 1].endEpochMs = segs[i].endEpochMs;
+                    segs.splice(i, 1);
+                }
+            }
+        });
+
+        for (let i = segs.length - 1; i > 0; i--) {
+            if (segs[i].targetDisplayId === segs[i - 1].targetDisplayId) {
+                segs[i - 1].endEpochMs = segs[i].endEpochMs;
+                segs.splice(i, 1);
+            }
+        }
+
+        return segs;
+    }, [rawDirectorSegments, stationGaps]);
+
     // Stepper segments for collapsed view
     const stepperSegments = useMemo(() => {
         if (!hasDirectorCuts || viewportDurationMs <= 0) return null;
         const vpStart = viewportStartMs;
         const vpEnd = viewportStartMs + viewportDurationMs;
 
-        return rawDirectorSegments.map((seg, idx) => {
+        return gapCleanDirectorSegments.map((seg, idx) => {
             const startMs = (seg.startEpochMs ?? seg.StartEpochMs ?? 0) - baseEpochMs;
             const endMs = (seg.endEpochMs ?? seg.EndEpochMs ?? 0) - baseEpochMs;
             if (endMs <= vpStart || startMs >= vpEnd) return null;
@@ -750,7 +833,7 @@ export default function TimelineTrack({
                                 inPointMs={inPointMs}
                                 outPointMs={outPointMs}
                                 globalGaps={globalGaps}
-                                directorSegments={rawDirectorSegments}
+                                directorSegments={gapCleanDirectorSegments}
                                 isAutoDirectorEnabled={isAutoDirectorEnabled}
                                 showDirectorCoverage={hasMultiDisplays}
                             />

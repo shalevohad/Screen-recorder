@@ -214,5 +214,38 @@ namespace ITB_SCREEN_RECORDER.Tests.Extractor
             Assert.Equal(8000, plan.Segments[2].StartEpochMs);
             Assert.Equal(15000, plan.Segments[2].EndEpochMs);
         }
+
+        [Fact]
+        public void MultiDisplay_Gaps_EliminateSwitchesInsideGaps()
+        {
+            var topology = new StationDisplayTopologyDto
+            {
+                Hostname = "WS-01",
+                Displays = new List<DisplayMetadataDto>
+                {
+                    new() { DisplayId = "mon-0", IsPrimary = true, X = 0, Y = 0, Width = 1920, Height = 1080 },
+                    new() { DisplayId = "mon-1", IsPrimary = false, X = 1920, Y = 0, Width = 1920, Height = 1080 }
+                }
+            };
+
+            // Event falling inside a gap between 3000ms and 7000ms
+            var events = new List<ActivityEventDto>
+            {
+                new() { TimestampEpochMs = 5000, DisplayId = "mon-1", Type = ActivityEventType.MouseClick }
+            };
+
+            var gaps = new List<(long StartEpochMs, long EndEpochMs)>
+            {
+                (3000, 7000)
+            };
+
+            var plan = _analyzer.AnalyzeFocus("WS-01", 0, 10000, topology, events, preRollLeadInMs: 1000, minDwellMs: 2000, knownGaps: gaps);
+
+            // The cut inside the gap must be eliminated!
+            Assert.Single(plan.Segments);
+            Assert.Equal("mon-0", plan.Segments[0].TargetDisplayId);
+            Assert.Equal(0, plan.Segments[0].StartEpochMs);
+            Assert.Equal(10000, plan.Segments[0].EndEpochMs);
+        }
     }
 }

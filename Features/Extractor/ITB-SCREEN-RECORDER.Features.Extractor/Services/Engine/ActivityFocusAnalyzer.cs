@@ -19,7 +19,8 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             StationDisplayTopologyDto? topology,
             IReadOnlyList<ActivityEventDto> events,
             long preRollLeadInMs = 1000,
-            long minDwellMs = 10000)
+            long minDwellMs = 10000,
+            IReadOnlyList<(long StartEpochMs, long EndEpochMs)>? knownGaps = null)
         {
             var plan = new StationDirectorPlanDto
             {
@@ -61,6 +62,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             // Filter and sort events within the active timeline window
             var validEvents = (events ?? Array.Empty<ActivityEventDto>())
                 .Where(e => e.TimestampEpochMs >= timelineStartEpochMs && e.TimestampEpochMs <= timelineEndEpochMs)
+                .Where(e => knownGaps == null || !knownGaps.Any(g => e.TimestampEpochMs >= g.StartEpochMs && e.TimestampEpochMs <= g.EndEpochMs))
                 .OrderBy(e => e.TimestampEpochMs)
                 .ToList();
 
@@ -177,6 +179,9 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             // Enforce minimum 10 seconds per screen (eliminate jittery switches)
             ConsolidateShortSegments(plan, minDwellMs);
 
+            // Eliminate any screen switches planning across or within gap regions
+            EliminateCutsInsideGaps(plan, knownGaps);
+
             return plan;
         }
 
@@ -226,6 +231,36 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Services.Engine
             }
         }
 
+
+
+        private static void EliminateCutsInsideGaps(StationDirectorPlanDto plan, IReadOnlyList<(long StartEpochMs, long EndEpochMs)>? knownGaps)
+        {
+            if (knownGaps == null || knownGaps.Count == 0 || plan.Segments.Count <= 1) return;
+
+            foreach (var gap in knownGaps)
+            {
+                if (gap.EndEpochMs <= gap.StartEpochMs) continue;
+
+                for (int i = plan.Segments.Count - 1; i > 0; i--)
+                {
+                    long cutTime = plan.Segments[i].StartEpochMs;
+                    if (cutTime >= gap.StartEpochMs && cutTime <= gap.EndEpochMs)
+                    {
+                        plan.Segments[i - 1].EndEpochMs = plan.Segments[i].EndEpochMs;
+                        plan.Segments.RemoveAt(i);
+                    }
+                }
+            }
+
+            for (int i = plan.Segments.Count - 1; i > 0; i--)
+            {
+                if (string.Equals(plan.Segments[i].TargetDisplayId, plan.Segments[i - 1].TargetDisplayId, StringComparison.OrdinalIgnoreCase))
+                {
+                    plan.Segments[i - 1].EndEpochMs = plan.Segments[i].EndEpochMs;
+                    plan.Segments.RemoveAt(i);
+                }
+            }
+        }
         private static string ResolveDisplayForCoordinates(
             ActivityEventDto evt,
             IReadOnlyList<DisplayMetadataDto> displays, 

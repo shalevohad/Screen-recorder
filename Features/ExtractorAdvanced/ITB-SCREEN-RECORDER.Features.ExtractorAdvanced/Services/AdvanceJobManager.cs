@@ -798,7 +798,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                             };
                             long dirMinDwellMs = (_systemConfig?.CurrentValue?.AutoDirector?.MinDwellSeconds ?? 10) * 1000L;
                             if (dirMinDwellMs <= 0) dirMinDwellMs = 10000;
-                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>(), minDwellMs: dirMinDwellMs);
+                            var computedPlan = analyzer.AnalyzeFocus(sId, sMs, eMs, topo, Array.Empty<ActivityEventDto>(), minDwellMs: dirMinDwellMs, knownGaps: plan.RemovedGlobalGaps?.Select(g => (new DateTimeOffset(g.StartUtc).ToUnixTimeMilliseconds(), new DateTimeOffset(g.EndUtc).ToUnixTimeMilliseconds())).ToList());
                             dirSegments = computedPlan.Segments.Select(s => new DirectorCutSegmentDto
                             {
                                 StartEpochMs = s.StartEpochMs,
