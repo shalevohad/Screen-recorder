@@ -247,13 +247,6 @@ export default function ExtractorAdvancedStudio() {
     }, []);
 
     const [stationAutoDirectorMap, setStationAutoDirectorMap] = useState({});
-    const handleToggleStationAutoDirector = useCallback((stationId) => {
-        setStationAutoDirectorMap(prev => ({
-            ...prev,
-            [stationId]: !(prev[stationId] ?? true)
-        }));
-    }, []);
-
 
     const handleDeselectStation = useCallback((stationId) => {
         setSelectedStationIds(prev => prev.filter(id => id !== stationId));
@@ -404,6 +397,61 @@ export default function ExtractorAdvancedStudio() {
         return allStations.find(s => s.id === activeStationId) || null;
     }, [allStations, activeStationId]);
 
+    const handleToggleStationAutoDirector = useCallback((stationId) => {
+        setStationAutoDirectorMap(prev => {
+            const nextState = !(prev[stationId] ?? true);
+            // Invariant (2026-11-04): When Auto-Director is turned OFF for a station,
+            // migrate any 'auto' placement for that station on the canvas to 'mon-0' (Primary Screen),
+            // so the system explicitly recognizes that Screen 1 is already on the Canvas and allows removing/toggling it!
+            setCanvasLayoutTimeline(layoutPrev => {
+                if (!layoutPrev?.keyframes) return layoutPrev;
+                const nextKfs = layoutPrev.keyframes.map(kf => {
+                    const placements = kf.layout?.placements || [];
+                    let modified = false;
+                    const updatedPlacements = placements.map(p => {
+                        if (p.stationId === stationId) {
+                            if (!nextState && (p.displayId === 'auto' || !p.displayId)) {
+                                modified = true;
+                                const st = allStations.find(s => s.id === stationId);
+                                return {
+                                    ...p,
+                                    displayId: 'mon-0',
+                                    label: `${st?.displayName || stationId} - Screen 1 (Main)`
+                                };
+                            } else if (nextState && (p.displayId === 'mon-0' || !p.displayId)) {
+                                const stationPlacementsCount = placements.filter(x => x.stationId === stationId).length;
+                                if (stationPlacementsCount === 1) {
+                                    modified = true;
+                                    const st = allStations.find(s => s.id === stationId);
+                                    return {
+                                        ...p,
+                                        displayId: 'auto',
+                                        label: `${st?.displayName || stationId} - Central Composition (Auto-Director)`
+                                    };
+                                }
+                            }
+                        }
+                        return p;
+                    });
+                    if (!modified) return kf;
+                    return {
+                        ...kf,
+                        layout: {
+                            ...kf.layout,
+                            placements: updatedPlacements
+                        }
+                    };
+                });
+                return { ...layoutPrev, keyframes: nextKfs };
+            });
+
+            return {
+                ...prev,
+                [stationId]: nextState
+            };
+        });
+    }, [allStations]);
+
     const handleToggleDisplayOnCanvas = useCallback((stationId, displayId) => {
         setCanvasLayoutTimeline(prev => {
             if (!prev || !prev.keyframes || prev.keyframes.length === 0) return prev;
@@ -411,7 +459,13 @@ export default function ExtractorAdvancedStudio() {
             const currentKf = prev.keyframes[targetKfIdx];
             const placements = currentKf?.layout?.placements || [];
             const normDispId = (displayId || 'mon-0').toLowerCase();
-            const existingIdx = placements.findIndex(p => p.stationId === stationId && (p.displayId || 'mon-0').toLowerCase() === normDispId);
+            const existingIdx = placements.findIndex(p => {
+                if (p.stationId !== stationId) return false;
+                const pDisp = (p.displayId || 'mon-0').toLowerCase();
+                if (pDisp === normDispId) return true;
+                if (pDisp === 'auto' && (normDispId === 'mon-0' || normDispId === 'screen-0')) return true;
+                return false;
+            });
 
             let nextPlacements;
             if (existingIdx >= 0) {

@@ -2749,6 +2749,23 @@ Following advanced forensic testing, the platform has completed seven tactical e
    - Ticks with simultaneous activity from multiple stations display purple/cyan gradient lines and a multi-station count pip (`2S`).
    - The hover tooltip clusters events into structured, dedicated workstation cards (`🖥️ WORKSTATION-NAME`), displaying clean key pills and counts per computer.
 
+
+### 14. Auto-Director Deactivation Screen 1 Resolution & Multi-Screen Auto-Grid Preservation (2026-11-04)
+
+To support flexible manual multi-monitor composition when automated camera switching is disabled, the system enforces two operational guarantees:
+
+1. **Auto-Director Deactivation & Primary Screen Resolution**:
+   - When Auto-Director is turned OFF on a workstation (`stationId`):
+     - The central composition placement on the canvas (`displayId: 'auto'`) is immediately migrated to the workstation's primary physical display (`displayId: 'mon-0'`, labeled `Screen 1 (Main)`).
+     - In `TimelineTrack.jsx`, `isDisplayOnCanvas('mon-0')` explicitly resolves `'auto'` as representing Screen 1, displaying `✓ ON` with title *"Remove Screen from Canvas"*.
+     - The operator can freely remove Screen 1 by clicking `✓ ON`, or add secondary monitors (`mon-1`, `mon-2`) using `＋ ADD`.
+2. **Auto-Grid Multi-Screen Preservation Invariant**:
+   - When the operator clicks **⊞ AUTO-GRID** (or applies any grid layout preset):
+     - The layout engine (`handleApplyPreset('auto-grid')` in `MulticamViewport.jsx`) calculates grid cells using all screens currently on the canvas for active timeline stations (`activeCurrentPlacements`).
+     - Additional screens that were manually added (`mon-1`, `mon-2`) are **never dropped or removed**. All displays are packed into the optimal grid proportion.
+     - Fallback default feeds (`defaultStationFeeds`) are only injected for active stations that currently have zero screens placed on canvas.
+     - The station synchronization effect preserves all operator-placed screens and prevents automatic purges.
+
 ---
 
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

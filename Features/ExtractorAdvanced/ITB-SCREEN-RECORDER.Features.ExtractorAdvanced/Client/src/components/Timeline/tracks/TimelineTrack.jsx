@@ -663,7 +663,14 @@ export default function TimelineTrack({
     // Check if display is on canvas
     const isDisplayOnCanvas = useCallback((dispId) => {
         const norm = (dispId || 'mon-0').toLowerCase();
-        return canvasPlacements.some(p => p.stationId === stationId && (p.displayId || 'mon-0').toLowerCase() === norm);
+        return canvasPlacements.some(p => {
+            if (p.stationId !== stationId) return false;
+            const pDisp = (p.displayId || 'mon-0').toLowerCase();
+            if (pDisp === norm) return true;
+            // Invariant (2026-11-04): If placement is 'auto', it represents the primary screen (mon-0)
+            if (pDisp === 'auto' && (norm === 'mon-0' || norm === 'screen-0')) return true;
+            return false;
+        });
     }, [canvasPlacements, stationId]);
 
     // -------------------------------------------------------------

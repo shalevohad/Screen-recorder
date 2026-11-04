@@ -2587,7 +2587,13 @@ export default function MulticamViewport({
                                     }}
                                 >
                                     <span>⊞ AUTO-GRID</span>
-                                    <span className="item-badge">{defaultStationFeeds.length}</span>
+                                    <span className="item-badge">{(() => {
+                                        const activeTimelineIds = new Set((timelineStations && timelineStations.length > 0 ? timelineStations : allStations).map(s => s.id));
+                                        const activeCurrentPlacements = (currentPlacements || []).filter(p => activeTimelineIds.has(p.stationId));
+                                        const stationsWithNoPlacement = (timelineStations && timelineStations.length > 0 ? timelineStations : allStations)
+                                            .filter(st => !activeCurrentPlacements.some(p => p.stationId === st.id));
+                                        return activeCurrentPlacements.length > 0 ? activeCurrentPlacements.length + stationsWithNoPlacement.length : defaultStationFeeds.length;
+                                    })()}</span>
                                 </button>
                                 <button
                                     type="button"
