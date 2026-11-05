@@ -36,6 +36,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
         private readonly IStationRoleProvider? _stationRoleProvider;
         private readonly ILogger<ExtractorAdvancedController> _logger;
         private readonly IOptionsMonitor<SystemConfig>? _systemConfig;
+        private static readonly SemaphoreSlim _activeStreamThrottle = new SemaphoreSlim(20, 20);
 
         public ExtractorAdvancedController(
             AdvancedExtractorService advancedExtractorService,
@@ -973,6 +974,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             [FromQuery] double? seekEpoch = null,
             [FromQuery] double speed = 1.0,
             [FromQuery] string? displayId = null,
+            [FromQuery] int? maxHeight = null,
             CancellationToken ct = default)
         {
             long lStart = (long)Math.Round(startEpoch);
@@ -985,128 +987,176 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return;
             }
 
-            double safeSpeed = speed > 0 ? speed : 1.0;
-            long effectiveStartEpoch = lSeek.HasValue && lSeek.Value >= lStart && lSeek.Value < lEnd
-                ? lSeek.Value
-                : lStart;
-
-            DateTime rangeStartUtc = DateTimeOffset.FromUnixTimeMilliseconds(effectiveStartEpoch).UtcDateTime;
-            DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
-
-            // Retrieve relevant chunks from the requested seek point using fast DB indexing
-            var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc.AddSeconds(-2), rangeEndUtc);
-
-            if (!string.IsNullOrWhiteSpace(displayId))
+            bool acquired = await _activeStreamThrottle.WaitAsync(TimeSpan.FromSeconds(2), ct);
+            if (!acquired)
             {
-                var matching = chunks.Where(c => string.Equals(c.DisplayId, displayId, StringComparison.OrdinalIgnoreCase)).ToList();
-                if (matching.Count > 0)
-                {
-                    chunks = matching;
-                }
-            }
-
-            if (chunks == null || chunks.Count == 0)
-            {
-                Response.StatusCode = 204;
+                Response.StatusCode = 503;
                 return;
             }
-
-            // Locate the exact chunk containing the current seek position
-            var targetChunk = chunks.FirstOrDefault(c => rangeStartUtc >= c.StartUtc && rangeStartUtc <= c.EndUtc)
-                              ?? chunks.FirstOrDefault(c => c.StartUtc >= rangeStartUtc)
-                              ?? chunks.LastOrDefault();
-
-            if (targetChunk == null || string.IsNullOrWhiteSpace(targetChunk.FullPath) || !System.IO.File.Exists(targetChunk.FullPath))
-            {
-                Response.StatusCode = 204;
-                return;
-            }
-
-            double seekOffsetSec = Math.Max(0, (rangeStartUtc - targetChunk.StartUtc).TotalSeconds);
-            double chunkDurationSec = Math.Max(1.0, (targetChunk.EndUtc - rangeStartUtc).TotalSeconds);
-
-            string normalizedPath = targetChunk.FullPath.Replace('\\', '/');
-            string ffmpegPath = _advancedExtractorService.ResolveFfmpegBinary();
-
-            Response.ContentType = "video/mp4";
-            Response.Headers.Append("X-Content-Type-Options", "nosniff");
-            Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-
-            string codecArgs;
-            if (Math.Abs(safeSpeed - 1.0) < 0.05)
-            {
-                // 1x Playback speed: direct stream copy with 0% CPU overhead and instant start
-                codecArgs = "-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
-            }
-            else
-            {
-                string optimalEncoder = _advancedExtractorService.GetOptimalVideoEncoderArgs(zeroLatency: true);
-                double ptsScale = 1.0 / safeSpeed;
-                string ptsScaleStr = ptsScale.ToString("0.000", CultureInfo.InvariantCulture);
-                int step = (int)Math.Round(safeSpeed);
-                string vfFilter = step > 1 ? $"framestep={step},setpts={ptsScaleStr}*PTS" : $"setpts={ptsScaleStr}*PTS";
-
-                codecArgs = $"-vf \"{vfFilter}\" -an {optimalEncoder} -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
-            }
-
-            // Minimal probe buffers and fast seeking for zero-latency playback startup
-            string arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
-                               $"-ss {seekOffsetSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                               $"-i \"{normalizedPath}\" -t {chunkDurationSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
-                               $"-flush_packets 1 {codecArgs}";
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = ffmpegPath,
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
             try
             {
-                process.Start();
-                var stderrTask = process.StandardError.ReadToEndAsync(ct);
+                double safeSpeed = speed > 0 ? speed : 1.0;
+                long effectiveStartEpoch = lSeek.HasValue && lSeek.Value >= lStart && lSeek.Value < lEnd
+                    ? lSeek.Value
+                    : lStart;
 
-                byte[] buffer = new byte[32768];
-                int bytesRead;
-                var stdout = process.StandardOutput.BaseStream;
+                DateTime rangeStartUtc = DateTimeOffset.FromUnixTimeMilliseconds(effectiveStartEpoch).UtcDateTime;
+                DateTime rangeEndUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
 
-                while ((bytesRead = await stdout.ReadAsync(buffer, 0, buffer.Length, linkedCts.Token)) > 0)
+                // Retrieve relevant chunks from the requested seek point using fast DB indexing
+                var chunks = await _storageScanner.GetChunksForStationAsync(hostname, rangeStartUtc.AddSeconds(-2), rangeEndUtc);
+
+                if (!string.IsNullOrWhiteSpace(displayId))
                 {
-                    await Response.Body.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
-                    await Response.Body.FlushAsync(ct);
+                    var matching = chunks.Where(c => string.Equals(c.DisplayId, displayId, StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (matching.Count > 0)
+                    {
+                        chunks = matching;
+                    }
                 }
 
-                if (process.HasExited && process.ExitCode != 0)
+                if (chunks == null || chunks.Count == 0)
                 {
-                    string err = await stderrTask;
-                    _logger.LogWarning("[Stream:FFmpeg] Process exited with code {Code}: {Err}", process.ExitCode, err);
+                    Response.StatusCode = 204;
+                    return;
                 }
-            }
-            catch (OperationCanceledException)
-            {
-                // Client stopped playback or scrubbed to another timestamp
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[Stream:Error] Stream error for host {Host}", hostname);
+
+                // Locate the exact chunk containing the current seek position
+                var targetChunk = chunks.FirstOrDefault(c => rangeStartUtc >= c.StartUtc && rangeStartUtc <= c.EndUtc)
+                                  ?? chunks.FirstOrDefault(c => c.StartUtc >= rangeStartUtc)
+                                  ?? chunks.LastOrDefault();
+
+                if (targetChunk == null || string.IsNullOrWhiteSpace(targetChunk.FullPath) || !System.IO.File.Exists(targetChunk.FullPath))
+                {
+                    Response.StatusCode = 204;
+                    return;
+                }
+
+                double seekOffsetSec = Math.Max(0, (rangeStartUtc - targetChunk.StartUtc).TotalSeconds);
+                double chunkDurationSec = Math.Max(1.0, (targetChunk.EndUtc - rangeStartUtc).TotalSeconds);
+
+                string normalizedPath = targetChunk.FullPath.Replace('\\', '/');
+                string ffmpegPath = _advancedExtractorService.ResolveFfmpegBinary();
+
+                Response.ContentType = "video/mp4";
+                Response.Headers.Append("X-Content-Type-Options", "nosniff");
+                Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+
+                string codecArgs;
+                bool needsTranscoding = Math.Abs(safeSpeed - 1.0) >= 0.05 || (maxHeight.HasValue && maxHeight.Value > 0 && maxHeight.Value < 1080);
+
+                if (!needsTranscoding)
+                {
+                    // 1x Playback speed & native resolution: zero-CPU direct stream copy
+                    codecArgs = "-c copy -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+                }
+                else
+                {
+                    string optimalEncoder = _advancedExtractorService.GetOptimalVideoEncoderArgs(zeroLatency: true);
+                    var filterParts = new List<string>();
+
+                    if (maxHeight.HasValue && maxHeight.Value > 0 && maxHeight.Value < 1080)
+                    {
+                        int targetH = Math.Clamp(maxHeight.Value, 240, 720);
+                        targetH -= (targetH % 2);
+                        filterParts.Add($"scale=-2:{targetH}:flags=bilinear");
+                    }
+
+                    if (Math.Abs(safeSpeed - 1.0) >= 0.05)
+                    {
+                        double ptsScale = 1.0 / safeSpeed;
+                        string ptsScaleStr = ptsScale.ToString("0.000", CultureInfo.InvariantCulture);
+                        int step = (int)Math.Round(safeSpeed);
+                        if (step > 1)
+                        {
+                            filterParts.Add($"framestep={step}");
+                        }
+                        filterParts.Add($"setpts={ptsScaleStr}*PTS");
+                    }
+
+                    string vfFilter = string.Join(",", filterParts);
+                    codecArgs = $"-vf \"{vfFilter}\" -an {optimalEncoder} -avoid_negative_ts make_zero -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1";
+                }
+
+                // Minimal probe buffers and fast seeking for zero-latency playback startup
+                string arguments = $"-nostdin -loglevel error -noautorotate -fflags +nobuffer+fastseek -probesize 65536 -analyzeduration 100000 " +
+                                   $"-ss {seekOffsetSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                   $"-i \"{normalizedPath}\" -t {chunkDurationSec.ToString("0.000", CultureInfo.InvariantCulture)} " +
+                                   $"{codecArgs}";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = ffmpegPath,
+                    Arguments = arguments,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = new Process { StartInfo = startInfo };
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+                try
+                {
+                    process.Start();
+                    var stderrTask = process.StandardError.ReadToEndAsync(ct);
+
+                    byte[] buffer = new byte[65536];
+                    int bytesRead;
+                    var stdout = process.StandardOutput.BaseStream;
+                    long totalBytesSent = 0;
+
+                    using var reg = linkedCts.Token.Register(() =>
+                    {
+                        try
+                        {
+                            if (!process.HasExited) process.Kill(true);
+                        }
+                        catch { }
+                    });
+
+                    while ((bytesRead = await stdout.ReadAsync(buffer, 0, buffer.Length, linkedCts.Token)) > 0)
+                    {
+                        await Response.Body.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
+                        totalBytesSent += bytesRead;
+                        // Flush initial moov/ftyp segment (<= 128KB) for immediate browser playback start
+                        if (totalBytesSent <= 131072)
+                        {
+                            await Response.Body.FlushAsync(ct);
+                        }
+                    }
+
+                    if (process.HasExited && process.ExitCode != 0)
+                    {
+                        string err = await stderrTask;
+                        _logger.LogWarning("[Stream:FFmpeg] Process exited with code {Code}: {Err}", process.ExitCode, err);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Client stopped playback or scrubbed to another timestamp
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Stream:Error] Stream error for host {Host}", hostname);
+                }
+                finally
+                {
+                    try
+                    {
+                        if (!process.HasExited) process.Kill(true);
+                    }
+                    catch { }
+                }
             }
             finally
             {
-                try
-                {
-                    if (!process.HasExited) process.Kill(true);
-                }
-                catch { }
+                _activeStreamThrottle.Release();
             }
-        }
-
+        }
+
         [HttpGet("spritesheet")]
         public async Task<IActionResult> GetSpritesheet(
             [FromQuery] string hostname,

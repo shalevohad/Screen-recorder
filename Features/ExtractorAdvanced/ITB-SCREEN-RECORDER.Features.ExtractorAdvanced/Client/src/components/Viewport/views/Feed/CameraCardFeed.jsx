@@ -31,7 +31,9 @@ export default function CameraCardFeed({
     targetDisplayId = 'auto',
     onSelectDisplayId = null,
     areAllDisplaysPlaced = false,
-    hideDisplayStrip = false
+    hideDisplayStrip = false,
+    isDecoderAllowed = true,
+    maxHeight = null
 }) {
     const stationName = station.hostname || station.name || station.id || '';
     const roundedEpochMs = Math.round(currentEpochMs);
@@ -153,8 +155,8 @@ export default function CameraCardFeed({
     useEffect(() => {
         if (isOffline || !roundedEpochMs || !stationName) return;
 
-        // Never fetch static frames during active playback to prevent network saturation and frame thrashing
-        if (isPlaying) {
+        // If actively playing with full video decoder stream, skip static frame fetch
+        if (isPlaying && isDecoderAllowed) {
             prevIsPlayingRef.current = true;
             return;
         }
@@ -175,7 +177,7 @@ export default function CameraCardFeed({
 
         setIsLoadingFrame(true);
         // Fast-response debouncing (25ms while playing, 40ms paused) for responsive card scrubbing
-        const delayMs = wasPlaying ? 25 : 40;
+        const delayMs = isPlaying ? 180 : (wasPlaying ? 25 : 40);
 
         const timer = setTimeout(() => {
             if (!isMounted) return;
@@ -211,12 +213,12 @@ export default function CameraCardFeed({
             abortController.abort();
             unsubscribe();
         };
-    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady, activeDisplayId]);
+    }, [stationName, roundedEpochMs, isOffline, isPlaying, isSolo, isVideoReady, activeDisplayId, isDecoderAllowed]);
 
     useEffect(() => {
-        const shouldStream = isSolo || isPlaying;
+        const shouldStream = isSolo || (isPlaying && isDecoderAllowed);
         if (!stationName || !shouldStream) {
-            if (!isPlaying) {
+            if (!isPlaying || !isDecoderAllowed) {
                 if (seekDebounceTimerRef.current) clearTimeout(seekDebounceTimerRef.current);
                 isSeekingRef.current = false;
                 setStreamSrc('');
@@ -238,7 +240,8 @@ export default function CameraCardFeed({
                 streamStartOffsetMsRef.current = initialSeekMs;
                 lastEmittedMsRef.current = initialSeekMs;
                 isSeekingRef.current = false;
-                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&displayId=${encodeURIComponent(activeDisplayId)}&_t=${Date.now()}`;
+                const qualityParam = maxHeight && maxHeight < 1080 ? `&maxHeight=${maxHeight}` : '';
+                const url = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + initialSeekMs}&displayId=${encodeURIComponent(activeDisplayId)}${qualityParam}&_t=${Date.now()}`;
 
                 setIsVideoReady(false);
                 setStreamSrc(url);
@@ -259,7 +262,7 @@ export default function CameraCardFeed({
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
         };
-    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId]);
+    }, [isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId, isDecoderAllowed, maxHeight]);
 
     // Handle user seek actions while playing, rebinding stream offset when user seeks
     useEffect(() => {
@@ -294,7 +297,8 @@ export default function CameraCardFeed({
             }
 
             const targetMs = currentRelativeMsRef.current;
-            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + targetMs}&displayId=${encodeURIComponent(activeDisplayId)}&_t=${Date.now()}`;
+            const qualityParam = maxHeight && maxHeight < 1080 ? `&maxHeight=${maxHeight}` : '';
+            const newUrl = `/api/v1/extractor-advanced/stream?hostname=${encodeURIComponent(stationName)}&startEpoch=${baseEpochMs}&endEpoch=${baseEpochMs + totalDurationMs}&seekEpoch=${baseEpochMs + targetMs}&displayId=${encodeURIComponent(activeDisplayId)}${qualityParam}&_t=${Date.now()}`;
             setStreamSrc(newUrl);
         }, 75);
 
@@ -303,7 +307,7 @@ export default function CameraCardFeed({
                 clearTimeout(seekDebounceTimerRef.current);
             }
         };
-    }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId]);
+    }, [currentEpochMs, isPlaying, isSolo, stationName, baseEpochMs, totalDurationMs, isSpotlightActive, isInRecordingSegment, activeDisplayId, isDecoderAllowed, maxHeight]);
 
     // Anti-drift synchronization for Grid mode: gently aligns video.currentTime with master playhead epoch
     useEffect(() => {

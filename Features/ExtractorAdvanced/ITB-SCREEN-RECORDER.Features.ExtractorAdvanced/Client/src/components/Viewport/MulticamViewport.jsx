@@ -18,6 +18,11 @@ import {
     deleteKeyframe,
     insertExplicitKeyframe
 } from '../../utils/nleTimelineEngine.js';
+import {
+    computeDecoderAllocations,
+    resolveStreamQuality,
+    MAX_CONCURRENT_CANVAS_DECODERS
+} from '../../utils/canvasStreamGovernor.js';
 import './MulticamViewport.scss';
 
 export const ASPECT_PRESETS = [
@@ -2169,6 +2174,15 @@ export default function MulticamViewport({
             .sort((a, b) => ((a.zIndex ?? a.originalIndex) - (b.zIndex ?? b.originalIndex)));
     }, [activeDisplayPlacements]);
 
+    // Dynamic hardware video decoder allocations & quality profiling to protect browser & server
+    const decoderAllocations = useMemo(() => {
+        return computeDecoderAllocations(currentPlacements, {
+            maxConcurrentDecoders: MAX_CONCURRENT_CANVAS_DECODERS,
+            activeAudioStationId,
+            selectedFeedIndex
+        });
+    }, [currentPlacements, activeAudioStationId, selectedFeedIndex]);
+
     const selectedPlacement = currentPlacements[selectedFeedIndex] || null;
 
     // Unified Feeds & Layers items list:
@@ -3247,6 +3261,11 @@ export default function MulticamViewport({
                                                 areAllDisplaysPlaced={areAllDisplaysPlaced}
                                                 slotIndex={origIdx}
                                                 borderColor={bColor}
+                                                isDecoderAllowed={decoderAllocations[origIdx] ?? true}
+                                                maxHeight={resolveStreamQuality(
+                                                    Math.round((p.width || 1920) * ((canvasFrameDimensions?.width || 960) / virtualW)),
+                                                    Math.round((p.height || 1080) * ((canvasFrameDimensions?.height || 540) / virtualH))
+                                                )}
                                             />
                                         </div>
 

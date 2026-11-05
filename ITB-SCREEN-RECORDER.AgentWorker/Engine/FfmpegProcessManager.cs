@@ -265,17 +265,17 @@ namespace ITBRecorderAgent.Engine
             string pixFmt = "yuv420p";
             if (videoEncoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase))
             {
-                ffmpegArgs.Append($"-c:v h264_nvenc -preset p4 -tune ll -rc vbr -cq 21 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -spatial-aq 1 -temporal-aq 1 -forced-idr 1 ");
+                ffmpegArgs.Append($"-c:v h264_nvenc -preset p2 -tune ll -rc vbr -cq 23 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -forced-idr 1 ");
             }
             else if (videoEncoder.Contains("qsv", StringComparison.OrdinalIgnoreCase))
             {
                 // QSV encodes natively in NV12. Avoiding yuv420p avoids an unnecessary double software color conversion.
                 pixFmt = "nv12";
-                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 21 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
+                ffmpegArgs.Append($"-c:v h264_qsv -preset veryfast -global_quality 23 -b:v 0 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -idr_interval 1 -bf 0 -forced_idr 1 ");
             }
             else
             {
-                ffmpegArgs.Append($"-c:v libx264 -preset ultrafast -tune zerolatency -crf 21 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -sc_threshold 0 ");
+                ffmpegArgs.Append($"-c:v libx264 -preset ultrafast -tune zerolatency -crf 23 -maxrate {normalizedBitrate} -bufsize {bufferSizeStr} -sc_threshold 0 ");
             }
 
             // 4. Force 1-second IDR Keyframe intervals for sub-second seek and wall-clock segmentation

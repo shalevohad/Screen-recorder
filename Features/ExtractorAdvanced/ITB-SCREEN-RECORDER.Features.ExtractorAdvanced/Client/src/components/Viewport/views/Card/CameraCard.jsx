@@ -34,7 +34,9 @@ export default function CameraCard({
     areAllDisplaysPlaced = false,
     _slotIndex = 0,
     borderColor = null,
-    onSwapWithNext = null
+    onSwapWithNext = null,
+    isDecoderAllowed = true,
+    maxHeight = null
 }) {
     const isAudioActive = Boolean(
         activeAudioStationId && (station.id === activeAudioStationId || (station.hostname && station.hostname === activeAudioStationId))
@@ -200,6 +202,8 @@ export default function CameraCard({
                         onSelectDisplayId={onSelectDisplayId}
                         areAllDisplaysPlaced={areAllDisplaysPlaced}
                         hideDisplayStrip={true}
+                        isDecoderAllowed={isDecoderAllowed}
+                        maxHeight={maxHeight}
                     />
 
                     {isSolo && !isPlaying && (
