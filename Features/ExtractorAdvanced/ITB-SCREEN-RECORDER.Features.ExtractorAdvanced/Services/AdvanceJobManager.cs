@@ -1565,9 +1565,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                         if (!string.IsNullOrWhiteSpace(p.Label) && !string.IsNullOrEmpty(fontClause))
                         {
-                            string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
+                            string safeLabel = EscapeFfmpegDrawtext(p.Label);
                             int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
-                            ops.Add($"drawtext={fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                            ops.Add($"drawtext=expansion=none:{fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85:boxborderw=4");
                         }
 
                         filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
@@ -1734,9 +1734,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
                     if (!string.IsNullOrWhiteSpace(p.Label) && !string.IsNullOrEmpty(fontClause))
                     {
-                        string safeLabel = p.Label.Replace("\\", "\\\\").Replace(":", "\\:").Replace("'", "\\'");
+                        string safeLabel = EscapeFfmpegDrawtext(p.Label);
                         int scaledFontSize = Math.Max(10, (int)Math.Round(13 * scaleX));
-                        ops.Add($"drawtext={fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85");
+                        ops.Add($"drawtext=expansion=none:{fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85:boxborderw=4");
                     }
 
                     filterBuilder.Append($"[{inIdx}:v]{string.Join(",", ops)}{pLabel}; ");
@@ -2004,6 +2004,15 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 "top-right" => ("w-tw-24", "24"),
                 _ => ("w-tw-24", "24")
             };
+        }
+
+        public static string EscapeFfmpegDrawtext(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            return text
+                .Replace("\\", "\\\\")
+                .Replace("'", "’")
+                .Replace(":", "\\:");
         }
 
         public static string? ResolveSystemFontClause()

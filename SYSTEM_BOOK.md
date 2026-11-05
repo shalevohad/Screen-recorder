@@ -3109,4 +3109,69 @@ public static (string clockX, string clockY) ResolveClockCoordinates(string? raw
 
 ---
 
+## 59. Canvas Screen Custom Title Renaming & Video Burn-In Architecture
+
+### 59.1 Operational Mission & User Workflow
+
+When composing a high-density command center video with multiple workstation feeds arranged across the Virtual Desktop Canvas (`MulticamViewport`), operators frequently require distinct operational labels for individual screens (e.g. `Radar Overview 1`, `C2 Tactical Map`, `Command Terminal [100%]`, `עמדת שליטה ראשית`).
+
+Prior to this feature, placements only rendered automatic machine identifiers (`{stationId} ({displayId})`). The Screen Custom Title architecture introduces dual inline and HUD controls allowing seamless customization, persistence across NLE keyframes, and stand-alone burned-in rendering in exported MP4 videos:
+
+1. **Inline Card Header Badge Editing**:
+   - Double-clicking the screen title text (`.badge-title-text`) on the card header enters inline edit mode without triggering 1x1 screen expansion.
+   - Alternatively, clicking the pencil action button `✏️` (`.btn-edit-title`) immediately focuses the input field.
+   - Committing via Enter key, checkmark button `✓`, or input blur trims whitespace, saves `p.label`, and records an undo snapshot (`Rename Screen Title`).
+   - Pressing `Escape` cancels editing and preserves the previous title.
+   - Clearing the title reverts `p.label` to `null`, instantly restoring the default fallback format (`${displayName || stationId} (${displayId})`).
+
+2. **Floating Feed Inspector HUD (`TITLE:` Input)**:
+   - When a screen card is selected (`selectedFeedIndex !== null`), the Floating Feed Inspector HUD displays an integrated `TITLE:` field (`.title-rename-group`).
+   - The field dynamically mirrors the active placement's label, allowing rapid renaming without needing to interact with small header badges on miniaturized cards.
+
+3. **Drawer & Minimap Synchronization**:
+   - The Feeds & Layers Drawer (`.feeds-layers-drawer`) automatically uses `p.label` in its layer list, keeping layer hierarchy labels in sync with the canvas.
+
+---
+
+### 59.2 NLE Timeline Keyframe & Undo/Redo Persistence
+
+Whenever a placement's label is committed, `updateActivePlacements(next, 'Rename Screen Title')` executes:
+- **Keyframe Invariance**: Updates `p.label` in the active keyframe's `layout.placements` array.
+- **Undo / Redo Stack**: Saves a full canvas snapshot to `undoStackRef`, allowing the operator to undo/redo title changes via `Ctrl+Z` / `Ctrl+Y`.
+- **Export Payload**: Propagates `p.label` inside both `currentCanvasLayout.placements` and `canvasLayoutTimeline.keyframes[].layout.placements` to `/api/v1/extractor-advanced/jobs`.
+
+---
+
+### 59.3 Stand-Alone Video Burn-In & FFmpeg Drawtext Escaping (`AdvanceJobManager.cs`)
+
+When exporting the multi-camera master composition via FFmpeg, `AdvanceJobManager.cs` burns `p.Label` directly onto each screen's video stream using the `drawtext` filter.
+
+#### Critical FFmpeg Escaping & Percent Drift Protection:
+1. **`expansion=none:` Directive**:
+   - By default, FFmpeg `drawtext` interprets `%` characters as strftime timecode specifiers. Any screen title containing a percent sign (e.g., `Camera 1 (100%)`) previously caused FFmpeg to crash with `Stray % near '%'`.
+   - Prepending `expansion=none:` forces FFmpeg to treat `%` literally, eliminating filtergraph compilation crashes.
+2. **Centralized `EscapeFfmpegDrawtext` Sanitization**:
+   ```csharp
+   public static string EscapeFfmpegDrawtext(string text)
+   {
+       if (string.IsNullOrEmpty(text)) return string.Empty;
+       return text
+           .Replace("\\", "\\\\")
+           .Replace("'", "’")
+           .Replace(":", "\\:");
+   }
+   ```
+   - Backslashes are doubled (`\\\\`).
+   - Colons are escaped (`\\:`) to prevent splitting FFmpeg filter key-value pairs.
+   - Single quotes are converted to Unicode right single quotation marks (`’`) to prevent breaking out of `text='...'`.
+3. **Padded Tactical Badge Styling**:
+   ```csharp
+   ops.Add($"drawtext=expansion=none:{fontClause}text='{safeLabel}':x=8:y=8:fontsize={scaledFontSize}:fontcolor=white:box=1:boxcolor=0x070A10@0.85:boxborderw=4");
+   ```
+   - Inset 8px from the top-left of the placement window (`x=8:y=8`).
+   - Tactical dark translucent background (`boxcolor=0x070A10@0.85`) with 4px border padding (`boxborderw=4`).
+   - Responsive font size scaling based on placement width: `Math.Max(10, (int)Math.Round(13 * scaleX))`.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

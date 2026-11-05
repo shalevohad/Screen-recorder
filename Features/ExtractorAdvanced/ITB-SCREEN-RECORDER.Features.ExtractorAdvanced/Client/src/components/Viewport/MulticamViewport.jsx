@@ -388,6 +388,19 @@ export default function MulticamViewport({
     const [selectedFeedIndex, setSelectedFeedIndex] = useState(0);
     const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
+    // Screen Title Inline & HUD Inspector Editing State
+    const [editingTitleIndex, setEditingTitleIndex] = useState(null);
+    const [editingTitleValue, setEditingTitleValue] = useState('');
+    const titleInputRef = useRef(null);
+    const [inspectorTitleValue, setInspectorTitleValue] = useState('');
+
+    useEffect(() => {
+        if (editingTitleIndex !== null && titleInputRef.current) {
+            titleInputRef.current.focus();
+            titleInputRef.current.select();
+        }
+    }, [editingTitleIndex]);
+
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
@@ -731,6 +744,15 @@ export default function MulticamViewport({
         return currentKf?.layout?.placements || [];
     }, [currentKf]);
 
+    // Keep HUD inspector title input synchronized with selected placement label
+    useEffect(() => {
+        if (selectedFeedIndex >= 0 && currentPlacements[selectedFeedIndex]) {
+            setInspectorTitleValue(currentPlacements[selectedFeedIndex].label ?? '');
+        } else {
+            setInspectorTitleValue('');
+        }
+    }, [selectedFeedIndex, currentPlacements]);
+
     // Capture current snapshot of entire canvas state
     const captureCurrentSnapshot = useCallback((label = 'Action') => {
         return {
@@ -1057,6 +1079,30 @@ export default function MulticamViewport({
         });
         updateActivePlacements(next);
     }, [selectedFeedIndex, currentPlacements, updateActivePlacements]);
+
+    const handleUpdatePlacementLabel = useCallback((targetIndex, newLabel, shouldPushUndo = true) => {
+        if (targetIndex < 0 || !currentPlacements[targetIndex]) return;
+        const trimmed = typeof newLabel === 'string' ? newLabel.trim() : '';
+        const labelValue = trimmed.length > 0 ? trimmed : null;
+        if (currentPlacements[targetIndex].label === labelValue) return;
+
+        const next = currentPlacements.map((p, idx) => {
+            if (idx === targetIndex) {
+                return { ...p, label: labelValue };
+            }
+            return p;
+        });
+        updateActivePlacements(next, shouldPushUndo ? 'Rename Screen Title' : null);
+    }, [currentPlacements, updateActivePlacements]);
+
+    const handleCommitTitle = useCallback((targetIndex) => {
+        if (targetIndex < 0 || !currentPlacements[targetIndex]) {
+            setEditingTitleIndex(null);
+            return;
+        }
+        handleUpdatePlacementLabel(targetIndex, editingTitleValue, true);
+        setEditingTitleIndex(null);
+    }, [currentPlacements, editingTitleValue, handleUpdatePlacementLabel]);
 
     const handleRotateStep = useCallback((stepDeg = 90) => {
         const target = currentPlacements[selectedFeedIndex];
@@ -3045,7 +3091,71 @@ export default function MulticamViewport({
                                         <div className="badge-title">
                                             <span className="badge-drag-grip">⠿</span>
                                             <span className="dot-indicator" />
-                                            <span>{p.label || `${st.displayName || p.stationId} (${p.displayId})`}</span>
+                                            {editingTitleIndex === origIdx ? (
+                                                <span
+                                                    className="badge-title-edit-container"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onDoubleClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <input
+                                                        ref={titleInputRef}
+                                                        type="text"
+                                                        className="badge-title-input"
+                                                        value={editingTitleValue}
+                                                        placeholder={`${st.displayName || p.stationId} (${p.displayId})`}
+                                                        onChange={(e) => setEditingTitleValue(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            e.stopPropagation();
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                handleCommitTitle(origIdx);
+                                                            } else if (e.key === 'Escape') {
+                                                                e.preventDefault();
+                                                                setEditingTitleIndex(null);
+                                                            }
+                                                        }}
+                                                        onBlur={() => handleCommitTitle(origIdx)}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        className="btn-edit-title is-saving"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleCommitTitle(origIdx);
+                                                        }}
+                                                        title="Save screen title (Enter)"
+                                                    >
+                                                        ✓
+                                                    </button>
+                                                </span>
+                                            ) : (
+                                                <>
+                                                    <span
+                                                        className="badge-title-text"
+                                                        onDoubleClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setEditingTitleIndex(origIdx);
+                                                            setEditingTitleValue(p.label || '');
+                                                        }}
+                                                        title="Double-click to rename screen (burned into video)"
+                                                    >
+                                                        {p.label || `${st.displayName || p.stationId} (${p.displayId})`}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        className="btn-edit-title"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setEditingTitleIndex(origIdx);
+                                                            setEditingTitleValue(p.label || '');
+                                                        }}
+                                                        title="Rename screen title (burned into video)"
+                                                    >
+                                                        ✏️
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                         <div className="badge-coords">
                                             {Math.round(p.width)}×{Math.round(p.height)} ({getReadableAspectRatio(p.width, p.height)}) @ ({Math.round(p.x)},{Math.round(p.y)})
@@ -3217,6 +3327,28 @@ export default function MulticamViewport({
                                     </span>
 
                                     {/* Border Color Swatch Button & Popover */}
+                                    {/* Screen Title Customization */}
+                                    <div className="inspector-group title-rename-group">
+                                        <span className="inspector-group-label">TITLE:</span>
+                                        <input
+                                            type="text"
+                                            className="inspector-title-input"
+                                            value={inspectorTitleValue}
+                                            placeholder={`${matchedStation?.displayName || p.stationId} (${p.displayId})`}
+                                            onChange={(e) => setInspectorTitleValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleUpdatePlacementLabel(selectedFeedIndex, inspectorTitleValue);
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                handleUpdatePlacementLabel(selectedFeedIndex, inspectorTitleValue);
+                                            }}
+                                            title="Rename screen feed (displayed on canvas and burned into exported video)"
+                                        />
+                                    </div>
+
                                     <div className="inspector-group color-swatch-group">
                                         <button
                                             type="button"

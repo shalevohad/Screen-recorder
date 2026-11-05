@@ -178,4 +178,62 @@ describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
         assert.strictEqual(custom.x, '16+(w-tw-32)*0.4500');
         assert.strictEqual(custom.y, '16+(h-th-32)*0.2000');
     });
+
+    it('9. Canvas Placement Screen Title Customization, Fallback Resolution & FFmpeg drawtext Escaping', () => {
+        // 1. Placement label modification helper
+        const updatePlacementLabel = (placements, targetIndex, rawLabel) => {
+            const trimmed = typeof rawLabel === 'string' ? rawLabel.trim() : '';
+            const nextLabel = trimmed.length > 0 ? trimmed : null;
+            return placements.map((p, idx) => {
+                if (idx === targetIndex) {
+                    return { ...p, label: nextLabel };
+                }
+                return p;
+            });
+        };
+
+        const initialPlacements = [
+            { stationId: 'OHAD-PC', displayId: 'mon-0', x: 0, y: 0, width: 960, height: 1080, label: null },
+            { stationId: 'OHAD-PC', displayId: 'mon-1', x: 960, y: 0, width: 960, height: 1080, label: null }
+        ];
+
+        // Custom Title Assignment
+        const renamed = updatePlacementLabel(initialPlacements, 0, '  עמדת שליטה ראשית (Main HUD) [100%]  ');
+        assert.strictEqual(renamed[0].label, 'עמדת שליטה ראשית (Main HUD) [100%]');
+        assert.strictEqual(renamed[1].label, null);
+
+        // Fallback Resolution Logic
+        const getEffectiveDisplayTitle = (p, st) => {
+            return p.label || `${st?.displayName || p.stationId} (${p.displayId})`;
+        };
+
+        const st = { displayName: 'Command Desk', id: 'OHAD-PC' };
+        assert.strictEqual(getEffectiveDisplayTitle(renamed[0], st), 'עמדת שליטה ראשית (Main HUD) [100%]');
+        assert.strictEqual(getEffectiveDisplayTitle(renamed[1], st), 'Command Desk (mon-1)');
+
+        // Clearing Title Resets to null (Restores Fallback)
+        const cleared = updatePlacementLabel(renamed, 0, '   ');
+        assert.strictEqual(cleared[0].label, null);
+        assert.strictEqual(getEffectiveDisplayTitle(cleared[0], st), 'Command Desk (mon-0)');
+
+        // 2. FFmpeg drawtext escaping with expansion=none
+        const escapeFfmpegDrawtext = (text) => {
+            if (!text) return '';
+            return text
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, '’')
+                .replace(/:/g, '\\:');
+        };
+
+        const testTitle = "Ops Center: Screen 'A' [100%] \\ Radar";
+        const escaped = escapeFfmpegDrawtext(testTitle);
+        assert.strictEqual(escaped, 'Ops Center\\: Screen ’A’ [100%] \\\\ Radar');
+
+        // Formulate drawtext filter clause
+        const fontClause = "fontfile='C\\:/Windows/Fonts/arial.ttf':";
+        const filterClause = `drawtext=expansion=none:${fontClause}text='${escaped}':x=8:y=8:fontsize=13:fontcolor=white:box=1:boxcolor=0x070A10@0.85:boxborderw=4`;
+        assert.ok(filterClause.includes('expansion=none:'));
+        assert.ok(filterClause.includes("text='Ops Center\\: Screen ’A’ [100%] \\\\ Radar'"));
+        assert.ok(filterClause.includes('boxborderw=4'));
+    });
 });
