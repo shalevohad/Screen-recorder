@@ -16,9 +16,10 @@
     border: 1px solid rgba(6, 182, 212, 0.35);
     border-radius: 6px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.75), 0 0 10px rgba(6, 182, 212, 0.15);
-    cursor: pointer;
+    cursor: grab;
     user-select: none;
     pointer-events: auto;
+    touch-action: none;
     transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 
     &:hover {
@@ -32,7 +33,21 @@
         }
     }
 
-    // Dynamic Corner Positioning
+    &.is-dragging {
+        cursor: grabbing !important;
+        user-select: none !important;
+        transition: none !important;
+        border-color: #00f0ff !important;
+        box-shadow: 0 0 24px rgba(0, 240, 255, 0.45), 0 0 10px #00f0ff !important;
+        background: rgba(11, 20, 36, 0.96) !important;
+    }
+
+    &.is-custom {
+        // When custom inline styles are active, suppress preset transition delays
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+
+    // Dynamic Corner Presets
     &.corner-top-right {
         top: 14px;
         right: 14px;
@@ -86,6 +101,23 @@
             color: #22d3ee;
             text-shadow: 0 0 8px rgba(34, 211, 238, 0.35);
         }
+    }
+
+    .clock-drag-badge {
+        display: inline-flex;
+        align-items: center;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.6rem;
+        font-weight: 800;
+        color: #06b6d4;
+        background: rgba(6, 182, 212, 0.16);
+        border: 1px solid rgba(6, 182, 212, 0.45);
+        border-radius: 4px;
+        padding: 1px 5px;
+        letter-spacing: 0.04em;
+        margin-left: 2px;
+        white-space: nowrap;
+        animation: fadeIn 0.15s ease-out;
     }
 
     .btn-cycle-corner {

@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import './ExportOptionsModal.scss';
+import { formatClockPositionLabel } from '../../utils/clockPositionStore.js';
 
 export default function ExportOptionsModal({
     isOpen,
@@ -148,7 +149,7 @@ export default function ExportOptionsModal({
                         )}
                         <div className="summary-row">
                             <span className="label">UTC WALL CLOCK:</span>
-                            <span className="value enabled">PERMANENT (BURNED-IN AT {((typeof localStorage !== 'undefined' && localStorage.getItem('itb_canvas_utc_clock_pos')) || 'TOP-RIGHT').toUpperCase()})</span>
+                            <span className="value enabled">PERMANENT (BURNED-IN AT {formatClockPositionLabel((typeof localStorage !== 'undefined' && localStorage.getItem('itb_canvas_utc_clock_pos')) || 'top-right')})</span>
                         </div>
                     </div>
 

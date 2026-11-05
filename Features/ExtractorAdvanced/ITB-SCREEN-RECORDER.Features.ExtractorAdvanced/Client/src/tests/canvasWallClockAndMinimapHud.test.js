@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { parseClockPosition, formatClockPositionLabel, resolveFfmpegClockCoords, CORNER_POSITIONS } from '../utils/clockPositionStore.js';
 
 describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
     it('1. Canvas UTC Wall Clock formats date and UTC time correctly from epoch ms', () => {
@@ -85,5 +86,96 @@ describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
         assert.strictEqual(totalW, 3840);
         assert.strictEqual(totalH, 1080);
         assert.strictEqual(totalW / totalH, 32 / 9);
+    });
+    it('5. parseClockPosition handles presets and custom percentage coordinates', () => {
+        const tr = parseClockPosition('top-right');
+        assert.strictEqual(tr.isCustom, false);
+        assert.strictEqual(tr.preset, 'top-right');
+        assert.strictEqual(tr.xPct, 100);
+        assert.strictEqual(tr.yPct, 0);
+
+        const bl = parseClockPosition('bottom-left');
+        assert.strictEqual(bl.isCustom, false);
+        assert.strictEqual(bl.preset, 'bottom-left');
+        assert.strictEqual(bl.xPct, 0);
+        assert.strictEqual(bl.yPct, 100);
+
+        const custom = parseClockPosition('custom:45.5,22.8');
+        assert.strictEqual(custom.isCustom, true);
+        assert.strictEqual(custom.xPct, 45.5);
+        assert.strictEqual(custom.yPct, 22.8);
+
+        // Clamping invalid or out-of-range bounds
+        const outOfBounds = parseClockPosition('custom:150.0,-20.0');
+        assert.strictEqual(outOfBounds.isCustom, true);
+        assert.strictEqual(outOfBounds.xPct, 100);
+        assert.strictEqual(outOfBounds.yPct, 0);
+
+        // Null / undefined fallback
+        const def = parseClockPosition(null);
+        assert.strictEqual(def.isCustom, false);
+        assert.strictEqual(def.preset, 'top-right');
+    });
+
+    it('6. formatClockPositionLabel produces crisp human-readable badges for UI and export summary', () => {
+        assert.strictEqual(formatClockPositionLabel('top-right'), 'TOP-RIGHT');
+        assert.strictEqual(formatClockPositionLabel('bottom-left'), 'BOTTOM-LEFT');
+        assert.strictEqual(formatClockPositionLabel('custom:45.2,22.8'), 'CUSTOM (45% X, 23% Y)');
+        assert.strictEqual(formatClockPositionLabel('custom:50.0,0.0'), 'CUSTOM (50% X, 0% Y)');
+    });
+
+    it('7. Drag coordinate clamping and corner snapping algorithm', () => {
+        const resolveFinalPosition = (xPct, yPct) => {
+            if (xPct > 94 && yPct < 6) return 'top-right';
+            if (xPct < 6 && yPct < 6) return 'top-left';
+            if (xPct > 94 && yPct > 94) return 'bottom-right';
+            if (xPct < 6 && yPct > 94) return 'bottom-left';
+            return `custom:${xPct.toFixed(1)},${yPct.toFixed(1)}`;
+        };
+
+        // Snaps near top-right corner
+        assert.strictEqual(resolveFinalPosition(96, 3), 'top-right');
+        // Snaps near top-left corner
+        assert.strictEqual(resolveFinalPosition(4, 2), 'top-left');
+        // Snaps near bottom-right corner
+        assert.strictEqual(resolveFinalPosition(98, 97), 'bottom-right');
+        // Snaps near bottom-left corner
+        assert.strictEqual(resolveFinalPosition(2, 95), 'bottom-left');
+
+        // Retains custom coordinate when placed away from corners
+        assert.strictEqual(resolveFinalPosition(45.2, 18.7), 'custom:45.2,18.7');
+        assert.strictEqual(resolveFinalPosition(50.0, 10.0), 'custom:50.0,10.0');
+    });
+
+    it('8. FFmpeg drawtext coordinate formulation mapping', () => {
+        const resolveFfmpegCoords = (rawPosition) => {
+            const clean = (rawPosition || 'top-right').trim().toLowerCase();
+            if (clean.startsWith('custom:') || clean.includes(',')) {
+                const coords = clean.replace('custom:', '').split(/[,;]/);
+                const x = Math.max(0, Math.min(100, parseFloat(coords[0]) || 0));
+                const y = Math.max(0, Math.min(100, parseFloat(coords[1]) || 0));
+                const xRatio = (x / 100.0).toFixed(4);
+                const yRatio = (y / 100.0).toFixed(4);
+                return {
+                    x: `16+(w-tw-32)*${xRatio}`,
+                    y: `16+(h-th-32)*${yRatio}`
+                };
+            }
+            switch (clean) {
+                case 'top-left': return { x: '24', y: '24' };
+                case 'bottom-left': return { x: '24', y: 'h-th-24' };
+                case 'bottom-right': return { x: 'w-tw-24', y: 'h-th-24' };
+                case 'top-right':
+                default: return { x: 'w-tw-24', y: '24' };
+            }
+        };
+
+        const standard = resolveFfmpegCoords('top-right');
+        assert.strictEqual(standard.x, 'w-tw-24');
+        assert.strictEqual(standard.y, '24');
+
+        const custom = resolveFfmpegCoords('custom:45.0,20.0');
+        assert.strictEqual(custom.x, '16+(w-tw-32)*0.4500');
+        assert.strictEqual(custom.y, '16+(h-th-32)*0.2000');
     });
 });

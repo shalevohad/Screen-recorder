@@ -2,6 +2,7 @@
 // File: Features/ExtractorAdvanced/Services/AdvanceJobManager.cs
 // ==========================================
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Formats.Tar;
@@ -1353,28 +1354,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
 
             long startEpochSec = cutStartEpochMs / 1000;
             string clockPos = (job.UtcClockPosition ?? "top-right").Trim().ToLowerInvariant();
-            string clockX = "w-tw-24";
-            string clockY = "24";
-            switch (clockPos)
-            {
-                case "top-left":
-                    clockX = "24";
-                    clockY = "24";
-                    break;
-                case "bottom-left":
-                    clockX = "24";
-                    clockY = "h-th-24";
-                    break;
-                case "bottom-right":
-                    clockX = "w-tw-24";
-                    clockY = "h-th-24";
-                    break;
-                case "top-right":
-                default:
-                    clockX = "w-tw-24";
-                    clockY = "24";
-                    break;
-            }
+            var (clockX, clockY) = ResolveClockCoordinates(job.UtcClockPosition);
 
             string? masterFontClause = ResolveSystemFontClause();
             if (!string.IsNullOrEmpty(masterFontClause))
@@ -1909,28 +1889,7 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             long canvasStartEpochMs = new DateTimeOffset(startUtc).ToUnixTimeMilliseconds();
             long canvasStartEpochSec = canvasStartEpochMs / 1000;
             string canvasClockPos = (job.UtcClockPosition ?? "top-right").Trim().ToLowerInvariant();
-            string canvasClockX = "w-tw-24";
-            string canvasClockY = "24";
-            switch (canvasClockPos)
-            {
-                case "top-left":
-                    canvasClockX = "24";
-                    canvasClockY = "24";
-                    break;
-                case "bottom-left":
-                    canvasClockX = "24";
-                    canvasClockY = "h-th-24";
-                    break;
-                case "bottom-right":
-                    canvasClockX = "w-tw-24";
-                    canvasClockY = "h-th-24";
-                    break;
-                case "top-right":
-                default:
-                    canvasClockX = "w-tw-24";
-                    canvasClockY = "24";
-                    break;
-            }
+            var (canvasClockX, canvasClockY) = ResolveClockCoordinates(job.UtcClockPosition);
 
             if (!string.IsNullOrEmpty(fontClause))
             {
@@ -2014,6 +1973,37 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
             if (hex.StartsWith("#")) hex = "0x" + hex.Substring(1);
             if (!hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = "0x" + hex;
             return hex;
+        }
+
+        public static (string clockX, string clockY) ResolveClockCoordinates(string? rawPosition)
+        {
+            string clockPos = (rawPosition ?? "top-right").Trim().ToLowerInvariant();
+            if (clockPos.StartsWith("custom:") || clockPos.Contains(','))
+            {
+                string coords = clockPos.Replace("custom:", "").Trim();
+                var parts = coords.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2 &&
+                    double.TryParse(parts[0].Replace("%", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double xPct) &&
+                    double.TryParse(parts[1].Replace("%", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double yPct))
+                {
+                    xPct = Math.Clamp(xPct, 0.0, 100.0);
+                    yPct = Math.Clamp(yPct, 0.0, 100.0);
+                    double xRatio = Math.Round(xPct / 100.0, 4);
+                    double yRatio = Math.Round(yPct / 100.0, 4);
+                    string clockX = $"16+(w-tw-32)*{xRatio.ToString("0.0000", CultureInfo.InvariantCulture)}";
+                    string clockY = $"16+(h-th-32)*{yRatio.ToString("0.0000", CultureInfo.InvariantCulture)}";
+                    return (clockX, clockY);
+                }
+            }
+
+            return clockPos switch
+            {
+                "top-left" => ("24", "24"),
+                "bottom-left" => ("24", "h-th-24"),
+                "bottom-right" => ("w-tw-24", "h-th-24"),
+                "top-right" => ("w-tw-24", "24"),
+                _ => ("w-tw-24", "24")
+            };
         }
 
         public static string? ResolveSystemFontClause()

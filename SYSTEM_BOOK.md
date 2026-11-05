@@ -3029,4 +3029,84 @@ To resolve this, the platform introduces **Operational Mission Export Notes**:
 
 ---
 
+
+
+## 58. Freeform Draggable Canvas UTC Wall Clock & Mathematical FFmpeg Drawtext Mapping Engine (2026-11-05)
+
+### 58.1 Operational Mission Context & Operator Requirement
+In mission-critical forensic investigations and multi-station tactical replay, operators frequently observe high-density information layouts (tactical radars, terminal windows, chat boxes, and video streams) positioned near the standard four canvas corners. Fixed corner presets previously forced operators to choose between four corners, occasionally obscuring critical on-screen evidentiary data.
+
+To give operators complete freedom while preserving the permanent orientation requirement (the clock can be relocated anywhere, but cannot be removed), the platform introduces **Freeform Draggable UTC Wall Clock Positioning**:
+- **Freeform Drag-and-Drop**: Operators can click and drag the clock overlay anywhere across the WYSIWYG master canvas.
+- **Preset Cycling Retained**: Clicking without dragging or clicking the `[ ⤢ ]` corner button continues to cycle standard corners (`top-right` -> `bottom-right` -> `bottom-left` -> `top-left`). If currently at a custom position, clicking immediately snaps back to `top-right`.
+- **Intelligent Corner Snapping**: When dropped within 6% of any stage boundary corner, the clock snaps cleanly to the respective corner preset.
+- **Full Export Parity**: The exact custom percentage coordinates are passed to the backend, where FFmpeg's `drawtext` filter bakes the timestamp directly at that coordinate.
+
+---
+
+### 58.2 Coordinate Store & Relative Inset Math (`clockPositionStore.js`)
+
+1. **Position Descriptor Grammar**:
+   - Preset names: `"top-right"`, `"top-left"`, `"bottom-right"`, `"bottom-left"`.
+   - Custom format: `"custom:X,Y"` where `X` and `Y` are floating-point percentages (`0.0` to `100.0`) relative to available canvas bounds.
+
+2. **Dynamic Canvas CSS Positioning**:
+   - To guarantee that the clock remains inset by a comfortable 14px margin regardless of screen zoom or aspect ratio (16:9, 32:9, 48:9):
+     ```css
+     left: calc(14px + (100% - 28px) * ${xRatio});
+     top: calc(14px + (100% - 28px) * ${yRatio});
+     transform: translate(-${xPct}%, -${yPct}%);
+     ```
+   - At `xPct = 0%`: Left edge sits at 14px.
+   - At `xPct = 100%`: Right edge sits at `100% - 14px` (`translate(-100%)`).
+   - At `xPct = 50%`: Perfectly horizontally centered.
+
+3. **Tactical UI State & Feedback**:
+   - While dragging, `.is-dragging` applies `cursor: grabbing`, disables animation transitions (`transition: none`), and adds an energetic cyan glow (`box-shadow: 0 0 24px rgba(0, 240, 255, 0.45)`).
+   - A live HUD coordinate badge displays real-time percentages (e.g. `📍 45%, 22%`).
+
+---
+
+### 58.3 Backend FFmpeg Drawtext Mathematical Formulation (`AdvanceJobManager.cs`)
+
+In `AdvanceJobManager.cs`, both `ExecuteAdvanceCutJobAsync` and `ExecuteMasterCanvasCompositionJobAsync` utilize the centralized helper `ResolveClockCoordinates(string? rawPosition)`:
+
+```csharp
+public static (string clockX, string clockY) ResolveClockCoordinates(string? rawPosition)
+{
+    string clockPos = (rawPosition ?? "top-right").Trim().ToLowerInvariant();
+    if (clockPos.StartsWith("custom:") || clockPos.Contains(','))
+    {
+        string coords = clockPos.Replace("custom:", "").Trim();
+        var parts = coords.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2 &&
+            double.TryParse(parts[0].Replace("%", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double xPct) &&
+            double.TryParse(parts[1].Replace("%", "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out double yPct))
+        {
+            xPct = Math.Clamp(xPct, 0.0, 100.0);
+            yPct = Math.Clamp(yPct, 0.0, 100.0);
+            double xRatio = Math.Round(xPct / 100.0, 4);
+            double yRatio = Math.Round(yPct / 100.0, 4);
+            string clockX = $"16+(w-tw-32)*{xRatio.ToString("0.0000", CultureInfo.InvariantCulture)}";
+            string clockY = $"16+(h-th-32)*{yRatio.ToString("0.0000", CultureInfo.InvariantCulture)}";
+            return (clockX, clockY);
+        }
+    }
+
+    return clockPos switch
+    {
+        "top-left" => ("24", "24"),
+        "bottom-left" => ("24", "h-th-24"),
+        "bottom-right" => ("w-tw-24", "h-th-24"),
+        "top-right" => ("w-tw-24", "24"),
+        _ => ("w-tw-24", "24")
+    };
+}
+```
+
+- **Zero Filtergraph Comma Conflicts**: Because `clockX` and `clockY` contain standard arithmetic operators without commas, FFmpeg evaluates the coordinates smoothly via libavutil `eval.c` without escaping issues.
+- **Symmetric Bounding**: Guarantees that at `0%` and `100%`, the burned-in clock text never overflows outside the video frame.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
