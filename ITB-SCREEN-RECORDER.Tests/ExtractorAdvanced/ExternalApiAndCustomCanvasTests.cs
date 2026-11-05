@@ -770,4 +770,29 @@ public class ExternalApiAndCustomCanvasTests
         Assert.Equal(0, process.ExitCode);
         Assert.DoesNotContain("error", stderr, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ExportJobs_CreatedBy_PropertyPreservesOperatorAndDefaultsCorrectly()
+    {
+        var job = new AdvanceJobInfo
+        {
+            CreatedBy = "Commander John"
+        };
+        Assert.Equal("Commander John", job.CreatedBy);
+
+        var defaultJob = new AdvanceJobInfo();
+        Assert.Equal("Guest Operator", defaultJob.CreatedBy);
+
+        var cutReq = new AdvanceCutRequestDto
+        {
+            CreatedBy = "Lead Investigator"
+        };
+        Assert.Equal("Lead Investigator", cutReq.CreatedBy);
+
+        var baseReq = new ITB_SCREEN_RECORDER.Features.Extractor.Models.ExtractionRequestDto
+        {
+            CreatedBy = "Security Officer"
+        };
+        Assert.Equal("Security Officer", baseReq.CreatedBy);
+    }
 }

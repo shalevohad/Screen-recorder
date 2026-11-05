@@ -183,6 +183,10 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                                     <span className={`status-pill ${job.status.toLowerCase()}`}>
                                                         {job.isCompleted ? 'READY' : job.status}
                                                     </span>
+                                                <span className="operator-chip" title={`Export created by ${job.createdBy || 'Guest Operator'}`}>
+                                                    <span className="chip-icon">👤</span>
+                                                    <span className="chip-name">{job.createdBy || 'Guest Operator'}</span>
+                                                </span>
                                                     <span className="file-name" title={job.fileName}>
                                                         {job.fileName}
                                                     </span>
@@ -209,6 +213,9 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                                     <div className="progress-bottom-meta">
                                                         <span className="size-streamed">{formatSize(job.fileSizeBytes)}</span>
                                                         <div className="telemetry-tags">
+                                                        <span className="operator-mini-tag" title={`Initiated by ${job.createdBy || 'Guest Operator'}`}>
+                                                            👤 {job.createdBy || 'Guest Operator'}
+                                                        </span>
                                                             <span className="speed">{job.speedMBps} MB/s</span>
                                                             <span className="eta">ETA -{formatSecondsToEta(job.etaSeconds)}</span>
                                                         </div>
@@ -219,6 +226,10 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                             {/* Tier 2 (Ready): Archive metadata box */}
                                             {job.isCompleted && (
                                                 <div className="job-ready-meta-box">
+                                                <div className="meta-item">
+                                                    <span className="lbl">OPERATOR</span>
+                                                    <span className="val highlight-cyan" title={job.createdBy || 'Guest Operator'}>👤 {job.createdBy || 'Guest Operator'}</span>
+                                                </div>
                                                     <div className="meta-item">
                                                         <span className="lbl">ARCHIVE SIZE</span>
                                                         <span className="val highlight-emerald">{formatSize(job.fileSizeBytes)}</span>

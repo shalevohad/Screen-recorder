@@ -437,7 +437,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Services
                 AudioSourceStation = request.AudioSourceStation,
                 CanvasLayout = request.CanvasLayout,
                 CanvasLayoutTimeline = request.CanvasLayoutTimeline,
-                UtcClockPosition = request.UtcClockPosition ?? "top-right"
+                UtcClockPosition = request.UtcClockPosition ?? "top-right",
+                CreatedBy = !string.IsNullOrWhiteSpace(request.CreatedBy) ? request.CreatedBy : "Guest Operator"
             };
 
             _jobs[job.JobId] = job;

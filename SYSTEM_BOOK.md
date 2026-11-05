@@ -2858,4 +2858,28 @@ To enhance operational ergonomics and timeline clarity in the forensic analysis 
 
 ---
 
+### 18. Export Creator Identity Attribution & Tactical Operator CHIP (2026-11-05)
+
+To maintain strict operational accountability and chain-of-custody in air-gapped forensic investigations, all export tasks record and prominently display the initiating user/operator identity:
+
+1. **Operator Identity Retrieval & Fallback**:
+   - operatorStore.js (getCurrentOperatorName): Reads authenticated session context from sessionStorage or localStorage (itb_auth_user), extracting displayName or username.
+   - In unauthenticated or guest sessions, cleanly defaults to "Guest Operator".
+   - On the backend, ASP.NET Core controllers (ExtractorAdvancedController, ExtractorAdvancedJobsController, ExtractorController) inspect the incoming DTO and fall back to User?.Identity?.Name ?? "Guest Operator".
+
+2. **Backend Domain Models, DTOs & SQLite Persistence**:
+   - ExportJobInfo.CreatedBy and AdvanceJobInfo.CreatedBy: Added CreatedBy property (defaulting to "Guest Operator").
+   - AdvanceCutRequestDto.CreatedBy and ExtractionRequestDto.CreatedBy: Transport operator name in REST payloads.
+   - ExtractorDbInitializer and AdvancedExtractorDbInitializer: Created column CreatedBy TEXT DEFAULT 'Guest Operator' in export_jobs and dvance_jobs with automated db.EnsureColumn migrations.
+   - ExportJobRepository and AdvanceJobRepository: Persist and read CreatedBy in SQLite tables with conflict resolution.
+
+3. **Tactical NOC User Chip Rendering (ExportJobMonitor.jsx & .scss)**:
+   - **Header Operator Chip (.operator-chip)**: Rendered directly in .card-header-row .identity-group alongside the status pill:
+     👤 <CreatedBy> with cyan badge styling (ackground: rgba(6, 182, 212, 0.12), order: 1px solid rgba(6, 182, 212, 0.35), color: #38bdf8).
+   - **In-Progress Progress Telemetry**: Added .operator-mini-tag in .progress-bottom-meta .telemetry-tags.
+   - **Completed Archive Metadata Box**: Added OPERATOR grid item displaying 👤 <CreatedBy> with .highlight-cyan contrast.
+   - Applied symmetrically across both Extractor and ExtractorAdvanced plugins.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

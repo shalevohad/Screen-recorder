@@ -108,6 +108,9 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models
 
         [JsonPropertyName("fileName")]
         public string? FileName { get; set; }
+
+        [JsonPropertyName("createdBy")]
+        public string? CreatedBy { get; set; }
     }
 
     /// <summary>

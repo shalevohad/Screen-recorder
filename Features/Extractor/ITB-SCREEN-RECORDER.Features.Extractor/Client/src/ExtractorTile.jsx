@@ -9,6 +9,7 @@ import TimeRangeBar from './components/TimeRangeBar/TimeRangeBar.jsx';
 import StationPool from './components/StationPool/StationPool.jsx';
 import TelemetryBar from './components/TelemetryBar/TelemetryBar.jsx';
 import GapsTable from './components/GapsTable/GapsTable.jsx';
+import { getCurrentOperatorName } from './utils/operatorStore.js';
 
 const epochToInputString = (epochMs, isUtc) => {
     const d = new Date(epochMs);

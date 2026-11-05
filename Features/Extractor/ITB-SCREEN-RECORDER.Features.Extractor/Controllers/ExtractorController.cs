@@ -66,6 +66,11 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Controllers
                 return BadRequest(new { error = "Invalid time range or empty hostnames." });
             }
 
+            if (string.IsNullOrWhiteSpace(request.CreatedBy) && !string.IsNullOrWhiteSpace(User?.Identity?.Name))
+            {
+                request.CreatedBy = User.Identity.Name;
+            }
+
             var job = _jobManager.EnqueueExportJob(request);
             return Accepted(job);
         }

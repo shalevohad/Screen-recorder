@@ -4,6 +4,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
+import { getCurrentOperatorName } from '../../utils/operatorStore.js';
 import TimelineBoard from '../Timeline/TimelineBoard.jsx';
 import TransportBar from '../TransportBar/TransportBar.jsx';
 import StudioVideoFeed from '../Player/StudioVideoFeed.jsx';
@@ -312,6 +313,7 @@ export default function SoloSpotlightModal({
         else resolvedMode = 'BurnIn';
 
         const payload = {
+            createdBy: getCurrentOperatorName(),
             stationIds: [station.id],
             stations: [station.id],
             stationId: station.id,

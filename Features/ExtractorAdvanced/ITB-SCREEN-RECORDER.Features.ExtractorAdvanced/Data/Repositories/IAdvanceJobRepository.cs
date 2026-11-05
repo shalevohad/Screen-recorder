@@ -1,4 +1,4 @@
-﻿namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
+namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Data.Repositories;
 
 using System.Collections.Generic;
 using System.Threading.Tasks;

@@ -41,7 +41,8 @@ export default [
                 AbortController: 'readonly',
                 CustomEvent: 'readonly',
                 ResizeObserver: 'readonly',
-                DOMParser: 'readonly'
+                DOMParser: 'readonly',
+                globalThis: 'readonly'
             },
             parserOptions: {
                 ecmaFeatures: { jsx: true },

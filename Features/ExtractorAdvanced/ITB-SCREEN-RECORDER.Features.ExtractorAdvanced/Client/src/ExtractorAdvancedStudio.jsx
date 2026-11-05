@@ -23,6 +23,7 @@ import { updateKeyframeTransition } from './utils/nleTimelineEngine.js';
 import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache } from './utils/studioSessionStore.js';
 import { initDstEngineAsync, formatDateTimeComponents, dateTimeToEpochMs } from './utils/dstEngine.js';
 import { formatTimelineClock } from './utils/timeFormat.js';
+import { getCurrentOperatorName } from './utils/operatorStore.js';
 
 import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
@@ -1260,6 +1261,7 @@ export default function ExtractorAdvancedStudio() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    createdBy: getCurrentOperatorName(),
                     stationIds: targetStationIds,
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,

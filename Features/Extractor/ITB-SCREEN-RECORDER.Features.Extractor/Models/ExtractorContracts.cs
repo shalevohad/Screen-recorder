@@ -41,6 +41,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         /// Director segments defining display switching schedule across timeline.
         /// </summary>
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
+        public string? CreatedBy { get; set; }
     }
 
     public class ExtractionPreviewResponseDto

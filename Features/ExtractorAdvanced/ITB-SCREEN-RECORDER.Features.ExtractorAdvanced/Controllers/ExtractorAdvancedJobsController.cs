@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // File: Features/ExtractorAdvanced/Controllers/ExtractorAdvancedJobsController.cs
 // ==========================================
 using System;
@@ -36,6 +36,11 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
             if (request.StationIds == null || request.StationIds.Count == 0 || request.OutEpochMs <= request.InEpochMs)
             {
                 return BadRequest(new { error = "Invalid station selection or In/Out time parameters." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.CreatedBy) && !string.IsNullOrWhiteSpace(User?.Identity?.Name))
+            {
+                request.CreatedBy = User.Identity.Name;
             }
 
             var job = _advanceJobManager.EnqueueAdvanceCutJob(request);
