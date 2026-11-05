@@ -1,9 +1,9 @@
 # 📘 ITB-SCREEN-RECORDER — Comprehensive System Book & Developer Architecture Guide
 > **Classification**: Enterprise Air-Gapped Operational Platform  
 > **Target Audience**: Core Developers, Systems Engineers, DevOps & Security Architects  
-> **Last Updated**: 2026-11-03  
-> **Current Version**: v1.0.52  
-> **Governing Rules**: Consult [RULES.md](file:///c:/Devlopers/ITB-SCREEN-RECORDER/RULES.md) for behavioral invariants and strict system constraints.
+> **Last Updated**: 2026-11-05
+> **Current Version**: v1.0.60
+> **Governing Rules**: Consult [RULES.md](./RULES.md) for behavioral invariants and strict system constraints.
 
 ---
 
@@ -70,6 +70,17 @@
 50. [Master Synchronized Canvas Lockstep Playback, Auto-Keyframe Synthesis & Visual Transition Ramp Architecture (2026-11-03)](#50-master-synchronized-canvas-lockstep-playback-auto-keyframe-synthesis--visual-transition-ramp-architecture-2026-11-03)
 51. [Workstation-Level Auto-Director Decoupling & Multi-Monitor Conditional Timeline Visibility (2026-11-03)](#51-workstation-level-auto-director-decoupling--multi-monitor-conditional-timeline-visibility-2026-11-03)
 
+### 🎛️ Part VI: NLE Timeline Engine, Studio Canvas Ergonomics, Forensic Metadata & Real-Time Production Mastering
+52. [Tactical Station Lifecycle, Solo Mode Multi-Display Filmstrips, and Audio Governance Architecture (2026-11-03)](#52-tactical-station-lifecycle-solo-mode-multi-display-filmstrips-and-audio-governance-architecture-2026-11-03)
+53. [Dynamic Mid-Stream Workstation Introduction, NLE Auto-Keyframing & Synchronized Canvas Playback Engine (2026-11-03)](#53-dynamic-mid-stream-workstation-introduction-nle-auto-keyframing--synchronized-canvas-playback-engine-2026-11-03)
+54. [Master Export Video Quality & High-Fidelity CFR Framerate Pipeline (2026-11-03)](#54-master-export-video-quality--high-fidelity-cfr-framerate-pipeline-2026-11-03)
+55. [NLE Timeline Engine Architecture & Automated Critical Verification Test Matrix (2026-11-03)](#55-nle-timeline-engine-architecture--automated-critical-verification-test-matrix-2026-11-03)
+56. [Maximum Canvas Real-Estate Architecture, Paginated Station Accordion with Zero-Scrollbar Guarantee, In/Out Masked Director Coverage & Multi-Track NLE Audio Bus (2026-11-04)](#56-maximum-canvas-real-estate-architecture-paginated-station-accordion-with-zero-scrollbar-guarantee-inout-masked-director-coverage--multi-track-nle-audio-bus-2026-11-04)
+57. [Operational Mission Export Notes & Forensic Triage Metadata Architecture (2026-11-05)](#57-operational-mission-export-notes--forensic-triage-metadata-architecture-2026-11-05)
+58. [Freeform Draggable Canvas UTC Wall Clock & Mathematical FFmpeg Drawtext Mapping Engine (2026-11-05)](#58-freeform-draggable-canvas-utc-wall-clock--mathematical-ffmpeg-drawtext-mapping-engine-2026-11-05)
+59. [Canvas Screen Custom Title Renaming & Video Burn-In Architecture (2026-11-05)](#59-canvas-screen-custom-title-renaming--video-burn-in-architecture-2026-11-05)
+60. [Canvas Placement Active-Edit Temporary Z-Index Elevation & Settle Invariant (2026-11-05)](#60-canvas-placement-active-edit-temporary-z-index-elevation--settle-invariant-2026-11-05)
+
 ---
 
 ## 1. Executive Summary & Operational Mission
@@ -89,37 +100,30 @@
 
 The system uses a distributed client-server topology separating low-level endpoint capture from centralized streaming, indexing, and storage.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              CENTRAL C2 & RECORDING SERVER                             │
-│                                                                                        │
-│  ┌────────────────────────┐    ┌──────────────────────────┐    ┌────────────────────┐  │
-│  │  Tactical C2 Dashboard │    │MediaMTX (v1.15.4 Pinned) │───►│ NetApp Storage UNC │  │
-│  │   (React 18 + Vite)    │    │   RTMP Ingest (:19350)   │    │ (Primary 5m Chunks)│  │
-│  │   Station Grid / HUD   │    │   WebRTC WHEP (:8889)    │    └─────────┬──────────┘  │
-│  └───────────▲────────────┘    │   LL-HLS Stream (:8888)  │              │             │
-│              │                 └─────────────▲────────────┘              │ Failover    │
-│              │ SignalR / HTTPS               │ RTMP Stream (:19350)      ▼ Heartbeat   │
-│              │ Telemetry & C2 Commands       │ (Video + Audio)   ┌──────────────────┐  │
-│              │                               │                   │ Local NVMe Disk  │  │
-│              │                               │                   │ (Local Fallback) │  │
-│              │                               │                   └──────────────────┘  │
-└──────────────┼───────────────────────────────┼─────────────────────────────────────────┘
-               │                               │
-       Internal Operational LAN Subnets (e.g., 10.x.x.x / 172.16.x.x / 192.168.x.x)
-               │                               │
-┌──────────────┴───────────────────────────────┴─────────────────────────────────────────┐
-│                             MANAGED WORKSTATION (Endpoint)                             │
-│                                                                                        │
-│  ┌────────────────────────────────────────┐    ┌────────────────────────────────────┐  │
-│  │ 🛡️ AgentService (Session 0 Service)    │    │ 🎥 AgentWorker (Session 1+ GUI)   │  │
-│  │  • SYSTEM Context                      │    │  • User Context                    │  │
-│  │  • Logon/Logoff Session Watchdog       │    │  • DXGI Desktop Duplication (DDA)  │  │
-│  │  • Spawns Worker via Token Duplication │───►│  • WASAPI Speaker + Mic Dual Mixer │  │
-│  │  • IPC Named Pipe Management           │    │  • Tri-Tier Hardware Encoder (NVENC│  │
-│  │  • Heartbeat to C2 Server              │    │  • Low-Level Keystroke Hook        │  │
-│  └────────────────────────────────────────┘    └────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Server ["CENTRAL C2 & RECORDING SERVER"]
+        Dashboard["Tactical C2 Dashboard & Studio<br/>(React 18 + Vite / Station Grid / HUD)"]
+        MediaMTX["MediaMTX (v1.15.4 Pinned)<br/>• RTMP Ingest (:19350)<br/>• WebRTC WHEP (:8889)<br/>• LL-HLS Stream (:8888)<br/>• API Control (:9997)"]
+        NetApp[("NetApp Storage UNC<br/>(Primary 5m Chunks)")]
+        LocalDisk[("Local NVMe Disk<br/>(Failover Local Fallback)")]
+
+        Dashboard <-->|"SignalR Hub / REST API"| MediaMTX
+        MediaMTX -->|"Chunk Slicing (Rule 1)"| NetApp
+        NetApp -.->|"Heartbeat Timeout Failover (3s)"| LocalDisk
+    end
+
+    subgraph Workstation ["MANAGED WORKSTATION (Endpoint Fleet)"]
+        AgentService["🛡️ AgentService (Session 0)<br/>• NT AUTHORITY\\SYSTEM Context<br/>• Logon/Logoff Watchdog<br/>• Token Duplication Spawner<br/>• Named Pipe IPC Server"]
+        AgentWorker["🎥 AgentWorker (Session 1+ GUI Context)<br/>• DXGI Desktop Duplication (DDA)<br/>• WASAPI Speaker + Mic Dual Mixer<br/>• Tri-Tier Hardware Encoder (NVENC/QSV)<br/>• Low-Level Keystroke Hook"]
+
+        AgentService -->|"Spawns via Token Duplication"| AgentWorker
+        AgentService <-->|"Named Pipe IPC<br/>(\\.\\pipe\\ITB_ScreenRecorder_Ipc_*)"| AgentWorker
+    end
+
+    AgentService <-->|"SignalR / HTTPS (Port 5000/5001)<br/>Telemetry & C2 Commands"| Dashboard
+    AgentWorker -->|"RTMP Stream (:19350)<br/>Multi-Monitor Video + Dual Audio"| MediaMTX
+    MediaMTX -->|"WebRTC WHEP / LL-HLS<br/>Sub-Second Live Video"| Dashboard
 ```
 
 ### Protocol & Port Matrix
@@ -139,11 +143,11 @@ The system uses a distributed client-server topology separating low-level endpoi
 ## 3. Component Matrix & Repository Structure
 
 ```
-c:\Devlopers\ITB-SCREEN-RECORDER\
+ITB-SCREEN-RECORDER/
 ├── ITB-SCREEN-RECORDER.Core\             # Shared domain, contracts, encryption, SQLite DB base
 ├── ITB-SCREEN-RECORDER.Server\           # Central ASP.NET Core 8 Web API, SignalR, MediaMTX supervisor
 │   ├── ClientApp\                        # Tactical C2 Command Dashboard (React 18, Vite, SCSS)
-│   ├── Tools\                            # Bundled MediaMTX v1.15.4 binaries (Win/Linux) and mediamtx.yml
+│   ├── MediaMTX\                         # Bundled MediaMTX v1.15.4 binaries (Win/Linux) and mediamtx.yml (source in Tools\Win)
 │   ├── Controllers\                      # REST API endpoints (Auth, Fleet, Settings, Maintenance)
 │   ├── Hubs\                             # SignalR Realtime Hubs (AgentHub, DashboardHub)
 │   └── Services\                         # Storage failover, chunk scheduler, telemetry monitor
@@ -155,7 +159,7 @@ c:\Devlopers\ITB-SCREEN-RECORDER\
 ├── Tools\
 │   └── ITB-SCREEN-RECORDER.Diagnostics\  # Enterprise forensic log diagnostic & RCA utility
 ├── Installers\                           # WiX Toolset v4 installer definitions (.msi) & Linux packaging
-└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (434 unit, integration, sync & frontend integrity tests)
+└── ITB-SCREEN-RECORDER.Tests\            # Complete test suite (450 .NET solution tests + 68 forensic studio client tests)
 ```
 
 ---
@@ -164,36 +168,57 @@ c:\Devlopers\ITB-SCREEN-RECORDER\
 
 Windows security restricts Windows Services to **Session 0**, which has no access to interactive display surfaces, window messages, or audio endpoints.
 
-```
-Session 0 (Isolated Service Context)            Session 1+ (Interactive User Context)
-┌──────────────────────────────────────┐        ┌──────────────────────────────────────┐
-│ ITB-SCREEN-RECORDER.AgentService     │        │ ITB-SCREEN-RECORDER.AgentWorker      │
-│ (Runs as NT AUTHORITY\SYSTEM)        │        │ (Runs as Logged-in User)             │
-│                                      │        │                                      │
-│ 1. WTSSessionNotification Listener   │        │ • DXGI Desktop Duplication API       │
-│ 2. WTSQueryUserToken(sessionId)      │        │ • WASAPI Audio Loopback Capture      │
-│ 3. DuplicateTokenEx -> PrimaryToken  │        │ • Low-Level Keystroke Hook           │
-│ 4. CreateProcessAsUser(Worker.exe)   │───────►│ • FFmpeg Hardware Video Compression  │
-│                                      │        │                                      │
-│ 5. Named Pipe IPC Server             │◄──────►│ Named Pipe IPC Client                │
-└──────────────────────────────────────┘        └──────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Interactive User (Session 1+)
+    participant WinOS as Windows OS / WTS
+    participant Service as AgentService (Session 0 SYSTEM)
+    participant Worker as AgentWorker (Session 1+ User)
+    participant C2 as Central C2 Server
+
+    User->>WinOS: Logs in / Connects Console Session
+    WinOS->>Service: WTSSessionNotification (WTS_SESSION_LOGON / CONNECT)
+    Note over Service: Detects active interactive session ID
+    Service->>WinOS: WTSQueryUserToken(sessionId)
+    WinOS-->>Service: hUserToken
+    Service->>WinOS: DuplicateTokenEx(hUserToken, TOKEN_ALL_ACCESS, SecurityIdentification, TokenPrimary)
+    WinOS-->>Service: hPrimaryToken
+    Service->>WinOS: CreateEnvironmentBlock(hPrimaryToken)
+    Service->>WinOS: CreateProcessAsUser(hPrimaryToken, "ITB-SCREEN-RECORDER.AgentWorker.exe")
+    WinOS->>Worker: Spawns Worker on WinSta0\Default (Session 1+)
+    
+    par IPC Handshake
+        Worker->>Service: Connect Named Pipe (\\.\\pipe\\ITB_ScreenRecorder_Ipc_{SessionId})
+        Service-->>Worker: IPC Acknowledgment & Configuration Handshake
+    and Capture Pipeline Spin-up
+        Worker->>Worker: Init DXGI Desktop Duplication (DDA)
+        Worker->>Worker: Init WASAPI Speaker Loopback + Mic Mixer
+        Worker->>Worker: Probe GPU Hardware Encoder (NVENC -> QSV -> libx264)
+    end
+
+    loop Real-Time Ingest & Health Supervision
+        Worker->>Service: IPC Heartbeat & Performance Telemetry
+        Service->>C2: SignalR Station Heartbeat, Metrics & Status
+        Worker->>C2: RTMP Streaming (Video mon-0/1, AAC Audio) to MediaMTX (:19350)
+    end
 ```
 
 ### Key Implementation Details:
 1. **Interactive Process Spawning**:
-   - Implemented in [`InteractiveProcessLauncher.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentService/Infrastructure/InteractiveProcessLauncher.cs).
+   - Implemented in [`InteractiveProcessLauncher.cs`](./ITB-SCREEN-RECORDER.AgentService/Infrastructure/InteractiveProcessLauncher.cs).
    - Listens for session changes via `WTSSessionNotification` (`WTS_CONSOLE_CONNECT`, `WTS_SESSION_LOGON`).
    - Obtains the logged-in user token via Win32 `WTSQueryUserToken`, duplicates it with `DuplicateTokenEx` (`TOKEN_ALL_ACCESS`), sets the environment block, and calls `CreateProcessAsUser` to spawn `ITB-SCREEN-RECORDER.AgentWorker.exe` directly on `WinSta0\Default`.
 2. **Local IPC via Named Pipes**:
-   - Implemented in [`IpcServerFactory.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Core/Ipc/IpcServerFactory.cs).
+   - Implemented in [`IpcServerFactory.cs`](./ITB-SCREEN-RECORDER.Core/Ipc/IpcServerFactory.cs).
    - Pipe name: `\\.\pipe\ITB_ScreenRecorder_Ipc_{SessionId}`.
    - Named pipe security ACLs are explicitly configured with `PipeSecurity` so that the worker (running under non-elevated user credentials) can exchange heartbeats, telemetry, and control commands with the service.
 3. **Serialized Channel-Based Single-Writer Pattern**:
-   - In [`AgentSupervisorService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentService/AgentSupervisorService.cs), duplex NamedPipe writes are decoupled from callers via a bounded `Channel<string> _workerCommandChannel`.
+   - In [`AgentSupervisorService.cs`](./ITB-SCREEN-RECORDER.AgentService/AgentSupervisorService.cs), duplex NamedPipe writes are decoupled from callers via a bounded `Channel<string> _workerCommandChannel`.
    - A dedicated single-writer background task drains this channel sequentially, strictly guaranteeing that concurrent `WriteLineAsync` calls (such as simultaneous telemetry acknowledgments and C2 `Start`/`SetRecording` commands) never collide on the underlying stream. This eliminates `InvalidOperationException: The stream is currently in use by a previous operation on the stream`.
 4. **Silent Background Worker Execution (Zero Window Flashing & Focus Stealing)**:
    - `ITB-SCREEN-RECORDER.AgentWorker` is compiled with `<OutputType>WinExe</OutputType>` on Windows, marking its PE subsystem as `IMAGE_SUBSYSTEM_WINDOWS_GUI` to prevent the Windows kernel from attaching a default console window.
-   - When spawned into Session 1 by [`InteractiveProcessLauncher.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentService/Infrastructure/InteractiveProcessLauncher.cs), `CreateProcessAsUserW` sets `STARTF_USESHOWWINDOW` with `SW_HIDE` in `STARTUPINFO` and combines `CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW` in creation flags.
+   - When spawned into Session 1 by [`InteractiveProcessLauncher.cs`](./ITB-SCREEN-RECORDER.AgentService/Infrastructure/InteractiveProcessLauncher.cs), `CreateProcessAsUserW` sets `STARTF_USESHOWWINDOW` with `SW_HIDE` in `STARTUPINFO` and combines `CREATE_UNICODE_ENVIRONMENT | CREATE_NO_WINDOW` in creation flags.
    - This ensures 100% silent background execution: the workstation user never sees a black console window popping up or stealing desktop focus during process launch, watchdog recovery, or workstation login.
 
 ---
@@ -203,50 +228,61 @@ Session 0 (Isolated Service Context)            Session 1+ (Interactive User Con
 The media ingestion engine in `ITB-SCREEN-RECORDER.AgentWorker` is optimized for zero CPU impact and zero packet loss.
 
 ### 1. Screen Capture Engine & Resilience
-- **Windows Capture Pipeline**: Implemented via [`ResilientScreenCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/ResilientScreenCapture.cs), pairing high-performance DXGI Desktop Duplication with fallback GDI capture.
-  - **DXGI DDA ([`DxgiScreenCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiScreenCapture.cs))**: Grabs GPU surfaces directly in VRAM with zero-copy whenever possible. Supports multi-adapter topologies (`AdapterIndex`, `OutputIndex`).
+- **Windows Capture Pipeline**: Implemented via [`ResilientScreenCapture.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/ResilientScreenCapture.cs), pairing high-performance DXGI Desktop Duplication with fallback GDI capture.
+  - **DXGI DDA ([`DxgiScreenCapture.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiScreenCapture.cs))**: Grabs GPU surfaces directly in VRAM with zero-copy whenever possible. Supports multi-adapter topologies (`AdapterIndex`, `OutputIndex`).
   - **Static Screen Frame Retention**: When Windows desktop is idle/static, DXGI returns `WaitTimeout`. The capture engine retains and yields the previously captured frame buffer (`_hasCapturedFrame`), preventing video pipelines from emitting empty/black buffers.
   - **Initial Startup Snapshot**: On initialization, `DxgiScreenCapture` immediately takes a 1-shot GDI snapshot to seed `_frameBuffer`. This guarantees frame 0 is never pitch black (zero bytes).
-  - **Multi-Monitor GDI Fallback ([`GdiScreenCapture.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/GdiScreenCapture.cs))**: Accepts discrete `(x, y, width, height)` coordinates, enabling accurate BitBlt capture across extended, stacked, or negative-offset secondary monitors when DXGI duplication is unavailable.
+  - **Multi-Monitor GDI Fallback ([`GdiScreenCapture.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/GdiScreenCapture.cs))**: Accepts discrete `(x, y, width, height)` coordinates, enabling accurate BitBlt capture across extended, stacked, or negative-offset secondary monitors when DXGI duplication is unavailable.
 - **Linux**: Uses **X11 / XSHM** or **PipeWire** portal interfaces for headless or modern display servers.
 
 ### 2. Audio Capture & Intercom Mixer
-- Implemented via [`AudioCaptureFactory.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/AudioCaptureFactory.cs) and [`WasapiDualMixer.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/WasapiDualMixer.cs) (Windows) / [`LinuxPulseAudioMixer.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/LinuxPulseAudioMixer.cs) (Linux).
+- Implemented via [`AudioCaptureFactory.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/AudioCaptureFactory.cs) and [`WasapiDualMixer.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/WasapiDualMixer.cs) (Windows) / [`LinuxPulseAudioMixer.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/LinuxPulseAudioMixer.cs) (Linux).
 - Captures two discrete audio streams:
   1. **Speaker Output**: System desktop audio loopback (`eRender` endpoint in loopback mode).
   2. **Microphone Input**: Operator headset/microphone intercom (`eCapture` endpoint).
-- Employs discrete dual-channel architecture (Channel 0: Desktop loopback, Channel 1: Headset intercom) eliminating delayed intercom echo (detailed in Section 22), with dynamic fallback to [`SilentAudioProvider.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/SilentAudioProvider.cs) when hardware endpoints are absent.
+- Employs discrete dual-channel architecture (Channel 0: Desktop loopback, Channel 1: Headset intercom) eliminating delayed intercom echo (detailed in Section 22), with dynamic fallback to [`SilentAudioProvider.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Audio/SilentAudioProvider.cs) when hardware endpoints are absent.
 
 > [!IMPORTANT]
 > **Audio Codec Invariant for RTMP Ingest**: When muxing live feeds into -f flv for MediaMTX RTMP/RTMPS ingest, audio **must** be encoded using -c:a aac (MPEG-4 Audio). Formats such as libopus are unsupported by the FLV container specification; attempting to use libopus with -f flv causes native FFmpeg initialization failure (exit code -22: Invalid argument).
 
 ### 3. Tri-Tier Hardware Encoder Selection
-Implemented in [`HardwareProbe.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Core/Diagnostics/HardwareProbe.cs):
+Implemented in [`HardwareProbe.cs`](./ITB-SCREEN-RECORDER.Core/Diagnostics/HardwareProbe.cs):
 The encoder selection evaluates capabilities in strict sequence:
 
-```
-┌────────────────────────┐      Available?
-│ 1. NVIDIA NVENC        │ ────────────────────► h264_nvenc (preset: p2, tune: ll, forced-idr: 1)
-└───────────┬────────────┘
-            │ No
-            ▼
-┌────────────────────────┐      Available?
-│ 2. Intel QuickSync     │ ────────────────────► h264_qsv (preset: veryfast, low_power: 1)
-└───────────┬────────────┘
-            │ No
-            ▼
-┌────────────────────────┐
-│ 3. CPU Software        │ ────────────────────► libx264 (preset: ultrafast, tune: zerolatency)
-└────────────────────────┘
+```mermaid
+flowchart TD
+    Start(["Initialize Hardware Probe (HardwareProbe.cs)"]) --> CheckNVENC{"Is NVIDIA NVENC<br/>Available?"}
+    
+    CheckNVENC -- "Yes (NVIDIA GPU Detected)" --> UseNVENC["Tier 1: h264_nvenc<br/>• Preset: p2<br/>• Tune: ll (Low Latency)<br/>• forced-idr: 1<br/>• Overhead: <1% CPU"]
+    CheckNVENC -- "No" --> CheckQSV{"Is Intel QuickSync (QSV)<br/>Available?"}
+    
+    CheckQSV -- "Yes (Intel iGPU / Arc)" --> UseQSV["Tier 2: h264_qsv<br/>• Preset: veryfast<br/>• low_power: 1<br/>• Hardware MFX Pipeline"]
+    CheckQSV -- "No" --> FallbackCPU["Tier 3: libx264 (CPU Fallback)<br/>• Preset: ultrafast<br/>• Tune: zerolatency<br/>• Software Transcoding"]
+    
+    UseNVENC --> CacheResult(["Cache Probe Result for Process Lifetime"])
+    UseQSV --> CacheResult
+    FallbackCPU --> CacheResult
+    
+    classDef hw fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
+    classDef qsv fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef sw fill:#78350f,stroke:#f59e0b,stroke-width:2px,color:#fff;
+    classDef decision fill:#0f172a,stroke:#06b6d4,stroke-width:2px,color:#fff;
+    classDef endpoint fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#fff;
+
+    class UseNVENC hw;
+    class UseQSV qsv;
+    class FallbackCPU sw;
+    class CheckNVENC,CheckQSV decision;
+    class Start,CacheResult endpoint;
 ```
 
 > [!IMPORTANT]
 > **Probe Result Caching**: `HardwareProbe` results are cached for the entire process lifetime. Hardware probes are never re-executed during active streaming to prevent pipeline stutter.
 
 ### 4. MediaMTX Streaming Server (CRITICAL VERSION PIN)
-- **Pinned Version**: **MediaMTX v1.15.4** ([`mediamtx.exe`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Tools/Win/mediamtx.exe)).
+- **Pinned Version**: **MediaMTX v1.15.4** ([`mediamtx.exe`](./ITB-SCREEN-RECORDER.Server/Tools/Win/mediamtx.exe)).
 - **Why It Is Pinned**: In MediaMTX v1.15.5+, an internal `ntpDriftTolerance` check was introduced in the fMP4 recorder that force-splits chunks if clock jitter occurs. Under real-time workstation encoding, this causes chunks to split every 15–20 seconds instead of adhering to the 5-minute wall-clock rule. **Do not upgrade MediaMTX.**
-- **Port Invariant**: MediaMTX RTMP port is hardcoded to `19350` in [`mediamtx.yml`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Tools/mediamtx.yml).
+- **Port Invariant**: MediaMTX RTMP port is hardcoded to `19350` in [`mediamtx.yml`](./ITB-SCREEN-RECORDER.Server/Tools/mediamtx.yml).
 
 ---
 
@@ -255,17 +291,35 @@ The encoder selection evaluates capabilities in strict sequence:
 ### 1. Wall-Clock Aligned Chunking (Rule 1)
 Recordings are sliced into deterministic intervals aligned to the wall clock (multiples of `Storage.ChunkIntervalMinutes`, default 5 min).
 
-```
-Timeline: 15:12 (Start) ───────► 15:15 ────────────────► 15:20 ────────────────► 15:25
-          [ Short Chunk 3m ]      [ Regular Chunk 5m ]    [ Regular Chunk 5m ]
+```mermaid
+flowchart LR
+    subgraph S1 ["15:12 UTC (Agent Start)"]
+        A["Workstation Stream Commences"]
+    end
+    subgraph S2 ["15:15:00 UTC (First Boundary)"]
+        B["Short Chunk: 3 Minutes<br/>(Boundary Alignment Truncation)"]
+    end
+    subgraph S3 ["15:20:00 UTC (Wall-Clock Boundary)"]
+        C["Full Chunk: 5 Minutes<br/>(Deterministic Alignment)"]
+    end
+    subgraph S4 ["15:25:00 UTC (Wall-Clock Boundary)"]
+        D["Full Chunk: 5 Minutes<br/>(Deterministic Alignment)"]
+    end
+
+    A -->|"RotatePathRecordingAsync (record: false -> true)"| B
+    B -->|"Scheduled Boundary Rotation"| C
+    C -->|"Scheduled Boundary Rotation"| D
+
+    classDef chunk fill:#0f172a,stroke:#06b6d4,stroke-width:2px,color:#fff;
+    class A,B,C,D chunk;
 ```
 
-- **Scheduler**: [`RecordingChunkScheduler.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Services/RecordingChunkScheduler.cs) calculates `ComputeNextBoundaryUtc()` using pure UTC clock division, eliminating drift.
+- **Scheduler**: [`RecordingChunkScheduler.cs`](./ITB-SCREEN-RECORDER.Server/Services/RecordingChunkScheduler.cs) calculates `ComputeNextBoundaryUtc()` using pure UTC clock division, eliminating drift.
 - **Trigger**: At the exact boundary, it executes `RotatePathRecordingAsync` against MediaMTX Control API (`record: false -> true`), cleanly finalizing the current MP4 segment and initiating a new segment without dropping frames.
 - **Timestamp Format**: MediaMTX uses `%Y-%m-%d_%H-%M-%S-%f` timestamp patterns reflecting exact segment start times.
 
 ### 2. Dual-Path Storage Failover (Rule 2)
-- Implemented in [`StoragePathResolver.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Services/StoragePathResolver.cs).
+- Implemented in [`StoragePathResolver.cs`](./ITB-SCREEN-RECORDER.Server/Services/StoragePathResolver.cs).
 - **Primary Storage**: NetApp UNC path (`Storage.NetAppUncPath`).
 - **Heartbeat Probe**: Probed every chunk tick with a strict 3-second timeout (`Directory.Exists`).
 - **Fallback**: If NetApp is unreachable, traffic seamlessly shifts to `Storage.LocalFallbackPath` (`C:\ProgramData\ITB-SCREEN-RECORDER\Recordings`). When NetApp recovers, the scheduler returns to primary storage on the subsequent chunk boundary.
@@ -284,24 +338,24 @@ FFmpeg probes on hot files must include:
 
 ### 1. Multi-Monitor Stream Mapping & WHEP Proxy Routing (Rule 11)
 - Each display is captured on its native GPU adapter via DXGI DDA (Windows) or XRandR/PipeWire (Linux). Zero cross-GPU PCIe bus transfers.
-- **Deterministic Display Index Sorting ([`DxgiDisplayEnumerator.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiDisplayEnumerator.cs))**: Enumerated displays are sorted so that the physical Windows primary display (virtual coordinates `X=0, Y=0`) is deterministically indexed as `mon-0`, ensuring it is always the initial audio carrier, while secondary displays are sequentially assigned `mon-1`, `mon-2`, etc.
+- **Deterministic Display Index Sorting ([`DxgiDisplayEnumerator.cs`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Video/DxgiDisplayEnumerator.cs))**: Enumerated displays are sorted so that the physical Windows primary display (virtual coordinates `X=0, Y=0`) is deterministically indexed as `mon-0`, ensuring it is always the initial audio carrier, while secondary displays are sequentially assigned `mon-1`, `mon-2`, etc.
 - Stream paths:
   - Primary Display + Audio: `live/{hostname}/mon-0`
   - Secondary Displays (Video only): `live/{hostname}/mon-1`, `live/{hostname}/mon-2`, etc.
   - Legacy Single-Monitor Path: `live/{hostname}`
-- **WHEP Reverse Proxy & Stream Path Fallback ([`WhepProxyController.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs))**:
+- **WHEP Reverse Proxy & Stream Path Fallback ([`WhepProxyController.cs`](./ITB-SCREEN-RECORDER.Server/Controllers/WhepProxyController.cs))**:
   - Exposes an air-gapped reverse proxy endpoint `/api/v1/whep/{*streamPath}` routing WebRTC SDP exchanges to MediaMTX.
   - Automatically handles stream path aliases: if a client requests `live/{hostname}/mon-0` and MediaMTX returns 404 (e.g. older single-monitor agent streaming to root), it seamlessly falls back to `live/{hostname}`. Conversely, if `live/{hostname}` returns 404, it queries `live/{hostname}/mon-0`.
   - Air-Gapped WebRTC configuration: Client players connect via `/api/v1/whep` with empty ICE server lists (`iceServers: []`), eliminating external STUN lookups and cross-origin localhost connection failures.
 - **Dynamic Hot-Plug, Audio Carrier Failover & Anti-Flipflop Governor (Rule 11)**:
   - Display connect/disconnect events spawn or cleanly terminate individual display pipelines without interrupting active recording on surviving displays.
-  - **Immediate Failover on Carrier Disconnect**: If the primary monitor carrying audio (`mon-0`) disconnects during streaming, [`MultiDisplayPipelineManager`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Engine/MultiDisplayPipelineManager.cs) detects that the audio carrier is lost, promotes the first surviving display (e.g. `mon-1`) to become the active Primary Audio Carrier, and re-engages its pipeline with `audioChannels: 2`. The dynamic audio writer and [`AudioPacer`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Engine/AudioPacer.cs) immediately route live audio packets to the promoted carrier within <800ms, ensuring zero loss of sound during recording.
+  - **Immediate Failover on Carrier Disconnect**: If the primary monitor carrying audio (`mon-0`) disconnects during streaming, [`MultiDisplayPipelineManager`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/MultiDisplayPipelineManager.cs) detects that the audio carrier is lost, promotes the first surviving display (e.g. `mon-1`) to become the active Primary Audio Carrier, and re-engages its pipeline with `audioChannels: 2`. The dynamic audio writer and [`AudioPacer`](./ITB-SCREEN-RECORDER.AgentWorker/Engine/AudioPacer.cs) immediately route live audio packets to the promoted carrier within <800ms, ensuring zero loss of sound during recording.
   - **Anti-Flipflop 60s Stabilization Buffer on Reconnect**: When `mon-0` reconnects or flaps (loose HDMI/DP cable, graphics driver reset), it engages video capture immediately (`audioChannels: 0`) so the workstation's display recording is complete without delay. However, to prevent stream thrashing and audible glitches, audio remains on the surviving carrier (`mon-1`) until `mon-0` has been continuously, stably present for **a full 60 seconds** (`AudioCarrierHysteresisSeconds`).
   - **Flap Abort Resilience**: If `mon-0` disconnects at any point before the 60-second window completes, the stabilization timer aborts and resets to `null`, while the surviving carrier continues streaming audio uninterrupted.
   - **Graceful Handover**: After 60 seconds of uninterrupted stability, the governor smoothly promotes `mon-0` to `audioChannels: 2` and demotes `mon-1` to video-only (`audioChannels: 0`), triggering `AudioCarrierChanged`.
   - **System-Wide Audio Awareness**:
-    - [`StationDisplayTopologyDto.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Core/Contracts/Topology/StationDisplayTopologyDto.cs) carries `AudioCarrierDisplayId` (e.g. `"mon-0"` or `"mon-1"`) and per-display `HasAudio` booleans.
-    - [`RecordingChunkScheduler.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Services/RecordingChunkScheduler.cs) inspects `display.HasAudio` and `agent.DisplayTopology.AudioCarrierDisplayId` dynamically rather than hardcoding `mon-0`, ensuring recording chunk metadata accurately reflects the actual audio stream.
+    - [`StationDisplayTopologyDto.cs`](./ITB-SCREEN-RECORDER.Core/Contracts/Topology/StationDisplayTopologyDto.cs) carries `AudioCarrierDisplayId` (e.g. `"mon-0"` or `"mon-1"`) and per-display `HasAudio` booleans.
+    - [`RecordingChunkScheduler.cs`](./ITB-SCREEN-RECORDER.Server/Services/RecordingChunkScheduler.cs) inspects `display.HasAudio` and `agent.DisplayTopology.AudioCarrierDisplayId` dynamically rather than hardcoding `mon-0`, ensuring recording chunk metadata accurately reflects the actual audio stream.
 
 ### 2. Frontend Topology Display, Audio Solo & Overlap Prevention (Rule 12)
 - **Virtual Desktop Canvas**: Real-time monitor positioning according to physical OS virtual desktop bounds $(X, Y, W, H)$.
@@ -322,9 +376,9 @@ FFmpeg probes on hot files must include:
 ## 8. Multicam Forensic Extraction & Gap Interpolation
 
 ### 1. Synchronized Multicam Track Cutting (Rule 9)
-Handled by [`SynchronizedTrackCutter.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/SynchronizedTrackCutter.cs):
+Handled by [`SynchronizedTrackCutter.cs`](./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/SynchronizedTrackCutter.cs):
 - Trims global idle gaps across all stations equally.
-- For station-specific internal dropouts, injects a synthetic 5-second "No Signal" test pattern ([`NoSignalPatternService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/NoSignalPatternService.cs)) sliced to millisecond precision via `ffconcat`. All exported tracks maintain exact timeline alignment.
+- For station-specific internal dropouts, injects a synthetic 5-second "No Signal" test pattern ([`NoSignalPatternService.cs`](./Features/Extractor/ITB-SCREEN-RECORDER.Features.Extractor/Services/Engine/NoSignalPatternService.cs)) sliced to millisecond precision via `ffconcat`. All exported tracks maintain exact timeline alignment.
 
 ### 2. Activity Focus & Dynamic Transitions (Rule 13)
 - Evaluates mouse and keyboard activity to generate an intelligent director cut.
@@ -333,12 +387,12 @@ Handled by [`SynchronizedTrackCutter.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORD
 
 ### 3. Keystroke Telemetry Sync, Ingestion Latency Calibration & Timeline Ruler
 - **Ingestion Pipeline Latency Compensation (`KEYSTROKE_CALIBRATION_OFFSET_MS = 2500`)**:
-  - Endpoint keyboard events captured by low-level hooks ([`WindowsKeyboardCaptureProvider`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.AgentWorker/Providers/Keyboard/WindowsKeyboardCaptureProvider.cs)) are timestamped at the physical keypress instant.
+  - Endpoint keyboard events captured by low-level hooks ([`WindowsKeyboardCaptureProvider`](./ITB-SCREEN-RECORDER.AgentWorker/Providers/Keyboard/WindowsKeyboardCaptureProvider.cs)) are timestamped at the physical keypress instant.
   - Video frames captured by DXGI undergo hardware encoding, RTMP packetization, and MediaMTX storage chunk writing, introducing an end-to-end ingestion latency of ~2.5s before chunks are indexed on disk.
-  - Studio video playback overlays ([`KeystrokePlaybackOverlay.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Player/KeystrokePlaybackOverlay.jsx)) and timeline ruler tick markers ([`TimelineKeystrokes.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx)) apply `KEYSTROKE_CALIBRATION_OFFSET_MS` (+2500ms) to ensure tactical keycaps and ruler ticks match the exact visual moment in the video.
+  - Studio video playback overlays ([`KeystrokePlaybackOverlay.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Player/KeystrokePlaybackOverlay.jsx)) and timeline ruler tick markers ([`TimelineKeystrokes.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineKeystrokes.jsx)) apply `KEYSTROKE_CALIBRATION_OFFSET_MS` (+2500ms) to ensure tactical keycaps and ruler ticks match the exact visual moment in the video.
 - **Physical Hostname & Role Alias Invariant**:
-  - Keystroke queries in [`ExtractorAdvancedController.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs) automatically resolve station role aliases (e.g. `AWS Commander` ➔ `PROJECT-LAPTOP`) against `_stationRoleProvider`, ensuring database queries never return empty results when queried by operational alias.
-  - [`TimelineBoard.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx) and [`TimelineRuler.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineRuler.jsx) forward physical `stationHostname` alongside active display names and pass `keystrokes` down the component tree to guarantee reliable tick mark rendering when `+ RULER TICKS: ON` is active.
+  - Keystroke queries in [`ExtractorAdvancedController.cs`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Controllers/ExtractorAdvancedController.cs) automatically resolve station role aliases (e.g. `AWS Commander` ➔ `PROJECT-LAPTOP`) against `_stationRoleProvider`, ensuring database queries never return empty results when queried by operational alias.
+  - [`TimelineBoard.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/TimelineBoard.jsx) and [`TimelineRuler.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/header/TimelineRuler.jsx) forward physical `stationHostname` alongside active display names and pass `keystrokes` down the component tree to guarantee reliable tick mark rendering when `+ RULER TICKS: ON` is active.
 
 ---
 
@@ -361,28 +415,28 @@ Handled by [`SynchronizedTrackCutter.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORD
 ### 3. Fleet Station Identity & Operational Role Aliases (Uniqueness & Multi-View Rendering)
 - **Operational Purpose**: Maps physical endpoint hostnames (e.g. `PROJECT-LAPTOP`) to human-readable operational system names (e.g. `AWS Commander`).
 - **Strict Case-Insensitive Uniqueness (1-to-1 Mapping)**:
-  - **Backend Validation ([`StationRolesService.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Services/StationRolesService.cs))**: `SetRoleAliasAsync` and `ApplyMappingAsync` validate that no two stations share the same role alias (`StringComparison.OrdinalIgnoreCase`). Duplicate aliases are rejected with HTTP 400 Bad Request.
+  - **Backend Validation ([`StationRolesService.cs`](./ITB-SCREEN-RECORDER.Server/Services/StationRolesService.cs))**: `SetRoleAliasAsync` and `ApplyMappingAsync` validate that no two stations share the same role alias (`StringComparison.OrdinalIgnoreCase`). Duplicate aliases are rejected with HTTP 400 Bad Request.
   - **Comprehensive Fleet CSV Export & Default Alias Fallback**: `ExportMappingCsvAsync` aggregates all workstations known to the system (from SQLite `station_nodes`, `recording_chunks`, `station_overrides`, and active telemetry agents via `ITelemetryStateService`). Stations without an assigned alias are exported as `Default`. During CSV upload/import, `Default` (case-insensitive) is automatically normalized to `null` (unassigned), completely avoiding false collision conflicts across unaliased fleet endpoints.
   - **CSV Bulk Import & Collision Prevention**: `PreviewCsvMappingAsync` inspects batch mappings against both existing SQLite records and internal CSV rows, flagging colliding stations (`conflictWith`) and disabling the "Apply Mappings to Fleet" action until collisions are resolved.
   - **Live Client-Side Collision Guard**: `StationsRolesTab.jsx` detects duplicate alias inputs in real-time, displaying a collision warning and disabling the Save button.
   - **Atomic Cross-Swap (הצלבת שמות עמדות)**:
     - Allows operators to exchange operational names between two workstations in a single atomic action (`POST /api/v1/stations/roles/swap`).
-    - Handled in [`CatalogRepository.cs`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/Data/Repositories/CatalogRepository.cs) within an atomic SQLite transaction, circumventing unique constraint collisions without requiring temporary placeholder renames.
+    - Handled in [`CatalogRepository.cs`](./ITB-SCREEN-RECORDER.Server/Data/Repositories/CatalogRepository.cs) within an atomic SQLite transaction, circumventing unique constraint collisions without requiring temporary placeholder renames.
     - Interactive UI modal in `StationsRolesTab.jsx` provides two-station selection, swap inversion toggle (`⇄`), live outcome preview, and one-click execution accessible from either the tab toolbar or per-station row actions.
 - **End-to-End System-Wide Representation**:
   - **Tactical C2 Dashboard**:
-    - Station Cards ([`StationThumbnail.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/StationThumbnail.jsx)): Header displays the operational alias as primary title with a small physical hostname badge (`.station-host-badge`).
-    - Inspection Drawer ([`StationInspectorDrawer.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/StationInspectorDrawer.jsx)): Primary title shows operational alias alongside `HOST: {hostname}` pill badge.
-    - Master Audio Dock ([`MasterAudioDock.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/MasterAudioDock.jsx)): Displays operational alias next to live VU meters.
-    - Dense Fleet View ([`StationsDenseView.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Dashboard/StationsDenseView.jsx)): Renders primary operational title with physical host in brackets.
-    - Search & Sorting ([`useDashboardLogic.js`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Dashboard/useDashboardLogic.js)): Fleet search query matches physical hostname, IP, and operational alias; sorting prioritizes operational alias.
-  - **Forensic Studio & Replay ([`ExtractorAdvanced`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced)):
-    - Integrated across backend and frontend via [`IStationRoleProvider`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Core/Contracts/Network/StationRoleContracts.cs).
-    - Multicam Timeline ([`TimelineTrack.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/tracks/TimelineTrack.jsx)): Displays operational alias in track headers with physical host sublabel.
-    - Card Grid & Video Viewport ([`CameraCard.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Viewport/views/Card/CameraCard.jsx)): Renders operational title with physical machine badge.
-    - Cinema Inspection ([`SoloSpotlightModal.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Modals/SoloSpotlightModal.jsx)): Top brand pill displays operational name and physical machine badge.
-    - Station Drawer & Replay Hub ([`StationDrawerRow.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/StationDrawer/views/Drawer/StationDrawerRow.jsx), [`StationHubCard.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/StationDrawer/views/Hub/StationHubCard.jsx), [`StationHubTableRow.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/StationDrawer/views/Hub/StationHubTableRow.jsx)): Displays operational alias with physical host badge/sublabel.
-    - Station Context Menu ([`StationContextMenu.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Modals/StationContextMenu.jsx)): Header shows operational alias with `HOST: {hostname}` in subtext.
+    - Station Cards ([`StationThumbnail.jsx`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/StationThumbnail.jsx)): Header displays the operational alias as primary title with a small physical hostname badge (`.station-host-badge`).
+    - Inspection Drawer ([`StationInspectorDrawer.jsx`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/StationInspectorDrawer.jsx)): Primary title shows operational alias alongside `HOST: {hostname}` pill badge.
+    - Master Audio Dock ([`MasterAudioDock.jsx`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/MasterAudioDock.jsx)): Displays operational alias next to live VU meters.
+    - Dense Fleet View ([`StationsDenseView.jsx`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Dashboard/StationsDenseView.jsx)): Renders primary operational title with physical host in brackets.
+    - Search & Sorting ([`useDashboardLogic.js`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Dashboard/useDashboardLogic.js)): Fleet search query matches physical hostname, IP, and operational alias; sorting prioritizes operational alias.
+  - **Forensic Studio & Replay ([`ExtractorAdvanced`](./Features/ExtractorAdvanced)):
+    - Integrated across backend and frontend via [`IStationRoleProvider`](./ITB-SCREEN-RECORDER.Core/Contracts/Network/StationRoleContracts.cs).
+    - Multicam Timeline ([`TimelineTrack.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Timeline/tracks/TimelineTrack.jsx)): Displays operational alias in track headers with physical host sublabel.
+    - Card Grid & Video Viewport ([`CameraCard.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Viewport/views/Card/CameraCard.jsx)): Renders operational title with physical machine badge.
+    - Cinema Inspection ([`SoloSpotlightModal.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Modals/SoloSpotlightModal.jsx)): Top brand pill displays operational name and physical machine badge.
+    - Station Drawer & Replay Hub ([`StationDrawerRow.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/StationDrawer/views/Drawer/StationDrawerRow.jsx), [`StationHubCard.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/StationDrawer/views/Hub/StationHubCard.jsx), [`StationHubTableRow.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/StationDrawer/views/Hub/StationHubTableRow.jsx)): Displays operational alias with physical host badge/sublabel.
+    - Station Context Menu ([`StationContextMenu.jsx`](./Features/ExtractorAdvanced/ITB-SCREEN-RECORDER.Features.ExtractorAdvanced/Client/src/components/Modals/StationContextMenu.jsx)): Header shows operational alias with `HOST: {hostname}` in subtext.
 
 ---
 
@@ -397,7 +451,7 @@ Built on **React 18 + Vite + SCSS**:
 - **Continuous Quality & Linting**: ESLint and unit test validation (`npm run lint`, `npm test`) are strictly integrated into MSBuild (`CompileFrontend` in `ITB-SCREEN-RECORDER.Server.csproj`) and GitHub Actions CI (`frontend-lint.yml`, `node.js.yml`), preventing unlinted code from compiling or merging.
 
 ### 1. Station Inspection Drawer & Verified Operations Protocol
-The station inspector drawer ([`StationInspectorDrawer.jsx`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/StationInspectorDrawer.jsx)) serves as the primary tactical C2 hub for individual endpoints. All operations presented to the operator strictly represent verified, functional capabilities without phantom buttons or placeholder stubs:
+The station inspector drawer ([`StationInspectorDrawer.jsx`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/components/Station/StationInspectorDrawer.jsx)) serves as the primary tactical C2 hub for individual endpoints. All operations presented to the operator strictly represent verified, functional capabilities without phantom buttons or placeholder stubs:
 - **Stream Lifecycle Control**:
   - `START RECORDING STREAM` / `STOP STREAM` directly invokes the agent control pipeline (`/api/agents/{hostname}/start` / `stop`).
   - Stopping an active stream requires explicit two-step confirmation with a 4-second safety timeout to avoid accidental interruption of operational recordings.
@@ -406,10 +460,10 @@ The station inspector drawer ([`StationInspectorDrawer.jsx`](file:///c:/Devloper
 - **Extract Recording Clip**:
   - Activates the forensic clip slicer engine (`extractor-slicer`) focused on the target station for instant synchronized timeline extraction.
 - **Radio Audio Intercom (Solo Sink)**:
-  - Connects directly to [`AudioSoloContext`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/context/AudioSoloContext.jsx) implementing Rule 12's single-station solo audio invariant.
+  - Connects directly to [`AudioSoloContext`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/context/AudioSoloContext.jsx) implementing Rule 12's single-station solo audio invariant.
   - Dynamically indicates live listening status (`LISTEN LIVE` / `MUTE AUDIO`) with live visual cues when routed to the operator's headset.
 - **Recording Alert Snooze**:
-  - Integrated with [`useAlertSnooze`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/ITB-SCREEN-RECORDER.Server/ClientApp/src/hooks/useAlertSnooze.js).
+  - Integrated with [`useAlertSnooze`](./ITB-SCREEN-RECORDER.Server/ClientApp/src/hooks/useAlertSnooze.js).
   - Allows operators to postpone offline or unrecorded alerts for 30 minutes or 1 hour, or immediately resume alerts with live remaining countdowns.
 
 ---
@@ -474,7 +528,7 @@ Covered by `FrontendBundleIntegrityTests.cs` inside `ITB-SCREEN-RECORDER.Tests`,
 
 ## 13. Enterprise Forensic Log Diagnostic & RCA Tool (itb-diagnostics)
 
-To enable rapid field triaging without manual log parsing, the platform provides a dedicated standalone forensic diagnostic CLI tool located in [`Tools/ITB-SCREEN-RECORDER.Diagnostics`](file:///c:/Devlopers/ITB-SCREEN-RECORDER/Tools/ITB-SCREEN-RECORDER.Diagnostics).
+To enable rapid field triaging without manual log parsing, the platform provides a dedicated standalone forensic diagnostic CLI tool located in [`Tools/ITB-SCREEN-RECORDER.Diagnostics`](./Tools/ITB-SCREEN-RECORDER.Diagnostics).
 
 ### Key Capabilities:
 - **True Cross-Platform (Windows & Linux)**:
@@ -3109,7 +3163,7 @@ public static (string clockX, string clockY) ResolveClockCoordinates(string? raw
 
 ---
 
-## 59. Canvas Screen Custom Title Renaming & Video Burn-In Architecture
+## 59. Canvas Screen Custom Title Renaming & Video Burn-In Architecture (2026-11-05)
 
 ### 59.1 Operational Mission & User Workflow
 
@@ -3174,7 +3228,7 @@ When exporting the multi-camera master composition via FFmpeg, `AdvanceJobManage
 
 ---
 
-## 60. Canvas Placement Active-Edit Temporary Z-Index Elevation & Settle Invariant
+## 60. Canvas Placement Active-Edit Temporary Z-Index Elevation & Settle Invariant (2026-11-05)
 
 ### 60.1 The Visual Occlusion & Stacking Problem
 
