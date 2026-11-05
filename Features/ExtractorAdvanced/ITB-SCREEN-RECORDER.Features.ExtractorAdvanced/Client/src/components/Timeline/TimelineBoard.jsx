@@ -78,14 +78,23 @@ export default function TimelineBoard({
     const [trackBankIndex, setTrackBankIndex] = useState(0);
     const [contextMenu, setContextMenu] = useState(null);
     const [isMasterVideoOpen, setIsMasterVideoOpen] = useState(true);
-    // Invariant: When there is only 1 workstation, auto-expand its multi-screen row by default
+    const getStationDisplaysCount = (s) => {
+        const list = s?.displays || s?.Displays || s?.displayTopology?.displays || s?.DisplayTopology?.Displays || s?.topology?.displays || [];
+        return list.length;
+    };
+    // Invariant (2026-11-05): Workstations with only 1 display cannot expand. Only stations with 2+ displays can expand.
     const [expandedStationId, setExpandedStationId] = useState(() => {
-        return stations.length === 1 ? stations[0]?.id : null;
+        return (stations.length === 1 && getStationDisplaysCount(stations[0]) > 1) ? stations[0]?.id : null;
     });
 
     useEffect(() => {
-        if (stations.length === 1 && !expandedStationId && stations[0]?.id) {
+        if (stations.length === 1 && !expandedStationId && stations[0]?.id && getStationDisplaysCount(stations[0]) > 1) {
             setExpandedStationId(stations[0].id);
+        } else if (expandedStationId) {
+            const exp = stations.find(s => s.id === expandedStationId);
+            if (!exp || getStationDisplaysCount(exp) <= 1) {
+                setExpandedStationId(null);
+            }
         }
     }, [stations, expandedStationId]);
 
@@ -450,8 +459,12 @@ export default function TimelineBoard({
                                     <TimelineTrack
                                         key={station.id}
                                         station={station}
-                                        isExpanded={isExpanded}
-                                        onToggleExpand={() => setExpandedStationId(prev => prev === station.id ? null : station.id)}
+                                        isExpanded={isExpanded && getStationDisplaysCount(station) > 1}
+                                        onToggleExpand={() => {
+                                            if (getStationDisplaysCount(station) > 1) {
+                                                setExpandedStationId(prev => prev === station.id ? null : station.id);
+                                            }
+                                        }}
                                         isAutoDirectorEnabled={isStationAutoDirectorOn}
                                         onToggleAutoDirector={onToggleStationAutoDirector}
                                         canvasPlacements={currentPlacements}

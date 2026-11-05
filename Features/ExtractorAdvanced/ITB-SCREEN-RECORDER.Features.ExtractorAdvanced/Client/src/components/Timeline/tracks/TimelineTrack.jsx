@@ -494,7 +494,7 @@ export function FilmstripCanvas({
  */
 export default function TimelineTrack({
     station,
-    isExpanded = false,
+    isExpanded: rawIsExpanded = false,
     onToggleExpand,
     isAutoDirectorEnabled = true,
     onToggleAutoDirector,
@@ -535,7 +535,9 @@ export default function TimelineTrack({
     }, [effectiveDirectorPlan]);
 
     const hasDirectorCuts = rawDirectorSegments && rawDirectorSegments.length > 0;
-    const hasMultiDisplays = stationDisplays.length > 1 || hasDirectorCuts;
+    // Invariant (2026-11-05): Station expansion is strictly permitted ONLY if workstation has 2 or more physical displays.
+    const hasMultiDisplays = Boolean(stationDisplays && stationDisplays.length > 1);
+    const isExpanded = Boolean(rawIsExpanded && hasMultiDisplays);
 
     // Retrieve active recording segments with resilient case-insensitive key lookup
     const activeSegments = useMemo(() => {
@@ -694,25 +696,27 @@ export default function TimelineTrack({
                         onStationContextMenu(e, station);
                     }
                 }}
-                className={`timeline-track-container station-collapsed-track ${isActive ? 'active-track' : ''} ${hasMultiDisplays ? 'has-stepper' : ''}`}
+                className={`timeline-track-container station-collapsed-track ${isActive ? 'active-track' : ''} ${hasMultiDisplays ? 'has-stepper' : 'no-stepper'}`}
             >
                 <div
                     className="track-sidebar station-collapsed-sidebar"
-                    title={`Workstation: ${stationDisplayName}${physicalHost ? ` (${physicalHost})` : ''} • Click to select / expand`}
+                    title={`Workstation: ${stationDisplayName}${physicalHost ? ` (${physicalHost})` : ''} • Click to select${hasMultiDisplays ? ' / expand' : ''}`}
                 >
-                    <button
-                        type="button"
-                        className="btn-accordion-toggle"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleExpand?.();
-                        }}
-                        title={isExpanded ? "Collapse station tracks" : "Expand station tracks"}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
-                            <polyline points="9 18 15 12 9 6" />
-                        </svg>
-                    </button>
+                    {hasMultiDisplays && (
+                        <button
+                            type="button"
+                            className="btn-accordion-toggle"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleExpand?.();
+                            }}
+                            title="Expand station tracks"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="11" height="11">
+                                <polyline points="9 18 15 12 9 6" />
+                            </svg>
+                        </button>
+                    )}
                     <div className={`status-indicator ${station?.isOnline ? 'online' : 'idle'}`} />
                     <span className="station-single-label" title={stationDisplayName}>
                         {stationDisplayName}

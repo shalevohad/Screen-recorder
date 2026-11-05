@@ -22,11 +22,10 @@ import { useStudioHotkeys } from './hooks/useStudioHotkeys.js';
 import { updateKeyframeTransition } from './utils/nleTimelineEngine.js';
 import { getStudioSessionCache, saveStudioSessionCache, clearStudioSessionCache } from './utils/studioSessionStore.js';
 import { initDstEngineAsync, formatDateTimeComponents, dateTimeToEpochMs } from './utils/dstEngine.js';
+import { formatTimelineClock } from './utils/timeFormat.js';
 
 import './components/ExportMonitor/ExportJobMonitor.scss';
 import './ExtractorAdvancedStudio.scss';
-
-const pad = (n) => String(n).padStart(2, '0');
 
 const generateDefaultTimeRange = (mode = 'LOCAL') => {
     const now = Date.now();
@@ -940,6 +939,95 @@ export default function ExtractorAdvancedStudio() {
         };
     }, [spotlightStation, stationDirectorPlans, getStationPlan]);
 
+    const formatCutDurationSMPTE = (durationMs, fps = 30) => {
+        const totalMs = Math.max(0, durationMs);
+        const totalSeconds = Math.floor(totalMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const frames = Math.floor(((totalMs % 1000) / 1000) * fps);
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(frames)}`;
+    };
+
+    const [isGridFullscreen, setIsGridFullscreen] = useState(false);
+    const [isCinemaDockVisible, setIsCinemaDockVisible] = useState(true);
+    const [isHoveringCinemaDock, setIsHoveringCinemaDock] = useState(false);
+    const cinemaIdleTimerRef = useRef(null);
+
+    const hasGridPlacements = useMemo(() => {
+        const kfs = canvasLayoutTimeline?.keyframes;
+        const kf = kfs?.[activeKfIndex] || kfs?.[0];
+        const placements = kf?.layout?.placements || currentCanvasLayout?.placements || [];
+        return placements.length > 0 || (selectedStationIds && selectedStationIds.length > 0);
+    }, [canvasLayoutTimeline, activeKfIndex, currentCanvasLayout, selectedStationIds]);
+
+    const resetCinemaIdleTimer = useCallback(() => {
+        if (cinemaIdleTimerRef.current) clearTimeout(cinemaIdleTimerRef.current);
+        setIsCinemaDockVisible(true);
+        cinemaIdleTimerRef.current = setTimeout(() => {
+            if (!isHoveringCinemaDock) {
+                setIsCinemaDockVisible(false);
+            }
+        }, 2500);
+    }, [isHoveringCinemaDock]);
+
+    useEffect(() => {
+        if (!isGridFullscreen) {
+            setIsCinemaDockVisible(true);
+            if (cinemaIdleTimerRef.current) clearTimeout(cinemaIdleTimerRef.current);
+            return;
+        }
+
+        const handleMouseMove = (e) => {
+            if (e.clientY >= window.innerHeight - 280) {
+                setIsCinemaDockVisible(true);
+            }
+            resetCinemaIdleTimer();
+        };
+
+        window.addEventListener('mousemove', handleMouseMove, { passive: true });
+        resetCinemaIdleTimer();
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            if (cinemaIdleTimerRef.current) clearTimeout(cinemaIdleTimerRef.current);
+        };
+    }, [isGridFullscreen, resetCinemaIdleTimer]);
+
+    const handleToggleGridFullscreen = useCallback(() => {
+        setIsGridFullscreen(prev => {
+            const next = !prev;
+            if (next) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                }
+            } else {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen().catch(() => {});
+                }
+            }
+            return next;
+        });
+    }, []);
+
+    const handleExitGridFullscreen = useCallback(() => {
+        setIsGridFullscreen(false);
+        if (document.fullscreenElement) {
+            document.exitFullscreen().catch(() => {});
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            if (!document.fullscreenElement && isGridFullscreen) {
+                setIsGridFullscreen(false);
+            }
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, [isGridFullscreen]);
+
     useStudioHotkeys({
         activeStationId,
         spotlightStationId,
@@ -967,7 +1055,11 @@ export default function ExtractorAdvancedStudio() {
                 }
             }
         },
-        isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen
+        isModalActive: isRangeModalOpen || isBookmarksModalOpen || isHelpModalOpen,
+        hasGridPlacements,
+        onToggleGridFullscreen: handleToggleGridFullscreen,
+        isGridFullscreen,
+        onExitGridFullscreen: handleExitGridFullscreen
     });
 
     useEffect(() => {
@@ -1305,7 +1397,43 @@ export default function ExtractorAdvancedStudio() {
                     </div>
                 )}
 
-                <div className="studio-lower-body">
+                <div className={`studio-lower-body ${isGridFullscreen ? 'cinema-fullscreen-mode' : ''}`}>
+                    {isGridFullscreen && (
+                        <div className={`cinema-top-hud ${!isCinemaDockVisible ? 'is-hud-hidden' : ''}`}>
+                            <div className="top-hud-left-group">
+                                <button
+                                    type="button"
+                                    className="btn-exit-spotlight"
+                                    onClick={handleExitGridFullscreen}
+                                    title="Exit Fullscreen (Esc or F)"
+                                >
+                                    <kbd>ESC</kbd>
+                                    <span>EXIT FULLSCREEN</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-spotlight-help"
+                                    onClick={() => setIsHelpModalOpen(true)}
+                                    title="Keyboard Shortcuts (?)"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                    <span>SHORTCUTS</span>
+                                </button>
+                            </div>
+                            <div className="cinema-brand-pill">
+                                <span className="feed-res">MULTICAM GRID</span>
+                                <span className="divider" />
+                                <span className="station-title">TACTICAL CANVAS THEATER</span>
+                                <span className="station-physical-badge">
+                                    {enrichedTimelineStations.length} ACTIVE WORKSTATIONS
+                                </span>
+                            </div>
+                        </div>
+                    )}
                     {!isInitialSetup && (
                         <div className="studio-left-content">
                             <div className="studio-main-viewport-container">
@@ -1354,30 +1482,105 @@ export default function ExtractorAdvancedStudio() {
                                     activeKfIndex={activeKfIndex}
                                     setActiveKfIndex={setActiveKfIndex}
                                     isModalOpen={isExportModalOpen || isRangeModalOpen || isBookmarksModalOpen || isSpotlightOpen || isHelpModalOpen}
+                                    isGridFullscreen={isGridFullscreen}
+                                    onToggleGridFullscreen={handleToggleGridFullscreen}
                                 />
-                                <TransportBar
-                                    baseEpochMs={timelineBaseEpochMs}
-                                    timeMode={timeMode}
-                                    totalDurationMs={totalTimelineDurationMs}
-                                    playheadMs={playheadMs}
-                                    setPlayheadMs={setPlayheadMs}
-                                    inPointMs={inPointMs}
-                                    setInPointMs={setInPointMs}
-                                    outPointMs={outPointMs}
-                                    setOutPointMs={setOutPointMs}
-                                    activeStationId={activeStationId}
-                                    isPlaying={isPlaying}
-                                    setIsPlaying={togglePlaySmart}
-                                    isLooping={isLooping}
-                                    setIsLooping={setIsLooping}
-                                    playbackSpeed={playbackSpeed}
-                                    onChangeSpeed={setPlaybackSpeed}
-                                    onSetInPoint={() => setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)))}
-                                    onSetOutPoint={() => setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)))}
-                                />
+                                {!isGridFullscreen && (
+                                    <TransportBar
+                                        hasGridPlacements={hasGridPlacements}
+                                        baseEpochMs={timelineBaseEpochMs}
+                                        timeMode={timeMode}
+                                        totalDurationMs={totalTimelineDurationMs}
+                                        playheadMs={playheadMs}
+                                        setPlayheadMs={setPlayheadMs}
+                                        inPointMs={inPointMs}
+                                        setInPointMs={setInPointMs}
+                                        outPointMs={outPointMs}
+                                        setOutPointMs={setOutPointMs}
+                                        activeStationId={activeStationId}
+                                        isPlaying={isPlaying}
+                                        setIsPlaying={togglePlaySmart}
+                                        isLooping={isLooping}
+                                        setIsLooping={setIsLooping}
+                                        playbackSpeed={playbackSpeed}
+                                        onChangeSpeed={setPlaybackSpeed}
+                                        onSetInPoint={() => setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)))}
+                                        onSetOutPoint={() => setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)))}
+                                        onStepFrameBackward={() => { setIsPlaying(false); setPlayheadMs(p => Math.max(0, p - 33)); }}
+                                        onStepFrameForward={() => { setIsPlaying(false); setPlayheadMs(p => Math.min(totalTimelineDurationMs, p + 33)); }}
+                                    />
+                                )}
                             </div>
 
-                            <div className="studio-bottom-timeline" ref={timelineContainerRef}>
+                            {isGridFullscreen && (
+                                <div
+                                    className="cinema-bottom-sensor-strip"
+                                    onMouseEnter={() => {
+                                        setIsCinemaDockVisible(true);
+                                        resetCinemaIdleTimer();
+                                    }}
+                                />
+                            )}
+
+                            <div
+                                className={`studio-bottom-timeline ${isGridFullscreen ? 'cinema-timeline-island' : ''} ${isGridFullscreen && !isCinemaDockVisible ? 'dock-hidden' : ''} ${isGridFullscreen && isPlaying ? 'is-playing-dimmed' : ''}`}
+                                ref={timelineContainerRef}
+                                onMouseEnter={() => setIsHoveringCinemaDock(true)}
+                                onMouseLeave={() => {
+                                    setIsHoveringCinemaDock(false);
+                                    if (isGridFullscreen) resetCinemaIdleTimer();
+                                }}
+                            >
+                                {isGridFullscreen && (
+                                    <div className="cinema-island-transport-row">
+                                        <div className="cut-actions-cluster">
+                                            <div className="cut-duration-pill">
+                                                <span className="label">CUT DURATION</span>
+                                                <span className="val">{formatCutDurationSMPTE(outPointMs - inPointMs)}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="btn-export-cut-hero"
+                                                onClick={handleExecuteExport}
+                                                title="Export Selected Cut Window (Ctrl+E)"
+                                            >
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12">
+                                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                                    <polyline points="7 10 12 15 17 10" />
+                                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                                </svg>
+                                                <span>EXPORT CUT</span>
+                                            </button>
+                                        </div>
+                                        <TransportBar
+                                            hasGridPlacements={hasGridPlacements}
+                                            baseEpochMs={timelineBaseEpochMs}
+                                            timeMode={timeMode}
+                                            totalDurationMs={totalTimelineDurationMs}
+                                            playheadMs={playheadMs}
+                                            setPlayheadMs={setPlayheadMs}
+                                            inPointMs={inPointMs}
+                                            setInPointMs={setInPointMs}
+                                            outPointMs={outPointMs}
+                                            setOutPointMs={setOutPointMs}
+                                            activeStationId={activeStationId}
+                                            isPlaying={isPlaying}
+                                            setIsPlaying={togglePlaySmart}
+                                            isLooping={isLooping}
+                                            setIsLooping={setIsLooping}
+                                            playbackSpeed={playbackSpeed}
+                                            onChangeSpeed={setPlaybackSpeed}
+                                            onSetInPoint={() => setInPointMs(Math.max(0, Math.min(playheadMs, outPointMs - 1000)))}
+                                            onSetOutPoint={() => setOutPointMs(Math.min(totalTimelineDurationMs, Math.max(playheadMs, inPointMs + 1000)))}
+                                            onStepFrameBackward={() => { setIsPlaying(false); setPlayheadMs(p => Math.max(0, p - 33)); }}
+                                            onStepFrameForward={() => { setIsPlaying(false); setPlayheadMs(p => Math.min(totalTimelineDurationMs, p + 33)); }}
+                                        />
+                                        <div className="clock-timecode">
+                                            <span className="label">PLAYHEAD</span>
+                                            <span className="digits">{formatTimelineClock(timelineBaseEpochMs + playheadMs, timeMode)}</span>
+                                        </div>
+                                    </div>
+                                )}
                                 <TimelineBoard
                                     stations={enrichedTimelineStations}
                                     activeStationId={activeStationId}
@@ -1438,29 +1641,31 @@ export default function ExtractorAdvancedStudio() {
                         </div>
                     )}
 
-                    <StationDrawer
-                        isOpen={isDrawerOpen || isInitialSetup}
-                        onToggle={() => setIsDrawerOpen(!isDrawerOpen)}
-                        onClose={() => setIsDrawerOpen(false)}
-                        allStations={allStations}
-                        selectedStationIds={selectedStationIds}
-                        onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
-                        onUpdateSelections={setSelectedStationIds}
-                        isInitialSetup={isInitialSetup}
-                        isLoadingStations={isLoadingStations}
-                        recordingSegments={recordingSegments}
-                        baseEpochMs={baseEpochMs}
-                        durationMs={timeRange.durationMs}
-                        onApply={() => {
-                            if (selectedStationIds.length > 0) {
-                                setActiveStationId(null); // Always start in Master Canvas Grid
-                                setSpotlightStationId(null);
-                                setIsWorkspaceActive(true);
-                                setIsDrawerOpen(false);
-                            }
-                        }}
-                        onOpenRangeModal={() => setIsRangeModalOpen(true)}
-                    />
+                    {!isGridFullscreen && (
+                        <StationDrawer
+                            isOpen={isDrawerOpen || isInitialSetup}
+                            onToggle={() => setIsDrawerOpen(!isDrawerOpen)}
+                            onClose={() => setIsDrawerOpen(false)}
+                            allStations={allStations}
+                            selectedStationIds={selectedStationIds}
+                            onToggleStation={(id) => setSelectedStationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                            onUpdateSelections={setSelectedStationIds}
+                            isInitialSetup={isInitialSetup}
+                            isLoadingStations={isLoadingStations}
+                            recordingSegments={recordingSegments}
+                            baseEpochMs={baseEpochMs}
+                            durationMs={timeRange.durationMs}
+                            onApply={() => {
+                                if (selectedStationIds.length > 0) {
+                                    setActiveStationId(null); // Always start in Master Canvas Grid
+                                    setSpotlightStationId(null);
+                                    setIsWorkspaceActive(true);
+                                    setIsDrawerOpen(false);
+                                }
+                            }}
+                            onOpenRangeModal={() => setIsRangeModalOpen(true)}
+                        />
+                    )}
                 </div>
             </div>
 

@@ -326,7 +326,9 @@ export default function MulticamViewport({
     onUpdateCanvasLayoutTimeline,
     activeKfIndex = 0,
     setActiveKfIndex,
-    isModalOpen = false
+    isModalOpen = false,
+    isGridFullscreen: propIsGridFullscreen = undefined,
+    onToggleGridFullscreen: propOnToggleGridFullscreen = null
 }) {
     const currentEpochMs = playheadEpochMs > 0 ? playheadEpochMs : (baseEpochMs + playheadMs);
     const [utcClockPosition, setUtcClockPosition] = useState(() => {
@@ -373,7 +375,8 @@ export default function MulticamViewport({
     };
 
     // Fullscreen HUD state
-    const [isGridFullscreen, setIsGridFullscreen] = useState(false);
+    const [internalIsGridFullscreen, setInternalIsGridFullscreen] = useState(false);
+    const isGridFullscreen = propIsGridFullscreen !== undefined ? propIsGridFullscreen : internalIsGridFullscreen;
     const [_showHudControls, setShowHudControls] = useState(false);
     const hudTimerRef = useRef(null);
     const viewportRootRef = useRef(null);
@@ -1922,7 +1925,11 @@ export default function MulticamViewport({
 
     // Fullscreen handling
     const handleToggleGridFullscreen = useCallback(() => {
-        setIsGridFullscreen(prev => {
+        if (propOnToggleGridFullscreen) {
+            propOnToggleGridFullscreen();
+            return;
+        }
+        setInternalIsGridFullscreen(prev => {
             const next = !prev;
             if (next) {
                 if (onSelectActiveStation) onSelectActiveStation(null);
@@ -1937,7 +1944,7 @@ export default function MulticamViewport({
             }
             return next;
         });
-    }, [onSelectActiveStation]);
+    }, [propOnToggleGridFullscreen, onSelectActiveStation]);
 
     // Explicit Keyframe & Transition Action Handlers
     const handleExplicitAddKeyframe = useCallback(() => {

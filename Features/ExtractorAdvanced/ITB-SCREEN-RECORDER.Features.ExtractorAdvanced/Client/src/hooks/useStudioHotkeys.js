@@ -22,7 +22,11 @@ export function useStudioHotkeys({
     togglePlaySmart,
     onToggleHelpModal,
     onSplitDirectorAtPlayhead,
-    isModalActive = false
+    isModalActive = false,
+    hasGridPlacements = true,
+    onToggleGridFullscreen,
+    isGridFullscreen = false,
+    onExitGridFullscreen
 }) {
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -193,12 +197,28 @@ export function useStudioHotkeys({
                 return;
             }
 
-            // Spacebar Play / Pause
+            // Spacebar Play / Pause (Available whenever any screen is placed in GRID or station active)
             if (e.code === 'Space') {
                 e.preventDefault();
-                if (!activeStationId && !spotlightStationId && selectedStationIdsCount > 1) return;
+                if (!hasGridPlacements) return;
                 togglePlaySmart();
                 return;
+            }
+
+            // 'F' key: Toggle Fullscreen Grid Cinema Mode
+            if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                onToggleGridFullscreen?.();
+                return;
+            }
+
+            // Escape key in Fullscreen Grid
+            if (e.key === 'Escape' || e.code === 'Escape') {
+                if (isGridFullscreen) {
+                    e.preventDefault();
+                    onExitGridFullscreen?.();
+                    return;
+                }
             }
 
             // Home / End
@@ -278,6 +298,10 @@ export function useStudioHotkeys({
         togglePlaySmart,
         onToggleHelpModal,
         onSplitDirectorAtPlayhead,
-        isModalActive
+        isModalActive,
+        hasGridPlacements,
+        onToggleGridFullscreen,
+        isGridFullscreen,
+        onExitGridFullscreen
     ]);
 }

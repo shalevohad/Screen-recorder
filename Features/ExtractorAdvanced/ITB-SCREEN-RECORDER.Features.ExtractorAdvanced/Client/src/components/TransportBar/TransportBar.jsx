@@ -30,6 +30,7 @@ export default function TransportBar({
     inPointMs = 0,
     outPointMs = 3600000,
     totalDurationMs = 3600000,
+    hasGridPlacements = true,
     onStepFrameForward,
     onStepFrameBackward,
     playbackSpeed = 1,
@@ -40,7 +41,8 @@ export default function TransportBar({
     const [audioState, setAudioState] = useState(() => getAudioSettings());
     const { volume, isMuted } = audioState;
 
-    const isEnabled = Boolean(activeStationId || totalDurationMs > 0);
+    // Invariant (2026-11-05): Transport player is enabled whenever any screen is placed on the grid (or when a station is active), regardless of tracklist selection.
+    const isEnabled = Boolean(hasGridPlacements && totalDurationMs > 0);
 
     useEffect(() => {
         const handleAudioSync = (e) => {

@@ -2829,4 +2829,33 @@ To address operational precision in multi-monitor video editing and high-fidelit
 
 ---
 
+### 17. Single-Screen Station Non-Expandable, Universal Transport Player & Fullscreen Grid Cinema Mode (2026-11-05)
+
+To enhance operational ergonomics and timeline clarity in the forensic analysis suite, three critical architectural invariants have been established:
+
+1. **Single-Screen Station Expansion Prohibition Invariant**:
+   - **Operational Rule**: When a workstation has only ONE physical display (`displays.length <= 1` or `topology.displays.length <= 1`), expanding its timeline row to show a child screen track is strictly prohibited.
+   - **Implementation**:
+     - In `TimelineTrack.jsx`, `hasMultiDisplays` is strictly evaluated as `Boolean(stationDisplays && stationDisplays.length > 1)`.
+     - In `TimelineBoard.jsx`, `expandedStationId` initialization and updates enforce `getStationDisplaysCount(station) > 1`. Single-display workstations never open an accordion.
+     - Accordion toggle button (`.btn-accordion-toggle`) is conditionally omitted from the DOM when `!hasMultiDisplays`. Clicking the track row selects the workstation without triggering expand.
+
+2. **Universal Transport Player Availability Invariant**:
+   - **Operational Rule**: The transport controls (Play/Pause, Step Backward/Forward, Jump to IN/OUT, Speed multiplier, Repeat/Loop, Volume) and the Spacebar shortcut MUST remain fully available and playable whenever ANY screen/placement is present on the Canvas/GRID, regardless of whether a workstation has been selected or soloed from the tracklist.
+   - **Implementation**:
+     - In `ExtractorAdvancedStudio.jsx`, `hasGridPlacements` is computed dynamically from active keyframe placements (`placements.length > 0 || selectedStationIds.length > 0`).
+     - In `TransportBar.jsx`, `isEnabled` evaluates `Boolean(hasGridPlacements && totalDurationMs > 0)`.
+     - In `useStudioHotkeys.js`, the restriction blocking Spacebar when no active station was focused has been removed; playback toggles synchronously across all visible camera feeds on canvas whenever `hasGridPlacements` is true.
+
+3. **Fullscreen Grid View Cinema Parity (Spotlight Modal Match)**:
+   - **Operational Rule**: Fullscreen Canvas Grid mode matches the theater experience of Station Preview (`SoloSpotlightModal.jsx`), providing a full-screen canvas with an auto-hiding floating bottom control island and top HUD.
+   - **Implementation**:
+     - Fullscreen Grid mode (`cinema-fullscreen-mode`) expands the viewport to 100vw × 100vh without unmounting `MulticamViewport` or restarting video feeds.
+     - **Auto-Hiding Floating Island**: A floating glassmorphic dock (`.cinema-timeline-island`) anchors above the bottom edge (`bottom: 20px`), housing both the Transport cluster (Cut duration, Export button, `TransportBar`, Playhead timecode) and the full `TimelineBoard` (tracks, filmstrips, cuts, audio lanes, keyframe sequencer).
+     - **Intelligent Inactivity Collapse**: When playing or when the operator's mouse is idle for 2.5 seconds, the island smoothly collapses and slides out of view (`transform: translateY(calc(100% + 40px)); opacity: 0`), leaving an unobstructed view of all video feeds.
+     - **Bottom Sensor Wake-Up**: Moving the mouse cursor down towards the bottom 280px of the screen (or hovering over the transparent `.cinema-bottom-sensor-strip`) immediately slides the island back up with full interactive capabilities (frame stepping, scrubber drag, audio adjustments, export execution).
+     - **Top Tactical HUD**: Sleek HUD displaying `[ ESC EXIT FULLSCREEN ]`, `[ ? SHORTCUTS ]`, and live workstation telemetry pill with fade-out on inactivity.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*
