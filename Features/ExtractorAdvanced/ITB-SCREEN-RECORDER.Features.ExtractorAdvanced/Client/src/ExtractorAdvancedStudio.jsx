@@ -1297,7 +1297,7 @@ export default function ExtractorAdvancedStudio() {
         setIsExportModalOpen(true);
     }, [timelineStations]);
 
-    const handleConfirmMasterExport = useCallback(async (chosenKeystrokeMode, chosenResolution) => {
+    const handleConfirmMasterExport = useCallback(async (chosenKeystrokeMode, chosenResolution, notes = '') => {
         const targetStationIds = timelineStations.map(s => s.id);
         if (targetStationIds.length === 0) return;
 
@@ -1314,6 +1314,7 @@ export default function ExtractorAdvancedStudio() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     createdBy: getCurrentOperatorName(),
+                    notes: (notes || '').trim(),
                     stationIds: targetStationIds,
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,

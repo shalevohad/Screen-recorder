@@ -298,6 +298,14 @@ export default function ExportJobMonitor({ isGlobalHost = false }) {
                                             </button>
                                         </div>
 
+                                        {(job.notes || job.Notes) && (
+                                            <div className="job-notes-callout" title={`Export Note: ${job.notes || job.Notes}`}>
+                                                <span className="notes-icon">📝</span>
+                                                <span className="notes-label">NOTE:</span>
+                                                <span className="notes-body">{job.notes || job.Notes}</span>
+                                            </div>
+                                        )}
+
                                         {isProcessing && (
                                             <div className="job-progress-section">
                                                 <div className="progress-top-line">

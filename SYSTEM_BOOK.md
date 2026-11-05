@@ -2969,4 +2969,64 @@ To guarantee comprehensive acoustic situational awareness without requiring oper
 
 ---
 
+
+
+## 57. Operational Mission Export Notes & Forensic Triage Metadata Architecture (2026-11-05)
+
+### 57.1 Operational Context & Tactical Requirement
+In mission-critical command-and-control operations and forensic triage, exported video archives (stand-alone MP4 compositions or TAR archives) are frequently shared across operators, supervisors, and external forensic investigators. Without context, operators reviewing the queue or archives had no direct insight into the operational rationale behind a cut (e.g. why specific workstations were included, incident ticket references, or shift handover directives).
+
+To resolve this, the platform introduces **Operational Mission Export Notes**:
+- Operators can input an optional forensic note (up to 500 characters) directly in the Export Configuration Modal before launching the packaging job.
+- The note is persisted permanently in the operational SQLite database alongside job records (`advance_jobs` and `export_jobs`).
+- The note is surfaced prominently in the active and historical Export Queue (`ExportJobMonitor`) on every job card via a tactical callout (`.job-notes-callout`), ensuring instant situational awareness across all shifts.
+
+---
+
+### 57.2 End-to-End Data Model & Persistence Architecture
+
+1. **Domain DTOs & Contracts**:
+   - `ITB_SCREEN_RECORDER.Features.Extractor.Models.ExportJobInfo`:
+     - Added `public virtual string? Notes { get; set; }`.
+   - `ITB_SCREEN_RECORDER.Features.Extractor.Models.ExtractionRequestDto`:
+     - Added `public string? Notes { get; set; }`.
+   - `ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Models.AdvanceCutRequestDto`:
+     - Added `[JsonPropertyName("notes")] public string? Notes { get; set; }`.
+   - `AdvanceJobInfo` inherits from `ExportJobInfo`, gaining the `Notes` property automatically.
+
+2. **Database Migration & SQL Repositories**:
+   - **Non-Destructive Schema Evolution**:
+     - `AdvancedExtractorDbInitializer.cs`: `db.EnsureColumn("advance_jobs", "Notes", "TEXT");`
+     - `ExtractorDbInitializer.cs`: `db.EnsureColumn("export_jobs", "Notes", "TEXT");`
+   - **Repository SQL Mappings**:
+     - `IAdvanceJobRepository.cs`: Included `Notes` column in `INSERT` and `UPDATE` SQL statements for the `advance_jobs` table.
+     - `ExportJobRepository.cs`: Included `Notes` column in `INSERT` and `UPDATE` SQL statements for the `export_jobs` table.
+
+3. **Background Job Managers & API Controllers**:
+   - `AdvanceJobManager.cs` and `ExportJobManager.cs`:
+     - Populate `Notes = !string.IsNullOrWhiteSpace(request.Notes) ? request.Notes.Trim() : null` upon job enqueuing.
+   - `ExtractorAdvancedController.cs` & `ExtractorController.cs`:
+     - Return `notes` in `GetJobStatus` and collection endpoints (`GET /api/v1/extractor/jobs`, `GET /api/v1/extractor-advanced/jobs`).
+
+---
+
+### 57.3 UI/UX Design System & Client Components
+
+1. **Export Options Configuration Modal (`ExportOptionsModal.jsx` & `ExportOptionsModal.scss`)**:
+   - Added a dedicated tactical section: `MISSION / FORENSIC EXPORT NOTE (OPTIONAL)`.
+   - Features a high-contrast dark textarea (`.export-notes-input`) with cyan focus glow (`#00F0FF`), subtle placeholder guidance, and a live character counter (`.notes-char-counter`, `0 / 500`).
+   - Cleanly bound to local state `notes`, forwarded to `onConfirm(mode, resolution, notes)`.
+
+2. **Tactical Job Monitor Callout (`ExportJobMonitor.jsx` & `ExportJobMonitor.scss`)**:
+   - Located immediately under `.card-header-row` on each job card.
+   - Rendered conditionally when `job.notes` is populated.
+   - Styled with a 3px solid cyan border-left (`#06B6D4`), subtle cyan tint background (`rgba(6, 182, 212, 0.08)`), monospace font (`JetBrains Mono`), and `white-space: pre-wrap` ensuring exact multiline note formatting.
+   - Visible across all job lifecycles: **Queued**, **Processing (with real-time progress & telemetry)**, **Completed (ready for download / UNC)**, and **Failed**.
+
+3. **Multi-Module Parity**:
+   - Fully implemented in both **Advanced Forensic Extractor** (`Features/ExtractorAdvanced`) and **Basic Extractor Tile** (`Features/Extractor`).
+   - Zero external CDN or internet dependencies (100% offline air-gapped compliance).
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

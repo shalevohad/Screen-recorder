@@ -42,6 +42,7 @@ namespace ITB_SCREEN_RECORDER.Features.Extractor.Models
         /// </summary>
         public List<DirectorCutSegmentDto>? DirectorSegments { get; set; }
         public string? CreatedBy { get; set; }
+        public string? Notes { get; set; }
     }
 
     public class ExtractionPreviewResponseDto

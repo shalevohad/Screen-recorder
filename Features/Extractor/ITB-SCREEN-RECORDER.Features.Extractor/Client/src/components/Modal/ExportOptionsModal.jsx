@@ -12,6 +12,7 @@ export default function ExportOptionsModal({
     summaryText = ''
 }) {
     const [mode, setMode] = useState('Caption');
+    const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!isOpen) return null;
@@ -19,7 +20,7 @@ export default function ExportOptionsModal({
     const handleConfirm = async () => {
         setIsSubmitting(true);
         try {
-            await onConfirm(mode);
+            await onConfirm(mode, notes);
             onClose();
         } finally {
             setIsSubmitting(false);
@@ -90,6 +91,19 @@ export default function ExportOptionsModal({
                                 </div>
                             </div>
                         </label>
+                    </div>
+
+                    <div className="options-title">MISSION / FORENSIC EXPORT NOTE (OPTIONAL)</div>
+                    <div className="export-notes-wrapper">
+                        <textarea
+                            className="export-notes-input"
+                            placeholder="Add operational notes or investigation context for team members..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                        />
+                        <div className="notes-char-counter">{notes.length} / 500</div>
                     </div>
                 </div>
 

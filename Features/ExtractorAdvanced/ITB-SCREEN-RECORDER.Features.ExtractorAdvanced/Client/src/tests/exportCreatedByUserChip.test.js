@@ -119,4 +119,37 @@ test('Export Created-By User Operator Chip & Persistence Contract', async (t) =>
         };
         assert.equal(completedJob.createdBy, 'Specialist Alex');
     });
+
+    await t.test('7. Attaches operational/forensic notes in export payload and verifies note callout propagation and sanitization', () => {
+        const rawNote = '   Incident #104 forensic audit - reviewed by Shift Lead   ';
+        const sanitizedNote = (rawNote || '').trim();
+
+        const exportRequestPayload = {
+            createdBy: 'Commander Shepard',
+            notes: sanitizedNote,
+            stationIds: ['WS-01'],
+            inEpochMs: 1730700000000,
+            outEpochMs: 1730703600000
+        };
+
+        assert.equal(exportRequestPayload.notes, 'Incident #104 forensic audit - reviewed by Shift Lead');
+        assert.ok(exportRequestPayload.notes.length <= 500);
+
+        // Verify job card propagation contract
+        const job = {
+            jobId: 'adv_job_999',
+            fileName: 'Forensic_Export.mp4',
+            status: 'Processing',
+            createdBy: exportRequestPayload.createdBy,
+            notes: exportRequestPayload.notes
+        };
+
+        assert.equal(job.notes, 'Incident #104 forensic audit - reviewed by Shift Lead');
+
+        // Check fallback when note is empty
+        const emptyNotePayload = {
+            notes: ('   ').trim() || null
+        };
+        assert.equal(emptyNotePayload.notes, null);
+    });
 });

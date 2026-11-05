@@ -72,6 +72,7 @@ public sealed class ExtractorDbInitializer : IFeatureDbInitializer
             db.EnsureColumn("export_jobs", "OutputFilePath", "TEXT");
             db.EnsureColumn("export_jobs", "CompletedAtUtc", "TEXT");
             db.EnsureColumn("export_jobs", "CreatedBy", "TEXT DEFAULT 'Guest Operator'");
+            db.EnsureColumn("export_jobs", "Notes", "TEXT");
 
             // 3. Database indexes
             db.Execute(@"

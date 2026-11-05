@@ -96,6 +96,7 @@ public sealed class AdvancedExtractorDbInitializer : IFeatureDbInitializer
             db.EnsureColumn("advance_jobs", "OutputFilePath", "TEXT");
             db.EnsureColumn("advance_jobs", "CompletedAtUtc", "TEXT");
             db.EnsureColumn("advance_jobs", "CreatedBy", "TEXT DEFAULT 'Guest Operator'");
+            db.EnsureColumn("advance_jobs", "Notes", "TEXT");
 
             // bookmarks
             db.EnsureColumn("bookmarks", "Description", "TEXT");

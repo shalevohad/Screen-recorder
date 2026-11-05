@@ -200,6 +200,14 @@ export default function ExportJobMonitor({ externalOpen, onCloseExternal }) {
                                                 </button>
                                             </div>
 
+                                            {(job.notes || job.Notes) && (
+                                                <div className="job-notes-callout" title={`Export Note: ${job.notes || job.Notes}`}>
+                                                    <span className="notes-icon">📝</span>
+                                                    <span className="notes-label">NOTE:</span>
+                                                    <span className="notes-body">{job.notes || job.Notes}</span>
+                                                </div>
+                                            )}
+
                                             {/* Tier 2 (Streaming): Progress meter, percentage & telemetry */}
                                             {isBusy && (
                                                 <div className="job-progress-section">

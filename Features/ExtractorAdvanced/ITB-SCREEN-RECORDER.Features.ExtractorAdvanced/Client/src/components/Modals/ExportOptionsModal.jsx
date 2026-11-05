@@ -68,6 +68,7 @@ export default function ExportOptionsModal({
 
     const [keystrokeMode, setKeystrokeMode] = useState('BurnIn');
     const [resolution, setResolution] = useState(compositionSummary.resolution || 'NATIVE');
+    const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!isOpen) return null;
@@ -75,7 +76,7 @@ export default function ExportOptionsModal({
     const handleConfirm = async () => {
         setIsSubmitting(true);
         try {
-            await onConfirm(keystrokeMode, resolution);
+            await onConfirm(keystrokeMode, resolution, notes);
             onClose();
         } finally {
             setIsSubmitting(false);
@@ -209,6 +210,20 @@ export default function ExportOptionsModal({
                                 </div>
                             </div>
                         </label>
+                    </div>
+
+                    {/* Mission / Operational Export Notes */}
+                    <div className="options-title">MISSION / FORENSIC EXPORT NOTE (OPTIONAL)</div>
+                    <div className="export-notes-wrapper">
+                        <textarea
+                            className="export-notes-input"
+                            placeholder="Add operational notes or investigation context for team members (e.g. Incident #104 review, Shift handover)..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                        />
+                        <div className="notes-char-counter">{notes.length} / 500</div>
                     </div>
                 </div>
 

@@ -300,6 +300,48 @@
                     }
                 }
             }
+
+            .export-notes-wrapper {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-top: 4px;
+
+                .export-notes-input {
+                    width: 100%;
+                    box-sizing: border-box;
+                    background: rgba(15, 23, 42, 0.7);
+                    border: 1px solid rgba(0, 240, 255, 0.2);
+                    border-radius: 4px;
+                    color: #f1f5f9;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 11px;
+                    padding: 8px 10px;
+                    resize: vertical;
+                    min-height: 52px;
+                    outline: none;
+                    transition: border-color 0.2s, box-shadow 0.2s;
+
+                    &:focus {
+                        border-color: #00f0ff;
+                        box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+                        background: rgba(15, 23, 42, 0.9);
+                    }
+
+                    &::placeholder {
+                        color: #64748b;
+                        font-size: 11px;
+                    }
+                }
+
+                .notes-char-counter {
+                    align-self: flex-end;
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 10px;
+                    color: #64748b;
+                    letter-spacing: 0.5px;
+                }
+            }
         }
 
         .modal-footer {

@@ -896,6 +896,8 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 createdAtUtc = job.CreatedAtUtc,
                 completedAtUtc = job.CompletedAtUtc,
                 errorMessage = job.ErrorMessage,
+                createdBy = job.CreatedBy,
+                notes = job.Notes,
                 downloadUrl = job.Status == "Completed" ? $"/api/v1/extractor/jobs/{job.JobId}/download" : null
             });
         }
