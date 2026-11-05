@@ -1228,3 +1228,115 @@
         }
     }
 }
+
+
+// Discrete Channel Mode Pill
+.btn-lane-channel-mode {
+    font-size: 8px;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    border: 1px solid rgba(6, 182, 212, 0.4);
+    background: rgba(6, 182, 212, 0.15);
+    color: #38BDF8;
+    transition: all 0.15s ease;
+
+    &:hover {
+        background: rgba(6, 182, 212, 0.3);
+        border-color: #06B6D4;
+        color: #fff;
+    }
+
+    &.mode-mic {
+        background: rgba(168, 85, 247, 0.18);
+        border-color: rgba(168, 85, 247, 0.45);
+        color: #C084FC;
+    }
+
+    &.mode-sys {
+        background: rgba(16, 185, 129, 0.18);
+        border-color: rgba(16, 185, 129, 0.45);
+        color: #34D399;
+    }
+}
+
+// Station Dropdown Select on Lane Sidebar
+.lane-station-dropdown-wrapper {
+    max-width: 80px;
+    overflow: hidden;
+
+    .lane-station-select {
+        width: 100%;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+        color: #E2E8F0;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 8.5px;
+        font-weight: 700;
+        padding: 2px 4px;
+        cursor: pointer;
+        outline: none;
+
+        &:focus, &:hover {
+            border-color: #06B6D4;
+            color: #fff;
+        }
+
+        option {
+            background: #0F172A;
+            color: #E2E8F0;
+        }
+    }
+}
+
+// Master Bar Split Playhead Button
+.btn-split-playhead {
+    font-size: 8.5px;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    color: #F59E0B;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    margin-left: 6px;
+
+    &:hover {
+        background: rgba(245, 158, 11, 0.3);
+        color: #fff;
+        border-color: #F59E0B;
+    }
+}
+
+// Clip Channel Tag
+.clip-channel-tag {
+    font-size: 7px;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 0 4px;
+    border-radius: 2px;
+    background: rgba(6, 182, 212, 0.25);
+    color: #38BDF8;
+
+    &.mode-mic {
+        background: rgba(168, 85, 247, 0.25);
+        color: #C084FC;
+    }
+
+    &.mode-sys {
+        background: rgba(16, 185, 129, 0.25);
+        color: #34D399;
+    }
+}
+
+// Drag & Drop Highlight on Lane Timeline
+.audio-lane-timeline.is-drag-over {
+    outline: 2px dashed #06B6D4;
+    background: rgba(6, 182, 212, 0.15) !important;
+}

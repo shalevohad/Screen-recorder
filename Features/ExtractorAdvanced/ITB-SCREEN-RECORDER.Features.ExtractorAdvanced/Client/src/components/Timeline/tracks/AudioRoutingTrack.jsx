@@ -1,14 +1,125 @@
 // ==========================================
 // File: Features/ExtractorAdvanced/Client/src/components/Timeline/tracks/AudioRoutingTrack.jsx
 // Tactical NOC Multi-Track NLE Audio Bus (Fairlight / Premiere Style)
-// Supports Vertical Audio Lanes (A1, A2...), Draggable Clip Trimming, Overlap Mixing, and Waveforms
+// Supports Vertical Audio Lanes (A1, A2...), Draggable Clip Trimming, Real Waveforms & Discrete Channels
 // ==========================================
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import { setAudioGain } from '../../../utils/audioLevelMonitor.js';
+import { waveformStore, generateWaveformSvgPath } from '../../../utils/waveformStore.js';
 import './AudioRoutingTrack.scss';
 
 const LANE_COLORS = ['#06B6D4', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899', '#3B82F6'];
+
+/**
+ * Sub-component for individual audio clip with real acoustic waveform envelope
+ */
+function AudioClipRenderer({
+    clip,
+    lane,
+    laneColor,
+    isSelected,
+    onSelect,
+    onOpenMenu,
+    onTrimDrag,
+    vpStartEpoch,
+    viewportDurationMs,
+    timeMode,
+    stationName
+}) {
+    const [peaks, setPeaks] = useState(() => {
+        return waveformStore.get(clip.sourceStationId, clip.startEpochMs, clip.endEpochMs) || null;
+    });
+
+    useEffect(() => {
+        let isMounted = true;
+        const abortController = new AbortController();
+
+        const cached = waveformStore.get(clip.sourceStationId, clip.startEpochMs, clip.endEpochMs);
+        if (cached) {
+            setPeaks(cached);
+            return;
+        }
+
+        waveformStore.fetchWaveform(clip.sourceStationId, clip.startEpochMs, clip.endEpochMs, abortController.signal, 180)
+            .then(res => {
+                if (isMounted && res) {
+                    setPeaks(res);
+                }
+            })
+            .catch(() => {});
+
+        return () => {
+            isMounted = false;
+            abortController.abort();
+        };
+    }, [clip.sourceStationId, clip.startEpochMs, clip.endEpochMs]);
+
+    const s = clip.startEpochMs;
+    const e = clip.endEpochMs;
+    const effectiveGain = (clip.gain || 1.0) * (lane.gain || 1.0);
+    const waveformPath = useMemo(() => {
+        return generateWaveformSvgPath(peaks, 100, 24, effectiveGain);
+    }, [peaks, effectiveGain]);
+
+    const clStart = Math.max(vpStartEpoch, s);
+    const clEnd = Math.min(vpStartEpoch + viewportDurationMs, e);
+    const leftPct = ((clStart - vpStartEpoch) / viewportDurationMs) * 100;
+    const widthPct = ((clEnd - clStart) / viewportDurationMs) * 100;
+    if (widthPct <= 0) return null;
+
+    const channelMode = clip.channelMode || lane.channelMode || 'both';
+
+    return (
+        <div
+            className={`audio-clip-block ${lane.isMuted ? 'lane-muted' : ''} ${isSelected ? 'is-selected' : ''}`}
+            style={{
+                left: `${leftPct}%`,
+                width: `${widthPct}%`,
+                borderLeftColor: laneColor
+            }}
+            onClick={onSelect}
+            onDoubleClick={onOpenMenu}
+            onContextMenu={onOpenMenu}
+            title={`Audio Clip: ${stationName} [${channelMode.toUpperCase()}] (${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })}) • Gain: ${Math.round(clip.gain * 100)}%`}
+        >
+            {/* Trimming Handle: Left (Cut In) */}
+            <div
+                className="trim-handle trim-handle-left"
+                onMouseDown={(ev) => onTrimDrag(ev, 'start')}
+                title="Drag to trim Clip In-Point"
+            />
+
+            {/* Real Acoustic Waveform Envelope Graphic */}
+            <div className="clip-waveform-graphic">
+                <svg viewBox="0 0 100 24" preserveAspectRatio="none" className="waveform-svg">
+                    <path
+                        d={waveformPath}
+                        fill={laneColor}
+                        fillOpacity="0.45"
+                        stroke={laneColor}
+                        strokeWidth="1.2"
+                        strokeOpacity="0.85"
+                    />
+                </svg>
+            </div>
+
+            {/* Clip Information Bar */}
+            <div className="clip-info-badge">
+                <span className="clip-station-name">{stationName}</span>
+                <span className={`clip-channel-tag mode-${channelMode}`}>{channelMode.toUpperCase()}</span>
+                <span className="clip-gain-tag">{Math.round(clip.gain * 100)}%</span>
+            </div>
+
+            {/* Trimming Handle: Right (Cut Out) */}
+            <div
+                className="trim-handle trim-handle-right"
+                onMouseDown={(ev) => onTrimDrag(ev, 'end')}
+                title="Drag to trim Clip Out-Point"
+            />
+        </div>
+    );
+}
 
 export default function AudioRoutingTrack({
     audioPlan,
@@ -37,9 +148,10 @@ export default function AudioRoutingTrack({
     });
 
     const [isMasterMuted, setIsMasterMuted] = useState(false);
-    const [selectedMenuClip, setSelectedMenuClip] = useState(null); // { laneId, clipId, s, e, x, y, stationId, gain }
+    const [selectedMenuClip, setSelectedMenuClip] = useState(null);
     const [menuGainValue, setMenuGainValue] = useState(1.0);
     const [selectedClipIds, setSelectedClipIds] = useState([]);
+    const [dragOverLaneId, setDragOverLaneId] = useState(null);
 
     // Real-time acoustic volume level from Web Audio AnalyserNode
     const [liveLevel, setLiveLevel] = useState({ rms: 0, peak: 0, db: -60, isPlaying: false });
@@ -64,7 +176,6 @@ export default function AudioRoutingTrack({
 
     // Multi-Lane Architecture State
     const [lanes, setLanes] = useState(() => {
-        // Initialize from existing audioPlan if present
         if (audioPlan?.segments && audioPlan.segments.length > 0) {
             return [
                 {
@@ -73,18 +184,19 @@ export default function AudioRoutingTrack({
                     isMuted: false,
                     isSolo: false,
                     gain: 1.0,
+                    channelMode: 'both',
                     clips: audioPlan.segments.map((s, idx) => ({
                         id: `clip_${idx}_${s.startEpochMs || s.StartEpochMs}`,
                         startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? baseEpochMs,
                         endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? (baseEpochMs + viewportDurationMs),
                         sourceStationId: s.sourceStationId ?? s.SourceStationId ?? (stations[0]?.id || 'station-0'),
-                        gain: s.gain ?? s.Gain ?? 1.0
+                        gain: s.gain ?? s.Gain ?? 1.0,
+                        channelMode: s.channelMode ?? s.ChannelMode ?? 'both'
                     }))
                 }
             ];
         }
 
-        // Closed/empty by default: 1 lane with no clips (muted)
         return [
             {
                 id: 'A1',
@@ -92,6 +204,7 @@ export default function AudioRoutingTrack({
                 isMuted: false,
                 isSolo: false,
                 gain: 1.0,
+                channelMode: 'both',
                 clips: []
             }
         ];
@@ -112,13 +225,38 @@ export default function AudioRoutingTrack({
                     startEpochMs: c.startEpochMs,
                     endEpochMs: c.endEpochMs,
                     sourceStationId: c.sourceStationId,
-                    gain: c.gain * l.gain
+                    gain: c.gain * l.gain,
+                    channelMode: c.channelMode || l.channelMode || 'both'
                 });
             });
         });
         allClips.sort((a, b) => a.startEpochMs - b.startEpochMs);
         onUpdateAudioPlan({ segments: allClips });
     }, [onUpdateAudioPlan, isMasterMuted]);
+
+    // Broadcast Active Audio Source Playback Event for Viewport & Camera Cards
+    useEffect(() => {
+        let activeSource = null;
+        for (const lane of lanes) {
+            if (lane.isMuted || isMasterMuted) continue;
+            for (const clip of lane.clips) {
+                if (playheadEpoch >= clip.startEpochMs && playheadEpoch <= clip.endEpochMs) {
+                    const st = stations.find(s => s.id === clip.sourceStationId);
+                    activeSource = {
+                        stationId: clip.sourceStationId,
+                        stationName: st ? (st.displayName || st.hostname || st.id) : clip.sourceStationId,
+                        channelMode: clip.channelMode || lane.channelMode || 'both',
+                        gain: clip.gain * lane.gain,
+                        isPlaying: liveLevel.isPlaying
+                    };
+                    break;
+                }
+            }
+            if (activeSource) break;
+        }
+
+        window.dispatchEvent(new CustomEvent('itb-active-audio-source', { detail: activeSource }));
+    }, [lanes, isMasterMuted, playheadEpoch, stations, liveLevel.isPlaying]);
 
     // Delete selected audio clips via Delete/Backspace hotkey or custom event
     useEffect(() => {
@@ -168,6 +306,7 @@ export default function AudioRoutingTrack({
                 isMuted: false,
                 isSolo: false,
                 gain: 1.0,
+                channelMode: 'both',
                 clips: []
             };
             const updated = [...prev, newLane];
@@ -208,6 +347,25 @@ export default function AudioRoutingTrack({
         });
     }, [syncLanesToPlan]);
 
+    // Cycle Discrete Channel Mode (BOTH -> SYS -> MIC -> BOTH)
+    const handleCycleLaneChannelMode = useCallback((laneId) => {
+        const modes = ['both', 'sys', 'mic'];
+        setLanes(prev => {
+            const updated = prev.map(l => {
+                if (l.id !== laneId) return l;
+                const currentMode = l.channelMode || 'both';
+                const nextMode = modes[(modes.indexOf(currentMode) + 1) % modes.length];
+                return {
+                    ...l,
+                    channelMode: nextMode,
+                    clips: l.clips.map(c => ({ ...c, channelMode: nextMode }))
+                };
+            });
+            syncLanesToPlan(updated);
+            return updated;
+        });
+    }, [syncLanesToPlan]);
+
     // Update Lane Gain
     const handleUpdateLaneGain = useCallback((laneId, newGain) => {
         const val = Math.max(0, Math.min(2.0, Number(newGain)));
@@ -219,19 +377,51 @@ export default function AudioRoutingTrack({
         setAudioGain(val);
     }, [syncLanesToPlan]);
 
+    // Quick Reassign Station for Lane / Clips
+    const handleSetLaneStation = useCallback((laneId, stationId) => {
+        if (!stationId) return;
+        setLanes(prev => {
+            const updated = prev.map(l => {
+                if (l.id !== laneId) return l;
+                if (l.clips.length === 0) {
+                    // Create an initial full-timeline clip if track was empty
+                    const fullClip = {
+                        id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        startEpochMs: baseEpochMs,
+                        endEpochMs: baseEpochMs + viewportDurationMs,
+                        sourceStationId: stationId,
+                        gain: 1.0,
+                        channelMode: l.channelMode || 'both'
+                    };
+                    return { ...l, clips: [fullClip] };
+                }
+                return {
+                    ...l,
+                    clips: l.clips.map(c => ({ ...c, sourceStationId: stationId }))
+                };
+            });
+            syncLanesToPlan(updated);
+            return updated;
+        });
+    }, [baseEpochMs, viewportDurationMs, syncLanesToPlan]);
+
     // Add Clip to Lane
     const handleAddClipToLane = useCallback((laneId, stationId = null, targetStart = null) => {
         const stId = stationId || stations[0]?.id || 'station-0';
         const start = targetStart !== null ? targetStart : playheadEpoch;
-        const dur = Math.min(viewportDurationMs, 60000); // 1 minute or viewport duration
+        const dur = Math.min(viewportDurationMs, 60000);
         const end = start + dur;
+
+        const targetLane = lanes.find(l => l.id === laneId);
+        const laneMode = targetLane?.channelMode || 'both';
 
         const newClip = {
             id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             startEpochMs: Math.round(start),
             endEpochMs: Math.round(end),
             sourceStationId: stId,
-            gain: 1.0
+            gain: 1.0,
+            channelMode: laneMode
         };
 
         setLanes(prev => {
@@ -247,23 +437,25 @@ export default function AudioRoutingTrack({
             syncLanesToPlan(updated);
             return updated;
         });
-    }, [playheadEpoch, viewportDurationMs, stations, syncLanesToPlan]);
+    }, [lanes, playheadEpoch, viewportDurationMs, stations, syncLanesToPlan]);
 
     // Split Clip at Playhead
-    const handleSplitClipAtPlayhead = useCallback((laneId, clipId) => {
+    const handleSplitClipAtPlayhead = useCallback((laneId, clipId = null) => {
         setLanes(prev => {
             const updated = prev.map(l => {
-                if (l.id !== laneId) return l;
+                if (laneId && l.id !== laneId) return l;
                 const nextClips = [];
                 l.clips.forEach(c => {
-                    if (c.id === clipId && playheadEpoch > c.startEpochMs + 500 && playheadEpoch < c.endEpochMs - 500) {
+                    const matchesTarget = !clipId || c.id === clipId || selectedClipIds.includes(c.id);
+                    if (matchesTarget && playheadEpoch > c.startEpochMs + 500 && playheadEpoch < c.endEpochMs - 500) {
                         nextClips.push({ ...c, endEpochMs: playheadEpoch });
                         nextClips.push({
                             id: `clip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
                             startEpochMs: playheadEpoch,
                             endEpochMs: c.endEpochMs,
                             sourceStationId: c.sourceStationId,
-                            gain: c.gain
+                            gain: c.gain,
+                            channelMode: c.channelMode || l.channelMode || 'both'
                         });
                     } else {
                         nextClips.push(c);
@@ -275,7 +467,12 @@ export default function AudioRoutingTrack({
             return updated;
         });
         setSelectedMenuClip(null);
-    }, [playheadEpoch, syncLanesToPlan]);
+    }, [playheadEpoch, selectedClipIds, syncLanesToPlan]);
+
+    // Split any clip intersecting playhead across all active lanes
+    const handleGlobalSplitAtPlayhead = useCallback(() => {
+        handleSplitClipAtPlayhead(null, null);
+    }, [handleSplitClipAtPlayhead]);
 
     // Delete Clip
     const handleDeleteClip = useCallback((laneId, clipId) => {
@@ -394,7 +591,8 @@ export default function AudioRoutingTrack({
             x: posX,
             y: posY,
             stationId: clip.sourceStationId,
-            gain: clip.gain || 1.0
+            gain: clip.gain || 1.0,
+            channelMode: clip.channelMode || 'both'
         });
     };
 
@@ -477,6 +675,15 @@ export default function AudioRoutingTrack({
                     >
                         ＋ ADD AUDIO LANE
                     </button>
+
+                    <button
+                        type="button"
+                        className="btn-split-playhead"
+                        onClick={handleGlobalSplitAtPlayhead}
+                        title="Split clip at playhead (Ctrl+K / Razor Tool)"
+                    >
+                        ✂️ SPLIT AT PLAYHEAD
+                    </button>
                 </div>
 
                 <div className="master-bar-right">
@@ -509,15 +716,44 @@ export default function AudioRoutingTrack({
             <div className="audio-lanes-stack">
                 {lanes.map((lane, lIdx) => {
                     const laneColor = LANE_COLORS[lIdx % LANE_COLORS.length];
+                    const activeStation = stations.find(s => s.id === (lane.clips[0]?.sourceStationId || stations[0]?.id));
+                    const isDragOver = dragOverLaneId === lane.id;
 
                     return (
                         <div key={lane.id} className="audio-lane-row">
-                            {/* Lane Control Sidebar (180px) */}
+                            {/* Lane Control Sidebar */}
                             <div className="audio-lane-sidebar">
                                 <div className="lane-badge" style={{ backgroundColor: `${laneColor}26`, borderColor: `${laneColor}80`, color: laneColor }}>
                                     {lane.id}
                                 </div>
                                 <span className="lane-name-text">{lane.name}</span>
+
+                                {/* Channel Mode Selector (BOTH / SYS / MIC) */}
+                                <button
+                                    type="button"
+                                    className={`btn-lane-channel-mode mode-${lane.channelMode || 'both'}`}
+                                    onClick={() => handleCycleLaneChannelMode(lane.id)}
+                                    title={`Discrete Audio Channel: ${(lane.channelMode || 'both').toUpperCase()} (Click to toggle BOTH / SYS / MIC)`}
+                                >
+                                    {(lane.channelMode || 'both') === 'mic' ? '🎤 MIC' :
+                                     (lane.channelMode || 'both') === 'sys' ? '🔊 SYS' : '🎧 BOTH'}
+                                </button>
+
+                                {/* Station Selector Dropdown */}
+                                <div className="lane-station-dropdown-wrapper">
+                                    <select
+                                        className="lane-station-select"
+                                        value={activeStation?.id || ''}
+                                        onChange={(e) => handleSetLaneStation(lane.id, e.target.value)}
+                                        title="Select source workstation for this track / Drop workstation here"
+                                    >
+                                        {stations.map(st => (
+                                            <option key={st.id} value={st.id}>
+                                                {st.displayName || st.hostname || st.id}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
                                 <div className="lane-buttons-group">
                                     <button
@@ -564,9 +800,29 @@ export default function AudioRoutingTrack({
                                 )}
                             </div>
 
-                            {/* Lane Timeline Track Canvas */}
+                            {/* Lane Timeline Track Canvas with Drag & Drop */}
                             <div
-                                className="audio-lane-timeline" onClick={() => setSelectedClipIds([])}
+                                className={`audio-lane-timeline ${isDragOver ? 'is-drag-over' : ''}`}
+                                onClick={() => setSelectedClipIds([])}
+                                onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = 'copy';
+                                    if (dragOverLaneId !== lane.id) setDragOverLaneId(lane.id);
+                                }}
+                                onDragLeave={() => {
+                                    if (dragOverLaneId === lane.id) setDragOverLaneId(null);
+                                }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragOverLaneId(null);
+                                    const stId = e.dataTransfer.getData('text/station-id') || e.dataTransfer.getData('text/plain');
+                                    if (stId) {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                                        const dropEpoch = Math.round(vpStartEpoch + ratio * viewportDurationMs);
+                                        handleAddClipToLane(lane.id, stId, dropEpoch);
+                                    }
+                                }}
                                 onDoubleClick={(e) => {
                                     const rect = e.currentTarget.getBoundingClientRect();
                                     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -575,29 +831,19 @@ export default function AudioRoutingTrack({
                                 }}
                             >
                                 {lane.clips.map(clip => {
-                                    const s = clip.startEpochMs;
-                                    const e = clip.endEpochMs;
                                     const st = stations.find(x => x.id === clip.sourceStationId);
                                     const stationName = st ? (st.displayName || st.hostname || st.id) : clip.sourceStationId;
 
-                                    if (e <= vpStartEpoch || s >= vpEndEpoch) return null;
-
-                                    const clStart = Math.max(vpStartEpoch, s);
-                                    const clEnd = Math.min(vpEndEpoch, e);
-                                    const leftPct = ((clStart - vpStartEpoch) / viewportDurationMs) * 100;
-                                    const widthPct = ((clEnd - clStart) / viewportDurationMs) * 100;
-                                    if (widthPct <= 0) return null;
+                                    if (clip.endEpochMs <= vpStartEpoch || clip.startEpochMs >= vpEndEpoch) return null;
 
                                     return (
-                                        <div
+                                        <AudioClipRenderer
                                             key={clip.id}
-                                            className={`audio-clip-block ${lane.isMuted ? 'lane-muted' : ''} ${selectedClipIds.includes(clip.id) ? 'is-selected' : ''}`}
-                                            style={{
-                                                left: `${leftPct}%`,
-                                                width: `${widthPct}%`,
-                                                borderLeftColor: laneColor
-                                            }}
-                                            onClick={(ev) => {
+                                            clip={clip}
+                                            lane={lane}
+                                            laneColor={laneColor}
+                                            isSelected={selectedClipIds.includes(clip.id)}
+                                            onSelect={(ev) => {
                                                 ev.stopPropagation();
                                                 if (ev.ctrlKey || ev.metaKey) {
                                                     setSelectedClipIds(prev =>
@@ -607,43 +853,13 @@ export default function AudioRoutingTrack({
                                                     setSelectedClipIds([clip.id]);
                                                 }
                                             }}
-                                            onDoubleClick={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
-                                            onContextMenu={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
-                                            title={`Audio Clip: ${stationName} [${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })}] • Gain: ${Math.round(clip.gain * 100)}%`}
-                                        >
-                                            {/* Trimming Handle: Left (Cut In) */}
-                                            <div
-                                                className="trim-handle trim-handle-left"
-                                                onMouseDown={(ev) => handleTrimDrag(ev, lane.id, clip.id, 'start')}
-                                                title="Drag to trim Clip In-Point"
-                                            />
-
-                                            {/* Clip Waveform Envelope Graphic */}
-                                            <div className="clip-waveform-graphic">
-                                                <svg viewBox="0 0 100 24" preserveAspectRatio="none" className="waveform-svg">
-                                                    <path
-                                                        d="M0,12 L5,6 L10,18 L15,4 L20,20 L25,8 L30,16 L35,2 L40,22 L45,10 L50,14 L55,5 L60,19 L65,8 L70,16 L75,3 L80,21 L85,9 L90,15 L95,7 L100,12"
-                                                        fill="none"
-                                                        stroke={laneColor}
-                                                        strokeWidth="1.2"
-                                                        strokeOpacity="0.85"
-                                                    />
-                                                </svg>
-                                            </div>
-
-                                            {/* Clip Information Bar */}
-                                            <div className="clip-info-badge">
-                                                <span className="clip-station-name">{stationName}</span>
-                                                <span className="clip-gain-tag">{Math.round(clip.gain * 100)}%</span>
-                                            </div>
-
-                                            {/* Trimming Handle: Right (Cut Out) */}
-                                            <div
-                                                className="trim-handle trim-handle-right"
-                                                onMouseDown={(ev) => handleTrimDrag(ev, lane.id, clip.id, 'end')}
-                                                title="Drag to trim Clip Out-Point"
-                                            />
-                                        </div>
+                                            onOpenMenu={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
+                                            onTrimDrag={(ev, edge) => handleTrimDrag(ev, lane.id, clip.id, edge)}
+                                            vpStartEpoch={vpStartEpoch}
+                                            viewportDurationMs={viewportDurationMs}
+                                            timeMode={timeMode}
+                                            stationName={stationName}
+                                        />
                                     );
                                 })}
 
@@ -652,9 +868,9 @@ export default function AudioRoutingTrack({
                                     <div
                                         className="empty-lane-placeholder"
                                         onClick={() => handleAddClipToLane(lane.id, stations[0]?.id, playheadEpoch)}
-                                        title="Click to insert audio clip at playhead"
+                                        title="Click or drop workstation here to insert audio clip"
                                     >
-                                        <span>＋ CLICK TO INSERT AUDIO CLIP ({lane.name})</span>
+                                        <span>＋ CLICK OR DRAG WORKSTATION HERE ({lane.name})</span>
                                     </div>
                                 )}
                             </div>
@@ -682,7 +898,7 @@ export default function AudioRoutingTrack({
                     </div>
 
                     <div className="menu-section">
-                        <span className="section-label">SOURCE STATION</span>
+                        <span className="section-label">SOURCE WORKSTATION</span>
                         <div className="station-select-grid">
                             {stations.map(st => {
                                 const isCurrent = st.id === selectedMenuClip.stationId;

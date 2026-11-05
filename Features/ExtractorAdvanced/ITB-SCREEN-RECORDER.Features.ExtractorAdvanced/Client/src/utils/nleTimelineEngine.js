@@ -547,15 +547,51 @@ export function generateAutoPackPlacements(feeds, W = 1920, H = 1080) {
  *    Global gaps must remain completely unselected ('לא בחורים').
  *    Local gaps (station-specific gaps with 'No Signal' synthetic slate) remain covered without cuts.
  */
-export function cleanDirectorSegmentsWithGaps(rawSegments, stationGaps = [], globalGaps = []) {
-    if (!Array.isArray(rawSegments) || rawSegments.length === 0) return [];
-
-    let segs = rawSegments.map(s => ({
+export function cleanDirectorSegmentsWithGaps(
+    rawSegments,
+    stationGaps = [],
+    globalGaps = [],
+    cutStartEpoch = null,
+    cutEndEpoch = null,
+    primaryDisplayId = 'mon-0'
+) {
+    let segs = Array.isArray(rawSegments) ? rawSegments.map(s => ({
         ...s,
         startEpochMs: s.startEpochMs ?? s.StartEpochMs ?? 0,
         endEpochMs: s.endEpochMs ?? s.EndEpochMs ?? 0,
-        targetDisplayId: (s.targetDisplayId || s.TargetDisplayId || 'mon-0').toLowerCase()
-    })).sort((a, b) => a.startEpochMs - b.startEpochMs);
+        targetDisplayId: (s.targetDisplayId || s.TargetDisplayId || primaryDisplayId || 'mon-0').toLowerCase()
+    })).sort((a, b) => a.startEpochMs - b.startEpochMs) : [];
+
+    // 0. Ensure full coverage across the active CUT region [cutStartEpoch, cutEndEpoch]:
+    // Invariant (2026-11-05): When the user expands or adjusts the cut area, Auto-Director must
+    // dynamically plan transitions across the entire delta so that all active media inside the cut is covered.
+    if (cutStartEpoch !== null && cutEndEpoch !== null && cutEndEpoch > cutStartEpoch) {
+        if (segs.length === 0) {
+            segs.push({
+                startEpochMs: cutStartEpoch,
+                endEpochMs: cutEndEpoch,
+                targetDisplayId: (primaryDisplayId || 'mon-0').toLowerCase(),
+                isManualOverride: false
+            });
+        } else {
+            // Delta before first segment: extend first segment backwards
+            if (segs[0].startEpochMs > cutStartEpoch) {
+                segs[0].startEpochMs = cutStartEpoch;
+            }
+
+            // Delta after last segment: extend last segment forwards
+            if (segs[segs.length - 1].endEpochMs < cutEndEpoch) {
+                segs[segs.length - 1].endEpochMs = cutEndEpoch;
+            }
+
+            // Internal deltas between segments: bridge contiguous edges
+            for (let i = 0; i < segs.length - 1; i++) {
+                if (segs[i + 1].startEpochMs > segs[i].endEpochMs) {
+                    segs[i].endEpochMs = segs[i + 1].startEpochMs;
+                }
+            }
+        }
+    }
 
     // 1. Subtract GLOBAL GAPS completely:
     // Invariant: Auto-Director is strictly forbidden from selecting or covering GLOBAL GAP regions.

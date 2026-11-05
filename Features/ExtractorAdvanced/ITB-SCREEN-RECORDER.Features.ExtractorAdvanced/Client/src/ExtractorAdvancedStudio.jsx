@@ -851,6 +851,72 @@ export default function ExtractorAdvancedStudio() {
         });
     }, [allStations, getStationPlan]);
 
+    // Invariant (2026-11-05): Re-plan Auto-Director when CUT window (IN / OUT points) expands or changes
+    // Listens to cut range adjustments and fetches refined director plan for multi-display stations,
+    // preserving any manual overrides while covering newly added deltas.
+    useEffect(() => {
+        if (!timelineStations || timelineStations.length === 0 || isNaN(timelineBaseEpochMs)) return;
+        const cutStartEpoch = timelineBaseEpochMs + inPointMs;
+        const cutEndEpoch = timelineBaseEpochMs + outPointMs;
+        if (cutEndEpoch <= cutStartEpoch) return;
+
+        const timer = setTimeout(async () => {
+            const multiStations = timelineStations.filter(s => {
+                const disps = s.displays || s.Displays || s.displayTopology?.displays || [];
+                return disps.length > 1;
+            });
+            if (multiStations.length === 0) return;
+
+            for (const st of multiStations) {
+                try {
+                    const res = await fetch(`/api/v1/extractor-advanced/director-plan?stationId=${encodeURIComponent(st.id)}&startEpoch=${cutStartEpoch}&endEpoch=${cutEndEpoch}`);
+                    if (res.ok) {
+                        const newPlan = await res.json();
+                        if (newPlan?.segments && newPlan.segments.length > 0) {
+                            setStationDirectorPlans(prev => {
+                                const currentPlan = prev[st.id] || st.directorPlan;
+                                const manualOverrides = (currentPlan?.segments || []).filter(s => s.isManualOverride || s.IsManualOverride);
+
+                                if (manualOverrides.length === 0) {
+                                    return { ...prev, [st.id]: newPlan };
+                                }
+
+                                const merged = [...newPlan.segments];
+                                manualOverrides.forEach(mo => {
+                                    const mStart = mo.startEpochMs ?? mo.StartEpochMs;
+                                    const mEnd = mo.endEpochMs ?? mo.EndEpochMs;
+                                    for (let i = merged.length - 1; i >= 0; i--) {
+                                        const s = merged[i].startEpochMs ?? merged[i].StartEpochMs;
+                                        const e = merged[i].endEpochMs ?? merged[i].EndEpochMs;
+                                        if (e <= mStart || s >= mEnd) continue;
+                                        if (s >= mStart && e <= mEnd) {
+                                            merged.splice(i, 1);
+                                        } else if (s < mStart && e > mEnd) {
+                                            const left = { ...merged[i], endEpochMs: mStart };
+                                            const right = { ...merged[i], startEpochMs: mEnd };
+                                            merged.splice(i, 1, left, right);
+                                        } else if (s < mStart) {
+                                            merged[i].endEpochMs = mStart;
+                                        } else if (e > mEnd) {
+                                            merged[i].startEpochMs = mEnd;
+                                        }
+                                    }
+                                    merged.push(mo);
+                                });
+                                merged.sort((a, b) => (a.startEpochMs ?? a.StartEpochMs) - (b.startEpochMs ?? b.StartEpochMs));
+                                return { ...prev, [st.id]: { ...newPlan, segments: merged } };
+                            });
+                        }
+                    }
+                } catch {
+                    // Graceful fallback
+                }
+            }
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [inPointMs, outPointMs, timelineStations, timelineBaseEpochMs]);
+
     const enrichedTimelineStations = useMemo(() => {
         return timelineStations.map(st => ({
             ...st,

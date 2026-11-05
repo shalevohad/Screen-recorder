@@ -621,8 +621,10 @@ export default function TimelineTrack({
     // Global gaps must remain completely unselected ('לא בחורים').
     // Only local gaps (station-specific gaps with 'No Signal' synthetic slate) remain covered without cuts.
     const gapCleanDirectorSegments = useMemo(() => {
-        return cleanDirectorSegmentsWithGaps(rawDirectorSegments, stationGaps, globalGaps);
-    }, [rawDirectorSegments, stationGaps, globalGaps]);
+        const cutStartEpoch = baseEpochMs + inPointMs;
+        const cutEndEpoch = baseEpochMs + outPointMs;
+        return cleanDirectorSegmentsWithGaps(rawDirectorSegments, stationGaps, globalGaps, cutStartEpoch, cutEndEpoch, primaryDisplayId);
+    }, [rawDirectorSegments, stationGaps, globalGaps, baseEpochMs, inPointMs, outPointMs, primaryDisplayId]);
 
     // Stepper segments for collapsed view
     const stepperSegments = useMemo(() => {

@@ -361,32 +361,6 @@ export default function TransportBar({
                         className="volume-slider"
                     />
 
-                    <button
-                        type="button"
-                        className="btn-audio-mode-toggle"
-                        onClick={() => {
-                            const modes = ['both', 'mic', 'sys', 'stereo'];
-                            const currentMode = audioState.channelMode || 'both';
-                            const nextMode = modes[(modes.indexOf(currentMode) + 1) % modes.length];
-                            updateAudio(volume, isMuted, nextMode);
-                        }}
-                        title={`Discrete Audio Channel: ${(audioState.channelMode || 'both').toUpperCase()} (Click to cycle Both / Mic / System / Stereo)`}
-                        style={{
-                            background: 'rgba(255, 255, 255, 0.08)',
-                            border: '1px solid rgba(6, 182, 212, 0.35)',
-                            borderRadius: '4px',
-                            color: '#06B6D4',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            padding: '2px 6px',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                        }}
-                    >
-                        {(audioState.channelMode || 'both') === 'mic' ? '🎤 MIC' :
-                         (audioState.channelMode || 'both') === 'sys' ? '🔊 SYS' :
-                         (audioState.channelMode || 'both') === 'stereo' ? '⮂ STEREO' : '🎧 BOTH'}
-                    </button>
 
 
                 </div>

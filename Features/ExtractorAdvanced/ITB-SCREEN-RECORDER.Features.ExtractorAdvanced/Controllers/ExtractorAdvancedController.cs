@@ -1148,5 +1148,50 @@ namespace ITB_SCREEN_RECORDER.Features.ExtractorAdvanced.Controllers
                 return StatusCode(500, "Error generating filmstrip.");
             }
         }
+
+        [HttpGet("audio-waveform")]
+        public async Task<IActionResult> GetAudioWaveform(
+            [FromQuery] string stationId,
+            [FromQuery] double startEpoch,
+            [FromQuery] double endEpoch,
+            [FromQuery] int points = 200,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(stationId)) return BadRequest("stationId is required.");
+            stationId = stationId.Trim();
+            if (stationId.StartsWith("live/", StringComparison.OrdinalIgnoreCase))
+            {
+                stationId = stationId.Substring(5);
+            }
+
+            long lStart = (long)Math.Round(startEpoch);
+            long lEnd = (long)Math.Round(endEpoch);
+            const long SecondsThreshold = 100_000_000_000L;
+            if (lStart > 0 && lStart < SecondsThreshold) lStart *= 1000;
+            if (lEnd > 0 && lEnd < SecondsThreshold) lEnd *= 1000;
+
+            if (lEnd <= lStart) return BadRequest("Start time must be before end time.");
+
+            try
+            {
+                DateTime startUtc = DateTimeOffset.FromUnixTimeMilliseconds(lStart).UtcDateTime;
+                DateTime endUtc = DateTimeOffset.FromUnixTimeMilliseconds(lEnd).UtcDateTime;
+
+                var peaks = await _advancedExtractorService.GenerateAudioWaveformAsync(
+                    stationId, startUtc, endUtc, Math.Clamp(points, 20, 1000), ct);
+
+                Response.Headers.Append("Cache-Control", "public, max-age=3600, stale-while-revalidate=600");
+                return Ok(peaks);
+            }
+            catch (OperationCanceledException)
+            {
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to generate audio waveform for station {StationId}", stationId);
+                return StatusCode(500, "Error generating audio waveform.");
+            }
+        }
     }
 }

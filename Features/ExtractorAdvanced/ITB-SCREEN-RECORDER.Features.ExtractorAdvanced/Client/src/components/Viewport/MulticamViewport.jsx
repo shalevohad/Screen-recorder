@@ -6,6 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import CameraCard from './views/Card/CameraCard.jsx';
 import CanvasUtcWallClock from './overlays/CanvasUtcWallClock.jsx';
+import ActiveAudioSourceOverlay from './overlays/ActiveAudioSourceOverlay.jsx';
 import { saveStudioSessionCache } from '../../utils/studioSessionStore.js';
 import { formatTimelineClock } from '../../utils/timeFormat.js';
 import {
@@ -3363,6 +3364,8 @@ export default function MulticamViewport({
                                 } catch { }
                             }}
                         />
+                        {/* Live Audio Source Playback Overlay Indicator */}
+                        <ActiveAudioSourceOverlay />
                     </div>
 
                     <aside className="canvas-right-wing-dock">
