@@ -7,10 +7,96 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { formatTimelineClock } from '../../../utils/timeFormat.js';
 import { setAudioGain } from '../../../utils/audioLevelMonitor.js';
-import { waveformStore, generateWaveformSvgPath } from '../../../utils/waveformStore.js';
+import { waveformStore, generateWaveformSvgPath, generateDualChannelWaveformPaths, AUDIO_CHANNEL_COLORS } from '../../../utils/waveformStore.js';
 import './AudioRoutingTrack.scss';
 
 const LANE_COLORS = ['#06B6D4', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899', '#3B82F6'];
+
+/**
+ * Sub-component for rendering acoustic waveform according to channel mode:
+ * - 'both': Dual-channel view with SYS (top half in #8B5CF6 Violet) and MIC (bottom half in #F59E0B Amber), separated by a subtle centerline.
+ * - 'sys': Single-channel view in #8B5CF6 Violet (System Audio / PC Output).
+ * - 'mic': Single-channel view in #F59E0B Amber (Microphone Audio / Voice).
+ */
+function ClipWaveformRenderer({ peaks, channelMode = 'both', effectiveGain = 1.0, isLoadingWaveform = false, laneColor = '#06B6D4' }) {
+    const isBoth = channelMode === 'both';
+    const isSys = channelMode === 'sys';
+    const isMic = channelMode === 'mic';
+
+    const dualPaths = useMemo(() => {
+        if (!isBoth || !peaks) return null;
+        return generateDualChannelWaveformPaths(peaks, 100, 24, effectiveGain);
+    }, [isBoth, peaks, effectiveGain]);
+
+    const singlePath = useMemo(() => {
+        if (isBoth || !peaks) return null;
+        return generateWaveformSvgPath(peaks, 100, 24, effectiveGain, { yCenter: 12, maxHalfHeight: 10.5 });
+    }, [isBoth, peaks, effectiveGain]);
+
+    if (isLoadingWaveform) {
+        return (
+            <div className="waveform-loading-shimmer" title="Decoding Station Audio Waveform...">
+                <div className="shimmer-scanner" />
+                <span className="shimmer-text">DECODING AUDIO...</span>
+            </div>
+        );
+    }
+
+    if (isBoth) {
+        const sysColor = AUDIO_CHANNEL_COLORS.sys; // #8B5CF6 (Violet)
+        const micColor = AUDIO_CHANNEL_COLORS.mic; // #F59E0B (Amber)
+        return (
+            <svg viewBox="0 0 100 24" preserveAspectRatio="none" className="waveform-svg waveform-svg-dual">
+                {/* SYS Channel - Top Half */}
+                <path
+                    d={dualPaths?.sysPath || 'M 0,6 L 100,6'}
+                    fill={sysColor}
+                    fillOpacity="0.45"
+                    stroke={sysColor}
+                    strokeWidth="1.1"
+                    strokeOpacity="0.9"
+                    className="waveform-sys-path"
+                />
+                {/* Dividing Centerline */}
+                <line
+                    x1="0"
+                    y1="12"
+                    x2="100"
+                    y2="12"
+                    stroke="rgba(255, 255, 255, 0.22)"
+                    strokeWidth="0.8"
+                    strokeDasharray="2 2"
+                    className="waveform-center-divider"
+                />
+                {/* MIC Channel - Bottom Half */}
+                <path
+                    d={dualPaths?.micPath || 'M 0,18 L 100,18'}
+                    fill={micColor}
+                    fillOpacity="0.45"
+                    stroke={micColor}
+                    strokeWidth="1.1"
+                    strokeOpacity="0.9"
+                    className="waveform-mic-path"
+                />
+            </svg>
+        );
+    }
+
+    const strokeColor = isSys ? AUDIO_CHANNEL_COLORS.sys : (isMic ? AUDIO_CHANNEL_COLORS.mic : (laneColor || '#06B6D4'));
+
+    return (
+        <svg viewBox="0 0 100 24" preserveAspectRatio="none" className="waveform-svg">
+            <path
+                d={singlePath || generateWaveformSvgPath(peaks, 100, 24, effectiveGain)}
+                fill={strokeColor}
+                fillOpacity="0.45"
+                stroke={strokeColor}
+                strokeWidth="1.2"
+                strokeOpacity="0.85"
+            />
+        </svg>
+    );
+}
 
 /**
  * Sub-component for individual audio clip with real acoustic waveform envelope
@@ -24,6 +110,7 @@ function AudioClipRenderer({
     onOpenMenu,
     onTrimDrag,
     onClipMoveDrag,
+    onToggleChannelMode,
     vpStartEpoch,
     viewportDurationMs,
     timeMode,
@@ -73,9 +160,6 @@ function AudioClipRenderer({
     const e = clip.endEpochMs;
     const durMs = Math.max(1, e - s);
     const effectiveGain = (clip.gain || 1.0) * (lane.gain || 1.0);
-    const waveformPath = useMemo(() => {
-        return generateWaveformSvgPath(peaks, 100, 24, effectiveGain);
-    }, [peaks, effectiveGain]);
 
     const clStart = Math.max(vpStartEpoch, s);
     const clEnd = Math.min(vpStartEpoch + viewportDurationMs, e);
@@ -99,13 +183,13 @@ function AudioClipRenderer({
             }}
             onClick={onSelect}
             onMouseDown={(ev) => {
-                if (!ev.target.closest('.trim-handle') && !ev.target.closest('.btn-menu-close')) {
+                if (!ev.target.closest('.trim-handle') && !ev.target.closest('.btn-menu-close') && !ev.target.closest('.clip-channel-tag')) {
                     onClipMoveDrag?.(ev);
                 }
             }}
             onDoubleClick={onOpenMenu}
             onContextMenu={onOpenMenu}
-            title={`Audio Clip: ${stationName} [${channelMode.toUpperCase()}] (${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })})\nGain: ${Math.round(clip.gain * 100)}% • Fade: IN ${fadeInMs}ms / OUT ${fadeOutMs}ms\nDrag body: Move in time • Drag edges: Trim • Double-click: Edit`}
+            title={`Audio Clip: ${stationName} [${channelMode.toUpperCase()}] (${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })})\nGain: ${Math.round(clip.gain * 100)}% • Fade: IN ${fadeInMs}ms / OUT ${fadeOutMs}ms\nDrag body: Move in time • Drag edges: Trim • Click tag: Toggle channel • Double-click: Edit`}
         >
             {/* Trimming Handle: Left (Cut In) */}
             <div
@@ -130,23 +214,13 @@ function AudioClipRenderer({
 
             {/* Real Acoustic Waveform Envelope Graphic & Loading State */}
             <div className="clip-waveform-graphic">
-                {isLoadingWaveform ? (
-                    <div className="waveform-loading-shimmer" title="Decoding Station Audio Waveform...">
-                        <div className="shimmer-scanner" />
-                        <span className="shimmer-text">DECODING AUDIO...</span>
-                    </div>
-                ) : (
-                    <svg viewBox="0 0 100 24" preserveAspectRatio="none" className="waveform-svg">
-                        <path
-                            d={waveformPath}
-                            fill={laneColor}
-                            fillOpacity="0.45"
-                            stroke={laneColor}
-                            strokeWidth="1.2"
-                            strokeOpacity="0.85"
-                        />
-                    </svg>
-                )}
+                <ClipWaveformRenderer
+                    peaks={peaks}
+                    channelMode={channelMode}
+                    effectiveGain={effectiveGain}
+                    isLoadingWaveform={isLoadingWaveform}
+                    laneColor={laneColor}
+                />
             </div>
 
             {/* Visual Fade-Out Ramp */}
@@ -166,7 +240,16 @@ function AudioClipRenderer({
             {/* Clip Information Bar */}
             <div className="clip-info-badge">
                 <span className="clip-station-name">{stationName}</span>
-                <span className={`clip-channel-tag mode-${channelMode}`}>{channelMode.toUpperCase()}</span>
+                <span
+                    className={`clip-channel-tag mode-${channelMode}`}
+                    onClick={(ev) => {
+                        ev.stopPropagation();
+                        onToggleChannelMode?.();
+                    }}
+                    title={`Channel Mode: ${channelMode.toUpperCase()} (Click to cycle BOTH / SYS / MIC)`}
+                >
+                    {channelMode.toUpperCase()}
+                </span>
                 <span className="clip-gain-tag">{Math.round(clip.gain * 100)}%</span>
             </div>
 
@@ -176,6 +259,93 @@ function AudioClipRenderer({
                 onMouseDown={(ev) => onTrimDrag(ev, 'end')}
                 title="Drag to trim Clip Out-Point"
             />
+        </div>
+    );
+}
+
+/**
+ * Sub-component for individual aggregated audio clip displayed inside the collapsed Master Bus timeline.
+ * Reflects real acoustic waveforms with dual-channel (SYS/MIC) coloring and instant visual fidelity.
+ */
+function CollapsedMasterClipRenderer({
+    clip,
+    vpStartEpoch,
+    viewportDurationMs,
+    timeMode,
+    stationName,
+    onExpand
+}) {
+    const [peaks, setPeaks] = useState(() => {
+        return waveformStore.get(clip.sourceStationId, clip.startEpochMs, clip.endEpochMs, 200) || null;
+    });
+    const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        const abortController = new AbortController();
+
+        const cached = waveformStore.get(clip.sourceStationId, clip.startEpochMs, clip.endEpochMs, 200);
+        if (cached) {
+            setPeaks(cached);
+            setIsLoadingWaveform(false);
+            return;
+        }
+
+        setPeaks(null);
+        setIsLoadingWaveform(true);
+
+        waveformStore.fetchWaveform(clip.sourceStationId, clip.startEpochMs, clip.endEpochMs, abortController.signal, 200)
+            .then(res => {
+                if (isMounted) {
+                    if (res) setPeaks(res);
+                    setIsLoadingWaveform(false);
+                }
+            })
+            .catch(() => {
+                if (isMounted) setIsLoadingWaveform(false);
+            });
+
+        return () => {
+            isMounted = false;
+            abortController.abort();
+        };
+    }, [clip.sourceStationId, clip.startEpochMs, clip.endEpochMs]);
+
+    const s = clip.startEpochMs;
+    const e = clip.endEpochMs;
+    const clStart = Math.max(vpStartEpoch, s);
+    const clEnd = Math.min(vpStartEpoch + viewportDurationMs, e);
+    const leftPct = ((clStart - vpStartEpoch) / viewportDurationMs) * 100;
+    const widthPct = ((clEnd - clStart) / viewportDurationMs) * 100;
+    if (widthPct <= 0) return null;
+
+    const channelMode = clip.effectiveChannelMode || 'both';
+
+    return (
+        <div
+            className={`collapsed-master-clip mode-${channelMode}`}
+            style={{
+                left: `${leftPct}%`,
+                width: `${widthPct}%`,
+                borderLeftColor: clip.laneColor
+            }}
+            onDoubleClick={onExpand}
+            title={`Master Audio Bus Stream: ${stationName} [${channelMode.toUpperCase()}] (${formatTimelineClock(s, timeMode, { includeSeconds: true })} - ${formatTimelineClock(e, timeMode, { includeSeconds: true })})\nGain: ${Math.round(clip.effectiveGain * 100)}%\nDouble-click to expand multitrack audio lanes`}
+        >
+            <div className="clip-waveform-graphic">
+                <ClipWaveformRenderer
+                    peaks={peaks}
+                    channelMode={channelMode}
+                    effectiveGain={clip.effectiveGain}
+                    isLoadingWaveform={isLoadingWaveform}
+                    laneColor={clip.laneColor}
+                />
+            </div>
+            <div className="collapsed-clip-info">
+                <span className="collapsed-clip-station">{stationName}</span>
+                <span className={`clip-channel-tag mode-${channelMode}`}>{channelMode.toUpperCase()}</span>
+                <span className="collapsed-clip-gain">{Math.round(clip.effectiveGain * 100)}%</span>
+            </div>
         </div>
     );
 }
@@ -744,12 +914,40 @@ export default function AudioRoutingTrack({
         window.addEventListener('mouseup', handleMouseUp);
     }, [lanes, viewportDurationMs, syncLanesToPlan]);
 
+    // Change Clip Channel Mode
+    const handleChangeClipChannelMode = useCallback((laneId, clipId, newMode) => {
+        setLanes(prev => {
+            const updated = prev.map(l => {
+                if (l.id !== laneId) return l;
+                return {
+                    ...l,
+                    clips: l.clips.map(c => c.id === clipId ? { ...c, channelMode: newMode } : c)
+                };
+            });
+            syncLanesToPlan(updated);
+            return updated;
+        });
+        setSelectedMenuClip(prev => prev ? { ...prev, channelMode: newMode } : null);
+    }, [syncLanesToPlan]);
+
+    // Cycle Clip Channel Mode directly (both -> sys -> mic -> both)
+    const handleCycleClipChannelMode = useCallback((laneId, clipId) => {
+        const lane = lanes.find(l => l.id === laneId);
+        const clip = lane?.clips?.find(c => c.id === clipId);
+        if (!clip) return;
+        const currentMode = clip.channelMode || lane.channelMode || 'both';
+        const modes = ['both', 'sys', 'mic'];
+        const nextIdx = (modes.indexOf(currentMode) + 1) % modes.length;
+        const nextMode = modes[nextIdx];
+        handleChangeClipChannelMode(laneId, clipId, nextMode);
+    }, [lanes, handleChangeClipChannelMode]);
+
     // Open context menu for clip
     const handleOpenClipMenu = (ev, laneId, clip) => {
         ev.preventDefault();
         ev.stopPropagation();
         const menuWidth = 280;
-        const menuHeight = 350;
+        const menuHeight = 390;
         const posX = Math.max(16, Math.min(window.innerWidth - menuWidth - 16, ev.clientX - (menuWidth / 2)));
         let posY = ev.clientY - menuHeight - 12;
         if (posY < 80) {
@@ -787,39 +985,88 @@ export default function AudioRoutingTrack({
         };
     }, [selectedMenuClip]);
 
-    const totalActiveClips = useMemo(() => {
-        return lanes.reduce((acc, l) => acc + (l.isMuted ? 0 : l.clips.length), 0);
-    }, [lanes]);
+    // Master Active Audio Clips Across All Unmuted / Solo Lanes
+    const masterActiveClips = useMemo(() => {
+        if (isMasterMuted) return [];
+        const hasSolo = lanes.some(l => l.isSolo);
+        const activeLanes = lanes.filter(l => hasSolo ? l.isSolo : !l.isMuted);
+
+        const result = [];
+        activeLanes.forEach(lane => {
+            const laneColor = LANE_COLORS[lanes.indexOf(lane) % LANE_COLORS.length];
+            lane.clips.forEach(clip => {
+                result.push({
+                    ...clip,
+                    laneId: lane.id,
+                    laneName: lane.name,
+                    laneColor: laneColor,
+                    effectiveChannelMode: clip.channelMode || lane.channelMode || 'both',
+                    effectiveGain: (clip.gain || 1.0) * (lane.gain || 1.0)
+                });
+            });
+        });
+        return result.sort((a, b) => a.startEpochMs - b.startEpochMs);
+    }, [lanes, isMasterMuted]);
 
     if (!stations || stations.length === 0) return null;
 
     // -------------------------------------------------------------
-    // RENDER: COLLAPSED VIEW (Closed by default, 26px)
+    // RENDER: COLLAPSED VIEW (Closed by default, 28px)
+    // Aggregates waveforms across all active stations & channels
     // -------------------------------------------------------------
     if (!isBusExpanded) {
         return (
             <div
                 className="audio-routing-track-container is-compact-track"
                 ref={containerRef}
-                onClick={toggleBusExpanded}
-                title="Audio Master Bus is Collapsed. Click to Expand Multi-Track Lanes (Fairlight/Premiere NLE)"
+                title="Audio Master Bus is Collapsed. Click or double-click to Expand Multi-Track Lanes (Fairlight/Premiere NLE)"
             >
-                <div className="audio-track-label collapsed-bus-sidebar">
+                <div className="audio-track-label collapsed-bus-sidebar" onClick={toggleBusExpanded}>
                     <button type="button" className="btn-expand-bus" title="Expand Audio Master Bus">
                         ▶
                     </button>
-                    <span className="audio-icon">🔇</span>
+                    <span className="audio-icon">{isMasterMuted || masterActiveClips.length === 0 ? '🔇' : '🔊'}</span>
                     <span className="audio-title">AUDIO MASTER BUS</span>
                     <span className="badge-bus-status">
-                        {totalActiveClips > 0 ? `${totalActiveClips} CLIPS ACTIVE` : 'MUTED (0 ACTIVE)'}
+                        {masterActiveClips.length > 0 ? `${masterActiveClips.length} CLIPS ACTIVE` : (isMasterMuted ? 'MUTED' : '0 ACTIVE')}
                     </span>
                     <div className="mini-vu-dot" style={{ background: liveLevel.isPlaying ? '#10B981' : '#64748B' }} />
                 </div>
-                <div className="audio-track-timeline collapsed-bus-timeline">
-                    <div className="collapsed-audio-guide-line" />
-                    <span className="collapsed-audio-label">
-                        [ 🔇 MASTER AUDIO BUS — CLICK TO EXPAND MULTI-TRACK LANES (A1, A2...) ]
-                    </span>
+                <div
+                    className="audio-track-timeline collapsed-bus-timeline"
+                    onClick={(ev) => {
+                        if (!ev.target.closest('.collapsed-master-clip')) {
+                            toggleBusExpanded();
+                        }
+                    }}
+                >
+                    {masterActiveClips.length === 0 ? (
+                        <>
+                            <div className="collapsed-audio-guide-line" />
+                            <span className="collapsed-audio-label">
+                                [ 🔇 MASTER AUDIO BUS (0 ACTIVE) — CLICK TO EXPAND MULTI-TRACK LANES ]
+                            </span>
+                        </>
+                    ) : (
+                        masterActiveClips.map(clip => {
+                            const st = stations.find(x => x.id === clip.sourceStationId);
+                            const stationName = st ? (st.displayName || st.hostname || st.id) : clip.sourceStationId;
+
+                            if (clip.endEpochMs <= vpStartEpoch || clip.startEpochMs >= vpEndEpoch) return null;
+
+                            return (
+                                <CollapsedMasterClipRenderer
+                                    key={`master_${clip.id}`}
+                                    clip={clip}
+                                    vpStartEpoch={vpStartEpoch}
+                                    viewportDurationMs={viewportDurationMs}
+                                    timeMode={timeMode}
+                                    stationName={stationName}
+                                    onExpand={toggleBusExpanded}
+                                />
+                            );
+                        })
+                    )}
                 </div>
             </div>
         );
@@ -1036,6 +1283,7 @@ export default function AudioRoutingTrack({
                                             onOpenMenu={(ev) => handleOpenClipMenu(ev, lane.id, clip)}
                                             onTrimDrag={(ev, edge) => handleTrimDrag(ev, lane.id, clip.id, edge)}
                                             onClipMoveDrag={(ev) => handleClipMoveDrag(ev, lane.id, clip.id)}
+                                            onToggleChannelMode={() => handleCycleClipChannelMode(lane.id, clip.id)}
                                             vpStartEpoch={vpStartEpoch}
                                             viewportDurationMs={viewportDurationMs}
                                             timeMode={timeMode}
@@ -1094,6 +1342,36 @@ export default function AudioRoutingTrack({
                                     </button>
                                 );
                             })}
+                        </div>
+                    </div>
+
+                    <div className="menu-section">
+                        <span className="section-label">AUDIO CHANNEL ROUTING</span>
+                        <div className="channel-mode-grid">
+                            <button
+                                type="button"
+                                className={`btn-channel-chip mode-both ${selectedMenuClip.channelMode === 'both' ? 'is-selected' : ''}`}
+                                onClick={() => handleChangeClipChannelMode(selectedMenuClip.laneId, selectedMenuClip.clipId, 'both')}
+                                title="Dual channels: SYS loopback + MIC voice"
+                            >
+                                BOTH (SYS + MIC)
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn-channel-chip mode-sys ${selectedMenuClip.channelMode === 'sys' ? 'is-selected' : ''}`}
+                                onClick={() => handleChangeClipChannelMode(selectedMenuClip.laneId, selectedMenuClip.clipId, 'sys')}
+                                title="System audio only (PC output loopback)"
+                            >
+                                SYS (PC AUDIO)
+                            </button>
+                            <button
+                                type="button"
+                                className={`btn-channel-chip mode-mic ${selectedMenuClip.channelMode === 'mic' ? 'is-selected' : ''}`}
+                                onClick={() => handleChangeClipChannelMode(selectedMenuClip.laneId, selectedMenuClip.clipId, 'mic')}
+                                title="Microphone audio only (vocal input)"
+                            >
+                                MIC (VOICE)
+                            </button>
                         </div>
                     </div>
 

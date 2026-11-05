@@ -2932,4 +2932,41 @@ To guarantee broadcast-grade forensic accuracy, ergonomic timeline operations, a
 
 ---
 
+### 20. Collapsed Audio Master Bus Acoustic Waveform Aggregation, Channel-Specific Waveform Isolation & Dual-Color `BOTH` Architecture (2026-11-05)
+
+To guarantee comprehensive acoustic situational awareness without requiring operators to expand multi-track DAW lanes, this update elevates the Master Audio Bus with timeline-wide waveform aggregation, discrete channel geometry, and strict color parity:
+
+1. **Collapsed Audio Master Bus Acoustic Waveform Aggregation (`!isBusExpanded`)**:
+   - **Operational Challenge**: When the `AUDIO MASTER BUS` was collapsed into its compact 28px NOC view, the timeline previously showed only an empty guide line and placeholder label (`[ 🔇 MASTER AUDIO BUS — CLICK TO EXPAND ... ]`), hiding the real master audio mix from operators.
+   - **Dynamic Multi-Track Composite Aggregation**:
+     - `AudioRoutingTrack.jsx`: Dynamically computes `masterActiveClips` across all active, unmuted lanes (`!lane.isMuted && !isMasterMuted`). If any lane is soloed (`isSolo`), only soloed lanes are aggregated.
+     - Each active audio clip is rendered directly inside the collapsed timeline canvas (`.collapsed-bus-timeline`) with millisecond-accurate timeline placement (`leftPct`, `widthPct`).
+     - Sub-component `CollapsedMasterClipRenderer`:
+       - Asynchronously retrieves acoustic peaks from `waveformStore` with 0ms Time-0 memory caching.
+       - Renders authentic acoustic waveform polygons matching the clip's effective gain and discrete channel mode.
+       - Displays compact tactical metadata: Workstation name (e.g. `OHAD-DESKTOP`), Channel tag (`BOTH`, `SYS`, `MIC`), and Gain (`100%`).
+       - Double-clicking any collapsed clip or clicking the expand button instantly unfolds the multi-lane DAW editor.
+     - Sidebar icon dynamically reflects master status: `🔊` when active audio clips exist, `🔇` when muted or empty.
+
+2. **Channel-Specific Waveform Isolation & Dual-Color `BOTH` Mode Parity**:
+   - **Tactical Channel Palette System** (`AUDIO_CHANNEL_COLORS` in `waveformStore.js` & `AudioRoutingTrack.scss`):
+     - `SYS` (System / PC Loopback Audio): **Tactical Violet** (`#8B5CF6` / `#C084FC`).
+     - `MIC` (Microphone / Vocal Input): **Tactical Amber** (`#F59E0B` / `#FBBF24`).
+     - `BOTH` (Dual SYS + MIC Composite): Renders **both colors simultaneously** in the same clip!
+   - **Geometry & Waveform Rendering**:
+     - `generateWaveformSvgPath`: Enhanced with custom `{ yCenter, maxHalfHeight }` geometry bounds.
+     - `generateDualChannelWaveformPaths`: Generates two distinct SVG paths for the same temporal segment:
+       - **Top Half (`SYS`)**: Mirrored envelope centered at 25% height (`yCenter = 6px`, `maxHalfHeight = 4.8px`) rendered in `#8B5CF6` Violet (`fillOpacity: 0.45`, `stroke: #8B5CF6`).
+       - **Dividing Centerline**: Subtle dashed separator at 50% height (`y = 12px`, `stroke: rgba(255, 255, 255, 0.22)`).
+       - **Bottom Half (`MIC`)**: Mirrored envelope centered at 75% height (`yCenter = 18px`, `maxHalfHeight = 4.8px`) rendered in `#F59E0B` Amber (`fillOpacity: 0.45`, `stroke: #F59E0B`).
+     - When `SYS` is selected alone: Waveform fills full height centered at `y = 12px` in `#8B5CF6` Violet.
+     - When `MIC` is selected alone: Waveform fills full height centered at `y = 12px` in `#F59E0B` Amber.
+     - **Strict Color Parity Guarantee**: The colors for `SYS` and `MIC` in `BOTH` mode are 100% identical to the colors displayed when each channel is selected individually (`#8B5CF6` and `#F59E0B`).
+
+3. **Per-Clip Channel Switching & Ergonomic Controls**:
+   - Single-click on any `.clip-channel-tag` cycles channel modes directly on the timeline (`BOTH` -> `SYS` -> `MIC` -> `BOTH`).
+   - The "EDIT AUDIO CLIP" context menu (`selectedMenuClip`) now features a dedicated `AUDIO CHANNEL ROUTING` 3-way toggle grid with tactical chips reflecting active channel states and glows.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

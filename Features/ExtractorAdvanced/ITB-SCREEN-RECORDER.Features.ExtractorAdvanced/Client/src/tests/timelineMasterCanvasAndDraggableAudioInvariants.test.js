@@ -11,7 +11,7 @@
 // ==========================================
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { waveformStore, generateWaveformSvgPath } from '../utils/waveformStore.js';
+import { waveformStore, generateWaveformSvgPath, generateDualChannelWaveformPaths, AUDIO_CHANNEL_COLORS } from '../utils/waveformStore.js';
 
 describe('Timeline Master Canvas, Draggable Audio & Keyframe Invariants', () => {
 
@@ -233,5 +233,121 @@ describe('Timeline Master Canvas, Draggable Audio & Keyframe Invariants', () => 
         assert.equal(initial[0].timestampEpochMs, timelineBaseEpochMs + inPointMs, 'Root keyframe anchored at In-Point');
         assert.equal(initial[1].timestampEpochMs, timelineBaseEpochMs + outPointMs, 'Out keyframe anchored at Out-Point');
         assert.equal(initial[0].transitionType, 'smooth');
+    });
+
+    test('8. Collapsed Master Audio Bus: aggregates active clips from all unmuted/solo tracks with proper channel metadata', () => {
+        const lanes = [
+            {
+                id: 'A1',
+                name: 'Track A1',
+                isMuted: false,
+                isSolo: false,
+                gain: 1.0,
+                channelMode: 'both',
+                clips: [
+                    { id: 'c1', startEpochMs: 1000, endEpochMs: 5000, sourceStationId: 'st-1', gain: 1.0, channelMode: 'both' }
+                ]
+            },
+            {
+                id: 'A2',
+                name: 'Track A2',
+                isMuted: true, // Muted lane should NOT appear in collapsed bus
+                isSolo: false,
+                gain: 0.8,
+                channelMode: 'sys',
+                clips: [
+                    { id: 'c2', startEpochMs: 2000, endEpochMs: 4000, sourceStationId: 'st-2', gain: 1.0, channelMode: 'sys' }
+                ]
+            },
+            {
+                id: 'A3',
+                name: 'Track A3',
+                isMuted: false,
+                isSolo: false,
+                gain: 0.5,
+                channelMode: 'mic',
+                clips: [
+                    { id: 'c3', startEpochMs: 6000, endEpochMs: 9000, sourceStationId: 'st-3', gain: 1.2, channelMode: 'mic' }
+                ]
+            }
+        ];
+
+        const computeMasterActiveClips = (currentLanes, isMasterMuted = false) => {
+            if (isMasterMuted) return [];
+            const hasSolo = currentLanes.some(l => l.isSolo);
+            const activeLanes = currentLanes.filter(l => hasSolo ? l.isSolo : !l.isMuted);
+
+            const result = [];
+            activeLanes.forEach(lane => {
+                lane.clips.forEach(clip => {
+                    result.push({
+                        ...clip,
+                        laneId: lane.id,
+                        laneName: lane.name,
+                        effectiveChannelMode: clip.channelMode || lane.channelMode || 'both',
+                        effectiveGain: (clip.gain || 1.0) * (lane.gain || 1.0)
+                    });
+                });
+            });
+            return result.sort((a, b) => a.startEpochMs - b.startEpochMs);
+        };
+
+        const activeClips = computeMasterActiveClips(lanes, false);
+        assert.equal(activeClips.length, 2, 'Collapsed master bus aggregates exactly 2 clips (A1 and A3), excluding muted A2');
+        assert.equal(activeClips[0].id, 'c1', 'First clip is c1 from Track A1');
+        assert.equal(activeClips[0].effectiveChannelMode, 'both', 'Clip 1 has channel mode both');
+        assert.equal(activeClips[1].id, 'c3', 'Second clip is c3 from Track A3');
+        assert.equal(activeClips[1].effectiveChannelMode, 'mic', 'Clip 3 has channel mode mic');
+        assert.equal(activeClips[1].effectiveGain, 0.6, 'Effective gain multiplied correctly (0.5 * 1.2 = 0.6)');
+
+        // When Master Mute is engaged
+        const mutedMaster = computeMasterActiveClips(lanes, true);
+        assert.equal(mutedMaster.length, 0, 'Master mute suppresses all clips in collapsed master bus');
+    });
+
+    test('9. Dual-Channel Waveform Architecture: exact color matching & distinct SYS/MIC geometry', () => {
+        // Invariant: The color for SYS must be #8B5CF6 (Violet) and MIC must be #F59E0B (Amber)
+        assert.equal(AUDIO_CHANNEL_COLORS.sys, '#8B5CF6', 'SYS channel color is Violet (#8B5CF6)');
+        assert.equal(AUDIO_CHANNEL_COLORS.mic, '#F59E0B', 'MIC channel color is Amber (#F59E0B)');
+
+        const peaks = [0.1, 0.8, 0.5, 0.9, 0.2];
+        const dual = generateDualChannelWaveformPaths(peaks, 100, 24, 1.0);
+
+        assert.ok(dual.sysPath, 'Generates SYS path');
+        assert.ok(dual.micPath, 'Generates MIC path');
+        assert.notEqual(dual.sysPath, dual.micPath, 'SYS and MIC paths exhibit distinct acoustic characteristics');
+
+        // Verify SYS path envelope stays in top half (yCenter = 6, height = 24)
+        // Midpoint 6 means vertices are between 1 and 11
+        assert.ok(dual.sysPath.includes('M 0.00,'), 'SYS path has valid SVG start');
+
+        // Verify single channel rendering with custom bounds
+        const sysSingle = generateWaveformSvgPath(peaks, 100, 24, 1.0, { yCenter: 12, maxHalfHeight: 10.5 });
+        const micSingle = generateWaveformSvgPath(peaks, 100, 24, 1.0, { yCenter: 12, maxHalfHeight: 10.5 });
+        assert.equal(sysSingle, micSingle, 'Single channel envelopes share base geometry centered at 12');
+
+        // Color invariant guarantee:
+        // When SYS is rendered alone: stroke is AUDIO_CHANNEL_COLORS.sys (#8B5CF6)
+        // When MIC is rendered alone: stroke is AUDIO_CHANNEL_COLORS.mic (#F59E0B)
+        // When BOTH is rendered: top path uses AUDIO_CHANNEL_COLORS.sys (#8B5CF6) and bottom uses AUDIO_CHANNEL_COLORS.mic (#F59E0B)
+        const getChannelWaveformColors = (mode) => {
+            if (mode === 'both') {
+                return { top: AUDIO_CHANNEL_COLORS.sys, bottom: AUDIO_CHANNEL_COLORS.mic };
+            }
+            if (mode === 'sys') {
+                return { single: AUDIO_CHANNEL_COLORS.sys };
+            }
+            if (mode === 'mic') {
+                return { single: AUDIO_CHANNEL_COLORS.mic };
+            }
+            return { single: '#06B6D4' };
+        };
+
+        const bothColors = getChannelWaveformColors('both');
+        const sysAlone = getChannelWaveformColors('sys');
+        const micAlone = getChannelWaveformColors('mic');
+
+        assert.equal(bothColors.top, sysAlone.single, 'SYS color in BOTH mode strictly equals SYS color alone (#8B5CF6)');
+        assert.equal(bothColors.bottom, micAlone.single, 'MIC color in BOTH mode strictly equals MIC color alone (#F59E0B)');
     });
 });

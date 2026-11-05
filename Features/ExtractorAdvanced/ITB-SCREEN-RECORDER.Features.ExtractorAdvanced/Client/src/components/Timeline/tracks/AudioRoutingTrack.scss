@@ -657,9 +657,11 @@
     .collapsed-bus-timeline {
         display: flex;
         align-items: center;
-        justify-content: center;
         background: rgba(10, 15, 26, 0.6);
         position: relative;
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
 
         .collapsed-audio-guide-line {
             position: absolute;
@@ -668,9 +670,11 @@
             top: 50%;
             height: 1px;
             background: rgba(16, 185, 129, 0.2);
+            pointer-events: none;
         }
 
         .collapsed-audio-label {
+            margin: auto;
             font-family: 'JetBrains Mono', monospace;
             font-size: 8.5px;
             font-weight: 700;
@@ -678,6 +682,71 @@
             letter-spacing: 0.5px;
             position: relative;
             z-index: 2;
+            pointer-events: none;
+        }
+
+        .collapsed-master-clip {
+            position: absolute;
+            top: 1px;
+            bottom: 1px;
+            overflow: hidden;
+            border-radius: 3px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-left: 3px solid #06B6D4;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+
+            &:hover {
+                background: rgba(22, 34, 54, 0.95);
+                border-color: rgba(255, 255, 255, 0.3);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+            }
+
+            .clip-waveform-graphic {
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+                z-index: 1;
+
+                .waveform-svg {
+                    width: 100%;
+                    height: 100%;
+                    display: block;
+                }
+            }
+
+            .collapsed-clip-info {
+                position: relative;
+                z-index: 2;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                padding: 0 6px;
+                pointer-events: none;
+
+                .collapsed-clip-station {
+                    font-size: 8px;
+                    font-weight: 800;
+                    color: #F8FAFC;
+                    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 100px;
+                }
+
+                .collapsed-clip-gain {
+                    font-size: 7.5px;
+                    font-weight: 600;
+                    font-family: 'JetBrains Mono', monospace;
+                    color: #94A3B8;
+                    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+                }
+            }
         }
     }
 }
@@ -896,15 +965,21 @@
                             color: #fff;
                         }
 
+                        &.mode-both {
+                            background: linear-gradient(90deg, rgba(139, 92, 246, 0.25) 0%, rgba(245, 158, 11, 0.25) 100%);
+                            border-color: rgba(255, 255, 255, 0.25);
+                            color: #FFFFFF;
+                        }
+
                         &.mode-sys {
-                            border-color: rgba(139, 92, 246, 0.45);
-                            background: rgba(139, 92, 246, 0.18);
+                            border-color: rgba(139, 92, 246, 0.5);
+                            background: rgba(139, 92, 246, 0.2);
                             color: #C084FC;
                         }
 
                         &.mode-mic {
-                            border-color: rgba(245, 158, 11, 0.45);
-                            background: rgba(245, 158, 11, 0.18);
+                            border-color: rgba(245, 158, 11, 0.5);
+                            background: rgba(245, 158, 11, 0.2);
                             color: #FBBF24;
                         }
                     }
@@ -1452,19 +1527,97 @@
     font-size: 7px;
     font-weight: 800;
     font-family: 'JetBrains Mono', monospace;
-    padding: 0 4px;
+    padding: 1px 5px;
     border-radius: 2px;
-    background: rgba(6, 182, 212, 0.25);
-    color: #38BDF8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
 
-    &.mode-mic {
-        background: rgba(168, 85, 247, 0.25);
-        color: #C084FC;
+    &.mode-both {
+        background: linear-gradient(90deg, rgba(139, 92, 246, 0.35) 0%, rgba(245, 158, 11, 0.35) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: #FFFFFF;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
     }
 
     &.mode-sys {
-        background: rgba(16, 185, 129, 0.25);
-        color: #34D399;
+        background: rgba(139, 92, 246, 0.25);
+        border: 1px solid rgba(139, 92, 246, 0.5);
+        color: #C084FC;
+    }
+
+    &.mode-mic {
+        background: rgba(245, 158, 11, 0.25);
+        border: 1px solid rgba(245, 158, 11, 0.5);
+        color: #FBBF24;
+    }
+
+    &:hover {
+        filter: brightness(1.25);
+        transform: translateY(-0.5px);
+    }
+}
+
+// Dual Channel SVG Waveform Styling
+.waveform-svg-dual {
+    .waveform-sys-path {
+        filter: drop-shadow(0 0 2px rgba(139, 92, 246, 0.3));
+    }
+
+    .waveform-center-divider {
+        stroke: rgba(255, 255, 255, 0.22);
+    }
+
+    .waveform-mic-path {
+        filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.3));
+    }
+}
+
+// Modal Channel Mode Grid Selector
+.channel-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    margin-top: 4px;
+
+    .btn-channel-chip {
+        padding: 5px 4px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 8px;
+        font-weight: 800;
+        text-align: center;
+        border-radius: 4px;
+        cursor: pointer;
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #94A3B8;
+        transition: all 0.15s ease;
+
+        &:hover {
+            border-color: rgba(255, 255, 255, 0.25);
+            color: #fff;
+        }
+
+        &.mode-both.is-selected {
+            background: linear-gradient(90deg, rgba(139, 92, 246, 0.3) 0%, rgba(245, 158, 11, 0.3) 100%);
+            border-color: rgba(255, 255, 255, 0.4);
+            color: #FFFFFF;
+            box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+        }
+
+        &.mode-sys.is-selected {
+            background: rgba(139, 92, 246, 0.28);
+            border-color: #8B5CF6;
+            color: #C084FC;
+            box-shadow: 0 0 8px rgba(139, 92, 246, 0.35);
+        }
+
+        &.mode-mic.is-selected {
+            background: rgba(245, 158, 11, 0.28);
+            border-color: #F59E0B;
+            color: #FBBF24;
+            box-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
+        }
     }
 }
 
