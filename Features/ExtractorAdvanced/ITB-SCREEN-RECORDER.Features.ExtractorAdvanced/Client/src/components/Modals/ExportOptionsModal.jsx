@@ -13,22 +13,21 @@ export default function ExportOptionsModal({
     compositionSummary = {},
     title = 'MASTER MP4 EXPORT CONFIRMATION'
 }) {
-    const canvasW = compositionSummary.canvasWidth || 1920;
-    const canvasH = compositionSummary.canvasHeight || 1080;
+    const canvasW = compositionSummary.canvasWidth || 2736;
+    const canvasH = compositionSummary.canvasHeight || 1440;
     const aspect = canvasW / canvasH;
+    const resolutionTier = compositionSummary.resolution || '2K';
 
     let aspectLabel;
-    if (Math.abs(aspect - (32 / 9)) < 0.15) aspectLabel = '32:9 Dual Screen';
+    if (Math.abs(aspect - (19 / 10)) < 0.05) aspectLabel = '19:10 NOC Extended';
+    else if (Math.abs(aspect - (16 / 10)) < 0.05) aspectLabel = '16:10 WUXGA / WQXGA';
+    else if (Math.abs(aspect - (32 / 9)) < 0.15) aspectLabel = '32:9 Dual Screen';
     else if (Math.abs(aspect - (21 / 9)) < 0.15) aspectLabel = '21:9 Ultrawide';
-    else if (Math.abs(aspect - (16 / 10)) < 0.15) aspectLabel = '16:10 WUXGA';
     else if (Math.abs(aspect - (4 / 3)) < 0.15) aspectLabel = '4:3 Standard';
-    else if (Math.abs(aspect - (16 / 9)) < 0.15) aspectLabel = '16:9 Broadcast';
+    else if (Math.abs(aspect - (16 / 9)) < 0.05) aspectLabel = '16:9 Broadcast';
     else aspectLabel = `${Math.round(aspect * 100) / 100}:1 Custom`;
 
-    const calcWidth = (h) => {
-        const w = Math.round(h * aspect);
-        return w - (w % 2);
-    };
+
 
     const calcBitrateStr = (w, h) => {
         const mbps = Math.round((((w * h) / (1920 * 1080)) * 6.0) * 10) / 10;
@@ -36,39 +35,9 @@ export default function ExportOptionsModal({
         return `~${mbps} Mbps (~${mbPerMin} MB/min)`;
     };
 
-    const qualityTiers = [
-        {
-            id: 'NATIVE',
-            badge: `Native 1:1 (${canvasW}×${canvasH})`,
-            res: `${canvasW} × ${canvasH}`,
-            bitrate: calcBitrateStr(canvasW, canvasH),
-            desc: `Exact 1:1 canvas match (Recommended). Preserves original recorded pixel fidelity without scaling or distortion.`
-        },
-        {
-            id: '4K',
-            badge: `4K UHD (${calcWidth(2160)}×2160)`,
-            res: `${calcWidth(2160)} × 2160`,
-            bitrate: calcBitrateStr(calcWidth(2160), 2160),
-            desc: `Maximum resolution. Uncompromised multi-monitor canvas clarity for NOC video walls.`
-        },
-        {
-            id: '2K',
-            badge: `2K QHD (${calcWidth(1440)}×1440)`,
-            res: `${calcWidth(1440)} × 1440`,
-            bitrate: calcBitrateStr(calcWidth(1440), 1440),
-            desc: `High pixel density. Preserves small fonts, HUD telemetry, and detailed application windows.`
-        },
-        {
-            id: 'HD',
-            badge: `HD 720p (${calcWidth(720)}×720)`,
-            res: `${calcWidth(720)} × 720`,
-            bitrate: calcBitrateStr(calcWidth(720), 720),
-            desc: `Compact file size, rapid export. Ideal for low-bandwidth operational networks or fast triage.`
-        }
-    ];
+    const bitrateStr = calcBitrateStr(canvasW, canvasH);
 
     const [keystrokeMode, setKeystrokeMode] = useState('BurnIn');
-    const [resolution, setResolution] = useState(compositionSummary.resolution || 'NATIVE');
     const [notes, setNotes] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -77,7 +46,7 @@ export default function ExportOptionsModal({
     const handleConfirm = async () => {
         setIsSubmitting(true);
         try {
-            await onConfirm(keystrokeMode, resolution, notes);
+            await onConfirm(keystrokeMode, resolutionTier, notes);
             onClose();
         } finally {
             setIsSubmitting(false);
@@ -87,8 +56,6 @@ export default function ExportOptionsModal({
     const layoutLabel = (compositionSummary.layout || 'DIRECTOR').toUpperCase();
     const stationsCount = compositionSummary.stationsCount || 1;
     const audioRoutingCount = compositionSummary.audioSegmentsCount || 1;
-
-    const currentTier = qualityTiers.find(t => t.id === resolution) || qualityTiers[0];
 
     return createPortal(
         <div className="itb-export-modal-backdrop" onClick={onClose} dir="ltr">
@@ -128,8 +95,12 @@ export default function ExportOptionsModal({
                         <div className="summary-row">
                             <span className="label">TARGET RESOLUTION:</span>
                             <span className="value highlight">
-                                {currentTier.res} ({currentTier.badge})
+                                {canvasW} × {canvasH} ({resolutionTier} • WYSIWYG MATCH)
                             </span>
+                        </div>
+                        <div className="summary-row">
+                            <span className="label">ESTIMATED BITRATE:</span>
+                            <span className="value">{bitrateStr}</span>
                         </div>
                         <div className="summary-row">
                             <span className="label">ACTIVE STATIONS:</span>
@@ -153,28 +124,19 @@ export default function ExportOptionsModal({
                         </div>
                     </div>
 
-                    {/* Target Resolution & Quality Selection */}
-                    <div className="options-title">SELECT EXPORT QUALITY & RESOLUTION</div>
-                    <div className="quality-grid">
-                        {qualityTiers.map((tier) => (
-                            <label key={tier.id} className={`quality-card ${resolution === tier.id ? 'active' : ''}`}>
-                                <input
-                                    type="radio"
-                                    name="videoQuality"
-                                    value={tier.id}
-                                    checked={resolution === tier.id}
-                                    onChange={() => setResolution(tier.id)}
-                                />
-                                <div className="quality-card-body">
-                                    <div className="quality-card-header">
-                                        <span className="quality-badge">{tier.badge}</span>
-                                        <span className="quality-res">{tier.res}</span>
-                                    </div>
-                                    <div className="quality-metric">{tier.bitrate}</div>
-                                    <div className="quality-desc">{tier.desc}</div>
-                                </div>
-                            </label>
-                        ))}
+                    {/* Locked WYSIWYG Canvas Resolution & Quality Specification */}
+                    <div className="options-title">CANVAS EXPORT SPECIFICATION (WYSIWYG 1:1)</div>
+                    <div className="locked-resolution-banner">
+                        <div className="locked-res-header">
+                            <div className="locked-res-badge">
+                                <span className="lock-icon">🔒</span>
+                                <span className="badge-text">{canvasW} × {canvasH} ({resolutionTier} • {aspectLabel})</span>
+                            </div>
+                            <div className="locked-res-metric">{bitrateStr}</div>
+                        </div>
+                        <div className="locked-res-desc">
+                            Exact 1:1 WYSIWYG canvas rendering locked from workspace. Pre-configured canvas geometry, multi-screen tiles, typography, and UTC clock overlay export with zero distortion or scaling artifacts.
+                        </div>
                     </div>
 
                     {/* Keystroke Presentation Selection */}
@@ -233,7 +195,7 @@ export default function ExportOptionsModal({
                         CANCEL
                     </button>
                     <button type="button" className="btn-confirm" onClick={handleConfirm} disabled={isSubmitting}>
-                        {isSubmitting ? 'ENQUEUING MASTER EXPORT...' : `CONFIRM & EXPORT MASTER MP4 (${currentTier.res})`}
+                        {isSubmitting ? 'ENQUEUING MASTER EXPORT...' : `CONFIRM & EXPORT MASTER MP4 (${canvasW}×${canvasH})`}
                     </button>
                 </div>
             </div>

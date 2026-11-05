@@ -146,7 +146,7 @@ export default function CanvasComposerModal({
     const [activeKfIndex, setActiveKfIndex] = useState(0);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [keystrokeMode, setKeystrokeMode] = useState('BurnIn');
-    const [resolution, setResolution] = useState(initialTimeline?.resolution || 'FHD');
+    const [resolution, setResolution] = useState(initialTimeline?.resolution || '2K');
 
     useEffect(() => {
         if (isOpen && initialTimeline?.keyframes?.length > 0) {

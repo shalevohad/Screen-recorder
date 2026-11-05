@@ -23,18 +23,30 @@ import {
     resolveStreamQuality,
     MAX_CONCURRENT_CANVAS_DECODERS
 } from '../../utils/canvasStreamGovernor.js';
+import {
+    RESOLUTION_PRESETS,
+    ASPECT_PRESETS,
+    DEFAULT_CANVAS_RESOLUTION,
+    DEFAULT_CANVAS_ASPECT,
+    DEFAULT_VIRTUAL_CANVAS_W,
+    DEFAULT_VIRTUAL_CANVAS_H,
+    computeCanvasDimensions,
+    getReadableAspectRatio
+} from '../../utils/canvasResolutionEngine.js';
 import './MulticamViewport.scss';
 
-export const ASPECT_PRESETS = [
-    { id: '16:9', label: '16:9 Broadcast', ratio: 16 / 9, w: 1920, h: 1080 },
-    { id: '32:9', label: '32:9 Dual Screen', ratio: 32 / 9, w: 3840, h: 1080 },
-    { id: '21:9', label: '21:9 Ultrawide', ratio: 21 / 9, w: 2560, h: 1080 },
-    { id: '16:10', label: '16:10 WUXGA', ratio: 16 / 10, w: 1920, h: 1200 },
-    { id: '4:3', label: '4:3 Standard', ratio: 4 / 3, w: 1440, h: 1080 }
-];
+export {
+    RESOLUTION_PRESETS,
+    ASPECT_PRESETS,
+    DEFAULT_CANVAS_RESOLUTION,
+    DEFAULT_CANVAS_ASPECT,
+    DEFAULT_VIRTUAL_CANVAS_W,
+    DEFAULT_VIRTUAL_CANVAS_H,
+    computeCanvasDimensions,
+    getReadableAspectRatio
+};
 
-const DEFAULT_VIRTUAL_CANVAS_W = 1920;
-const DEFAULT_VIRTUAL_CANVAS_H = 1080;
+
 
 const SLOT_BORDER_COLORS = [
     '#06B6D4', // Cyan
@@ -89,19 +101,7 @@ function getShadowCss(shadowEffect, isSelected, bColor) {
     return base;
 }
 
-export function getReadableAspectRatio(w, h) {
-    if (!w || !h || w <= 0 || h <= 0) return '16:9';
-    const ratio = w / h;
-    if (Math.abs(ratio - (16 / 9)) < 0.04) return '16:9';
-    if (Math.abs(ratio - (4 / 3)) < 0.04) return '4:3';
-    if (Math.abs(ratio - (16 / 10)) < 0.04) return '16:10';
-    if (Math.abs(ratio - (21 / 9)) < 0.06) return '21:9';
-    if (Math.abs(ratio - (32 / 9)) < 0.08) return '32:9';
-    if (Math.abs(ratio - (5 / 4)) < 0.04) return '5:4';
-    if (Math.abs(ratio - (9 / 16)) < 0.04) return '9:16';
-    if (Math.abs(ratio - 1) < 0.04) return '1:1';
-    return `${ratio.toFixed(2)}:1`;
-}
+
 
 function fitInCell(cellX, cellY, cellW, cellH, aspect) {
     const safeAspect = aspect > 0 ? aspect : (16 / 9);
@@ -358,6 +358,7 @@ export default function MulticamViewport({
     const [showPresetsMenu, setShowPresetsMenu] = useState(false);
     const [showLayoutPresetsPopout, setShowLayoutPresetsPopout] = useState(false);
     const [showAspectPopout, setShowAspectPopout] = useState(false);
+    const [showResolutionPopout, setShowResolutionPopout] = useState(false);
     const [presetNameInput, setPresetNameInput] = useState('');
     const [feedSearchQuery, setFeedSearchQuery] = useState('');
     const importFileInputRef = useRef(null);
@@ -452,16 +453,56 @@ export default function MulticamViewport({
         }, 2200);
     }, []);
 
-    // Master Export Aspect Ratio & Full-Width Staging Mode
+    // Decoupled Canvas Resolution & Aspect Ratio State (Default: 2K, 19:10)
+    const [selectedResolutionId, setSelectedResolutionId] = useState(() => {
+        const fromTimeline = canvasLayoutTimeline?.resolution;
+        if (fromTimeline && RESOLUTION_PRESETS.some(r => r.id === fromTimeline)) {
+            return fromTimeline;
+        }
+        try {
+            const stored = localStorage.getItem('itb_studio_canvas_resolution');
+            if (stored && RESOLUTION_PRESETS.some(r => r.id === stored)) return stored;
+        } catch {
+            // Ignore
+        }
+        return '2K'; // Default 2K per user specification
+    });
+
     const [selectedAspectId, setSelectedAspectId] = useState(() => {
+        const fromTimelineAspect = canvasLayoutTimeline?.aspectRatio;
+        if (fromTimelineAspect && ASPECT_PRESETS.some(p => p.id === fromTimelineAspect)) {
+            return fromTimelineAspect;
+        }
         const w = canvasLayoutTimeline?.keyframes?.[0]?.layout?.width;
         const h = canvasLayoutTimeline?.keyframes?.[0]?.layout?.height;
         if (w && h) {
-            const match = ASPECT_PRESETS.find(p => p.w === w && p.h === h);
+            const aspect = w / h;
+            const match = ASPECT_PRESETS.find(p => Math.abs(p.ratio - aspect) < 0.04);
             if (match) return match.id;
         }
-        return '16:9';
+        try {
+            const stored = localStorage.getItem('itb_studio_canvas_aspect');
+            if (stored && ASPECT_PRESETS.some(p => p.id === stored)) return stored;
+        } catch {
+            // Ignore
+        }
+        return '19:10'; // Default 19:10 per user specification
     });
+
+    const canvasDimensions = useMemo(() => {
+        return computeCanvasDimensions(selectedResolutionId, selectedAspectId);
+    }, [selectedResolutionId, selectedAspectId]);
+
+    const virtualW = canvasDimensions.w;
+    const virtualH = canvasDimensions.h;
+
+    const activeAspectPreset = useMemo(() => {
+        const p = ASPECT_PRESETS.find(ap => ap.id === selectedAspectId) || ASPECT_PRESETS[0];
+        return { ...p, w: virtualW, h: virtualH };
+    }, [selectedAspectId, virtualW, virtualH]);
+
+    const currentAspect = activeAspectPreset.ratio;
+
     const [isFullWidth, setIsFullWidth] = useState(() => {
         try {
             const stored = localStorage.getItem('itb_studio_canvas_fullwidth');
@@ -483,14 +524,6 @@ export default function MulticamViewport({
             return next;
         });
     }, []);
-
-    const activeAspectPreset = useMemo(() => {
-        return ASPECT_PRESETS.find(p => p.id === selectedAspectId) || ASPECT_PRESETS[0];
-    }, [selectedAspectId]);
-
-    const virtualW = activeAspectPreset.w;
-    const virtualH = activeAspectPreset.h;
-    const currentAspect = activeAspectPreset.ratio;
 
     // Precision Rulers ticks generation (dynamic to virtual canvas aspect)
     const rulerTicksX = useMemo(() => {
@@ -764,11 +797,12 @@ export default function MulticamViewport({
         return {
             label,
             timeline: JSON.parse(JSON.stringify(internalTimeline)),
+            resolutionId: selectedResolutionId,
             aspectId: selectedAspectId,
             presetId: selectedPresetId,
             selectedFeedIndex: selectedFeedIndex
         };
-    }, [internalTimeline, selectedAspectId, selectedPresetId, selectedFeedIndex]);
+    }, [internalTimeline, selectedResolutionId, selectedAspectId, selectedPresetId, selectedFeedIndex]);
 
     const pushUndoSnapshot = useCallback((label = 'Action') => {
         const snap = captureCurrentSnapshot(label);
@@ -918,29 +952,60 @@ export default function MulticamViewport({
             onUpdateCanvasLayout({
                 width: virtualW,
                 height: virtualH,
+                resolution: selectedResolutionId,
+                aspectRatio: selectedAspectId,
                 backgroundColor: '#070A10',
                 fps: 30.0,
                 placements: currentPlacements,
                 timeline: internalTimeline
             });
         }
-    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, virtualW, virtualH]);
+    }, [currentPlacements, internalTimeline, onUpdateCanvasLayout, virtualW, virtualH, selectedResolutionId, selectedAspectId]);
+
+    // Switch Resolution handler (scales placements proportionally to match new pixel density)
+    const handleSelectResolution = useCallback((newResId) => {
+        if (selectedResolutionId === newResId) return;
+        const oldDims = computeCanvasDimensions(selectedResolutionId, selectedAspectId);
+        const newDims = computeCanvasDimensions(newResId, selectedAspectId);
+        setSelectedResolutionId(newResId);
+        try {
+            localStorage.setItem('itb_studio_canvas_resolution', newResId);
+        } catch {
+            // Ignore
+        }
+
+        const ratioX = newDims.w / oldDims.w;
+        const ratioY = newDims.h / oldDims.h;
+        const rescaled = currentPlacements.map(p => ({
+            ...p,
+            x: Math.round(p.x * ratioX),
+            y: Math.round(p.y * ratioY),
+            width: Math.round(p.width * ratioX),
+            height: Math.round(p.height * ratioY)
+        }));
+        updateActivePlacements(rescaled, `Resolution change to ${newResId}`);
+        triggerToast(`Canvas Resolution: ${newResId} (${newDims.w}×${newDims.h})`, 'info', '📺');
+    }, [selectedResolutionId, selectedAspectId, currentPlacements, updateActivePlacements, triggerToast]);
 
     // Switch Aspect Ratio handler (re-packing or rescaling existing placements proportionally to fill the target aspect)
     const handleSelectAspectRatio = useCallback((newAspectId) => {
-        const oldPreset = activeAspectPreset;
-        const newPreset = ASPECT_PRESETS.find(p => p.id === newAspectId) || ASPECT_PRESETS[0];
-        if (oldPreset.id === newPreset.id) return;
-
-        setSelectedAspectId(newPreset.id);
+        if (selectedAspectId === newAspectId) return;
+        const oldDims = computeCanvasDimensions(selectedResolutionId, selectedAspectId);
+        const newDims = computeCanvasDimensions(selectedResolutionId, newAspectId);
+        setSelectedAspectId(newAspectId);
+        try {
+            localStorage.setItem('itb_studio_canvas_aspect', newAspectId);
+        } catch {
+            // Ignore
+        }
 
         if (!hasUserCustomizedRef.current) {
             const targetFeeds = defaultStationFeeds.length > 0 ? defaultStationFeeds : (currentPlacements && currentPlacements.length > 0 ? currentPlacements : availableFeeds);
-            const autoPacked = generateAutoPackPlacements(targetFeeds, newPreset.w, newPreset.h);
-            updateActivePlacements(autoPacked);
+            const autoPacked = generateAutoPackPlacements(targetFeeds, newDims.w, newDims.h);
+            updateActivePlacements(autoPacked, `Aspect change to ${newAspectId}`);
         } else {
-            const ratioX = newPreset.w / oldPreset.w;
-            const ratioY = newPreset.h / oldPreset.h;
+            const ratioX = newDims.w / oldDims.w;
+            const ratioY = newDims.h / oldDims.h;
             const rescaled = currentPlacements.map(p => ({
                 ...p,
                 x: Math.round(p.x * ratioX),
@@ -948,9 +1013,10 @@ export default function MulticamViewport({
                 width: Math.round(p.width * ratioX),
                 height: Math.round(p.height * ratioY)
             }));
-            updateActivePlacements(rescaled);
+            updateActivePlacements(rescaled, `Aspect change to ${newAspectId}`);
         }
-    }, [activeAspectPreset, currentPlacements, availableFeeds, updateActivePlacements]);
+        triggerToast(`Canvas Aspect: ${newAspectId} (${newDims.w}×${newDims.h})`, 'info', '📐');
+    }, [selectedAspectId, selectedResolutionId, defaultStationFeeds, currentPlacements, availableFeeds, updateActivePlacements, triggerToast]);
 
     // -------------------------------------------------------------
     // FEEDS PALETTE ACTIONS: ADD / REMOVE / CLEAR
@@ -1893,6 +1959,9 @@ export default function MulticamViewport({
 
         setInternalTimeline(prevSnap.timeline);
         if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(prevSnap.timeline);
+        if (prevSnap.resolutionId && prevSnap.resolutionId !== selectedResolutionId) {
+            setSelectedResolutionId(prevSnap.resolutionId);
+        }
         if (prevSnap.aspectId && prevSnap.aspectId !== selectedAspectId) {
             setSelectedAspectId(prevSnap.aspectId);
         }
@@ -1918,6 +1987,9 @@ export default function MulticamViewport({
 
         setInternalTimeline(nextSnap.timeline);
         if (onUpdateCanvasLayoutTimeline) onUpdateCanvasLayoutTimeline(nextSnap.timeline);
+        if (nextSnap.resolutionId && nextSnap.resolutionId !== selectedResolutionId) {
+            setSelectedResolutionId(nextSnap.resolutionId);
+        }
         if (nextSnap.aspectId && nextSnap.aspectId !== selectedAspectId) {
             setSelectedAspectId(nextSnap.aspectId);
         }
@@ -2742,6 +2814,46 @@ export default function MulticamViewport({
                         )}
                     </div>
 
+                    {/* Canvas Resolution Popout Trigger */}
+                    <div className="wing-popout-wrapper">
+                        <button
+                            type="button"
+                            className={`btn-wing-tool ${showResolutionPopout ? 'active' : ''}`}
+                            onClick={() => {
+                                setShowResolutionPopout(p => !p);
+                                setShowAspectPopout(false);
+                                setShowLayoutPresetsPopout(false);
+                            }}
+                            title={`Canvas Resolution: ${selectedResolutionId} (${virtualW}×${virtualH}px) - Click to change`}
+                        >
+                            <span className="tool-icon">📺</span>
+                            <span className="tool-label">{selectedResolutionId}</span>
+                        </button>
+
+                        {showResolutionPopout && (
+                            <div className="wing-floating-popout left-side-popout">
+                                <div className="popout-title">CANVAS RESOLUTION</div>
+                                {RESOLUTION_PRESETS.map(res => {
+                                    const dims = computeCanvasDimensions(res.id, selectedAspectId);
+                                    return (
+                                        <button
+                                            key={res.id}
+                                            type="button"
+                                            className={`popout-item ${selectedResolutionId === res.id ? 'active' : ''}`}
+                                            onClick={() => {
+                                                handleSelectResolution(res.id);
+                                                setShowResolutionPopout(false);
+                                            }}
+                                        >
+                                            <span>{res.label}</span>
+                                            <span className="dimmed-size">{dims.w}×{dims.h}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Aspect Ratio Popout Trigger */}
                     <div className="wing-popout-wrapper">
                         <button
@@ -2749,9 +2861,10 @@ export default function MulticamViewport({
                             className={`btn-wing-tool ${showAspectPopout ? 'active' : ''}`}
                             onClick={() => {
                                 setShowAspectPopout(p => !p);
+                                setShowResolutionPopout(false);
                                 setShowLayoutPresetsPopout(false);
                             }}
-                            title={`Aspect Ratio: ${selectedAspectId} (Click to change)`}
+                            title={`Aspect Ratio: ${selectedAspectId} (${virtualW}×${virtualH}px) - Click to change`}
                         >
                             <span className="tool-icon">📐</span>
                             <span className="tool-label">{selectedAspectId}</span>
@@ -2759,21 +2872,24 @@ export default function MulticamViewport({
 
                         {showAspectPopout && (
                             <div className="wing-floating-popout left-side-popout">
-                                <div className="popout-title">EXPORT ASPECT</div>
-                                {ASPECT_PRESETS.map(ap => (
-                                    <button
-                                        key={ap.id}
-                                        type="button"
-                                        className={`popout-item ${selectedAspectId === ap.id ? 'active' : ''}`}
-                                        onClick={() => {
-                                            handleSelectAspectRatio(ap.id);
-                                            setShowAspectPopout(false);
-                                        }}
-                                    >
-                                        <span>{ap.label}</span>
-                                        <span className="dimmed-size">{ap.w}×{ap.h}</span>
-                                    </button>
-                                ))}
+                                <div className="popout-title">CANVAS ASPECT</div>
+                                {ASPECT_PRESETS.map(ap => {
+                                    const dims = computeCanvasDimensions(selectedResolutionId, ap.id);
+                                    return (
+                                        <button
+                                            key={ap.id}
+                                            type="button"
+                                            className={`popout-item ${selectedAspectId === ap.id ? 'active' : ''}`}
+                                            onClick={() => {
+                                                handleSelectAspectRatio(ap.id);
+                                                setShowAspectPopout(false);
+                                            }}
+                                        >
+                                            <span>{ap.label}</span>
+                                            <span className="dimmed-size">{dims.w}×{dims.h}</span>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

@@ -1319,8 +1319,8 @@ export default function ExtractorAdvancedStudio() {
                     inEpochMs: timelineBaseEpochMs + inPointMs,
                     outEpochMs: timelineBaseEpochMs + outPointMs,
                     keystrokeMode: resolvedMode,
-                    resolution: targetResolution,
-                    videoQuality: targetResolution,
+                    resolution: targetResolution || canvasLayoutTimeline?.resolution || currentCanvasLayout?.resolution || '2K',
+                    videoQuality: targetResolution || canvasLayoutTimeline?.resolution || currentCanvasLayout?.resolution || '2K',
                     compositionScope: compositionScope,
                     layoutMode: 'canvas',
                     canvasLayout: currentCanvasLayout,
@@ -1830,9 +1830,9 @@ export default function ExtractorAdvancedStudio() {
                     isAutoDirectorEnabled,
                     stationsCount: timelineStations.length,
                     audioSegmentsCount: effectiveAudioPlan?.segments?.length || 1,
-                    resolution: canvasLayoutTimeline?.resolution || 'NATIVE',
-                    canvasWidth: currentCanvasLayout?.width || 1920,
-                    canvasHeight: currentCanvasLayout?.height || 1080
+                    resolution: canvasLayoutTimeline?.resolution || currentCanvasLayout?.resolution || '2K',
+                    canvasWidth: currentCanvasLayout?.width || 2736,
+                    canvasHeight: currentCanvasLayout?.height || 1440
                 }}
             />
 
