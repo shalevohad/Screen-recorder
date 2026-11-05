@@ -3174,4 +3174,68 @@ When exporting the multi-camera master composition via FFmpeg, `AdvanceJobManage
 
 ---
 
+## 60. Canvas Placement Active-Edit Temporary Z-Index Elevation & Settle Invariant
+
+### 60.1 The Visual Occlusion & Stacking Problem
+
+On the Virtual Desktop Canvas (`MulticamViewport`), workstations and displays are stacked into discrete layers (`p.zIndex`). When a lower-layer placement (e.g., Layer #1) was positioned beneath or partially overlapping a higher-layer placement (e.g., Layer #2):
+1. Clicking Layer #1 to move or resize it left its corner resize handles (`tl`, `tr`, `bl`, `br`), borders, and surface trapped beneath Layer #2.
+2. In HTML/CSS, the overlapping higher layer captured all pointer events, making it impossible for the operator to grab resize handles, adjust bounds, or inspect the window.
+3. Furthermore, the selection index was sticky without canvas deselect capability, meaning that if a placement had been artificially elevated, it would remain elevated indefinitely.
+
+---
+
+### 60.2 Dual-Tier Temporary Elevation Model
+
+To guarantee seamless, unobstructed screen manipulation while strictly preserving the true layer hierarchy of the multi-camera composition:
+
+1. **Unselected Placements (Natural Resting Layer)**:
+   ```javascript
+   zIndex: layerRank * 10;
+   ```
+   Every unselected card renders strictly at its configured layer rank (e.g., Layer 1 = 10, Layer 2 = 20, Layer 3 = 30).
+
+2. **Selected for Editing (`isSelected`)**:
+   ```javascript
+   zIndex: 1000 + (layerRank * 10);
+   ```
+   The moment an operator selects a screen card (via direct click, card header, or Feeds & Layers Drawer), its visual stacking order elevates above all non-selected cards. All 4 corner resize handles, boundary glows, rotation controls, and inline title editors become 100% visible and interactive.
+
+3. **Active Transformation Gesture (`isThisDragging || isThisResizing`)**:
+   ```javascript
+   zIndex: 2000;
+   ```
+   While actively dragging the window or dragging a corner resize handle, the active card sits at `zIndex: 2000`, above all canvas cards, while remaining beneath HUD overlays and snap guides (`zIndex: 9990` - `99999`).
+
+4. **Underlying Data Model Immunity**:
+   - Selecting, resizing, or dragging a placement **NEVER** mutates `p.zIndex` in the timeline keyframes or active placement DTOs.
+   - The stand-alone MP4 export engine (`AdvanceJobManager.cs`) renders strictly according to the true `p.zIndex` order.
+
+---
+
+### 60.3 Universal Deselection & Automatic Layer Settle
+
+When the operator completes moving or resizing the screen:
+1. **Empty Canvas Frame & Stage Click**:
+   Clicking empty space on `.canvas-master-frame-16-9` or `.canvas-stage-wrapper` calls `setSelectedFeedIndex(null)` and `setIsInspectorOpen(false)`. The card is deselected and immediately settles back down to its base layer (`layerRank * 10`).
+2. **`Escape` Key**:
+   Pressing `Escape` deselects the active screen, closes the inspector HUD, and returns the card to its original layer rank.
+3. **Inspector Close Button (`✕`)**:
+   Clicking the close button on `.compact-hud-inspector` (`btn-close-inspector`) deselects and returns the card to its base layer.
+4. **Switching Selection**:
+   Clicking another card immediately settles the previous card to its natural resting layer while elevating the new card.
+
+---
+
+### 60.4 Explicit Layer Mutations
+
+If the operator explicitly alters the screen's layer using:
+- HUD Inspector: `Step Layer Up (+1) ▲` / `Step Layer Down (-1) ▼`
+- Feeds & Layers Drawer: `Bring Forward ⬆️` / `Send Backward ⬇️` or drag-and-drop layer reordering
+- Layer Hotkeys (`PageUp` / `PageDown`)
+
+The method `normalizeLayers` recalculates and commits the new sequential ranks (`1..N`) into `p.zIndex`. When the screen is subsequently deselected, it settles at its newly assigned permanent layer.
+
+---
+
 *End of System Book — ITB-SCREEN-RECORDER Architecture Team*

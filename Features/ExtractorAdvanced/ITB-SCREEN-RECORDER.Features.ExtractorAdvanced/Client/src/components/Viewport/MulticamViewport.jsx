@@ -385,7 +385,7 @@ export default function MulticamViewport({
     const [canvasFrameDimensions, setCanvasFrameDimensions] = useState({ width: 960, height: 540 });
 
     // Selection & Free Transform state
-    const [selectedFeedIndex, setSelectedFeedIndex] = useState(0);
+    const [selectedFeedIndex, setSelectedFeedIndex] = useState(null);
     const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
     // Screen Title Inline & HUD Inspector Editing State
@@ -405,6 +405,7 @@ export default function MulticamViewport({
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
                 setIsInspectorOpen(false);
+                setSelectedFeedIndex(null);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
@@ -985,12 +986,12 @@ export default function MulticamViewport({
     const handleRemovePlacement = useCallback((idx) => {
         const next = currentPlacements.filter((_, i) => i !== idx);
         updateActivePlacements(next);
-        setSelectedFeedIndex(prev => Math.max(0, prev - 1));
+        setSelectedFeedIndex(prev => (next.length === 0 ? null : (prev !== null ? Math.min(prev, next.length - 1) : null)));
     }, [currentPlacements, updateActivePlacements]);
 
     const handleClearCanvas = useCallback(() => {
         updateActivePlacements([]);
-        setSelectedFeedIndex(-1);
+        setSelectedFeedIndex(null);
     }, [updateActivePlacements]);
 
     // Helper to normalize placements to sequential 1-based ranks (1 = bottom, N = top)
@@ -2096,6 +2097,8 @@ export default function MulticamViewport({
                 setShowRotationControl(false);
                 setShowColorPicker(false);
                 setShowSavePresetModal(false);
+                setIsInspectorOpen(false);
+                setSelectedFeedIndex(null);
                 return;
             }
 
@@ -2457,7 +2460,16 @@ export default function MulticamViewport({
                 
 
                 {/* Center Canvas Stage */}
-                <div ref={stageWrapperRef} className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}>
+                <div
+                    ref={stageWrapperRef}
+                    className={`canvas-stage-wrapper ${isFullWidth ? 'is-full-width-mode' : 'is-fit-stage-mode'}`}
+                    onClick={(e) => {
+                        if (e.target === stageWrapperRef.current || e.target?.classList?.contains('canvas-stage-wrapper')) {
+                            setSelectedFeedIndex(null);
+                            setIsInspectorOpen(false);
+                        }
+                    }}
+                >
                     {/* Unified Minimalist Feeds & Layers Drawer */}
                     {showFeedsDrawer && (
                         <div className="canvas-side-drawer feeds-layers-drawer">
@@ -2828,7 +2840,15 @@ export default function MulticamViewport({
                             e.dataTransfer.dropEffect = 'copy';
                         }}
                         onDrop={handleCanvasDrop}
-                        onClick={() => setIsInspectorOpen(false)}
+                        onClick={(e) => {
+                            if (e.target === canvasFrameRef.current ||
+                                e.target?.classList?.contains('canvas-master-frame-16-9') ||
+                                e.target?.classList?.contains('corner-accent') ||
+                                e.target?.classList?.contains('canvas-work-surface')) {
+                                setSelectedFeedIndex(null);
+                                setIsInspectorOpen(false);
+                            }
+                        }}
                     >
                         <div className="corner-accent top-left" />
                         <div className="corner-accent top-right" />
@@ -3063,7 +3083,7 @@ export default function MulticamViewport({
                                         top: `${topPct}%`,
                                         width: `${widthPct}%`,
                                         height: `${heightPct}%`,
-                                        zIndex: (layerRank * 10) + (isThisDragging ? 100 : 0),
+                                        zIndex: (isThisDragging || isThisResizing) ? 2000 : (isSelected ? 1000 + (layerRank * 10) : (layerRank * 10)),
                                         transformOrigin: 'center center',
                                         border: `${bWidth}px solid ${bColor}`,
                                         borderRadius: `${bRadius}px`,
@@ -3079,6 +3099,10 @@ export default function MulticamViewport({
                                         e.stopPropagation();
                                         setSelectedFeedIndex(origIdx);
                                         setIsInspectorOpen(true);
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedFeedIndex(origIdx);
                                     }}
                                 >
                                     {/* Top Draggable Bar & Coordinates */}
@@ -3484,8 +3508,11 @@ export default function MulticamViewport({
                                     <button
                                         type="button"
                                         className="btn-mini-tool btn-close-inspector"
-                                        onClick={() => setSelectedFeedIndex(null)}
-                                        title="Close Menu (Esc)"
+                                        onClick={() => {
+                                            setSelectedFeedIndex(null);
+                                            setIsInspectorOpen(false);
+                                        }}
+                                        title="Deselect & Finish Editing (Esc)"
                                     >
                                         ✕
                                     </button>

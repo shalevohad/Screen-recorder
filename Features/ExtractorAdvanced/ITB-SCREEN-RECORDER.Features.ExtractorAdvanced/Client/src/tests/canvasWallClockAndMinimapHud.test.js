@@ -236,4 +236,71 @@ describe('Canvas UTC Wall Clock & Persistent Minimap HUD Invariants', () => {
         assert.ok(filterClause.includes("text='Ops Center\\: Screen ’A’ [100%] \\\\ Radar'"));
         assert.ok(filterClause.includes('boxborderw=4'));
     });
+
+    it('10. Canvas Placement Active Edit Temporary Z-Index Elevation & Settle Invariant', () => {
+        // Algorithm mirroring MulticamViewport z-index computation
+        const computeCardZIndex = ({
+            origIdx,
+            layerRank,
+            selectedFeedIndex,
+            isDragging,
+            isResizing
+        }) => {
+            const isSelected = selectedFeedIndex !== null && selectedFeedIndex === origIdx;
+            const isThisDragging = isDragging && selectedFeedIndex === origIdx;
+            const isThisResizing = isResizing && selectedFeedIndex === origIdx;
+
+            if (isThisDragging || isThisResizing) {
+                return 2000;
+            }
+            if (isSelected) {
+                return 1000 + (layerRank * 10);
+            }
+            return layerRank * 10;
+        };
+
+        const placements = [
+            { stationId: 'OHAD-PC', displayId: 'mon-0', zIndex: 1 }, // layerRank = 1
+            { stationId: 'OHAD-PC', displayId: 'mon-1', zIndex: 2 }  // layerRank = 2
+        ];
+
+        // 1. Initial State: No placement selected (selectedFeedIndex = null)
+        const z0_initial = computeCardZIndex({ origIdx: 0, layerRank: 1, selectedFeedIndex: null, isDragging: false, isResizing: false });
+        const z1_initial = computeCardZIndex({ origIdx: 1, layerRank: 2, selectedFeedIndex: null, isDragging: false, isResizing: false });
+        assert.strictEqual(z0_initial, 10);
+        assert.strictEqual(z1_initial, 20);
+        assert.ok(z1_initial > z0_initial, 'Card 1 is naturally above Card 0');
+
+        // 2. Select Card 0 for editing (shrinking/moving/styling)
+        const z0_selected = computeCardZIndex({ origIdx: 0, layerRank: 1, selectedFeedIndex: 0, isDragging: false, isResizing: false });
+        const z1_unselected = computeCardZIndex({ origIdx: 1, layerRank: 2, selectedFeedIndex: 0, isDragging: false, isResizing: false });
+        assert.strictEqual(z0_selected, 1010);
+        assert.strictEqual(z1_unselected, 20);
+        assert.ok(z0_selected > z1_unselected, 'Card 0 is temporarily elevated above Card 1 for editing');
+        assert.strictEqual(placements[0].zIndex, 1, 'Underlying p.zIndex remains preserved at 1');
+
+        // 3. Actively dragging or resizing Card 0
+        const z0_dragging = computeCardZIndex({ origIdx: 0, layerRank: 1, selectedFeedIndex: 0, isDragging: true, isResizing: false });
+        assert.strictEqual(z0_dragging, 2000, 'Actively dragging card sits on top of all canvas layers');
+
+        const z0_resizing = computeCardZIndex({ origIdx: 0, layerRank: 1, selectedFeedIndex: 0, isDragging: false, isResizing: true });
+        assert.strictEqual(z0_resizing, 2000, 'Actively resizing card sits on top of all canvas layers');
+
+        // 4. Finish editing & moving (Deselect via canvas background click or Escape)
+        const z0_settled = computeCardZIndex({ origIdx: 0, layerRank: 1, selectedFeedIndex: null, isDragging: false, isResizing: false });
+        const z1_settled = computeCardZIndex({ origIdx: 1, layerRank: 2, selectedFeedIndex: null, isDragging: false, isResizing: false });
+        assert.strictEqual(z0_settled, 10, 'Card 0 returns to base layer 10');
+        assert.strictEqual(z1_settled, 20, 'Card 1 returns to base layer 20');
+        assert.ok(z1_settled > z0_settled, 'Card 1 is back on top of Card 0');
+
+        // 5. Explicit layer reordering: Operator brings Card 0 forward
+        const reorderedPlacements = [
+            { ...placements[0], zIndex: 2 },
+            { ...placements[1], zIndex: 1 }
+        ];
+        const z0_reordered = computeCardZIndex({ origIdx: 0, layerRank: reorderedPlacements[0].zIndex, selectedFeedIndex: null, isDragging: false, isResizing: false });
+        const z1_reordered = computeCardZIndex({ origIdx: 1, layerRank: reorderedPlacements[1].zIndex, selectedFeedIndex: null, isDragging: false, isResizing: false });
+        assert.strictEqual(z0_reordered, 20, 'Card 0 permanently sits at layer 20 after explicit layer change');
+        assert.strictEqual(z1_reordered, 10, 'Card 1 permanently sits at layer 10 after explicit layer change');
+    });
 });
